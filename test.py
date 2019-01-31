@@ -2,7 +2,6 @@ from __future__ import absolute_import, division, print_function
 
 import itertools
 
-import pytest
 import torch
 
 import funsor
@@ -88,8 +87,8 @@ def test_advanced_index_1():
 
     assert x.shape == (4, 5)
 
-    check_funsor(x(m), ('j', 'm'), (J, M))
-    check_funsor(x(n), ('j', 'n'), (J, N))
+    check_funsor(x(m), ('j', 'm'), (J, M), x.tensor[m.tensor])
+    check_funsor(x(n), ('j', 'n'), (J, N), x.tensor[n.tensor])
     check_funsor(x(m, n), ('m', 'n'), (M, N))
     check_funsor(x(n, m), ('m', 'n'), (M, N))
     check_funsor(x(i=m), ('j', 'm'), (J, M))
@@ -100,27 +99,27 @@ def test_advanced_index_1():
     check_funsor(x(j=m, i=n), ('m', 'n'), (M, N))
     check_funsor(x(m, j=n), ('m', 'n'), (M, N))
 
-    check_funsor(x[m], ('j', 'm'), (J, M))
-    check_funsor(x[n], ('j', 'n'), (J, N))
+    check_funsor(x[m], ('j', 'm'), (J, M), x.tensor[m.tensor])
+    check_funsor(x[n], ('j', 'n'), (J, N), x.tensor[n.tensor])
     check_funsor(x[:, m], ('i', 'm'), (I, M))
     check_funsor(x[:, n], ('i', 'n'), (I, N))
     check_funsor(x[m, n], ('m', 'n'), (M, N))
     check_funsor(x[n, m], ('m', 'n'), (M, N))
 
 
-@pytest.mark.xfail(reason='TODO')
 def test_ellipsis():
-    x = funsor.TorchFunsor(('i', 'j', 'k'), torch.randn(3, 4, 5))
+    tensor = torch.randn(3, 4, 5)
+    x = funsor.TorchFunsor(('i', 'j', 'k'), tensor)
     check_funsor(x, ('i', 'j', 'k'), (3, 4, 5))
 
     assert x[...] is x
 
-    check_funsor(x[..., 0, 0, 0], (), ())
-    check_funsor(x[..., 0, 0], ('i',), (3,))
-    check_funsor(x[..., 0], ('i', 'k'), (3, 4))
-    check_funsor(x[0, ..., 0, 0], (), ())
-    check_funsor(x[0, ..., 0], ('j',), (4,))
-    check_funsor(x[0, ...], ('j', 'k'), (4, 5))
-    check_funsor(x[0, 0, ..., 0], (), ())
-    check_funsor(x[0, 0, ...], ('k',), (5,))
-    check_funsor(x[0, 0, 0, ...], (), ())
+    check_funsor(x[..., 1, 2, 3], (), (), tensor[1, 2, 3])
+    check_funsor(x[..., 2, 3], ('i',), (3,), tensor[..., 2, 3])
+    check_funsor(x[..., 3], ('i', 'j'), (3, 4), tensor[..., 3])
+    check_funsor(x[1, ..., 2, 3], (), (), tensor[1, 2, 3])
+    check_funsor(x[1, ..., 3], ('j',), (4,), tensor[1, ..., 3])
+    check_funsor(x[1, ...], ('j', 'k'), (4, 5), tensor[1])
+    check_funsor(x[1, 2, ..., 3], (), (), tensor[1, 2, 3])
+    check_funsor(x[1, 2, ...], ('k',), (5,), tensor[1, 2])
+    check_funsor(x[1, 2, 3, ...], (), (), tensor[1, 2, 3])

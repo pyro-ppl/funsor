@@ -301,6 +301,13 @@ class TorchFunsor(Funsor):
         self.tensor = tensor
 
     def __call__(self, *args, **kwargs):
+        for pos, arg in enumerate(args):
+            if arg is Ellipsis:
+                pos = args.index(Ellipsis)
+                kwargs.update(zip(reversed(self.dims),
+                                  reversed(args[1 + pos:])))
+                args = args[:pos]
+                break
         kwargs.update(zip(self.dims, args))
         result = self
         for key, value in kwargs.items():
