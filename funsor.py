@@ -19,6 +19,14 @@ def domain(size):
     raise NotImplementedError("cannot iterate over {}".format(domain))
 
 
+def log(x):
+    return x.log()
+
+
+def exp(x):
+    return x.exp()
+
+
 class Funsor(object):
     def __init__(self, dims, shape):
         assert len(dims) == len(shape)
@@ -31,6 +39,37 @@ class Funsor(object):
     def size(self):
         return self.shape
 
+    def materialize(self):
+        index = itertools.product(*map(domain, self.shape))
+        tensor = torch.tensor([self[i] for i in index])
+        tensor = tensor.reshape(self.shape)
+        return TorchFunsor(self.dims, tensor)
+
+    def log(self):
+        return LazyFunsor(self.dims, self.shape, lambda *x: self[x].log())
+
+    def exp(self):
+        return LazyFunsor(self.dims, self.shape, lambda *x: self[x].exp())
+
+    def __mul__(self, other):
+        """
+        Broadcasted pointwise multiplication.
+        """
+        if self.dims == other.dims:
+            dims = self.dims
+            shape = self.shape
+        else:
+            dims = tuple(sorted(set(self.dims + other.dims)))
+            sizes = dict(zip(self.dims + other.dims, self.shape + other.shape))
+            shape = tuple(sizes[d] for d in dims)
+
+        def fn(*key):
+            key1 = tuple(i for d, i in zip(dims, key) if d in self.dims)
+            key2 = tuple(i for d, i in zip(dims, key) if d in other.dims)
+            return self[key1] * other[key2]
+
+        return LazyFunsor(dims, shape, fn)
+
     def mm(self, other):
         assert len(self.shape) == 2
         assert len(other.shape) == 2
@@ -39,10 +78,19 @@ class Funsor(object):
         shape = (self.shape[0], other.shape[-1])
 
         def fn(i, k):
-            J = domain(self.shape[-1])
-            return sum(self[i, j] * other[j, k] for j in J)
+            return sum(self[i, j] * other[j, k]
+                       for j in domain(self.shape[-1]))
 
         return LazyFunsor(dims, shape, fn)
+
+
+class LazyFunsor(Funsor):
+    def __init__(self, dims, shape, fn):
+        super(LazyFunsor, self).__init__(dims, shape)
+        self.fn = fn
+
+    def __getitem__(self, key):
+        return self.fn(*key)
 
 
 class TorchFunsor(Funsor):
@@ -58,28 +106,82 @@ class TorchFunsor(Funsor):
     def __setitem__(self, key, value):
         self.tensor[key] = value
 
+    def materialize(self):
+        return self
+
+    def log(self):
+        return TorchFunsor(self.dims, self.tensor.log())
+
+    def exp(self):
+        return TorchFunsor(self.dims, self.tensor.exp())
+
+    def __mul__(self, other):
+        if isinstance(other, TorchFunsor):
+            if self.dims == other.dims:
+                return TorchFunsor(self.dims, self.tensor + other.tensor)
+            dims = tuple(sorted(set(self.dims + other.dims)))
+            equation = "{},{}->{}".format(self.dims, other.dims, dims)
+            tensor = torch.einsum(equation, self.tensor, other.tensor)
+            return TorchFunsor(dims, tensor)
+        return super(TorchFunsor, self).__mul__(other)
+
     def mm(self, other):
         if isinstance(other, TorchFunsor):
             dims = (self.dims[0], other.dims[-1])
             tensor = self.tensor.mm(other.tensor)
             return TorchFunsor(dims, tensor)
-        else:
-            return super(TorchFunsor, self).mm(other)
+        return super(TorchFunsor, self).mm(other)
 
 
-class LazyFunsor(Funsor):
-    def __init__(self, dims, shape, fn):
-        super(LazyFunsor, self).__init__(dims, shape)
-        self.fn = fn
+class PolynomialFunsor(Funsor):
+    def __init__(self, dims, shape, coefs):
+        assert isinstance(coefs, dict)
+        super(PolynomialFunsor, self).__init__(dims, shape)
+        self.coefs = coefs
+
+    def __getitem__(self, xs):
+        xs = dict(zip(self.dims, xs))
+        result = 0
+        for key, value in self.coefs.items():
+            term = value
+            for dim in key:
+                term = term * xs[dim]
+            result = result + term
+        return result
+
+
+class TransformedFunsor(Funsor):
+    def __init__(self, dims, shape, base_funsor,
+                 pre_transforms=None, post_transform=None):
+        super(TransformedFunsor, self).__init__(dims, shape)
+        self.base_funsor = base_funsor
+        if pre_transforms is None:
+            pre_transforms = tuple(() for d in dims)
+        if post_transform is None:
+            post_transform = ()
+        self.pre_transforms = pre_transforms
+        self.post_transform = post_transform
 
     def __getitem__(self, key):
-        return self.fn(*key)
+        key = list(key)
+        for i, transform in enumerate(self.pre_transforms):
+            for t in transform:
+                key[i] = t(key[i])
+        key = tuple(key)
+        value = self.base_funsor[key]
+        for t in self.post_transform:
+            value = t(value)
+        return value
 
-    def materialize(self):
-        index = itertools.product(*map(domain, self.shape))
-        tensor = torch.tensor([self.fn(*i) for i in index])
-        tensor = tensor.reshape(self.shape)
-        return TorchFunsor(self.dims, tensor)
+    def log(self):
+        post_transform = self.post_transforms + (log,)
+        return TransformedFunsor(self.dims, self.shape, self.base_funsor,
+                                 self.pre_transforms, post_transform)
+
+    def exp(self):
+        post_transform = self.post_transforms + (exp,)
+        return TransformedFunsor(self.dims, self.shape, self.base_funsor,
+                                 self.pre_transforms, post_transform)
 
 
 def _lazy(fn, shape):
