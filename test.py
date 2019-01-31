@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import itertools
 
+import pytest
 import torch
 
 import funsor
@@ -21,13 +22,14 @@ def check_funsor(x, dims, shape=None, tensor=None):
         assert (x.tensor == tensor).all()
 
 
-def test_materialize():
+@pytest.mark.parametrize('vectorize', [True, False])
+def test_materialize(vectorize):
 
     @funsor.lazy(3, 4)
     def f(i, j):
         return i + j
 
-    g = f.materialize()
+    g = f.materialize(vectorize=vectorize)
 
     assert g.dims == f.dims
     assert g.shape == f.shape

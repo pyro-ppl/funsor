@@ -303,7 +303,6 @@ class TorchFunsor(Funsor):
     def __call__(self, *args, **kwargs):
         for pos, arg in enumerate(args):
             if arg is Ellipsis:
-                pos = args.index(Ellipsis)
                 kwargs.update(zip(reversed(self.dims),
                                   reversed(args[1 + pos:])))
                 args = args[:pos]
