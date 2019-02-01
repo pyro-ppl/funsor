@@ -7,6 +7,7 @@ import math
 import operator
 from abc import ABCMeta, abstractmethod
 from numbers import Number
+from weakref import WeakValueDictionary
 
 import opt_einsum
 import torch
@@ -319,6 +320,71 @@ class Funsor(object):
         return self.reduce(operator.or_, dim)
 
 
+_VARIABLES = WeakValueDictionary()
+
+
+class Variable(Funsor):
+    """
+    Funsor representing a single free variable.
+
+    .. warning:: Do not construct :class:`Variable`s directly.
+        instead use :func:`var`.
+
+    :param str name: A variable name.
+    :param size: A size, either an int or a ``DOMAIN``.
+    """
+    def __init__(self, name, size):
+        assert (name, size) not in _VARIABLES, (
+            'Do not construct Variables directly; '
+            'instead use funsor.variables().')
+        super(Variable, self).__init__((name,), (size,))
+
+    @property
+    def name(self):
+        return self.dims[0]
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+        if self.name not in kwargs:
+            return self
+        value = kwargs[self.name]
+        if value is Ellipsis:
+            return self
+        if isinstance(value, str):
+            return var(value, self.shape[0])
+        if isinstance(value, Number):
+            return
+        if isinstance(value, Funsor):
+            return value
+        raise NotImplementedError('TODO handle {}'.format(value))
+
+    def sample(self, dims):
+        raise NotImplementedError
+
+    def __bool__(self):
+        raise ValueError(
+            "bool value of Funsor with more than one value is ambiguous")
+
+    def item(self):
+        raise ValueError(
+            "only one element Funsors can be converted to Python scalars")
+
+
+def var(name, size):
+    """
+    Constructs a new free variable.
+
+    :param str name: A variable name.
+    :param size: A size, either an int or a ``DOMAIN``.
+    """
+    key = (name, size)
+    if key in _VARIABLES:
+        return _VARIABLES[key]
+    result = Variable(name, size)
+    _VARIABLES[key] = result
+    return result
+
+
 class Function(Funsor):
     """
     Funsor backed by a Python function.
@@ -564,18 +630,21 @@ class MultivariateNormal(Distribution):
         raise NotImplementedError('TODO')
 
 
-def contract(dims, *operands, **kwargs):
+def contract(*operands, **kwargs):
     r"""
     Sum-product contraction operation.
 
     :param tuple dims: a tuple of strings of output dimensions. Any input dim
         not requested as an output dim will be summed out.
-    :param \*args: multiple :class:`Funsor`s.
+    :param \*operands: multiple :class:`Funsor`s.
+    :param tuple dims: An optional tuple of output dims to preserve.
+        Defaults to ``()``, meaning all dims are contracted.
     :param str backend: An opt_einsum backend, defaults to 'torch'.
     """
+    assert all(isinstance(x, Funsor) for x in operands)
+    dims = kwargs.pop('dims', ())
     assert isinstance(dims, tuple)
     assert all(isinstance(d, str) for d in dims)
-    assert all(isinstance(x, Funsor) for x in operands)
     kwargs.setdefault('backend', 'torch')
     args = []
     for x in operands:
@@ -586,7 +655,7 @@ def contract(dims, *operands, **kwargs):
     return Tensor(dims, data)
 
 
-def _of_shape(fn, shape):
+def _fun(fn, shape):
     args, vargs, kwargs, defaults = inspect.getargspec(fn)
     assert not vargs
     assert not kwargs
@@ -594,11 +663,11 @@ def _of_shape(fn, shape):
     return Function(dims, shape, fn)
 
 
-def of_shape(*shape):
+def fun(*shape):
     """
     Decorator to construct a :class:`Function`.
     """
-    return functools.partial(_of_shape, shape=shape)
+    return functools.partial(_fun, shape=shape)
 
 
 __all__ = [
@@ -609,6 +678,8 @@ __all__ = [
     'MultivariateNormal',
     'Normal',
     'Tensor',
+    'Variable',
     'contract',
-    'of_shape',
+    'fun',
+    'var',
 ]

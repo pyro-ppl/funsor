@@ -25,7 +25,7 @@ def check_funsor(x, dims, shape=None, data=None):
 @pytest.mark.parametrize('vectorize', [True, False])
 def test_materialize(vectorize):
 
-    @funsor.of_shape(3, 4)
+    @funsor.fun(3, 4)
     def f(i, j):
         return i + j
 
@@ -37,28 +37,50 @@ def test_materialize(vectorize):
         assert f[key] == g[key]
 
 
-def test_contract():
+def test_mm_contract():
 
-    @funsor.of_shape(3, 4)
+    @funsor.fun(3, 4)
     def f(i, j):
         return i + j
 
-    assert f.dims == ("i", "j")
+    assert f.dims == ('i', 'j')
     assert f.shape == (3, 4)
 
-    @funsor.of_shape(4, 5)
+    @funsor.fun(4, 5)
     def g(j, k):
         return j + k
 
-    assert g.dims == ("j", "k")
+    assert g.dims == ('j', 'k')
     assert g.shape == (4, 5)
 
-    h = funsor.contract(("i", "k"), f, g)
-    assert h.dims == ("i", "k")
+    h = funsor.contract(f, g, dims=('i', 'k'))
+    assert h.dims == ('i', 'k')
     assert h.shape == (3, 5)
     for i in range(3):
         for k in range(5):
             assert h[i, k] == sum(f[i, j] * g[j, k] for j in range(4))
+
+
+def test_variable():
+    x3 = funsor.var('x', 3)
+    assert x3.name == 'x'
+    check_funsor(x3, ('x',), (3,))
+    assert funsor.var('x', 3) is x3
+    assert x3['x'] is x3
+    assert x3('x') is x3
+    y3 = funsor.var('y', 3)
+    assert x3['y'] is y3
+    assert x3('y') is y3
+    assert x3(x='y') is y3
+    assert x3(x=y3) is y3
+    x4 = funsor.var('x', 4)
+    assert x4 is not x3
+    assert x4['x'] is x4
+    assert x3(x=x4) is x4
+    assert x3(y=x4) is x3
+
+    log_x = x3.log()
+    assert log_x(x=1) == 0
 
 
 def test_indexing():
