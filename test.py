@@ -158,27 +158,14 @@ def test_unary(op_name, shape):
     check_funsor(actual, dims, shape, expected_data)
 
 
-BINARY_OPS = [
-    ('__add__', '+'),
-    ('__sub__', '-'),
-    ('__mul__', '*'),
-    ('__div__', '/'),
-    ('__pow__', '**'),
-    ('__eq__',  '=='),
-    ('__ne__',  '!='),
-]
-
-BOOLEAN_OPS = [
-    ('__and__', '&'),
-    ('__or__',  '|'),
-    ('__xor__', '^'),
-]
+BINARY_OPS = ['+', '-', '*', '/', '**', '==', '!=', '<', '<=', '>', '>=']
+BOOLEAN_OPS = ['&', '|', '^']
 
 
 @pytest.mark.parametrize('dims2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')])
 @pytest.mark.parametrize('dims1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
-@pytest.mark.parametrize('op_name,symbol', BINARY_OPS + BOOLEAN_OPS)
-def test_binary_funsor_funsor(op_name, symbol, dims1, dims2):
+@pytest.mark.parametrize('symbol', BINARY_OPS + BOOLEAN_OPS)
+def test_binary_funsor_funsor(symbol, dims1, dims2):
     dims = tuple(sorted(set(dims1 + dims2)))
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
@@ -186,7 +173,7 @@ def test_binary_funsor_funsor(op_name, symbol, dims1, dims2):
     shape2 = tuple(sizes[d] for d in dims2)
     data1 = torch.rand(shape1) + 0.5
     data2 = torch.rand(shape2) + 0.5
-    if (op_name, symbol) in BOOLEAN_OPS:
+    if symbol in BOOLEAN_OPS:
         data1 = data1.byte()
         data2 = data2.byte()
     dims, aligned = funsor._align_tensors((dims1, data1),
@@ -201,8 +188,8 @@ def test_binary_funsor_funsor(op_name, symbol, dims1, dims2):
 
 @pytest.mark.parametrize('scalar', [0.5])
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
-@pytest.mark.parametrize('op_name,symbol', BINARY_OPS)
-def test_binary_funsor_scalar(op_name, symbol, dims, scalar):
+@pytest.mark.parametrize('symbol', BINARY_OPS)
+def test_binary_funsor_scalar(symbol, dims, scalar):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     data1 = torch.rand(shape) + 0.5
@@ -215,8 +202,8 @@ def test_binary_funsor_scalar(op_name, symbol, dims, scalar):
 
 @pytest.mark.parametrize('scalar', [0.5])
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
-@pytest.mark.parametrize('op_name,symbol', BINARY_OPS)
-def test_binary_scalar_funsor(op_name, symbol, dims, scalar):
+@pytest.mark.parametrize('symbol', BINARY_OPS)
+def test_binary_scalar_funsor(symbol, dims, scalar):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     data1 = torch.rand(shape) + 0.5

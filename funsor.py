@@ -303,6 +303,18 @@ class Funsor(object):
     def __ne__(self, other):
         return self.pointwise_binary(other, operator.ne)
 
+    def __lt__(self, other):
+        return self.pointwise_binary(other, operator.lt)
+
+    def __le__(self, other):
+        return self.pointwise_binary(other, operator.le)
+
+    def __gt__(self, other):
+        return self.pointwise_binary(other, operator.gt)
+
+    def __ge__(self, other):
+        return self.pointwise_binary(other, operator.ge)
+
     def sum(self, dim=None):
         return self.reduce(operator.add, dim)
 
@@ -544,7 +556,7 @@ class Distribution(Funsor):
 
     def logsumexp(self, dim=None):
         if dim is None:
-            return self.log_normalizer
+            return self.log_normalizer.logsumexp()
         return super(Distribution, self).logsumexp(dim)
 
 
