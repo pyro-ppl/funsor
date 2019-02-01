@@ -293,6 +293,9 @@ class Funsor(object):
         """
         return prod_op(self, other).reduce(sum_op, dims)
 
+    def __invert__(self):
+        return self.pointwise_unary(operator.invert)
+
     def __neg__(self):
         return self.pointwise_unary(operator.neg)
 

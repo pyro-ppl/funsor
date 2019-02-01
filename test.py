@@ -166,17 +166,25 @@ def test_ellipsis():
     check_funsor(x[1, 2, 3, ...], (), (), data[1, 2, 3])
 
 
+def unary_eval(symbol, x):
+    if symbol in ['~', '-']:
+        return eval('{} x'.format(symbol))
+    return getattr(x, symbol)()
+
+
 @pytest.mark.parametrize('shape', [(), (4,), (2, 3)])
-@pytest.mark.parametrize('op_name', [
-    '__neg__', 'abs', 'sqrt', 'exp', 'log', 'log1p',
+@pytest.mark.parametrize('symbol', [
+    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
 ])
-def test_unary(op_name, shape):
+def test_unary(symbol, shape):
     data = torch.rand(shape) + 0.5
-    expected_data = getattr(data, op_name)()
+    if symbol == '~':
+        data = data.byte()
+    expected_data = unary_eval(symbol, data)
     dims = tuple('abc'[:len(shape)])
 
     x = funsor.Tensor(dims, data)
-    actual = getattr(x, op_name)()
+    actual = unary_eval(symbol, x)
     check_funsor(actual, dims, shape, expected_data)
 
 
@@ -213,8 +221,8 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
                                           (dims2, data2))
     expected_data = binary_eval(symbol, aligned[0], aligned[1])
 
-    x1 = funsor.Tensor(dims1, data1)  # noqa F841
-    x2 = funsor.Tensor(dims2, data2)  # noqa F841
+    x1 = funsor.Tensor(dims1, data1)
+    x2 = funsor.Tensor(dims2, data2)
     actual = binary_eval(symbol, x1, x2)
     check_funsor(actual, dims, shape, expected_data)
 
@@ -228,7 +236,7 @@ def test_binary_funsor_scalar(symbol, dims, scalar):
     data1 = torch.rand(shape) + 0.5
     expected_data = binary_eval(symbol, data1, scalar)
 
-    x1 = funsor.Tensor(dims, data1)  # noqa F841
+    x1 = funsor.Tensor(dims, data1)
     actual = binary_eval(symbol, x1, scalar)
     check_funsor(actual, dims, shape, expected_data)
 
@@ -242,7 +250,7 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     data1 = torch.rand(shape) + 0.5
     expected_data = binary_eval(symbol, scalar, data1)
 
-    x1 = funsor.Tensor(dims, data1)  # noqa F841
+    x1 = funsor.Tensor(dims, data1)
     actual = binary_eval(symbol, scalar, x1)
     check_funsor(actual, dims, shape, expected_data)
 
