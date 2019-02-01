@@ -180,8 +180,19 @@ def test_unary(op_name, shape):
     check_funsor(actual, dims, shape, expected_data)
 
 
-BINARY_OPS = ['+', '-', '*', '/', '**', '==', '!=', '<', '<=', '>', '>=']
+BINARY_OPS = [
+    '+', '-', '*', '/', '**', '==', '!=', '<', '<=', '>', '>=',
+    'min', 'max',
+]
 BOOLEAN_OPS = ['&', '|', '^']
+
+
+def binary_eval(symbol, x, y):
+    if symbol == 'min':
+        return funsor.min(x, y)
+    if symbol == 'max':
+        return funsor.max(x, y)
+    return eval('x {} y'.format(symbol))
 
 
 @pytest.mark.parametrize('dims2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')])
@@ -200,11 +211,11 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
         data2 = data2.byte()
     dims, aligned = funsor._align_tensors((dims1, data1),
                                           (dims2, data2))
-    expected_data = eval('aligned[0] {} aligned[1]'.format(symbol))
+    expected_data = binary_eval(symbol, aligned[0], aligned[1])
 
     x1 = funsor.Tensor(dims1, data1)  # noqa F841
     x2 = funsor.Tensor(dims2, data2)  # noqa F841
-    actual = eval('x1 {} x2'.format(symbol))
+    actual = binary_eval(symbol, x1, x2)
     check_funsor(actual, dims, shape, expected_data)
 
 
@@ -215,10 +226,10 @@ def test_binary_funsor_scalar(symbol, dims, scalar):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     data1 = torch.rand(shape) + 0.5
-    expected_data = eval('data1 {} scalar'.format(symbol))
+    expected_data = binary_eval(symbol, data1, scalar)
 
     x1 = funsor.Tensor(dims, data1)  # noqa F841
-    actual = eval('x1 {} scalar'.format(symbol))
+    actual = binary_eval(symbol, x1, scalar)
     check_funsor(actual, dims, shape, expected_data)
 
 
@@ -229,10 +240,10 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     data1 = torch.rand(shape) + 0.5
-    expected_data = eval('scalar {} data1'.format(symbol))
+    expected_data = binary_eval(symbol, scalar, data1)
 
     x1 = funsor.Tensor(dims, data1)  # noqa F841
-    actual = eval('scalar {} x1'.format(symbol))
+    actual = binary_eval(symbol, scalar, x1)
     check_funsor(actual, dims, shape, expected_data)
 
 

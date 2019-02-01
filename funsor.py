@@ -57,12 +57,43 @@ def _logaddexp(x, y):
     raise NotImplementedError('TODO')
 
 
+# this is simply a placeholder
+def _sample(x, y):
+    raise NotImplementedError
+
+
+_sample.__name__ == 'sample'
+
 _min = min
 _max = max
 
 
-def _sample(x, y):
-    raise NotImplementedError
+def min(x, y):
+    if hasattr(x, '__min__'):
+        return x.__min__(y)
+    if hasattr(y, '__min__'):
+        return y.__min__(x)
+    if isinstance(x, torch.Tensor):
+        if isinstance(y, torch.Tensor):
+            return torch.min(x, y)
+        return x.clamp(max=y)
+    if isinstance(y, torch.Tensor):
+        return y.clamp(max=x)
+    return _min(x, y)
+
+
+def max(x, y):
+    if hasattr(x, '__max__'):
+        return x.__max__(y)
+    if hasattr(y, '__max__'):
+        return y.__max__(x)
+    if isinstance(x, torch.Tensor):
+        if isinstance(y, torch.Tensor):
+            return torch.max(x, y)
+        return x.clamp(min=y)
+    if isinstance(y, torch.Tensor):
+        return y.clamp(min=x)
+    return _max(x, y)
 
 
 _REDUCE_OP_TO_TORCH = {
@@ -71,8 +102,6 @@ _REDUCE_OP_TO_TORCH = {
     operator.and_: torch.all,
     operator.or_: torch.any,
     _logaddexp: torch.logsumexp,
-    _min: torch.min,
-    _max: torch.max,
 }
 
 
@@ -241,6 +270,17 @@ class Funsor(object):
             return {}, self
         raise NotImplementedError
 
+    def contract(self, sum_op, prod_op, other, dims):
+        """
+        Perform a binary contration, equivalent to binary product followed by a
+        sum operation.
+
+        :param callable sum_op: a reduction operation.
+        :param callable prod_op: a binary operation.
+        :param Funsor other: Another Funsor.
+        """
+        return prod_op(self, other).reduce(sum_op, dims)
+
     def __neg__(self):
         return self.pointwise_unary(operator.neg)
 
@@ -322,6 +362,12 @@ class Funsor(object):
     def __ge__(self, other):
         return self.pointwise_binary(other, operator.ge)
 
+    def __min__(self, other):
+        return self.pointwise_binary(other, min)
+
+    def __max__(self, other):
+        return self.pointwise_binary(other, max)
+
     def sum(self, dim=None):
         return self.reduce(operator.add, dim)
 
@@ -338,10 +384,10 @@ class Funsor(object):
         return self.reduce(operator.or_, dim)
 
     def min(self, dims):
-        return self.argreduce(self, _min, dims)
+        return self.argreduce(self, min, dims)
 
     def max(self, dims):
-        return self.argreduce(self, _max, dims)
+        return self.argreduce(self, max, dims)
 
     def sample(self, dims):
         """
@@ -582,7 +628,7 @@ class Tensor(Funsor):
         if not dims:
             return {}, self
 
-        if op in (_min, _max):
+        if op in (min, max):
             if len(dims) == 1:
                 dim = next(iter(dims))
                 pos = self.dims.index(dim)
@@ -697,7 +743,7 @@ class Normal(Distribution):
         real_dims = dims & self._real_dims
         if real_dims:
             raise ValueError('min of Normal distribution is undefined')
-        return self.argreduce(_min, dims)
+        return self.argreduce(min, dims)
 
     def max(self, dims):
         dims = frozenset(dims).intersection(self.dims)
@@ -706,7 +752,7 @@ class Normal(Distribution):
         real_dims = dims & self._real_dims
         int_dims = dims & self._int_dims
         if int_dims:
-            args, remaining = self.argreduce(_max, int_dims)
+            args, remaining = self.argreduce(max, int_dims)
             real_args, remaining = remaining.max(real_dims)
             args.update(real_args)
             return args, remaining
@@ -779,4 +825,6 @@ __all__ = [
     'contract',
     'fun',
     'var',
+    'min',
+    'max',
 ]
