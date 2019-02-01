@@ -57,12 +57,22 @@ def _logaddexp(x, y):
     raise NotImplementedError('TODO')
 
 
+_min = min
+_max = max
+
+
+def _sample(x, y):
+    raise NotImplementedError
+
+
 _REDUCE_OP_TO_TORCH = {
     operator.add: torch.sum,
     operator.mul: torch.prod,
     operator.and_: torch.all,
     operator.or_: torch.any,
     _logaddexp: torch.logsumexp,
+    _min: torch.min,
+    _max: torch.max,
 }
 
 
@@ -113,6 +123,10 @@ class Funsor(object):
         super(Funsor, self).__init__()
         self.dims = dims
         self.shape = shape
+        self._size = dict(zip(dims, shape))
+
+    def size(self, dim=None):
+        return self.shape if dim is None else self._size[dim]
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -130,19 +144,6 @@ class Funsor(object):
 
     @abstractmethod
     def item(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def sample(self, dims):
-        """
-        Returns a random sample from a probability distribution whose
-        log probability density is represented by this funsor.
-
-        :param tuple dims: a tuple dims to be sampled.
-        :return: a tuple of joint samples, with ``len(result) == len(dims)``
-            and each result having dims ``set(self.dims) - set(dims)``.
-        :rtype: tuple
-        """
         raise NotImplementedError
 
     def materialize(self, vectorize=True):
@@ -222,6 +223,23 @@ class Funsor(object):
         if not isinstance(size, int):
             raise NotImplementedError
         return reduce(op, (self(**{dim: i}) for i in range(size)))
+
+    def argreduce(self, op, dims):
+        """
+        Reduce along a subset of dimensions,
+        keeping track of the values of those dimensions.
+
+        :param tuple dims: a tuple dims to be argreduced.
+        :return: a tuple ``(values, remaining)`` where ``values`` is a
+            dict mapping a subset of input dims to funsors possibly depending
+            on remaining dims, and ``remaining`` is a funsor depending on
+            remaing dims.
+        :rtype: tuple
+        """
+        dims = frozenset(dims).intersection(self.dims)
+        if not dims:
+            return {}, self
+        raise NotImplementedError
 
     def __neg__(self):
         return self.pointwise_unary(operator.neg)
@@ -319,6 +337,26 @@ class Funsor(object):
     def any(self, dim=None):
         return self.reduce(operator.or_, dim)
 
+    def min(self, dims):
+        return self.argreduce(self, _min, dims)
+
+    def max(self, dims):
+        return self.argreduce(self, _max, dims)
+
+    def sample(self, dims):
+        """
+        Randomly samples from a probability distribution whose
+        log probability density is represented by this funsor.
+
+        :param tuple dims: a set of dims to be sampled.
+        :return: a tuple ``(values, remaining)`` where ``values`` is a
+            dict mapping a subset of input dims to funsors of joint samples
+            possibly depending on remaining dims, and ``remaining`` is a funsor
+            depending on remaing dims.
+        :rtype: tuple
+        """
+        return self.argreduce(self, _sample, dims)
+
 
 _VARIABLES = WeakValueDictionary()
 
@@ -358,16 +396,11 @@ class Variable(Funsor):
             return value
         raise NotImplementedError('TODO handle {}'.format(value))
 
-    def sample(self, dims):
-        raise NotImplementedError
-
     def __bool__(self):
-        raise ValueError(
-            "bool value of Funsor with more than one value is ambiguous")
+        raise ValueError("bool value of Variable is undefined")
 
     def item(self):
-        raise ValueError(
-            "only one element Funsors can be converted to Python scalars")
+        raise ValueError("Variable cannot be converted to a Python scalar")
 
 
 def var(name, size):
@@ -404,12 +437,9 @@ class Function(Funsor):
         if not args and not kwargs:
             return self
         dims = tuple(d for d in self.dims[len(args):] if d not in kwargs)
-        shape = tuple(s for d, s in zip(self.dims, self.shape) if d in dims)
+        shape = tuple(self.size(d) for d in dims)
         fn = functools.partial(self.fn, *args, **kwargs)
         return Function(dims, shape, fn)
-
-    def sample(self, dims):
-        return self.materialize().sample(dims)
 
     def __bool__(self):
         if self.shape:
@@ -422,6 +452,27 @@ class Function(Funsor):
             raise ValueError(
                 "only one element Funsors can be converted to Python scalars")
         return self.fn()
+
+    def argreduce(self, op, dims):
+        dims = frozenset(dims).intersection(self.dims)
+        if not dims:
+            return {}, self
+        return self.materialize().argreduce(op, dims)
+
+
+def _fun(fn, shape):
+    args, vargs, kwargs, defaults = inspect.getargspec(fn)
+    assert not vargs
+    assert not kwargs
+    dims = tuple(args)
+    return Function(dims, shape, fn)
+
+
+def fun(*shape):
+    """
+    Decorator to construct a :class:`Function`.
+    """
+    return functools.partial(_fun, shape=shape)
 
 
 class Tensor(Funsor):
@@ -479,19 +530,6 @@ class Tensor(Funsor):
             return Tensor(dims, data)
         raise NotImplementedError('TODO handle {}'.format(value))
 
-    def sample(self, dims):
-        if len(dims) == 1:
-            dim, = dims
-            pos = self.dims.index(dim)
-            probs = (self.data - self.data.max()).exp()
-            probs = probs.transpose(pos, -1)
-            data = torch.multinomial(probs.reshape(-1, probs.size(-1)), 1)
-            data = data.reshape(probs.shape[:-1] + (0,))
-            data = data.transpose(pos, -1).squeeze(pos)
-            dims = self.dims[:pos] + self.dims[1 + pos:]
-            return (Tensor(dims, data),)
-        raise NotImplementedError('TODO')
-
     def __bool__(self):
         return bool(self.data)
 
@@ -539,6 +577,39 @@ class Tensor(Funsor):
             return Tensor(dims, op(self.data, pos))
         return super(Tensor, self).reduce(op, dim)
 
+    def argreduce(self, op, dims):
+        dims = frozenset(dims).intersection(self.dims)
+        if not dims:
+            return {}, self
+
+        if op in (_min, _max):
+            if len(dims) == 1:
+                dim = next(iter(dims))
+                pos = self.dims.index(dim)
+                value, remaining = getattr(self.data, op.__name__)
+                dims = self.dims[:pos] + self.dims
+                return {dim: Tensor(dims, value)}, Tensor(dims, remaining)
+            raise NotImplementedError('TODO implement multiway min, max')
+
+        if op is _sample:
+            if len(dims) == 1:
+                dim, = dims
+                pos = self.dims.index(dim)
+                shift = self.data.max(pos, keepdim=True)
+                probs = (self.data - shift).exp()
+                remaining = probs.sum(pos).log() + shift.squeeze(pos)
+
+                probs = probs.transpose(pos, -1)
+                value = torch.multinomial(probs.reshape(-1, probs.size(-1)), 1)
+                value = value.reshape(probs.shape[:-1] + (0,))
+                value = value.transpose(pos, -1).squeeze(pos)
+
+                dims = self.dims[:pos] + self.dims[1 + pos:]
+                return {dim: Tensor(dims, value)}, Tensor(dims, remaining)
+            raise NotImplementedError('TODO implement multiway sample')
+
+        raise NotImplementedError('TODO handle {}'.format(op))
+
 
 class Distribution(Funsor):
     """
@@ -564,26 +635,10 @@ class Distribution(Funsor):
             log_normalizer = torch.zeros(dist.batch_shape)
         assert log_normalizer.shape == dist.batch_shape
         super(Distribution, self).__init__(dims, shape)
-        self.log_normalizer = log_normalizer
         self.dist = dist
-
-    def sample(self, dims):
-        if not dims:
-            return ()
-        int_dims = []
-        real_dims = []
-        for d, s in zip(self.dims, self.shape):
-            (int_dims if isinstance(s, int) else real_dims).append(d)
-        if set(dims) & set(int_dims):
-            raise NotImplementedError('TODO sample wrt log_normalizer')
-        if set(dims) <= set(real_dims):
-            result_dims = tuple(d for d in self.dims if d not in dims)
-            value = self.dist.rsample()
-            if set(dims) == set(real_dims):
-                return tuple(
-                    Tensor(result_dims, value[..., real_dims.index(d)])
-                    for d in dims)
-            raise NotImplementedError('TODO condition on partial sample')
+        self.log_normalizer = log_normalizer
+        self._int_dims = frozenset(d for d in dims
+                                   if isinstance(self.size(d), int))
 
     def __bool__(self):
         raise ValueError(
@@ -608,10 +663,67 @@ class Normal(Distribution):
         assert isinstance(dist.base_dist, torch.distributions.Normal)
         assert isinstance(dist, torch.distributions.Normal)
         super(Normal, self).__init__(dims, shape, dist, log_normalizer)
+        self._real_dims = frozenset(self.dims) - self._int_dims
 
     def __call__(self, *args, **kwargs):
         kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
         kwargs.update(zip(self.dims, args))
+        raise NotImplementedError('TODO')
+
+    def argreduce(self, op, dims):
+        dims = frozenset(dims).intersection(self.dims)
+        if not dims:
+            return {}, self
+        int_dims = dims & self._int_dims
+        real_dims = dims & self._real_dims
+        if int_dims:
+            log_normalizer = Tensor(
+                tuple(d for d in self.dims if d in self._real_dims),
+                self.log_normalizer)
+            args, log_normalizer = log_normalizer.argreduce(op, int_dims)
+            remaining = self(**args)
+            remaining.log_normalizer = log_normalizer.data
+            real_args, remaining = remaining.argreduce(op, real_dims)
+            args.update(real_args)
+            return args, remaining
+        raise NotImplementedError(
+            'call .{}(...) instead of .argreduce(op, ...)'.format(
+                op.__name__))
+
+    def min(self, dims):
+        dims = frozenset(dims).intersection(self.dims)
+        if not dims:
+            return {}, self
+        real_dims = dims & self._real_dims
+        if real_dims:
+            raise ValueError('min of Normal distribution is undefined')
+        return self.argreduce(_min, dims)
+
+    def max(self, dims):
+        dims = frozenset(dims).intersection(self.dims)
+        if not dims:
+            return {}, self
+        real_dims = dims & self._real_dims
+        int_dims = dims & self._int_dims
+        if int_dims:
+            args, remaining = self.argreduce(_max, int_dims)
+            real_args, remaining = remaining.max(real_dims)
+            args.update(real_args)
+            return args, remaining
+        assert real_dims
+        raise NotImplementedError('TODO extract mode')
+
+    def sample(self, dims):
+        dims = frozenset(dims).intersection(self.dims)
+        if not dims:
+            return {}, self
+        real_dims = dims & self._real_dims
+        int_dims = dims & self._int_dims
+        if int_dims:
+            args, remaining = self.argreduce(_sample, int_dims)
+            real_args, remaining = remaining.sample(real_dims)
+            args.update(real_args)
+            return args, remaining
         raise NotImplementedError('TODO')
 
 
@@ -653,21 +765,6 @@ def contract(*operands, **kwargs):
     args.append(dims)
     data = opt_einsum.contract(*args, **kwargs)
     return Tensor(dims, data)
-
-
-def _fun(fn, shape):
-    args, vargs, kwargs, defaults = inspect.getargspec(fn)
-    assert not vargs
-    assert not kwargs
-    dims = tuple(args)
-    return Function(dims, shape, fn)
-
-
-def fun(*shape):
-    """
-    Decorator to construct a :class:`Function`.
-    """
-    return functools.partial(_fun, shape=shape)
 
 
 __all__ = [
