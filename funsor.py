@@ -332,6 +332,7 @@ class Function(Funsor):
         self.fn = fn
 
     def __call__(self, *args, **kwargs):
+        kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
         if not args and not kwargs:
             return self
         dims = tuple(d for d in self.dims[len(args):] if d not in kwargs)
@@ -371,6 +372,8 @@ class Tensor(Funsor):
         self.data = data
 
     def __call__(self, *args, **kwargs):
+        kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
+
         # Handle Ellipsis notation like x[..., 0].
         for pos, arg in enumerate(args):
             if arg is Ellipsis:
@@ -546,6 +549,7 @@ class Normal(Distribution):
         super(Normal, self).__init__(dims, shape, dist, log_normalizer)
 
     def __call__(self, *args, **kwargs):
+        kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
         kwargs.update(zip(self.dims, args))
         raise NotImplementedError('TODO')
 
@@ -560,6 +564,7 @@ class MultivariateNormal(Distribution):
             dims, shape, dist, log_normalizer)
 
     def __call__(self, *args, **kwargs):
+        kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
         kwargs.update(zip(self.dims, args))
         raise NotImplementedError('TODO')
 

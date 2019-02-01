@@ -67,18 +67,25 @@ def test_indexing():
     check_funsor(x, ('i', 'j'), (4, 5), data)
 
     assert x() is x
+    assert x(k=3) is x
     check_funsor(x(1), ['j'], [5], data[1])
     check_funsor(x(1, 2), (), (), data[1, 2])
-    check_funsor(x(i=1), ('j',), (5,), data[1])
-    check_funsor(x(j=2), ('i',), (4,), data[:, 2])
+    check_funsor(x(1, 2, k=3), (), (), data[1, 2])
     check_funsor(x(1, j=2), (), (), data[1, 2])
+    check_funsor(x(1, j=2, k=3), (), (), data[1, 2])
+    check_funsor(x(1, k=3), ['j'], [5], data[1])
+    check_funsor(x(i=1), ('j',), (5,), data[1])
     check_funsor(x(i=1, j=2), (), (), data[1, 2])
+    check_funsor(x(i=1, j=2, k=3), (), (), data[1, 2])
+    check_funsor(x(i=1, k=3), ('j',), (5,), data[1])
+    check_funsor(x(j=2), ('i',), (4,), data[:, 2])
+    check_funsor(x(j=2, k=3), ('i',), (4,), data[:, 2])
 
-    assert x[0].shape == (5,)
-    assert x[0, 0].shape == ()
-    assert x[:, 0].shape == (4,)
     assert x[:] is x
     assert x[:, :] is x
+    check_funsor(x[0, 0], (), (), data[0, 0])
+    check_funsor(x[0], ('j',), (5,), data[0])
+    check_funsor(x[:, 0], ('i',), (4,), data[:, 0])
 
 
 def test_advanced_indexing():
@@ -89,17 +96,28 @@ def test_advanced_indexing():
 
     assert x.shape == (4, 5)
 
-    check_funsor(x(m), ('j', 'm'), (J, M), x.data[m.data].t())
-    check_funsor(x(n), ('j', 'n'), (J, N), x.data[n.data].t())
-    check_funsor(x(m, n), ('m', 'n'), (M, N))
-    check_funsor(x(n, m), ('m', 'n'), (M, N))
     check_funsor(x(i=m), ('j', 'm'), (J, M))
-    check_funsor(x(i=n), ('j', 'n'), (J, N))
-    check_funsor(x(j=m), ('i', 'm'), (I, M))
-    check_funsor(x(j=n), ('i', 'n'), (I, N))
     check_funsor(x(i=m, j=n), ('m', 'n'), (M, N))
+    check_funsor(x(i=m, j=n, k=m), ('m', 'n'), (M, N))
+    check_funsor(x(i=m, k=m), ('j', 'm'), (J, M))
+    check_funsor(x(i=n), ('j', 'n'), (J, N))
+    check_funsor(x(i=n, k=m), ('j', 'n'), (J, N))
+    check_funsor(x(j=m), ('i', 'm'), (I, M))
     check_funsor(x(j=m, i=n), ('m', 'n'), (M, N))
+    check_funsor(x(j=m, i=n, k=m), ('m', 'n'), (M, N))
+    check_funsor(x(j=m, k=m), ('i', 'm'), (I, M))
+    check_funsor(x(j=n), ('i', 'n'), (I, N))
+    check_funsor(x(j=n, k=m), ('i', 'n'), (I, N))
+    check_funsor(x(m), ('j', 'm'), (J, M), x.data[m.data].t())
     check_funsor(x(m, j=n), ('m', 'n'), (M, N))
+    check_funsor(x(m, j=n, k=m), ('m', 'n'), (M, N))
+    check_funsor(x(m, k=m), ('j', 'm'), (J, M), x.data[m.data].t())
+    check_funsor(x(m, n), ('m', 'n'), (M, N))
+    check_funsor(x(m, n, k=m), ('m', 'n'), (M, N))
+    check_funsor(x(n), ('j', 'n'), (J, N), x.data[n.data].t())
+    check_funsor(x(n, k=m), ('j', 'n'), (J, N), x.data[n.data].t())
+    check_funsor(x(n, m), ('m', 'n'), (M, N))
+    check_funsor(x(n, m, k=m), ('m', 'n'), (M, N))
 
     check_funsor(x[m], ('j', 'm'), (J, M), x.data[m.data].t())
     check_funsor(x[n], ('j', 'n'), (J, N), x.data[n.data].t())
@@ -115,7 +133,6 @@ def test_ellipsis():
     check_funsor(x, ('i', 'j', 'k'), (3, 4, 5))
 
     assert x[...] is x
-
     check_funsor(x[..., 1, 2, 3], (), (), data[1, 2, 3])
     check_funsor(x[..., 2, 3], ('i',), (3,), data[..., 2, 3])
     check_funsor(x[..., 3], ('i', 'j'), (3, 4), data[..., 3])
