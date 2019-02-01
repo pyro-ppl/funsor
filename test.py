@@ -17,8 +17,8 @@ def check_funsor(x, dims, shape=None, tensor=None):
     if shape is not None:
         assert dict(zip(x.dims, x.shape)) == dict(zip(dims, shape))
     if tensor is not None:
-        if x.shape != tensor.shape:
-            raise NotImplementedError('TODO')
+        if x.dims != dims:
+            tensor = tensor.permute(tuple(dims.index(d) for d in x.dims))
         assert (x.tensor == tensor).all()
 
 
@@ -61,7 +61,7 @@ def test_contract():
             assert h[i, k] == sum(f[i, j] * g[j, k] for j in range(4))
 
 
-def test_index_1():
+def test_indexing():
     tensor = torch.randn(4, 5)
     x = funsor.TorchFunsor(('i', 'j'), tensor)
     check_funsor(x, ('i', 'j'), (4, 5), tensor)
@@ -81,7 +81,7 @@ def test_index_1():
     assert x[:, :] is x
 
 
-def test_advanced_index_1():
+def test_advanced_indexing():
     I, J, M, N = 4, 5, 2, 3
     x = funsor.TorchFunsor(('i', 'j'), torch.randn(4, 5))
     m = funsor.TorchFunsor(('m',), torch.tensor([2, 3]))
@@ -89,8 +89,8 @@ def test_advanced_index_1():
 
     assert x.shape == (4, 5)
 
-    check_funsor(x(m), ('j', 'm'), (J, M), x.tensor[m.tensor])
-    check_funsor(x(n), ('j', 'n'), (J, N), x.tensor[n.tensor])
+    check_funsor(x(m), ('j', 'm'), (J, M), x.tensor[m.tensor].t())
+    check_funsor(x(n), ('j', 'n'), (J, N), x.tensor[n.tensor].t())
     check_funsor(x(m, n), ('m', 'n'), (M, N))
     check_funsor(x(n, m), ('m', 'n'), (M, N))
     check_funsor(x(i=m), ('j', 'm'), (J, M))
@@ -101,8 +101,8 @@ def test_advanced_index_1():
     check_funsor(x(j=m, i=n), ('m', 'n'), (M, N))
     check_funsor(x(m, j=n), ('m', 'n'), (M, N))
 
-    check_funsor(x[m], ('j', 'm'), (J, M), x.tensor[m.tensor])
-    check_funsor(x[n], ('j', 'n'), (J, N), x.tensor[n.tensor])
+    check_funsor(x[m], ('j', 'm'), (J, M), x.tensor[m.tensor].t())
+    check_funsor(x[n], ('j', 'n'), (J, N), x.tensor[n.tensor].t())
     check_funsor(x[:, m], ('i', 'm'), (I, M))
     check_funsor(x[:, n], ('i', 'n'), (I, N))
     check_funsor(x[m, n], ('m', 'n'), (M, N))
@@ -125,3 +125,86 @@ def test_ellipsis():
     check_funsor(x[1, 2, ..., 3], (), (), tensor[1, 2, 3])
     check_funsor(x[1, 2, ...], ('k',), (5,), tensor[1, 2])
     check_funsor(x[1, 2, 3, ...], (), (), tensor[1, 2, 3])
+
+
+@pytest.mark.parametrize('shape', [(), (4,), (2, 3)])
+@pytest.mark.parametrize('op_name', [
+    '__neg__', 'abs', 'sqrt', 'exp', 'log', 'log1p',
+])
+def test_unary(op_name, shape):
+    tensor = torch.rand(shape) + 0.5
+    expected_tensor = getattr(tensor, op_name)()
+    dims = tuple('abc'[:len(shape)])
+
+    x = funsor.TorchFunsor(dims, tensor)
+    actual = getattr(x, op_name)()
+    check_funsor(actual, dims, shape, expected_tensor)
+
+
+BINARY_OPS = [
+    ('__add__', '+'),
+    ('__sub__', '-'),
+    ('__mul__', '*'),
+    ('__div__', '/'),
+    ('__pow__', '**'),
+    ('__eq__',  '=='),
+    ('__ne__',  '!='),
+]
+
+BOOLEAN_OPS = [
+    ('__and__', '&'),
+    ('__or__',  '|'),
+    ('__xor__', '^'),
+]
+
+
+@pytest.mark.parametrize('dims2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')])
+@pytest.mark.parametrize('dims1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('op_name,symbol', BINARY_OPS + BOOLEAN_OPS)
+def test_binary_funsor_funsor(op_name, symbol, dims1, dims2):
+    dims = tuple(sorted(set(dims1 + dims2)))
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape = tuple(sizes[d] for d in dims)
+    shape1 = tuple(sizes[d] for d in dims1)
+    shape2 = tuple(sizes[d] for d in dims2)
+    tensor1 = torch.rand(shape1) + 0.5
+    tensor2 = torch.rand(shape2) + 0.5
+    if (op_name, symbol) in BOOLEAN_OPS:
+        tensor1 = tensor1.byte()
+        tensor2 = tensor2.byte()
+    dims, tensors = funsor._align_tensors((dims1, tensor1),
+                                          (dims2, tensor2))
+    expected_tensor = eval('tensors[0] {} tensors[1]'.format(symbol))
+
+    x1 = funsor.TorchFunsor(dims1, tensor1)  # noqa F841
+    x2 = funsor.TorchFunsor(dims2, tensor2)  # noqa F841
+    actual = eval('x1 {} x2'.format(symbol))
+    check_funsor(actual, dims, shape, expected_tensor)
+
+
+@pytest.mark.parametrize('scalar', [0.5])
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('op_name,symbol', BINARY_OPS)
+def test_binary_funsor_scalar(op_name, symbol, dims, scalar):
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape = tuple(sizes[d] for d in dims)
+    tensor1 = torch.rand(shape) + 0.5
+    expected_tensor = eval('tensor1 {} scalar'.format(symbol))
+
+    x1 = funsor.TorchFunsor(dims, tensor1)  # noqa F841
+    actual = eval('x1 {} scalar'.format(symbol))
+    check_funsor(actual, dims, shape, expected_tensor)
+
+
+@pytest.mark.parametrize('scalar', [0.5])
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('op_name,symbol', BINARY_OPS)
+def test_binary_scalar_funsor(op_name, symbol, dims, scalar):
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape = tuple(sizes[d] for d in dims)
+    tensor1 = torch.rand(shape) + 0.5
+    expected_tensor = eval('scalar {} tensor1'.format(symbol))
+
+    x1 = funsor.TorchFunsor(dims, tensor1)  # noqa F841
+    actual = eval('scalar {} x1'.format(symbol))
+    check_funsor(actual, dims, shape, expected_tensor)

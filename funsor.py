@@ -4,9 +4,9 @@ import functools
 import inspect
 import itertools
 import math
-import numbers
 import operator
 from abc import ABCMeta, abstractmethod
+from numbers import Number
 
 import opt_einsum
 import torch
@@ -16,16 +16,40 @@ from six.moves import reduce
 DOMAINS = ("real", "positive", "unit_interval")
 
 
-def is_size(x):
-    return isinstance(x, int) or x in DOMAINS
+def _abs(x):
+    return abs(x) if isinstance(x, Number) else x.abs()
 
 
-def _log(x):
-    return math.log(x) if isinstance(x, numbers.Number) else x.log()
+def _sqrt(x):
+    return math.sqrt(x) if isinstance(x, Number) else x.sqrt()
 
 
 def _exp(x):
-    return math.exp(x) if isinstance(x, numbers.Number) else x.exp()
+    return math.exp(x) if isinstance(x, Number) else x.exp()
+
+
+def _log(x):
+    return math.log(x) if isinstance(x, Number) else x.log()
+
+
+def _log1p(x):
+    return math.log1p(x) if isinstance(x, Number) else x.log1p()
+
+
+# work around a pytorch bug
+def _pow(x, y):
+    result = x ** y
+    if isinstance(x, Number) and isinstance(y, torch.Tensor):
+        result = result.reshape(y.shape)
+    return result
+
+
+# work around a pytorch bug
+def _rpow(y, x):
+    result = x ** y
+    if isinstance(x, Number) and isinstance(y, torch.Tensor):
+        result = result.reshape(y.shape)
+    return result
 
 
 def _logaddexp(x, y):
@@ -64,7 +88,7 @@ def _align_tensors(*args):
         if x_dims != dims:
             x = x.permute(tuple(x_dims.index(d) for d in dims if d in x_dims))
             x = x.reshape(tuple(sizes[d] if d in x_dims else 1 for d in dims))
-        assert x.d() == len(dims)
+        assert x.dim() == len(dims)
         tensors.append(x)
     return dims, tensors
 
@@ -83,7 +107,7 @@ class Funsor(object):
         assert all(isinstance(d, str) for d in dims)
         assert len(set(dims)) == len(dims)
         assert isinstance(shape, tuple)
-        assert all(is_size(s) for s in shape)
+        assert all(isinstance(s, int) or s in DOMAINS for s in shape)
         assert len(dims) == len(shape)
         super(Funsor, self).__init__()
         self.dims = dims
@@ -119,7 +143,7 @@ class Funsor(object):
 
     def materialize(self, vectorize=True):
         """
-        Materializes to a :class:`TorchFunsor`
+        Materializes to a :class:`TorchFunsor`.
         """
         for size in self.shape:
             if not isinstance(size, int):
@@ -195,11 +219,20 @@ class Funsor(object):
     def __neg__(self):
         return self.pointwise_unary(operator.neg)
 
-    def log(self):
-        return self.pointwise_unary(_log)
+    def abs(self):
+        return self.pointwise_unary(_abs)
+
+    def sqrt(self):
+        return self.pointwise_unary(_sqrt)
 
     def exp(self):
         return self.pointwise_unary(_exp)
+
+    def log(self):
+        return self.pointwise_unary(_log)
+
+    def log1p(self):
+        return self.pointwise_unary(_log1p)
 
     def __add__(self, other):
         return self.pointwise_binary(other, operator.add)
@@ -219,20 +252,38 @@ class Funsor(object):
     def __rmul__(self, other):
         return self.pointwise_binary(other, operator.mul)
 
-    def __div__(self, other):
-        return self.pointwise_binary(other, operator.div)
+    def __truediv__(self, other):
+        return self.pointwise_binary(other, operator.truediv)
 
-    def __rdiv__(self, other):
+    def __rtruediv__(self, other):
         return self.pointwise_binary(other, lambda a, b: b / a)
 
     def __pow__(self, other):
-        return self.pointwise_binary(other, operator.pow)
+        return self.pointwise_binary(other, _pow)
 
     def __rpow__(self, other):
-        return self.pointwise_binary(other, lambda a, b: b ** a)
+        return self.pointwise_binary(other, _rpow)
+
+    def __and__(self, other):
+        return self.pointwise_binary(other, operator.and_)
+
+    def __rand__(self, other):
+        return self.pointwise_binary(other, operator.and_)
+
+    def __or__(self, other):
+        return self.pointwise_binary(other, operator.or_)
+
+    def __ror__(self, other):
+        return self.pointwise_binary(other, operator.or_)
+
+    def __xor__(self, other):
+        return self.pointwise_binary(other, operator.xor)
 
     def __eq__(self, other):
         return self.pointwise_binary(other, operator.eq)
+
+    def __ne__(self, other):
+        return self.pointwise_binary(other, operator.ne)
 
     def sum(self, dim=None):
         return self.reduce(operator.add, dim)
@@ -301,12 +352,15 @@ class TorchFunsor(Funsor):
         self.tensor = tensor
 
     def __call__(self, *args, **kwargs):
+        # Handle Ellipsis notation like x[..., 0].
         for pos, arg in enumerate(args):
             if arg is Ellipsis:
                 kwargs.update(zip(reversed(self.dims),
                                   reversed(args[1 + pos:])))
                 args = args[:pos]
                 break
+
+        # Substitute one dim at a time.
         kwargs.update(zip(self.dims, args))
         result = self
         for key, value in kwargs.items():
@@ -315,7 +369,7 @@ class TorchFunsor(Funsor):
 
     def _substitute(self, dim, value):
         pos = self.dims.index(dim)
-        if isinstance(value, numbers.Number):
+        if isinstance(value, Number):
             dims = self.dims[:pos] + self.dims[1+pos:]
             tensor = self.tensor[(slice(None),) * pos + (value,)]
             return TorchFunsor(dims, tensor)
@@ -326,7 +380,7 @@ class TorchFunsor(Funsor):
             stop = self.shape[pos] if value.stop is None else value.stop
             step = 1 if value.step is None else value.step
             value = TorchFunsor((dim,), torch.arange(start, stop, step))
-            # now fall through to TorchFunsor case.
+            # Next fall through to TorchFunsor case.
         if isinstance(value, TorchFunsor):
             dims = self.dims[:pos] + value.dims + self.dims[1+pos:]
             index = [slice(None)] * len(self.dims)
@@ -448,7 +502,8 @@ def contract(dims, *operands, **kwargs):
     r"""
     Sum-product contraction operation.
 
-    :param tuple dims: a tuple of strings of output dimensions.
+    :param tuple dims: a tuple of strings of output dimensions. Any input dim
+        not requested as an output dim will be summed out.
     :param \*args: multiple :class:`Funsor`s.
     :param str backend: An opt_einsum backend, defaults to 'torch'.
     """
@@ -485,6 +540,5 @@ __all__ = [
     'Funsor',
     'LazyFunsor',
     'contract',
-    'is_size',
     'lazy',
 ]
