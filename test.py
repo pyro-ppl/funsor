@@ -247,41 +247,53 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     check_funsor(actual, dims, shape, expected_data)
 
 
+REDUCE_OPS = ['sum', 'prod', 'logsumexp', 'all', 'any', 'min', 'max']
+
+
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
-@pytest.mark.parametrize('op_name', ['sum', 'prod', 'all', 'any'])
+@pytest.mark.parametrize('op_name', REDUCE_OPS)
 def test_reduce_all(dims, op_name):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     data = torch.rand(shape) + 0.5
     if op_name in ['all', 'any']:
         data = data.byte()
-    expected_data = getattr(data, op_name)()
+    if op_name == 'logsumexp':
+        # work around missing torch.Tensor.logsumexp()
+        expected_data = data.reshape(-1).logsumexp(0)
+    else:
+        expected_data = getattr(data, op_name)()
 
     x = funsor.Tensor(dims, data)
     actual = getattr(x, op_name)()
     check_funsor(actual, (), (), expected_data)
 
 
-@pytest.mark.parametrize('dims,dim', [
-    (dims, dim)
+@pytest.mark.parametrize('dims,dims_reduced', [
+    (dims, dims_reduced)
     for dims in [('a',), ('a', 'b'), ('b', 'a', 'c')]
-    for dim in dims + ('z',)
+    for num_reduced in range(len(dims) + 2)
+    for dims_reduced in itertools.combinations(dims + ('z',), num_reduced)
 ])
-@pytest.mark.parametrize('op_name', ['sum', 'prod', 'logsumexp', 'all', 'any'])
-def test_reduce_one(dims, dim, op_name):
+@pytest.mark.parametrize('op_name', REDUCE_OPS)
+def test_reduce_subset(dims, dims_reduced, op_name):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     data = torch.rand(shape) + 0.5
     if op_name in ['all', 'any']:
         data = data.byte()
     x = funsor.Tensor(dims, data)
-    actual = getattr(x, op_name)(dim)
+    actual = getattr(x, op_name)(dims_reduced)
 
-    if dim not in dims:
+    dims_reduced = set(dims_reduced) & set(dims)
+    if not dims_reduced:
         assert actual is x
     else:
-        pos = dims.index(dim)
-        expected_data = getattr(data, op_name)(pos)
-        expected_dims = dims[:pos] + dims[1 + pos:]
-        expected_shape = expected_data.shape
-        check_funsor(actual, expected_dims, expected_shape, expected_data)
+        for pos in reversed(sorted(map(dims.index, dims_reduced))):
+            if op_name in ('min', 'max'):
+                data = getattr(data, op_name)(pos)[0]
+            else:
+                data = getattr(data, op_name)(pos)
+        dims = tuple(d for d in dims if d not in dims_reduced)
+        shape = data.shape
+        check_funsor(actual, dims, data.shape, data)

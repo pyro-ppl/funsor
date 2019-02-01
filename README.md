@@ -1,6 +1,6 @@
 # Funsor
 
-Functional analysis + tensors + term algebra.
+Functional analysis + tensors + algebra.
 
 ## Design
 
@@ -16,9 +16,11 @@ The core idea is to generalize tensor dimensions to algebraic free variables
 and generalize tensor contraction to analytic integrals.
 
 ## Related projects
+
 - Pyro's [ops.packed](https://github.com/uber/pyro/blob/dev/pyro/ops/packed.py),
   [ops.einsum](https://github.com/uber/pyro/blob/dev/pyro/ops/einsum), and
   [ops.contract](https://github.com/uber/pyro/blob/dev/pyro/ops/contract.py)
 - [dyna](http://www.cs.jhu.edu/~nwf/datalog20-paper.pdf) 
+- [sympy](https://www.sympy.org/en/index.html)
 - [xarray](http://xarray.pydata.org/en/stable)
 - [namedtensor](https://github.com/harvardnlp/namedtensor)

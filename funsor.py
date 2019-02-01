@@ -53,19 +53,26 @@ def _rpow(y, x):
     return result
 
 
+def _placeholder(fn):
+    """
+    Decorator for functions we use as ops in lookup tables.
+    """
+    fn.__name__ = fn.__name__.lstrip('_')
+    return fn
+
+
+@_placeholder
 def _logaddexp(x, y):
-    raise NotImplementedError('TODO')
+    raise NotImplementedError
 
 
-# this is simply a placeholder
+@_placeholder
 def _sample(x, y):
     raise NotImplementedError
 
 
-_sample.__name__ == 'sample'
-
-_min = min
-_max = max
+_builtin_min = min
+_builtin_max = max
 
 
 def min(x, y):
@@ -79,7 +86,7 @@ def min(x, y):
         return x.clamp(max=y)
     if isinstance(y, torch.Tensor):
         return y.clamp(max=x)
-    return _min(x, y)
+    return _builtin_min(x, y)
 
 
 def max(x, y):
@@ -93,7 +100,7 @@ def max(x, y):
         return x.clamp(min=y)
     if isinstance(y, torch.Tensor):
         return y.clamp(min=x)
-    return _max(x, y)
+    return _builtin_max(x, y)
 
 
 _REDUCE_OP_TO_TORCH = {
@@ -102,6 +109,8 @@ _REDUCE_OP_TO_TORCH = {
     operator.and_: torch.all,
     operator.or_: torch.any,
     _logaddexp: torch.logsumexp,
+    min: torch.min,
+    max: torch.max,
 }
 
 
@@ -236,22 +245,22 @@ class Funsor(object):
 
         return Function(dims, shape, fn)
 
-    def reduce(self, op, dim=None):
+    def reduce(self, op, dims=None):
         """
-        Reduce along one or all dimensions.
+        Reduce along all or a subset of dimensions.
         """
-        if dim is None:
-            result = self
-            for dim in self.dims:
-                result = result.reduce(dim)
-            return result
+        if dims is None:
+            dims = frozenset(self.dims)
+        else:
+            dims = frozenset(dims).intersection(self.dims)
 
-        if dim not in self.dims:
-            return self
-        size = self.shape[self.dims.index(dim)]
-        if not isinstance(size, int):
-            raise NotImplementedError
-        return reduce(op, (self(**{dim: i}) for i in range(size)))
+        result = self
+        for dim in dims:
+            size = result.size(dim)
+            if not isinstance(size, int):
+                raise NotImplementedError('cannot reduce dim {}'.format(dim))
+            result = reduce(op, (result(**{dim: i}) for i in range(size)))
+        return result
 
     def argreduce(self, op, dims):
         """
@@ -259,7 +268,7 @@ class Funsor(object):
         keeping track of the values of those dimensions.
 
         :param tuple dims: a tuple dims to be argreduced.
-        :return: a tuple ``(values, remaining)`` where ``values`` is a
+        :return: a tuple ``(args, remaining)`` where ``args`` is a
             dict mapping a subset of input dims to funsors possibly depending
             on remaining dims, and ``remaining`` is a funsor depending on
             remaing dims.
@@ -270,14 +279,17 @@ class Funsor(object):
             return {}, self
         raise NotImplementedError
 
-    def contract(self, sum_op, prod_op, other, dims):
+    def contract(self, other, sum_op=operator.add, prod_op=operator.mul,
+                 dims=None):
         """
         Perform a binary contration, equivalent to binary product followed by a
-        sum operation.
+        sum reduction.
 
-        :param callable sum_op: a reduction operation.
-        :param callable prod_op: a binary operation.
         :param Funsor other: Another Funsor.
+        :param callable sum_op: A reduction operation.
+        :param callable prod_op: A binary operation.
+        :param set dims: An optional set of dims to sum-reduce.
+            If unspecified, all dims will be contracted.
         """
         return prod_op(self, other).reduce(sum_op, dims)
 
@@ -368,26 +380,32 @@ class Funsor(object):
     def __max__(self, other):
         return self.pointwise_binary(other, max)
 
-    def sum(self, dim=None):
-        return self.reduce(operator.add, dim)
+    def sum(self, dims=None):
+        return self.reduce(operator.add, dims)
 
-    def prod(self, dim=None):
-        return self.reduce(operator.mul, dim)
+    def prod(self, dims=None):
+        return self.reduce(operator.mul, dims)
 
-    def logsumexp(self, dim=None):
-        return self.reduce(_logaddexp, dim)
+    def logsumexp(self, dims=None):
+        return self.reduce(_logaddexp, dims)
 
-    def all(self, dim=None):
-        return self.reduce(operator.and_, dim)
+    def all(self, dims=None):
+        return self.reduce(operator.and_, dims)
 
-    def any(self, dim=None):
-        return self.reduce(operator.or_, dim)
+    def any(self, dims=None):
+        return self.reduce(operator.or_, dims)
 
-    def min(self, dims):
-        return self.argreduce(self, min, dims)
+    def min(self, dims=None):
+        return self.reduce(min, dims)
 
-    def max(self, dims):
-        return self.argreduce(self, max, dims)
+    def max(self, dims=None):
+        return self.reduce(max, dims)
+
+    def argmin(self, dims):
+        return self.argreduce(min, dims)
+
+    def argmax(self, dims):
+        return self.argreduce(max, dims)
 
     def sample(self, dims):
         """
@@ -611,17 +629,26 @@ class Tensor(Funsor):
                                                  (other.dims, other.data))
         return Tensor(dims, op(self_x, other_x))
 
-    def reduce(self, op, dim):
+    def reduce(self, op, dims=None):
         if op in _REDUCE_OP_TO_TORCH:
-            op = _REDUCE_OP_TO_TORCH[op]
-            if dim is None:
-                return Tensor((), op(self.data))
-            if dim not in self.dims:
+            torch_op = _REDUCE_OP_TO_TORCH[op]
+            if dims is None:
+                # work around missing torch.Tensor.logsumexp()
+                if op is _logaddexp:
+                    return Tensor((), self.data.reshape(-1).logsumexp(0))
+                return Tensor((), torch_op(self.data))
+            dims = frozenset(dims).intersection(self.dims)
+            if not dims:
                 return self
-            pos = self.dims.index(dim)
-            dims = self.dims[:pos] + self.dims[1 + pos:]
-            return Tensor(dims, op(self.data, pos))
-        return super(Tensor, self).reduce(op, dim)
+            data = self.data
+            for pos in reversed(sorted(map(self.dims.index, dims))):
+                if op in (min, max):
+                    data = getattr(data, op.__name__)(pos)[0]
+                else:
+                    data = torch_op(data, pos)
+            dims = tuple(d for d in self.dims if d not in dims)
+            return Tensor(dims, data)
+        return super(Tensor, self).reduce(op, dims)
 
     def argreduce(self, op, dims):
         dims = frozenset(dims).intersection(self.dims)
@@ -635,7 +662,7 @@ class Tensor(Funsor):
                 value, remaining = getattr(self.data, op.__name__)
                 dims = self.dims[:pos] + self.dims
                 return {dim: Tensor(dims, value)}, Tensor(dims, remaining)
-            raise NotImplementedError('TODO implement multiway min, max')
+            raise NotImplementedError('TODO implement multiway argmin, argmax')
 
         if op is _sample:
             if len(dims) == 1:
@@ -736,16 +763,16 @@ class Normal(Distribution):
             'call .{}(...) instead of .argreduce(op, ...)'.format(
                 op.__name__))
 
-    def min(self, dims):
+    def argmin(self, dims):
         dims = frozenset(dims).intersection(self.dims)
         if not dims:
             return {}, self
         real_dims = dims & self._real_dims
         if real_dims:
-            raise ValueError('min of Normal distribution is undefined')
+            raise ValueError('argmin of Normal distribution is undefined')
         return self.argreduce(min, dims)
 
-    def max(self, dims):
+    def argmax(self, dims):
         dims = frozenset(dims).intersection(self.dims)
         if not dims:
             return {}, self
