@@ -36,17 +36,17 @@ def _log1p(x):
     return math.log1p(x) if isinstance(x, Number) else x.log1p()
 
 
-# work around a pytorch bug
 def _pow(x, y):
     result = x ** y
+    # work around pytorch shape bug
     if isinstance(x, Number) and isinstance(y, torch.Tensor):
         result = result.reshape(y.shape)
     return result
 
 
-# work around a pytorch bug
 def _rpow(y, x):
     result = x ** y
+    # work around pytorch shape bug
     if isinstance(x, Number) and isinstance(y, torch.Tensor):
         result = result.reshape(y.shape)
     return result
