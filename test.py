@@ -245,7 +245,7 @@ def test_reduce_all(dims, op_name):
 @pytest.mark.parametrize('dims,dim', [
     (dims, dim)
     for dims in [('a',), ('a', 'b'), ('b', 'a', 'c')]
-    for dim in dims
+    for dim in dims + ('z',)
 ])
 @pytest.mark.parametrize('op_name', ['sum', 'prod', 'logsumexp', 'all', 'any'])
 def test_reduce_one(dims, dim, op_name):
@@ -254,11 +254,14 @@ def test_reduce_one(dims, dim, op_name):
     data = torch.rand(shape) + 0.5
     if op_name in ['all', 'any']:
         data = data.byte()
-    pos = dims.index(dim)
-    expected_data = getattr(data, op_name)(pos)
-    expected_dims = dims[:pos] + dims[1 + pos:]
-    expected_shape = expected_data.shape
-
     x = funsor.Tensor(dims, data)
     actual = getattr(x, op_name)(dim)
-    check_funsor(actual, expected_dims, expected_shape, expected_data)
+
+    if dim not in dims:
+        assert actual is x
+    else:
+        pos = dims.index(dim)
+        expected_data = getattr(data, op_name)(pos)
+        expected_dims = dims[:pos] + dims[1 + pos:]
+        expected_shape = expected_data.shape
+        check_funsor(actual, expected_dims, expected_shape, expected_data)

@@ -227,6 +227,8 @@ class Funsor(object):
                 result = result.reduce(dim)
             return result
 
+        if dim not in self.dims:
+            return self
         size = self.shape[self.dims.index(dim)]
         if not isinstance(size, int):
             raise NotImplementedError
@@ -344,7 +346,9 @@ class Function(Funsor):
         return self.materialize().sample(dims)
 
     def _rename(self, dims):
-        return Function(dims, self.shape, self.__call__)
+        if dims == self.dims:
+            return self
+        return type(self)(dims, self.shape, self.__call__)
 
     def __bool__(self):
         if self.shape:
@@ -428,7 +432,9 @@ class Tensor(Funsor):
         raise NotImplementedError('TODO')
 
     def _rename(self, dims):
-        return Tensor(dims, self.data)
+        if dims == self.dims:
+            return self
+        return type(self)(dims, self.data)
 
     def __bool__(self):
         return bool(self.data)
@@ -470,6 +476,8 @@ class Tensor(Funsor):
             op = _REDUCE_OP_TO_TORCH[op]
             if dim is None:
                 return Tensor((), op(self.data))
+            if dim not in self.dims:
+                return self
             pos = self.dims.index(dim)
             dims = self.dims[:pos] + self.dims[1 + pos:]
             return Tensor(dims, op(self.data, pos))
@@ -522,6 +530,8 @@ class Distribution(Funsor):
             raise NotImplementedError('TODO condition on partial sample')
 
     def _rename(self, dims):
+        if dims == self.dims:
+            return self
         return type(self)(dims, self.shape, self.dist, self.log_normalizer)
 
     def __bool__(self):
