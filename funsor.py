@@ -697,16 +697,14 @@ class Distribution(Funsor):
     :param tuple shape: A tuple of sizes. Each size is either a nonnegative
         integer or a string denoting a continuous domain.
     :param torch.Distribution dist: a distribution object with
-        ``event_dim == 1`` and
-        ``event_shape[0] == shape.count('real')``.
+        ``event_shape[0] == (shape.count('real'),)``.
     :param torch.Tensor log_normalizer: optional log normalizer
         of shape ``dist.batch_shape``. Defaults to zero.
     """
     def __init__(self, dims, shape, dist, log_normalizer=None):
         assert 'real' in shape
         assert all(isinstance(s, int) or s == 'real' for s in shape)
-        assert dist.event_dim == 1
-        assert dist.event_shape[0] == shape.count('real')
+        assert dist.event_shape == (shape.count('real'),)
         if log_normalizer is None:
             log_normalizer = torch.zeros(dist.batch_shape)
         assert log_normalizer.shape == dist.batch_shape
@@ -737,7 +735,6 @@ class Normal(Distribution):
     def __init__(self, dims, shape, dist, log_normalizer=None):
         assert isinstance(dist, torch.distributions.Independent)
         assert isinstance(dist.base_dist, torch.distributions.Normal)
-        assert isinstance(dist, torch.distributions.Normal)
         super(Normal, self).__init__(dims, shape, dist, log_normalizer)
         self._real_dims = frozenset(self.dims) - self._int_dims
 
