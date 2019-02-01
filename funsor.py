@@ -800,21 +800,6 @@ class Normal(Distribution):
         raise NotImplementedError('TODO')
 
 
-class MultivariateNormal(Distribution):
-    """
-    Log density of a batched unnormalized multivariate normal distribution.
-    """
-    def __init__(self, dims, shape, dist, log_normalizer=None):
-        assert isinstance(dist, torch.distributions.MultivariateNormal)
-        super(MultivariateNormal, self).__init__(
-            dims, shape, dist, log_normalizer)
-
-    def __call__(self, *args, **kwargs):
-        kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
-        kwargs.update(zip(self.dims, args))
-        raise NotImplementedError('TODO')
-
-
 def contract(*operands, **kwargs):
     r"""
     Sum-product contraction operation.
@@ -845,7 +830,6 @@ __all__ = [
     'Distribution',
     'Function',
     'Funsor',
-    'MultivariateNormal',
     'Normal',
     'Tensor',
     'Variable',
