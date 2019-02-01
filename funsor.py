@@ -123,19 +123,6 @@ class Funsor(object):
     def __getitem__(self, key):
         return self(*key) if isinstance(key, tuple) else self(key)
 
-    def rename(self, *args, **kwargs):
-        """
-        Renames dimensions using a dict constructed from
-        ``*args, **kwargs``.
-        """
-        rename = dict(*args, **kwargs)
-        dims = tuple(rename.get(d, d) for d in self.dims)
-        return self._rename(dims)
-
-    @abstractmethod
-    def _rename(self, dims):
-        raise NotImplementedError
-
     @abstractmethod
     def __bool__(self):
         raise NotImplementedError
@@ -159,7 +146,8 @@ class Funsor(object):
 
     def materialize(self, vectorize=True):
         """
-        Materializes to a :class:`Tensor`.
+        Materializes to a :class:`Tensor` if possible;
+        raises ``NotImplementedError`` otherwise.
         """
         for size in self.shape:
             if not isinstance(size, int):
@@ -357,11 +345,6 @@ class Function(Funsor):
     def sample(self, dims):
         return self.materialize().sample(dims)
 
-    def _rename(self, dims):
-        if dims == self.dims:
-            return self
-        return type(self)(dims, self.shape, self.__call__)
-
     def __bool__(self):
         if self.shape:
             raise ValueError(
@@ -442,11 +425,6 @@ class Tensor(Funsor):
             dims = self.dims[:pos] + self.dims[1 + pos:]
             return (Tensor(dims, data),)
         raise NotImplementedError('TODO')
-
-    def _rename(self, dims):
-        if dims == self.dims:
-            return self
-        return type(self)(dims, self.data)
 
     def __bool__(self):
         return bool(self.data)
@@ -540,11 +518,6 @@ class Distribution(Funsor):
                     Tensor(result_dims, value[..., real_dims.index(d)])
                     for d in dims)
             raise NotImplementedError('TODO condition on partial sample')
-
-    def _rename(self, dims):
-        if dims == self.dims:
-            return self
-        return type(self)(dims, self.shape, self.dist, self.log_normalizer)
 
     def __bool__(self):
         raise ValueError(
