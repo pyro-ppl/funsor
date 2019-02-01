@@ -69,10 +69,10 @@ def _align_tensors(*args):
     r"""
     Permute multiple tensors before applying a broadcasted op.
 
-    :param \*args: multiple pairs ``(dims, tensor)``, where each ``dims``
+    :param \*args: multiple pairs ``(dims, data)``, where each ``dims``
         is a tuple of strings naming its tensor's dimensions.
     :return: a pair ``(dims, tensors)`` where all tensors can be
-        broadcast together to a single tensor with ``dims``.
+        broadcast together to a single data with ``dims``.
     """
     sizes = {}
     for x_dims, x in args:
@@ -115,6 +115,9 @@ class Funsor(object):
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
+        """
+        Partially evaluates this funsor by substituting dimensions.
+        """
         raise NotImplementedError
 
     def __getitem__(self, key):
@@ -141,9 +144,22 @@ class Funsor(object):
     def item(self):
         raise NotImplementedError
 
+    @abstractmethod
+    def sample(self, dims):
+        """
+        Returns a random sample from a probability distribution whose
+        log probability density is represented by this funsor.
+
+        :param tuple dims: a tuple dims to be sampled.
+        :return: a tuple of joint samples, with ``len(result) == len(dims)``
+            and each result having dims ``set(self.dims) - set(dims)``.
+        :rtype: tuple
+        """
+        raise NotImplementedError
+
     def materialize(self, vectorize=True):
         """
-        Materializes to a :class:`TorchFunsor`.
+        Materializes to a :class:`Tensor`.
         """
         for size in self.shape:
             if not isinstance(size, int):
@@ -155,13 +171,13 @@ class Funsor(object):
             dim = len(shape)
             args = [torch.arange(float(s)).reshape((s,) + (1,) * (dim - i - 1))
                     for i, s in enumerate(shape)]
-            tensor = self(*args).item()
+            data = self(*args).item()
         else:
             # slow elementwise computation
             index = itertools.product(*map(range, self.shape))
-            tensor = torch.tensor([self(*i).item() for i in index])
-            tensor = tensor.reshape(self.shape)
-        return TorchFunsor(self.dims, tensor)
+            data = torch.tensor([self(*i).item() for i in index])
+            data = data.reshape(self.shape)
+        return Tensor(self.dims, data)
 
     def pointwise_unary(self, op):
         """
@@ -171,7 +187,7 @@ class Funsor(object):
         def fn(*args, **kwargs):
             return op(self(*args, **kwargs))
 
-        return LazyFunsor(self.dims, self.shape, fn)
+        return Function(self.dims, self.shape, fn)
 
     def pointwise_binary(self, other, op):
         """
@@ -187,7 +203,7 @@ class Funsor(object):
             def fn(*args, **kwargs):
                 return op(self(*args, **kwargs), other(*args, **kwargs))
 
-            return LazyFunsor(dims, shape, fn)
+            return Function(dims, shape, fn)
 
         dims = tuple(sorted(set(self.dims + other.dims)))
         sizes = dict(zip(self.dims + other.dims, self.shape + other.shape))
@@ -199,7 +215,7 @@ class Funsor(object):
             kwargs2 = {d: i for d, i in kwargs.items() if d in other.dims}
             return op(self(**kwargs1), other(**kwargs2))
 
-        return LazyFunsor(dims, shape, fn)
+        return Function(dims, shape, fn)
 
     def reduce(self, op, dim=None):
         """
@@ -301,9 +317,9 @@ class Funsor(object):
         return self.reduce(operator.or_, dim)
 
 
-class LazyFunsor(Funsor):
+class Function(Funsor):
     """
-    Funsor backed by a function.
+    Funsor backed by a Python function.
 
     :param tuple dims: A tuple of strings of dimension names.
     :param tuple shape: A tuple of sizes. Each size is either a nonnegative
@@ -312,7 +328,7 @@ class LazyFunsor(Funsor):
     """
     def __init__(self, dims, shape, fn):
         assert callable(fn)
-        super(LazyFunsor, self).__init__(dims, shape)
+        super(Function, self).__init__(dims, shape)
         self.fn = fn
 
     def __call__(self, *args, **kwargs):
@@ -321,10 +337,13 @@ class LazyFunsor(Funsor):
         dims = tuple(d for d in self.dims[len(args):] if d not in kwargs)
         shape = tuple(s for d, s in zip(self.dims, self.shape) if d in dims)
         fn = functools.partial(self.fn, *args, **kwargs)
-        return LazyFunsor(dims, shape, fn)
+        return Function(dims, shape, fn)
+
+    def sample(self, dims):
+        return self.materialize().sample(dims)
 
     def _rename(self, dims):
-        return LazyFunsor(dims, self.shape, self.__call__)
+        return Function(dims, self.shape, self.__call__)
 
     def __bool__(self):
         if self.shape:
@@ -339,17 +358,17 @@ class LazyFunsor(Funsor):
         return self.fn()
 
 
-class TorchFunsor(Funsor):
+class Tensor(Funsor):
     """
     Funsor backed by a PyTorch Tensor.
 
     :param tuple dims: A tuple of strings of dimension names.
-    :param torch.Tensor tensor: A PyTorch tensor of appropriate shape.
+    :param torch.Tensor data: A PyTorch tensor of appropriate shape.
     """
-    def __init__(self, dims, tensor):
-        assert isinstance(tensor, torch.Tensor)
-        super(TorchFunsor, self).__init__(dims, tensor.shape)
-        self.tensor = tensor
+    def __init__(self, dims, data):
+        assert isinstance(data, torch.Tensor)
+        super(Tensor, self).__init__(dims, data.shape)
+        self.data = data
 
     def __call__(self, *args, **kwargs):
         # Handle Ellipsis notation like x[..., 0].
@@ -371,131 +390,178 @@ class TorchFunsor(Funsor):
         pos = self.dims.index(dim)
         if isinstance(value, Number):
             dims = self.dims[:pos] + self.dims[1+pos:]
-            tensor = self.tensor[(slice(None),) * pos + (value,)]
-            return TorchFunsor(dims, tensor)
+            data = self.data[(slice(None),) * pos + (value,)]
+            return Tensor(dims, data)
         if isinstance(value, slice):
             if value == slice(None):
                 return self
             start = 0 if value.start is None else value.start
             stop = self.shape[pos] if value.stop is None else value.stop
             step = 1 if value.step is None else value.step
-            value = TorchFunsor((dim,), torch.arange(start, stop, step))
-            # Next fall through to TorchFunsor case.
-        if isinstance(value, TorchFunsor):
+            value = Tensor((dim,), torch.arange(start, stop, step))
+            # Next fall through to Tensor case.
+        if isinstance(value, Tensor):
             dims = self.dims[:pos] + value.dims + self.dims[1+pos:]
             index = [slice(None)] * len(self.dims)
-            index[pos] = value.tensor
+            index[pos] = value.data
             for d in value.dims:
                 if d != dim and d in self.dims:
                     raise NotImplementedError('TODO')
-            tensor = self.tensor[tuple(index)]
-            return TorchFunsor(dims, tensor)
+            data = self.data[tuple(index)]
+            return Tensor(dims, data)
         raise NotImplementedError('TODO handle {}'.format(value))
 
+    def sample(self, dims):
+        if len(dims) == 1:
+            dim, = dims
+            pos = self.dims.index(dim)
+            probs = (self.data - self.data.max()).exp()
+            probs = probs.transpose(pos, -1)
+            data = torch.multinomial(probs.reshape(-1, probs.size(-1)), 1)
+            data = data.reshape(probs.shape[:-1] + (0,))
+            data = data.transpose(pos, -1).squeeze(pos)
+            dims = self.dims[:pos] + self.dims[1 + pos:]
+            return (Tensor(dims, data),)
+        raise NotImplementedError('TODO')
+
     def _rename(self, dims):
-        return TorchFunsor(dims, self.tensor)
+        return Tensor(dims, self.data)
 
     def __bool__(self):
-        return bool(self.tensor)
+        return bool(self.data)
 
     def item(self):
-        return self.tensor.item()
+        return self.data.item()
 
     def materialize(self):
         return self
 
     def permute(self, dims):
         """
-        Create an equivalent :class:`TorchFunsor` whose ``.dims`` are
+        Create an equivalent :class:`Tensor` whose ``.dims`` are
         the provided dims. Note all dims must be accounted for in the input.
 
         :param tuple dims: A tuple of strings representing all named dims
             but in a new order.
         :return: A permuted funsor equivalent to self.
-        :rtype: TorchFunsor
+        :rtype: Tensor
         """
         assert set(dims) == set(self.dims)
-        tensor = self.tensor.permute(tuple(self.dims.index(d) for d in dims))
-        return TorchFunsor(dims, tensor)
+        data = self.data.permute(tuple(self.dims.index(d) for d in dims))
+        return Tensor(dims, data)
 
     def pointwise_unary(self, op):
-        return TorchFunsor(self.dims, op(self.tensor))
+        return Tensor(self.dims, op(self.data))
 
     def pointwise_binary(self, other, op):
-        if not isinstance(other, TorchFunsor):
-            return super(TorchFunsor, self).pointwise_binary(other, op)
+        if not isinstance(other, Tensor):
+            return super(Tensor, self).pointwise_binary(other, op)
         if self.dims == other.dims:
-            return TorchFunsor(self.dims, op(self.tensor, other.tensor))
-        dims, (self_x, other_x) = _align_tensors((self.dims, self.tensor),
-                                                 (other.dims, other.tensor))
-        return TorchFunsor(dims, op(self_x, other_x))
+            return Tensor(self.dims, op(self.data, other.data))
+        dims, (self_x, other_x) = _align_tensors((self.dims, self.data),
+                                                 (other.dims, other.data))
+        return Tensor(dims, op(self_x, other_x))
 
     def reduce(self, op, dim):
         if op in _REDUCE_OP_TO_TORCH:
             op = _REDUCE_OP_TO_TORCH[op]
             if dim is None:
-                return TorchFunsor((), op(self.tensor))
+                return Tensor((), op(self.data))
             pos = self.dims.index(dim)
             dims = self.dims[:pos] + self.dims[1 + pos:]
-            return TorchFunsor(dims, op(self.tensor, pos))
-        return super(TorchFunsor, self).reduce(op, dim)
+            return Tensor(dims, op(self.data, pos))
+        return super(Tensor, self).reduce(op, dim)
 
 
-class PolynomialFunsor(Funsor):
+class Distribution(Funsor):
     """
-    WIP
+    Base class for funsors backed by PyTorch Distributions.
+
+    Ground values are interpreted as log probability densities.
+
+    :param tuple dims: A tuple of strings of dimension names.
+    :param tuple shape: A tuple of sizes. Each size is either a nonnegative
+        integer or a string denoting a continuous domain.
+    :param torch.Distribution dist: a distribution object with
+        ``event_dim == 1`` and
+        ``event_shape[0] == shape.count('real')``.
+    :param torch.Tensor log_normalizer: optional log normalizer
+        of shape ``dist.batch_shape``. Defaults to zero.
     """
-    def __init__(self, dims, shape, coefs):
-        assert isinstance(coefs, dict)
-        super(PolynomialFunsor, self).__init__(dims, shape)
-        self.coefs = coefs
+    def __init__(self, dims, shape, dist, log_normalizer=None):
+        assert 'real' in shape
+        assert all(isinstance(s, int) or s == 'real' for s in shape)
+        assert dist.event_dim == 1
+        assert dist.event_shape[0] == shape.count('real')
+        if log_normalizer is None:
+            log_normalizer = torch.zeros(dist.batch_shape)
+        assert log_normalizer.shape == dist.batch_shape
+        super(Distribution, self).__init__(dims, shape)
+        self.log_normalizer = log_normalizer
+        self.dist = dist
 
-    def __getitem__(self, xs):
-        xs = dict(zip(self.dims, xs))
-        result = 0
-        for key, value in self.coefs.items():
-            term = value
-            for dim in key:
-                term = term * xs[dim]
-            result = result + term
-        return result
+    def sample(self, dims):
+        if not dims:
+            return ()
+        int_dims = []
+        real_dims = []
+        for d, s in zip(self.dims, self.shape):
+            (int_dims if isinstance(s, int) else real_dims).append(d)
+        if set(dims) & set(int_dims):
+            raise NotImplementedError('TODO sample wrt log_normalizer')
+        if set(dims) <= set(real_dims):
+            result_dims = tuple(d for d in self.dims if d not in dims)
+            value = self.dist.rsample()
+            if set(dims) == set(real_dims):
+                return tuple(
+                    Tensor(result_dims, value[..., real_dims.index(d)])
+                    for d in dims)
+            raise NotImplementedError('TODO condition on partial sample')
+
+    def _rename(self, dims):
+        return type(self)(dims, self.shape, self.dist, self.log_normalizer)
+
+    def __bool__(self):
+        raise ValueError(
+            "bool value of Funsor with more than one value is ambiguous")
+
+    def item(self):
+        raise ValueError(
+            "only one element Funsors can be converted to Python scalars")
+
+    def logsumexp(self, dim=None):
+        if dim is None:
+            return self.log_normalizer
+        return super(Distribution, self).logsumexp(dim)
 
 
-class TransformedFunsor(Funsor):
+class Normal(Distribution):
     """
-    WIP
+    Log density of a batched unnormalized diagonal normal distribution.
     """
-    def __init__(self, dims, shape, base_funsor,
-                 pre_transforms=None, post_transform=None):
-        super(TransformedFunsor, self).__init__(dims, shape)
-        self.base_funsor = base_funsor
-        if pre_transforms is None:
-            pre_transforms = tuple(() for d in dims)
-        if post_transform is None:
-            post_transform = ()
-        self.pre_transforms = pre_transforms
-        self.post_transform = post_transform
+    def __init__(self, dims, shape, dist, log_normalizer=None):
+        assert isinstance(dist, torch.distributions.Independent)
+        assert isinstance(dist.base_dist, torch.distributions.Normal)
+        assert isinstance(dist, torch.distributions.Normal)
+        super(Normal, self).__init__(dims, shape, dist, log_normalizer)
 
-    def __getitem__(self, key):
-        key = list(key)
-        for i, transform in enumerate(self.pre_transforms):
-            for t in transform:
-                key[i] = t(key[i])
-        key = tuple(key)
-        value = self.base_funsor[key]
-        for t in self.post_transform:
-            value = t(value)
-        return value
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+        raise NotImplementedError('TODO')
 
-    def log(self):
-        post_transform = self.post_transforms + (_log,)
-        return TransformedFunsor(self.dims, self.shape, self.base_funsor,
-                                 self.pre_transforms, post_transform)
 
-    def exp(self):
-        post_transform = self.post_transforms + (_exp,)
-        return TransformedFunsor(self.dims, self.shape, self.base_funsor,
-                                 self.pre_transforms, post_transform)
+class MultivariateNormal(Distribution):
+    """
+    Log density of a batched unnormalized multivariate normal distribution.
+    """
+    def __init__(self, dims, shape, dist, log_normalizer=None):
+        assert isinstance(dist, torch.distributions.MultivariateNormal)
+        super(MultivariateNormal, self).__init__(
+            dims, shape, dist, log_normalizer)
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+        raise NotImplementedError('TODO')
 
 
 def contract(dims, *operands, **kwargs):
@@ -514,31 +580,35 @@ def contract(dims, *operands, **kwargs):
     args = []
     for x in operands:
         x = x.materialize()
-        args.extend([x.tensor, x.dims])
+        args.extend([x.data, x.dims])
     args.append(dims)
-    tensor = opt_einsum.contract(*args, **kwargs)
-    return TorchFunsor(dims, tensor)
+    data = opt_einsum.contract(*args, **kwargs)
+    return Tensor(dims, data)
 
 
-def _lazy(fn, shape):
+def _of_shape(fn, shape):
     args, vargs, kwargs, defaults = inspect.getargspec(fn)
     assert not vargs
     assert not kwargs
     dims = tuple(args)
-    return LazyFunsor(dims, shape, fn)
+    return Function(dims, shape, fn)
 
 
-def lazy(*shape):
+def of_shape(*shape):
     """
-    Decorator to construct a lazy tensor.
+    Decorator to construct a :class:`Function`.
     """
-    return functools.partial(_lazy, shape=shape)
+    return functools.partial(_of_shape, shape=shape)
 
 
 __all__ = [
     'DOMAINS',
+    'Distribution',
+    'Function',
     'Funsor',
-    'LazyFunsor',
+    'MultivariateNormal',
+    'Normal',
+    'Tensor',
     'contract',
-    'lazy',
+    'of_shape',
 ]
