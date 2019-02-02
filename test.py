@@ -8,7 +8,7 @@ import torch
 import funsor
 
 
-def check_funsor(x, dims, shape=None, data=None):
+def check_funsor(x, dims, shape, data=None):
     """
     Check dims and shape modulo reordering.
     """

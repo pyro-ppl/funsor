@@ -6,6 +6,7 @@ import itertools
 import math
 import operator
 from abc import ABCMeta, abstractmethod
+from collections import OrderedDict
 from numbers import Number
 from weakref import WeakValueDictionary
 
@@ -166,10 +167,7 @@ class Funsor(object):
         super(Funsor, self).__init__()
         self.dims = dims
         self.shape = shape
-        self._size = dict(zip(dims, shape))
-
-    def size(self, dim=None):
-        return self.shape if dim is None else self._size[dim]
+        self.schema = OrderedDict(zip(dims, shape))
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
@@ -265,7 +263,7 @@ class Funsor(object):
 
         result = self
         for dim in dims:
-            size = result.size(dim)
+            size = result.schema[dim]
             if not isinstance(size, int):
                 raise NotImplementedError('cannot reduce dim {}'.format(dim))
             result = reduce(op, (result(**{dim: i}) for i in range(size)))
@@ -536,7 +534,7 @@ class Function(Funsor):
         if not args and not kwargs:
             return self
         dims = tuple(d for d in self.dims[len(args):] if d not in kwargs)
-        shape = tuple(self.size(d) for d in dims)
+        shape = tuple(self.schema[d] for d in dims)
         fn = functools.partial(self.fn, *args, **kwargs)
         return Function(dims, shape, fn)
 
@@ -744,7 +742,7 @@ class Distribution(Funsor):
         self.dist = dist
         self.log_normalizer = log_normalizer
         self._int_dims = frozenset(d for d in dims
-                                   if isinstance(self.size(d), int))
+                                   if isinstance(self.schema[d], int))
 
     def __bool__(self):
         raise ValueError(
