@@ -67,8 +67,13 @@ def _logaddexp(x, y):
 
 
 @_placeholder
+def _marginal(x, y):
+    raise ValueError
+
+
+@_placeholder
 def _sample(x, y):
-    raise NotImplementedError
+    raise ValueError
 
 
 _builtin_min = min
@@ -248,6 +253,10 @@ class Funsor(object):
     def reduce(self, op, dims=None):
         """
         Reduce along all or a subset of dimensions.
+
+        :param callable op: A reduction operation.
+        :param set dims: An optional set of dims to reduce.
+            If unspecified, all dims will be reduced.
         """
         if dims is None:
             dims = frozenset(self.dims)
@@ -267,8 +276,9 @@ class Funsor(object):
         Reduce along a subset of dimensions,
         keeping track of the values of those dimensions.
 
-        :param tuple dims: a tuple dims to be argreduced.
-        :return: a tuple ``(args, remaining)`` where ``args`` is a
+        :param callable op: A reduction operation.
+        :param tuple dims: A tuple dims to be argreduced.
+        :return: A tuple ``(args, remaining)`` where ``args`` is a
             dict mapping a subset of input dims to funsors possibly depending
             on remaining dims, and ``remaining`` is a funsor depending on
             remaing dims.
@@ -279,19 +289,38 @@ class Funsor(object):
             return {}, self
         raise NotImplementedError
 
-    def contract(self, other, sum_op=operator.add, prod_op=operator.mul,
-                 dims=None):
+    def contract(self, sum_op, prod_op, other, dims=None):
         """
         Perform a binary contration, equivalent to binary product followed by a
         sum reduction.
 
-        :param Funsor other: Another Funsor.
         :param callable sum_op: A reduction operation.
         :param callable prod_op: A binary operation.
+        :param Funsor other: Another Funsor.
         :param set dims: An optional set of dims to sum-reduce.
-            If unspecified, all dims will be contracted.
+            If unspecified, all dims will be reduced.
+        :return: A contracted funsor.
+        :rtype: Funsor
         """
         return prod_op(self, other).reduce(sum_op, dims)
+
+    def argcontract(self, sum_op, prod_op, other, dims):
+        """
+        Perform a binary contration, keeping track of the values of reduced
+        dimensions. This is equivalent to binary product followed by a
+        sum argreduction.
+
+        :param callable sum_op: A reduction operation.
+        :param callable prod_op: A binary operation.
+        :param Funsor other: Another Funsor.
+        :param set dims: An set of dims to sum-reduce.
+        :return: A tuple ``(args, remaining)`` where ``args`` is a
+            dict mapping a subset of input dims to funsors possibly depending
+            on remaining dims, and ``remaining`` is a funsor depending on
+            remaing dims.
+        :rtype: tuple
+        """
+        return prod_op(self, other).argreduce(sum_op, dims)
 
     def __invert__(self):
         return self.pointwise_unary(operator.invert)
@@ -409,6 +438,9 @@ class Funsor(object):
 
     def argmax(self, dims):
         return self.argreduce(max, dims)
+
+    def marginal(self, dims):
+        return self.argreduce(_marginal, dims)
 
     def sample(self, dims):
         """
@@ -786,6 +818,9 @@ class Normal(Distribution):
         assert real_dims
         raise NotImplementedError('TODO extract mode')
 
+    def marginal(self, dims):
+        raise NotImplementedError('TODO')
+
     def sample(self, dims):
         dims = frozenset(dims).intersection(self.dims)
         if not dims:
@@ -810,6 +845,8 @@ def contract(*operands, **kwargs):
     :param tuple dims: An optional tuple of output dims to preserve.
         Defaults to ``()``, meaning all dims are contracted.
     :param str backend: An opt_einsum backend, defaults to 'torch'.
+    :return: A contracted funsor.
+    :rtype: Funsor
     """
     assert all(isinstance(x, Funsor) for x in operands)
     dims = kwargs.pop('dims', ())
@@ -823,6 +860,25 @@ def contract(*operands, **kwargs):
     args.append(dims)
     data = opt_einsum.contract(*args, **kwargs)
     return Tensor(dims, data)
+
+
+def argcontract(*operands, **kwargs):
+    r"""
+    Nary contraction operation, keeping track of the values of reduced dims.
+
+    :param tuple dims: a tuple of strings of output dimensions. Any input dim
+        not requested as an output dim will be summed out.
+    :param \*operands: multiple :class:`Funsor`s.
+    :param tuple dims: An optional tuple of output dims to preserve.
+        Defaults to ``()``, meaning all dims are contracted.
+    :param str backend: An opt_einsum backend, defaults to 'torch'.
+    :return: A tuple ``(args, remaining)`` where ``args`` is a
+        dict mapping a subset of input dims to funsors possibly depending
+        on remaining dims, and ``remaining`` is a funsor depending on
+        remaing dims.
+    :rtype: tuple
+    """
+    raise NotImplementedError('TODO')
 
 
 __all__ = [
