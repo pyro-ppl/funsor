@@ -240,7 +240,8 @@ def main(args):
     emit_noise = param(torch.tensor(0.5, requires_grad=True), name="emit_noise")
     data = torch.randn(args_.time_steps)
 
-    params = [trans_noise, emit_noise]
+    params = [node["value"] for node in trace(model).get_trace(data)
+              if node["type"] == "sample"]
 
     # training loop
     print('---- training ----')
