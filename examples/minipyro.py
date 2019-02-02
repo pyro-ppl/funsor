@@ -241,7 +241,7 @@ def main(args):
     data = torch.randn(args_.time_steps)
 
     params = [node["value"] for node in trace(model).get_trace(data)
-              if node["type"] == "sample"]
+              if node["type"] == "param"]
 
     # training loop
     print('---- training ----')
