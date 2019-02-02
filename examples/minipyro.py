@@ -153,7 +153,8 @@ def sample(fn, obs=None, name=None):
 
     # if there are no active Messengers, we just draw a sample and return it as expected:
     if not PYRO_STACK:
-        return fn()
+        args, log_prob = fn.sample(['value'])
+        return args['value']
 
     # Otherwise, we initialize a message...
     initial_msg = {
@@ -197,22 +198,6 @@ def param(init_value=None, name=None):
     # ...and use apply_stack to send it to the Messengers
     msg = apply_stack(initial_msg)
     return msg["value"]
-
-
-# copied from example.py; this is like pyro.sample, but uses args_ rather than poutine
-def pyro_sample(name, fn, obs=None):
-    if obs is not None:
-        value = obs
-        log_prob = fn(value=obs)
-    elif args_.eager:
-        # this is eager like usual pyro.sample
-        args, log_prob = fn.sample(['value'])
-        value = args['value']
-    else:
-        # this is deferred like pyro.sample during enumeration
-        value = funsor.var(name, fn.schema['value'])
-        log_prob = fn(value=value)
-    return value, log_prob
 
 
 class deferred(Messenger):
