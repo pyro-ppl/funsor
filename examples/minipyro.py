@@ -277,13 +277,13 @@ def main(args):
         optim.step()
 
     # serving by drawing a posterior sample
-    print('---- serving ----')
-    eager_args, log_probs = model(data)
-    lazy_args, log_prob = funsor.logsumproductexp(log_probs)
-    joint_sample = eager_args
-    joint_sample.update(lazy_args)
-    for key, value in sorted(joint_sample.items()):
-        print('{} = {}'.format(key, value.item()))
+    # print('---- serving ----')
+    # eager_args, log_probs = model(data)
+    # lazy_args, log_prob = funsor.logsumproductexp(log_probs)
+    # joint_sample = eager_args
+    # joint_sample.update(lazy_args)
+    # for key, value in sorted(joint_sample.items()):
+    #     print('{} = {}'.format(key, value.item()))
 
 
 if __name__ == "__main__":
