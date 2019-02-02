@@ -215,6 +215,14 @@ def pyro_sample(name, fn, obs=None):
     return value, log_prob
 
 
+class deferred(Messenger):
+
+    def process_message(self, msg):
+        if msg["type"] == "sample":
+            msg["value"] = funsor.var(name, fn.schema["value"])
+        return msg
+
+
 def main(args):
     """
     minipyro version of Gaussian HMM example
@@ -247,13 +255,22 @@ def main(args):
     emit_noise = param(torch.tensor(0.5, requires_grad=True), name="emit_noise")
     data = torch.randn(args_.time_steps)
 
+    params = [trans_noise, emit_noise]
+
     # training loop
     print('---- training ----')
     optim = torch.optim.Adam(params, lr=args_.learning_rate)
     for step in range(args_.train_steps):
         optim.zero_grad()
-        eager_args, log_probs = model(data)
+
+        tr = trace(deferred(model)).get_trace(data)
+
+        log_probs = [node["fn"](value=node["value"])
+                     for node in tr.values()
+                     if node["type"] == "sample"]
+
         loss = -funsor.logsumproductexp(*log_probs)  # contracts
+
         if step % 10 == 0:
             print('step {} loss = {}'.format(step, loss.item()))
         loss.backward()
