@@ -835,6 +835,21 @@ class Normal(Distribution):
         raise NotImplementedError('TODO')
 
 
+def extract(x):
+    if isinstance(x, Funsor):
+        return x.materialize().data
+    return x
+
+
+# FIXME this doesn't work at all
+@fun('real', 'real', 'real')
+def normal(loc, scale, value):
+    loc = extract(loc)
+    scale = extract(scale)
+    value = extract(value)
+    return torch.distributions.Normal(loc, scale).log_prob(value)
+
+
 def contract(*operands, **kwargs):
     r"""
     Sum-product contraction operation.
@@ -881,6 +896,10 @@ def argcontract(*operands, **kwargs):
     raise NotImplementedError('TODO')
 
 
+def logsumproductexp(*operands):
+    return contract(*operands, sum_op=_logaddexp, prod_op=operator.add)
+
+
 __all__ = [
     'DOMAINS',
     'Distribution',
@@ -890,8 +909,11 @@ __all__ = [
     'Tensor',
     'Variable',
     'contract',
+    'extract',
     'fun',
-    'var',
-    'min',
+    'logsumproductexp',
     'max',
+    'min',
+    'normal',
+    'var',
 ]
