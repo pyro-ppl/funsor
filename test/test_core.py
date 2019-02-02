@@ -198,9 +198,9 @@ BOOLEAN_OPS = ['&', '|', '^']
 
 def binary_eval(symbol, x, y):
     if symbol == 'min':
-        return funsor.min(x, y)
+        return funsor.ops.min(x, y)
     if symbol == 'max':
-        return funsor.max(x, y)
+        return funsor.ops.max(x, y)
     return eval('x {} y'.format(symbol))
 
 
