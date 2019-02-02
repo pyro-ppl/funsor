@@ -9,8 +9,8 @@ import funsor
 
 def main(args_):
     # declare parameters
-    trans_noise = torch.tensor([0.1], requires_grad=True)
-    emit_noise = torch.tensor([0.5], requires_grad=True)
+    trans_noise = torch.tensor(0.1, requires_grad=True)
+    emit_noise = torch.tensor(0.5, requires_grad=True)
     params = [trans_noise, emit_noise]
 
     # this is like pyro.sample, but uses args_ rather than poutine
@@ -19,11 +19,11 @@ def main(args_):
             value = obs
             log_prob = fn(value=obs)
         elif args_.eager:
-            # this is like usual pyro.sample
+            # this is eager like usual pyro.sample
             args, log_prob = fn.sample(['value'])
             value = args['value']
         else:
-            # this is like pyro.sample during enumeration
+            # this is deferred like pyro.sample during enumeration
             value = funsor.var(name, fn.schema['value'])
             log_prob = fn(value=value)
         return value, log_prob
@@ -36,17 +36,22 @@ def main(args_):
         for t, y in enumerate(data):
             x_prev = x_curr
 
+            # a sample statement
             x_curr, log_prob = pyro_sample(
                 'x_{}'.format(t),
-                funsor.normal(loc=x_prev, scale=trans_noise))
+                funsor.Normal(loc=x_prev, scale=trans_noise))
             log_probs.append(log_prob)
 
+            # an observe statement
             _, log_prob = pyro_sample(
                 'y_{}'.format(t),
-                funsor.normal(loc=x_curr, scale=emit_noise))
+                funsor.Normal(loc=x_curr, scale=emit_noise),
+                obs=y)
             log_probs.append(log_prob)
 
-            # note filtering only makes sense in lazy mode
+            # note filtering only makes sense in deferred mode.
+            # this could be made safe via something like:
+            #   x_curr = pyro.barrier(x_curr)
             if args_.filter:
                 # perform a filter update
                 args_t, log_prob = sum(log_probs).argmax()

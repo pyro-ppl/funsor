@@ -61,26 +61,27 @@ def test_mm_contract():
             assert h[i, k] == sum(f[i, j] * g[j, k] for j in range(4))
 
 
-def test_variable():
-    x3 = funsor.var('x', 3)
-    assert x3.name == 'x'
-    check_funsor(x3, ('x',), (3,))
-    assert funsor.var('x', 3) is x3
-    assert x3['x'] is x3
-    assert x3('x') is x3
-    y3 = funsor.var('y', 3)
-    assert x3['y'] is y3
-    assert x3('y') is y3
-    assert x3(x='y') is y3
-    assert x3(x=y3) is y3
-    x4 = funsor.var('x', 4)
-    assert x4 is not x3
-    assert x4['x'] is x4
-    assert x3(x=x4) is x4
-    assert x3(y=x4) is x3
+@pytest.mark.parametrize('size', [3, 'real'])
+def test_variable(size):
+    x = funsor.var('x', 'real')
+    check_funsor(x, ('x',), ('real',))
+    assert funsor.var('x', 'real') is x
+    assert x['x'] is x
+    assert x('x') is x
+    if size == 'real':
+        y = funsor.var('y', 'real')
+        assert x['y'] is y
+        assert x('y') is y
+        assert x(x='y') is y
+        assert x(x=y) is y
+        x4 = funsor.var('x', 4)
+        assert x4 is not x
+        assert x4['x'] is x4
+        assert x(x=x4) is x4
+        assert x(y=x4) is x
 
-    log_x = x3.log()
-    assert log_x(x=1) == 0
+        xp1 = x + 1
+        assert xp1(x=2) == 3
 
 
 def test_indexing():
@@ -209,7 +210,6 @@ def binary_eval(symbol, x, y):
 def test_binary_funsor_funsor(symbol, dims1, dims2):
     dims = tuple(sorted(set(dims1 + dims2)))
     sizes = {'a': 3, 'b': 4, 'c': 5}
-    shape = tuple(sizes[d] for d in dims)
     shape1 = tuple(sizes[d] for d in dims1)
     shape2 = tuple(sizes[d] for d in dims2)
     data1 = torch.rand(shape1) + 0.5
@@ -224,7 +224,7 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
     x1 = funsor.Tensor(dims1, data1)
     x2 = funsor.Tensor(dims2, data2)
     actual = binary_eval(symbol, x1, x2)
-    check_funsor(actual, dims, shape, expected_data)
+    check_funsor(actual, dims, expected_data.shape, expected_data)
 
 
 @pytest.mark.parametrize('scalar', [0.5])

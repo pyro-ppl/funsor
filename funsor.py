@@ -129,7 +129,7 @@ def _align_tensors(*args):
     :return: a pair ``(dims, tensors)`` where all tensors can be
         broadcast together to a single data with ``dims``.
     """
-    sizes = {}
+    sizes = OrderedDict()
     for x_dims, x in args:
         assert isinstance(x_dims, tuple)
         assert all(isinstance(d, str) for d in x_dims)
@@ -137,7 +137,7 @@ def _align_tensors(*args):
         assert len(x_dims) == x.dim()
         for dim, size in zip(x_dims, x.shape):
             sizes[dim] = size
-    dims = tuple(sorted(sizes))
+    dims = tuple(sizes)
     tensors = []
     for i, (x_dims, x) in enumerate(args):
         if x_dims != dims:
@@ -151,7 +151,11 @@ def _align_tensors(*args):
 @add_metaclass(ABCMeta)
 class Funsor(object):
     """
-    Abstract base class for functional tensors.
+    Abstract base class for immutable functional tensors.
+
+    Probabilistic methods like :meth:`sample` and :meth:`marginal` follow the
+    convention that funsors represent log density functions. Thus for example
+    the partition function is given by :meth:`logsumexp`.
 
     :param tuple dims: A tuple of strings of dimension names.
     :param tuple shape: A tuple of sizes. Each size is either a nonnegative
@@ -179,12 +183,18 @@ class Funsor(object):
     def __getitem__(self, key):
         return self(*key) if isinstance(key, tuple) else self(key)
 
-    @abstractmethod
+    # We avoid __setitem__ due to immutability.
+
     def __bool__(self):
+        if self.shape:
+            raise ValueError(
+                "bool value of Funsor with more than one value is ambiguous")
         raise NotImplementedError
 
-    @abstractmethod
     def item(self):
+        if self.shape:
+            raise ValueError(
+                "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
 
     def materialize(self, vectorize=True):
@@ -236,9 +246,10 @@ class Funsor(object):
 
             return Function(dims, shape, fn)
 
-        dims = tuple(sorted(set(self.dims + other.dims)))
-        sizes = dict(zip(self.dims + other.dims, self.shape + other.shape))
-        shape = tuple(sizes[d] for d in dims)
+        schema = self.schema.copy()
+        schema.update(other.schema)
+        dims = tuple(schema)
+        shape = tuple(schema.values())
 
         def fn(*args, **kwargs):
             kwargs.update(zip(dims, args))
@@ -300,7 +311,7 @@ class Funsor(object):
         :return: A contracted funsor.
         :rtype: Funsor
         """
-        return prod_op(self, other).reduce(sum_op, dims)
+        return self.pointwise_binary(prod_op, other).reduce(sum_op, dims)
 
     def argcontract(self, sum_op, prod_op, other, dims):
         """
@@ -318,7 +329,11 @@ class Funsor(object):
             remaing dims.
         :rtype: tuple
         """
-        return prod_op(self, other).argreduce(sum_op, dims)
+        return self.pointwise_binary(prod_op, other).argreduce(sum_op, dims)
+
+    # ------------------------------------------------------------------------
+    # Subclasses should not override these methods; instead override
+    # the generic handlers and fall back to super(...).handler.
 
     def __invert__(self):
         return self.pointwise_unary(operator.invert)
@@ -460,7 +475,8 @@ _VARIABLES = WeakValueDictionary()
 
 class Variable(Funsor):
     """
-    Funsor representing a single free variable.
+    Funsor representing a single continuous-valued free variable.
+    Note discrete variables can be materialized as :class:`Tensor`s.
 
     .. warning:: Do not construct :class:`Variable`s directly.
         instead use :func:`var`.
@@ -499,6 +515,23 @@ class Variable(Funsor):
     def item(self):
         raise ValueError("Variable cannot be converted to a Python scalar")
 
+    def materialize(self):
+        size = self.shape[0]
+        if isinstance(size, int):
+            return Tensor(self.dims, torch.arange(size))
+        raise ValueError("cannot materialize variable of size {}".format(size))
+
+    def pointwise_unary(self, op):
+        if op is _exp:
+            return TransformedVariable(
+                self,
+                torch.distributions.transforms.ExpTransform())
+        if op is _log:
+            return TransformedVariable(
+                self,
+                torch.distributions.transforms.ExpTransform().inv)
+        return super(Variable, self).pointwise_unary(op)
+
 
 def var(name, size):
     """
@@ -506,13 +539,38 @@ def var(name, size):
 
     :param str name: A variable name.
     :param size: A size, either an int or a ``DOMAIN``.
+    :return: A new funsor with single dimension ``name``.
+    :rtype: Variable (if continuous) or Tensor (if discrete).
     """
     key = (name, size)
     if key in _VARIABLES:
         return _VARIABLES[key]
-    result = Variable(name, size)
+    if isinstance(size, int):
+        result = Tensor((name,), torch.arange(size))
+    else:
+        result = Variable(name, size)
     _VARIABLES[key] = result
     return result
+
+
+class TransformedVariable(Funsor):
+    def __init__(self, base, transform):
+        assert isinstance(base, (Variable, TransformedVariable))
+        assert isinstance(transform, torch.distributions.transforms.Transform)
+        super(TransformedVariable, self).__init__(base.dims, base.shape)
+        self.base = base
+        self.transform = transform
+
+    def pointwise_unary(self, op):
+        if op is _exp:
+            return TransformedVariable(
+                self,
+                torch.distributions.transforms.ExpTransform())
+        if op is _log:
+            return TransformedVariable(
+                self,
+                torch.distributions.transforms.ExpTransform().inv)
+        return super(TransformedVariable, self).pointwise_unary(op)
 
 
 class Function(Funsor):
@@ -625,6 +683,12 @@ class Tensor(Funsor):
                     raise NotImplementedError('TODO')
             data = self.data[tuple(index)]
             return Tensor(dims, data)
+        if isinstance(value, str):
+            if self.dims[pos] == value:
+                return self
+            dims = list(self.dims)
+            dims[pos] = dim
+            return Tensor(tuple(dims), self.data)
         raise NotImplementedError('TODO handle {}'.format(value))
 
     def __bool__(self):
@@ -717,135 +781,122 @@ class Tensor(Funsor):
         raise NotImplementedError('TODO handle {}'.format(op))
 
 
-class Distribution(Funsor):
+def to_funsor(x):
     """
-    Base class for funsors backed by PyTorch Distributions.
-
-    Ground values are interpreted as log probability densities.
-
-    :param tuple dims: A tuple of strings of dimension names.
-    :param tuple shape: A tuple of sizes. Each size is either a nonnegative
-        integer or a string denoting a continuous domain.
-    :param torch.Distribution dist: a distribution object with
-        ``event_shape[0] == (shape.count('real'),)``.
-    :param torch.Tensor log_normalizer: optional log normalizer
-        of shape ``dist.batch_shape``. Defaults to zero.
+    Convert to a :class:`Funsor`.
+    Only :class:`Funsor`s and scalars are accepted.
     """
-    def __init__(self, dims, shape, dist, log_normalizer=None):
-        assert 'real' in shape
-        assert all(isinstance(s, int) or s == 'real' for s in shape)
-        assert dist.event_shape == (shape.count('real'),)
-        if log_normalizer is None:
-            log_normalizer = torch.zeros(dist.batch_shape)
-        assert log_normalizer.shape == dist.batch_shape
-        super(Distribution, self).__init__(dims, shape)
-        self.dist = dist
-        self.log_normalizer = log_normalizer
-        self._int_dims = frozenset(d for d in dims
-                                   if isinstance(self.schema[d], int))
-
-    def __bool__(self):
-        raise ValueError(
-            "bool value of Funsor with more than one value is ambiguous")
-
-    def item(self):
-        raise ValueError(
-            "only one element Funsors can be converted to Python scalars")
-
-    def logsumexp(self, dim=None):
-        if dim is None:
-            return self.log_normalizer.logsumexp()
-        return super(Distribution, self).logsumexp(dim)
+    if isinstance(x, Funsor):
+        return x
+    if isinstance(x, torch.Tensor):
+        assert x.dim() == 0
+        return Tensor((), x)
+    if isinstance(x, Number):
+        return Tensor((), torch.tensor(x))
+    raise ValueError("cannot convert to Funsor: {}".format(x))
 
 
-class Normal(Distribution):
-    """
-    Log density of a batched unnormalized diagonal normal distribution.
-    """
-    def __init__(self, dims, shape, dist, log_normalizer=None):
-        assert isinstance(dist, torch.distributions.Independent)
-        assert isinstance(dist.base_dist, torch.distributions.Normal)
-        super(Normal, self).__init__(dims, shape, dist, log_normalizer)
-        self._real_dims = frozenset(self.dims) - self._int_dims
-
-    def __call__(self, *args, **kwargs):
-        kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
-        kwargs.update(zip(self.dims, args))
-        raise NotImplementedError('TODO')
-
-    def argreduce(self, op, dims):
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
-        int_dims = dims & self._int_dims
-        real_dims = dims & self._real_dims
-        if int_dims:
-            log_normalizer = Tensor(
-                tuple(d for d in self.dims if d in self._real_dims),
-                self.log_normalizer)
-            args, log_normalizer = log_normalizer.argreduce(op, int_dims)
-            remaining = self(**args)
-            remaining.log_normalizer = log_normalizer.data
-            real_args, remaining = remaining.argreduce(op, real_dims)
-            args.update(real_args)
-            return args, remaining
-        raise NotImplementedError(
-            'call .{}(...) instead of .argreduce(op, ...)'.format(
-                op.__name__))
-
-    def argmin(self, dims):
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
-        real_dims = dims & self._real_dims
-        if real_dims:
-            raise ValueError('argmin of Normal distribution is undefined')
-        return self.argreduce(min, dims)
-
-    def argmax(self, dims):
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
-        real_dims = dims & self._real_dims
-        int_dims = dims & self._int_dims
-        if int_dims:
-            args, remaining = self.argreduce(max, int_dims)
-            real_args, remaining = remaining.max(real_dims)
-            args.update(real_args)
-            return args, remaining
-        assert real_dims
-        raise NotImplementedError('TODO extract mode')
-
-    def marginal(self, dims):
-        raise NotImplementedError('TODO')
-
-    def sample(self, dims):
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
-        real_dims = dims & self._real_dims
-        int_dims = dims & self._int_dims
-        if int_dims:
-            args, remaining = self.argreduce(_sample, int_dims)
-            real_args, remaining = remaining.sample(real_dims)
-            args.update(real_args)
-            return args, remaining
-        raise NotImplementedError('TODO')
-
-
-def extract(x):
+def to_torch(x):
     if isinstance(x, Funsor):
         return x.materialize().data
     return x
 
 
-# FIXME this doesn't work at all
-@fun('real', 'real', 'real')
-def normal(loc, scale, value):
-    loc = extract(loc)
-    scale = extract(scale)
-    value = extract(value)
-    return torch.distributions.Normal(loc, scale).log_prob(value)
+class Delta(Funsor):
+    pass  # TODO
+
+
+class Normal(Funsor):
+    def __init__(self, loc, scale, log_normalizer=0.):
+        self.loc = to_funsor(loc)
+        self.scale = to_funsor(scale)
+        self.log_normalizer = to_funsor(log_normalizer)
+        schema = OrderedDict(value='real')
+        for f in [self.loc, self.scale, self.log_normalizer]:
+            assert 'value' not in f.dims
+            schema.update(f.schema)
+        dims = tuple(schema)
+        shape = tuple(schema.values())
+        super(Normal, self).__init__(dims, shape)
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+        loc = self.loc(**kwargs)
+        scale = self.scale(**kwargs)
+        log_normalizer = self.log_normalizer(**kwargs)
+        if (loc is self.loc and scale is self.scale and
+                log_normalizer is self.log_normalizer):
+            result = self
+        else:
+            result = Normal(loc, scale, log_normalizer)
+        if 'value' not in kwargs:
+            return result
+        raise NotImplementedError('TODO')
+
+    def reduce(self, op, dims):
+        if op is _logaddexp:
+            raise NotImplementedError('TODO')
+        return super(Normal, self).reduce(op, dims)
+
+    def argreduce(self, op, dims):
+        if op is _sample:
+            raise NotImplementedError('TODO')
+        return super(Normal, self).argreduce(op, dims)
+
+    def pointwise_binary(self, op, other):
+        if op is operator.add:
+            if isinstance(other, Tensor):
+                raise NotImplementedError('TODO')
+            if isinstance(other, Normal):
+                raise NotImplementedError('TODO')
+            if isinstance(other, Delta):
+                raise NotImplementedError('TODO')
+        return super(Normal, self).pointwise_binary(op, other)
+
+    # TODO implement optimized .contract()
+    # TODO implement optimized .argcontract()
+
+
+class MultivariateNormal(Funsor):
+    pass  # TODO
+
+
+class ApproxNormal(Normal):
+    r"""
+    This implements EP of Gaussian mixtures,
+    e.g. for switching linear dynamical systems.
+    """
+    def reduce(self, op, dims):
+        if op is _logaddexp:
+            if any(isinstance(self.schema[d], int) for d in dims):
+                raise NotImplementedError('TODO match moments')
+        return super(ApproxNormal, self).reduce(op, dims)
+
+
+class TransformedDistribution(Funsor):
+    def __init__(self, base, dim, transform):
+        assert isinstance(base, Funsor)
+        assert dim in base.dims
+        assert isinstance(transform, torch.distributions.transforms.Transform)
+        super(TransformedDistribution, self).__init__(base.dims, base.shape)
+        self.base = base
+        self.dim = dim
+        self.transform = transform
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(*args, **kwargs))
+        if self.dim in kwargs:
+            x = kwargs[self.dim]
+            y = self.transform(x)
+            kwargs[self.dim] = y
+            jac = Tensor(x.dims, self.transform.log_abs_det_jacobian(x, y))
+            return self.base(**kwargs) + jac
+        base = self.base(**kwargs)
+        if base is self.base:
+            return self
+        if self.dim in base:
+            raise NotImplementedError('TODO handle collision')
+        return TransformedDistribution(base, self.dim, self.transform)
 
 
 def contract(*operands, **kwargs):
@@ -900,18 +951,21 @@ def logsumproductexp(*operands):
 
 __all__ = [
     'DOMAINS',
-    'Distribution',
+    'Delta',
     'Function',
     'Funsor',
+    'MultivariateNormal',
     'Normal',
     'Tensor',
+    'TransformedDistribution',
+    'TransformedVariable',
     'Variable',
     'contract',
-    'extract',
     'fun',
     'logsumproductexp',
     'max',
     'min',
-    'normal',
+    'to_funsor',
+    'to_torch',
     'var',
 ]
