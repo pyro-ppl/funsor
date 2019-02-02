@@ -5,6 +5,7 @@ import argparse
 import torch
 
 import funsor
+import funsor.distributions as dist
 
 
 def main(args_):
@@ -39,13 +40,13 @@ def main(args_):
             # a sample statement
             x_curr, log_prob = pyro_sample(
                 'x_{}'.format(t),
-                funsor.Normal(loc=x_prev, scale=trans_noise))
+                dist.Normal(loc=x_prev, scale=trans_noise))
             log_probs.append(log_prob)
 
             # an observe statement
             _, log_prob = pyro_sample(
                 'y_{}'.format(t),
-                funsor.Normal(loc=x_curr, scale=emit_noise),
+                dist.Normal(loc=x_curr, scale=emit_noise),
                 obs=y)
             log_probs.append(log_prob)
 

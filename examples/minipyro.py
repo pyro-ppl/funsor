@@ -18,6 +18,7 @@ from collections import OrderedDict
 import torch
 
 import funsor
+import funsor.distributions as dist
 
 # Pyro keeps track of two kinds of global state:
 # i)  The effect handler stack, which enables non-standard interpretations of
@@ -225,12 +226,12 @@ def main(args):
 
             # a sample statement
             x_curr = sample(
-                funsor.Normal(loc=x_prev, scale=trans_noise),
+                dist.Normal(loc=x_prev, scale=trans_noise),
                 name='x_{}'.format(t))
 
             # an observe statement
             y_curr = sample(
-                funsor.Normal(loc=x_curr, scale=emit_noise),
+                dist.Normal(loc=x_curr, scale=emit_noise),
                 obs=y,
                 name='y_{}'.format(t))
 
