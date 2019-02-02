@@ -3,8 +3,6 @@ from __future__ import absolute_import, division, print_function
 import functools
 import inspect
 import itertools
-import math
-import operator
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 from numbers import Number
@@ -15,109 +13,9 @@ import torch
 from six import add_metaclass
 from six.moves import reduce
 
+import funsor.ops as ops
+
 DOMAINS = ("real", "positive", "unit_interval")
-
-
-def _abs(x):
-    return abs(x) if isinstance(x, Number) else x.abs()
-
-
-def _sqrt(x):
-    return math.sqrt(x) if isinstance(x, Number) else x.sqrt()
-
-
-def _exp(x):
-    return math.exp(x) if isinstance(x, Number) else x.exp()
-
-
-def _log(x):
-    return math.log(x) if isinstance(x, Number) else x.log()
-
-
-def _log1p(x):
-    return math.log1p(x) if isinstance(x, Number) else x.log1p()
-
-
-def _pow(x, y):
-    result = x ** y
-    # work around pytorch shape bug
-    if isinstance(x, Number) and isinstance(y, torch.Tensor):
-        result = result.reshape(y.shape)
-    return result
-
-
-def _rpow(y, x):
-    result = x ** y
-    # work around pytorch shape bug
-    if isinstance(x, Number) and isinstance(y, torch.Tensor):
-        result = result.reshape(y.shape)
-    return result
-
-
-def _placeholder(fn):
-    """
-    Decorator for functions we use as ops in lookup tables.
-    """
-    fn.__name__ = fn.__name__.lstrip('_')
-    return fn
-
-
-@_placeholder
-def _logaddexp(x, y):
-    raise NotImplementedError
-
-
-@_placeholder
-def _marginal(x, y):
-    raise ValueError
-
-
-@_placeholder
-def _sample(x, y):
-    raise ValueError
-
-
-_builtin_min = min
-_builtin_max = max
-
-
-def min(x, y):
-    if hasattr(x, '__min__'):
-        return x.__min__(y)
-    if hasattr(y, '__min__'):
-        return y.__min__(x)
-    if isinstance(x, torch.Tensor):
-        if isinstance(y, torch.Tensor):
-            return torch.min(x, y)
-        return x.clamp(max=y)
-    if isinstance(y, torch.Tensor):
-        return y.clamp(max=x)
-    return _builtin_min(x, y)
-
-
-def max(x, y):
-    if hasattr(x, '__max__'):
-        return x.__max__(y)
-    if hasattr(y, '__max__'):
-        return y.__max__(x)
-    if isinstance(x, torch.Tensor):
-        if isinstance(y, torch.Tensor):
-            return torch.max(x, y)
-        return x.clamp(min=y)
-    if isinstance(y, torch.Tensor):
-        return y.clamp(min=x)
-    return _builtin_max(x, y)
-
-
-_REDUCE_OP_TO_TORCH = {
-    operator.add: torch.sum,
-    operator.mul: torch.prod,
-    operator.and_: torch.all,
-    operator.or_: torch.any,
-    _logaddexp: torch.logsumexp,
-    min: torch.min,
-    max: torch.max,
-}
 
 
 def _align_tensors(*args):
@@ -336,124 +234,124 @@ class Funsor(object):
     # the generic handlers and fall back to super(...).handler.
 
     def __invert__(self):
-        return self.pointwise_unary(operator.invert)
+        return self.pointwise_unary(ops.invert)
 
     def __neg__(self):
-        return self.pointwise_unary(operator.neg)
+        return self.pointwise_unary(ops.neg)
 
     def abs(self):
-        return self.pointwise_unary(_abs)
+        return self.pointwise_unary(ops.abs)
 
     def sqrt(self):
-        return self.pointwise_unary(_sqrt)
+        return self.pointwise_unary(ops.sqrt)
 
     def exp(self):
-        return self.pointwise_unary(_exp)
+        return self.pointwise_unary(ops.exp)
 
     def log(self):
-        return self.pointwise_unary(_log)
+        return self.pointwise_unary(ops.log)
 
     def log1p(self):
-        return self.pointwise_unary(_log1p)
+        return self.pointwise_unary(ops.log1p)
 
     def __add__(self, other):
-        return self.pointwise_binary(other, operator.add)
+        return self.pointwise_binary(other, ops.add)
 
     def __radd__(self, other):
-        return self.pointwise_binary(other, operator.add)
+        return self.pointwise_binary(other, ops.add)
 
     def __sub__(self, other):
-        return self.pointwise_binary(other, operator.sub)
+        return self.pointwise_binary(other, ops.sub)
 
     def __rsub__(self, other):
-        return self.pointwise_binary(other, lambda a, b: b - a)
+        return self.pointwise_binary(other, ops.rsub)
 
     def __mul__(self, other):
-        return self.pointwise_binary(other, operator.mul)
+        return self.pointwise_binary(other, ops.mul)
 
     def __rmul__(self, other):
-        return self.pointwise_binary(other, operator.mul)
+        return self.pointwise_binary(other, ops.mul)
 
     def __truediv__(self, other):
-        return self.pointwise_binary(other, operator.truediv)
+        return self.pointwise_binary(other, ops.truediv)
 
     def __rtruediv__(self, other):
-        return self.pointwise_binary(other, lambda a, b: b / a)
+        return self.pointwise_binary(other, ops.rtruediv)
 
     def __pow__(self, other):
-        return self.pointwise_binary(other, _pow)
+        return self.pointwise_binary(other, ops.pow)
 
     def __rpow__(self, other):
-        return self.pointwise_binary(other, _rpow)
+        return self.pointwise_binary(other, ops.rpow)
 
     def __and__(self, other):
-        return self.pointwise_binary(other, operator.and_)
+        return self.pointwise_binary(other, ops.and_)
 
     def __rand__(self, other):
-        return self.pointwise_binary(other, operator.and_)
+        return self.pointwise_binary(other, ops.and_)
 
     def __or__(self, other):
-        return self.pointwise_binary(other, operator.or_)
+        return self.pointwise_binary(other, ops.or_)
 
     def __ror__(self, other):
-        return self.pointwise_binary(other, operator.or_)
+        return self.pointwise_binary(other, ops.or_)
 
     def __xor__(self, other):
-        return self.pointwise_binary(other, operator.xor)
+        return self.pointwise_binary(other, ops.xor)
 
     def __eq__(self, other):
-        return self.pointwise_binary(other, operator.eq)
+        return self.pointwise_binary(other, ops.eq)
 
     def __ne__(self, other):
-        return self.pointwise_binary(other, operator.ne)
+        return self.pointwise_binary(other, ops.ne)
 
     def __lt__(self, other):
-        return self.pointwise_binary(other, operator.lt)
+        return self.pointwise_binary(other, ops.lt)
 
     def __le__(self, other):
-        return self.pointwise_binary(other, operator.le)
+        return self.pointwise_binary(other, ops.le)
 
     def __gt__(self, other):
-        return self.pointwise_binary(other, operator.gt)
+        return self.pointwise_binary(other, ops.gt)
 
     def __ge__(self, other):
-        return self.pointwise_binary(other, operator.ge)
+        return self.pointwise_binary(other, ops.ge)
 
     def __min__(self, other):
-        return self.pointwise_binary(other, min)
+        return self.pointwise_binary(other, ops.min)
 
     def __max__(self, other):
-        return self.pointwise_binary(other, max)
+        return self.pointwise_binary(other, ops.max)
 
     def sum(self, dims=None):
-        return self.reduce(operator.add, dims)
+        return self.reduce(ops.add, dims)
 
     def prod(self, dims=None):
-        return self.reduce(operator.mul, dims)
+        return self.reduce(ops.mul, dims)
 
     def logsumexp(self, dims=None):
-        return self.reduce(_logaddexp, dims)
+        return self.reduce(ops.logaddexp, dims)
 
     def all(self, dims=None):
-        return self.reduce(operator.and_, dims)
+        return self.reduce(ops.and_, dims)
 
     def any(self, dims=None):
-        return self.reduce(operator.or_, dims)
+        return self.reduce(ops.or_, dims)
 
     def min(self, dims=None):
-        return self.reduce(min, dims)
+        return self.reduce(ops.min, dims)
 
     def max(self, dims=None):
-        return self.reduce(max, dims)
+        return self.reduce(ops.max, dims)
 
     def argmin(self, dims):
-        return self.argreduce(min, dims)
+        return self.argreduce(ops.min, dims)
 
     def argmax(self, dims):
-        return self.argreduce(max, dims)
+        return self.argreduce(ops.max, dims)
 
     def marginal(self, dims):
-        return self.argreduce(_marginal, dims)
+        return self.argreduce(ops.marginal, dims)
 
     def sample(self, dims):
         """
@@ -467,7 +365,7 @@ class Funsor(object):
             depending on remaing dims.
         :rtype: tuple
         """
-        return self.argreduce(self, _sample, dims)
+        return self.argreduce(self, ops.sample, dims)
 
 
 _VARIABLES = WeakValueDictionary()
@@ -522,11 +420,11 @@ class Variable(Funsor):
         raise ValueError("cannot materialize variable of size {}".format(size))
 
     def pointwise_unary(self, op):
-        if op is _exp:
+        if op is ops.exp:
             return TransformedVariable(
                 self,
                 torch.distributions.transforms.ExpTransform())
-        if op is _log:
+        if op is ops.log:
             return TransformedVariable(
                 self,
                 torch.distributions.transforms.ExpTransform().inv)
@@ -562,11 +460,11 @@ class TransformedVariable(Funsor):
         self.transform = transform
 
     def pointwise_unary(self, op):
-        if op is _exp:
+        if op is ops.exp:
             return TransformedVariable(
                 self,
                 torch.distributions.transforms.ExpTransform())
-        if op is _log:
+        if op is ops.log:
             return TransformedVariable(
                 self,
                 torch.distributions.transforms.ExpTransform().inv)
@@ -727,11 +625,11 @@ class Tensor(Funsor):
         return Tensor(dims, op(self_x, other_x))
 
     def reduce(self, op, dims=None):
-        if op in _REDUCE_OP_TO_TORCH:
-            torch_op = _REDUCE_OP_TO_TORCH[op]
+        if op in ops.REDUCE_OP_TO_TORCH:
+            torch_op = ops.REDUCE_OP_TO_TORCH[op]
             if dims is None:
                 # work around missing torch.Tensor.logsumexp()
-                if op is _logaddexp:
+                if op is ops.logaddexp:
                     return Tensor((), self.data.reshape(-1).logsumexp(0))
                 return Tensor((), torch_op(self.data))
             dims = frozenset(dims).intersection(self.dims)
@@ -739,7 +637,7 @@ class Tensor(Funsor):
                 return self
             data = self.data
             for pos in reversed(sorted(map(self.dims.index, dims))):
-                if op in (min, max):
+                if op in (ops.min, ops.max):
                     data = getattr(data, op.__name__)(pos)[0]
                 else:
                     data = torch_op(data, pos)
@@ -752,7 +650,7 @@ class Tensor(Funsor):
         if not dims:
             return {}, self
 
-        if op in (min, max):
+        if op in (ops.min, ops.max):
             if len(dims) == 1:
                 dim = next(iter(dims))
                 pos = self.dims.index(dim)
@@ -761,7 +659,7 @@ class Tensor(Funsor):
                 return {dim: Tensor(dims, value)}, Tensor(dims, remaining)
             raise NotImplementedError('TODO implement multiway argmin, argmax')
 
-        if op is _sample:
+        if op is ops.sample:
             if len(dims) == 1:
                 dim, = dims
                 pos = self.dims.index(dim)
@@ -834,17 +732,17 @@ class Normal(Funsor):
         raise NotImplementedError('TODO')
 
     def reduce(self, op, dims):
-        if op is _logaddexp:
+        if op is ops.logaddexp:
             raise NotImplementedError('TODO')
         return super(Normal, self).reduce(op, dims)
 
     def argreduce(self, op, dims):
-        if op is _sample:
+        if op is ops.sample:
             raise NotImplementedError('TODO')
         return super(Normal, self).argreduce(op, dims)
 
     def pointwise_binary(self, op, other):
-        if op is operator.add:
+        if op is ops.add:
             if isinstance(other, Tensor):
                 raise NotImplementedError('TODO')
             if isinstance(other, Normal):
@@ -867,7 +765,7 @@ class ApproxNormal(Normal):
     e.g. for switching linear dynamical systems.
     """
     def reduce(self, op, dims):
-        if op is _logaddexp:
+        if op is ops.logaddexp:
             if any(isinstance(self.schema[d], int) for d in dims):
                 raise NotImplementedError('TODO match moments')
         return super(ApproxNormal, self).reduce(op, dims)
@@ -946,7 +844,7 @@ def argcontract(*operands, **kwargs):
 
 
 def logsumproductexp(*operands):
-    return contract(*operands, sum_op=_logaddexp, prod_op=operator.add)
+    return contract(*operands, sum_op=ops.logaddexp, prod_op=ops.add)
 
 
 __all__ = [
@@ -963,8 +861,7 @@ __all__ = [
     'contract',
     'fun',
     'logsumproductexp',
-    'max',
-    'min',
+    'ops',
     'to_funsor',
     'to_torch',
     'var',
