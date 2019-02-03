@@ -296,11 +296,18 @@ def test_reduce_subset(dims, dims_reduced, op_name):
     if not dims_reduced:
         assert actual is x
     else:
-        for pos in reversed(sorted(map(dims.index, dims_reduced))):
-            if op_name in ('min', 'max'):
-                data = getattr(data, op_name)(pos)[0]
+        if dims_reduced == set(dims):
+            if op_name == 'logsumexp':
+                # work around missing torch.Tensor.logsumexp()
+                data = data.reshape(-1).logsumexp(0)
             else:
-                data = getattr(data, op_name)(pos)
+                data = getattr(data, op_name)()
+        else:
+            for pos in reversed(sorted(map(dims.index, dims_reduced))):
+                if op_name in ('min', 'max'):
+                    data = getattr(data, op_name)(pos)[0]
+                else:
+                    data = getattr(data, op_name)(pos)
         dims = tuple(d for d in dims if d not in dims_reduced)
         shape = data.shape
         check_funsor(actual, dims, data.shape, data)

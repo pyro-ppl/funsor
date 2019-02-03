@@ -10,7 +10,6 @@ from weakref import WeakValueDictionary
 import opt_einsum
 import torch
 from six import add_metaclass
-from six.moves import reduce
 
 import funsor.ops as ops
 
@@ -160,14 +159,7 @@ class Funsor(object):
             dims = frozenset(self.dims)
         else:
             dims = frozenset(dims).intersection(self.dims)
-
-        result = self
-        for dim in dims:
-            size = result.schema[dim]
-            if not isinstance(size, int):
-                raise NotImplementedError('cannot reduce dim {}'.format(dim))
-            result = reduce(op, (result(**{dim: i}) for i in range(size)))
-        return result
+        return make(Reduction, self, dims)
 
     def argreduce(self, op, dims):
         """
@@ -428,6 +420,23 @@ class Binary(Funsor):
         return self.lhs(**kwargs).binary(self.op, self.rhs(**kwargs))
 
 
+class Reduction(Funsor):
+    def __init__(self, arg, dims):
+        assert isinstance(arg, Funsor)
+        assert isinstance(dims, frozenset)
+        dims = tuple(d for d in arg.dims if d not in dims)
+        shape = tuple(arg.schema[d] for d in dims)
+        super(Reduction, self).__init__(dims, shape)
+        self.arg = arg
+        self.reduced_dims = dims
+
+    def __call__(self, *args, **kwargs):
+        kwargs = {dim: value for dim, value in kwargs.items()
+                  if dim in self.dims}
+        kwargs.update(zip(self.dims, args))
+        return self.arg(**kwargs).reduce(self.reduced_dims)
+
+
 class Tensor(Funsor):
     """
     Funsor backed by a PyTorch Tensor.
@@ -528,14 +537,18 @@ class Tensor(Funsor):
     def reduce(self, op, dims=None):
         if op in ops.REDUCE_OP_TO_TORCH:
             torch_op = ops.REDUCE_OP_TO_TORCH[op]
+            self_dims = frozenset(self.dims)
             if dims is None:
-                # work around missing torch.Tensor.logsumexp()
-                if op is ops.logaddexp:
-                    return Tensor((), self.data.reshape(-1).logsumexp(0))
-                return Tensor((), torch_op(self.data))
-            dims = frozenset(dims).intersection(self.dims)
+                dims = self_dims
+            else:
+                dims = self_dims.intersection(dims)
             if not dims:
                 return self
+            if dims == self_dims:
+                if op is ops.logaddexp:
+                    # work around missing torch.Tensor.logsumexp()
+                    return Tensor((), self.data.reshape(-1).logsumexp(0))
+                return Tensor((), torch_op(self.data))
             data = self.data
             for pos in reversed(sorted(map(self.dims.index, dims))):
                 if op in (ops.min, ops.max):
