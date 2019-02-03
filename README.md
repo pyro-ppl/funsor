@@ -1,6 +1,9 @@
-# Funsor
+# Funsor - ![unstable](https://img.shields.io/badge/status-unstable-red.svg)
 
 Functional analysis + tensors + algebra.
+
+This library is an experimental work in progress.
+Do not build on top of this unstable prototype code.
 
 ## Design
 
@@ -29,10 +32,9 @@ def pyro_sample(name, dist):
 
 ## To Do
 
-- implement `funsor.normal` etc. as single `Funsor`s
-- fork minipyro.py and add pyro examples
+- implement `funsor.Normal`
+- support multivariate distributions
 - sketch optimizer for dyna/opt\_einsum
-- switch from `(dims, shape)` to `schema` `OrderedDict`
 - make a Bach chorale example with real + discrete latent variables
 
 ## Related projects
