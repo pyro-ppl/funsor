@@ -723,6 +723,7 @@ __all__ = [
     'DOMAINS',
     'Funsor',
     'Reduction',
+    'Substitution',
     'Tensor',
     'Unary',
     'Variable',

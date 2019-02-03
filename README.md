@@ -30,6 +30,15 @@ def pyro_sample(name, dist):
     return value
 ```
 
+## Code organization
+
+- `funsor.ops` is a collection of basic ops: unary, binary, and reductions
+- `funsor.term` contains AST classes for symbolic algebra, including concrete
+  PyTorch `Tensor`s
+- `funsor.engine` contains algorithms for symbolic computation including
+  variable elimination. Its entire interface is `funsor.eval()`.
+- `funsor.distributions` contains standard probability distributions.
+
 ## To Do
 
 - implement `funsor.Normal`
