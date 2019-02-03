@@ -37,25 +37,34 @@ def test_materialize():
         assert f[key] == g[key]
 
 
-def test_mm_contract():
+@pytest.mark.parametrize('materialize_f', [False, True])
+@pytest.mark.parametrize('materialize_g', [False, True])
+@pytest.mark.parametrize('materialize_h', [False, True])
+def test_mm(materialize_f, materialize_g, materialize_h):
 
     @funsor.of_shape(3, 4)
     def f(i, j):
         return i + j
 
-    assert f.dims == ('i', 'j')
-    assert f.shape == (3, 4)
+    if materialize_f:
+        f = f.materialize()
+        assert isinstance(f, funsor.Tensor)
+    check_funsor(f, ('i', 'j'), (3, 4))
 
     @funsor.of_shape(4, 5)
     def g(j, k):
         return j + k
 
-    assert g.dims == ('j', 'k')
-    assert g.shape == (4, 5)
+    if materialize_g:
+        g = g.materialize()
+        assert isinstance(g, funsor.Tensor)
+    check_funsor(g, ('j', 'k'), (4, 5))
 
-    h = funsor.contract(f, g, dims=('i', 'k'))
-    assert h.dims == ('i', 'k')
-    assert h.shape == (3, 5)
+    h = (f * g).sum('j')
+    if materialize_h:
+        h = h.materialize()
+        assert isinstance(h, funsor.Tensor)
+    check_funsor(h, ('i', 'k'), (3, 5))
     for i in range(3):
         for k in range(5):
             assert h[i, k] == sum(f[i, j] * g[j, k] for j in range(4))

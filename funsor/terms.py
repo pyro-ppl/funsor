@@ -2,14 +2,11 @@ from __future__ import absolute_import, division, print_function
 
 import functools
 import inspect
-from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 from numbers import Number
 from weakref import WeakValueDictionary
 
-import opt_einsum
 import torch
-from six import add_metaclass
 
 import funsor.ops as ops
 
@@ -42,12 +39,13 @@ def align_tensors(*args):
     return dims, tensors
 
 
-_TERMS = WeakValueDictionary()  # For cons hashing terms.
+_TERMS = WeakValueDictionary()
 
 
 def make(*args):
     """
     Construct a cons hashed term.
+    Calls will be memoized for the lifetime of the result.
     """
     fn = args[0]
     if args in _TERMS:
@@ -57,7 +55,6 @@ def make(*args):
     return result
 
 
-@add_metaclass(ABCMeta)
 class Funsor(object):
     """
     Abstract base class for immutable functional tensors.
@@ -85,12 +82,15 @@ class Funsor(object):
     def __hash__(self):
         return id(self)
 
-    @abstractmethod
     def __call__(self, *args, **kwargs):
         """
         Partially evaluates this funsor by substituting dimensions.
         """
-        raise NotImplementedError
+        subs = OrderedDict(zip(self.dims, args))
+        for d in self.dims:
+            if d in kwargs:
+                subs[d] = kwargs[d]
+        return make(Substitution, self, tuple(subs))
 
     def __getitem__(self, args):
         if not isinstance(args, tuple):
@@ -130,7 +130,7 @@ class Funsor(object):
         """
         Materializes all discrete variables.
         """
-        kwargs = {dim: Tensor((dim,), make(torch.arange, size))
+        kwargs = {dim: make(frange, dim, size)
                   for dim, size in self.schema.items()
                   if isinstance(size, int)}
         return self(**kwargs)
@@ -152,14 +152,18 @@ class Funsor(object):
         Reduce along all or a subset of dimensions.
 
         :param callable op: A reduction operation.
-        :param set dims: An optional set of dims to reduce.
+        :param set dims: An optional dim or set of dims to reduce.
             If unspecified, all dims will be reduced.
         """
         if dims is None:
             dims = frozenset(self.dims)
         else:
+            if isinstance(dims, str):
+                dims = (dims,)
             dims = frozenset(dims).intersection(self.dims)
-        return make(Reduction, self, dims)
+        if not dims:
+            return self
+        return make(Reduction, op, self, dims)
 
     def argreduce(self, op, dims):
         """
@@ -167,13 +171,15 @@ class Funsor(object):
         keeping track of the values of those dimensions.
 
         :param callable op: A reduction operation.
-        :param tuple dims: A tuple dims to be argreduced.
+        :param set dims: An optional dim or set of dims to reduce.
         :return: A tuple ``(args, remaining)`` where ``args`` is a
             dict mapping a subset of input dims to funsors possibly depending
             on remaining dims, and ``remaining`` is a funsor depending on
             remaing dims.
         :rtype: tuple
         """
+        if isinstance(dims, str):
+            dims = (dims,)
         dims = frozenset(dims).intersection(self.dims)
         if not dims:
             return {}, self
@@ -366,6 +372,9 @@ class Variable(Funsor):
         assert (name, size) not in _TERMS, 'use make() instead'
         super(Variable, self).__init__((name,), (size,))
 
+    def __repr__(self):
+        return self.name
+
     @property
     def name(self):
         return self.dims[0]
@@ -378,6 +387,42 @@ class Variable(Funsor):
         if isinstance(value, str):
             return var(value, self.shape[0])
         return to_funsor(value)
+
+
+class Substitution(Funsor):
+    def __init__(self, arg, subs):
+        assert isinstance(arg, Funsor)
+        assert isinstance(subs, tuple)
+        for dim_value in subs:
+            assert isinstance(dim_value, tuple)
+            dim, value = dim_value
+            assert isinstance(dim, str)
+            assert dim in arg.dims
+            assert isinstance(value, Funsor)
+        schema = arg.schema.copy()
+        for dim, value in subs:
+            del schema[dim]
+        for dim, value in subs:
+            schema.update(value.schema)
+        dims = tuple(schema)
+        shape = tuple(schema.values())
+        super(Substitution, self).__init__(dims, shape)
+        self.arg = arg
+        self.subs = subs
+
+    def __repr__(self):
+        return 'Substitution({}, {})'.format(self.arg, self.subs)
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+        subs = {dim: value(**kwargs) for dim, value in self.subs}
+        for dim, value in self.subs:
+            del kwargs[dim]
+        return self.arg(**kwargs)(**subs)
+
+    def materialize(self):
+        subs = {dim: value.materialize() for dim, value in self.subs}
+        return self.arg.materialize()(**subs)
 
 
 class Unary(Funsor):
@@ -395,6 +440,9 @@ class Unary(Funsor):
     def __call__(self, *args, **kwargs):
         return self.arg(*args, **kwargs).unary(self.op)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
+
+    def materialize(self):
+        return self.arg.materialize().unary(self.op)
 
 
 class Binary(Funsor):
@@ -419,22 +467,44 @@ class Binary(Funsor):
         kwargs.update(zip(self.dims, args))
         return self.lhs(**kwargs).binary(self.op, self.rhs(**kwargs))
 
+    def materialize(self):
+        return self.lhs.materialize().binary(self.op, self.rhs.materialize())
+
 
 class Reduction(Funsor):
-    def __init__(self, arg, dims):
+    def __init__(self, op, arg, reduce_dims):
+        assert callable(op)
         assert isinstance(arg, Funsor)
-        assert isinstance(dims, frozenset)
-        dims = tuple(d for d in arg.dims if d not in dims)
+        assert isinstance(reduce_dims, frozenset)
+        dims = tuple(d for d in arg.dims if d not in reduce_dims)
         shape = tuple(arg.schema[d] for d in dims)
         super(Reduction, self).__init__(dims, shape)
+        self.op = op
         self.arg = arg
-        self.reduced_dims = dims
+        self.reduce_dims = reduce_dims
+
+    def __repr__(self):
+        return 'Reduction({}, {}, {})'.format(
+            self.op.__name__, self.arg, self.reduce_dims)
 
     def __call__(self, *args, **kwargs):
         kwargs = {dim: value for dim, value in kwargs.items()
                   if dim in self.dims}
         kwargs.update(zip(self.dims, args))
-        return self.arg(**kwargs).reduce(self.reduced_dims)
+        return self.arg(**kwargs).reduce(self.op, self.reduce_dims)
+
+    def materialize(self):
+        return self.arg.materialize().reduce(self.op, self.reduce_dims)
+
+    def reduce(self, op, dims=None):
+        if op is self.op:
+            # Eagerly fuse reductions.
+            if dims is None:
+                dims = frozenset(self.dims)
+            else:
+                dims = frozenset(dims).intersection(self.dims)
+            return make(Reduction, op, self.arg, self.reduce_dims | dims)
+        return super(Reduction, self).reduce(op, dims)
 
 
 class Tensor(Funsor):
@@ -457,15 +527,18 @@ class Tensor(Funsor):
         for d in self.dims:
             if d in kwargs:
                 subs[d] = kwargs[d]
-        # Substitute one dim at a time.
-        conflicts = list(subs.keys())
-        result = self
-        for i, (dim, value) in enumerate(subs.items()):
-            if isinstance(value, Funsor):
-                if not set(value.dims).isdisjoint(conflicts[1 + i:]):
-                    raise NotImplementedError('TODO implement simultaneous substitution')
-            result = result._substitute(dim, value)
-        return result
+        if all(isinstance(v, (Number, slice, Tensor, str)) for v in subs.values()):
+            # Substitute one dim at a time.
+            conflicts = list(subs.keys())
+            result = self
+            for i, (dim, value) in enumerate(subs.items()):
+                if isinstance(value, Funsor):
+                    if not set(value.dims).isdisjoint(conflicts[1 + i:]):
+                        raise NotImplementedError(
+                            'TODO implement simultaneous substitution')
+                result = result._substitute(dim, value)
+            return result
+        return super(Tensor, self).__call__(*args, **kwargs)
 
     def _substitute(self, dim, value):
         pos = self.dims.index(dim)
@@ -496,7 +569,7 @@ class Tensor(Funsor):
             dims = list(self.dims)
             dims[pos] = dim
             return Tensor(tuple(dims), self.data)
-        raise NotImplementedError('TODO handle {}'.format(value))
+        raise RuntimeError('{} should be handled by caller'.format(value))
 
     def __bool__(self):
         return bool(self.data)
@@ -620,6 +693,14 @@ def var(name, size):
     return make(Variable, name, size)
 
 
+def _frange(name, size):
+    return Tensor((name,), make(torch.arange, size))
+
+
+def frange(name, size):
+    return make(_frange, name, size)
+
+
 def _of_shape(fn, shape):
     args, vargs, kwargs, defaults = inspect.getargspec(fn)
     assert not vargs
@@ -637,65 +718,16 @@ def of_shape(*shape):
     return functools.partial(_of_shape, shape=shape)
 
 
-def contract(*operands, **kwargs):
-    r"""
-    Sum-product contraction operation.
-
-    :param tuple dims: a tuple of strings of output dimensions. Any input dim
-        not requested as an output dim will be summed out.
-    :param \*operands: multiple :class:`Funsor`s.
-    :param tuple dims: An optional tuple of output dims to preserve.
-        Defaults to ``()``, meaning all dims are contracted.
-    :param str backend: An opt_einsum backend, defaults to 'torch'.
-    :return: A contracted funsor.
-    :rtype: Funsor
-    """
-    assert all(isinstance(x, Funsor) for x in operands)
-    dims = kwargs.pop('dims', ())
-    assert isinstance(dims, tuple)
-    assert all(isinstance(d, str) for d in dims)
-    kwargs.setdefault('backend', 'torch')
-    args = []
-    for x in operands:
-        x = x.materialize()
-        args.extend([x.data, x.dims])
-    args.append(dims)
-    data = opt_einsum.contract(*args, **kwargs)
-    return Tensor(dims, data)
-
-
-def argcontract(*operands, **kwargs):
-    r"""
-    Nary contraction operation, keeping track of the values of reduced dims.
-
-    :param tuple dims: a tuple of strings of output dimensions. Any input dim
-        not requested as an output dim will be summed out.
-    :param \*operands: multiple :class:`Funsor`s.
-    :param tuple dims: An optional tuple of output dims to preserve.
-        Defaults to ``()``, meaning all dims are contracted.
-    :param str backend: An opt_einsum backend, defaults to 'torch'.
-    :return: A tuple ``(args, remaining)`` where ``args`` is a
-        dict mapping a subset of input dims to funsors possibly depending
-        on remaining dims, and ``remaining`` is a funsor depending on
-        remaing dims.
-    :rtype: tuple
-    """
-    raise NotImplementedError('TODO')
-
-
-def logsumproductexp(*operands):
-    return contract(*operands, sum_op=ops.logaddexp, prod_op=ops.add)
-
-
 __all__ = [
+    'Binary',
     'DOMAINS',
     'Funsor',
+    'Reduction',
     'Tensor',
+    'Unary',
     'Variable',
-    'contract',
-    'of_shape',
-    'logsumproductexp',
     'make',
+    'of_shape',
     'ops',
     'to_funsor',
     'var',

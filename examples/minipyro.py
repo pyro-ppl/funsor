@@ -252,25 +252,19 @@ def main(args):
 
         tr = trace(deferred(model)).get_trace(data)
 
-        log_probs = [node["fn"](value=node["value"])
-                     for node in tr.values()
-                     if node["type"] == "sample"]
+        log_prob = sum(node["fn"](node["value"])
+                       for node in tr.values()
+                       if node["type"] == "sample")
 
-        loss = -funsor.logsumproductexp(*log_probs)  # contracts
+        # integrate out deferred variables
+        log_prob = log_prob.logsumexp()
+
+        loss = -funsor.eval(log_prob)  # does all the work
 
         if step % 10 == 0:
             print('step {} loss = {}'.format(step, loss.item()))
         loss.backward()
         optim.step()
-
-    # serving by drawing a posterior sample
-    # print('---- serving ----')
-    # eager_args, log_probs = model(data)
-    # lazy_args, log_prob = funsor.logsumproductexp(log_probs)
-    # joint_sample = eager_args
-    # joint_sample.update(lazy_args)
-    # for key, value in sorted(joint_sample.items()):
-    #     print('{} = {}'.format(key, value.item()))
 
 
 if __name__ == "__main__":

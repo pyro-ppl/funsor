@@ -32,7 +32,7 @@ def main(args_):
     # a Gaussian HMM model
     def model(data):
         args = {}
-        log_probs = []
+        log_prob_sum = 0.
         x_curr = 0.
         for t, y in enumerate(data):
             x_prev = x_curr
@@ -41,26 +41,25 @@ def main(args_):
             x_curr, log_prob = pyro_sample(
                 'x_{}'.format(t),
                 dist.Normal(loc=x_prev, scale=trans_noise))
-            log_probs.append(log_prob)
+            log_prob_sum += log_prob
 
             # an observe statement
             _, log_prob = pyro_sample(
                 'y_{}'.format(t),
                 dist.Normal(loc=x_curr, scale=emit_noise),
                 obs=y)
-            log_probs.append(log_prob)
+            log_prob_sum += log_prob
 
             # note filtering only makes sense in deferred mode.
             # this could be made safe via something like:
             #   x_curr = pyro.barrier(x_curr)
             if args_.filter:
                 # perform a filter update
-                args_t, log_prob = sum(log_probs).argmax()
-                log_probs = [log_prob]
+                args_t, log_prob_sum = log_prob_sum.argmax()
                 args.update(args_t)
                 x_curr = args[x_curr.name]
 
-        return args, log_probs
+        return args, log_prob_sum
 
     data = torch.randn(args_.time_steps)
 
@@ -69,8 +68,8 @@ def main(args_):
     optim = torch.optim.Adam(params, lr=args_.learning_rate)
     for step in range(args_.train_steps):
         optim.zero_grad()
-        eager_args, log_probs = model(data)
-        loss = -funsor.logsumproductexp(*log_probs)  # contracts
+        eager_args, log_prob = model(data)
+        loss = -funsor.eval(log_prob.logsumexp())  # integrates out deferred variables
         if step % 10 == 0:
             print('step {} loss = {}'.format(step, loss.item()))
         loss.backward()
@@ -78,8 +77,8 @@ def main(args_):
 
     # serving by drawing a posterior sample
     print('---- serving ----')
-    eager_args, log_probs = model(data)
-    lazy_args, log_prob = funsor.logsumproductexp(log_probs)
+    eager_args, log_prob = model(data)
+    lazy_args, log_prob = funsor.eval(log_prob.sample())
     joint_sample = eager_args
     joint_sample.update(lazy_args)
     for key, value in sorted(joint_sample.items()):
