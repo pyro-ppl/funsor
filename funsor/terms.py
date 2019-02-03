@@ -90,7 +90,7 @@ class Funsor(object):
         for d in self.dims:
             if d in kwargs:
                 subs[d] = kwargs[d]
-        return make(Substitution, self, tuple(subs))
+        return make(Substitution, self, tuple(subs.items()))
 
     def __getitem__(self, args):
         if not isinstance(args, tuple):
@@ -417,7 +417,7 @@ class Substitution(Funsor):
         kwargs.update(zip(self.dims, args))
         subs = {dim: value(**kwargs) for dim, value in self.subs}
         for dim, value in self.subs:
-            del kwargs[dim]
+            kwargs.pop(dim, None)
         return self.arg(**kwargs)(**subs)
 
     def materialize(self):

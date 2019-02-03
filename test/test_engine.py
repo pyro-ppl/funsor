@@ -34,7 +34,6 @@ def test_mm(materialize_f, materialize_g):
             assert eval_h[i, k] == h[i, k]
 
 
-@pytest.mark.xfail(reason='substitution error')
 @pytest.mark.parametrize('materialize_f', [False, True])
 @pytest.mark.parametrize('materialize_g', [False, True])
 def test_logsumproductexp(materialize_f, materialize_g):
