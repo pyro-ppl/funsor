@@ -32,6 +32,9 @@ class Distribution(Funsor):
         self.cls = cls
         self.params = OrderedDict(params)
 
+    def __repr__(self):
+        return '{}({})'.format(self.cls.__name__, self.params)
+
     def __call__(self, *args, **kwargs):
         kwargs = {d: to_funsor(v) for d, v in kwargs.items() if d in self.dims}
         kwargs.update(zip(self.dims, map(to_funsor, args)))
@@ -70,11 +73,10 @@ class Distribution(Funsor):
         return super(Distribution, self).argreduce(op, dims)
 
 
-class Normal(Distribution):
-    def __init__(self, loc, scale):
-        params = frozenset([('loc', to_funsor(loc)),
-                            ('scale', to_funsor(scale))])
-        super(Normal, self).__init__(dist.Normal, params)
+def Normal(loc, scale):
+    params = frozenset([('loc', to_funsor(loc)),
+                        ('scale', to_funsor(scale))])
+    return make(Distribution, dist.Normal, params)
 
 
 __all__ = [
