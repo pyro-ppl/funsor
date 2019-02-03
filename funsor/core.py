@@ -22,24 +22,22 @@ def align_tensors(*args):
     r"""
     Permute multiple tensors before applying a broadcasted op.
 
-    :param \*args: multiple pairs ``(dims, data)``, where each ``dims``
-        is a tuple of strings naming its tensor's dimensions.
-    :return: a pair ``(dims, tensors)`` where all tensors can be
-        broadcast together to a single data with ``dims``.
+    This is mainly useful for implementing eager funsor operations.
+
+    :param Tensor \*args: Multiple :class:`Tensor`s.
+    :return: a pair ``(dims, tensors)`` where tensors are all
+        :class:`torch.Tensor`s that can be broadcast together to a single data
+        with ``dims``.
     """
     sizes = OrderedDict()
-    for x_dims, x in args:
-        assert isinstance(x_dims, tuple)
-        assert all(isinstance(d, str) for d in x_dims)
-        assert isinstance(x, torch.Tensor)
-        assert len(x_dims) == x.dim()
-        for dim, size in zip(x_dims, x.shape):
-            sizes[dim] = size
+    for x in args:
+        sizes.update(x.schema)
     dims = tuple(sizes)
     tensors = []
-    for i, (x_dims, x) in enumerate(args):
+    for i, x in enumerate(args):
+        x_dims, x = x.dims, x.data
         if x_dims != dims:
-            x = x.permute(tuple(x_dims.index(d) for d in dims if d in x_dims))
+            x = x.data.permute(tuple(x_dims.index(d) for d in dims if d in x_dims))
             x = x.reshape(tuple(sizes[d] if d in x_dims else 1 for d in dims))
         assert x.dim() == len(dims)
         tensors.append(x)
@@ -51,9 +49,9 @@ class Funsor(object):
     """
     Abstract base class for immutable functional tensors.
 
-    Probabilistic methods like :meth:`sample` and :meth:`marginal` follow the
-    convention that funsors represent log density functions. Thus for example
-    the partition function is given by :meth:`logsumexp`.
+    .. note:: Probabilistic methods like :meth:`sample` and :meth:`marginal`
+        follow the convention that funsors represent log density functions.
+        Thus for example the partition function is given by :meth:`logsumexp`.
 
     :param tuple dims: A tuple of strings of dimension names.
     :param tuple shape: A tuple of sizes. Each size is either a nonnegative
@@ -79,6 +77,7 @@ class Funsor(object):
         raise NotImplementedError
 
     def __getitem__(self, key):
+        # TODO handle slice and Ellipsis here
         return self(*key) if isinstance(key, tuple) else self(key)
 
     # We avoid __setitem__ due to immutability.
@@ -419,17 +418,6 @@ class Variable(Funsor):
             return Tensor(self.dims, torch.arange(size))
         raise ValueError("cannot materialize variable of size {}".format(size))
 
-    def pointwise_unary(self, op):
-        if op is ops.exp:
-            return TransformedVariable(
-                self,
-                torch.distributions.transforms.ExpTransform())
-        if op is ops.log:
-            return TransformedVariable(
-                self,
-                torch.distributions.transforms.ExpTransform().inv)
-        return super(Variable, self).pointwise_unary(op)
-
 
 def var(name, size):
     """
@@ -449,26 +437,6 @@ def var(name, size):
         result = Variable(name, size)
     _VARIABLES[key] = result
     return result
-
-
-class TransformedVariable(Funsor):
-    def __init__(self, base, transform):
-        assert isinstance(base, (Variable, TransformedVariable))
-        assert isinstance(transform, torch.distributions.transforms.Transform)
-        super(TransformedVariable, self).__init__(base.dims, base.shape)
-        self.base = base
-        self.transform = transform
-
-    def pointwise_unary(self, op):
-        if op is ops.exp:
-            return TransformedVariable(
-                self,
-                torch.distributions.transforms.ExpTransform())
-        if op is ops.log:
-            return TransformedVariable(
-                self,
-                torch.distributions.transforms.ExpTransform().inv)
-        return super(TransformedVariable, self).pointwise_unary(op)
 
 
 class Function(Funsor):
@@ -620,9 +588,8 @@ class Tensor(Funsor):
             return super(Tensor, self).pointwise_binary(other, op)
         if self.dims == other.dims:
             return Tensor(self.dims, op(self.data, other.data))
-        dims, (self_x, other_x) = align_tensors((self.dims, self.data),
-                                                (other.dims, other.data))
-        return Tensor(dims, op(self_x, other_x))
+        dims, (self_data, other_data) = align_tensors(self, other)
+        return Tensor(dims, op(self_data, other_data))
 
     def reduce(self, op, dims=None):
         if op in ops.REDUCE_OP_TO_TORCH:
@@ -755,7 +722,6 @@ __all__ = [
     'Function',
     'Funsor',
     'Tensor',
-    'TransformedVariable',
     'Variable',
     'contract',
     'fun',

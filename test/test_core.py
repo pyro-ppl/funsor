@@ -218,7 +218,8 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
     if symbol in BOOLEAN_OPS:
         data1 = data1.byte()
         data2 = data2.byte()
-    dims, aligned = align_tensors((dims1, data1), (dims2, data2))
+    dims, aligned = align_tensors(funsor.Tensor(dims1, data1),
+                                  funsor.Tensor(dims2, data2))
     expected_data = binary_eval(symbol, aligned[0], aligned[1])
 
     x1 = funsor.Tensor(dims1, data1)
