@@ -178,9 +178,6 @@ class StandardNormal(Distribution):
                 raise NotImplementedError('TODO')
         return super(Normal, self).binary(op, other)
 
-    # TODO implement optimized .contract()
-    # TODO implement optimized .argcontract()
-
 
 def Normal(loc, scale, name='value'):
     loc = to_funsor(loc)

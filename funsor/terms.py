@@ -185,39 +185,6 @@ class Funsor(object):
             return {}, self
         raise NotImplementedError
 
-    def contract(self, sum_op, prod_op, other, dims=None):
-        """
-        Perform a binary contration, equivalent to binary product followed by a
-        sum reduction.
-
-        :param callable sum_op: A reduction operation.
-        :param callable prod_op: A binary operation.
-        :param Funsor other: Another Funsor.
-        :param set dims: An optional set of dims to sum-reduce.
-            If unspecified, all dims will be reduced.
-        :return: A contracted funsor.
-        :rtype: Funsor
-        """
-        return self.binary(prod_op, other).reduce(sum_op, dims)
-
-    def argcontract(self, sum_op, prod_op, other, dims):
-        """
-        Perform a binary contration, keeping track of the values of reduced
-        dimensions. This is equivalent to binary product followed by a
-        sum argreduction.
-
-        :param callable sum_op: A reduction operation.
-        :param callable prod_op: A binary operation.
-        :param Funsor other: Another Funsor.
-        :param set dims: An set of dims to sum-reduce.
-        :return: A tuple ``(args, remaining)`` where ``args`` is a
-            dict mapping a subset of input dims to funsors possibly depending
-            on remaining dims, and ``remaining`` is a funsor depending on
-            remaing dims.
-        :rtype: tuple
-        """
-        return self.binary(prod_op, other).argreduce(sum_op, dims)
-
     # ------------------------------------------------------------------------
     # Subclasses should not override these methods; instead override
     # the generic handlers and fall back to super(...).handler.
