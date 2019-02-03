@@ -168,7 +168,7 @@ class StandardNormal(Distribution):
             return {self.dims[0]: value}, to_funsor(0.)
         raise NotImplementedError
 
-    def pointwise_binary(self, op, other):
+    def binary(self, op, other):
         if op is ops.add:
             if isinstance(other, Normal):
                 raise NotImplementedError('TODO')
@@ -176,7 +176,7 @@ class StandardNormal(Distribution):
                 raise NotImplementedError('TODO')
             if isinstance(other, Delta):
                 raise NotImplementedError('TODO')
-        return super(Normal, self).pointwise_binary(op, other)
+        return super(Normal, self).binary(op, other)
 
     # TODO implement optimized .contract()
     # TODO implement optimized .argcontract()

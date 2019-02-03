@@ -117,7 +117,7 @@ class Funsor(object):
             data = data.reshape(self.shape)
         return Tensor(self.dims, data)
 
-    def pointwise_unary(self, op):
+    def unary(self, op):
         """
         Pointwise unary operation.
         """
@@ -127,12 +127,12 @@ class Funsor(object):
 
         return Function(self.dims, self.shape, fn)
 
-    def pointwise_binary(self, other, op):
+    def binary(self, op, other):
         """
         Broadcasted pointwise binary operation.
         """
         if not isinstance(other, Funsor):
-            return self.pointwise_unary(lambda a: op(a, other))
+            return self.unary(lambda a: op(a, other))
 
         if self.dims == other.dims:
             dims = self.dims
@@ -208,7 +208,7 @@ class Funsor(object):
         :return: A contracted funsor.
         :rtype: Funsor
         """
-        return self.pointwise_binary(prod_op, other).reduce(sum_op, dims)
+        return self.binary(prod_op, other).reduce(sum_op, dims)
 
     def argcontract(self, sum_op, prod_op, other, dims):
         """
@@ -226,101 +226,101 @@ class Funsor(object):
             remaing dims.
         :rtype: tuple
         """
-        return self.pointwise_binary(prod_op, other).argreduce(sum_op, dims)
+        return self.binary(prod_op, other).argreduce(sum_op, dims)
 
     # ------------------------------------------------------------------------
     # Subclasses should not override these methods; instead override
     # the generic handlers and fall back to super(...).handler.
 
     def __invert__(self):
-        return self.pointwise_unary(ops.invert)
+        return self.unary(ops.invert)
 
     def __neg__(self):
-        return self.pointwise_unary(ops.neg)
+        return self.unary(ops.neg)
 
     def abs(self):
-        return self.pointwise_unary(ops.abs)
+        return self.unary(ops.abs)
 
     def sqrt(self):
-        return self.pointwise_unary(ops.sqrt)
+        return self.unary(ops.sqrt)
 
     def exp(self):
-        return self.pointwise_unary(ops.exp)
+        return self.unary(ops.exp)
 
     def log(self):
-        return self.pointwise_unary(ops.log)
+        return self.unary(ops.log)
 
     def log1p(self):
-        return self.pointwise_unary(ops.log1p)
+        return self.unary(ops.log1p)
 
     def __add__(self, other):
-        return self.pointwise_binary(other, ops.add)
+        return self.binary(ops.add, other)
 
     def __radd__(self, other):
-        return self.pointwise_binary(other, ops.add)
+        return self.binary(ops.add, other)
 
     def __sub__(self, other):
-        return self.pointwise_binary(other, ops.sub)
+        return self.binary(ops.sub, other)
 
     def __rsub__(self, other):
-        return self.pointwise_binary(other, ops.rsub)
+        return self.binary(ops.rsub, other)
 
     def __mul__(self, other):
-        return self.pointwise_binary(other, ops.mul)
+        return self.binary(ops.mul, other)
 
     def __rmul__(self, other):
-        return self.pointwise_binary(other, ops.mul)
+        return self.binary(ops.mul, other)
 
     def __truediv__(self, other):
-        return self.pointwise_binary(other, ops.truediv)
+        return self.binary(ops.truediv, other)
 
     def __rtruediv__(self, other):
-        return self.pointwise_binary(other, ops.rtruediv)
+        return self.binary(ops.rtruediv, other)
 
     def __pow__(self, other):
-        return self.pointwise_binary(other, ops.pow)
+        return self.binary(ops.pow, other)
 
     def __rpow__(self, other):
-        return self.pointwise_binary(other, ops.rpow)
+        return self.binary(ops.rpow, other)
 
     def __and__(self, other):
-        return self.pointwise_binary(other, ops.and_)
+        return self.binary(ops.and_, other)
 
     def __rand__(self, other):
-        return self.pointwise_binary(other, ops.and_)
+        return self.binary(ops.and_, other)
 
     def __or__(self, other):
-        return self.pointwise_binary(other, ops.or_)
+        return self.binary(ops.or_, other)
 
     def __ror__(self, other):
-        return self.pointwise_binary(other, ops.or_)
+        return self.binary(ops.or_, other)
 
     def __xor__(self, other):
-        return self.pointwise_binary(other, ops.xor)
+        return self.binary(ops.xor, other)
 
     def __eq__(self, other):
-        return self.pointwise_binary(other, ops.eq)
+        return self.binary(ops.eq, other)
 
     def __ne__(self, other):
-        return self.pointwise_binary(other, ops.ne)
+        return self.binary(ops.ne, other)
 
     def __lt__(self, other):
-        return self.pointwise_binary(other, ops.lt)
+        return self.binary(ops.lt, other)
 
     def __le__(self, other):
-        return self.pointwise_binary(other, ops.le)
+        return self.binary(ops.le, other)
 
     def __gt__(self, other):
-        return self.pointwise_binary(other, ops.gt)
+        return self.binary(ops.gt, other)
 
     def __ge__(self, other):
-        return self.pointwise_binary(other, ops.ge)
+        return self.binary(ops.ge, other)
 
     def __min__(self, other):
-        return self.pointwise_binary(other, ops.min)
+        return self.binary(ops.min, other)
 
     def __max__(self, other):
-        return self.pointwise_binary(other, ops.max)
+        return self.binary(ops.max, other)
 
     def sum(self, dims=None):
         return self.reduce(ops.add, dims)
@@ -437,6 +437,18 @@ def var(name, size):
         result = Variable(name, size)
     _VARIABLES[key] = result
     return result
+
+
+class Unary(Funsor):
+    def __init__(self, op, arg):
+        assert callable(op)
+        assert isinstance(arg, Funsor)
+        super(Unary, self).__init__(arg.dims, arg.shape)
+        self.op = op
+        self.arg = arg
+
+    def __call__(self, *args, **kwargs):
+        return self.arg(*args, **kwargs).unary(self.op)
 
 
 class Function(Funsor):
@@ -580,12 +592,12 @@ class Tensor(Funsor):
         data = self.data.permute(tuple(self.dims.index(d) for d in dims))
         return Tensor(dims, data)
 
-    def pointwise_unary(self, op):
+    def unary(self, op):
         return Tensor(self.dims, op(self.data))
 
-    def pointwise_binary(self, other, op):
+    def binary(self, op, other):
         if not isinstance(other, Tensor):
-            return super(Tensor, self).pointwise_binary(other, op)
+            return super(Tensor, self).binary(op, other)
         if self.dims == other.dims:
             return Tensor(self.dims, op(self.data, other.data))
         dims, (self_data, other_data) = align_tensors(self, other)
