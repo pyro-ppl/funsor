@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import funsor
-from funsor.core import align_tensors
+from funsor.terms import align_tensors
 
 
 def check_funsor(x, dims, shape, data=None):

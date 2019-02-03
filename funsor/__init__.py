@@ -1,8 +1,8 @@
 from __future__ import absolute_import, division, print_function
 
-from funsor.core import Funsor, Tensor, argcontract, contract, of_shape, to_funsor, var
+from funsor.terms import Funsor, Tensor, argcontract, contract, of_shape, to_funsor, var
 
-from . import core, ops, distributions
+from . import distributions, ops, terms
 
 __all__ = [
     'Funsor',
@@ -11,11 +11,11 @@ __all__ = [
     'Variable',
     'argcontract',
     'contract',
-    'core',
     'distributions',
     'logsumproductexp',
     'of_shape',
     'ops',
+    'terms',
     'to_funsor',
     'var',
 ]

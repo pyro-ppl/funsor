@@ -6,7 +6,7 @@ from collections import OrderedDict
 import torch
 
 import funsor.ops as ops
-from funsor.core import Funsor, Tensor, Variable, align_tensors, to_funsor, var
+from funsor.terms import Funsor, Tensor, Variable, align_tensors, to_funsor, var
 
 
 def _drop_dims(dist, dims):
