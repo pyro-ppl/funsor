@@ -382,6 +382,7 @@ class Substitution(Funsor):
         return 'Substitution({}, {})'.format(self.arg, self.subs)
 
     def __call__(self, *args, **kwargs):
+        # TODO eagerly fuse substitutions.
         kwargs.update(zip(self.dims, args))
         subs = {dim: value(**kwargs) for dim, value in self.subs}
         for dim, value in self.subs:
@@ -391,6 +392,15 @@ class Substitution(Funsor):
     def materialize(self):
         subs = {dim: value.materialize() for dim, value in self.subs}
         return self.arg.materialize()(**subs)
+
+    def argreduce(self, op, dims):
+        if isinstance(dims, str):
+            dims = (dims,)
+        dims = frozenset(dims).intersection(self.dims)
+        if not dims:
+            return {}, self
+        # TODO apply log_abs_det_jacobian of each transform in self.subs
+        return super(Substitution, self).argreduce(op, dims)
 
 
 class Unary(Funsor):
@@ -407,7 +417,6 @@ class Unary(Funsor):
 
     def __call__(self, *args, **kwargs):
         return self.arg(*args, **kwargs).unary(self.op)
-        return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
     def materialize(self):
         return self.arg.materialize().unary(self.op)
