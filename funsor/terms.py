@@ -359,8 +359,7 @@ class Funsor(object):
 
 class Variable(Funsor):
     """
-    Funsor representing a single continuous-valued free variable.
-    Note discrete variables can be materialized as :class:`Tensor`s.
+    Funsor representing a single free variable.
 
     .. warning:: Do not construct :class:`Variable`s directly.
         instead use :func:`var`.
@@ -391,6 +390,8 @@ class Variable(Funsor):
 
 class Substitution(Funsor):
     def __init__(self, arg, subs):
+        assert _TERMS.setdefault((Substitution, arg, subs), self) is self, \
+            'use make() instead'
         assert isinstance(arg, Funsor)
         assert isinstance(subs, tuple)
         for dim_value in subs:
@@ -427,7 +428,7 @@ class Substitution(Funsor):
 
 class Unary(Funsor):
     def __init__(self, op, arg):
-        assert (op, arg) not in _TERMS, 'use make() instead'
+        assert _TERMS.setdefault((Unary, op, arg), self) is self, 'use make() instead'
         assert callable(op)
         assert isinstance(arg, Funsor)
         super(Unary, self).__init__(arg.dims, arg.shape)
@@ -447,7 +448,8 @@ class Unary(Funsor):
 
 class Binary(Funsor):
     def __init__(self, op, lhs, rhs):
-        assert (op, lhs, rhs) not in _TERMS, 'use make() instead'
+        assert _TERMS.setdefault((Binary, op, lhs, rhs), self) is self, \
+            'use make() instead'
         assert callable(op)
         assert isinstance(lhs, Funsor)
         assert isinstance(rhs, Funsor)
@@ -473,6 +475,9 @@ class Binary(Funsor):
 
 class Reduction(Funsor):
     def __init__(self, op, arg, reduce_dims):
+        assert _TERMS.setdefault((Reduction, op, arg, reduce_dims), self) is self, \
+            'use make() instead'
+        assert (op, arg, reduce_dims) not in _TERMS, 'use make() instead'
         assert callable(op)
         assert isinstance(arg, Funsor)
         assert isinstance(reduce_dims, frozenset)
