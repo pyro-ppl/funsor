@@ -93,9 +93,25 @@ class Funsor(object):
         """
         raise NotImplementedError
 
-    def __getitem__(self, key):
-        # TODO handle slice and Ellipsis here
-        return self(*key) if isinstance(key, tuple) else self(key)
+    def __getitem__(self, args):
+        if not isinstance(args, tuple):
+            args = (args,)
+
+        # Handle Ellipsis notation like x[..., 0].
+        kwargs = {}
+        for pos, arg in enumerate(args):
+            if arg is Ellipsis:
+                kwargs.update(zip(reversed(self.dims),
+                                  reversed(args[1 + pos:])))
+                break
+            kwargs[self.dims[pos]] = arg
+
+        # Handle complete slices like x[:].
+        kwargs = {dim: value
+                  for dim, value in kwargs.items()
+                  if not (isinstance(value, slice) and value == slice(None))}
+
+        return self(**kwargs)
 
     # Avoid __setitem__ due to immutability.
 
@@ -428,21 +444,18 @@ class Tensor(Funsor):
         return 'Tensor({}, ...)'.format(self.dims)
 
     def __call__(self, *args, **kwargs):
-        kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
-
-        # Handle Ellipsis notation like x[..., 0].
-        for pos, arg in enumerate(args):
-            if arg is Ellipsis:
-                kwargs.update(zip(reversed(self.dims),
-                                  reversed(args[1 + pos:])))
-                args = args[:pos]
-                break
-
+        subs = OrderedDict(zip(self.dims, args))
+        for d in self.dims:
+            if d in kwargs:
+                subs[d] = kwargs[d]
         # Substitute one dim at a time.
-        kwargs.update(zip(self.dims, args))
+        conflicts = list(subs.keys())
         result = self
-        for key, value in kwargs.items():
-            result = result._substitute(key, value)
+        for i, (dim, value) in enumerate(subs.items()):
+            if isinstance(value, Funsor):
+                if not set(value.dims).isdisjoint(conflicts[1 + i:]):
+                    raise NotImplementedError('TODO implement simultaneous substitution')
+            result = result._substitute(dim, value)
         return result
 
     def _substitute(self, dim, value):

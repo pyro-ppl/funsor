@@ -68,20 +68,19 @@ def test_variable(size):
     assert funsor.var('x', 'real') is x
     assert x['x'] is x
     assert x('x') is x
-    if size == 'real':
-        y = funsor.var('y', 'real')
-        assert x['y'] is y
-        assert x('y') is y
-        assert x(x='y') is y
-        assert x(x=y) is y
-        x4 = funsor.var('x', 4)
-        assert x4 is not x
-        assert x4['x'] is x4
-        assert x(x=x4) is x4
-        assert x(y=x4) is x
+    y = funsor.var('y', 'real')
+    assert x['y'] is y
+    assert x('y') is y
+    assert x(x='y') is y
+    assert x(x=y) is y
+    x4 = funsor.var('x', 4)
+    assert x4 is not x
+    assert x4['x'] is x4
+    assert x(x=x4) is x4
+    assert x(y=x4) is x
 
-        xp1 = x + 1
-        assert xp1(x=2) == 3
+    xp1 = x + 1
+    assert xp1(x=2) == 3
 
 
 def test_indexing():
