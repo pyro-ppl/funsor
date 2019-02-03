@@ -2,7 +2,6 @@ from __future__ import absolute_import, division, print_function
 
 import functools
 import inspect
-import itertools
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 from numbers import Number
@@ -44,6 +43,21 @@ def align_tensors(*args):
     return dims, tensors
 
 
+_TERMS = WeakValueDictionary()  # For cons hashing terms.
+
+
+def make(*args):
+    """
+    Construct a cons hashed term.
+    """
+    fn = args[0]
+    if args in _TERMS:
+        return _TERMS[args]
+    result = fn(*args[1:])
+    _TERMS[args] = result
+    return result
+
+
 @add_metaclass(ABCMeta)
 class Funsor(object):
     """
@@ -69,6 +83,9 @@ class Funsor(object):
         self.shape = shape
         self.schema = OrderedDict(zip(dims, shape))
 
+    def __hash__(self):
+        return id(self)
+
     @abstractmethod
     def __call__(self, *args, **kwargs):
         """
@@ -80,7 +97,7 @@ class Funsor(object):
         # TODO handle slice and Ellipsis here
         return self(*key) if isinstance(key, tuple) else self(key)
 
-    # We avoid __setitem__ due to immutability.
+    # Avoid __setitem__ due to immutability.
 
     def __bool__(self):
         if self.shape:
@@ -94,67 +111,26 @@ class Funsor(object):
                 "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
 
-    def materialize(self, vectorize=True):
+    def materialize(self):
         """
-        Materializes to a :class:`Tensor` if possible;
-        raises ``NotImplementedError`` otherwise.
+        Materializes all discrete variables.
         """
-        for size in self.shape:
-            if not isinstance(size, int):
-                raise NotImplementedError(
-                    "cannot materialize domain {}".format(size))
-        if vectorize:
-            # fast vectorized computation
-            shape = self.shape
-            dim = len(shape)
-            args = [torch.arange(float(s)).reshape((s,) + (1,) * (dim - i - 1))
-                    for i, s in enumerate(shape)]
-            data = self(*args).item()
-        else:
-            # slow elementwise computation
-            index = itertools.product(*map(range, self.shape))
-            data = torch.tensor([self(*i).item() for i in index])
-            data = data.reshape(self.shape)
-        return Tensor(self.dims, data)
+        kwargs = {dim: Tensor((dim,), make(torch.arange, size))
+                  for dim, size in self.schema.items()
+                  if isinstance(size, int)}
+        return self(**kwargs)
 
     def unary(self, op):
         """
         Pointwise unary operation.
         """
-
-        def fn(*args, **kwargs):
-            return op(self(*args, **kwargs))
-
-        return Function(self.dims, self.shape, fn)
+        return make(Unary, op, self)
 
     def binary(self, op, other):
         """
         Broadcasted pointwise binary operation.
         """
-        if not isinstance(other, Funsor):
-            return self.unary(lambda a: op(a, other))
-
-        if self.dims == other.dims:
-            dims = self.dims
-            shape = self.shape
-
-            def fn(*args, **kwargs):
-                return op(self(*args, **kwargs), other(*args, **kwargs))
-
-            return Function(dims, shape, fn)
-
-        schema = self.schema.copy()
-        schema.update(other.schema)
-        dims = tuple(schema)
-        shape = tuple(schema.values())
-
-        def fn(*args, **kwargs):
-            kwargs.update(zip(dims, args))
-            kwargs1 = {d: i for d, i in kwargs.items() if d in self.dims}
-            kwargs2 = {d: i for d, i in kwargs.items() if d in other.dims}
-            return op(self(**kwargs1), other(**kwargs2))
-
-        return Function(dims, shape, fn)
+        return make(Binary, op, self, to_funsor(other))
 
     def reduce(self, op, dims=None):
         """
@@ -367,9 +343,6 @@ class Funsor(object):
         return self.argreduce(self, ops.sample, dims)
 
 
-_VARIABLES = WeakValueDictionary()
-
-
 class Variable(Funsor):
     """
     Funsor representing a single continuous-valued free variable.
@@ -382,9 +355,7 @@ class Variable(Funsor):
     :param size: A size, either an int or a ``DOMAIN``.
     """
     def __init__(self, name, size):
-        assert (name, size) not in _VARIABLES, (
-            'Do not construct Variables directly; '
-            'instead use funsor.variables().')
+        assert (name, size) not in _TERMS, 'use make() instead'
         super(Variable, self).__init__((name,), (size,))
 
     @property
@@ -396,116 +367,49 @@ class Variable(Funsor):
         if self.name not in kwargs:
             return self
         value = kwargs[self.name]
-        if value is Ellipsis:
-            return self
         if isinstance(value, str):
             return var(value, self.shape[0])
-        if isinstance(value, Number):
-            return
-        if isinstance(value, Funsor):
-            return value
-        raise NotImplementedError('TODO handle {}'.format(value))
-
-    def __bool__(self):
-        raise ValueError("bool value of Variable is undefined")
-
-    def item(self):
-        raise ValueError("Variable cannot be converted to a Python scalar")
-
-    def materialize(self):
-        size = self.shape[0]
-        if isinstance(size, int):
-            return Tensor(self.dims, torch.arange(size))
-        raise ValueError("cannot materialize variable of size {}".format(size))
-
-
-def var(name, size):
-    """
-    Constructs a new free variable.
-
-    :param str name: A variable name.
-    :param size: A size, either an int or a ``DOMAIN``.
-    :return: A new funsor with single dimension ``name``.
-    :rtype: Variable (if continuous) or Tensor (if discrete).
-    """
-    key = (name, size)
-    if key in _VARIABLES:
-        return _VARIABLES[key]
-    if isinstance(size, int):
-        result = Tensor((name,), torch.arange(size))
-    else:
-        result = Variable(name, size)
-    _VARIABLES[key] = result
-    return result
+        return to_funsor(value)
 
 
 class Unary(Funsor):
     def __init__(self, op, arg):
+        assert (op, arg) not in _TERMS, 'use make() instead'
         assert callable(op)
         assert isinstance(arg, Funsor)
         super(Unary, self).__init__(arg.dims, arg.shape)
         self.op = op
         self.arg = arg
 
+    def __repr__(self):
+        return 'Unary({}, {})'.format(self.op.__name__, self.arg)
+
     def __call__(self, *args, **kwargs):
         return self.arg(*args, **kwargs).unary(self.op)
+        return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
 
-class Function(Funsor):
-    """
-    Funsor backed by a Python function.
+class Binary(Funsor):
+    def __init__(self, op, lhs, rhs):
+        assert (op, lhs, rhs) not in _TERMS, 'use make() instead'
+        assert callable(op)
+        assert isinstance(lhs, Funsor)
+        assert isinstance(rhs, Funsor)
+        schema = lhs.schema.copy()
+        schema.update(rhs.schema)
+        dims = tuple(schema)
+        shape = tuple(schema.values())
+        super(Binary, self).__init__(dims, shape)
+        self.op = op
+        self.lhs = lhs
+        self.rhs = rhs
 
-    :param tuple dims: A tuple of strings of dimension names.
-    :param tuple shape: A tuple of sizes. Each size is either a nonnegative
-        integer or a string denoting a continuous domain.
-    :param callable fn: A function defining contents elementwise.
-    """
-    def __init__(self, dims, shape, fn):
-        assert callable(fn)
-        super(Function, self).__init__(dims, shape)
-        self.fn = fn
+    def __repr__(self):
+        return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
     def __call__(self, *args, **kwargs):
-        kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
-        if not args and not kwargs:
-            return self
-        dims = tuple(d for d in self.dims[len(args):] if d not in kwargs)
-        shape = tuple(self.schema[d] for d in dims)
-        fn = functools.partial(self.fn, *args, **kwargs)
-        return Function(dims, shape, fn)
-
-    def __bool__(self):
-        if self.shape:
-            raise ValueError(
-                "bool value of Funsor with more than one value is ambiguous")
-        return bool(self.fn())
-
-    def item(self):
-        if self.shape:
-            raise ValueError(
-                "only one element Funsors can be converted to Python scalars")
-        return self.fn()
-
-    def argreduce(self, op, dims):
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
-        return self.materialize().argreduce(op, dims)
-
-
-def _fun(fn, shape):
-    args, vargs, kwargs, defaults = inspect.getargspec(fn)
-    assert not vargs
-    assert not kwargs
-    dims = tuple(args)
-    return Function(dims, shape, fn)
-
-
-def fun(*shape):
-    """
-    Decorator to construct a :class:`Function`.
-    """
-    return functools.partial(_fun, shape=shape)
+        kwargs.update(zip(self.dims, args))
+        return self.lhs(**kwargs).binary(self.op, self.rhs(**kwargs))
 
 
 class Tensor(Funsor):
@@ -519,6 +423,9 @@ class Tensor(Funsor):
         assert isinstance(data, torch.Tensor)
         super(Tensor, self).__init__(dims, data.shape)
         self.data = data
+
+    def __repr__(self):
+        return 'Tensor({}, ...)'.format(self.dims)
 
     def __call__(self, *args, **kwargs):
         kwargs = {d: i for d, i in kwargs.items() if d in self.dims}
@@ -596,6 +503,8 @@ class Tensor(Funsor):
         return Tensor(self.dims, op(self.data))
 
     def binary(self, op, other):
+        if isinstance(other, (Number, torch.Tensor)):
+            return Tensor(self.dims, op(self.data, other))
         if not isinstance(other, Tensor):
             return super(Tensor, self).binary(op, other)
         if self.dims == other.dims:
@@ -673,10 +582,33 @@ def to_funsor(x):
     raise ValueError("cannot convert to Funsor: {}".format(x))
 
 
-def to_torch(x):
-    if isinstance(x, Funsor):
-        return x.materialize().data
-    return x
+def var(name, size):
+    """
+    Constructs a new free variable.
+
+    :param str name: A variable name.
+    :param size: A size, either an int or a ``DOMAIN``.
+    :return: A new funsor with single dimension ``name``.
+    :rtype: Variable (if continuous) or Tensor (if discrete).
+    """
+    return make(Variable, name, size)
+
+
+def _of_shape(fn, shape):
+    args, vargs, kwargs, defaults = inspect.getargspec(fn)
+    assert not vargs
+    assert not kwargs
+    dims = tuple(args)
+    args = [var(dim, size) for dim, size in zip(dims, shape)]
+    return fn(*args)
+
+
+def of_shape(*shape):
+    """
+    Decorator to construct a :class:`Funsor` with one free :class:`Variable`
+    per function arg.
+    """
+    return functools.partial(_of_shape, shape=shape)
 
 
 def contract(*operands, **kwargs):
@@ -731,15 +663,14 @@ def logsumproductexp(*operands):
 
 __all__ = [
     'DOMAINS',
-    'Function',
     'Funsor',
     'Tensor',
     'Variable',
     'contract',
-    'fun',
+    'of_shape',
     'logsumproductexp',
+    'make',
     'ops',
     'to_funsor',
-    'to_torch',
     'var',
 ]

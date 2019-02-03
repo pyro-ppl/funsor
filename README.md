@@ -1,6 +1,6 @@
 # Funsor ![unstable](https://img.shields.io/badge/status-unstable-red.svg)
 
-Functional analysis + tensors + algebra.
+Functional analysis + tensors + symbolic algebra.
 
 This library is an experimental work in progress.
 Beware building on top of this unstable prototype.

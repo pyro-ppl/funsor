@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 setup(
     name='funsor',
     version='0.0.0',
-    description='Functional analysis + tensors + algebra',
+    description='Functional analysis + tensors + symbolic algebra',
     packages=find_packages(include=['funsor', 'funsor.*']),
     url='https://github.com/pyro-ppl/funsor',
     author='Uber AI Labs',

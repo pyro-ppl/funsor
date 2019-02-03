@@ -23,14 +23,13 @@ def check_funsor(x, dims, shape, data=None):
         assert (x.data == data).all()
 
 
-@pytest.mark.parametrize('vectorize', [True, False])
-def test_materialize(vectorize):
+def test_materialize():
 
-    @funsor.fun(3, 4)
+    @funsor.of_shape(3, 4)
     def f(i, j):
         return i + j
 
-    g = f.materialize(vectorize=vectorize)
+    g = f.materialize()
 
     assert g.dims == f.dims
     assert g.shape == f.shape
@@ -40,14 +39,14 @@ def test_materialize(vectorize):
 
 def test_mm_contract():
 
-    @funsor.fun(3, 4)
+    @funsor.of_shape(3, 4)
     def f(i, j):
         return i + j
 
     assert f.dims == ('i', 'j')
     assert f.shape == (3, 4)
 
-    @funsor.fun(4, 5)
+    @funsor.of_shape(4, 5)
     def g(j, k):
         return j + k
 
