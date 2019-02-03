@@ -4,8 +4,7 @@ install:
 	pip install -e .[dev]
 
 lint: FORCE
-	# TODO(eb8680) fix lint errors in minipyro.py
-	flake8 --exclude=examples/minipyro.py
+	flake8
 
 test: lint FORCE
 	pytest -v test

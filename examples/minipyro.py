@@ -13,6 +13,7 @@ found at examples/minipyro.py.
 """
 from __future__ import absolute_import, division, print_function
 
+import argparse
 from collections import OrderedDict
 
 import torch
@@ -114,7 +115,7 @@ class plate(Messenger):
         assert dim < 0
         self.size = size
         self.dim = dim
-        super(PlateMessenger, self).__init__(fn)
+        super(plate, self).__init__(fn)
 
     def process_message(self, msg):
         if msg["type"] == "sample":
@@ -230,24 +231,24 @@ def main(args):
                 name='x_{}'.format(t))
 
             # an observe statement
-            y_curr = sample(
+            sample(
                 dist.Normal(loc=x_curr, scale=emit_noise),
                 obs=y,
                 name='y_{}'.format(t))
 
         return x_curr
 
-    trans_noise = param(torch.tensor(0.1, requires_grad=True), name="trans_noise")
-    emit_noise = param(torch.tensor(0.5, requires_grad=True), name="emit_noise")
-    data = torch.randn(args_.time_steps)
+    trans_noise = param(torch.tensor(0.1, requires_grad=True), name="trans_noise")  # noqa: F841
+    emit_noise = param(torch.tensor(0.5, requires_grad=True), name="emit_noise")  # noqa: F841
+    data = torch.randn(args.time_steps)
 
     params = [node["value"] for node in trace(model).get_trace(data)
               if node["type"] == "param"]
 
     # training loop
     print('---- training ----')
-    optim = torch.optim.Adam(params, lr=args_.learning_rate)
-    for step in range(args_.train_steps):
+    optim = torch.optim.Adam(params, lr=args.learning_rate)
+    for step in range(args.train_steps):
         optim.zero_grad()
 
         tr = trace(deferred(model)).get_trace(data)
