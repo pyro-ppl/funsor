@@ -7,6 +7,7 @@ from numbers import Number
 from weakref import WeakValueDictionary
 
 import torch
+from six import add_metaclass
 
 import funsor.ops as ops
 
@@ -39,25 +40,25 @@ def align_tensors(*args):
     return dims, tensors
 
 
-_TERMS = WeakValueDictionary()
+class ConsHashedMeta(type):
+    _cache = WeakValueDictionary()
+
+    def __call__(cls, *args):
+        key = (cls, args)
+        if key in cls._cache:
+            return cls._cache[key]
+        result = super(ConsHashedMeta, cls).__call__(*args)
+        cls._cache[key] = result
+        return result
 
 
-def make(*args):
-    """
-    Construct a cons hashed term.
-    Calls will be memoized for the lifetime of the result.
-    """
-    fn = args[0]
-    if args in _TERMS:
-        return _TERMS[args]
-    result = fn(*args[1:])
-    _TERMS[args] = result
-    return result
-
-
+@add_metaclass(ConsHashedMeta)
 class Funsor(object):
     """
     Abstract base class for immutable functional tensors.
+
+    Derived classes must implement ``__init__()`` methods taking hashable
+    ``*args`` and no ``**kwargs`` so as to support cons hashing.
 
     .. note:: Probabilistic methods like :meth:`sample` and :meth:`marginal`
         follow the convention that funsors represent log density functions.
@@ -90,7 +91,7 @@ class Funsor(object):
         for d in self.dims:
             if d in kwargs:
                 subs[d] = kwargs[d]
-        return make(Substitution, self, tuple(subs.items()))
+        return Substitution(self, tuple(subs.items()))
 
     def __getitem__(self, args):
         if not isinstance(args, tuple):
@@ -130,7 +131,7 @@ class Funsor(object):
         """
         Materializes all discrete variables.
         """
-        kwargs = {dim: make(frange, dim, size)
+        kwargs = {dim: Arange(dim, size)
                   for dim, size in self.schema.items()
                   if isinstance(size, int)}
         return self(**kwargs)
@@ -139,13 +140,13 @@ class Funsor(object):
         """
         Pointwise unary operation.
         """
-        return make(Unary, op, self)
+        return Unary(op, self)
 
     def binary(self, op, other):
         """
         Broadcasted pointwise binary operation.
         """
-        return make(Binary, op, self, to_funsor(other))
+        return Binary(op, self, to_funsor(other))
 
     def reduce(self, op, dims=None):
         """
@@ -163,7 +164,7 @@ class Funsor(object):
             dims = frozenset(dims).intersection(self.dims)
         if not dims:
             return self
-        return make(Reduction, op, self, dims)
+        return Reduction(op, self, dims)
 
     def argreduce(self, op, dims):
         """
@@ -328,14 +329,10 @@ class Variable(Funsor):
     """
     Funsor representing a single free variable.
 
-    .. warning:: Do not construct :class:`Variable`s directly.
-        instead use :func:`var`.
-
     :param str name: A variable name.
     :param size: A size, either an int or a ``DOMAIN``.
     """
     def __init__(self, name, size):
-        assert (name, size) not in _TERMS, 'use make() instead'
         super(Variable, self).__init__((name,), (size,))
 
     def __repr__(self):
@@ -351,14 +348,12 @@ class Variable(Funsor):
             return self
         value = kwargs[self.name]
         if isinstance(value, str):
-            return var(value, self.shape[0])
+            return Variable(value, self.shape[0])
         return to_funsor(value)
 
 
 class Substitution(Funsor):
     def __init__(self, arg, subs):
-        assert _TERMS.setdefault((Substitution, arg, subs), self) is self, \
-            'use make() instead'
         assert isinstance(arg, Funsor)
         assert isinstance(subs, tuple)
         for dim_value in subs:
@@ -382,6 +377,7 @@ class Substitution(Funsor):
         return 'Substitution({}, {})'.format(self.arg, self.subs)
 
     def __call__(self, *args, **kwargs):
+        # TODO eagerly fuse substitutions.
         kwargs.update(zip(self.dims, args))
         subs = {dim: value(**kwargs) for dim, value in self.subs}
         for dim, value in self.subs:
@@ -392,10 +388,18 @@ class Substitution(Funsor):
         subs = {dim: value.materialize() for dim, value in self.subs}
         return self.arg.materialize()(**subs)
 
+    def argreduce(self, op, dims):
+        if isinstance(dims, str):
+            dims = (dims,)
+        dims = frozenset(dims).intersection(self.dims)
+        if not dims:
+            return {}, self
+        # TODO apply log_abs_det_jacobian of each transform in self.subs
+        return super(Substitution, self).argreduce(op, dims)
+
 
 class Unary(Funsor):
     def __init__(self, op, arg):
-        assert _TERMS.setdefault((Unary, op, arg), self) is self, 'use make() instead'
         assert callable(op)
         assert isinstance(arg, Funsor)
         super(Unary, self).__init__(arg.dims, arg.shape)
@@ -407,7 +411,6 @@ class Unary(Funsor):
 
     def __call__(self, *args, **kwargs):
         return self.arg(*args, **kwargs).unary(self.op)
-        return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
     def materialize(self):
         return self.arg.materialize().unary(self.op)
@@ -415,8 +418,6 @@ class Unary(Funsor):
 
 class Binary(Funsor):
     def __init__(self, op, lhs, rhs):
-        assert _TERMS.setdefault((Binary, op, lhs, rhs), self) is self, \
-            'use make() instead'
         assert callable(op)
         assert isinstance(lhs, Funsor)
         assert isinstance(rhs, Funsor)
@@ -442,9 +443,6 @@ class Binary(Funsor):
 
 class Reduction(Funsor):
     def __init__(self, op, arg, reduce_dims):
-        assert _TERMS.setdefault((Reduction, op, arg, reduce_dims), self) is self, \
-            'use make() instead'
-        assert (op, arg, reduce_dims) not in _TERMS, 'use make() instead'
         assert callable(op)
         assert isinstance(arg, Funsor)
         assert isinstance(reduce_dims, frozenset)
@@ -475,7 +473,7 @@ class Reduction(Funsor):
                 dims = frozenset(self.dims)
             else:
                 dims = frozenset(dims).intersection(self.dims)
-            return make(Reduction, op, self.arg, self.reduce_dims | dims)
+            return Reduction(op, self.arg, self.reduce_dims | dims)
         return super(Reduction, self).reduce(op, dims)
 
 
@@ -638,6 +636,12 @@ class Tensor(Funsor):
         raise NotImplementedError('TODO handle {}'.format(op))
 
 
+class Arange(Tensor):
+    def __init__(self, name, size):
+        data = torch.arange(size)
+        super(Arange, self).__init__((name,), data)
+
+
 def to_funsor(x):
     """
     Convert to a :class:`Funsor`.
@@ -653,32 +657,12 @@ def to_funsor(x):
     raise ValueError("cannot convert to Funsor: {}".format(x))
 
 
-def var(name, size):
-    """
-    Constructs a new free variable.
-
-    :param str name: A variable name.
-    :param size: A size, either an int or a ``DOMAIN``.
-    :return: A new funsor with single dimension ``name``.
-    :rtype: Variable (if continuous) or Tensor (if discrete).
-    """
-    return make(Variable, name, size)
-
-
-def _frange(name, size):
-    return Tensor((name,), make(torch.arange, size))
-
-
-def frange(name, size):
-    return make(_frange, name, size)
-
-
 def _of_shape(fn, shape):
     args, vargs, kwargs, defaults = inspect.getargspec(fn)
     assert not vargs
     assert not kwargs
     dims = tuple(args)
-    args = [var(dim, size) for dim, size in zip(dims, shape)]
+    args = [Variable(dim, size) for dim, size in zip(dims, shape)]
     return fn(*args)
 
 
@@ -691,6 +675,7 @@ def of_shape(*shape):
 
 
 __all__ = [
+    'Arange',
     'Binary',
     'DOMAINS',
     'Funsor',
@@ -699,9 +684,7 @@ __all__ = [
     'Tensor',
     'Unary',
     'Variable',
-    'make',
     'of_shape',
     'ops',
     'to_funsor',
-    'var',
 ]

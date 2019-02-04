@@ -25,7 +25,7 @@ def main(args_):
             value = args['value']
         else:
             # this is deferred like pyro.sample during enumeration
-            value = funsor.var(name, fn.schema['value'])
+            value = funsor.Variable(name, fn.schema['value'])
             log_prob = fn(value=value)
         return value, log_prob
 

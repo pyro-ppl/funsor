@@ -72,17 +72,17 @@ def test_mm(materialize_f, materialize_g, materialize_h):
 
 @pytest.mark.parametrize('size', [3, 'real'])
 def test_variable(size):
-    x = funsor.var('x', 'real')
+    x = funsor.Variable('x', 'real')
     check_funsor(x, ('x',), ('real',))
-    assert funsor.var('x', 'real') is x
+    assert funsor.Variable('x', 'real') is x
     assert x['x'] is x
     assert x('x') is x
-    y = funsor.var('y', 'real')
+    y = funsor.Variable('y', 'real')
     assert x['y'] is y
     assert x('y') is y
     assert x(x='y') is y
     assert x(x=y) is y
-    x4 = funsor.var('x', 4)
+    x4 = funsor.Variable('x', 4)
     assert x4 is not x
     assert x4['x'] is x4
     assert x(x=x4) is x4
