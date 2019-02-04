@@ -481,6 +481,7 @@ class Reduction(Funsor):
         return super(Reduction, self).reduce(op, dims)
 
 
+@cons_hashed
 class Tensor(Funsor):
     """
     Funsor backed by a PyTorch Tensor.
