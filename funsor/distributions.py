@@ -5,20 +5,16 @@ from collections import OrderedDict
 import torch.distributions as dist
 
 import funsor.ops as ops
-import funsor.terms
-from funsor.terms import Funsor, Tensor, align_tensors, make, to_funsor
+from funsor.terms import Funsor, Tensor, align_tensors, cons_hashed, to_funsor
 
 
+@cons_hashed
 class Distribution(Funsor):
     """
     Base class for funsors representing univariate probability
     distributions over the leading dim, which is named 'value'.
-
-    Do not create these directly; instead call :func:`funsor.terms.make`.
     """
     def __init__(self, cls, params):
-        key = (Distribution, cls, params)
-        assert funsor.terms._TERMS.setdefault(key, self) is self, 'use make() instead'
         assert issubclass(cls, dist.Distribution)
         assert isinstance(params, frozenset)
         schema = OrderedDict([('value', 'real')])
@@ -48,7 +44,7 @@ class Distribution(Funsor):
 
     def _call_param(self, kwargs):
         params = frozenset((k, v(**kwargs)) for k, v in self.params.items())
-        return make(Distribution, self.cls, params)
+        return Distribution(self.cls, params)
 
     def _call_value(self, value):
         if isinstance(value, Tensor):
@@ -76,7 +72,7 @@ class Distribution(Funsor):
 def Normal(loc, scale):
     params = frozenset([('loc', to_funsor(loc)),
                         ('scale', to_funsor(scale))])
-    return make(Distribution, dist.Normal, params)
+    return Distribution(dist.Normal, params)
 
 
 __all__ = [

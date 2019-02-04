@@ -206,7 +206,7 @@ class deferred(Messenger):
 
     def process_message(self, msg):
         if msg["type"] == "sample" and msg["value"] is not None:
-            msg["value"] = funsor.var(msg["name"], msg["fn"].schema["value"])
+            msg["value"] = funsor.Variable(msg["name"], msg["fn"].schema["value"])
         return msg
 
 
