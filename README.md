@@ -9,10 +9,10 @@ Beware building on top of this unstable prototype.
 
 See [design doc](https://docs.google.com/document/d/1LUj-oV5hJe74HJWKtog07Qrcaq4uhZQ5NuYuRevaVFo).
 
-The goal of this library is to generalize Pyro's delayed inference algorithms
-from discrete to continuous variables, and to create machinery to enable
-partially delayed sampling compatible with universality. To achieve this goal
-this library makes three independent design choices:
+The goal of this library is to generalize [Pyro](http://pyro.ai)'s delayed
+inference algorithms from discrete to continuous variables, and to create
+machinery to enable partially delayed sampling compatible with universality. To
+achieve this goal this library makes three independent design choices:
 
 1.  Combine eager + lazy evaluation. `Funsor`s can be either eager
     (`funsor.Tensor` simply wraps `torch.Tensor`) or lazy. Lazy funsors are
@@ -31,7 +31,8 @@ this library makes three independent design choices:
     `__call__` operator. `Funsors` are viewed as quantities with one algebraic
     free variable per dimension.
 
-Using `funsor` we can easily implement Pyro-style delayed sampling, roughly:
+Using `funsor` we can easily implement Pyro-style
+[delayed sampling](http://pyro.ai/examples/enumeration.html), roughly:
 
 ```py
 trace_log_prob = 0.
