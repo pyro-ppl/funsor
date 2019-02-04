@@ -5,6 +5,8 @@ import opt_einsum
 import funsor.ops as ops
 from funsor.terms import Binary, Funsor, Reduction, Tensor
 
+from .paths import greedy
+
 
 def _parse_reduction(op, x):
     if isinstance(x, Reduction) and x.op is op:
