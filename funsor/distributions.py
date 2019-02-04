@@ -5,10 +5,9 @@ from collections import OrderedDict
 import torch.distributions as dist
 
 import funsor.ops as ops
-from funsor.terms import Funsor, Tensor, align_tensors, cons_hashed, to_funsor
+from funsor.terms import Funsor, Tensor, align_tensors, to_funsor
 
 
-@cons_hashed
 class Distribution(Funsor):
     """
     Base class for funsors representing univariate probability

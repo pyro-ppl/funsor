@@ -40,9 +40,25 @@ def align_tensors(*args):
     return dims, tensors
 
 
+class ConsHashedMeta(type):
+    _cache = WeakValueDictionary()
+
+    def __call__(cls, *args):
+        key = (cls, args)
+        if key in cls._cache:
+            return cls._cache[key]
+        result = super(ConsHashedMeta, cls).__call__(*args)
+        cls._cache[key] = result
+        return result
+
+
+@add_metaclass(ConsHashedMeta)
 class Funsor(object):
     """
     Abstract base class for immutable functional tensors.
+
+    Derived classes must implement ``__init__()`` methods taking hashable
+    ``*args`` and no ``**kwargs`` so as to support cons hashing.
 
     .. note:: Probabilistic methods like :meth:`sample` and :meth:`marginal`
         follow the convention that funsors represent log density functions.
@@ -309,22 +325,6 @@ class Funsor(object):
         return self.argreduce(self, ops.sample, dims)
 
 
-class ConsHashedMeta(type):
-    _cache = WeakValueDictionary()
-
-    def __call__(cls, *args):
-        key = (cls, args)
-        if key in cls._cache:
-            return cls._cache[key]
-        result = super(ConsHashedMeta, cls).__call__(*args)
-        cls._cache[key] = result
-        return result
-
-
-cons_hashed = add_metaclass(ConsHashedMeta)
-
-
-@cons_hashed
 class Variable(Funsor):
     """
     Funsor representing a single free variable.
@@ -352,7 +352,6 @@ class Variable(Funsor):
         return to_funsor(value)
 
 
-@cons_hashed
 class Substitution(Funsor):
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
@@ -399,7 +398,6 @@ class Substitution(Funsor):
         return super(Substitution, self).argreduce(op, dims)
 
 
-@cons_hashed
 class Unary(Funsor):
     def __init__(self, op, arg):
         assert callable(op)
@@ -418,7 +416,6 @@ class Unary(Funsor):
         return self.arg.materialize().unary(self.op)
 
 
-@cons_hashed
 class Binary(Funsor):
     def __init__(self, op, lhs, rhs):
         assert callable(op)
@@ -444,7 +441,6 @@ class Binary(Funsor):
         return self.lhs.materialize().binary(self.op, self.rhs.materialize())
 
 
-@cons_hashed
 class Reduction(Funsor):
     def __init__(self, op, arg, reduce_dims):
         assert callable(op)
@@ -481,7 +477,6 @@ class Reduction(Funsor):
         return super(Reduction, self).reduce(op, dims)
 
 
-@cons_hashed
 class Tensor(Funsor):
     """
     Funsor backed by a PyTorch Tensor.
@@ -641,7 +636,6 @@ class Tensor(Funsor):
         raise NotImplementedError('TODO handle {}'.format(op))
 
 
-@cons_hashed
 class Arange(Tensor):
     def __init__(self, name, size):
         data = torch.arange(size)
@@ -690,7 +684,6 @@ __all__ = [
     'Tensor',
     'Unary',
     'Variable',
-    'cons_hashed',
     'of_shape',
     'ops',
     'to_funsor',
