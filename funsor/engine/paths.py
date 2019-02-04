@@ -10,12 +10,40 @@ from collections import defaultdict
 
 import numpy as np
 
-from . import helpers
 
 __all__ = ["greedy",]
 
 
 _UNLIMITED_MEM = {-1, None, float('inf')}
+
+
+def compute_size_by_dict(indices, idx_dict):
+    """
+    Computes the product of the elements in indices based on the dictionary
+    idx_dict.
+
+    Parameters
+    ----------
+    indices : iterable
+        Indices to base the product on.
+    idx_dict : dictionary
+        Dictionary of index _sizes
+
+    Returns
+    -------
+    ret : int
+        The resulting product.
+
+    Examples
+    --------
+    >>> compute_size_by_dict('abbc', {'a': 2, 'b':3, 'c':5})
+    90
+
+    """
+    ret = 1
+    for i in indices:
+        ret *= idx_dict[i]
+    return ret
 
 
 def ssa_to_linear(ssa_path):
@@ -102,7 +130,7 @@ def _get_candidate(output, sizes, remaining, footprints, dim_ref_counts, k1, k2,
     two = k1 & k2
     one = either - two
     k12 = (either & output) | (two & dim_ref_counts[3]) | (one & dim_ref_counts[2])
-    cost = cost_fn(helpers.compute_size_by_dict(k12, sizes), footprints[k1], footprints[k2], k12, k1, k2)
+    cost = cost_fn(compute_size_by_dict(k12, sizes), footprints[k1], footprints[k2], k12, k1, k2)
     id1 = remaining[k1]
     id2 = remaining[k2]
     if id1 > id2:
@@ -197,7 +225,7 @@ def ssa_greedy_optimize(inputs, output, sizes, choose_fn=None, cost_fn='memory-r
         for count in [2, 3]}
 
     # Compute separable part of the objective function for contractions.
-    footprints = {key: helpers.compute_size_by_dict(key, sizes) for key in remaining}
+    footprints = {key: compute_size_by_dict(key, sizes) for key in remaining}
 
     # Find initial candidate contractions.
     queue = []
@@ -229,7 +257,7 @@ def ssa_greedy_optimize(inputs, output, sizes, choose_fn=None, cost_fn='memory-r
                 dim_to_keys[dim].add(k12)
         remaining[k12] = next(ssa_ids)
         _update_ref_counts(dim_to_keys, dim_ref_counts, k1 | k2 - output)
-        footprints[k12] = helpers.compute_size_by_dict(k12, sizes)
+        footprints[k12] = compute_size_by_dict(k12, sizes)
 
         # Find new candidate contractions.
         k1 = k12
@@ -239,7 +267,7 @@ def ssa_greedy_optimize(inputs, output, sizes, choose_fn=None, cost_fn='memory-r
             _push_candidate(output, sizes, remaining, footprints, dim_ref_counts, k1, k2s, queue, push_all, cost_fn)
 
     # Greedily compute pairwise outer products.
-    queue = [(helpers.compute_size_by_dict(key & output, sizes), ssa_id, key)
+    queue = [(compute_size_by_dict(key & output, sizes), ssa_id, key)
              for key, ssa_id in remaining.items()]
     heapq.heapify(queue)
     _, ssa_id1, k1 = heapq.heappop(queue)
@@ -247,7 +275,7 @@ def ssa_greedy_optimize(inputs, output, sizes, choose_fn=None, cost_fn='memory-r
         _, ssa_id2, k2 = heapq.heappop(queue)
         ssa_path.append((min(ssa_id1, ssa_id2), max(ssa_id1, ssa_id2)))
         k12 = (k1 | k2) & output
-        cost = helpers.compute_size_by_dict(k12, sizes)
+        cost = compute_size_by_dict(k12, sizes)
         ssa_id12 = next(ssa_ids)
         _, ssa_id1, k1 = heapq.heappushpop(queue, (cost, ssa_id12, k12))
 
