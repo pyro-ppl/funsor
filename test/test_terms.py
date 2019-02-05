@@ -45,9 +45,9 @@ def test_to_funsor():
 
 
 def test_cons_hash():
-    assert funsor.Variable("x", 3) is funsor.Variable("x", 3)
-    assert funsor.Variable("x", "real") is funsor.Variable("x", "real")
-    assert funsor.Variable("x", "real") is not funsor.Variable("x", 3)
+    assert funsor.Variable('x', 3) is funsor.Variable('x', 3)
+    assert funsor.Variable('x', 'real') is funsor.Variable('x', 'real')
+    assert funsor.Variable('x', 'real') is not funsor.Variable('x', 3)
     assert funsor.Number(0) is funsor.Number(0)
     assert funsor.Number(0.) is funsor.Number(0.)
     assert funsor.Number(0.) is not funsor.Number(0)
@@ -55,11 +55,11 @@ def test_cons_hash():
     x = torch.randn(3, 3)
     assert funsor.Tensor(('i', 'j'), x) is funsor.Tensor(('i', 'j'), x)
 
-    @funsor.of_shape("real", 2, 2)
+    @funsor.of_shape('real', 2, 2)
     def f1(x, i, j):
         return (x ** i + j).sum('i')
 
-    @funsor.of_shape("real", 2, 2)
+    @funsor.of_shape('real', 2, 2)
     def f2(x, i, j):
         return (x ** i + j).sum('i')
 
@@ -99,14 +99,14 @@ def test_mm(materialize_f, materialize_g, materialize_h):
             assert h[i, k] == sum(f[i, j] * g[j, k] for j in range(4))
 
 
-@pytest.mark.parametrize('size', [3, 'real'])
+@pytest.mark.parametrize('size', [3, 'real', 'density'])
 def test_variable(size):
-    x = funsor.Variable('x', 'real')
-    check_funsor(x, ('x',), ('real',))
-    assert funsor.Variable('x', 'real') is x
+    x = funsor.Variable('x', size)
+    check_funsor(x, ('x',), (size,))
+    assert funsor.Variable('x', size) is x
     assert x['x'] is x
     assert x('x') is x
-    y = funsor.Variable('y', 'real')
+    y = funsor.Variable('y', size)
     assert x['y'] is y
     assert x('y') is y
     assert x(x='y') is y

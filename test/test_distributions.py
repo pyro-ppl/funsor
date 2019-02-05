@@ -11,11 +11,15 @@ import funsor.distributions as dist
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
 def test_normal_call(batch_shape):
-    batch_dims = ("x", "y", "z")[:len(batch_shape)]
+    batch_dims = ('x', 'y', 'z')[:len(batch_shape)]
 
-    @funsor.of_shape("real", "real", "real")
+    @funsor.of_shape('real', 'real', 'density')
     def normal(loc, scale, value):
         return -((value - loc) ** 2) / (2 * scale ** 2) - scale.log() - math.log(math.sqrt(2 * math.pi))
+
+    assert isinstance(normal, funsor.Funsor)
+    assert normal.dims == ('loc', 'scale', 'value')
+    assert normal.shape == ('real', 'real', 'density')
 
     loc = funsor.Tensor(batch_dims, torch.randn(batch_shape))
     scale = funsor.Tensor(batch_dims, torch.randn(batch_shape).exp())

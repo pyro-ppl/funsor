@@ -11,7 +11,7 @@ from six import add_metaclass
 
 import funsor.ops as ops
 
-DOMAINS = ("real", "positive", "unit_interval")
+DOMAINS = ('real', 'density')
 
 
 def align_tensors(*args):
@@ -114,6 +114,16 @@ class Funsor(object):
         return self(**kwargs)
 
     # Avoid __setitem__ due to immutability.
+
+    def align(self, dims, shape):
+        """
+        Align this funsor to match given ``dims`` and ``shape``.
+        This can both permute and add constant dims.
+        """
+        if dims == self.dims:
+            assert shape == self.shape
+            return self
+        return Align(self, dims, shape)
 
     def __bool__(self):
         if self.shape:
@@ -382,6 +392,7 @@ class Substitution(Funsor):
         subs = {dim: value(**kwargs) for dim, value in self.subs}
         for dim, value in self.subs:
             kwargs.pop(dim, None)
+        # FIXME for densities, add log_abs_det_jacobian
         return self.arg(**kwargs)(**subs)
 
     def materialize(self):
@@ -396,6 +407,40 @@ class Substitution(Funsor):
             return {}, self
         # TODO apply log_abs_det_jacobian of each transform in self.subs
         return super(Substitution, self).argreduce(op, dims)
+
+
+class Align(Funsor):
+    def __init__(self, arg, dims, shape):
+        assert isinstance(arg, Funsor)
+        assert isinstance(dims, tuple)
+        assert isinstance(shape, tuple)
+        assert all(isinstance(d, str) for d in dims)
+        assert all(isinstance(s, int) or s in DOMAINS for s in shape)
+        for d, s in zip(dims, shape):
+            assert arg.schema.get(d, s) == s
+        super(Align, self).__init__(dims, shape)
+        self.arg = arg
+        self.dims = dims
+        self.shape = shape
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+        return self.arg(**kwargs)
+
+    def align(self, dims, shape):
+        return self.arg.align(dims, shape)
+
+    def unary(self, op):
+        return self.arg.unary(op)
+
+    def binary(self, op, other):
+        return self.arg.binary(op, other)
+
+    def reduce(self, op, dims=None):
+        return self.arg.reduce(op, dims)
+
+    def argreduce(self, op, dims):
+        return self.arg.reduce(op, dims)
 
 
 class Unary(Funsor):
@@ -515,11 +560,11 @@ class Number(Funsor):
     def binary(self, op, other):
         if isinstance(other, numbers.Number):
             return Number(op(self.data, other))
+        if isinstance(other, Number):
+            return Number(op(self.data, other.data))
         if isinstance(other, torch.Tensor):
             assert other.dim() == 0
             return Tensor((), op(self.data, other.data))
-        if isinstance(other, Number):
-            return Number(op(self.data, other.data))
         if isinstance(other, Tensor):
             return Tensor(other.dims, op(self.data, other.data))
         return super(Number, self).binary(op, other)
@@ -719,7 +764,7 @@ def _of_shape(fn, shape):
     assert not kwargs
     dims = tuple(args)
     args = [Variable(dim, size) for dim, size in zip(dims, shape)]
-    return fn(*args)
+    return to_funsor(fn(*args)).align(dims, shape)
 
 
 def of_shape(*shape):
@@ -731,6 +776,7 @@ def of_shape(*shape):
 
 
 __all__ = [
+    'Align',
     'Arange',
     'Binary',
     'DOMAINS',

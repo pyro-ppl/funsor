@@ -16,7 +16,7 @@ class Distribution(Funsor):
     def __init__(self, cls, params):
         assert issubclass(cls, dist.Distribution)
         assert isinstance(params, frozenset)
-        schema = OrderedDict([('value', 'real')])
+        schema = OrderedDict([('value', 'density')])
         for k, v in sorted(params):
             assert isinstance(k, str)
             assert isinstance(v, Funsor)
