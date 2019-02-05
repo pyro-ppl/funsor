@@ -44,6 +44,28 @@ def test_to_funsor():
     assert isinstance(funsor.to_funsor(torch.tensor(2.)), funsor.Tensor)
 
 
+def test_cons_hash():
+    assert funsor.Variable("x", 3) is funsor.Variable("x", 3)
+    assert funsor.Variable("x", "real") is funsor.Variable("x", "real")
+    assert funsor.Variable("x", "real") is not funsor.Variable("x", 3)
+    assert funsor.Number(0) is funsor.Number(0)
+    assert funsor.Number(0.) is funsor.Number(0.)
+    assert funsor.Number(0.) is not funsor.Number(0)
+
+    x = torch.randn(3, 3)
+    assert funsor.Tensor(('i', 'j'), x) is funsor.Tensor(('i', 'j'), x)
+
+    @funsor.of_shape("real", 2, 2)
+    def f1(x, i, j):
+        return (x ** i + j).sum('i')
+
+    @funsor.of_shape("real", 2, 2)
+    def f2(x, i, j):
+        return (x ** i + j).sum('i')
+
+    assert f1 is f2
+
+
 @pytest.mark.parametrize('materialize_f', [False, True])
 @pytest.mark.parametrize('materialize_g', [False, True])
 @pytest.mark.parametrize('materialize_h', [False, True])
