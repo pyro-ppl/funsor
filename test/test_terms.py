@@ -37,6 +37,13 @@ def test_materialize():
         assert f[key] == g[key]
 
 
+def test_to_funsor():
+    assert isinstance(funsor.to_funsor(2), funsor.Number)
+    assert isinstance(funsor.to_funsor(2.), funsor.Number)
+    assert isinstance(funsor.to_funsor(torch.tensor(2)), funsor.Tensor)
+    assert isinstance(funsor.to_funsor(torch.tensor(2.)), funsor.Tensor)
+
+
 @pytest.mark.parametrize('materialize_f', [False, True])
 @pytest.mark.parametrize('materialize_g', [False, True])
 @pytest.mark.parametrize('materialize_h', [False, True])

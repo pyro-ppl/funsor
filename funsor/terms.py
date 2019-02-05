@@ -336,7 +336,7 @@ class Variable(Funsor):
         super(Variable, self).__init__((name,), (size,))
 
     def __repr__(self):
-        return self.name
+        return "Variable({}, {})".format(repr(self.name), repr(self.shape[0]))
 
     @property
     def name(self):
@@ -500,7 +500,7 @@ class Number(Funsor):
     def __repr__(self):
         return 'Number({})'.format(repr(self.data))
 
-    def __call__(self):
+    def __call__(self, *args, **kwargs):
         return self
 
     def __bool__(self):

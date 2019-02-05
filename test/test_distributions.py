@@ -9,7 +9,6 @@ import funsor
 import funsor.distributions as dist
 
 
-@pytest.mark.xfail(reason='pow() operator fails on long')
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
 def test_normal_call(batch_shape):
     batch_dims = ("x", "y", "z")[:len(batch_shape)]
