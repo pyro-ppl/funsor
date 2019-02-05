@@ -115,11 +115,14 @@ class Funsor(object):
 
     # Avoid __setitem__ due to immutability.
 
-    def align(self, dims, shape):
+    def align(self, dims, shape=None):
         """
         Align this funsor to match given ``dims`` and ``shape``.
         This can both permute and add constant dims.
         """
+        if shape is None:
+            assert set(dims) == set(self.dims)
+            shape = tuple(self.schema[d] for d in dims)
         if dims == self.dims:
             assert shape == self.shape
             return self
@@ -392,8 +395,9 @@ class Substitution(Funsor):
         subs = {dim: value(**kwargs) for dim, value in self.subs}
         for dim, value in self.subs:
             kwargs.pop(dim, None)
+        result = self.arg(**kwargs)(**subs)
         # FIXME for densities, add log_abs_det_jacobian
-        return self.arg(**kwargs)(**subs)
+        return result
 
     def materialize(self):
         subs = {dim: value.materialize() for dim, value in self.subs}
@@ -646,7 +650,7 @@ class Tensor(Funsor):
     def materialize(self):
         return self
 
-    def permute(self, dims):
+    def align(self, dims, shape=None):
         """
         Create an equivalent :class:`Tensor` whose ``.dims`` are
         the provided dims. Note all dims must be accounted for in the input.
@@ -656,9 +660,17 @@ class Tensor(Funsor):
         :return: A permuted funsor equivalent to self.
         :rtype: Tensor
         """
-        assert set(dims) == set(self.dims)
-        data = self.data.permute(tuple(self.dims.index(d) for d in dims))
-        return Tensor(dims, data)
+        if shape is None:
+            assert set(dims) == set(self.dims)
+            shape = tuple(self.schema[d] for d in dims)
+        if dims == self.dims:
+            assert shape == self.shape
+            return self
+        if set(dims) == set(self.dims):
+            data = self.data.permute(tuple(self.dims.index(d) for d in dims))
+            return Tensor(dims, data)
+        # TODO unsqueeze and expand
+        return Align(self, dims, shape)
 
     def unary(self, op):
         return Tensor(self.dims, op(self.data))

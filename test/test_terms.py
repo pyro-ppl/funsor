@@ -349,3 +349,18 @@ def test_reduce_subset(dims, dims_reduced, op_name):
         dims = tuple(d for d in dims if d not in dims_reduced)
         shape = data.shape
         check_funsor(actual, dims, data.shape, data)
+
+
+def test_of_shape():
+
+    @funsor.of_shape(3)
+    def f(i):
+        return 0
+
+    check_funsor(f, ('i',), (3,))
+
+    @funsor.of_shape('real', 'real')
+    def g(x, y):
+        return y - x ** 2
+
+    check_funsor(g, ('x', 'y'), ('real', 'real'))
