@@ -12,7 +12,7 @@ setup(
     author_email='fritzo@uber.com',
     install_requires=[
         'opt_einsum>=2.3.2',
-        'pyro-ppl>=0.3.0',
+        'pyro-ppl==0.3.0',
         'six>=1.10.0',
         'torch>=1.0.0',
     ],

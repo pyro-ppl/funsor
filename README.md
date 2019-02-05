@@ -12,7 +12,7 @@ See [design doc](https://docs.google.com/document/d/1LUj-oV5hJe74HJWKtog07Qrcaq4
 The goal of this library is to generalize [Pyro](http://pyro.ai)'s delayed
 inference algorithms from discrete to continuous variables, and to create
 machinery to enable partially delayed sampling compatible with universality. To
-achieve this goal this library makes three independent design choices:
+achieve this goal this library makes three orthogonal design choices:
 
 1.  Combine eager + lazy evaluation. `Funsor`s can be either eager
     (`funsor.Tensor` simply wraps `torch.Tensor`) or lazy. Lazy funsors are
@@ -24,7 +24,7 @@ achieve this goal this library makes three independent design choices:
     is interpreted as function evaluation. This allows probability
     distributions to be first-class `Funsor`s and make use of existing tensor
     machinery, for example we can generalize tensor contraction to computing
-    analytic integrals in conjugate probilistic models.
+    analytic integrals in conjugate probabilistic models.
 
 3.  Named dimensions. To avoid the difficulties of broadcasting and advanced
     indexing, all `Funsor` dimensions are named, and indexing uses the

@@ -2,8 +2,8 @@ from __future__ import absolute_import, division, print_function
 
 import functools
 import inspect
+import numbers
 from collections import OrderedDict
-from numbers import Number
 from weakref import WeakValueDictionary
 
 import torch
@@ -336,7 +336,7 @@ class Variable(Funsor):
         super(Variable, self).__init__((name,), (size,))
 
     def __repr__(self):
-        return self.name
+        return "Variable({}, {})".format(repr(self.name), repr(self.shape[0]))
 
     @property
     def name(self):
@@ -477,6 +477,54 @@ class Reduction(Funsor):
         return super(Reduction, self).reduce(op, dims)
 
 
+class AddTypeMeta(ConsHashedMeta):
+    def __call__(cls, data, dtype=None):
+        if dtype is None:
+            dtype = type(data)
+        return super(AddTypeMeta, cls).__call__(data, dtype)
+
+
+@add_metaclass(AddTypeMeta)
+class Number(Funsor):
+    """
+    Funsor backed by a Python number.
+
+    :param numbers.Number data: A python number.
+    """
+    def __init__(self, data, dtype=None):
+        assert isinstance(data, numbers.Number)
+        assert dtype == type(data)
+        super(Number, self).__init__((), ())
+        self.data = data
+
+    def __repr__(self):
+        return 'Number({})'.format(repr(self.data))
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    def __bool__(self):
+        return bool(self.data)
+
+    def item(self):
+        return self.data
+
+    def unary(self, op):
+        return Number((), op(self.data))
+
+    def binary(self, op, other):
+        if isinstance(other, numbers.Number):
+            return Number(op(self.data, other))
+        if isinstance(other, torch.Tensor):
+            assert other.dim() == 0
+            return Tensor((), op(self.data, other.data))
+        if isinstance(other, Number):
+            return Number(op(self.data, other.data))
+        if isinstance(other, Tensor):
+            return Tensor(other.dims, op(self.data, other.data))
+        return super(Number, self).binary(op, other)
+
+
 class Tensor(Funsor):
     """
     Funsor backed by a PyTorch Tensor.
@@ -497,7 +545,7 @@ class Tensor(Funsor):
         for d in self.dims:
             if d in kwargs:
                 subs[d] = kwargs[d]
-        if all(isinstance(v, (Number, slice, Tensor, str)) for v in subs.values()):
+        if all(isinstance(v, (Number, numbers.Number, slice, Tensor, str)) for v in subs.values()):
             # Substitute one dim at a time.
             conflicts = list(subs.keys())
             result = self
@@ -513,6 +561,9 @@ class Tensor(Funsor):
     def _substitute(self, dim, value):
         pos = self.dims.index(dim)
         if isinstance(value, Number):
+            value = value.data
+            # Fall through to numbers.Number case.
+        if isinstance(value, numbers.Number):
             dims = self.dims[:pos] + self.dims[1+pos:]
             data = self.data[(slice(None),) * pos + (value,)]
             return Tensor(dims, data)
@@ -523,7 +574,7 @@ class Tensor(Funsor):
             stop = self.shape[pos] if value.stop is None else value.stop
             step = 1 if value.step is None else value.step
             value = Tensor((dim,), torch.arange(start, stop, step))
-            # Next fall through to Tensor case.
+            # Fall through to Tensor case.
         if isinstance(value, Tensor):
             dims = self.dims[:pos] + value.dims + self.dims[1+pos:]
             index = [slice(None)] * len(self.dims)
@@ -568,14 +619,19 @@ class Tensor(Funsor):
         return Tensor(self.dims, op(self.data))
 
     def binary(self, op, other):
-        if isinstance(other, (Number, torch.Tensor)):
+        if isinstance(other, numbers.Number):
             return Tensor(self.dims, op(self.data, other))
-        if not isinstance(other, Tensor):
-            return super(Tensor, self).binary(op, other)
-        if self.dims == other.dims:
+        if isinstance(other, torch.Tensor):
+            assert other.dim() == 0
+            return Tensor(self.dims, op(self.data, other))
+        if isinstance(other, Number):
             return Tensor(self.dims, op(self.data, other.data))
-        dims, (self_data, other_data) = align_tensors(self, other)
-        return Tensor(dims, op(self_data, other_data))
+        if isinstance(other, Tensor):
+            if self.dims == other.dims:
+                return Tensor(self.dims, op(self.data, other.data))
+            dims, (self_data, other_data) = align_tensors(self, other)
+            return Tensor(dims, op(self_data, other_data))
+        return super(Tensor, self).binary(op, other)
 
     def reduce(self, op, dims=None):
         if op in ops.REDUCE_OP_TO_TORCH:
@@ -649,11 +705,11 @@ def to_funsor(x):
     """
     if isinstance(x, Funsor):
         return x
+    if isinstance(x, numbers.Number):
+        return Number(x)
     if isinstance(x, torch.Tensor):
         assert x.dim() == 0
         return Tensor((), x)
-    if isinstance(x, Number):
-        return Tensor((), torch.tensor(x))
     raise ValueError("cannot convert to Funsor: {}".format(x))
 
 
@@ -679,6 +735,7 @@ __all__ = [
     'Binary',
     'DOMAINS',
     'Funsor',
+    'Number',
     'Reduction',
     'Substitution',
     'Tensor',
