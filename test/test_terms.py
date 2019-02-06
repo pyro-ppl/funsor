@@ -96,7 +96,7 @@ def test_mm(materialize_f, materialize_g, materialize_h):
     check_funsor(h, ('i', 'k'), (3, 5))
     for i in range(3):
         for k in range(5):
-            assert h[i, k] == sum(f[i, j] * g[j, k] for j in range(4))
+            assert h[i, k].materialize() == sum(f[i, j] * g[j, k] for j in range(4))
 
 
 @pytest.mark.parametrize('size', [3, 'real', 'density'])

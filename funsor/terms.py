@@ -42,8 +42,19 @@ def align_tensors(*args):
 
 class ConsHashedMeta(type):
     _cache = WeakValueDictionary()
+    _init_args = {}
 
-    def __call__(cls, *args):
+    def __call__(cls, *args, **kwargs):
+        if kwargs:
+            # Convert kwargs to args.
+            if cls not in cls._init_args:
+                cls._init_args[cls] = inspect.getargspec(cls.__init__)[0][1:]
+            args = list(args)
+            for name in cls._init_args[cls][len(args):]:
+                args.append(kwargs[name])
+            args = tuple(args)
+
+        # Memoize creation.
         key = (cls, args)
         if key in cls._cache:
             return cls._cache[key]
@@ -133,6 +144,9 @@ class Funsor(object):
             raise ValueError(
                 "bool value of Funsor with more than one value is ambiguous")
         raise NotImplementedError
+
+    def __nonzero__(self):
+        return self.__bool__()
 
     def item(self):
         if self.shape:
@@ -431,7 +445,10 @@ class Align(Funsor):
         kwargs.update(zip(self.dims, args))
         return self.arg(**kwargs)
 
-    def align(self, dims, shape):
+    def align(self, dims, shape=None):
+        if shape is None:
+            assert set(dims) == set(self.dims)
+            shape = tuple(self.schema[d] for d in dims)
         return self.arg.align(dims, shape)
 
     def unary(self, op):
@@ -587,7 +604,7 @@ class Tensor(Funsor):
         self.data = data
 
     def __repr__(self):
-        return 'Tensor({}, ...)'.format(self.dims)
+        return 'Tensor({}, {})'.format(self.dims, self.data)
 
     def __call__(self, *args, **kwargs):
         subs = OrderedDict(zip(self.dims, args))
@@ -787,6 +804,21 @@ def of_shape(*shape):
     return functools.partial(_of_shape, shape=shape)
 
 
+def _lift(fn, *args):
+    dims, tensors = align_tensors(*args)
+    data = fn(*tensors)
+    return Tensor(dims, data)
+
+
+def lift(fn):
+    """
+    Lift a PyTorch function ``f(*args)`` to a Funsor function.
+
+    This currently only supports pointwise functions.
+    """
+    return functools.partial(_lift, fn)
+
+
 __all__ = [
     'Align',
     'Arange',
@@ -799,6 +831,7 @@ __all__ = [
     'Tensor',
     'Unary',
     'Variable',
+    'lift',
     'of_shape',
     'ops',
     'to_funsor',
