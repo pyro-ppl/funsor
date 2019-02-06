@@ -772,6 +772,33 @@ class Arange(Tensor):
         super(Arange, self).__init__((name,), data)
 
 
+class Function(Funsor):
+    """
+    Funsor backed by a PyTorch function : Tensors -> Tensor.
+
+    This currently only supports pointwise functions.
+    """
+    def __init__(self, fn, shape=None):
+        assert callable(fn)
+        dims = tuple(inspect.getargspec(fn)[0])
+        if shape is None:
+            shape = ('real',) * len(dims)
+        super(Function, self).__init__(dims, shape)
+        self.fn = fn
+
+    def __call__(self, *args, **kwargs):
+        if kwargs:
+            args = list(args)
+            for name in self.dims[len(args):]:
+                args.append(kwargs.pop(name))
+            assert not kwargs
+        if all(isinstance(x, Tensor) for x in args):
+            dims, tensors = align_tensors(*args)
+            data = self.fn(*tensors)
+            return Tensor(dims, data)
+        return super(Function, self).__call__(*args, **kwargs)
+
+
 def to_funsor(x):
     """
     Convert to a :class:`Funsor`.
@@ -804,26 +831,12 @@ def of_shape(*shape):
     return functools.partial(_of_shape, shape=shape)
 
 
-def _lift(fn, *args):
-    dims, tensors = align_tensors(*args)
-    data = fn(*tensors)
-    return Tensor(dims, data)
-
-
-def lift(fn):
-    """
-    Lift a PyTorch function ``f(*args)`` to a Funsor function.
-
-    This currently only supports pointwise functions.
-    """
-    return functools.partial(_lift, fn)
-
-
 __all__ = [
     'Align',
     'Arange',
     'Binary',
     'DOMAINS',
+    'Function',
     'Funsor',
     'Number',
     'Reduction',
@@ -831,7 +844,6 @@ __all__ = [
     'Tensor',
     'Unary',
     'Variable',
-    'lift',
     'of_shape',
     'ops',
     'to_funsor',

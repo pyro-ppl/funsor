@@ -30,7 +30,7 @@ class Distribution(Funsor):
     def __repr__(self):
         return '{}({})'.format(
             self.cls.__name__,
-            ', '.join(map('{}={}'.format, self.params.items())))
+            ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def __call__(self, *args, **kwargs):
         kwargs = {d: to_funsor(v) for d, v in kwargs.items() if d in self.dims}
