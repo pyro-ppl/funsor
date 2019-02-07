@@ -31,7 +31,7 @@ def test_mm(materialize_f, materialize_g):
     assert eval_h.shape == h.shape
     for i in range(3):
         for k in range(5):
-            assert eval_h[i, k] == h[i, k]
+            assert eval_h[i, k] == h[i, k].materialize()
 
 
 @pytest.mark.parametrize('materialize_f', [False, True])
@@ -61,4 +61,4 @@ def test_logsumproductexp(materialize_f, materialize_g):
     assert eval_h.shape == h.shape
     for i in range(3):
         for k in range(5):
-            assert eval_h[i, k] == h[i, k]
+            assert (eval_h[i, k] - h[i, k].materialize()) < 1e-6

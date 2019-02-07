@@ -1,6 +1,8 @@
 from __future__ import absolute_import, division, print_function
 
 import itertools
+import operator
+from six.moves import reduce
 
 import pytest
 import torch
@@ -45,9 +47,9 @@ def test_to_funsor():
 
 
 def test_cons_hash():
-    assert funsor.Variable("x", 3) is funsor.Variable("x", 3)
-    assert funsor.Variable("x", "real") is funsor.Variable("x", "real")
-    assert funsor.Variable("x", "real") is not funsor.Variable("x", 3)
+    assert funsor.Variable('x', 3) is funsor.Variable('x', 3)
+    assert funsor.Variable('x', 'real') is funsor.Variable('x', 'real')
+    assert funsor.Variable('x', 'real') is not funsor.Variable('x', 3)
     assert funsor.Number(0) is funsor.Number(0)
     assert funsor.Number(0.) is funsor.Number(0.)
     assert funsor.Number(0.) is not funsor.Number(0)
@@ -55,11 +57,11 @@ def test_cons_hash():
     x = torch.randn(3, 3)
     assert funsor.Tensor(('i', 'j'), x) is funsor.Tensor(('i', 'j'), x)
 
-    @funsor.of_shape("real", 2, 2)
+    @funsor.of_shape('real', 2, 2)
     def f1(x, i, j):
         return (x ** i + j).sum('i')
 
-    @funsor.of_shape("real", 2, 2)
+    @funsor.of_shape('real', 2, 2)
     def f2(x, i, j):
         return (x ** i + j).sum('i')
 
@@ -96,17 +98,17 @@ def test_mm(materialize_f, materialize_g, materialize_h):
     check_funsor(h, ('i', 'k'), (3, 5))
     for i in range(3):
         for k in range(5):
-            assert h[i, k] == sum(f[i, j] * g[j, k] for j in range(4))
+            assert h[i, k].materialize() == sum(f[i, j] * g[j, k] for j in range(4))
 
 
-@pytest.mark.parametrize('size', [3, 'real'])
+@pytest.mark.parametrize('size', [3, 'real', 'density'])
 def test_variable(size):
-    x = funsor.Variable('x', 'real')
-    check_funsor(x, ('x',), ('real',))
-    assert funsor.Variable('x', 'real') is x
+    x = funsor.Variable('x', size)
+    check_funsor(x, ('x',), (size,))
+    assert funsor.Variable('x', size) is x
     assert x['x'] is x
     assert x('x') is x
-    y = funsor.Variable('y', 'real')
+    y = funsor.Variable('y', size)
     assert x['y'] is y
     assert x('y') is y
     assert x(x='y') is y
@@ -292,6 +294,65 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     check_funsor(actual, dims, shape, expected_data)
 
 
+def finitary_eval(symbol, operands):
+    op = getattr(operator, symbol)
+    return reduce(op, operands[1:], operands[0])
+
+
+@pytest.mark.parametrize('dims2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')])
+@pytest.mark.parametrize('dims1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('symbol', ["add", "mul", "and_", "or_"])
+def test_finitary_funsor_funsor(symbol, dims1, dims2):
+    # copied binary test to start
+    dims = tuple(sorted(set(dims1 + dims2)))
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape1 = tuple(sizes[d] for d in dims1)
+    shape2 = tuple(sizes[d] for d in dims2)
+    data1 = torch.rand(shape1) + 0.5
+    data2 = torch.rand(shape2) + 0.5
+    if symbol in ("and_", "or_"):  # TODO move to registry
+        data1 = data1.byte()
+        data2 = data2.byte()
+    dims, aligned = align_tensors(funsor.Tensor(dims1, data1),
+                                  funsor.Tensor(dims2, data2))
+    expected_data = finitary_eval(symbol, [aligned[0], aligned[1]])
+
+    x1 = funsor.Tensor(dims1, data1)
+    x2 = funsor.Tensor(dims2, data2)
+    actual = finitary_eval(symbol, [x1, x2])
+    check_funsor(actual, dims, expected_data.shape, expected_data)
+
+
+@pytest.mark.parametrize('scalar', [0.5])
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('symbol', ["add", "mul"])
+def test_finitary_funsor_scalar(symbol, dims, scalar):
+    # copied binary test for now
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape = tuple(sizes[d] for d in dims)
+    data1 = torch.rand(shape) + 0.5
+    expected_data = finitary_eval(symbol, [data1, scalar])
+
+    x1 = funsor.Tensor(dims, data1)
+    actual = finitary_eval(symbol, [x1, scalar])
+    check_funsor(actual, dims, shape, expected_data)
+
+
+@pytest.mark.parametrize('scalar', [0.5])
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('symbol', ["add", "mul"])
+def test_finitary_scalar_funsor(symbol, dims, scalar):
+    # copied binary test for now
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape = tuple(sizes[d] for d in dims)
+    data1 = torch.rand(shape) + 0.5
+    expected_data = finitary_eval(symbol, [scalar, data1])
+
+    x1 = funsor.Tensor(dims, data1)
+    actual = finitary_eval(symbol, [scalar, x1])
+    check_funsor(actual, dims, shape, expected_data)
+
+
 REDUCE_OPS = ['sum', 'prod', 'logsumexp', 'all', 'any', 'min', 'max']
 
 
@@ -349,3 +410,18 @@ def test_reduce_subset(dims, dims_reduced, op_name):
         dims = tuple(d for d in dims if d not in dims_reduced)
         shape = data.shape
         check_funsor(actual, dims, data.shape, data)
+
+
+def test_of_shape():
+
+    @funsor.of_shape(3)
+    def f(i):
+        return 0
+
+    check_funsor(f, ('i',), (3,))
+
+    @funsor.of_shape('real', 'real')
+    def g(x, y):
+        return y - x ** 2
+
+    check_funsor(g, ('x', 'y'), ('real', 'real'))

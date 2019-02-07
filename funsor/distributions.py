@@ -5,30 +5,32 @@ from collections import OrderedDict
 import torch.distributions as dist
 
 import funsor.ops as ops
-from funsor.terms import Funsor, Tensor, align_tensors, to_funsor
+from funsor.terms import Funsor, Number, Tensor, align_tensors, to_funsor
 
 
 class Distribution(Funsor):
     """
-    Base class for funsors representing univariate probability
+    Abstract base class for funsors representing univariate probability
     distributions over the leading dim, which is named 'value'.
     """
-    def __init__(self, cls, params):
+    def __init__(self, cls, **params):
         assert issubclass(cls, dist.Distribution)
-        assert isinstance(params, frozenset)
-        schema = OrderedDict([('value', 'real')])
-        for k, v in sorted(params):
+        schema = OrderedDict([('value', 'density')])
+        self.params = OrderedDict()
+        for k, v in sorted(params.items()):
             assert isinstance(k, str)
-            assert isinstance(v, Funsor)
+            v = to_funsor(v)
             schema.update(v.schema)
+            self.params[k] = v
         dims = tuple(schema)
         shape = tuple(schema.values())
         super(Distribution, self).__init__(dims, shape)
         self.cls = cls
-        self.params = OrderedDict(params)
 
     def __repr__(self):
-        return '{}({})'.format(self.cls.__name__, self.params)
+        return '{}({})'.format(
+            self.cls.__name__,
+            ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def __call__(self, *args, **kwargs):
         kwargs = {d: to_funsor(v) for d, v in kwargs.items() if d in self.dims}
@@ -47,7 +49,7 @@ class Distribution(Funsor):
 
     def _call_value(self, value):
         if isinstance(value, Tensor):
-            if all(isinstance(v, Tensor) for v in self.params.values()):
+            if all(isinstance(v, (Number, Tensor)) for v in self.params.values()):
                 dims, tensors = align_tensors(value, *self.params.values())
                 value = tensors[0]
                 params = dict(zip(self.params, tensors[1:]))
@@ -68,13 +70,24 @@ class Distribution(Funsor):
         return super(Distribution, self).argreduce(op, dims)
 
 
-def Normal(loc, scale):
-    params = frozenset([('loc', to_funsor(loc)),
-                        ('scale', to_funsor(scale))])
-    return Distribution(dist.Normal, params)
+class Normal(Distribution):
+    def __init__(self, loc, scale):
+        super(Normal, self).__init__(dist.Normal, loc=loc, scale=scale)
+
+
+class LogNormal(Distribution):
+    def __init__(self, loc, scale):
+        super(LogNormal, self).__init__(dist.LogNormal, loc=loc, scale=scale)
+
+
+class Gamma(Distribution):
+    def __init__(self, concentration, rate):
+        super(Gamma, self).__init__(dist.Gamma, concentration=concentration, rate=rate)
 
 
 __all__ = [
     'Distribution',
+    'Gamma',
+    'LogNormal',
     'Normal',
 ]

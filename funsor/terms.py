@@ -12,7 +12,7 @@ from six.moves import reduce
 
 import funsor.ops as ops
 
-DOMAINS = ("real", "positive", "unit_interval")
+DOMAINS = ('real', 'density')
 
 
 def align_tensors(*args):
@@ -43,8 +43,19 @@ def align_tensors(*args):
 
 class ConsHashedMeta(type):
     _cache = WeakValueDictionary()
+    _init_args = {}
 
-    def __call__(cls, *args):
+    def __call__(cls, *args, **kwargs):
+        if kwargs:
+            # Convert kwargs to args.
+            if cls not in cls._init_args:
+                cls._init_args[cls] = inspect.getargspec(cls.__init__)[0][1:]
+            args = list(args)
+            for name in cls._init_args[cls][len(args):]:
+                args.append(kwargs[name])
+            args = tuple(args)
+
+        # Memoize creation.
         key = (cls, args)
         if key in cls._cache:
             return cls._cache[key]
@@ -116,11 +127,27 @@ class Funsor(object):
 
     # Avoid __setitem__ due to immutability.
 
+    def align(self, dims, shape=None):
+        """
+        Align this funsor to match given ``dims`` and ``shape``.
+        This can both permute and add constant dims.
+        """
+        if shape is None:
+            assert set(dims) == set(self.dims)
+            shape = tuple(self.schema[d] for d in dims)
+        if dims == self.dims:
+            assert shape == self.shape
+            return self
+        return Align(self, dims, shape)
+
     def __bool__(self):
         if self.shape:
             raise ValueError(
                 "bool value of Funsor with more than one value is ambiguous")
         raise NotImplementedError
+
+    def __nonzero__(self):
+        return self.__bool__()
 
     def item(self):
         if self.shape:
@@ -383,7 +410,9 @@ class Substitution(Funsor):
         subs = {dim: value(**kwargs) for dim, value in self.subs}
         for dim, value in self.subs:
             kwargs.pop(dim, None)
-        return self.arg(**kwargs)(**subs)
+        result = self.arg(**kwargs)(**subs)
+        # FIXME for densities, add log_abs_det_jacobian
+        return result
 
     def materialize(self):
         subs = {dim: value.materialize() for dim, value in self.subs}
@@ -397,6 +426,43 @@ class Substitution(Funsor):
             return {}, self
         # TODO apply log_abs_det_jacobian of each transform in self.subs
         return super(Substitution, self).argreduce(op, dims)
+
+
+class Align(Funsor):
+    def __init__(self, arg, dims, shape):
+        assert isinstance(arg, Funsor)
+        assert isinstance(dims, tuple)
+        assert isinstance(shape, tuple)
+        assert all(isinstance(d, str) for d in dims)
+        assert all(isinstance(s, int) or s in DOMAINS for s in shape)
+        for d, s in zip(dims, shape):
+            assert arg.schema.get(d, s) == s
+        super(Align, self).__init__(dims, shape)
+        self.arg = arg
+        self.dims = dims
+        self.shape = shape
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+        return self.arg(**kwargs)
+
+    def align(self, dims, shape=None):
+        if shape is None:
+            assert set(dims) == set(self.dims)
+            shape = tuple(self.schema[d] for d in dims)
+        return self.arg.align(dims, shape)
+
+    def unary(self, op):
+        return self.arg.unary(op)
+
+    def binary(self, op, other):
+        return self.arg.binary(op, other)
+
+    def reduce(self, op, dims=None):
+        return self.arg.reduce(op, dims)
+
+    def argreduce(self, op, dims):
+        return self.arg.reduce(op, dims)
 
 
 class Unary(Funsor):
@@ -511,6 +577,39 @@ class Reduction(Funsor):
         return super(Reduction, self).reduce(op, dims)
 
 
+class Finitary(Funsor):
+    """
+    Commutative binary operator applied to arbitrary number of operands.
+    Used in the engine to rewrite term graphs to optimized forms.
+    """
+    def __init__(self, op, operands):
+        assert callable(op)
+        assert isinstance(operands, tuple)
+        assert all(isinstance(operand, Funsor) for operand in operands)
+        schema = {}
+        for operand in operands:
+            schema.update(operand.schema)
+        dims = tuple(schema)
+        shape = tuple(schema.values())
+        super(Finitary, self).__init__(dims, shape)
+        self.op = op
+        self.operands = operands
+
+    def __repr__(self):
+        return 'Finitary({}, {})'.format(self.op.__name__, self.operands)
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+        return reduce(
+            lambda lhs, rhs: lhs.binary(self.op, rhs(**kwargs)),
+            self.operands[1:], self.operands[0](**kwargs))
+
+    def materialize(self):
+        return reduce(
+            lambda lhs, rhs: lhs.binary(self.op, rhs.materialize()),
+            self.operands[1:], self.operands[0].materialize())
+
+
 class AddTypeMeta(ConsHashedMeta):
     def __call__(cls, data, dtype=None):
         if dtype is None:
@@ -549,11 +648,11 @@ class Number(Funsor):
     def binary(self, op, other):
         if isinstance(other, numbers.Number):
             return Number(op(self.data, other))
+        if isinstance(other, Number):
+            return Number(op(self.data, other.data))
         if isinstance(other, torch.Tensor):
             assert other.dim() == 0
             return Tensor((), op(self.data, other.data))
-        if isinstance(other, Number):
-            return Number(op(self.data, other.data))
         if isinstance(other, Tensor):
             return Tensor(other.dims, op(self.data, other.data))
         return super(Number, self).binary(op, other)
@@ -572,7 +671,7 @@ class Tensor(Funsor):
         self.data = data
 
     def __repr__(self):
-        return 'Tensor({}, ...)'.format(self.dims)
+        return 'Tensor({}, {})'.format(self.dims, self.data)
 
     def __call__(self, *args, **kwargs):
         subs = OrderedDict(zip(self.dims, args))
@@ -635,7 +734,7 @@ class Tensor(Funsor):
     def materialize(self):
         return self
 
-    def permute(self, dims):
+    def align(self, dims, shape=None):
         """
         Create an equivalent :class:`Tensor` whose ``.dims`` are
         the provided dims. Note all dims must be accounted for in the input.
@@ -645,9 +744,17 @@ class Tensor(Funsor):
         :return: A permuted funsor equivalent to self.
         :rtype: Tensor
         """
-        assert set(dims) == set(self.dims)
-        data = self.data.permute(tuple(self.dims.index(d) for d in dims))
-        return Tensor(dims, data)
+        if shape is None:
+            assert set(dims) == set(self.dims)
+            shape = tuple(self.schema[d] for d in dims)
+        if dims == self.dims:
+            assert shape == self.shape
+            return self
+        if set(dims) == set(self.dims):
+            data = self.data.permute(tuple(self.dims.index(d) for d in dims))
+            return Tensor(dims, data)
+        # TODO unsqueeze and expand
+        return Align(self, dims, shape)
 
     def unary(self, op):
         return Tensor(self.dims, op(self.data))
@@ -732,6 +839,33 @@ class Arange(Tensor):
         super(Arange, self).__init__((name,), data)
 
 
+class Function(Funsor):
+    """
+    Funsor backed by a PyTorch function : Tensors -> Tensor.
+
+    This currently only supports pointwise functions.
+    """
+    def __init__(self, fn, shape=None):
+        assert callable(fn)
+        dims = tuple(inspect.getargspec(fn)[0])
+        if shape is None:
+            shape = ('real',) * len(dims)
+        super(Function, self).__init__(dims, shape)
+        self.fn = fn
+
+    def __call__(self, *args, **kwargs):
+        if kwargs:
+            args = list(args)
+            for name in self.dims[len(args):]:
+                args.append(kwargs.pop(name))
+            assert not kwargs
+        if all(isinstance(x, Tensor) for x in args):
+            dims, tensors = align_tensors(*args)
+            data = self.fn(*tensors)
+            return Tensor(dims, data)
+        return super(Function, self).__call__(*args, **kwargs)
+
+
 def to_funsor(x):
     """
     Convert to a :class:`Funsor`.
@@ -753,7 +887,7 @@ def _of_shape(fn, shape):
     assert not kwargs
     dims = tuple(args)
     args = [Variable(dim, size) for dim, size in zip(dims, shape)]
-    return fn(*args)
+    return to_funsor(fn(*args)).align(dims, shape)
 
 
 def of_shape(*shape):
@@ -765,9 +899,11 @@ def of_shape(*shape):
 
 
 __all__ = [
+    'Align',
     'Arange',
     'Binary',
     'DOMAINS',
+    'Function',
     'Funsor',
     'Number',
     'Reduction',
