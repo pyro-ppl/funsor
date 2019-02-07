@@ -6,7 +6,7 @@ import torch
 
 import funsor
 import funsor.distributions as dist
-from funsor.minipyro import sample, param, trace, deferred
+import funsor.minipyro as pyro
 
 
 def main(args):
@@ -17,31 +17,31 @@ def main(args):
     # a Gaussian HMM
     def model(data):
 
-        trans_noise = param(name="trans_noise")
-        emit_noise = param(name="emit_noise")
+        trans_noise = pyro.param(name="trans_noise")
+        emit_noise = pyro.param(name="emit_noise")
 
         x_curr = 0.
         for t, y in enumerate(data):
             x_prev = x_curr
 
             # a sample statement
-            x_curr = sample(
+            x_curr = pyro.sample(
                 dist.Normal(loc=x_prev, scale=trans_noise),
                 name='x_{}'.format(t))
 
             # an observe statement
-            sample(
+            pyro.sample(
                 dist.Normal(loc=x_curr, scale=emit_noise),
                 obs=y,
                 name='y_{}'.format(t))
 
         return x_curr
 
-    trans_noise = param(torch.tensor(0.1, requires_grad=True), name="trans_noise")  # noqa: F841
-    emit_noise = param(torch.tensor(0.5, requires_grad=True), name="emit_noise")  # noqa: F841
+    trans_noise = pyro.param(torch.tensor(0.1, requires_grad=True), name="trans_noise")  # noqa: F841
+    emit_noise = pyro.param(torch.tensor(0.5, requires_grad=True), name="emit_noise")  # noqa: F841
     data = torch.randn(args.time_steps)
 
-    params = [node["value"] for node in trace(model).get_trace(data).values()
+    params = [node["value"] for node in pyro.trace(model).get_trace(data).values()
               if node["type"] == "param"]
 
     # training loop
@@ -50,7 +50,7 @@ def main(args):
     for step in range(args.train_steps):
         optim.zero_grad()
 
-        tr = trace(deferred(model)).get_trace(data)
+        tr = pyro.trace(pyro.deferred(model)).get_trace(data)
 
         log_prob = sum(node["fn"](node["value"])
                        for node in tr.values()

@@ -325,7 +325,7 @@ def test_finitary_funsor_funsor(symbol, dims1, dims2):
 
 @pytest.mark.parametrize('scalar', [0.5])
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
-@pytest.mark.parametrize('symbol', ["add", "mul",])
+@pytest.mark.parametrize('symbol', ["add", "mul"])
 def test_finitary_funsor_scalar(symbol, dims, scalar):
     # copied binary test for now
     sizes = {'a': 3, 'b': 4, 'c': 5}
@@ -340,7 +340,7 @@ def test_finitary_funsor_scalar(symbol, dims, scalar):
 
 @pytest.mark.parametrize('scalar', [0.5])
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
-@pytest.mark.parametrize('symbol', ["add", "mul",])
+@pytest.mark.parametrize('symbol', ["add", "mul"])
 def test_finitary_scalar_funsor(symbol, dims, scalar):
     # copied binary test for now
     sizes = {'a': 3, 'b': 4, 'c': 5}
