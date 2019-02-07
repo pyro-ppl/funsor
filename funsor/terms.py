@@ -543,6 +543,39 @@ class Reduction(Funsor):
         return super(Reduction, self).reduce(op, dims)
 
 
+class Finitary(Funsor):
+    """
+    Commutative binary operator applied to arbitrary number of operands.
+    Used in the engine to rewrite term graphs to optimized forms.
+    """
+    def __init__(self, op, operands):
+        assert callable(op)
+        assert isinstance(operands, tuple)
+        assert all(isinstance(operand, Funsor) for operand in operands)
+        schema = {}
+        for operand in operands:
+            schema.update(operand.schema)
+        dims = tuple(schema)
+        shape = tuple(schema.values())
+        super(Finitary, self).__init__(dims, shape)
+        self.op = op
+        self.operands = operands
+
+    def __repr__(self):
+        return 'Finitary({}, {})'.format(self.op.__name__, self.operands)
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+        return reduce(
+            lambda lhs, rhs: lhs.binary(self.op, rhs(**kwargs)),
+            self.operands[1:], self.operands[0](**kwargs))
+
+    def materialize(self):
+        return reduce(
+            lambda lhs, rhs: lhs.binary(self.op, rhs.materialize()),
+            self.operands[1:], self.operands[0].materialize())
+
+
 class AddTypeMeta(ConsHashedMeta):
     def __call__(cls, data, dtype=None):
         if dtype is None:

@@ -1,6 +1,8 @@
 from __future__ import absolute_import, division, print_function
 
 import itertools
+import operator
+from six.moves import reduce
 
 import pytest
 import torch
@@ -289,6 +291,65 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
 
     x1 = funsor.Tensor(dims, data1)
     actual = binary_eval(symbol, scalar, x1)
+    check_funsor(actual, dims, shape, expected_data)
+
+
+def finitary_eval(symbol, operands):
+    op = getattr(operator, symbol)
+    return reduce(op, operands[1:], operands[0])
+
+
+@pytest.mark.parametrize('dims2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')])
+@pytest.mark.parametrize('dims1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('symbol', ["add", "mul", "and_", "or_"])
+def test_finitary_funsor_funsor(symbol, dims1, dims2):
+    # copied binary test to start
+    dims = tuple(sorted(set(dims1 + dims2)))
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape1 = tuple(sizes[d] for d in dims1)
+    shape2 = tuple(sizes[d] for d in dims2)
+    data1 = torch.rand(shape1) + 0.5
+    data2 = torch.rand(shape2) + 0.5
+    if symbol in ("and_", "or_"):  # TODO move to registry
+        data1 = data1.byte()
+        data2 = data2.byte()
+    dims, aligned = align_tensors(funsor.Tensor(dims1, data1),
+                                  funsor.Tensor(dims2, data2))
+    expected_data = finitary_eval(symbol, [aligned[0], aligned[1]])
+
+    x1 = funsor.Tensor(dims1, data1)
+    x2 = funsor.Tensor(dims2, data2)
+    actual = finitary_eval(symbol, [x1, x2])
+    check_funsor(actual, dims, expected_data.shape, expected_data)
+
+
+@pytest.mark.parametrize('scalar', [0.5])
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('symbol', ["add", "mul",])
+def test_finitary_funsor_scalar(symbol, dims, scalar):
+    # copied binary test for now
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape = tuple(sizes[d] for d in dims)
+    data1 = torch.rand(shape) + 0.5
+    expected_data = finitary_eval(symbol, [data1, scalar])
+
+    x1 = funsor.Tensor(dims, data1)
+    actual = finitary_eval(symbol, [x1, scalar])
+    check_funsor(actual, dims, shape, expected_data)
+
+
+@pytest.mark.parametrize('scalar', [0.5])
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('symbol', ["add", "mul",])
+def test_finitary_scalar_funsor(symbol, dims, scalar):
+    # copied binary test for now
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape = tuple(sizes[d] for d in dims)
+    data1 = torch.rand(shape) + 0.5
+    expected_data = finitary_eval(symbol, [scalar, data1])
+
+    x1 = funsor.Tensor(dims, data1)
+    actual = finitary_eval(symbol, [scalar, x1])
     check_funsor(actual, dims, shape, expected_data)
 
 
