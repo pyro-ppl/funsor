@@ -8,6 +8,7 @@ from weakref import WeakValueDictionary
 
 import torch
 from six import add_metaclass
+from six.moves import reduce
 
 import funsor.ops as ops
 
@@ -193,25 +194,16 @@ class Funsor(object):
             return self
         return Reduction(op, self, dims)
 
-    def argreduce(self, op, dims):
+    def argreduce(self, op, dim):
         """
-        Reduce along a subset of dimensions,
-        keeping track of the values of those dimensions.
+        Reduce along a dimension, returning the value of that dimension.
 
         :param callable op: A reduction operation.
         :param set dims: An optional dim or set of dims to reduce.
-        :return: A tuple ``(args, remaining)`` where ``args`` is a
-            dict mapping a subset of input dims to funsors possibly depending
-            on remaining dims, and ``remaining`` is a funsor depending on
-            remaing dims.
-        :rtype: tuple
+        :return: A funsors possibly depending on remaining dims.
+        :rtype: Funsor
         """
-        if isinstance(dims, str):
-            dims = (dims,)
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
-        raise NotImplementedError
+        return ArgReduction(op, self, dim)
 
     # ------------------------------------------------------------------------
     # Subclasses should not override these methods; instead override
@@ -328,28 +320,17 @@ class Funsor(object):
     def max(self, dims=None):
         return self.reduce(ops.max, dims)
 
-    def argmin(self, dims):
-        return self.argreduce(ops.min, dims)
+    def argmin(self, dim):
+        return self.argreduce(ops.min, dim)
 
-    def argmax(self, dims):
-        return self.argreduce(ops.max, dims)
+    def argmax(self, dim):
+        return self.argreduce(ops.max, dim)
 
-    def marginal(self, dims):
-        return self.argreduce(ops.marginal, dims)
+    def marginal(self, dim):
+        return self.argreduce(ops.marginal, dim)
 
-    def sample(self, dims):
-        """
-        Randomly samples from a probability distribution whose
-        log probability density is represented by this funsor.
-
-        :param tuple dims: a set of dims to be sampled.
-        :return: a tuple ``(values, remaining)`` where ``values`` is a
-            dict mapping a subset of input dims to funsors of joint samples
-            possibly depending on remaining dims, and ``remaining`` is a funsor
-            depending on remaing dims.
-        :rtype: tuple
-        """
-        return self.argreduce(self, ops.sample, dims)
+    def sample(self, dim):
+        return self.argreduce(ops.sample, dim)
 
 
 class Variable(Funsor):
@@ -417,14 +398,10 @@ class Substitution(Funsor):
         subs = {dim: value.materialize() for dim, value in self.subs}
         return self.arg.materialize()(**subs)
 
-    def argreduce(self, op, dims):
-        if isinstance(dims, str):
-            dims = (dims,)
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
+    def argreduce(self, op, dim):
+        assert dim in self.dims
         # TODO apply log_abs_det_jacobian of each transform in self.subs
-        return super(Substitution, self).argreduce(op, dims)
+        return super(Substitution, self).argreduce(op, dim)
 
 
 class Align(Funsor):
@@ -460,8 +437,8 @@ class Align(Funsor):
     def reduce(self, op, dims=None):
         return self.arg.reduce(op, dims)
 
-    def argreduce(self, op, dims):
-        return self.arg.reduce(op, dims)
+    def argreduce(self, op, dim):
+        return self.arg.argreduce(op, dim)
 
 
 class Unary(Funsor):
@@ -527,6 +504,9 @@ class Reduction(Funsor):
         kwargs = {dim: value for dim, value in kwargs.items()
                   if dim in self.dims}
         kwargs.update(zip(self.dims, args))
+        if not all(set(self.reduce_dims).isdisjoint(getattr(value, 'dims', ()))
+                   for value in kwargs.values()):
+            raise NotImplementedError('TODO alpha-convert to avoid conflict')
         return self.arg(**kwargs).reduce(self.op, self.reduce_dims)
 
     def materialize(self):
@@ -543,6 +523,34 @@ class Reduction(Funsor):
         return super(Reduction, self).reduce(op, dims)
 
 
+class ArgReduction(Funsor):
+    def __init__(self, op, arg, dim):
+        assert callable(op)
+        assert isinstance(arg, Funsor)
+        assert isinstance(dim, str)
+        assert dim in arg.dims
+        dims = tuple(d for d in arg.dims if d != dim)
+        shape = tuple(arg.schema[d] for d in dims)
+        super(ArgReduction, self).__init__(dims, shape)
+        self.op = op
+        self.arg = arg
+        self.dim = dim
+
+    def __repr__(self):
+        return 'ArgReduction({}, {}, {})'.format(self.op.__name__, self.arg, repr(self.dim))
+
+    def __call__(self, *args, **kwargs):
+        kwargs = {dim: value for dim, value in kwargs.items()
+                  if dim in self.dims}
+        kwargs.update(zip(self.dims, args))
+        if any(self.dim in value.dims for value in kwargs.values()):
+            raise NotImplementedError('TODO alpha-convert to avoid conflict')
+        return self.arg(**kwargs).argreduce(self.op, self.dim)
+
+    def materialize(self):
+        return self.arg.materialize().reduce(self.op, self.reduce_dims)
+
+
 class Finitary(Funsor):
     """
     Commutative binary operator applied to arbitrary number of operands.
@@ -552,7 +560,7 @@ class Finitary(Funsor):
         assert callable(op)
         assert isinstance(operands, tuple)
         assert all(isinstance(operand, Funsor) for operand in operands)
-        schema = {}
+        schema = OrderedDict()
         for operand in operands:
             schema.update(operand.schema)
         dims = tuple(schema)
@@ -765,38 +773,26 @@ class Tensor(Funsor):
             return Tensor(dims, data)
         return super(Tensor, self).reduce(op, dims)
 
-    def argreduce(self, op, dims):
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
+    def argreduce(self, op, dim):
+        assert dim in self.dims
 
         if op in (ops.min, ops.max):
-            if len(dims) == 1:
-                dim = next(iter(dims))
-                pos = self.dims.index(dim)
-                value, remaining = getattr(self.data, op.__name__)
-                dims = self.dims[:pos] + self.dims
-                return {dim: Tensor(dims, value)}, Tensor(dims, remaining)
-            raise NotImplementedError('TODO implement multiway argmin, argmax')
+            pos = self.dims.index(dim)
+            value = getattr(self.data, op.__name__)(pos)[0]
+            dims = self.dims[:pos] + self.dims
+            return Tensor(dims, value)
 
         if op is ops.sample:
-            if len(dims) == 1:
-                dim, = dims
-                pos = self.dims.index(dim)
-                shift = self.data.max(pos, keepdim=True)
-                probs = (self.data - shift).exp()
-                remaining = probs.sum(pos).log() + shift.squeeze(pos)
+            pos = self.dims.index(dim)
+            probs = (self.data - self.data.max(pos, keepdim=True)[0]).exp()
+            probs = probs.transpose(pos, -1)
+            value = torch.multinomial(probs.reshape(-1, probs.size(-1)), 1)
+            value = value.reshape(probs.shape[:-1] + (1,))
+            value = value.transpose(pos, -1).squeeze(pos)
+            dims = self.dims[:pos] + self.dims[1 + pos:]
+            return Tensor(dims, value)
 
-                probs = probs.transpose(pos, -1)
-                value = torch.multinomial(probs.reshape(-1, probs.size(-1)), 1)
-                value = value.reshape(probs.shape[:-1] + (0,))
-                value = value.transpose(pos, -1).squeeze(pos)
-
-                dims = self.dims[:pos] + self.dims[1 + pos:]
-                return {dim: Tensor(dims, value)}, Tensor(dims, remaining)
-            raise NotImplementedError('TODO implement multiway sample')
-
-        raise NotImplementedError('TODO handle {}'.format(op))
+        return super(Tensor, self).argreduce(op, dim)
 
 
 class Arange(Tensor):

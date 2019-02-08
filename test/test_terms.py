@@ -412,6 +412,33 @@ def test_reduce_subset(dims, dims_reduced, op_name):
         check_funsor(actual, dims, data.shape, data)
 
 
+ARGREDUCE_OPS = ['min', 'max', 'sample']
+
+
+@pytest.mark.parametrize('dims,dim', [
+    (dims, dim)
+    for dims in [('a',), ('a', 'b'), ('b', 'a', 'c')]
+    for dim in dims
+])
+@pytest.mark.parametrize('op_name', ARGREDUCE_OPS)
+def test_argreduce(dims, dim, op_name):
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape = tuple(sizes[d] for d in dims)
+    data = torch.rand(shape) + 0.5
+    x = funsor.Tensor(dims, data)
+    actual = getattr(x, op_name)(dim)
+
+    pos = dims.index(dim)
+    if op_name in ('min', 'max'):
+        data = getattr(data, op_name)(pos)[0]
+        shape = data.shape
+    else:
+        shape = data.shape[:pos] + data.shape[1+pos:]
+        data = None
+    dims = tuple(d for d in dims if d != dim)
+    check_funsor(actual, dims, shape, data)
+
+
 def test_of_shape():
 
     @funsor.of_shape(3)

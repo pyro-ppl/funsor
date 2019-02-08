@@ -82,6 +82,6 @@ if __name__ == "__main__":
         try:
             main(args)
         except NotImplementedError:
-            print('XFAIL example.py')
+            print('XFAIL')
     else:
         main(args)

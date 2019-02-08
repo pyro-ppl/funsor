@@ -149,8 +149,7 @@ def sample(fn, obs=None, name=None):
 
     # if there are no active Messengers, we just draw a sample and return it as expected:
     if not PYRO_STACK:
-        args, log_prob = fn.sample(['value'])
-        return args['value']
+        return fn.sample('value')
 
     # Otherwise, we initialize a message...
     initial_msg = {
