@@ -213,6 +213,12 @@ class Funsor(object):
             return {}, self
         raise NotImplementedError
 
+    def grad(self, dim):
+        if dim not in self.dims:
+            return to_funsor(0.)
+        assert self.shape[dim] == 'real'
+        return Grad(self, dim)
+
     # ------------------------------------------------------------------------
     # Subclasses should not override these methods; instead override
     # the generic handlers and fall back to super(...).handler.
@@ -574,6 +580,48 @@ class Finitary(Funsor):
         return reduce(
             lambda lhs, rhs: lhs.binary(self.op, rhs.materialize()),
             self.operands[1:], self.operands[0].materialize())
+
+
+class Grad(Funsor):
+    def __init__(self, arg, dim):
+        assert isinstance(arg, Funsor)
+        assert isinstance(dim, str)
+        assert dim in arg.dims
+        assert arg.schema[dim] == 'real'
+        shape = list(arg.shape)
+        shape[arg.dims.index(dim)] = 'density'
+        shape = tuple(shape)
+        super(Grad, self).__init__(arg.dims, arg.shape)
+        self.arg = arg
+        self.dim = dim
+
+    def __repr__(self):
+        return 'Grad({}, {})'.format(self.arg, repr(self.dim))
+
+    def __call__(self, *args, **kwargs):
+        kwargs = {d: to_funsor(v) for d, v in kwargs.items() if d in self.dims}
+        kwargs.update(zip(self.dims, map(to_funsor, args)))
+        value = kwargs.pop(self.dim, None)
+        result = self
+        if kwargs:
+            result = result._call_param(kwargs)
+        if value is not None:
+            result = result._call_value(value)
+        return result
+
+    def _call_param(self, kwargs):
+        return Grad(self.arg(**kwargs), self.dim)
+
+    def _call_value(self, value):
+        if isinstance(value, Number):
+            value = Tensor((), torch.tensor(value, requires_grad=True))
+        if isinstance(value, Tensor):
+            assert value.data.requires_grad
+            arg = self.arg(**{self.dim: value})
+            if isinstance(arg, Tensor):
+                data = torch.autograd.grad(arg, [value.data], create_graph=True)[0]
+                return Tensor(arg.dims, data)
+        return super(Grad, self).__call__(**{self.dim: value})
 
 
 class AddTypeMeta(ConsHashedMeta):
