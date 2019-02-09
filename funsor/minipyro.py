@@ -16,15 +16,17 @@ from collections import OrderedDict
 import funsor
 import funsor.ops as ops
 from funsor.terms import Funsor, Variable
+from .handlers import appply_stack, Handler, HANDLER_STACK, Label
 
-# Pyro keeps track of two kinds of global state:
-# i)  The effect handler stack, which enables non-standard interpretations of
-#     Pyro primitives like sample();
-#     See http://docs.pyro.ai/en/0.3.0-release/poutine.html
-# ii) Trainable parameters in the Pyro ParamStore;
-#     See http://docs.pyro.ai/en/0.3.0-release/parameters.html
 
-PYRO_STACK = []
+class Sample(Label):
+    pass
+
+
+class Param(Label):
+    pass
+
+
 PARAM_STORE = {}
 
 
@@ -32,45 +34,20 @@ def get_param_store():
     return PARAM_STORE
 
 
-# The base effect handler class (called Messenger here for consistency with Pyro).
-class Messenger(object):
-    def __init__(self, fn=None):
-        self.fn = fn
-
-    # Effect handlers push themselves onto the PYRO_STACK.
-    # Handlers earlier in the PYRO_STACK are applied first.
-    def __enter__(self):
-        PYRO_STACK.append(self)
-
-    def __exit__(self, *args, **kwargs):
-        assert PYRO_STACK[-1] is self
-        PYRO_STACK.pop()
-
-    def process_message(self, msg):
-        pass
-
-    def postprocess_message(self, msg):
-        pass
-
-    def __call__(self, *args, **kwargs):
-        with self:
-            return self.fn(*args, **kwargs)
-
-
-# A first useful example of an effect handler.
-# trace records the inputs and outputs of any primitive site it encloses,
-# and returns a dictionary containing that data to the user.
-class trace(Messenger):
+class trace(Handler):
     def __enter__(self):
         super(trace, self).__enter__()
         self.trace = OrderedDict()
         return self.trace
 
-    # trace illustrates why we need postprocess_message in addition to process_message:
+    # trace illustrates why we need postprocess in addition to process:
     # We only want to record a value after all other effects have been applied
-    def postprocess_message(self, msg):
-        assert msg["name"] not in self.trace, "all sites must have unique names"
-        self.trace[msg["name"]] = msg.copy()
+    def postprocess(self, msg):
+        if isinstance(msg["label"], Sample):
+            assert msg["label"].name is not None and \
+                msg["label"].name not in self.trace, \
+                "all sites must have unique names"
+            self.trace[msg["label"].name] = msg.copy()
 
     def get_trace(self, *args, **kwargs):
         self(*args, **kwargs)
@@ -82,39 +59,39 @@ class trace(Messenger):
 # We can compose trace and replay to replace values but preserve distributions,
 # allowing us to compute the joint probability density of samples under a model.
 # See the definition of elbo(...) below for an example of this pattern.
-class replay(Messenger):
+class replay(Handler):
     def __init__(self, fn, guide_trace):
         self.guide_trace = guide_trace
         super(replay, self).__init__(fn)
 
-    def process_message(self, msg):
-        if msg["name"] in self.guide_trace:
-            msg["value"] = self.guide_trace[msg["name"]]["value"]
+    def process(self, msg):
+        if isinstance(msg["label"], Sample) and msg["label"].name in self.guide_trace:
+            msg["value"] = self.guide_trace[msg["label"].name]["value"]
 
 
 # block allows the selective application of effect handlers to different parts of a model.
-# Sites hidden by block will only have the handlers below block on the PYRO_STACK applied,
+# Sites hidden by block will only have the handlers below block on the HANDLER_STACK applied,
 # allowing inference or other effectful computations to be nested inside models.
-class block(Messenger):
+class block(Handler):
     def __init__(self, fn=None, hide_fn=lambda msg: True):
         self.hide_fn = hide_fn
         super(block, self).__init__(fn)
 
-    def process_message(self, msg):
+    def process(self, msg):
         if self.hide_fn(msg):
             msg["stop"] = True
 
 
-# This limited implementation of PlateMessenger only implements broadcasting.
-class plate(Messenger):
+# This limited implementation of PlateHandler only implements broadcasting.
+class plate(Handler):
     def __init__(self, fn, size, dim, name):
         assert dim < 0
         self.size = size
         self.dim = dim
         super(plate, self).__init__(fn)
 
-    def process_message(self, msg):
-        if msg["type"] == "sample":
+    def process(self, msg):
+        if isinstance(msg["label"], Sample):
             batch_shape = msg["fn"].batch_shape
             if len(batch_shape) < -self.dim or batch_shape[self.dim] != self.size:
                 batch_shape = [1] * (-self.dim - len(batch_shape)) + list(batch_shape)
@@ -125,44 +102,24 @@ class plate(Messenger):
         return range(self.size)
 
 
-# apply_stack is called by pyro.sample and pyro.param.
-# It is responsible for applying each Messenger to each effectful operation.
-def apply_stack(msg):
-    for pointer, handler in enumerate(reversed(PYRO_STACK)):
-        handler.process_message(msg)
-        # When a Messenger sets the "stop" field of a message,
-        # it prevents any Messengers above it on the stack from being applied.
-        if msg.get("stop"):
-            break
-    if msg["value"] is None:
-        msg["value"] = msg["fn"](*msg["args"])
-
-    # A Messenger that sets msg["stop"] == True also prevents application
-    # of postprocess_message by Messengers above it on the stack
-    # via the pointer variable from the process_message loop
-    for handler in PYRO_STACK[-pointer-1:]:
-        handler.postprocess_message(msg)
-    return msg
-
-
 # sample is an effectful version of Distribution.sample(...)
 # When any effect handlers are active, it constructs an initial message and calls apply_stack.
 def sample(fn, obs=None, name=None):
 
-    # if there are no active Messengers, we just draw a sample and return it as expected:
-    if not PYRO_STACK:
+    # if there are no active Handlers, we just draw a sample and return it as expected:
+    if not HANDLER_STACK:
         return fn.sample('value')
 
     # Otherwise, we initialize a message...
     initial_msg = {
-        "type": "sample",
-        "name": name if name is not None else "sample",
+        "type": Sample(name=name),
         "fn": fn,
         "args": (),
+        "kwargs": {},
         "value": obs,
     }
 
-    # ...and use apply_stack to send it to the Messengers
+    # ...and use apply_stack to send it to the Handlers
     msg = apply_stack(initial_msg)
     return msg["value"]
 
@@ -179,29 +136,28 @@ def param(init_value=None, name=None):
         value.requires_grad_()
         return value
 
-    # if there are no active Messengers, we just draw a sample and return it as expected:
-    if not PYRO_STACK:
+    # if there are no active Handlers, we just draw a sample and return it as expected:
+    if not HANDLER_STACK:
         return fn(init_value)
 
     # Otherwise, we initialize a message...
     initial_msg = {
-        "type": "param",
-        "name": name,
+        "type": Param(name=name),
         "fn": fn,
         "args": (init_value,),
         "value": None,
     }
 
-    # ...and use apply_stack to send it to the Messengers
+    # ...and use apply_stack to send it to the Handlers
     msg = apply_stack(initial_msg)
     return msg["value"]
 
 
-class deferred(Messenger):
+class deferred(Handler):
 
-    def process_message(self, msg):
-        if msg["type"] == "sample" and msg["value"] is not None:
-            msg["value"] = Variable(msg["name"], msg["fn"].schema["value"])
+    def process(self, msg):
+        if isinstance(msg["label"], Sample) and msg["value"] is not None:
+            msg["value"] = Variable(msg["label"].name, msg["fn"].schema["value"])
         return msg
 
 
@@ -214,11 +170,11 @@ class log_joint(Messenger):
         self.log_prob = funsor.to_funsor(0.)
 
     def process_message(self, msg):
-        if msg["type"] == "sample":
+        if isinstance(msg["label"], Sample):
             assert msg["value"] is not None
             self.log_prob += msg["fn"](msg["value"])
 
-        elif msg["type"] == "ground":
+        elif isinstance(msg["label"], Ground):
             value = msg["value"]
             if not isinstance(value, (funsor.Number, funsor.Tensor)):
                 log_prob = self.log_prob.reduce(ops.sample, value.dims)
@@ -232,6 +188,10 @@ class log_joint(Messenger):
                         context[key] = value(**subs)
 
         return msg
+
+
+class Ground(Label):
+    pass
 
 
 def ground(value, context):
@@ -261,12 +221,12 @@ def ground(value, context):
     assert isinstance(context, dict)
 
     # if there are no active Messengers, we just return the value
-    if not PYRO_STACK:
+    if not HANDLER_STACK:
         return value
 
     # Otherwise, we initialize a message...
     initial_msg = {
-        "type": "ground",
+        "type": Ground(),
         "context": context,
         "value": value,
     }

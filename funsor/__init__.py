@@ -4,7 +4,7 @@ from funsor.adjoint import adjoints, backward
 from funsor.engine import eval
 from funsor.terms import Arange, Function, Funsor, Number, Tensor, Variable, of_shape, to_funsor
 
-from . import distributions, engine, minipyro, ops, terms
+from . import distributions, engine, handlers, minipyro, ops, terms
 
 __all__ = [
     'Arange',
@@ -18,6 +18,7 @@ __all__ = [
     'distributions',
     'engine',
     'eval',
+    'handlers',
     'minipyro',
     'of_shape',
     'ops',
