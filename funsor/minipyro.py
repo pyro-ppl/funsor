@@ -16,7 +16,7 @@ from collections import OrderedDict
 import funsor
 import funsor.ops as ops
 from funsor.terms import Funsor, Variable
-from .handlers import appply_stack, Handler, HANDLER_STACK, Label
+from .handlers import apply_stack, Handler, HANDLER_STACK, Label
 
 
 class Sample(Label):
@@ -161,7 +161,7 @@ class deferred(Handler):
         return msg
 
 
-class log_joint(Messenger):
+class log_joint(Handler):
     """
     Tracks log joint density during delayed sampling.
     """
@@ -169,7 +169,7 @@ class log_joint(Messenger):
     def __enter__(self):
         self.log_prob = funsor.to_funsor(0.)
 
-    def process_message(self, msg):
+    def process(self, msg):
         if isinstance(msg["label"], Sample):
             assert msg["value"] is not None
             self.log_prob += msg["fn"](msg["value"])

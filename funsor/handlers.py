@@ -9,6 +9,7 @@ Label = namedtuple("Label", ["name"], [None])
 
 HANDLER_STACK = []
 
+
 class Handler(object):
     def __init__(self, fn=None):
         self.fn = fn
@@ -19,7 +20,7 @@ class Handler(object):
     def __exit__(self, *args, **kwargs):
         assert HANDLER_STACK[-1] is self
         HANDLER_STACK.pop()
-    
+
     def process(self, msg):
         return msg
 
@@ -106,6 +107,7 @@ def effectful(term_type):
 def default_handler(handler):
     """annotate a function with a default handler"""
     assert isinstance(handler, Handler)
+
     def _wrapper(fn):
         def _fn(*args, **kwargs):
             if not HANDLER_STACK and not isinstance(fn, Handler):
@@ -113,4 +115,5 @@ def default_handler(handler):
                     return fn(*args, **kwargs)
             return fn(*args, **kwargs)
         return _fn
+
     return _wrapper
