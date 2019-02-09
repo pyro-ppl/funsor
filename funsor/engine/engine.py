@@ -5,11 +5,12 @@ import opt_einsum
 import funsor.ops as ops
 from funsor.terms import Binary, Contract, Finitary, Funsor, Reduction, Tensor, Unitary
 
-from .handlers import effectful, EvalPass
+from funsor.handlers import default_handler, effectful, Label, OpRegistry
+
 from .paths import greedy
 
 
-class EagerEval(EvalPass):
+class EagerEval(OpRegistry):
     pass
 
 
@@ -70,25 +71,25 @@ def eval(x):  # TODO get input args right
 
     # evaluate the path
     if isinstance(x, Tensor):
-        return effectful(Tensor)(x)
+        return effectful(Tensor)(Tensor)(x)
 
     if isinstance(x, Variable):
-        return effectful(Variable)()
+        return effectful(Variable)(Variable)()
 
     if isinstance(x, Substitute):
-        return effectful(Substitute)(...)  # TODO get args right
+        return effectful(Substitute)(Substitute)(...)  # TODO get args right
    
     if isinstance(x, Unary):
-        return effectful(Unary)(x.op, eval(x.v))
+        return effectful(Unary)(Unary)(x.op, eval(x.v))
 
     if isinstance(x, Binary):
-        return effectful(Binary)(x.op, eval(x.lhs), eval(x.rhs))
+        return effectful(Binary)(Binary)(x.op, eval(x.lhs), eval(x.rhs))
 
     if isinstance(x, Finitary):
-        return effectful(Finitary)(x.op, [eval(tx) for tx in x.terms])
+        return effectful(Finitary)(Finitary)(x.op, [eval(tx) for tx in x.terms])
 
     if isinstance(x, Reduce):
-        return effectful(Reduce)(x.op, eval(x.arg), x.reduce_dims)
+        return effectful(Reduce)(Reduce)(x.op, eval(x.arg), x.reduce_dims)
 
     raise NotImplementedError
 

@@ -12,12 +12,12 @@ from __future__ import absolute_import, division, print_function
 
 import funsor.ops as ops
 from funsor.terms import Binary, Finitary, Funsor, Reduction, Tensor, Unitary
+from funsor.handlers import OpRegistry
 
-from .handlers import Messenger
 from .paths import greedy
 
 
-class Desugar(EvalPass):
+class Desugar(OpRegistry):
     pass
 
 
@@ -27,7 +27,7 @@ def binary_to_finitary(op, lhs, rhs=None):
     return Finitary(op, [lhs, rhs] if rhs is not None else [lhs])
 
 
-class Deoptimize(EvalPass):
+class Deoptimize(OpRegistry):
     pass
 
 
@@ -41,7 +41,7 @@ def deoptimize_reduce(op, arg, reduce_dims):
     raise NotImplementedError("TODO")
 
 
-class Optimize(EvalPass):
+class Optimize(OpRegistry):
     pass
 
 
@@ -79,7 +79,7 @@ def optimize_path(op, arg, reduce_dims):
     return path_end
 
 
-class Resugar(EvalPass):
+class Resugar(OpRegistry):
     pass
 
 # @Resugar.register(Finitary)
