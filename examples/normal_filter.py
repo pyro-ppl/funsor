@@ -18,15 +18,13 @@ def main(args_):
     def pyro_sample(name, fn, obs=None):
         if obs is not None:
             value = obs
-            log_prob = fn(value=obs)
         elif args_.eager:
             # this is eager like usual pyro.sample
-            args, log_prob = fn.sample(['value'])
-            value = args['value']
+            value = fn.sample('value')
         else:
             # this is deferred like pyro.sample during enumeration
             value = funsor.Variable(name, fn.schema['value'])
-            log_prob = fn(value=value)
+        log_prob = fn(value=value)
         return value, log_prob
 
     # a Gaussian HMM model
@@ -55,7 +53,8 @@ def main(args_):
             #   x_curr = pyro.barrier(x_curr)
             if args_.filter:
                 # perform a filter update
-                args_t, log_prob_sum = log_prob_sum.argmax()
+                args_t = log_prob_sum.argmax()
+                log_prob_sum = log_prob_sum.max()
                 args.update(args_t)
                 x_curr = args[x_curr.name]
 
@@ -77,8 +76,8 @@ def main(args_):
 
     # serving by drawing a posterior sample
     print('---- serving ----')
-    eager_args, log_prob = model(data)
-    lazy_args, log_prob = funsor.eval(log_prob.sample())
+    eager_args = model(data)
+    lazy_args = funsor.eval(log_prob.sample())
     joint_sample = eager_args
     joint_sample.update(lazy_args)
     for key, value in sorted(joint_sample.items()):
@@ -99,6 +98,6 @@ if __name__ == '__main__':
         try:
             main(args)
         except NotImplementedError:
-            print('XFAIL example.py')
+            print('XFAIL')
     else:
         main(args)

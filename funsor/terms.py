@@ -194,26 +194,6 @@ class Funsor(object):
             return self
         return Reduction(op, self, dims)
 
-    def argreduce(self, op, dims):
-        """
-        Reduce along a subset of dimensions,
-        keeping track of the values of those dimensions.
-
-        :param callable op: A reduction operation.
-        :param set dims: An optional dim or set of dims to reduce.
-        :return: A tuple ``(args, remaining)`` where ``args`` is a
-            dict mapping a subset of input dims to funsors possibly depending
-            on remaining dims, and ``remaining`` is a funsor depending on
-            remaing dims.
-        :rtype: tuple
-        """
-        if isinstance(dims, str):
-            dims = (dims,)
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
-        raise NotImplementedError
-
     # ------------------------------------------------------------------------
     # Subclasses should not override these methods; instead override
     # the generic handlers and fall back to super(...).handler.
@@ -329,29 +309,6 @@ class Funsor(object):
     def max(self, dims=None):
         return self.reduce(ops.max, dims)
 
-    def argmin(self, dims):
-        return self.argreduce(ops.min, dims)
-
-    def argmax(self, dims):
-        return self.argreduce(ops.max, dims)
-
-    def marginal(self, dims):
-        return self.argreduce(ops.marginal, dims)
-
-    def sample(self, dims):
-        """
-        Randomly samples from a probability distribution whose
-        log probability density is represented by this funsor.
-
-        :param tuple dims: a set of dims to be sampled.
-        :return: a tuple ``(values, remaining)`` where ``values`` is a
-            dict mapping a subset of input dims to funsors of joint samples
-            possibly depending on remaining dims, and ``remaining`` is a funsor
-            depending on remaing dims.
-        :rtype: tuple
-        """
-        return self.argreduce(self, ops.sample, dims)
-
 
 class Variable(Funsor):
     """
@@ -418,15 +375,6 @@ class Substitution(Funsor):
         subs = {dim: value.materialize() for dim, value in self.subs}
         return self.arg.materialize()(**subs)
 
-    def argreduce(self, op, dims):
-        if isinstance(dims, str):
-            dims = (dims,)
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
-        # TODO apply log_abs_det_jacobian of each transform in self.subs
-        return super(Substitution, self).argreduce(op, dims)
-
 
 class Align(Funsor):
     def __init__(self, arg, dims, shape):
@@ -459,9 +407,6 @@ class Align(Funsor):
         return self.arg.binary(op, other)
 
     def reduce(self, op, dims=None):
-        return self.arg.reduce(op, dims)
-
-    def argreduce(self, op, dims):
         return self.arg.reduce(op, dims)
 
 
@@ -508,6 +453,45 @@ class Binary(Funsor):
         return self.lhs.materialize().binary(self.op, self.rhs.materialize())
 
 
+class Reduction(Funsor):
+    def __init__(self, op, arg, reduce_dims):
+        assert callable(op)
+        assert isinstance(arg, Funsor)
+        assert isinstance(reduce_dims, frozenset)
+        dims = tuple(d for d in arg.dims if d not in reduce_dims)
+        shape = tuple(arg.schema[d] for d in dims)
+        super(Reduction, self).__init__(dims, shape)
+        self.op = op
+        self.arg = arg
+        self.reduce_dims = reduce_dims
+
+    def __repr__(self):
+        return 'Reduction({}, {}, {})'.format(
+            self.op.__name__, self.arg, self.reduce_dims)
+
+    def __call__(self, *args, **kwargs):
+        kwargs = {dim: value for dim, value in kwargs.items()
+                  if dim in self.dims}
+        kwargs.update(zip(self.dims, args))
+        if not all(set(self.reduce_dims).isdisjoint(getattr(value, 'dims', ()))
+                   for value in kwargs.values()):
+            raise NotImplementedError('TODO alpha-convert to avoid conflict')
+        return self.arg(**kwargs).reduce(self.op, self.reduce_dims)
+
+    def materialize(self):
+        return self.arg.materialize().reduce(self.op, self.reduce_dims)
+
+    def reduce(self, op, dims=None):
+        if op is self.op:
+            # Eagerly fuse reductions.
+            if dims is None:
+                dims = frozenset(self.dims)
+            else:
+                dims = frozenset(dims).intersection(self.dims)
+            return Reduction(op, self.arg, self.reduce_dims | dims)
+        return super(Reduction, self).reduce(op, dims)
+
+
 class Finitary(Funsor):
     """
     Commutative binary operator applied to arbitrary number of operands.
@@ -517,7 +501,7 @@ class Finitary(Funsor):
         assert callable(op)
         assert isinstance(operands, tuple)
         assert all(isinstance(operand, Funsor) for operand in operands)
-        schema = {}
+        schema = OrderedDict()
         for operand in operands:
             schema.update(operand.schema)
         dims = tuple(schema)
@@ -539,42 +523,6 @@ class Finitary(Funsor):
         return reduce(
             lambda lhs, rhs: lhs.binary(self.op, rhs.materialize()),
             self.operands[1:], self.operands[0].materialize())
-
-
-class Reduction(Funsor):
-    def __init__(self, op, arg, reduce_dims):
-        assert callable(op)
-        assert isinstance(arg, Funsor)
-        assert isinstance(reduce_dims, frozenset)
-        dims = tuple(d for d in arg.dims if d not in reduce_dims)
-        shape = tuple(arg.schema[d] for d in dims)
-        super(Reduction, self).__init__(dims, shape)
-        self.op = op
-        self.arg = arg
-        self.reduce_dims = reduce_dims
-
-    def __repr__(self):
-        return 'Reduction({}, {}, {})'.format(
-            self.op.__name__, self.arg, self.reduce_dims)
-
-    def __call__(self, *args, **kwargs):
-        kwargs = {dim: value for dim, value in kwargs.items()
-                  if dim in self.dims}
-        kwargs.update(zip(self.dims, args))
-        return self.arg(**kwargs).reduce(self.op, self.reduce_dims)
-
-    def materialize(self):
-        return self.arg.materialize().reduce(self.op, self.reduce_dims)
-
-    def reduce(self, op, dims=None):
-        if op is self.op:
-            # Eagerly fuse reductions.
-            if dims is None:
-                dims = frozenset(self.dims)
-            else:
-                dims = frozenset(dims).intersection(self.dims)
-            return Reduction(op, self.arg, self.reduce_dims | dims)
-        return super(Reduction, self).reduce(op, dims)
 
 
 class AddTypeMeta(ConsHashedMeta):
@@ -765,39 +713,6 @@ class Tensor(Funsor):
             dims = tuple(d for d in self.dims if d not in dims)
             return Tensor(dims, data)
         return super(Tensor, self).reduce(op, dims)
-
-    def argreduce(self, op, dims):
-        dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return {}, self
-
-        if op in (ops.min, ops.max):
-            if len(dims) == 1:
-                dim = next(iter(dims))
-                pos = self.dims.index(dim)
-                value, remaining = getattr(self.data, op.__name__)
-                dims = self.dims[:pos] + self.dims
-                return {dim: Tensor(dims, value)}, Tensor(dims, remaining)
-            raise NotImplementedError('TODO implement multiway argmin, argmax')
-
-        if op is ops.sample:
-            if len(dims) == 1:
-                dim, = dims
-                pos = self.dims.index(dim)
-                shift = self.data.max(pos, keepdim=True)
-                probs = (self.data - shift).exp()
-                remaining = probs.sum(pos).log() + shift.squeeze(pos)
-
-                probs = probs.transpose(pos, -1)
-                value = torch.multinomial(probs.reshape(-1, probs.size(-1)), 1)
-                value = value.reshape(probs.shape[:-1] + (0,))
-                value = value.transpose(pos, -1).squeeze(pos)
-
-                dims = self.dims[:pos] + self.dims[1 + pos:]
-                return {dim: Tensor(dims, value)}, Tensor(dims, remaining)
-            raise NotImplementedError('TODO implement multiway sample')
-
-        raise NotImplementedError('TODO handle {}'.format(op))
 
 
 class Arange(Tensor):

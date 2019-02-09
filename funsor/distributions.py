@@ -57,17 +57,14 @@ class Distribution(Funsor):
                 return Tensor(dims, data)
         return super(Distribution, self).__call__(value)
 
-    def argreduce(self, op, dims):
-        if op is ops.sample:
-            if isinstance(dims, str):
-                dims = (dims,)
-            if set(dims).intersection(self.dims) == {'value'}:
-                if all(isinstance(v, Tensor) for v in self.params.values()):
-                    dims, tensors = align_tensors(*self.params.values())
-                    params = dict(zip(self.params, tensors))
-                    data = self.cls(**params).rsample()
-                    return Tensor(dims, data)
-        return super(Distribution, self).argreduce(op, dims)
+    def argreduce(self, op, dim):
+        if op is ops.sample and dim == 'value':
+            if all(isinstance(v, Tensor) for v in self.params.values()):
+                dims, tensors = align_tensors(*self.params.values())
+                params = dict(zip(self.params, tensors))
+                data = self.cls(**params).rsample()
+                return Tensor(dims, data)
+        return super(Distribution, self).argreduce(op, dim)
 
 
 class Normal(Distribution):
