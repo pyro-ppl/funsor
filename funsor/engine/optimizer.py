@@ -13,83 +13,93 @@ from __future__ import absolute_import, division, print_function
 import funsor.ops as ops
 from funsor.terms import Binary, Finitary, Funsor, Reduction, Tensor, Unitary
 
+from .handlers import Messenger
 from .paths import greedy
 
 
-@engine.handle(Unary, Binary)
+class Desugar(EvalPass):
+    pass
+
+
+@Desugar.register(Unary, Binary)
 def binary_to_finitary(op, lhs, rhs=None):
     """convert Binary/Unary to Finitary"""
     return Finitary(op, [lhs, rhs] if rhs is not None else [lhs])
 
 
-@engine.handle(Reduce)
-def finitary_to_contract(op, arg, reduce_dims):
-    """convert Reduce(Finitary/Binary) to Contract"""
-    if isinstance(arg, Finitary):
-        return Contract(*arg.terms, reduce_dims=reduce_dims)
+class Deoptimize(EvalPass):
+    pass
 
 
-@engine.handle(Contract)
-def deoptimize(x, backend=None):
-    """
-    Convert multiple Contract ops to a single, larger Contract
-    """
-    assert isinstance(x, Funsor)
-
-    if backend is None:
-        backend = x.backend
-
-    if isinstance(x, Contract)
+@Deoptimize.register(Finitary)
+def deoptimize_finitary(op, terms):
+    raise NotImplementedError("TODO")
 
 
-@engine.handle(Contract)
-def optimize_path(op, x, optimizer="greedy"):
+@Deoptimize.register(Reduce)
+def deoptimize_reduce(op, arg, reduce_dims):
+    raise NotImplementedError("TODO")
+
+
+class Optimize(EvalPass):
+    pass
+
+
+@Optimize.register(Reduce)
+def optimize_path(op, arg, reduce_dims):
     r"""
     Recursively convert large Contract ops to many smaller binary Contracts
     by reordering execution with a modified opt_einsum optimizer
-
-    Rewrite rules (type only):
-        Reduce(Finitary) -> Reduce(Binary(x, Reduce(Binary(y, ...))))
     """
-    # extract path
-    if isinstance(x, Reduction):
-        x.arg, x.reduce_dims = *x
+    if not isinstance(arg, Finitary):
+        return Reduce(op, arg, reduce_dims)
+
+    # build opt_einsum optimizer IR
+    inputs = []
+    size_dict = {}
+    for term in terms:
+        inputs.append(set(d for d in term.dims))
+        # TODO get sizes right
+        size_dict.update({d: 2 for d in term.dims})
+    outputs = set().union(*inputs) - reduce_dims
 
     # optimize path
-    if optimizer == "greedy":
-        path = greedy(inputs, output, size_dict, cost_fn='memory-removed')
-    else:
-        raise NotImplementedError("{} not a valid optimizer".format(optimizer))
+    path = greedy(inputs, output, size_dict, cost_fn='memory-removed')
 
-    # convert path back to sequence of Contracts
+    # convert path IR back to sequence of Reduce(..., Finitary(...))
+    reduce_op, finitary_op = op, arg.op
     operands = x.operands[:]
     for (a, b) in path:
         operands.pop(b)
-        path_end = Contract(a, b, backend=x)
+        # TODO don't reduce a dimension too early - keep a collections.Counter
+        path_end = Reduce(reduce_op, Finitary(finitary_op, [a, b]),
+                          reduce_dims & a.dims & b.dims)
         operands[a] = path_end
 
     return path_end
 
 
-@engine.handle(Contract)
-def contract_to_finitary(op, x):
-    """convert Contract to Reduce(Finitary/Binary)"""
-    if isinstance(x, Contract):
-        return Reduce(op, Finitary(x), reduce_dims=x.reduce_dims)
-    return x
+class Resugar(EvalPass):
+    pass
 
-
-def finitary_to_binary(op, x):
-    """convert Finitary to Binary/Unary when appropriate"""
-    raise NotImplementedError
+# @Resugar.register(Finitary)
+# def finitary_to_binary(op, x):
+#     """convert Finitary to Binary/Unary when appropriate"""
+#     raise NotImplementedError
 
 
 def apply_optimizer(x):
     # apply passes
-    x = binary_to_finitary(x)
-    x = finitary_to_contract(x)
-    x = deoptimize(x)
-    x = optimize_path(x)
-    x = contract_to_finitary(x)
-    x = finitary_to_binary(x)
+    with Desugar():
+        x = eval(x)
+
+    with Deoptimize():
+        x = eval(x)
+
+    with Optimize():
+        x = eval(x)
+
+    # with Resugar():
+    #     x = eval(x)
+
     return x

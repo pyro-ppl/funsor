@@ -3,14 +3,60 @@ from __future__ import absolute_import, division, print_function
 import opt_einsum
 
 import funsor.ops as ops
-from funsor.terms import Binary, Finitary, Funsor, Reduction, Tensor, Unitary
+from funsor.terms import Binary, Contract, Finitary, Funsor, Reduction, Tensor, Unitary
 
+from .handlers import effectful, EvalPass
 from .paths import greedy
 
 
-def eval(x):
+class EagerEval(EvalPass):
+    pass
+
+
+@EagerEval.register(Tensor)
+def eager_tensor(x):
+    return x.materialize()
+
+
+@EagerEval.register(Variable)
+def eager_variable(name, size):
+    if isinstance(size, int):
+        return Arange(name, size)  # TODO get this call right
+    else:
+        return Variable(name, size)
+
+
+@EagerEval.register(Unary)
+def eager_unary(op, v):
+    return op(v)
+
+
+@EagerEval.register(Substitute)
+def eager_substitute(arg, subs):
+    # TODO
+    raise NotImplementedError("TODO")
+
+
+@EagerEval.register(Binary)
+def eager_binary(op, lhs, rhs):
+    return op(lhs, rhs)
+
+
+@EagerEval.register(Finitary)
+def eager_finitary(op, terms):
+    return reduce(op, terms[1:], terms[0])
+
+
+@EagerEval.register(Reduce)
+def eager_reduce(op, arg, reduce_dims):
+    raise NotImplementedError("TODO")  # TODO implement
+
+
+# @default_handler(EagerEval())
+def eval(x):  # TODO get input args right
     r"""
-    Optimized evaluation of deferred expressions.
+    Overloaded partial evaluation of deferred expression.
+    Default semantics: do nothing
 
     This handles a limited class of expressions, raising
     ``NotImplementedError`` in unhandled cases.
@@ -24,24 +70,32 @@ def eval(x):
 
     # evaluate the path
     if isinstance(x, Tensor):
-        return x
+        return effectful(Tensor)(x)
+
+    if isinstance(x, Variable):
+        return effectful(Variable)()
+
+    if isinstance(x, Substitute):
+        return effectful(Substitute)(...)  # TODO get args right
    
-    if isinstance(x, Reduction):
-        return x.reduce(x.op, eval(x.terms))
+    if isinstance(x, Unary):
+        return effectful(Unary)(x.op, eval(x.v))
 
     if isinstance(x, Binary):
-        return _operators[x.op](eval(x.lhs), eval(x.rhs))
-
-    if isinstance(x, Unary):
-        return _operators[x.op](eval(x.v))
+        return effectful(Binary)(x.op, eval(x.lhs), eval(x.rhs))
 
     if isinstance(x, Finitary):
-        return reduce(x.op, [eval(tx) for tx in x.terms])
+        return effectful(Finitary)(x.op, [eval(tx) for tx in x.terms])
 
-    if isinstance(x, Contract):
-        return contract(*[eval(tx) for tx in x.operands], ops=x.ops)
+    if isinstance(x, Reduce):
+        return effectful(Reduce)(x.op, eval(x.arg), x.reduce_dims)
 
     raise NotImplementedError
+
+
+############
+# old
+############
 
 
 def _parse_reduction(op, x):
