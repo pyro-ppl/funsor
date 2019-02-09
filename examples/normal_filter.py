@@ -20,7 +20,7 @@ def main(args_):
             value = obs
         elif args_.eager:
             # this is eager like usual pyro.sample
-            value = fn.sample(['value'])
+            value = fn.sample('value')
         else:
             # this is deferred like pyro.sample during enumeration
             value = funsor.Variable(name, fn.schema['value'])

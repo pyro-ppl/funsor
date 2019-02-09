@@ -66,6 +66,8 @@ See [examples/minipyro.py](examples/minipyro.py) for a more complete example.
 - `funsor.engine` contains algorithms for symbolic computation including
   variable elimination. Its entire interface is `funsor.eval()`.
 - `funsor.distributions` contains standard probability distributions.
+- `funsor.adjoint` implementations of adjoint algorithms, e.g. sampling.
+- `funsor.minipyro` a small Funsor-compatible implementation of Pyro.
 
 ## Related projects
 

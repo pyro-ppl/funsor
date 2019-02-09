@@ -194,17 +194,6 @@ class Funsor(object):
             return self
         return Reduction(op, self, dims)
 
-    def argreduce(self, op, dim):
-        """
-        Reduce along a dimension, returning the value of that dimension.
-
-        :param callable op: A reduction operation.
-        :param set dims: An optional dim or set of dims to reduce.
-        :return: A funsors possibly depending on remaining dims.
-        :rtype: Funsor
-        """
-        return ArgReduction(op, self, dim)
-
     # ------------------------------------------------------------------------
     # Subclasses should not override these methods; instead override
     # the generic handlers and fall back to super(...).handler.
@@ -320,18 +309,6 @@ class Funsor(object):
     def max(self, dims=None):
         return self.reduce(ops.max, dims)
 
-    def argmin(self, dim):
-        return self.argreduce(ops.min, dim)
-
-    def argmax(self, dim):
-        return self.argreduce(ops.max, dim)
-
-    def marginal(self, dim):
-        return self.argreduce(ops.marginal, dim)
-
-    def sample(self, dim):
-        return self.argreduce(ops.sample, dim)
-
 
 class Variable(Funsor):
     """
@@ -398,11 +375,6 @@ class Substitution(Funsor):
         subs = {dim: value.materialize() for dim, value in self.subs}
         return self.arg.materialize()(**subs)
 
-    def argreduce(self, op, dim):
-        assert dim in self.dims
-        # TODO apply log_abs_det_jacobian of each transform in self.subs
-        return super(Substitution, self).argreduce(op, dim)
-
 
 class Align(Funsor):
     def __init__(self, arg, dims, shape):
@@ -436,9 +408,6 @@ class Align(Funsor):
 
     def reduce(self, op, dims=None):
         return self.arg.reduce(op, dims)
-
-    def argreduce(self, op, dim):
-        return self.arg.argreduce(op, dim)
 
 
 class Unary(Funsor):
@@ -521,34 +490,6 @@ class Reduction(Funsor):
                 dims = frozenset(dims).intersection(self.dims)
             return Reduction(op, self.arg, self.reduce_dims | dims)
         return super(Reduction, self).reduce(op, dims)
-
-
-class ArgReduction(Funsor):
-    def __init__(self, op, arg, dim):
-        assert callable(op)
-        assert isinstance(arg, Funsor)
-        assert isinstance(dim, str)
-        assert dim in arg.dims
-        dims = tuple(d for d in arg.dims if d != dim)
-        shape = tuple(arg.schema[d] for d in dims)
-        super(ArgReduction, self).__init__(dims, shape)
-        self.op = op
-        self.arg = arg
-        self.dim = dim
-
-    def __repr__(self):
-        return 'ArgReduction({}, {}, {})'.format(self.op.__name__, self.arg, repr(self.dim))
-
-    def __call__(self, *args, **kwargs):
-        kwargs = {dim: value for dim, value in kwargs.items()
-                  if dim in self.dims}
-        kwargs.update(zip(self.dims, args))
-        if any(self.dim in value.dims for value in kwargs.values()):
-            raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        return self.arg(**kwargs).argreduce(self.op, self.dim)
-
-    def materialize(self):
-        return self.arg.materialize().reduce(self.op, self.reduce_dims)
 
 
 class Finitary(Funsor):
@@ -772,27 +713,6 @@ class Tensor(Funsor):
             dims = tuple(d for d in self.dims if d not in dims)
             return Tensor(dims, data)
         return super(Tensor, self).reduce(op, dims)
-
-    def argreduce(self, op, dim):
-        assert dim in self.dims
-
-        if op in (ops.min, ops.max):
-            pos = self.dims.index(dim)
-            value = getattr(self.data, op.__name__)(pos)[0]
-            dims = self.dims[:pos] + self.dims
-            return Tensor(dims, value)
-
-        if op is ops.sample:
-            pos = self.dims.index(dim)
-            probs = (self.data - self.data.max(pos, keepdim=True)[0]).exp()
-            probs = probs.transpose(pos, -1)
-            value = torch.multinomial(probs.reshape(-1, probs.size(-1)), 1)
-            value = value.reshape(probs.shape[:-1] + (1,))
-            value = value.transpose(pos, -1).squeeze(pos)
-            dims = self.dims[:pos] + self.dims[1 + pos:]
-            return Tensor(dims, value)
-
-        return super(Tensor, self).argreduce(op, dim)
 
 
 class Arange(Tensor):

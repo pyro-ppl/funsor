@@ -13,7 +13,9 @@ from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
 
-from .terms import Variable
+import funsor
+import funsor.ops as ops
+from funsor.terms import Funsor, Variable
 
 # Pyro keeps track of two kinds of global state:
 # i)  The effect handler stack, which enables non-standard interpretations of
@@ -201,3 +203,74 @@ class deferred(Messenger):
         if msg["type"] == "sample" and msg["value"] is not None:
             msg["value"] = Variable(msg["name"], msg["fn"].schema["value"])
         return msg
+
+
+class log_joint(Messenger):
+    """
+    Tracks log joint density during delayed sampling.
+    """
+
+    def __enter__(self):
+        self.log_prob = funsor.to_funsor(0.)
+
+    def process_message(self, msg):
+        if msg["type"] == "sample":
+            assert msg["value"] is not None
+            self.log_prob += msg["fn"](msg["value"])
+
+        elif msg["type"] == "ground":
+            value = msg["value"]
+            if not isinstance(value, (funsor.Number, funsor.Tensor)):
+                log_prob = self.log_prob.reduce(ops.sample, value.dims)
+                with funsor.adjoints():
+                    self.log_prob = funsor.eval(log_prob)
+                subs = funsor.backward(ops.sample, self.log_prob, value.dims)
+                msg["value"] = value(**subs)
+                context = msg["context"]
+                for key, value in list(context.items()):
+                    if isinstance(value, Funsor):
+                        context[key] = value(**subs)
+
+        return msg
+
+
+def ground(value, context):
+    """
+    Sample enough deferred random variables so that ``value`` is ground,
+    and update ``context`` with the new samples. Typically ``context`` is
+    ``locals()`` as called in a small model, or a global dict storing all
+    random state in a larger model. This is typically used in a
+    :class:`deferred` context.
+
+    This is like ``value()`` in the Birch probabilistic programming language.
+
+    Example::
+
+        with pyro.deferred():
+            # ...draw deferred samples...
+            x = pyro.ground(x, locals())
+            if x > 0:  # requires x to be a ground value
+                # ...do stuff...
+
+    :param Funsor value: A funsor possibly depending on delayed sample sites.
+    :param dict context: A dict containing all other random state.
+    :return: A version of ``value`` with all deferred variables sampled.
+    :rtype: Funsor
+    """
+    assert isinstance(value, Funsor)
+    assert isinstance(context, dict)
+
+    # if there are no active Messengers, we just return the value
+    if not PYRO_STACK:
+        return value
+
+    # Otherwise, we initialize a message...
+    initial_msg = {
+        "type": "ground",
+        "context": context,
+        "value": value,
+    }
+
+    # ...and use apply_stack to send it to the Messengers
+    msg = apply_stack(initial_msg)
+    return msg["value"]
