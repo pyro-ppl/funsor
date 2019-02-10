@@ -19,7 +19,7 @@ def log_abs_det(jacobian):
     return result
 
 
-def log_abs_det_jacobian(schema, transform):
+def log_abs_det_jacobian(transform):
     jacobian = defaultdict(dict)
     for key, value in transform.items():
         for dim in value.dims:
@@ -89,6 +89,9 @@ class Distribution(Funsor):
     def sample(self):
         return backward(ops.sample, self, frozenset('value'))
 
+    def transform(self, **transform):
+        return self(**transform) + log_abs_det_jacobian(transform)  # sign error?
+
 
 @backward.register(ops.sample, Distribution)
 def _sample_torch_distribution(term, dims):
@@ -129,7 +132,11 @@ class Gamma(Distribution):
 # Conjugacy Relationships
 ################################################################################
 
-# TODO
+# TODO populate conjugacy table
+#
+# @contract.register((ops.logaddexp, ops.mul), Normal, Normal)
+# def _contract_normal_normal(lhs, rhs, reduce_dims):
+#     ...
 
 __all__ = [
     'Distribution',
