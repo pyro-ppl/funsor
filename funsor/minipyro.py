@@ -60,7 +60,7 @@ class trace(Handler):
 # allowing us to compute the joint probability density of samples under a model.
 # See the definition of elbo(...) below for an example of this pattern.
 class replay(Handler):
-    def __init__(self, fn, guide_trace):
+    def __init__(self, fn=None, guide_trace=None):
         self.guide_trace = guide_trace
         super(replay, self).__init__(fn)
 
@@ -168,10 +168,13 @@ class log_joint(Handler):
 
     def __enter__(self):
         self.log_prob = funsor.to_funsor(0.)
+        self.trace = OrderedDict()
+        return self
 
     def process(self, msg):
         if isinstance(msg["label"], Sample):
             assert msg["value"] is not None
+            self.trace[msg["name"]] = msg["value"]
             self.log_prob += msg["fn"](msg["value"])
 
         elif isinstance(msg["label"], Ground):
@@ -181,6 +184,7 @@ class log_joint(Handler):
                 with funsor.adjoints():
                     self.log_prob = funsor.eval(log_prob)
                 subs = funsor.backward(ops.sample, self.log_prob, value.dims)
+                self.trace.update(subs)
                 msg["value"] = value(**subs)
                 context = msg["context"]
                 for key, value in list(context.items()):
@@ -234,3 +238,21 @@ def ground(value, context):
     # ...and use apply_stack to send it to the Messengers
     msg = apply_stack(initial_msg)
     return msg["value"]
+
+
+# This is an attempt to compute a deferred elbo
+def elbo(model, guide, *args, **kwargs):
+    # sample guide
+    with funsor.adjoints(), log_joint() as guide_joint:
+        guide(*args, **kwargs)
+        q = funsor.eval(guide_joint.log_join.logsumexp())
+    tr = guide_joint.trace
+    tr.update(funsor.backward(ops.sample, q))  # force deferred samples?
+
+    # replay model against guide
+    with funsor.adjoints(), log_joint() as model_joint, replay(guide_trace=tr):
+        model(*args, **kwargs)
+        p = funsor.eval(model_joint.logsumexp())
+
+    elbo = p - q
+    return -elbo  # negate, for use as loss
