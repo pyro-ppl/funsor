@@ -245,14 +245,14 @@ def elbo(model, guide, *args, **kwargs):
     # sample guide
     with funsor.adjoints(), log_joint() as guide_joint:
         guide(*args, **kwargs)
-        q = funsor.eval(guide_joint.log_join.logsumexp())
+        q = funsor.eval(guide_joint.log_prob.logsumexp())
     tr = guide_joint.trace
     tr.update(funsor.backward(ops.sample, q))  # force deferred samples?
 
     # replay model against guide
     with funsor.adjoints(), log_joint() as model_joint, replay(guide_trace=tr):
         model(*args, **kwargs)
-        p = funsor.eval(model_joint.logsumexp())
+        p = funsor.eval(model_joint.log_prob.logsumexp())
 
     elbo = p - q
     return -elbo  # negate, for use as loss
