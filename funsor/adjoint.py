@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 import torch
 
 import funsor.ops as ops
+from funsor.registry import UnaryRegistry
 from funsor.terms import Funsor, Tensor
 
 
@@ -20,23 +21,7 @@ class adjoints(object):
             'TODO(eb8680) Unistall effect handler to record compute graph.')
 
 
-def backward(op, forward_result, dims):
-    """
-    Compute backward operation, after having computed a ``forward_result``
-    ``with adjoints()``.
-
-    :param callable op: A reduction operation.
-    :param set dims: An optional dim or set of dims to reduce.
-    :return: A dict mapping a subset of input dims to funsors possibly
-        depending on remaining dims.
-    :rtype: dict
-    """
-    if isinstance(dims, str):
-        dims = (dims,)
-    assert set(dims) <= set(forward_result.dims)
-    if not dims:
-        return {}
-    raise NotImplementedError('TODO')
+backward = UnaryRegistry()
 
 
 def argreduce(op, term, dims):
@@ -61,30 +46,52 @@ def argreduce(op, term, dims):
     return args, remaining
 
 
-# TODO Move this into a Backward definition.
-def argreduce_one(op, term, dim):
-    assert dim in term.dims
+################################################################################
+# Backward Implementations
+################################################################################
 
-    if op in (ops.min, ops.max):
-        pos = term.dims.index(dim)
-        value = getattr(term.data, op.__name__)(pos)[0]
-        dims = term.dims[:pos] + term.dims[1 + pos:]
-        return Tensor(dims, value)
+@backward.register(ops.min, Tensor)
+def _min_tensor(term, dims):
+    if len(dims) != 1:
+        raise NotImplementedError('TODO')
+    dim = next(iter(dims))
 
-    if op is ops.sample:
-        pos = term.dims.index(dim)
-        probs = (term.data - term.data.max(pos, keepdim=True)[0]).exp()
-        probs = probs.transpose(pos, -1)
-        value = torch.multinomial(probs.reshape(-1, probs.size(-1)), 1)
-        value = value.reshape(probs.shape[:-1] + (1,))
-        value = value.transpose(pos, -1).squeeze(pos)
-        dims = term.dims[:pos] + term.dims[1 + pos:]
-        return Tensor(dims, value)
+    pos = term.dims.index(dim)
+    value = term.data.min(pos)[0]
+    dims = term.dims[:pos] + term.dims[1 + pos:]
+    return {dim: Tensor(dims, value)}
 
-    raise NotImplementedError
+
+@backward.register(ops.max, Tensor)
+def _max_tensor(term, dims):
+    if len(dims) != 1:
+        raise NotImplementedError('TODO')
+    dim = next(iter(dims))
+
+    pos = term.dims.index(dim)
+    value = term.data.max(pos)[0]
+    dims = term.dims[:pos] + term.dims[1 + pos:]
+    return {dim: Tensor(dims, value)}
+
+
+@backward.register(ops.sample, Tensor)
+def _sample_tensor(term, dims):
+    if len(dims) > 1:
+        raise NotImplementedError('TODO')
+    dim = next(iter(dims))
+
+    pos = term.dims.index(dim)
+    probs = (term.data - term.data.max(pos, keepdim=True)[0]).exp()
+    probs = probs.transpose(pos, -1)
+    value = torch.multinomial(probs.reshape(-1, probs.size(-1)), 1)
+    value = value.reshape(probs.shape[:-1] + (1,))
+    value = value.transpose(pos, -1).squeeze(pos)
+    dims = term.dims[:pos] + term.dims[1 + pos:]
+    return {dim: Tensor(dims, value)}
 
 
 __all__ = [
     'adjoints',
+    'argreduce',
     'backward',
 ]

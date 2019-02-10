@@ -40,6 +40,10 @@ class Contract(Funsor):
             return Contract(self.sum_op, self.prod_op, lhs, rhs, self.reduce_dims)
 
 
+################################################################################
+# Contract Implementations
+################################################################################
+
 @contract.register((ops.add, ops.mul), Tensor, Tensor)
 def _sumproduct_tensor_tensor(lhs, rhs, reduce_dims):
     schema = lhs.schema.copy()
