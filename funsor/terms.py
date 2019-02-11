@@ -12,7 +12,7 @@ from six.moves import reduce
 
 import funsor.ops as ops
 
-DOMAINS = ('real', 'density')
+DOMAINS = ('real',)
 
 
 def align_tensors(*args):
@@ -739,9 +739,11 @@ class Function(Funsor):
         if kwargs:
             args = list(args)
             for name in self.dims[len(args):]:
-                args.append(kwargs.pop(name))
-            assert not kwargs
-        if all(isinstance(x, Tensor) for x in args):
+                if name in kwargs:
+                    args.append(kwargs.pop(name))
+                else:
+                    break
+        if len(args) == len(self.dims) and all(isinstance(x, Tensor) for x in args):
             dims, tensors = align_tensors(*args)
             data = self.fn(*tensors)
             return Tensor(dims, data)

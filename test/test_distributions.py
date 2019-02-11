@@ -13,13 +13,13 @@ import funsor.distributions as dist
 def test_normal_density(batch_shape):
     batch_dims = ('x', 'y', 'z')[:len(batch_shape)]
 
-    @funsor.of_shape('real', 'real', 'density')
+    @funsor.of_shape('real', 'real', 'real')
     def normal(loc, scale, value):
         return -((value - loc) ** 2) / (2 * scale ** 2) - scale.log() - math.log(math.sqrt(2 * math.pi))
 
     assert isinstance(normal, funsor.Funsor)
     assert normal.dims == ('loc', 'scale', 'value')
-    assert normal.shape == ('real', 'real', 'density')
+    assert normal.shape == ('real', 'real', 'real')
 
     loc = funsor.Tensor(batch_dims, torch.randn(batch_shape))
     scale = funsor.Tensor(batch_dims, torch.randn(batch_shape).exp())
@@ -41,18 +41,18 @@ def test_normal_density(batch_shape):
 def test_log_normal_density(batch_shape):
     batch_dims = ('x', 'y', 'z')[:len(batch_shape)]
 
-    @funsor.of_shape('real', 'real', 'density')
+    @funsor.of_shape('real', 'real', 'real')
     def normal(loc, scale, value):
         return -((value - loc) ** 2) / (2 * scale ** 2) - scale.log() - math.log(math.sqrt(2 * math.pi))
 
     assert isinstance(normal, funsor.Funsor)
     assert normal.dims == ('loc', 'scale', 'value')
-    assert normal.shape == ('real', 'real', 'density')
+    assert normal.shape == ('real', 'real', 'real')
 
-    value = funsor.Variable('value', 'density')
+    value = funsor.Variable('value', 'real')
     log_normal = normal(value=value.log()).align(('loc', 'scale', 'value'))
     assert log_normal.dims == ('loc', 'scale', 'value')
-    assert log_normal.shape == ('real', 'real', 'density')
+    assert log_normal.shape == ('real', 'real', 'real')
 
     loc = funsor.Tensor(batch_dims, torch.randn(batch_shape))
     scale = funsor.Tensor(batch_dims, torch.randn(batch_shape).exp())

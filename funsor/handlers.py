@@ -53,7 +53,10 @@ class OpRegistry(Handler):
         return msg
 
     @classmethod
-    def register(cls, *term_types, post=False):
+    def register(cls, *term_types, **kwargs):
+        post = kwargs.pop('post', False)
+        assert not kwargs
+
         def _fn(fn):
             for term_type in term_types:
                 if post:
@@ -65,6 +68,7 @@ class OpRegistry(Handler):
                         "cannot override"
                     cls._terms_processed[term_type] = fn
             return fn
+
         return _fn
 
 
