@@ -34,7 +34,7 @@ def eager_unary(op, v):
 def eager_substitute(arg, subs):  # this is the key...
     for (dim, value) in subs:
         pass
-    raise ValueError("FIXME")
+    raise NotImplementedError("FIXME")
 
 
 @EagerEval.register(Binary)
@@ -60,7 +60,7 @@ class TailCall(Label):
 
 
 class trampoline(Handler):
-    """Trampoline to handle tail recursion"""
+    """Trampoline to handle tail recursion automatically"""
     def __enter__(self):
         self._schedule = []
         self._returnvalue = None
