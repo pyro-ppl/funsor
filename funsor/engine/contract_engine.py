@@ -53,7 +53,7 @@ def _contract(*operands, **kwargs):
             raise NotImplementedError
         args.extend([x.data, x.dims])
     args.append(dims)
-    data = opt_einsum.contract(*args, **kwargs)  # TODO use backend einsum directly
+    data = opt_einsum.contract(*args, **kwargs)
     return Tensor(dims, data)
 
 

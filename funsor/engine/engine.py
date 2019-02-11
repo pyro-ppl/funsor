@@ -30,7 +30,7 @@ def eager_unary(op, v):
 
 
 @EagerEval.register(Substitution)
-def eager_substitute(arg, subs):  # this is the key...
+def eager_substitution(arg, subs):  # this is the key...
     return Substitution(arg, subs).materialize()
 
 
