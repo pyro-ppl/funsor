@@ -3,15 +3,14 @@ Description of the first version of the optimizer:
     1. Rewrite to canonical form of reductions of finitary ops
     2. Rewrite reductions of finitary ops to Contract ops
     3. "De-optimize" by merging as many Contract ops as possible into single Contracts
-    4. Optimize by rewriting large contract ops with the greedy path optimizer
+    4. Optimize by rewriting large contract ops with the greedy opt_einsum path optimizer
 """
 from __future__ import absolute_import, division, print_function
 
-from collections import Counter
+import collections
 
-import funsor.ops as ops
-from funsor.terms import Binary, Finitary, Funsor, Reduction, Tensor, Unitary
 from funsor.handlers import OpRegistry
+from funsor.terms import Binary, Finitary, Reduction, Unary
 
 from .paths import greedy
 
@@ -65,7 +64,7 @@ def deoptimize_finitary(op, terms):
 
 
 @Deoptimize.register(Reduction)
-def deoptimize_reduce(op, arg, reduce_dims):
+def deoptimize_reduction(op, arg, reduce_dims):
     """
     Rewrite to the largest possible Reduction(Finitary) by combining Reductions
     Assumes that all input Reduction/Finitary ops have been rewritten
@@ -84,41 +83,55 @@ class Optimize(OpRegistry):
 
 
 @Optimize.register(Reduction)  # TODO need Finitary as well?
-def optimize_path(op, arg, reduce_dims):
+def optimize_reduction(op, arg, reduce_dims):
     r"""
     Recursively convert large Reduce(Finitary) ops to many smaller versions
     by reordering execution with a modified opt_einsum optimizer
     """
-    if not isinstance(arg, Finitary):  # reflect
+    if not isinstance(arg, Finitary):  # nothing to do, reflect
         return Reduction(op, arg, reduce_dims)
 
     # build opt_einsum optimizer IR
     inputs = []
     size_dict = {}
-    for term in terms:
-        inputs.append(set(d for d in term.dims))
+    for term in arg.terms:
+        inputs.append(frozenset(d for d in term.dims))
         # TODO get sizes right
         size_dict.update({d: 2 for d in term.dims})
-    outputs = set().union(*inputs) - reduce_dims
+    outputs = frozenset().union(*inputs) - reduce_dims
 
     # optimize path with greedy opt_einsum optimizer
-    path = greedy(inputs, output, size_dict, cost_fn='memory-removed')
+    path = greedy(inputs, outputs, size_dict, cost_fn='memory-removed')
 
     # convert path IR back to sequence of Reduction(Finitary(...))
+
+    # first prepare a reduce_dim counter to avoid early reduction
     reduce_dim_counter = collections.Counter()
+    for input in inputs:
+        reduce_dim_counter.update((d, 1) for d in input)
+
     reduce_op, finitary_op = op, arg.op
-    operands = x.operands[:]
+    operands = arg.terms[:]
     for (a, b) in path:
         operands.pop(b)
         path_end_finitary = Finitary(finitary_op, [a, b])
 
-        # TODO don't reduce a dimension too early - keep a collections.Counter
-        # and only reduce when the dimension is removed from all lhs terms in the path
-        path_end_reduce_dims = reduce_dims & a.dims & b.dims
+        # don't reduce a dimension too early - keep a collections.Counter
+        # and only reduce when the dimension is removed from all lhs terms in path
+        reduce_dim_counter.subtract((d, 1) for d in reduce_dims & a.dims)
+        reduce_dim_counter.subtract((d, 1) for d in reduce_dims & b.dims)
+
+        path_end_reduce_dims = frozenset(d for d in reduce_dims & (a.dims | b.dims)
+                                         if reduce_dim_counter[d] == 0)
 
         path_end = Reduction(reduce_op, path_end_finitary, path_end_reduce_dims)
         operands[a] = path_end
 
+    # reduce any remaining dims, if necessary
+    final_reduce_dims = frozenset(d for (d, count) in reduce_dim_counter.items()
+                                  if count > 0)
+    if final_reduce_dims:
+        path_end = Reduction(reduce_op, path_end, final_reduce_dims)
     return path_end
 
 

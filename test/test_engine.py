@@ -6,7 +6,7 @@ import torch
 import funsor
 
 from funsor.engine import eval
-from funsor.engine.contract_engine import eval as contract_eval
+from funsor.engine.contract_engine import eval as contract_eval  # noqa: F401
 from funsor.engine.engine import EagerEval
 from funsor.engine.optimizer import apply_optimizer
 

@@ -11,7 +11,7 @@ from collections import defaultdict
 import numpy as np
 
 
-__all__ = ["greedy",]
+__all__ = ["greedy"]
 
 
 _UNLIMITED_MEM = {-1, None, float('inf')}

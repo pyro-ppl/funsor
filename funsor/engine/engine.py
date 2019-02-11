@@ -1,11 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
-import opt_einsum
+from six.moves import reduce
 
-import funsor.ops as ops
-from funsor.terms import Arange, Binary, Contract, Finitary, Funsor, Reduction, Tensor, Unary, Variable
-
-from funsor.handlers import default_handler, effectful, Label, OpRegistry
+from funsor.handlers import effectful, Handler, Label, OpRegistry
+from funsor.terms import Arange, Binary, Finitary, Funsor, Reduction, Substitute, Tensor, Unary, Variable
 
 
 class EagerEval(OpRegistry):
@@ -117,7 +115,7 @@ def eval(x):
             eval(x.arg),
             tuple((dim, eval(value)) for (dim, value) in x.subs)
         )
-   
+
     # Arithmetic operations
     if isinstance(x, Unary):
         return _tail_call(effectful(Unary)(Unary), x.op, eval(x.v))
