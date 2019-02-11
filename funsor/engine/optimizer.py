@@ -13,7 +13,7 @@ from funsor.handlers import OpRegistry
 from funsor.terms import Binary, Finitary, Reduction, Unary, Tensor
 
 from .engine import eval
-from .paths import greedy
+from opt_einsum.paths import greedy  # TODO move to custom optimizer
 
 
 class Desugar(OpRegistry):
@@ -105,7 +105,7 @@ def optimize_reduction(op, arg, reduce_dims):
     outputs = frozenset().union(*inputs) - reduce_dims
 
     # optimize path with greedy opt_einsum optimizer
-    path = greedy(inputs, outputs, size_dict, cost_fn='memory-removed')
+    path = greedy(inputs, outputs, size_dict)
 
     # convert path IR back to sequence of Reduction(Finitary(...))
 
