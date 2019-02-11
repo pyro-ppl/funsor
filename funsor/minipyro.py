@@ -168,14 +168,26 @@ class log_joint(Handler):
 
     def __enter__(self):
         self.log_prob = funsor.to_funsor(0.)
-        self.trace = OrderedDict()
+        self.samples = OrderedDict()
         return self
 
     def process(self, msg):
         if isinstance(msg["label"], Sample):
             assert msg["value"] is not None
-            self.trace[msg["name"]] = msg["value"]
-            self.log_prob += msg["fn"](msg["value"])
+            self.samples[msg["name"]] = msg["value"]
+            self.log_prob += msg["fn"].log_prob(msg["value"])
+
+        elif isinstance(msg["label"], Markov):
+            funsors = []
+            _recursive_map(funsors.append, msg["value"])
+            hidden_dims = (frozenset(self.samples) - frozenset(funsors)
+                           ).intersection(self.log_prob.dims)
+            if hidden_dims:
+                marginal = self.log_prob.reduce(ops.sample, hidden_dims)
+                with funsor.adjoints():
+                    self.log_prob = funsor.eval(marginal)
+                subs = funsor.backward(ops.sample, self.log_prob, hidden_dims)
+                msg["value"] = _recursive_map(lambda x: x(**subs), msg["value"])
 
         elif isinstance(msg["label"], Ground):
             value = msg["value"]
@@ -184,7 +196,7 @@ class log_joint(Handler):
                 with funsor.adjoints():
                     self.log_prob = funsor.eval(log_prob)
                 subs = funsor.backward(ops.sample, self.log_prob, value.dims)
-                self.trace.update(subs)
+                self.samples.update(subs)
                 msg["value"] = value(**subs)
                 context = msg["context"]
                 for key, value in list(context.items()):
@@ -192,6 +204,49 @@ class log_joint(Handler):
                         context[key] = value(**subs)
 
         return msg
+
+
+class Markov(Label):
+    pass
+
+
+def markov(state):
+    """
+    Declaration that behavior after this point in a program depend on behavior
+    before this point in a program only through the passed ``state`` object,
+    which can be a :class:`~funsor.Funsor` or recursive structure built from
+    funsors via ``tuple`` or non-funsor keyed ``dict``.
+
+    Example::
+
+       x = 0
+       for t in range(100):
+           x = pyro.sample("x_{}".format(t), trans(x))
+           x = pyro.markov(x)  # it is now safe to marginalize past xs
+           pyro.sample("y_{}".format(t), emit(x), obs=data[t])
+    """
+    # if there are no active Handlers, we just return the state
+    if not HANDLER_STACK:
+        return state
+
+    # Otherwise, we initialize a message...
+    initial_msg = {
+        "type": Markov(),
+        "value": state,
+    }
+
+    # ...and use apply_stack to send it to the Handlers
+    msg = apply_stack(initial_msg)
+    return msg["value"]
+
+
+def _recursive_map(fn, x):
+    if isinstance(x, funsor.Funsor):
+        return fn(x)
+    if isinstance(x, tuple):
+        return tuple(fn(y) for y in x)
+    if isinstance(x, dict):
+        return {k: fn(v) for k, v in x.items()}
 
 
 class Ground(Label):
@@ -246,8 +301,9 @@ def elbo(model, guide, *args, **kwargs):
     with funsor.adjoints(), log_joint() as guide_joint:
         guide(*args, **kwargs)
         # FIXME This is only correct for reparametrized sites.
-        q = funsor.eval(guide_joint.log_prob.logsumexp())
-    tr = guide_joint.trace
+        # FIXME do not marginalize; instead sample.
+        q = guide_joint.log_prob.logsumexp()
+    tr = guide_joint.samples
     tr.update(funsor.backward(ops.sample, q))  # force deferred samples?
 
     # replay model against guide
