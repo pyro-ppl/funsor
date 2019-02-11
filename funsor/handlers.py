@@ -103,8 +103,10 @@ def effectful(term_type, fn=None):
         if not HANDLER_STACK:
             return fn(*args, **kwargs)
 
+        name = kwargs.pop("name", None)
         initial_msg = {
             "label": term_type,
+            "name": name,
             "fn": fn,
             "args": args,
             "kwargs": kwargs,
