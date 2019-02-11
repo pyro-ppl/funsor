@@ -33,17 +33,36 @@ class Deoptimize(OpRegistry):
 @Deoptimize.register(Finitary)
 def deoptimize_finitary(op, terms):
     """
-    Rewrite to the largest possible Finitary(Finitary/Reduction)
+    Rewrite to the largest possible Finitary(Finitary/Reduction) by moving Reductions
+    Assumes that all input Finitary ops have been rewritten
     """
-    pass
+    # two cases to rewrite:
+    # 1) Finitary(Reduction, Reduction) -> Reduction(Finitary(lhs.arg, rhs.arg))
+    # 2) Finitary(Finitary) -> Finitary
+    new_terms = []
+    for term in terms:
+        if isinstance(term, Finitary) and term.op == op:
+            new_terms.extend(term.terms)
+        # elif isinstance(term, Reduction):
+        #     pass
+        else:
+            new_terms.append(term)
+    return Finitary(op, new_terms)
 
 
 @Deoptimize.register(Reduction)
 def deoptimize_reduce(op, arg, reduce_dims):
     """
-    Rewrite to the largest possible Reduction(Finitary)
+    Rewrite to the largest possible Reduction(Finitary) by combining Reductions
+    Assumes that all input Reduction/Finitary ops have been rewritten
     """
-    raise NotImplementedError("TODO")
+    # example of something to rewrite:
+    # Reduction(Reduction) -> Reduction
+    if isinstance(arg, Reduction) and arg.op == op:
+        new_reduce_dims = reduce_dims.union(arg.reduce_dims)
+        return Reduction(op, arg.arg, new_reduce_dims)
+    else:
+        return Reduction(op, arg, reduce_dims)
 
 
 class Optimize(OpRegistry):
@@ -53,7 +72,7 @@ class Optimize(OpRegistry):
 @Optimize.register(Reduction)  # TODO need Finitary as well?
 def optimize_path(op, arg, reduce_dims):
     r"""
-    Recursively convert large Contract ops to many smaller binary Contracts
+    Recursively convert large Reduce(Finitary) ops to many smaller versions
     by reordering execution with a modified opt_einsum optimizer
     """
     if not isinstance(arg, Finitary):  # reflect
@@ -73,15 +92,17 @@ def optimize_path(op, arg, reduce_dims):
 
     # convert path IR back to sequence of Reduction(..., Finitary(...))
     reduce_dim_counter = collections.Counter()
-
     reduce_op, finitary_op = op, arg.op
     operands = x.operands[:]
     for (a, b) in path:
         operands.pop(b)
+        path_end_finitary = Finitary(finitary_op, [a, b])
+
         # TODO don't reduce a dimension too early - keep a collections.Counter
-        # and only reduce when the dimension is removed from all lhs
-        path_end = Reduction(reduce_op, Finitary(finitary_op, [a, b]),
-                             reduce_dims & a.dims & b.dims)
+        # and only reduce when the dimension is removed from all lhs terms in the path
+        path_end_reduce_dims = reduce_dims & a.dims & b.dims
+
+        path_end = Reduction(reduce_op, path_end_finitary, path_end_reduce_dims)
         operands[a] = path_end
 
     return path_end

@@ -63,16 +63,15 @@ def eval(x):
     for arg, reduce_dims in _parse_reduction(ops.add, x):
         operands = _parse_commutative(ops.mul, arg)
         dims = tuple(d for d in arg.dims if d not in reduce_dims)
-        head = contract(*operands, dims=dims)
+        head = _contract(*operands, dims=dims)
 
     # Handle log-sum-product-exp contractions.
     for arg, reduce_dims in _parse_reduction(ops.logaddexp, x):
         operands = _parse_commutative(ops.add, arg)
         dims = tuple(d for d in arg.dims if d not in reduce_dims)
-        return contract(*operands, dims=dims, backend='pyro.ops.einsum.torch_log')
+        return _contract(*operands, dims=dims, backend='pyro.ops.einsum.torch_log')
 
 
 __all__ = [
-    'contract',
     'eval',
 ]
