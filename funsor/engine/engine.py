@@ -73,6 +73,7 @@ class trampoline(Handler):
     def process(self, msg):
         if isinstance(msg["label"], TailCall):
             msg["stop"] = True  # defer until exit
+            msg["value"] = True
             self._schedule.append((msg["fn"], msg["args"], msg["kwargs"]))
         return msg
 
