@@ -4,11 +4,10 @@ Description of the first version of the optimizer:
     2. Rewrite reductions of finitary ops to Contract ops
     3. "De-optimize" by merging as many Contract ops as possible into single Contracts
     4. Optimize by rewriting large contract ops with the greedy path optimizer
-    5. Rewrite resulting binary contractions to reductions of binary ops
-    6. Rewrite remaining contractions to reductions of finitary ops?
-    7. Evaluate?
 """
 from __future__ import absolute_import, division, print_function
+
+from collections import Counter
 
 import funsor.ops as ops
 from funsor.terms import Binary, Finitary, Funsor, Reduction, Tensor, Unitary
@@ -33,11 +32,17 @@ class Deoptimize(OpRegistry):
 
 @Deoptimize.register(Finitary)
 def deoptimize_finitary(op, terms):
-    raise NotImplementedError("TODO")
+    """
+    Rewrite to the largest possible Finitary(Finitary/Reduction)
+    """
+    pass
 
 
-@Deoptimize.register(Reduce)
+@Deoptimize.register(Reduction)
 def deoptimize_reduce(op, arg, reduce_dims):
+    """
+    Rewrite to the largest possible Reduction(Finitary)
+    """
     raise NotImplementedError("TODO")
 
 
@@ -45,14 +50,14 @@ class Optimize(OpRegistry):
     pass
 
 
-@Optimize.register(Reduce)
+@Optimize.register(Reduction)  # TODO need Finitary as well?
 def optimize_path(op, arg, reduce_dims):
     r"""
     Recursively convert large Contract ops to many smaller binary Contracts
     by reordering execution with a modified opt_einsum optimizer
     """
-    if not isinstance(arg, Finitary):
-        return Reduce(op, arg, reduce_dims)
+    if not isinstance(arg, Finitary):  # reflect
+        return Reduction(op, arg, reduce_dims)
 
     # build opt_einsum optimizer IR
     inputs = []
@@ -66,30 +71,25 @@ def optimize_path(op, arg, reduce_dims):
     # optimize path
     path = greedy(inputs, output, size_dict, cost_fn='memory-removed')
 
-    # convert path IR back to sequence of Reduce(..., Finitary(...))
+    # convert path IR back to sequence of Reduction(..., Finitary(...))
+    reduce_dim_counter = collections.Counter()
+
     reduce_op, finitary_op = op, arg.op
     operands = x.operands[:]
     for (a, b) in path:
         operands.pop(b)
         # TODO don't reduce a dimension too early - keep a collections.Counter
-        path_end = Reduce(reduce_op, Finitary(finitary_op, [a, b]),
-                          reduce_dims & a.dims & b.dims)
+        # and only reduce when the dimension is removed from all lhs
+        path_end = Reduction(reduce_op, Finitary(finitary_op, [a, b]),
+                             reduce_dims & a.dims & b.dims)
         operands[a] = path_end
 
     return path_end
 
 
-class Resugar(OpRegistry):
-    pass
-
-# @Resugar.register(Finitary)
-# def finitary_to_binary(op, x):
-#     """convert Finitary to Binary/Unary when appropriate"""
-#     raise NotImplementedError
-
-
 def apply_optimizer(x):
-    # apply passes
+
+    # TODO can any of these be combined into a single eval?
     with Desugar():
         x = eval(x)
 
@@ -98,8 +98,5 @@ def apply_optimizer(x):
 
     with Optimize():
         x = eval(x)
-
-    # with Resugar():
-    #     x = eval(x)
 
     return x
