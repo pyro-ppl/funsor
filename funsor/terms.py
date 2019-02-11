@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 import functools
 import inspect
 import numbers
+import six
 from collections import OrderedDict
 from weakref import WeakValueDictionary
 
@@ -766,7 +767,10 @@ def to_funsor(x):
 
 
 def _of_shape(fn, shape):
-    args, vargs, kwargs, defaults = inspect.getargspec(fn)
+    if six.PY3:
+        args, vargs, kwargs, defaults, _, _, _ = inspect.getfullargspec(fn)
+    else:
+        args, vargs, kwargs, defaults = inspect.getargspec(fn)
     assert not vargs
     assert not kwargs
     dims = tuple(args)

@@ -59,6 +59,10 @@ def _contract(*operands, **kwargs):
 
 def eval(x):
     """original contract-based eval implementation, useful for testing"""
+    # Handle trivial case
+    if isinstance(x, Tensor):
+        return x.materialize()
+
     # Handle sum-product contractions.
     for arg, reduce_dims in _parse_reduction(ops.add, x):
         operands = _parse_commutative(ops.mul, arg)

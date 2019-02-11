@@ -5,17 +5,25 @@ import pytest
 import torch
 import funsor
 
-from funsor.engine import eval
-from funsor.engine.contract_engine import eval as contract_eval  # noqa: F401
+from funsor.engine import eval as main_eval
+from funsor.engine.contract_engine import eval as _contract_eval
 from funsor.engine.engine import EagerEval
 from funsor.engine.optimizer import apply_optimizer
 
 
+def unoptimized_eval(x): return EagerEval(main_eval)(x)
+
+
+def optimized_eval(x): return EagerEval(main_eval)(apply_optimizer(x))
+
+
+def contract_eval(x): return _contract_eval(x)  # for pytest param naming
+
+
+@pytest.mark.parametrize('eval', [unoptimized_eval, optimized_eval, contract_eval])
 @pytest.mark.parametrize('materialize_f', [False, True])
 @pytest.mark.parametrize('materialize_g', [False, True])
-@pytest.mark.parametrize('optimize', [True, False])
-@pytest.mark.parametrize('reflect', [False])  # TODO add check for reflect=True
-def test_mm(materialize_f, materialize_g, optimize, reflect):
+def test_mm(eval, materialize_f, materialize_g):
 
     @funsor.of_shape(3, 4)
     def f(i, j):
@@ -28,28 +36,23 @@ def test_mm(materialize_f, materialize_g, optimize, reflect):
     def g(j, k):
         return j + k
 
-    if materialize_f:
-        f = f.materialize()
+    if materialize_g:
+        g = g.materialize()
 
     h = (f * g).sum('j')
-    if reflect:
-        eval_h = eval(h)
-        assert eval_h == h
-    else:
-        eval_h = EagerEval(eval)(h)
-        assert isinstance(eval_h, funsor.Tensor)
-        assert eval_h.dims == h.dims
-        assert eval_h.shape == h.shape
-        for i in range(3):
-            for k in range(5):
-                assert eval_h[i, k] == h[i, k].materialize()
+    eval_h = eval(h)
+    assert isinstance(eval_h, funsor.Tensor)
+    assert eval_h.dims == h.dims
+    assert eval_h.shape == h.shape
+    for i in range(3):
+        for k in range(5):
+            assert eval_h[i, k] == h[i, k].materialize()
 
 
+@pytest.mark.parametrize('eval', [unoptimized_eval, optimized_eval, contract_eval])
 @pytest.mark.parametrize('materialize_f', [False, True])
 @pytest.mark.parametrize('materialize_g', [False, True])
-@pytest.mark.parametrize('optimize', [True, False])
-@pytest.mark.parametrize('reflect', [False])  # TODO add check for reflect=True
-def test_logsumproductexp(materialize_f, materialize_g, optimize, reflect):
+def test_logsumproductexp(eval, materialize_f, materialize_g):
 
     @funsor.of_shape(3, 4)
     def f(i, j):
@@ -62,21 +65,16 @@ def test_logsumproductexp(materialize_f, materialize_g, optimize, reflect):
     def g(j, k):
         return j + k
 
-    if materialize_f:
-        f = f.materialize()
+    if materialize_g:
+        g = g.materialize()
 
     log_prob = funsor.Tensor(('log_prob',), torch.randn(10))
     h = (log_prob[f] + log_prob[g]).logsumexp('j')
 
-    if reflect:
-        eval_h = eval(h)
-        assert eval_h == h
-    else:
-        h = apply_optimizer(h) if optimize else h
-        eval_h = EagerEval(eval)(h)
-        assert isinstance(eval_h, funsor.Tensor)
-        assert eval_h.dims == h.dims
-        assert eval_h.shape == h.shape
-        for i in range(3):
-            for k in range(5):
-                assert (eval_h[i, k] - h[i, k].materialize()) < 1e-6
+    eval_h = eval(h)
+    assert isinstance(eval_h, funsor.Tensor)
+    assert eval_h.dims == h.dims
+    assert eval_h.shape == h.shape
+    for i in range(3):
+        for k in range(5):
+            assert (eval_h[i, k] - h[i, k].materialize()) < 1e-6

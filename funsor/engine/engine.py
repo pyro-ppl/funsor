@@ -85,7 +85,6 @@ class trampoline(Handler):
 
 def _tail_call(fn, *args, **kwargs):
     """tail call annotation for trampoline interception"""
-    # return fn(*args, **kwargs)
     return effectful(TailCall(), fn)(*args, **kwargs)
 
 
