@@ -3,16 +3,17 @@ from __future__ import absolute_import, division, print_function
 from six.moves import reduce
 
 from funsor.handlers import effectful, Handler, Label, OpRegistry
-from funsor.terms import Arange, Binary, Finitary, Funsor, Reduction, Substitute, Tensor, Unary, Variable
+from funsor.terms import Arange, Binary, Finitary, Funsor, Reduction, Substitution, Tensor, Unary, Variable
 
 
 class EagerEval(OpRegistry):
-    pass
+    _terms_processed = {}
+    _terms_postprocessed = {}
 
 
 @EagerEval.register(Tensor)
-def eager_tensor(x):
-    return x.materialize()
+def eager_tensor(dims, data):
+    return Tensor(dims, data).materialize()  # .data
 
 
 @EagerEval.register(Variable)
@@ -28,11 +29,9 @@ def eager_unary(op, v):
     return op(v)
 
 
-@EagerEval.register(Substitute)
+@EagerEval.register(Substitution)
 def eager_substitute(arg, subs):  # this is the key...
-    for (dim, value) in subs:
-        pass
-    raise NotImplementedError("FIXME")
+    return Substitution(arg, subs).materialize()
 
 
 @EagerEval.register(Binary)
@@ -41,15 +40,15 @@ def eager_binary(op, lhs, rhs):
 
 
 @EagerEval.register(Finitary)
-def eager_finitary(op, terms):
-    if len(terms) == 1:
-        return eager_unary(op, terms[0])  # XXX is this necessary?
-    return reduce(op, terms[1:], terms[0])
+def eager_finitary(op, operands):
+    if len(operands) == 1:
+        return eager_unary(op, operands[0])  # XXX is this necessary?
+    return reduce(op, operands[1:], operands[0])
 
 
 @EagerEval.register(Reduction)
 def eager_reduce(op, arg, reduce_dims):
-    assert isinstance(op, Tensor)  # XXX is this actually true?
+    assert isinstance(arg, Tensor)  # XXX is this actually true?
     return arg.reduce(op, reduce_dims)
 
 
@@ -64,13 +63,14 @@ class trampoline(Handler):
         self._returnvalue = None
         return super(trampoline, self).__enter__()
 
-    def __exit__(self, *args):
-        super(trampoline, self).__exit__(*args)
+    def __exit__(self, *eargs):
+        print(self._schedule)
         while self._schedule:
             fn, args, kwargs = self._schedule.pop(0)
             self._returnvalue = fn(*args, **kwargs)
+        super(trampoline, self).__exit__(*eargs)
 
-    def process_message(self, msg):
+    def process(self, msg):
         if isinstance(msg["label"], TailCall):
             msg["stop"] = True  # defer until exit
             self._schedule.append((msg["fn"], msg["args"], msg["kwargs"]))
@@ -84,7 +84,8 @@ class trampoline(Handler):
 
 def _tail_call(fn, *args, **kwargs):
     """tail call annotation for trampoline interception"""
-    return effectful(TailCall())(fn)(*args, **kwargs)
+    # return fn(*args, **kwargs)
+    return effectful(TailCall(), fn)(*args, **kwargs)
 
 
 @trampoline
@@ -104,31 +105,31 @@ def eval(x):
     assert isinstance(x, Funsor)
 
     if isinstance(x, Tensor):
-        return _tail_call(effectful(Tensor)(Tensor), x.dims, x.data)
+        return _tail_call(effectful(Tensor, Tensor), x.dims, x.data)
 
     if isinstance(x, Variable):
-        return _tail_call(effectful(Variable)(Variable), x.name, x.size)
+        return _tail_call(effectful(Variable, Variable), x.name, x.shape[0])
 
-    if isinstance(x, Substitute):
+    if isinstance(x, Substitution):
         return _tail_call(
-            effectful(Substitute)(Substitute),
+            effectful(Substitution, Substitution),
             eval(x.arg),
             tuple((dim, eval(value)) for (dim, value) in x.subs)
         )
 
     # Arithmetic operations
     if isinstance(x, Unary):
-        return _tail_call(effectful(Unary)(Unary), x.op, eval(x.v))
+        return _tail_call(effectful(Unary, Unary), x.op, eval(x.v))
 
     if isinstance(x, Binary):
-        return _tail_call(effectful(Binary)(Binary), x.op, eval(x.lhs), eval(x.rhs))
+        return _tail_call(effectful(Binary, Binary), x.op, eval(x.lhs), eval(x.rhs))
 
     if isinstance(x, Finitary):
-        return _tail_call(effectful(Finitary)(Finitary), x.op, [eval(tx) for tx in x.terms])
+        return _tail_call(effectful(Finitary, Finitary), x.op, tuple(eval(tx) for tx in x.operands))
 
     # Reductions
     if isinstance(x, Reduction):
-        return _tail_call(effectful(Reduction)(Reduction), x.op, eval(x.arg), x.reduce_dims)
+        return _tail_call(effectful(Reduction, Reduction), x.op, eval(x.arg), x.reduce_dims)
 
     raise NotImplementedError
 

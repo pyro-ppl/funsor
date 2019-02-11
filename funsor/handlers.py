@@ -1,10 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
+import functools
 from collections import namedtuple
 
 
 # the type of a label is the op type, e.g. sample/param
-Label = namedtuple("Label", ["name"], [None])
+Label = namedtuple("Label", ["name"])
+Label.__new__.__defaults__ = (None,)
 
 
 HANDLER_STACK = []
@@ -17,9 +19,15 @@ class Handler(object):
     def __enter__(self):
         HANDLER_STACK.append(self)
 
-    def __exit__(self, *args, **kwargs):
-        assert HANDLER_STACK[-1] is self
-        HANDLER_STACK.pop()
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            assert HANDLER_STACK[-1] is self
+            HANDLER_STACK.pop()
+        else:
+            if self in HANDLER_STACK:
+                loc = HANDLER_STACK.index(self)
+                for i in range(loc, len(HANDLER_STACK)):
+                    HANDLER_STACK.pop()
 
     def process(self, msg):
         return msg
@@ -85,27 +93,27 @@ def apply_stack(msg):
     return msg
 
 
-def effectful(term_type):
+def effectful(term_type, fn=None):
 
-    def _wrap(fn):
-        def _fn(*args, **kwargs):
+    if fn is None:
+        return functools.partial(effectful, term_type)
 
-            if not HANDLER_STACK:
-                return fn(*args, **kwargs)
+    def _fn(*args, **kwargs):
 
-            initial_msg = {
-                "label": term_type(name=kwargs.pop("name", None)),
-                "fn": fn,
-                "args": args,
-                "kwargs": kwargs,
-                "value": None,
-            }
+        if not HANDLER_STACK:
+            return fn(*args, **kwargs)
 
-            return apply_stack(initial_msg)["value"]
+        initial_msg = {
+            "label": term_type,
+            "fn": fn,
+            "args": args,
+            "kwargs": kwargs,
+            "value": None,
+        }
 
-        return _fn
+        return apply_stack(initial_msg)["value"]
 
-    return _wrap
+    return _fn
 
 
 def default_handler(handler):

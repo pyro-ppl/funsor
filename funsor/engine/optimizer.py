@@ -12,52 +12,55 @@ import collections
 from funsor.handlers import OpRegistry
 from funsor.terms import Binary, Finitary, Reduction, Unary
 
+from .engine import eval
 from .paths import greedy
 
 
 class Desugar(OpRegistry):
-    pass
+    _terms_processed = {}
+    _terms_postprocessed = {}
 
 
 @Desugar.register(Unary, Binary)
 def binary_to_finitary(op, lhs, rhs=None):
     """convert Binary/Unary to Finitary"""
-    return Finitary(op, [lhs, rhs] if rhs is not None else [lhs])
+    return Finitary(op, (lhs, rhs) if rhs is not None else (lhs,))
 
 
 class Deoptimize(OpRegistry):
-    pass
+    _terms_processed = {}
+    _terms_postprocessed = {}
 
 
 @Deoptimize.register(Finitary)
-def deoptimize_finitary(op, terms):
+def deoptimize_finitary(op, operands):
     """
     Rewrite to the largest possible Finitary(Finitary/Reduction) by moving Reductions
     Assumes that all input Finitary ops have been rewritten
     """
     # two cases to rewrite, which we handle in separate branches:
-    if all(isinstance(term, (Finitary,)) for term in terms):  # TODO check distributivity
+    if all(isinstance(term, (Finitary,)) for term in operands):  # TODO check distributivity
         # Case 1) Finitary(Finitary) -> Finitary
-        new_terms = []
-        for term in terms:
+        new_operands = []
+        for term in operands:
             if isinstance(term, Finitary) and term.op == op:
-                new_terms.extend(term.terms)
+                new_operands.extend(term.operands)
             else:
-                new_terms.append(term)
+                new_operands.append(term)
 
-        return Finitary(op, new_terms)
-    elif all(isinstance(term, Reduction) for term in terms):  # TODO check distributivity
+        return Finitary(op, tuple(new_operands))
+    elif all(isinstance(term, Reduction) for term in operands):  # TODO check distributivity
         # Case 2) Finitary(Reduction, Reduction) -> Reduction(Finitary(lhs.arg, rhs.arg))
-        new_terms = []
+        new_operands = []
         new_reduce_dims = set()
-        for term in terms:
-            new_terms.append(term.arg)
+        for term in operands:
+            new_operands.append(term.arg)
             new_reduce_dims = new_reduce_dims.union(term.reduce_dims)
-        return Reduction(terms[0].op, Finitary(op, new_terms), new_reduce_dims)
-    elif all(not isinstance(term, (Reduction, Finitary)) for term in terms):
-        return Finitary(op, terms)  # nothing to do, reflect
+        return Reduction(operands[0].op, Finitary(op, tuple(new_operands)), new_reduce_dims)
+    elif all(not isinstance(term, (Reduction, Finitary)) for term in operands):
+        return Finitary(op, operands)  # nothing to do, reflect
     else:
-        # Note: if we can't rewrite all terms in the finitary, fail for now
+        # Note: if we can't rewrite all operands in the finitary, fail for now
         # A more sophisticated strategy is to apply this rule recursively
         # Alternatively, we could do this rewrite on Binary ops instead of Finitary
         raise NotImplementedError("TODO(eb8680) handle mixed case")
@@ -79,7 +82,8 @@ def deoptimize_reduction(op, arg, reduce_dims):
 
 
 class Optimize(OpRegistry):
-    pass
+    _terms_processed = {}
+    _terms_postprocessed = {}
 
 
 @Optimize.register(Reduction)  # TODO need Finitary as well?
@@ -94,10 +98,10 @@ def optimize_reduction(op, arg, reduce_dims):
     # build opt_einsum optimizer IR
     inputs = []
     size_dict = {}
-    for term in arg.terms:
-        inputs.append(frozenset(d for d in term.dims))
+    for operand in arg.operands:
+        inputs.append(frozenset(d for d in operand.dims))
         # TODO get sizes right
-        size_dict.update({d: 2 for d in term.dims})
+        size_dict.update({d: 2 for d in operand.dims})
     outputs = frozenset().union(*inputs) - reduce_dims
 
     # optimize path with greedy opt_einsum optimizer
@@ -111,17 +115,18 @@ def optimize_reduction(op, arg, reduce_dims):
         reduce_dim_counter.update((d, 1) for d in input)
 
     reduce_op, finitary_op = op, arg.op
-    operands = arg.terms[:]
+    operands = list(arg.operands)
     for (a, b) in path:
-        operands.pop(b)
-        path_end_finitary = Finitary(finitary_op, [a, b])
+        ta = operands[a]
+        tb = operands.pop(b)
+        path_end_finitary = Finitary(finitary_op, (ta, tb))
 
         # don't reduce a dimension too early - keep a collections.Counter
         # and only reduce when the dimension is removed from all lhs terms in path
-        reduce_dim_counter.subtract((d, 1) for d in reduce_dims & a.dims)
-        reduce_dim_counter.subtract((d, 1) for d in reduce_dims & b.dims)
+        reduce_dim_counter.subtract((d, 1) for d in reduce_dims & set(ta.dims))
+        reduce_dim_counter.subtract((d, 1) for d in reduce_dims & set(tb.dims))
 
-        path_end_reduce_dims = frozenset(d for d in reduce_dims & (a.dims | b.dims)
+        path_end_reduce_dims = frozenset(d for d in reduce_dims & (set(ta.dims) | set(tb.dims))
                                          if reduce_dim_counter[d] == 0)
 
         path_end = Reduction(reduce_op, path_end_finitary, path_end_reduce_dims)
