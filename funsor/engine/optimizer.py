@@ -10,7 +10,7 @@ from __future__ import absolute_import, division, print_function
 import collections
 
 from funsor.handlers import OpRegistry
-from funsor.terms import Binary, Finitary, Reduction, Unary
+from funsor.terms import Binary, Finitary, Reduction, Unary, Tensor
 
 from .engine import eval
 from .paths import greedy
@@ -39,7 +39,7 @@ def deoptimize_finitary(op, operands):
     Assumes that all input Finitary ops have been rewritten
     """
     # two cases to rewrite, which we handle in separate branches:
-    if all(isinstance(term, (Finitary,)) for term in operands):  # TODO check distributivity
+    if all(isinstance(term, (Finitary, Tensor)) for term in operands):  # TODO check distributivity
         # Case 1) Finitary(Finitary) -> Finitary
         new_operands = []
         for term in operands:
