@@ -64,7 +64,7 @@ See [examples/minipyro.py](examples/minipyro.py) for a more complete example.
 - `funsor.term` contains AST classes for symbolic algebra, including concrete
   PyTorch `Tensor`s
 - `funsor.engine` contains algorithms for symbolic computation including
-  variable elimination. Its entire interface is `funsor.eval()`.
+  variable elimination. Its interface is `funsor.eval()`.
 - `funsor.distributions` contains standard probability distributions.
 - `funsor.adjoint` implementations of adjoint algorithms, e.g. sampling.
 - `funsor.minipyro` a small Funsor-compatible implementation of Pyro.
@@ -74,6 +74,8 @@ See [examples/minipyro.py](examples/minipyro.py) for a more complete example.
 - Pyro's [ops.packed](https://github.com/uber/pyro/blob/dev/pyro/ops/packed.py),
   [ops.einsum](https://github.com/uber/pyro/blob/dev/pyro/ops/einsum), and
   [ops.contract](https://github.com/uber/pyro/blob/dev/pyro/ops/contract.py)
+- [Birch](https://birch-lang.org/)'s [delayed sampling](https://arxiv.org/abs/1708.07787)
+- [autoconj](https://arxiv.org/abs/1811.11926)
 - [dyna](http://www.cs.jhu.edu/~nwf/datalog20-paper.pdf)
 - [PSI solver](https://psisolver.org)
 - [Hakaru](https://hakaru-dev.github.io)

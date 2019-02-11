@@ -245,6 +245,7 @@ def elbo(model, guide, *args, **kwargs):
     # sample guide
     with funsor.adjoints(), log_joint() as guide_joint:
         guide(*args, **kwargs)
+        # FIXME This is only correct for reparametrized sites.
         q = funsor.eval(guide_joint.log_prob.logsumexp())
     tr = guide_joint.trace
     tr.update(funsor.backward(ops.sample, q))  # force deferred samples?

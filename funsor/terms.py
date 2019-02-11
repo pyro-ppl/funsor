@@ -721,18 +721,16 @@ class Arange(Tensor):
         super(Arange, self).__init__((name,), data)
 
 
-class Function(Funsor):
+class Pointwise(Funsor):
     """
-    Funsor backed by a PyTorch function : Tensors -> Tensor.
-
-    This currently only supports pointwise functions.
+    Funsor backed by a PyTorch pointwise function : Tensors -> Tensor.
     """
     def __init__(self, fn, shape=None):
         assert callable(fn)
         dims = tuple(inspect.getargspec(fn)[0])
         if shape is None:
             shape = ('real',) * len(dims)
-        super(Function, self).__init__(dims, shape)
+        super(Pointwise, self).__init__(dims, shape)
         self.fn = fn
 
     def __call__(self, *args, **kwargs):
@@ -747,7 +745,70 @@ class Function(Funsor):
             dims, tensors = align_tensors(*args)
             data = self.fn(*tensors)
             return Tensor(dims, data)
-        return super(Function, self).__call__(*args, **kwargs)
+        return super(Pointwise, self).__call__(*args, **kwargs)
+
+
+@add_metaclass(ConsHashedMeta)
+class Function(object):
+    """
+    Lazy wrapper for PyTorch functions.
+
+    :param tuple inputs: a tuple of input dims tuples.
+    :param tuple otuput: a touple of output dims.
+    :param callable fn: a PyTorch function to wrap.
+    """
+    def __init__(self, inputs, output, fn):
+        assert isinstance(inputs, tuple)
+        for input_ in inputs:
+            assert isinstance(input_, tuple)
+            assert all(isinstance(s, str) for s in input_)
+        assert isinstance(output, tuple)
+        assert all(isinstance(s, str) for s in output)
+        assert callable(fn)
+        super(Function, self).__init__()
+        self.inputs = inputs
+        self.output = output
+        self.fn = fn
+        self.argnames = tuple(inspect.getargspec(fn)[0])[:len(inputs)]
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.argnames, args))
+
+        broadcast_dims = []
+        for argname, input_ in zip(self.argnames, self.inputs):
+            for d in kwargs[argname].dims:
+                if d not in input_ and d not in broadcast_dims:
+                    broadcast_dims.append(d)
+        broadcast_dims = tuple(reversed(broadcast_dims))
+
+        for argname, input_ in zip(self.argnames, self.inputs):
+            kwargs[argname] = kwargs[argname].align(broadcast_dims + input_).data
+
+        args = tuple(map(kwargs.pop, self.argnames[:len(args)]))
+        result = self.fn(*args, **kwargs)
+        return Tensor(broadcast_dims + self.output, result)
+
+
+def function(*signature):
+    """
+    Decorator to wrap PyTorch functions.
+
+    :param tuple inputs: a tuple of input dims tuples.
+    :param tuple otuput: a touple of output dims.
+
+    Example::
+
+        @funsor.function(('a', 'b'), ('b', 'c'), ('a', 'c'))
+        def mm(x, y):
+            return torch.matmul(x, y)
+
+        @funsor.function(('a',), ('b', 'c'), ('d'))
+        def mvn_log_prob(loc, scale_tril, x):
+            d = torch.distributions.MultivariateNormal(loc, scale_tril)
+            return d.log_prob(x)
+    """
+    inputs, output = signature[:-1], signature[-1]
+    return functools.partial(Function, inputs, output)
 
 
 def to_funsor(x):
@@ -790,11 +851,13 @@ __all__ = [
     'Function',
     'Funsor',
     'Number',
+    'Pointwise',
     'Reduction',
     'Substitution',
     'Tensor',
     'Unary',
     'Variable',
+    'function',
     'of_shape',
     'ops',
     'to_funsor',

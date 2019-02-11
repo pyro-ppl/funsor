@@ -81,7 +81,7 @@ def test_gamma_density(batch_shape):
     assert actual.dims == batch_dims
     assert actual.shape == batch_shape
 
-    @funsor.Function
+    @funsor.Pointwise
     def gamma(concentration, rate, value):
         return torch.distributions.Gamma(concentration, rate).log_prob(value)
 
