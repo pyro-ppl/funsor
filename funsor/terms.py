@@ -12,7 +12,7 @@ from six.moves import reduce
 
 import funsor.ops as ops
 
-DOMAINS = ('real',)
+DOMAINS = ('real', 'vector')
 
 
 def align_tensors(*args):
@@ -751,7 +751,9 @@ class Pointwise(Funsor):
 @add_metaclass(ConsHashedMeta)
 class Function(object):
     """
-    Lazy wrapper for PyTorch functions.
+    Wrapper for PyTorch functions.
+
+    This is mainly created via the :func:`function` decorator.
 
     :param tuple inputs: a tuple of input dims tuples.
     :param tuple otuput: a touple of output dims.
@@ -769,24 +771,54 @@ class Function(object):
         self.inputs = inputs
         self.output = output
         self.fn = fn
-        self.argnames = tuple(inspect.getargspec(fn)[0])[:len(inputs)]
 
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.argnames, args))
+    def __call__(self, *args):
+        assert len(args) == len(self.inputs)
 
-        broadcast_dims = []
-        for argname, input_ in zip(self.argnames, self.inputs):
-            for d in kwargs[argname].dims:
-                if d not in input_ and d not in broadcast_dims:
-                    broadcast_dims.append(d)
-        broadcast_dims = tuple(reversed(broadcast_dims))
+        args = tuple(map(to_funsor, args))
+        if all(isinstance(x, (Number, Tensor)) for x in args):
+            broadcast_dims = []
+            for input_, x in zip(self.inputs, args):
+                for d in x.dims:
+                    if d not in input_ and d not in broadcast_dims:
+                        broadcast_dims.append(d)
+            broadcast_dims = tuple(reversed(broadcast_dims))
 
-        for argname, input_ in zip(self.argnames, self.inputs):
-            kwargs[argname] = kwargs[argname].align(broadcast_dims + input_).data
+            args = tuple(x.align(broadcast_dims + input_).data for input_, x in zip(self.inputs, args))
+            return Tensor(broadcast_dims + self.output, self.fn(*args))
 
-        args = tuple(map(kwargs.pop, self.argnames[:len(args)]))
-        result = self.fn(*args, **kwargs)
-        return Tensor(broadcast_dims + self.output, result)
+        return LazyCall(self, args)
+
+
+class LazyCall(Funsor):
+    """
+    Value of a :class:`Function` bound to lazy :class:`Funsor`s.
+
+    This is mainly created via the :func:`function` decorator.
+
+    :param Function fn: A wrapped PyTorch function.
+    :param tuple args: A tuple of input funsors.
+    """
+    def __init__(self, fn, args):
+        assert isinstance(fn, Function)
+        assert isinstance(args, tuple)
+        assert all(isinstance(x, Funsor) for x in args)
+        schema = OrderedDict()
+        for arg in args:
+            schema.update(arg.schema)
+        dims = tuple(schema)
+        shape = tuple(schema.values())
+        super(LazyCall, self).__init__(dims, shape)
+        self.fn = fn
+        self.args = args
+
+    def __call__(self, **subs):
+        args = tuple(x(**subs) for x in self.args)
+        return self.fn(*args)
+
+    def materialize(self):
+        args = tuple(x.materialize() for x in self.args)
+        return self.fn(*args)
 
 
 def function(*signature):
@@ -848,7 +880,6 @@ __all__ = [
     'Arange',
     'Binary',
     'DOMAINS',
-    'Function',
     'Funsor',
     'Number',
     'Pointwise',

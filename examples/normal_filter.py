@@ -76,7 +76,7 @@ def main(args_):
 
     # serving by drawing a posterior sample
     print('---- serving ----')
-    eager_args = model(data)
+    eager_args, _ = model(data)
     lazy_args = funsor.eval(log_prob.sample())
     joint_sample = eager_args
     joint_sample.update(lazy_args)

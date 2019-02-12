@@ -413,6 +413,7 @@ def test_reduce_subset(dims, dims_reduced, op_name):
 
 
 def test_function_mm():
+
     @funsor.function(('a', 'b'), ('b', 'c'), ('a', 'c'))
     def mm(x, y):
         return torch.matmul(x, y)
@@ -420,6 +421,23 @@ def test_function_mm():
     x = funsor.Tensor(('a', 'b'), torch.randn(3, 4))
     y = funsor.Tensor(('b', 'c'), torch.randn(4, 5))
     actual = mm(x, y)
+    expected = funsor.Tensor(('a', 'c'), torch.matmul(x.data, y.data))
+    check_funsor(actual, expected.dims, expected.shape, expected.data)
+
+
+def test_lazy_eval_mm():
+
+    @funsor.function(('a', 'b'), ('b', 'c'), ('a', 'c'))
+    def mm(x, y):
+        return torch.matmul(x, y)
+
+    x_lazy = funsor.Variable('x', 'real')
+    y = funsor.Tensor(('b', 'c'), torch.randn(4, 5))
+    actual_lazy = mm(x_lazy, y)
+    assert isinstance(actual_lazy, funsor.terms.LazyCall)
+
+    x = funsor.Tensor(('a', 'b'), torch.randn(3, 4))
+    actual = actual_lazy(x=x)
     expected = funsor.Tensor(('a', 'c'), torch.matmul(x.data, y.data))
     check_funsor(actual, expected.dims, expected.shape, expected.data)
 

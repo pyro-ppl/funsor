@@ -83,7 +83,8 @@ class Distribution(Funsor):
 
     # Legacy distributions interface:
 
-    def log_prob(self, value):
+    def log_prob(self, value, event_dims=()):
+        # TODO handle event dims
         return self(value=value)
 
     def sample(self):
