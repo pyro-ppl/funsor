@@ -87,7 +87,6 @@ def test_logsumproductexp(eval, materialize_f, materialize_g):
 
 @pytest.mark.parametrize('eval', [
     unoptimized_eval,
-    # xfail_param(optimized_eval, reason="optimizer not working for this case yet?"),
     optimized_eval,
     contract_eval,
 ])
@@ -116,7 +115,7 @@ def test_hmm_discrete_gaussian(eval):
 @pytest.mark.parametrize('eval', [
     xfail_param(unoptimized_eval, reason='bad trampoline?'),
     xfail_param(optimized_eval, reason='bad trampoline?'),
-    xfail_param(contract_eval, reason='cannot substitute Normal'),
+    xfail_param(contract_eval, reason='cannot match Substitution(Normal)'),
 ])
 def test_hmm_gaussian_gaussian(eval, num_steps):
     trans = dist.Normal(funsor.Variable('prev', 'real'), funsor.Tensor((), torch.tensor(0.1)))

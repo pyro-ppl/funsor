@@ -206,9 +206,17 @@ class Funsor(object):
         return Reduction(op, self, dims)
 
     def contract(self, sum_op, prod_op, other, dims):
-        return self.binary(prod_op, other).reduce(sum_op, dims)
+        """
+        This is equivalent to
 
-    def grad(self, dim):
+            self.binary(prod_op, other).reduce(sum_op, dims)
+
+        but we only want to perform eager contractions.
+        """
+        raise NotImplementedError(
+            "contract({}, {}, {}, {}, {})".format(sum_op.__name__, prod_op.__name__, self, other, dims))
+
+    def jacobian(self, dim):
         if dim not in self.dims:
             return Number(0.)
         raise NotImplementedError
@@ -355,7 +363,7 @@ class Variable(Funsor):
             return Variable(value, self.shape[0])
         return to_funsor(value)
 
-    def grad(self, dim):
+    def jacobian(self, dim):
         return Number(float(dim == self.name))
 
 
@@ -449,11 +457,11 @@ class Unary(Funsor):
     def materialize(self):
         return self.arg.materialize().unary(self.op)
 
-    def grad(self, dim):
+    def jacobian(self, dim):
         if dim not in self.arg:
             return Number(0.)
         if self.op is ops.neg:
-            return -self.arg.grad(dim)
+            return -self.arg.jacobian(dim)
         raise NotImplementedError
 
 
@@ -491,15 +499,15 @@ class Binary(Funsor):
                 return self.lhs.reduce(sum_op, dims).binary(self.op, self.rhs)
         return super(Binary, self).contract(sum_op, prod_op, other, dims)
 
-    def grad(self, dim):
+    def jacobian(self, dim):
         if dim not in self.dims:
             return Number(0.)
         if self.op is ops.add:
-            return self.lhs.grad(dim) + self.rhs.grad(dim)
+            return self.lhs.jacobian(dim) + self.rhs.jacobian(dim)
         if self.op is ops.sub:
-            return self.lhs.grad(dim) - self.rhs.grad(dim)
+            return self.lhs.jacobian(dim) - self.rhs.jacobian(dim)
         if self.op is ops.mul:
-            return self.lhs.grad(dim) * self.rhs + self.lhs * self.rhs.grad(dim)
+            return self.lhs.jacobian(dim) * self.rhs + self.lhs * self.rhs.jacobian(dim)
         raise NotImplementedError
 
 

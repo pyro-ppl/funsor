@@ -77,7 +77,7 @@ def _contract(sum_op, prod_op, operands, reduce_dims, default_cost=10):
     output = frozenset().union(*inputs) - reduce_dims
     path = opt_einsum.paths.greedy(inputs, output, size_dict)
 
-    # Apply binary contractions in order given by path.
+    # Apply pairwise contractions in order given by path.
     reduce_dim_counter = Counter(output)
     for input_ in inputs:
         reduce_dim_counter.update(input_)
@@ -85,7 +85,6 @@ def _contract(sum_op, prod_op, operands, reduce_dims, default_cost=10):
     for x_pos, y_pos in path:
         x = operands[x_pos]
         y = operands.pop(y_pos)
-        print('DEBUG x = {}, y = {}'.format(x, y))
         x_dims = reduce_dims.intersection(x.dims)
         y_dims = reduce_dims.intersection(y.dims)
         reduce_dim_counter.subtract(x_dims)
@@ -96,23 +95,7 @@ def _contract(sum_op, prod_op, operands, reduce_dims, default_cost=10):
                 del reduce_dim_counter[d]
                 rdims.append(d)
         rdims = frozenset(rdims)
-
-        # Decide which ops to use.
-        x_rdims = rdims - frozenset(y.dims)
-        y_rdims = rdims - frozenset(x.dims)
-        xy_rdims = rdims - x_rdims - y_rdims
-        if x_rdims:
-            x = x.reduce(sum_op, x_rdims)
-        if y_rdims:
-            y = y.reduce(sum_op, y_rdims)
-        if xy_rdims:
-            xy = x.contract(sum_op, prod_op, y, xy_rdims)
-            if isinstance(xy, Reduction):
-                xy = y.contract(sum_op, prod_op, x, xy_rdims)
-        else:
-            xy = x.binary(prod_op, y)
-
-        operands[x_pos] = xy
+        operands[x_pos] = _pairwise_contract(sum_op, prod_op, x, y, rdims)
 
     # Apply an optional final reduction.
     # This should only happen when len(operands) == 1 on entry.
@@ -122,6 +105,43 @@ def _contract(sum_op, prod_op, operands, reduce_dims, default_cost=10):
         x = x.reduce(sum_op, rdims)
     assert frozenset(x.dims) == frozenset(reduce_dim_counter)
     return x
+
+
+def _pairwise_contract(sum_op, prod_op, x, y, rdims):
+    if not rdims:
+        return x.binary(prod_op, y)
+
+    # Decompose Binary products.
+    factors = []
+    pending = [x, y]
+    while pending:
+        x = pending.pop()
+        if isinstance(x, Binary) and x.op is prod_op:
+            pending.append(x.lhs, x.rhs)
+        else:
+            factors.append(x)
+
+    # Reduce one dim at a time.
+    for dim in rdims:
+        dim_factors = [f for f in factors if dim in x.dims]
+        factors = [f for f in factors if dim not in x.dims]
+        if len(dim_factors) == 1:
+            factors.append(dim_factors.reduce(sum_op, frozenset([dim])))
+        elif len(dim_factors) == 2:
+            x, y = dim_factors
+            try:
+                return x.contract(sum_op, prod_op, y, frozenset([dim]))
+            except NotImplementedError:
+                return y.contract(sum_op, prod_op, x, frozenset([dim]))
+        else:
+            raise NotImplementedError
+
+    # Combine factors.
+    while len(factors) > 2:
+        x = factors.pop()
+        y = factors[-1]
+        factors[-1] = x.binary(prod_op, y)
+    return factors[0]
 
 
 def eval(x):
@@ -146,7 +166,7 @@ def eval(x):
         for tensors in _parse_tensors(operands):
             dims = tuple(d for d in arg.dims if d not in reduce_dims)
             return _contract_tensors(*tensors, dims=dims, backend='pyro.ops.einsum.torch_log')
-        return _contract(ops.add, ops.mul, operands, reduce_dims)
+        return _contract(ops.logaddexp, ops.add, operands, reduce_dims)
 
 
 __all__ = [

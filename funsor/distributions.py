@@ -24,8 +24,17 @@ def log_abs_det_jacobian(transform):
     jacobian = defaultdict(dict)
     for key, value in transform.items():
         for dim in value.dims:
-            jacobian[key][dim] = value.grad(dim)
+            jacobian[key][dim] = value.jacobian(dim)
     return log_abs_det(jacobian)
+
+
+def match_affine(expr, dim):
+    assert isinstance(expr, Funsor)
+    assert isinstance(dim, str)
+    a1 = expr.jacobian(dim)
+    if dim not in a1:
+        a0 = expr(d=0.)
+        yield a0, a1
 
 
 # WIP candidate base distribution interface
@@ -192,15 +201,6 @@ class Normal(Distribution):
                     scale = ((scale1 * a1) ** 2 + scale2 ** 2).sqrt()
                     return Normal(loc, scale)(other.value_dim)
         return super(Normal, self).contract(sum_op, prod_op, other, dims)
-
-
-def match_affine(expr, dim):
-    assert isinstance(expr, Funsor)
-    assert isinstance(dim, str)
-    a1 = expr.grad(dim)
-    if dim not in a1:
-        a0 = expr(d=0.)
-        yield a0, a1
 
 
 ################################################################################
