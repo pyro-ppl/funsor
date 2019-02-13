@@ -139,6 +139,7 @@ def eval(x):
     if isinstance(x, Reduction):
         return _tail_call(effectful(Reduction, Reduction), x.op, eval(x.arg), x.reduce_dims)
 
+    # TODO Can we simply return x here?
     raise NotImplementedError
 
 
