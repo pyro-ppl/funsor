@@ -65,21 +65,28 @@ class trampoline(Handler):
     """Trampoline to handle tail recursion automatically"""
     def __enter__(self):
         self._schedule = []
+        self._args_queue = []
+        self._kwargs_queue = []
         self._returnvalue = None
         return super(trampoline, self).__enter__()
 
     def __exit__(self, *eargs):
-        print(self._schedule)
         while self._schedule:
-            fn, args, kwargs = self._schedule.pop(0)
-            self._returnvalue = fn(*args, **kwargs)
+            fn, nargs, nkwargs = self._schedule.pop(0)
+            args = tuple(self._args_queue.pop(0) for i in range(nargs))
+            kwargs = dict(self._kwargs_queue.pop(0) for i in range(nkwargs))
+            self._args_queue.append(fn(*args, **kwargs))
+        self._returnvalue = self._args_queue.pop(0)
+        assert not self._args_queue and not self._kwargs_queue
         super(trampoline, self).__exit__(*eargs)
 
     def process(self, msg):
         if isinstance(msg["label"], TailCall):
             msg["stop"] = True  # defer until exit
             msg["value"] = True
-            self._schedule.append((msg["fn"], msg["args"], msg["kwargs"]))
+            self._schedule.append((msg["fn"], len(msg["args"]), len(msg["kwargs"])))
+            self._args_queue.extend(msg["args"])
+            self._kwargs_queue.extend(list(msg["kwargs"].items()))
         return msg
 
     def __call__(self, *args, **kwargs):
