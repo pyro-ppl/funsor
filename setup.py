@@ -11,6 +11,7 @@ setup(
     author='Uber AI Labs',
     author_email='fritzo@uber.com',
     install_requires=[
+        'multipledispatch',
         'opt_einsum>=2.3.2',
         'pyro-ppl==0.3.0',
         'six>=1.10.0',
