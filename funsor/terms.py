@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 import functools
 import inspect
 import numbers
+import six
 from collections import OrderedDict
 from weakref import WeakValueDictionary
 
@@ -13,6 +14,15 @@ from six.moves import reduce
 import funsor.ops as ops
 
 DOMAINS = ('real', 'vector')
+
+
+def _getargspec(fn):
+    """wrapper to remove annoying DeprecationWarning for inspect.getargspec in Py3"""
+    if six.PY3:
+        args, vargs, kwargs, defaults, _, _, _ = inspect.getfullargspec(fn)
+    else:
+        args, vargs, kwargs, defaults = inspect.getargspec(fn)
+    return args, vargs, kwargs, defaults
 
 
 def align_tensors(*args):
@@ -49,7 +59,7 @@ class ConsHashedMeta(type):
         if kwargs:
             # Convert kwargs to args.
             if cls not in cls._init_args:
-                cls._init_args[cls] = inspect.getargspec(cls.__init__)[0][1:]
+                cls._init_args[cls] = _getargspec(cls.__init__)[0][1:]
             args = list(args)
             for name in cls._init_args[cls][len(args):]:
                 args.append(kwargs[name])
@@ -727,7 +737,7 @@ class Pointwise(Funsor):
     """
     def __init__(self, fn, shape=None):
         assert callable(fn)
-        dims = tuple(inspect.getargspec(fn)[0])
+        dims = tuple(_getargspec(fn)[0])
         if shape is None:
             shape = ('real',) * len(dims)
         super(Pointwise, self).__init__(dims, shape)
@@ -859,7 +869,7 @@ def to_funsor(x):
 
 
 def _of_shape(fn, shape):
-    args, vargs, kwargs, defaults = inspect.getargspec(fn)
+    args, vargs, kwargs, defaults = _getargspec(fn)
     assert not vargs
     assert not kwargs
     dims = tuple(args)

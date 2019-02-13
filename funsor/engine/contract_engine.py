@@ -6,6 +6,10 @@ import funsor.ops as ops
 from funsor.terms import Binary, Funsor, Reduction, Tensor
 
 
+#####################################################
+# old basic engine implementation, useful for testing
+#####################################################
+
 def _parse_reduction(op, x):
     if isinstance(x, Reduction) and x.op is op:
         yield x.arg, x.reduce_dims
@@ -24,38 +28,7 @@ def _parse_commutative(op, x):
     return terms
 
 
-def eval(x):
-    r"""
-    Optimized evaluation of deferred expressions.
-
-    This handles a limited class of expressions, raising
-    ``NotImplementedError`` in unhandled cases.
-
-    :param Funsor x: An input funsor, typically deferred.
-    :return: An evaluated funsor.
-    :rtype: Funsor
-    :raises: NotImplementedError
-    """
-    assert isinstance(x, Funsor)
-    if isinstance(x, Tensor):
-        return x
-
-    # Handle sum-product contractions.
-    for arg, reduce_dims in _parse_reduction(ops.add, x):
-        operands = _parse_commutative(ops.mul, arg)
-        dims = tuple(d for d in arg.dims if d not in reduce_dims)
-        return contract(*operands, dims=dims)
-
-    # Handle log-sum-product-exp contractions.
-    for arg, reduce_dims in _parse_reduction(ops.logaddexp, x):
-        operands = _parse_commutative(ops.add, arg)
-        dims = tuple(d for d in arg.dims if d not in reduce_dims)
-        return contract(*operands, dims=dims, backend='pyro.ops.einsum.torch_log')
-
-    raise NotImplementedError
-
-
-def contract(*operands, **kwargs):
+def _contract(*operands, **kwargs):
     r"""
     Sum-product contraction operation.
 
@@ -84,7 +57,25 @@ def contract(*operands, **kwargs):
     return Tensor(dims, data)
 
 
+def eval(x):
+    """original contract-based eval implementation, useful for testing"""
+    # Handle trivial case
+    if isinstance(x, Tensor):
+        return x.materialize()
+
+    # Handle sum-product contractions.
+    for arg, reduce_dims in _parse_reduction(ops.add, x):
+        operands = _parse_commutative(ops.mul, arg)
+        dims = tuple(d for d in arg.dims if d not in reduce_dims)
+        return _contract(*operands, dims=dims)
+
+    # Handle log-sum-product-exp contractions.
+    for arg, reduce_dims in _parse_reduction(ops.logaddexp, x):
+        operands = _parse_commutative(ops.add, arg)
+        dims = tuple(d for d in arg.dims if d not in reduce_dims)
+        return _contract(*operands, dims=dims, backend='pyro.ops.einsum.torch_log')
+
+
 __all__ = [
-    'contract',
     'eval',
 ]
