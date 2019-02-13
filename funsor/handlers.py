@@ -1,12 +1,26 @@
 from __future__ import absolute_import, division, print_function
 
 import functools
-from collections import namedtuple
+import collections
+from multipledispatch import dispatch
 
 
-# the type of a label is the op type, e.g. sample/param
-Label = namedtuple("Label", ["name"])
-Label.__new__.__defaults__ = (None,)
+class Message(collections.UserDict):
+
+    _fields = ("name", "fn", "args", "kwargs", "value", "stop")
+
+    def __init__(self, **fields):
+        super(Message, self).__init__(**fields)
+        for field in self._fields:
+            if field not in self:
+                self[field] = None
+
+
+class FunsorOp(Message):
+
+    def __init__(self, **fields):
+        super(FunsorOp, self).__init__(**fields)
+        self["label"] = self["fn"]
 
 
 HANDLER_STACK = []
@@ -29,9 +43,11 @@ class Handler(object):
                 for i in range(loc, len(HANDLER_STACK)):
                     HANDLER_STACK.pop()
 
+    @dispatch(Message)
     def process(self, msg):
         return msg
 
+    @dispatch(Message)
     def postprocess(self, msg):
         return msg
 
@@ -48,12 +64,22 @@ class OpRegistry(Handler):
     _terms_processed = {}
     _terms_postprocessed = {}
 
+    @dispatch(object)
+    def process(self, msg):
+        return super(OpRegistry, self).process(msg)
+
+    @dispatch(object)
+    def postprocess(self, msg):
+        return super(OpRegistry, self).process(msg)
+
+    @dispatch(FunsorOp)
     def process(self, msg):
         if msg["label"] in self._terms_processed:
             msg["value"] = self._terms_processed[msg["label"]](
                 *msg["args"], **msg["kwargs"])
         return msg
 
+    @dispatch(FunsorOp)
     def postprocess(self, msg):
         if msg["label"] in self._terms_postprocessed:
             msg["value"] = self._terms_postprocessed[msg["label"]](
@@ -83,7 +109,7 @@ class OpRegistry(Handler):
 def apply_stack(msg):
     for pointer, handler in enumerate(reversed(HANDLER_STACK)):
         handler.process(msg)
-        if msg.get("stop"):
+        if msg["stop"]:
             break
     if msg["value"] is None:
         msg["value"] = msg["fn"](*msg["args"], **msg["kwargs"])
@@ -95,23 +121,29 @@ def apply_stack(msg):
 
 def effectful(term_type, fn=None):
 
+    if not issubclass(term_type, Message):
+        # XXX hack to make OpRegistry work
+        term_type = FunsorOp
+
+    assert issubclass(term_type, Message)
+
     if fn is None:
         return functools.partial(effectful, term_type)
 
     def _fn(*args, **kwargs):
 
+        name = kwargs.pop("name", None)
+
         if not HANDLER_STACK:
             return fn(*args, **kwargs)
 
-        name = kwargs.pop("name", None)
-        initial_msg = {
-            "label": term_type,
-            "name": name,
-            "fn": fn,
-            "args": args,
-            "kwargs": kwargs,
-            "value": None,
-        }
+        initial_msg = term_type(
+            name=name,
+            fn=fn,
+            args=args,
+            kwargs=kwargs,
+            value=None,
+        )
 
         return apply_stack(initial_msg)["value"]
 

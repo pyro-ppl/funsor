@@ -12,18 +12,27 @@ found at examples/minipyro.py.
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
+from multipledispatch import dispatch
 
 import funsor
 import funsor.ops as ops
 from funsor.terms import Funsor, Variable
-from .handlers import apply_stack, Handler, HANDLER_STACK, Label
+from .handlers import apply_stack, effectful, Handler, HANDLER_STACK, Message
 
 
-class Sample(Label):
+class Sample(Message):
     pass
 
 
-class Param(Label):
+class Param(Message):
+    pass
+
+
+class Markov(Message):
+    pass
+
+
+class Ground(Message):
     pass
 
 
@@ -42,12 +51,13 @@ class trace(Handler):
 
     # trace illustrates why we need postprocess in addition to process:
     # We only want to record a value after all other effects have been applied
+    @dispatch(Sample)
     def postprocess(self, msg):
-        if isinstance(msg["label"], Sample):
-            assert msg["label"].name is not None and \
-                msg["label"].name not in self.trace, \
-                "all sites must have unique names"
-            self.trace[msg["label"].name] = msg.copy()
+        assert msg["name"] is not None and \
+            msg["name"] not in self.trace, \
+            "all sites must have unique names"
+        self.trace[msg["name"]] = msg.copy()
+        return msg
 
     def get_trace(self, *args, **kwargs):
         self(*args, **kwargs)
@@ -64,9 +74,15 @@ class replay(Handler):
         self.guide_trace = guide_trace
         super(replay, self).__init__(fn)
 
+    @dispatch(object)
     def process(self, msg):
-        if isinstance(msg["label"], Sample) and msg["label"].name in self.guide_trace:
-            msg["value"] = self.guide_trace[msg["label"].name]["value"]
+        return super(replay, self).process(msg)
+
+    @dispatch(Sample)
+    def process(self, msg):
+        if msg["name"] in self.guide_trace:
+            msg["value"] = self.guide_trace[msg["name"]]["value"]
+        return msg
 
 
 # block allows the selective application of effect handlers to different parts of a model.
@@ -77,9 +93,11 @@ class block(Handler):
         self.hide_fn = hide_fn
         super(block, self).__init__(fn)
 
+    @dispatch(Message)
     def process(self, msg):
         if self.hide_fn(msg):
             msg["stop"] = True
+        return msg
 
 
 # This limited implementation of PlateHandler only implements broadcasting.
@@ -90,13 +108,18 @@ class plate(Handler):
         self.dim = dim
         super(plate, self).__init__(fn)
 
+    @dispatch(object)
     def process(self, msg):
-        if isinstance(msg["label"], Sample):
-            batch_shape = msg["fn"].batch_shape
-            if len(batch_shape) < -self.dim or batch_shape[self.dim] != self.size:
-                batch_shape = [1] * (-self.dim - len(batch_shape)) + list(batch_shape)
-                batch_shape[self.dim] = self.size
-                msg["fn"] = msg["fn"].expand(tuple(batch_shape))
+        return super(plate, self).process(msg)
+
+    @dispatch(Sample)
+    def process(self, msg):
+        batch_shape = msg["fn"].batch_shape
+        if len(batch_shape) < -self.dim or batch_shape[self.dim] != self.size:
+            batch_shape = [1] * (-self.dim - len(batch_shape)) + list(batch_shape)
+            batch_shape[self.dim] = self.size
+            msg["fn"] = msg["fn"].expand(tuple(batch_shape))
+        return msg
 
     def __iter__(self):
         return range(self.size)
@@ -111,13 +134,13 @@ def sample(fn, obs=None, name=None):
         return fn.sample('value')
 
     # Otherwise, we initialize a message...
-    initial_msg = {
-        "type": Sample(name=name),
+    initial_msg = Sample(**{
+        "name": name,
         "fn": fn,
         "args": (),
         "kwargs": {},
         "value": obs,
-    }
+    })
 
     # ...and use apply_stack to send it to the Handlers
     msg = apply_stack(initial_msg)
@@ -141,12 +164,11 @@ def param(init_value=None, name=None):
         return fn(init_value)
 
     # Otherwise, we initialize a message...
-    initial_msg = {
-        "type": Param(name=name),
+    initial_msg = Param(**{
         "fn": fn,
         "args": (init_value,),
         "value": None,
-    }
+    })
 
     # ...and use apply_stack to send it to the Handlers
     msg = apply_stack(initial_msg)
@@ -155,9 +177,14 @@ def param(init_value=None, name=None):
 
 class deferred(Handler):
 
+    @dispatch(object)
     def process(self, msg):
-        if isinstance(msg["label"], Sample) and msg["value"] is not None:
-            msg["value"] = Variable(msg["label"].name, msg["fn"].schema["value"])
+        return super(deferred, self).process(msg)
+
+    @dispatch(Sample)
+    def process(self, msg):
+        if msg["value"] is not None:
+            msg["value"] = Variable(msg["name"], msg["fn"].schema["value"])
         return msg
 
 
@@ -171,45 +198,50 @@ class log_joint(Handler):
         self.samples = OrderedDict()
         return self
 
+    @dispatch(object)
     def process(self, msg):
-        if isinstance(msg["label"], Sample):
-            assert msg["value"] is not None
-            self.samples[msg["name"]] = msg["value"]
-            self.log_prob += msg["fn"].log_prob(msg["value"])
+        return super(log_joint, self).process(msg)
 
-        elif isinstance(msg["label"], Markov):
-            funsors = []
-            _recursive_map(funsors.append, msg["value"])
-            hidden_dims = (frozenset(self.samples) - frozenset(funsors)
-                           ).intersection(self.log_prob.dims)
-            if hidden_dims:
-                marginal = self.log_prob.reduce(ops.sample, hidden_dims)
-                with funsor.adjoints():
-                    self.log_prob = funsor.eval(marginal)
-                subs = funsor.backward(ops.sample, self.log_prob, hidden_dims)
-                msg["value"] = _recursive_map(lambda x: x(**subs), msg["value"])
+    @dispatch(Sample)
+    def process(self, msg):
+        assert msg["value"] is not None
+        self.samples[msg["name"]] = msg["value"]
+        self.log_prob += msg["fn"].log_prob(msg["value"])
+        return msg
 
-        elif isinstance(msg["label"], Ground):
-            value = msg["value"]
-            if not isinstance(value, (funsor.Number, funsor.Tensor)):
-                log_prob = self.log_prob.reduce(ops.sample, value.dims)
-                with funsor.adjoints():
-                    self.log_prob = funsor.eval(log_prob)
-                subs = funsor.backward(ops.sample, self.log_prob, value.dims)
-                self.samples.update(subs)
-                msg["value"] = value(**subs)
-                context = msg["context"]
-                for key, value in list(context.items()):
-                    if isinstance(value, Funsor):
-                        context[key] = value(**subs)
+    @dispatch(Markov)
+    def process(self, msg):
+        funsors = []
+        _recursive_map(funsors.append, msg["value"])
+        hidden_dims = (frozenset(self.samples) - frozenset(funsors)
+                       ).intersection(self.log_prob.dims)
+        if hidden_dims:
+            marginal = self.log_prob.reduce(ops.sample, hidden_dims)
+            with funsor.adjoints():
+                self.log_prob = funsor.eval(marginal)
+            subs = funsor.backward(ops.sample, self.log_prob, hidden_dims)
+            msg["value"] = _recursive_map(lambda x: x(**subs), msg["value"])
+        return msg
+
+    @dispatch(Ground)
+    def process(self, msg):
+        value = msg["value"]
+        if not isinstance(value, (funsor.Number, funsor.Tensor)):
+            log_prob = self.log_prob.reduce(ops.sample, value.dims)
+            with funsor.adjoints():
+                self.log_prob = funsor.eval(log_prob)
+            subs = funsor.backward(ops.sample, self.log_prob, value.dims)
+            self.samples.update(subs)
+            msg["value"] = value(**subs)
+            context = msg["context"]
+            for key, value in list(context.items()):
+                if isinstance(value, Funsor):
+                    context[key] = value(**subs)
 
         return msg
 
 
-class Markov(Label):
-    pass
-
-
+@effectful(Markov)
 def markov(state):
     """
     Declaration that behavior after this point in a program depend on behavior
@@ -226,18 +258,7 @@ def markov(state):
            pyro.sample("y_{}".format(t), emit(x), obs=data[t])
     """
     # if there are no active Handlers, we just return the state
-    if not HANDLER_STACK:
-        return state
-
-    # Otherwise, we initialize a message...
-    initial_msg = {
-        "type": Markov(),
-        "value": state,
-    }
-
-    # ...and use apply_stack to send it to the Handlers
-    msg = apply_stack(initial_msg)
-    return msg["value"]
+    return state
 
 
 def _recursive_map(fn, x):
@@ -249,10 +270,7 @@ def _recursive_map(fn, x):
         return {k: fn(v) for k, v in x.items()}
 
 
-class Ground(Label):
-    pass
-
-
+@effectful(Ground)
 def ground(value, context):
     """
     Sample enough deferred random variables so that ``value`` is ground,
@@ -278,21 +296,7 @@ def ground(value, context):
     """
     assert isinstance(value, Funsor)
     assert isinstance(context, dict)
-
-    # if there are no active Messengers, we just return the value
-    if not HANDLER_STACK:
-        return value
-
-    # Otherwise, we initialize a message...
-    initial_msg = {
-        "type": Ground(),
-        "context": context,
-        "value": value,
-    }
-
-    # ...and use apply_stack to send it to the Messengers
-    msg = apply_stack(initial_msg)
-    return msg["value"]
+    return value
 
 
 # This is an attempt to compute a deferred elbo

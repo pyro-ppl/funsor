@@ -1,8 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
 from six.moves import reduce
+from multipledispatch import dispatch
 
-from funsor.handlers import effectful, Handler, Label, OpRegistry
+from funsor.handlers import effectful, Handler, Message, OpRegistry
 from funsor.terms import Arange, Binary, Finitary, Funsor, Number, Reduction, Substitution, Tensor, Unary, Variable
 from funsor.distributions import Normal
 
@@ -64,7 +65,7 @@ def eager_reduce(op, arg, reduce_dims):
     return arg.reduce(op, reduce_dims)
 
 
-class TailCall(Label):
+class TailCall(Message):
     pass
 
 
@@ -91,13 +92,17 @@ class trampoline(Handler):
             self._returnvalue = None
         return super(trampoline, self).__exit__(exc_type, exc_value, traceback)
 
+    @dispatch(object)
     def process(self, msg):
-        if isinstance(msg["label"], TailCall):
-            msg["stop"] = True  # defer until exit
-            msg["value"] = True
-            self._schedule.append((msg["fn"], len(msg["args"]), len(msg["kwargs"])))
-            self._args_queue.extend(msg["args"])
-            self._kwargs_queue.extend(list(msg["kwargs"].items()))
+        return super(trampoline, self).process(msg)
+
+    @dispatch(TailCall)
+    def process(self, msg):
+        msg["stop"] = True  # defer until exit
+        msg["value"] = True
+        self._schedule.append((msg["fn"], len(msg["args"]), len(msg["kwargs"])))
+        self._args_queue.extend(msg["args"])
+        self._kwargs_queue.extend(list(msg["kwargs"].items()))
         return msg
 
     def __call__(self, *args, **kwargs):
@@ -108,7 +113,7 @@ class trampoline(Handler):
 
 def _tail_call(fn, *args, **kwargs):
     """tail call annotation for trampoline interception"""
-    return effectful(TailCall(), fn)(*args, **kwargs)
+    return effectful(TailCall, fn)(*args, **kwargs)
 
 
 @trampoline
