@@ -6,6 +6,7 @@ import torch.distributions as dist
 
 import funsor.ops as ops
 from funsor.adjoint import backward
+from funsor.contract import contract
 from funsor.terms import Funsor, Number, Tensor, align_tensors, to_funsor
 
 
@@ -25,6 +26,32 @@ def log_abs_det_jacobian(transform):
         for dim in value.dims:
             jacobian[key][dim] = value.grad(dim)
     return log_abs_det(jacobian)
+
+
+# WIP candidate base distribution interface
+class AbstractDistribution(object):
+    def __init__(self, samples, log_prob):
+        assert isinstance(samples, dict)
+        assert isinstance(log_prob, Funsor)
+        for k, v in samples.items():
+            assert isinstance(k, str)
+            assert isinstance(v, Funsor)
+            assert set(v.dims) == set(log_prob.dims)
+        super(AbstractDistribution, self).__init__()
+        self.samples = samples
+        self.log_prob = log_prob
+
+    @property
+    def dims(self):
+        return self.log_prob.dims
+
+    def sample(self, dims):
+        if not dims:
+            return self
+        log_prob = self.log_prob.reduce(ops.sample, dims)
+        samples = backward(ops.sample, log_prob)
+        samples.update((k, v(**samples)) for k, v in self.samples)
+        return AbstractDistribution(samples, log_prob)
 
 
 class Distribution(Funsor):
@@ -114,14 +141,24 @@ def _sample_torch_distribution(term, dims):
 # Distribution Wrappers
 ################################################################################
 
-class Normal(Distribution):
-    def __init__(self, loc, scale):
-        super(Normal, self).__init__(dist.Normal, loc=loc, scale=scale)
+class Beta(Distribution):
+    def __init__(self, concentration1, concentration0):
+        super(Beta, self).__init__(dist.Beta, concentration1=concentration1, concentration0=concentration0)
 
 
-class LogNormal(Distribution):
-    def __init__(self, loc, scale):
-        super(LogNormal, self).__init__(dist.LogNormal, loc=loc, scale=scale)
+class Binomial(Distribution):
+    def __init__(self, total_count, probs):
+        super(Binomial, self).__init__(dist.Binomial, total_count=total_count, probs=probs)
+
+
+class Delta(Distribution):
+    def __init__(self, v, log_density=0.):
+        super(Delta, self).__init__(v=v, log_density=log_density)
+
+
+class Dirichlet(Distribution):
+    def __init__(self, concentration):
+        super(Distribution, self).__init__(dist.Dirichlet, concentration=concentration)
 
 
 class Gamma(Distribution):
@@ -129,19 +166,44 @@ class Gamma(Distribution):
         super(Gamma, self).__init__(dist.Gamma, concentration=concentration, rate=rate)
 
 
+class LogNormal(Distribution):
+    def __init__(self, loc, scale):
+        super(LogNormal, self).__init__(dist.LogNormal, loc=loc, scale=scale)
+
+
+class Multinomial(Distribution):
+    def __init__(self, total_count, probs):
+        super(Multinomial, self).__init__(dist.Multinomial, total_count=total_count, probs=probs)
+
+
+class Normal(Distribution):
+    def __init__(self, loc, scale):
+        super(Normal, self).__init__(dist.Normal, loc=loc, scale=scale)
+
+
 ################################################################################
 # Conjugacy Relationships
 ################################################################################
 
-# TODO populate conjugacy table
-#
-# @contract.register((ops.logaddexp, ops.mul), Normal, Normal)
-# def _contract_normal_normal(lhs, rhs, reduce_dims):
-#     ...
+@contract.register((ops.logaddexp, ops.mul), Delta, Funsor)
+@contract.register((ops.logaddexp, ops.mul), Delta, Delta)
+def _contract_delta(lhs, rhs):
+    return rhs(value=lhs.params['v'])
+
+
+@contract.register((ops.logaddexp, ops.mul), Normal, Normal)
+def _contract_normal_normal(lhs, rhs, reduce_dims):
+    raise NotImplementedError('TODO')
+
 
 __all__ = [
+    'Beta',
+    'Binomial',
+    'Delta',
+    'Dirichlet',
     'Distribution',
     'Gamma',
     'LogNormal',
+    'Multinomial',
     'Normal',
 ]

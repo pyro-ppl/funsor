@@ -113,7 +113,7 @@ class Funsor(object):
         for d in self.dims:
             if d in kwargs:
                 subs[d] = kwargs[d]
-        return Substitution(self, tuple(subs.items()))
+        return Substitution(self, tuple((k, to_funsor(v)) for k, v in subs.items()))
 
     def __getitem__(self, args):
         if not isinstance(args, tuple):

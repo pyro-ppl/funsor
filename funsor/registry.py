@@ -51,18 +51,25 @@ class UnaryRegistry(object):
 
 class BinaryRegistry(object):
     """
-    Dynamic table for dispatch on two types and a key (typically ops).
+    Dynamic table for dispatch on a key (typically ops) and two types.
     """
-    def __init__(self):
+    def __init__(self, name):
+        self._name = name
         self._registry = defaultdict(dict)
         self._cache = {}
 
+    def __repr__(self):
+        return self._name
+
     def register(self, key, cls1, cls2):
         """
-        Creates a decorator dispatching on given class and key.
+        Creates a decorator dispatching on given key and classes.  This assumes
+        the function is symmetric, and also registers the transposed function.
         """
         def decorator(fn):
             self._registry[key][cls1, cls2] = fn
+            if cls1 is not cls2:
+                self._registry[key][cls2, cls1] = lambda x, y, *args, **kwargs: fn(y, x, *args, **kwargs)
             self._cache.clear()
             return fn
 
@@ -79,7 +86,8 @@ class BinaryRegistry(object):
             fn = self._dispatch(key, type(x), type(y))
             self._cache[key, type(x), type(y)] = fn
         if fn is NotImplemented:
-            raise NotImplementedError
+            raise NotImplementedError(
+                '{}({}, {}, {}, ...) is not implemented'.format(self, key, x, y))
         return fn(x, y, *args, **kwargs)
 
     def _dispatch(self, key, cls1, cls2):
