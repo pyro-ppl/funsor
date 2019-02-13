@@ -3,10 +3,11 @@ from __future__ import absolute_import, division, print_function
 import functools
 import inspect
 import numbers
-import six
 from collections import OrderedDict
 from weakref import WeakValueDictionary
 
+import opt_einsum
+import six
 import torch
 from six import add_metaclass
 from six.moves import reduce
@@ -204,6 +205,14 @@ class Funsor(object):
             return self
         return Reduction(op, self, dims)
 
+    def contract(self, sum_op, prod_op, other, dims):
+        return self.binary(prod_op, other).reduce(sum_op, dims)
+
+    def grad(self, dim):
+        if dim not in self.dims:
+            return Number(0.)
+        raise NotImplementedError
+
     # ------------------------------------------------------------------------
     # Subclasses should not override these methods; instead override
     # the generic handlers and fall back to super(...).handler.
@@ -346,6 +355,9 @@ class Variable(Funsor):
             return Variable(value, self.shape[0])
         return to_funsor(value)
 
+    def grad(self, dim):
+        return Number(float(dim == self.name))
+
 
 class Substitution(Funsor):
     def __init__(self, arg, subs):
@@ -437,6 +449,13 @@ class Unary(Funsor):
     def materialize(self):
         return self.arg.materialize().unary(self.op)
 
+    def grad(self, dim):
+        if dim not in self.arg:
+            return Number(0.)
+        if self.op is ops.neg:
+            return -self.arg.grad(dim)
+        raise NotImplementedError
+
 
 class Binary(Funsor):
     def __init__(self, op, lhs, rhs):
@@ -461,6 +480,27 @@ class Binary(Funsor):
 
     def materialize(self):
         return self.lhs.materialize().binary(self.op, self.rhs.materialize())
+
+    def contract(self, sum_op, prod_op, other, dims):
+        if dims not in self.dims:
+            return self.binary(prod_op, other)
+        if prod_op is self.op:
+            if dims not in self.lhs:
+                return self.lhs.binary(self.op, self.rhs.reduce(sum_op, dims))
+            if dims not in self.rhs:
+                return self.lhs.reduce(sum_op, dims).binary(self.op, self.rhs)
+        return super(Binary, self).contract(sum_op, prod_op, other, dims)
+
+    def grad(self, dim):
+        if dim not in self.dims:
+            return Number(0.)
+        if self.op is ops.add:
+            return self.lhs.grad(dim) + self.rhs.grad(dim)
+        if self.op is ops.sub:
+            return self.lhs.grad(dim) - self.rhs.grad(dim)
+        if self.op is ops.mul:
+            return self.lhs.grad(dim) * self.rhs + self.lhs * self.rhs.grad(dim)
+        raise NotImplementedError
 
 
 class Reduction(Funsor):
@@ -723,6 +763,30 @@ class Tensor(Funsor):
             dims = tuple(d for d in self.dims if d not in dims)
             return Tensor(dims, data)
         return super(Tensor, self).reduce(op, dims)
+
+    def contract(self, sum_op, prod_op, other, dims):
+        if isinstance(other, Tensor):
+            if sum_op is ops.add and prod_op is ops.mul:
+                schema = self.schema.copy()
+                schema.update(other.schema)
+                for d in dims:
+                    del schema[d]
+                dims = tuple(schema)
+                data = opt_einsum.contract(self.data, self.dims, other.data, other.dims, dims,
+                                           backend='torch')
+                return Tensor(dims, data)
+
+            if sum_op is ops.logaddexp and prod_op is ops.add:
+                schema = self.schema.copy()
+                schema.update(other.schema)
+                for d in dims:
+                    del schema[d]
+                dims = tuple(schema)
+                data = opt_einsum.contract(self.data, self.dims, other.data, other.dims, dims,
+                                           backend='pyro.ops.einsum.torch_log')
+                return Tensor(dims, data)
+
+        return super(Tensor, self).contract(sum_op, prod_op, other, dims)
 
 
 class Arange(Tensor):
