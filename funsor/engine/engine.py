@@ -4,6 +4,7 @@ from six.moves import reduce
 
 from funsor.handlers import effectful, Handler, Label, OpRegistry
 from funsor.terms import Arange, Binary, Finitary, Funsor, Number, Reduction, Substitution, Tensor, Unary, Variable
+from funsor.distributions import Normal
 
 
 class EagerEval(OpRegistry):
@@ -19,6 +20,12 @@ def eager_tensor(dims, data):
 @EagerEval.register(Number)
 def eager_number(data, dtype):
     return Number(data, dtype)
+
+
+# TODO add general Normal
+@EagerEval.register(Normal)
+def eager_distribution(loc, scale):
+    return Normal(loc, scale).materialize()
 
 
 @EagerEval.register(Variable)
@@ -70,15 +77,20 @@ class trampoline(Handler):
         self._returnvalue = None
         return super(trampoline, self).__enter__()
 
-    def __exit__(self, *eargs):
-        while self._schedule:
-            fn, nargs, nkwargs = self._schedule.pop(0)
-            args = tuple(self._args_queue.pop(0) for i in range(nargs))
-            kwargs = dict(self._kwargs_queue.pop(0) for i in range(nkwargs))
-            self._args_queue.append(fn(*args, **kwargs))
-        self._returnvalue = self._args_queue.pop(0)
-        assert not self._args_queue and not self._kwargs_queue
-        super(trampoline, self).__exit__(*eargs)
+    def __exit__(self, exc_type, exc_value, traceback):
+        if exc_type is None:
+            while self._schedule:
+                fn, nargs, nkwargs = self._schedule.pop(0)
+                print(fn)
+                args = tuple(self._args_queue.pop(0) for i in range(nargs))
+                kwargs = dict(self._kwargs_queue.pop(0) for i in range(nkwargs))
+                self._args_queue.append(fn(*args, **kwargs))
+            self._returnvalue = self._args_queue.pop(0)
+            assert not self._args_queue and not self._kwargs_queue
+        else:
+            self._schedule, self._args_queue, self._kwargs_queue = [], [], []
+            self._returnvalue = None
+        return super(trampoline, self).__exit__(exc_type, exc_value, traceback)
 
     def process(self, msg):
         if isinstance(msg["label"], TailCall):
@@ -118,6 +130,10 @@ def eval(x):
 
     if isinstance(x, Tensor):
         return _tail_call(effectful(Tensor, Tensor), x.dims, x.data)
+
+    if isinstance(x, Normal):
+        return _tail_call(effectful(Normal, Normal),
+                          eval(x.params["loc"]), eval(x.params["scale"]))
 
     if isinstance(x, Number):
         return _tail_call(effectful(Number, Number), x.data, type(x.data))

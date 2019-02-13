@@ -85,10 +85,9 @@ def test_logsumproductexp(eval, materialize_f, materialize_g):
             assert (eval_h[i, k] - h[i, k].materialize()) < 1e-6
 
 
-@pytest.mark.xfail(reason='bad trampoline')
 @pytest.mark.parametrize('eval', [
-    xfail_param(unoptimized_eval, reason='bad trampoline?'),
-    xfail_param(optimized_eval, reason='bad trampoline?'),
+    unoptimized_eval,
+    xfail_param(optimized_eval, reason="optimizer not working for this case yet?"),
     contract_eval,
 ])
 def test_hmm_discrete_gaussian(eval):
