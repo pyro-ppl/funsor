@@ -87,7 +87,8 @@ def test_logsumproductexp(eval, materialize_f, materialize_g):
 
 @pytest.mark.parametrize('eval', [
     unoptimized_eval,
-    xfail_param(optimized_eval, reason="optimizer not working for this case yet?"),
+    # xfail_param(optimized_eval, reason="optimizer not working for this case yet?"),
+    optimized_eval,
     contract_eval,
 ])
 def test_hmm_discrete_gaussian(eval):

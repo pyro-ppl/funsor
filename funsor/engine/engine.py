@@ -81,7 +81,6 @@ class trampoline(Handler):
         if exc_type is None:
             while self._schedule:
                 fn, nargs, nkwargs = self._schedule.pop(0)
-                print(fn)
                 args = tuple(self._args_queue.pop(0) for i in range(nargs))
                 kwargs = dict(self._kwargs_queue.pop(0) for i in range(nkwargs))
                 self._args_queue.append(fn(*args, **kwargs))
