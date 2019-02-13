@@ -110,3 +110,27 @@ def test_hmm_discrete_gaussian(eval):
     log_prob = eval(log_prob)
     assert isinstance(log_prob, funsor.Tensor)
     assert not log_prob.dims
+
+
+@pytest.mark.parametrize('num_steps', [1, 2, 3])
+@pytest.mark.parametrize('eval', [
+    xfail_param(unoptimized_eval, reason='bad trampoline?'),
+    xfail_param(optimized_eval, reason='bad trampoline?'),
+    xfail_param(contract_eval, reason='cannot substitute Normal'),
+])
+def test_hmm_gaussian_gaussian(eval, num_steps):
+    trans = dist.Normal(funsor.Variable('prev', 'real'), funsor.Tensor((), torch.tensor(0.1)))
+    emit = dist.Normal(funsor.Variable('state', 'real'), funsor.Tensor((), torch.tensor(1.)))
+    assert emit.dims == ('value', 'state')
+    data = funsor.Tensor(('t',), torch.randn(num_steps))
+
+    log_prob = funsor.Tensor((), torch.tensor(0.))
+    x_curr = funsor.Tensor((), torch.tensor(0.))
+    for t, y in enumerate(data):
+        x_prev, x_curr = x_curr, funsor.Variable('x_{}'.format(t), 'real')
+        log_prob += trans(prev=x_prev, value=x_curr)
+        log_prob += emit(state=x_curr, value=y)
+    log_prob = log_prob.reduce(ops.logaddexp)
+    log_prob = eval(log_prob)
+    assert isinstance(log_prob, funsor.Tensor)
+    assert not log_prob.dims

@@ -180,6 +180,28 @@ class Normal(Distribution):
     def __init__(self, loc, scale):
         super(Normal, self).__init__(dist.Normal, loc=loc, scale=scale)
 
+    def contract(self, sum_op, prod_op, other, dims):
+        if sum_op is ops.logaddexp and prod_op is ops.add:
+            d = self.value_dim
+            if (isinstance(other, Normal) and other.value_dim not in self.dims and
+                    d != other.value_dim and d not in other.params['scale'].dims):
+                for a0, a1 in match_affine(other.params['loc'], d):
+                    loc1, scale1 = self.params['loc'], self.params['scale']
+                    loc2, scale2 = other.params['loc'], other.params['scale']
+                    loc = a0 + a1 * loc1 + loc2
+                    scale = ((scale1 * a1) ** 2 + scale2 ** 2).sqrt()
+                    return Normal(loc, scale)(other.value_dim)
+        return super(Normal, self).contract(sum_op, prod_op, other, dims)
+
+
+def match_affine(expr, dim):
+    assert isinstance(expr, Funsor)
+    assert isinstance(dim, str)
+    a1 = expr.grad(dim)
+    if dim not in a1:
+        a0 = expr(d=0.)
+        yield a0, a1
+
 
 ################################################################################
 # Conjugacy Relationships
