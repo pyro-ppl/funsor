@@ -1,11 +1,11 @@
 from __future__ import absolute_import, division, print_function
 
 import functools
-import collections
+
 from multipledispatch import dispatch
 
 
-class Message(collections.UserDict):
+class Message(dict):
 
     _fields = ("name", "fn", "args", "kwargs", "value", "stop")
 
