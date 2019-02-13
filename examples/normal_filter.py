@@ -6,6 +6,7 @@ import torch
 
 import funsor
 import funsor.distributions as dist
+from funsor.engine.contract_engine import eval as funsor_eval
 
 
 def main(args_):
@@ -68,7 +69,7 @@ def main(args_):
     for step in range(args_.train_steps):
         optim.zero_grad()
         eager_args, log_prob = model(data)
-        loss = -funsor.eval(log_prob.logsumexp())  # integrates out deferred variables
+        loss = -funsor_eval(log_prob.logsumexp())  # integrates out deferred variables
         if step % 10 == 0:
             print('step {} loss = {}'.format(step, loss.item()))
         loss.backward()
@@ -77,7 +78,7 @@ def main(args_):
     # serving by drawing a posterior sample
     print('---- serving ----')
     eager_args, _ = model(data)
-    lazy_args = funsor.eval(log_prob.sample())
+    lazy_args = funsor_eval(log_prob.sample())
     joint_sample = eager_args
     joint_sample.update(lazy_args)
     for key, value in sorted(joint_sample.items()):
