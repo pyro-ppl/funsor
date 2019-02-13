@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 from six.moves import reduce
 
 from funsor.handlers import effectful, Handler, Label, OpRegistry
-from funsor.terms import Arange, Binary, Finitary, Funsor, Reduction, Substitution, Tensor, Unary, Variable
+from funsor.terms import Arange, Binary, Finitary, Funsor, Number, Reduction, Substitution, Tensor, Unary, Variable
 
 
 class EagerEval(OpRegistry):
@@ -14,6 +14,11 @@ class EagerEval(OpRegistry):
 @EagerEval.register(Tensor)
 def eager_tensor(dims, data):
     return Tensor(dims, data).materialize()  # .data
+
+
+@EagerEval.register(Number)
+def eager_number(data, dtype):
+    return Number(data, dtype)
 
 
 @EagerEval.register(Variable)
@@ -106,6 +111,9 @@ def eval(x):
 
     if isinstance(x, Tensor):
         return _tail_call(effectful(Tensor, Tensor), x.dims, x.data)
+
+    if isinstance(x, Number):
+        return _tail_call(effectful(Number, Number), x.data, type(x.data))
 
     if isinstance(x, Variable):
         return _tail_call(effectful(Variable, Variable), x.name, x.shape[0])
