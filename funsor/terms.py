@@ -13,6 +13,7 @@ from six import add_metaclass
 from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.registry import singledispatch
 
 DOMAINS = ('real', 'vector')
 
@@ -966,19 +967,28 @@ def function(*signature):
     return functools.partial(Function, inputs, output)
 
 
+@singledispatch
 def to_funsor(x):
     """
     Convert to a :class:`Funsor`.
     Only :class:`Funsor`s and scalars are accepted.
     """
-    if isinstance(x, Funsor):
-        return x
-    if isinstance(x, numbers.Number):
-        return Number(x)
-    if isinstance(x, torch.Tensor):
-        assert x.dim() == 0
-        return Tensor((), x)
     raise ValueError("cannot convert to Funsor: {}".format(x))
+
+
+@to_funsor.register(Funsor)
+def _to_funsor_funsor(x):
+    return x
+
+
+to_funsor.register(numbers.Number)(Number)
+
+
+@to_funsor.register(torch.Tensor)
+def _to_funsor_tensor(x):
+    if x.dim():
+        raise ValueError("cannot convert non-scalar tensor to funsor")
+    return Tensor((), x)
 
 
 def _of_shape(fn, shape):
