@@ -642,12 +642,6 @@ class Number(Funsor):
             return -other
         if op is ops.mul and self.data == 1:
             return other
-        if isinstance(other, numbers.Number):
-            if (op is ops.add or op is ops.sub) and other == 0:
-                return self
-            if (op is ops.mul or op is ops.truediv) and other == 1:
-                return self
-            return Number(op(self.data, other))
         if isinstance(other, Number):
             if (op is ops.add or op is ops.sub) and other.data == 0:
                 return self
@@ -655,11 +649,7 @@ class Number(Funsor):
                 return self
             return Number(op(self.data, other.data))
         # TODO move this logic into funsor.engine
-        import torch
         from funsor.torch import Tensor
-        if isinstance(other, torch.Tensor):
-            assert other.dim() == 0
-            return Tensor((), op(self.data, other.data))
         if isinstance(other, Tensor):
             return Tensor(other.dims, op(self.data, other.data))
         return super(Number, self).binary(op, other)
