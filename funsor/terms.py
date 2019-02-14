@@ -151,7 +151,7 @@ class Funsor(object):
         """
         Broadcasted pointwise binary operation.
         """
-        other = to_funsor(other)
+        assert isinstance(other, Funsor)
         if isinstance(other, Number):
             if (op is ops.add or op is ops.sub) and other.data == 0:
                 return self
@@ -219,73 +219,73 @@ class Funsor(object):
         return self.unary(ops.log1p)
 
     def __add__(self, other):
-        return self.binary(ops.add, other)
+        return self.binary(ops.add, to_funsor(other))
 
     def __radd__(self, other):
-        return self.binary(ops.add, other)
+        return self.binary(ops.add, to_funsor(other))
 
     def __sub__(self, other):
-        return self.binary(ops.sub, other)
+        return self.binary(ops.sub, to_funsor(other))
 
     def __rsub__(self, other):
         return to_funsor(other).binary(ops.sub, self)
 
     def __mul__(self, other):
-        return self.binary(ops.mul, other)
+        return self.binary(ops.mul, to_funsor(other))
 
     def __rmul__(self, other):
-        return self.binary(ops.mul, other)
+        return self.binary(ops.mul, to_funsor(other))
 
     def __truediv__(self, other):
-        return self.binary(ops.truediv, other)
+        return self.binary(ops.truediv, to_funsor(other))
 
     def __rtruediv__(self, other):
         return to_funsor(other).binary(ops.truediv, self)
 
     def __pow__(self, other):
-        return self.binary(ops.pow, other)
+        return self.binary(ops.pow, to_funsor(other))
 
     def __rpow__(self, other):
         return to_funsor(other).binary(ops.pow, self)
 
     def __and__(self, other):
-        return self.binary(ops.and_, other)
+        return self.binary(ops.and_, to_funsor(other))
 
     def __rand__(self, other):
-        return self.binary(ops.and_, other)
+        return self.binary(ops.and_, to_funsor(other))
 
     def __or__(self, other):
-        return self.binary(ops.or_, other)
+        return self.binary(ops.or_, to_funsor(other))
 
     def __ror__(self, other):
-        return self.binary(ops.or_, other)
+        return self.binary(ops.or_, to_funsor(other))
 
     def __xor__(self, other):
-        return self.binary(ops.xor, other)
+        return self.binary(ops.xor, to_funsor(other))
 
     def __eq__(self, other):
-        return self.binary(ops.eq, other)
+        return self.binary(ops.eq, to_funsor(other))
 
     def __ne__(self, other):
-        return self.binary(ops.ne, other)
+        return self.binary(ops.ne, to_funsor(other))
 
     def __lt__(self, other):
-        return self.binary(ops.lt, other)
+        return self.binary(ops.lt, to_funsor(other))
 
     def __le__(self, other):
-        return self.binary(ops.le, other)
+        return self.binary(ops.le, to_funsor(other))
 
     def __gt__(self, other):
-        return self.binary(ops.gt, other)
+        return self.binary(ops.gt, to_funsor(other))
 
     def __ge__(self, other):
-        return self.binary(ops.ge, other)
+        return self.binary(ops.ge, to_funsor(other))
 
     def __min__(self, other):
-        return self.binary(ops.min, other)
+        return self.binary(ops.min, to_funsor(other))
 
     def __max__(self, other):
-        return self.binary(ops.max, other)
+        return self.binary(ops.max, to_funsor(other))
 
     def sum(self, dims=None):
         return self.reduce(ops.add, dims)
