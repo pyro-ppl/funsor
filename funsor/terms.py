@@ -620,8 +620,16 @@ class Number(Funsor):
 
     def binary(self, op, other):
         if isinstance(other, numbers.Number):
+            if (op is ops.add or op is ops.sub) and other == 0:
+                return self
+            if (op is ops.mul or op is ops.truediv) and other == 1:
+                return self
             return Number(op(self.data, other))
         if isinstance(other, Number):
+            if (op is ops.add or op is ops.sub) and other.data == 0:
+                return self
+            if (op is ops.mul or op is ops.truediv) and other.data == 1:
+                return self
             return Number(op(self.data, other.data))
         if isinstance(other, torch.Tensor):
             assert other.dim() == 0
@@ -734,12 +742,20 @@ class Tensor(Funsor):
 
     def binary(self, op, other):
         if isinstance(other, numbers.Number):
+            if (op is ops.add or op is ops.sub) and other == 0:
+                return self
+            if (op is ops.mul or op is ops.truediv) and other == 1:
+                return self
             return Tensor(self.dims, op(self.data, other))
+        if isinstance(other, Number):
+            if (op is ops.add or op is ops.sub) and other.data == 0:
+                return self
+            if (op is ops.mul or op is ops.truediv) and other.data == 1:
+                return self
+            return Tensor(self.dims, op(self.data, other.data))
         if isinstance(other, torch.Tensor):
             assert other.dim() == 0
             return Tensor(self.dims, op(self.data, other))
-        if isinstance(other, Number):
-            return Tensor(self.dims, op(self.data, other.data))
         if isinstance(other, Tensor):
             if self.dims == other.dims:
                 return Tensor(self.dims, op(self.data, other.data))
