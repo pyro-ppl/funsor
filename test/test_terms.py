@@ -56,6 +56,20 @@ def test_cons_hash():
     assert f1 is f2
 
 
+@pytest.mark.parametrize('expr', [
+    "funsor.Variable('x', 3)",
+    "funsor.Variable('x', 'real')",
+    "funsor.Number(0.)",
+    "funsor.Number(1)",
+    "-funsor.Variable('x', 'real')",
+    "funsor.Variable('x', 'real') + funsor.Variable('y', 'real')",
+    "funsor.Variable('x', 'real')(x=funsor.Number(0))",
+])
+def test_eval(expr):
+    x = eval(expr)
+    assert x.eval() is x
+
+
 @pytest.mark.parametrize('size', [3, 'real'])
 def test_variable(size):
     x = funsor.Variable('x', size)

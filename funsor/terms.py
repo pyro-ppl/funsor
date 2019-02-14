@@ -37,6 +37,7 @@ class ConsHashedMeta(type):
         if key in cls._cons_cache:
             return cls._cons_cache[key]
         result = super(ConsHashedMeta, cls).__call__(*args)
+        result._cons_args = args
         cls._cons_cache[key] = result
         return result
 
@@ -70,6 +71,9 @@ class Funsor(object):
         self.dims = dims
         self.shape = shape
         self.schema = OrderedDict(zip(dims, shape))
+
+    def eval(self):
+        return type(self)(*self._cons_args)
 
     def __hash__(self):
         return id(self)
