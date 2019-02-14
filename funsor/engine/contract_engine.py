@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 from collections import Counter
 
 import opt_einsum
+from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.terms import Binary, Funsor, Reduction, Tensor
@@ -17,8 +18,8 @@ def _parse_reduction(op, x):
         yield x.arg, x.reduce_dims
 
 
-def _parse_commutative(op, x):
-    pending = [x]
+def _parse_commutative(op, *args):
+    pending = list(args)
     terms = []
     while pending:
         x = pending.pop()
@@ -95,7 +96,9 @@ def _contract(sum_op, prod_op, operands, reduce_dims, default_cost=10):
                 del reduce_dim_counter[d]
                 rdims.append(d)
         rdims = frozenset(rdims)
-        operands[x_pos] = _pairwise_contract(sum_op, prod_op, x, y, rdims)
+        xy = _pairwise_contract(sum_op, prod_op, x, y, rdims)
+        operands[x_pos] = xy
+        reduce_dim_counter.update(xy.dims)
 
     # Apply an optional final reduction.
     # This should only happen when len(operands) == 1 on entry.
@@ -103,45 +106,33 @@ def _contract(sum_op, prod_op, operands, reduce_dims, default_cost=10):
     rdims = frozenset(x.dims) - frozenset(reduce_dim_counter)
     if rdims:
         x = x.reduce(sum_op, rdims)
-    assert frozenset(x.dims) == frozenset(reduce_dim_counter)
+    assert frozenset(x.dims) == frozenset(output)
     return x
 
 
 def _pairwise_contract(sum_op, prod_op, x, y, rdims):
     if not rdims:
         return x.binary(prod_op, y)
-
-    # Decompose Binary products.
-    factors = []
-    pending = [x, y]
-    while pending:
-        x = pending.pop()
-        if isinstance(x, Binary) and x.op is prod_op:
-            pending.append(x.lhs, x.rhs)
-        else:
-            factors.append(x)
+    factors = _parse_commutative(prod_op, x, y)
 
     # Reduce one dim at a time.
     for dim in rdims:
-        dim_factors = [f for f in factors if dim in x.dims]
-        factors = [f for f in factors if dim not in x.dims]
+        dim_factors = [f for f in factors if dim in f.dims]
+        factors = [f for f in factors if dim not in f.dims]
         if len(dim_factors) == 1:
-            factors.append(dim_factors.reduce(sum_op, frozenset([dim])))
+            xy = dim_factors[0].reduce(sum_op, frozenset([dim]))
         elif len(dim_factors) == 2:
             x, y = dim_factors
             try:
-                return x.contract(sum_op, prod_op, y, frozenset([dim]))
+                xy = x.contract(sum_op, prod_op, y, frozenset([dim]))
             except NotImplementedError:
-                return y.contract(sum_op, prod_op, x, frozenset([dim]))
+                xy = y.contract(sum_op, prod_op, x, frozenset([dim]))
         else:
             raise NotImplementedError
+        assert dim not in xy.dims
+        factors.extend(_parse_commutative(prod_op, xy))
 
-    # Combine factors.
-    while len(factors) > 2:
-        x = factors.pop()
-        y = factors[-1]
-        factors[-1] = x.binary(prod_op, y)
-    return factors[0]
+    return reduce(prod_op, factors)
 
 
 def eval(x):

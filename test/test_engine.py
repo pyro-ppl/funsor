@@ -95,12 +95,12 @@ def test_hmm_discrete_gaussian(eval):
     num_steps = 3
     trans = funsor.Tensor(('prev', 'curr'), torch.tensor([[0.9, 0.1], [0.1, 0.9]]).log())
     locs = funsor.Tensor(('state',), torch.randn(hidden_dim))
-    emit = dist.Normal(loc=locs, scale=funsor.Tensor((), torch.tensor(1.)))
+    emit = dist.Normal(loc=locs, scale=1.)
     assert emit.dims == ('value', 'state')
     data = funsor.Tensor(('t',), torch.randn(num_steps))
 
-    log_prob = funsor.Tensor((), torch.tensor(0.))
-    x_curr = funsor.Tensor((), torch.tensor(0))
+    log_prob = 0.
+    x_curr = 0
     for t, y in enumerate(data):
         x_prev, x_curr = x_curr, funsor.Variable('x_{}'.format(t), hidden_dim)
         log_prob += trans(prev=x_prev, curr=x_curr)
@@ -118,13 +118,13 @@ def test_hmm_discrete_gaussian(eval):
     xfail_param(contract_eval, reason='cannot match Substitution(Normal)'),
 ])
 def test_hmm_gaussian_gaussian(eval, num_steps):
-    trans = dist.Normal(funsor.Variable('prev', 'real'), funsor.Tensor((), torch.tensor(0.1)))
-    emit = dist.Normal(funsor.Variable('state', 'real'), funsor.Tensor((), torch.tensor(1.)))
+    trans = dist.Normal(funsor.Variable('prev', 'real'), 0.1)
+    emit = dist.Normal(funsor.Variable('state', 'real'), 1.)
     assert emit.dims == ('value', 'state')
     data = funsor.Tensor(('t',), torch.randn(num_steps))
 
-    log_prob = funsor.Tensor((), torch.tensor(0.))
-    x_curr = funsor.Tensor((), torch.tensor(0.))
+    log_prob = 0.
+    x_curr = 0.
     for t, y in enumerate(data):
         x_prev, x_curr = x_curr, funsor.Variable('x_{}'.format(t), 'real')
         log_prob += trans(prev=x_prev, value=x_curr)

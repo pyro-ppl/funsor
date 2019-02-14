@@ -35,7 +35,7 @@ def match_affine(expr, dim):
     assert isinstance(dim, str)
     a1 = expr.jacobian(dim)
     if dim not in a1:
-        a0 = expr(d=0.)
+        a0 = expr(**{dim: 0.})
         yield a0, a1
 
 

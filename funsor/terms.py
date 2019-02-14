@@ -44,10 +44,10 @@ def align_tensors(*args):
     tensors = []
     for i, x in enumerate(args):
         x_dims, x = x.dims, x.data
-        if x_dims != dims:
+        if x_dims and x_dims != dims:
             x = x.data.permute(tuple(x_dims.index(d) for d in dims if d in x_dims))
             x = x.reshape(tuple(sizes[d] if d in x_dims else 1 for d in dims))
-        assert x.dim() == len(dims)
+            assert x.dim() == len(dims)
         tensors.append(x)
     return dims, tensors
 
@@ -465,6 +465,15 @@ class Unary(Funsor):
         raise NotImplementedError
 
 
+_INFIX = {
+    ops.add: '+',
+    ops.sub: '-',
+    ops.mul: '*',
+    ops.truediv: '/',
+    ops.pow: '**',
+}
+
+
 class Binary(Funsor):
     def __init__(self, op, lhs, rhs):
         assert callable(op)
@@ -480,6 +489,8 @@ class Binary(Funsor):
         self.rhs = rhs
 
     def __repr__(self):
+        if self.op in _INFIX:
+            return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
     def __call__(self, *args, **kwargs):
@@ -508,6 +519,10 @@ class Binary(Funsor):
             return self.lhs.jacobian(dim) - self.rhs.jacobian(dim)
         if self.op is ops.mul:
             return self.lhs.jacobian(dim) * self.rhs + self.lhs * self.rhs.jacobian(dim)
+        if self.op is ops.truediv:
+            if dim not in self.rhs:
+                return self.lhs.jacobian(dim) / self.rhs
+            return (self.lhs.jacobian(dim) * self.rhs - self.lhs * self.rhs.jacobian(dim)) / self.rhs ** 2
         raise NotImplementedError
 
 
@@ -616,7 +631,7 @@ class Number(Funsor):
         return self.data
 
     def unary(self, op):
-        return Number((), op(self.data))
+        return Number(op(self.data))
 
     def binary(self, op, other):
         if (op is ops.add or op is ops.sub) and self.data == 0:
