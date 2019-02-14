@@ -6,11 +6,10 @@ from collections import OrderedDict
 
 import opt_einsum
 import torch
-from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.six import getargspec
-from funsor.terms import Align, ConsHashedMeta, Funsor, Number, to_funsor
+from funsor.terms import Align, Funsor, Number, to_funsor
 
 
 def align_tensors(*args):
@@ -245,7 +244,6 @@ class Pointwise(Funsor):
         return super(Pointwise, self).__call__(*args, **kwargs)
 
 
-@add_metaclass(ConsHashedMeta)
 class Function(object):
     """
     Wrapper for PyTorch functions.

@@ -3,15 +3,49 @@ from __future__ import absolute_import, division, print_function
 import functools
 import numbers
 from collections import OrderedDict
+from multipledispatch import dispatch
 from weakref import WeakValueDictionary
 
 from six import add_metaclass
 from six.moves import reduce
 
+import funsor.handlers as handlers
 import funsor.ops as ops
 from funsor.six import getargspec, singledispatch
 
 DOMAINS = ('real', 'vector')
+
+
+class MemoizeOp(handlers.Message):
+    pass
+
+
+@handlers.effectful(MemoizeOp)
+def _construct_funsor(cls, args):
+    result = super(ConsHashedMeta, cls).__call__(*args)
+    result._cons_args = args
+    cls._cons_cache[cls, args] = result
+    return result
+
+
+class MemoizeHandler(handlers.Handler):
+    """Memoize Funsor term instance creation"""
+
+    @dispatch(object)  # boilerplate
+    def process(self, msg):
+        return super(MemoizeHandler, self).process(msg)
+
+    @dispatch(MemoizeOp)
+    def process(self, msg):
+        key = msg["args"]
+        cls, args = key
+        if key in cls._cons_cache:
+            msg["value"] = cls._cons_cache[key]
+        return msg
+
+
+# TODO disable memoization by default
+handlers.HANDLER_STACK = [MemoizeHandler()]
 
 
 class ConsHashedMeta(type):
@@ -29,17 +63,7 @@ class ConsHashedMeta(type):
             assert not kwargs, kwargs
             args = tuple(args)
 
-        # TODO(eb8680) You can insert an effect handling hook here, but
-        # please make sure it is very very cheap ;-)
-
-        # Memoize creation.
-        key = (cls, args)
-        if key in cls._cons_cache:
-            return cls._cons_cache[key]
-        result = super(ConsHashedMeta, cls).__call__(*args)
-        result._cons_args = args
-        cls._cons_cache[key] = result
-        return result
+        return _construct_funsor(cls, args)
 
 
 @add_metaclass(ConsHashedMeta)

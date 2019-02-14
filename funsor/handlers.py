@@ -6,6 +6,7 @@ from multipledispatch import dispatch
 
 
 class Message(dict):
+    # TODO use defaultdict
 
     _fields = ("name", "fn", "args", "kwargs", "value", "stop")
 
