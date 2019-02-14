@@ -8,7 +8,7 @@ import pytest
 import torch
 
 import funsor
-from funsor.terms import align_tensors
+from funsor.torch import align_tensors
 
 
 def check_funsor(x, dims, shape, data=None):
@@ -434,7 +434,7 @@ def test_lazy_eval_mm():
     x_lazy = funsor.Variable('x', 'real')
     y = funsor.Tensor(('b', 'c'), torch.randn(4, 5))
     actual_lazy = mm(x_lazy, y)
-    assert isinstance(actual_lazy, funsor.terms.LazyCall)
+    assert isinstance(actual_lazy, funsor.torch.LazyCall)
 
     x = funsor.Tensor(('a', 'b'), torch.randn(3, 4))
     actual = actual_lazy(x=x)

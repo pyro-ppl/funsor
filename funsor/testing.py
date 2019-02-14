@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
-from funsor.terms import Funsor, Tensor
+from funsor.terms import Funsor
+from funsor.torch import Tensor
 
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):

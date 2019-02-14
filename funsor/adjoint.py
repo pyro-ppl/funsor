@@ -4,7 +4,8 @@ import torch
 
 import funsor.ops as ops
 from funsor.registry import UnaryRegistry
-from funsor.terms import Funsor, Tensor
+from funsor.terms import Funsor
+from funsor.torch import Tensor
 
 
 class adjoints(object):

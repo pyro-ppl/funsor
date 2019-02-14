@@ -4,7 +4,8 @@ import opt_einsum
 
 import funsor.ops as ops
 from funsor.registry import BinaryRegistry
-from funsor.terms import Funsor, Tensor
+from funsor.terms import Funsor
+from funsor.torch import Tensor
 
 contract = BinaryRegistry('contract')
 

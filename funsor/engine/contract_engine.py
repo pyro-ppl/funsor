@@ -6,7 +6,8 @@ import opt_einsum
 from six.moves import reduce
 
 import funsor.ops as ops
-from funsor.terms import Binary, Funsor, Reduction, Tensor
+from funsor.terms import Binary, Funsor, Reduction
+from funsor.torch import Tensor
 
 #####################################################
 # old basic engine implementation, useful for testing

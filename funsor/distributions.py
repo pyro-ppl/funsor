@@ -9,7 +9,8 @@ from six import add_metaclass
 import funsor.ops as ops
 from funsor.adjoint import backward
 from funsor.contract import contract
-from funsor.terms import ConsHashedMeta, Funsor, Number, Tensor, Variable, align_tensors, to_funsor
+from funsor.terms import ConsHashedMeta, Funsor, Number, Variable, to_funsor
+from funsor.torch import Tensor, align_tensors
 
 
 def log_abs_det(jacobian):

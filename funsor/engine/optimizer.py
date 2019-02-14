@@ -9,12 +9,14 @@ from __future__ import absolute_import, division, print_function
 
 import collections
 
-from funsor.handlers import OpRegistry
-from funsor.terms import Binary, Finitary, Number, Reduction, Substitution, Unary, Tensor
+from opt_einsum.paths import greedy  # TODO move to custom optimizer
+
 from funsor.distributions import Distribution
+from funsor.handlers import OpRegistry
+from funsor.terms import Binary, Finitary, Number, Reduction, Substitution, Unary
+from funsor.torch import Tensor
 
 from .engine import eval
-from opt_einsum.paths import greedy  # TODO move to custom optimizer
 
 
 class Desugar(OpRegistry):

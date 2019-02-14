@@ -1,11 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
-from six.moves import reduce
 from multipledispatch import dispatch
+from six.moves import reduce
 
-from funsor.handlers import effectful, Handler, Message, OpRegistry
-from funsor.terms import Arange, Binary, Finitary, Funsor, Number, Reduction, Substitution, Tensor, Unary, Variable
 import funsor.distributions as dist
+from funsor.handlers import Handler, Message, OpRegistry, effectful
+from funsor.terms import Binary, Finitary, Funsor, Number, Reduction, Substitution, Unary, Variable
+from funsor.torch import Arange, Tensor
 
 
 class EagerEval(OpRegistry):
