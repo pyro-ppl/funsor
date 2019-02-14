@@ -98,12 +98,12 @@ def _contract(sum_op, prod_op, operands, reduce_dims, default_cost=10):
         rdims = frozenset(rdims)
         xy = _pairwise_contract(sum_op, prod_op, x, y, rdims)
         operands[x_pos] = xy
-        reduce_dim_counter.update(xy.dims)
+        reduce_dim_counter.update(reduce_dims.intersection(xy.dims))
 
     # Apply an optional final reduction.
     # This should only happen when len(operands) == 1 on entry.
     x, = operands
-    rdims = frozenset(x.dims) - frozenset(reduce_dim_counter)
+    rdims = frozenset(x.dims) - frozenset(output)
     if rdims:
         x = x.reduce(sum_op, rdims)
     assert frozenset(x.dims) == frozenset(output)

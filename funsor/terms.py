@@ -185,7 +185,13 @@ class Funsor(object):
         """
         Broadcasted pointwise binary operation.
         """
-        return Binary(op, self, to_funsor(other))
+        other = to_funsor(other)
+        if isinstance(other, Number):
+            if (op is ops.add or op is ops.sub) and other.data == 0:
+                return self
+            if (op is ops.mul or op is ops.truediv) and other.data == 1:
+                return self
+        return Binary(op, self, other)
 
     def reduce(self, op, dims=None):
         """

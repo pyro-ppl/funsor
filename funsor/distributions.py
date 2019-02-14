@@ -200,9 +200,10 @@ class Normal(Distribution):
                 # Try updating prior from a ground observation.
                 if other.is_observed:
                     for a0, a1 in match_affine(other.params['loc'], d):
+                        print('UPDATE\n  {}\n  {}'.format(self, other))
                         loc1, scale1 = self.params['loc'], self.params['scale']
-                        loc2, scale2 = other.params['loc'], other.params['scale']
-                        loc2 = (other.value - loc2 - a0) / a1
+                        scale2 = other.params['scale']
+                        loc2 = (other.value - a0) / a1
                         scale2 = scale2 / a1
                         prec1 = scale1 ** -2
                         prec2 = scale2 ** -2
@@ -212,19 +213,30 @@ class Normal(Distribution):
                         log_likelihood = (scale.log() - scale1.log() - scale2.log() +
                                           0.5 * (prec1 * (prec2 / prec)) * (loc2 - loc1) ** 2 -
                                           math.log(2 * math.pi))
-                        updated = Normal(loc, scale, value=self.value) + log_likelihood
-                        return updated.reduce(sum_op, dims)
+                        updated = Normal(loc, scale, value=self.value)
+
+                        # Apply reductions.
+                        x, y = log_likelihood, updated
+                        dims = frozenset(dims).intersection(x.dims + y.dims)
+                        x_dims = dims - frozenset(y.dims)
+                        y_dims = dims - frozenset(x.dims)
+                        dims = dims - x_dims - y_dims
+                        x = x.reduce(ops.logaddexp, x_dims)
+                        y = y.reduce(ops.logaddexp, y_dims)
+                        return (x + y).reduce(ops.logaddexp, dims)
 
                 # Try integrating out this variable.
-                if isinstance(other.value, Variable) and other.value.name not in self.dims:
+                if d in dims and isinstance(other.value, Variable) and other.value.name not in self.dims:
                     for a0, a1 in match_affine(other.params['loc'], d):
+                        print('MARGINALIZE\n  {}\n  {}'.format(self, other))
                         loc1, scale1 = self.params['loc'], self.params['scale']
                         loc2, scale2 = other.params['loc'], other.params['scale']
                         loc = a0 + a1 * loc1 + loc2
                         scale = ((scale1 * a1) ** 2 + scale2 ** 2).sqrt()
-                        return Normal(loc, scale, value=other.value)
+                        updated = Normal(loc, scale, value=other.value)
+                        return updated.reduce(ops.logaddexp, dims - frozenset([d]))
 
-        return super(Normal, self).contract(sum_op, prod_op, other, dims)
+        raise NotImplementedError
 
 
 ################################################################################
