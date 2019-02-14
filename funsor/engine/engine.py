@@ -5,7 +5,7 @@ from multipledispatch import dispatch
 
 from funsor.handlers import effectful, Handler, Message, OpRegistry
 from funsor.terms import Arange, Binary, Finitary, Funsor, Number, Reduction, Substitution, Tensor, Unary, Variable
-from funsor.distributions import Normal
+import funsor.distributions as dist
 
 
 class EagerEval(OpRegistry):
@@ -24,9 +24,9 @@ def eager_number(data, dtype):
 
 
 # TODO add general Normal
-@EagerEval.register(Normal)
-def eager_distribution(loc, scale):
-    return Normal(loc, scale).materialize()
+@EagerEval.register(dist.Normal)
+def eager_distribution(loc, scale, value):
+    return dist.Normal(loc, scale, value=value).materialize()
 
 
 @EagerEval.register(Variable)
@@ -61,7 +61,7 @@ def eager_finitary(op, operands):
 
 @EagerEval.register(Reduction)
 def eager_reduce(op, arg, reduce_dims):
-    assert isinstance(arg, Tensor)  # XXX is this actually true?
+    assert isinstance(arg, Tensor), arg  # XXX is this actually true?
     return arg.reduce(op, reduce_dims)
 
 
@@ -135,9 +135,9 @@ def eval(x):
     if isinstance(x, Tensor):
         return _tail_call(effectful(Tensor, Tensor), x.dims, x.data)
 
-    if isinstance(x, Normal):
-        return _tail_call(effectful(Normal, Normal),
-                          eval(x.params["loc"]), eval(x.params["scale"]))
+    if isinstance(x, dist.Distribution):
+        return _tail_call(effectful(type(x), type(x)),
+                          **{k: eval(v) for k, v in x.params.items()})
 
     if isinstance(x, Number):
         return _tail_call(effectful(Number, Number), x.data, type(x.data))

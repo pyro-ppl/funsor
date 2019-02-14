@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import math
 from collections import OrderedDict, defaultdict
 
 import torch.distributions as dist
@@ -8,7 +9,7 @@ from six import add_metaclass
 import funsor.ops as ops
 from funsor.adjoint import backward
 from funsor.contract import contract
-from funsor.terms import Funsor, Number, Tensor, Variable, align_tensors, to_funsor, ConsHashedMeta
+from funsor.terms import ConsHashedMeta, Funsor, Number, Tensor, Variable, align_tensors, to_funsor
 
 
 def log_abs_det(jacobian):
@@ -77,11 +78,11 @@ class DefaultValueMeta(ConsHashedMeta):
 class Distribution(Funsor):
     """
     Abstract base class for funsors representing univariate probability
-    distributions over the leading dim.
+    distributions.
     """
-    def __init__(self, cls, value, **params):
+    def __init__(self, cls, **params):
         assert issubclass(cls, dist.Distribution)
-        schema = OrderedDict([(value.name, value.shape[0])])
+        schema = params['value'].schema.copy()
         self.params = OrderedDict()
         for k, v in sorted(params.items()):
             assert isinstance(k, str)
@@ -92,51 +93,44 @@ class Distribution(Funsor):
         shape = tuple(schema.values())
         super(Distribution, self).__init__(dims, shape)
         self.cls = cls
-        self.value = value
+
+    @property
+    def value(self):
+        return self.params['value']
+
+    @property
+    def is_observed(self):
+        return isinstance(self.value, (Number, Tensor))
 
     def __repr__(self):
-        return '{}({}, value={})'.format(
-            type(self).__name__,
-            ', '.join('{}={}'.format(*kv) for kv in self.params.items()),
-            self.value)
+        return '{}({})'.format(type(self).__name__,
+                               ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def __call__(self, *args, **kwargs):
         kwargs = {d: to_funsor(v) for d, v in kwargs.items() if d in self.dims}
         kwargs.update(zip(self.dims, map(to_funsor, args)))
-        value = kwargs.pop(self.value.name, None)
-        result = self
-        if kwargs:
-            result = result._call_param(kwargs)
-        if value is not None:
-            result = result._call_value(value)
-        return result
-
-    def _call_param(self, kwargs):
-        params = {k: v(**kwargs) for k, v in self.params.items()}
+        if not kwargs:
+            return self
+        params = OrderedDict((k, v(**kwargs)) for k, v in self.params.items())
+        if all(isinstance(v, (Number, Tensor)) for v in params.values()):
+            dims, tensors = align_tensors(*params.values())
+            params = dict(zip(params, tensors))
+            value = params.pop('value')
+            data = self.cls(**params).log_prob(value)
+            return Tensor(dims, data)
         return type(self)(**params)
 
-    def _call_value(self, value):
-        if isinstance(value, Variable):
-            return type(self)(value=value, **self.params)
-        if isinstance(value, Tensor):
-            if all(isinstance(v, (Number, Tensor)) for v in self.params.values()):
-                dims, tensors = align_tensors(value, *self.params.values())
-                value = tensors[0]
-                params = dict(zip(self.params, tensors[1:]))
-                data = self.cls(**params).log_prob(value)
-                return Tensor(dims, data)
-        return super(Distribution, self).__call__(value)
-
     def reduce(self, op, dims):
-        if op is ops.logaddexp and self.value.name in dims:
+        if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in dims:
             return Number(0.)  # distributions are normalized
         return super(Distribution, self).reduce(op, dims)
 
     # Legacy distributions interface:
 
     def log_prob(self, value, event_dims=()):
+        assert isinstance(self.value, Variable)
         # TODO handle event dims
-        return self(value=value)
+        return self(**{self.value.name: value})
 
     def sample(self):
         return backward(ops.sample, self, frozenset(self.value.dims))
@@ -149,16 +143,21 @@ class Distribution(Funsor):
 def _sample_torch_distribution(term, dims):
     if len(dims) != 1:
         raise NotImplementedError('TODO')
-    if 'value' not in dims:
+    value = term.value
+    if not isinstance(value, Variable):
+        raise NotImplementedError
+    if value.name not in dims:
         raise NotImplementedError('TODO')
 
-    if all(isinstance(v, (Number, Tensor)) for v in term.params.values()):
-        dims, tensors = align_tensors(*term.params.values())
-        params = dict(zip(term.params, tensors))
+    params = term.params.copy()
+    params.pop('value')
+    if all(isinstance(v, (Number, Tensor)) for v in params.values()):
+        dims, tensors = align_tensors(*params.values())
+        params = dict(zip(params, tensors))
         data = term.cls(**params).rsample()
-        return {term.value.name: Tensor(dims, data)}
+        return {value.name: Tensor(dims, data)}
 
-    raise NotImplementedError
+    raise NotImplementedError('TODO')
 
 
 ################################################################################
@@ -168,42 +167,63 @@ def _sample_torch_distribution(term, dims):
 
 class Beta(Distribution):
     def __init__(self, concentration1, concentration0, value=DEFAULT_VALUE):
-        super(Beta, self).__init__(dist.Beta, value,
+        super(Beta, self).__init__(dist.Beta, value=value,
                                    concentration1=concentration1, concentration0=concentration0)
 
 
 class Gamma(Distribution):
     def __init__(self, concentration, rate, value=DEFAULT_VALUE):
-        super(Gamma, self).__init__(dist.Gamma, value,
+        super(Gamma, self).__init__(dist.Gamma, value=value,
                                     concentration=concentration, rate=rate)
 
 
 class Binomial(Distribution):
     def __init__(self, total_count, probs, value=DEFAULT_VALUE):
-        super(Binomial, self).__init__(dist.Binomial, value,
+        super(Binomial, self).__init__(dist.Binomial, value=value,
                                        total_count=total_count, probs=probs)
 
 
 class Delta(Distribution):
     def __init__(self, v, log_density, value=DEFAULT_VALUE):
-        super(Delta, self).__init__(dist.Delta, value, v=v, log_density=log_density)
+        super(Delta, self).__init__(dist.Delta, value=value, v=v, log_density=log_density)
 
 
 class Normal(Distribution):
     def __init__(self, loc, scale, value=DEFAULT_VALUE):
-        super(Normal, self).__init__(dist.Normal, value, loc=loc, scale=scale)
+        super(Normal, self).__init__(dist.Normal, value=value, loc=loc, scale=scale)
 
     def contract(self, sum_op, prod_op, other, dims):
-        if sum_op is ops.logaddexp and prod_op is ops.add:
+        if sum_op is ops.logaddexp and prod_op is ops.add and isinstance(self.value, Variable):
             d = self.value.name
-            if (isinstance(other, Normal) and other.value.name not in self.dims and
-                    d != other.value.name and d not in other.params['scale'].dims):
-                for a0, a1 in match_affine(other.params['loc'], d):
-                    loc1, scale1 = self.params['loc'], self.params['scale']
-                    loc2, scale2 = other.params['loc'], other.params['scale']
-                    loc = a0 + a1 * loc1 + loc2
-                    scale = ((scale1 * a1) ** 2 + scale2 ** 2).sqrt()
-                    return Normal(loc, scale)(other.value)
+            if isinstance(other, Normal) and d not in other.params['scale'].dims:
+
+                # Try updating prior from a ground observation.
+                if other.is_observed:
+                    for a0, a1 in match_affine(other.params['loc'], d):
+                        loc1, scale1 = self.params['loc'], self.params['scale']
+                        loc2, scale2 = other.params['loc'], other.params['scale']
+                        loc2 = (other.value - loc2 - a0) / a1
+                        scale2 = scale2 / a1
+                        prec1 = scale1 ** -2
+                        prec2 = scale2 ** -2
+                        prec = prec1 + prec2
+                        loc = loc1 + (loc2 - loc1) * (prec2 / prec)
+                        scale = prec ** -0.5
+                        log_likelihood = (scale.log() - scale1.log() - scale2.log() +
+                                          0.5 * (prec1 * (prec2 / prec)) * (loc2 - loc1) ** 2 -
+                                          math.log(2 * math.pi))
+                        updated = Normal(loc, scale, value=self.value) + log_likelihood
+                        return updated.reduce(sum_op, dims)
+
+                # Try integrating out this variable.
+                if isinstance(other.value, Variable) and other.value.name not in self.dims:
+                    for a0, a1 in match_affine(other.params['loc'], d):
+                        loc1, scale1 = self.params['loc'], self.params['scale']
+                        loc2, scale2 = other.params['loc'], other.params['scale']
+                        loc = a0 + a1 * loc1 + loc2
+                        scale = ((scale1 * a1) ** 2 + scale2 ** 2).sqrt()
+                        return Normal(loc, scale, value=other.value)
+
         return super(Normal, self).contract(sum_op, prod_op, other, dims)
 
 
