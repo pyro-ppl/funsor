@@ -213,6 +213,13 @@ class Tensor(Funsor):
         return super(Tensor, self).contract(sum_op, prod_op, other, dims)
 
 
+@to_funsor.register(torch.Tensor)
+def _to_funsor_tensor(x):
+    if x.dim():
+        raise ValueError("cannot convert non-scalar tensor to funsor")
+    return Tensor((), x)
+
+
 class Arange(Tensor):
     def __init__(self, name, size):
         data = torch.arange(size)
@@ -253,8 +260,8 @@ class Function(object):
 
     This is mainly created via the :func:`function` decorator.
 
-    :param tuple inputs: a tuple of input dims tuples.
-    :param tuple otuput: a touple of output dims.
+    :param tuple inputs: a tuple of tuples of input dims (strings).
+    :param tuple output: a tuple of output dims (strings).
     :param callable fn: a PyTorch function to wrap.
     """
     def __init__(self, inputs, output, fn):
@@ -339,13 +346,6 @@ def function(*signature):
     """
     inputs, output = signature[:-1], signature[-1]
     return functools.partial(Function, inputs, output)
-
-
-@to_funsor.register(torch.Tensor)
-def _to_funsor_tensor(x):
-    if x.dim():
-        raise ValueError("cannot convert non-scalar tensor to funsor")
-    return Tensor((), x)
 
 
 __all__ = [

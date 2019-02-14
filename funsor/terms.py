@@ -103,7 +103,9 @@ class Funsor(object):
     def align(self, dims, shape=None):
         """
         Align this funsor to match given ``dims`` and ``shape``.
-        This can both permute and add constant dims.
+
+        This can both permute and add constant dims.  This is mainly useful in
+        preparation for extracting ``.data`` of a :class:`funsor.torch.Tensor`.
         """
         if shape is None:
             assert set(dims) == set(self.dims)
@@ -128,11 +130,11 @@ class Funsor(object):
                 "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
 
+    # TODO move this to funsor.torch.materialize(-) or similar
     def materialize(self):
         """
         Materializes all discrete variables.
         """
-        # TODO move this logic elsewhere
         from funsor.torch import Arange
         kwargs = {dim: Arange(dim, size)
                   for dim, size in self.schema.items()
@@ -352,6 +354,9 @@ class Variable(Funsor):
 
 
 class Substitution(Funsor):
+    """
+    Lazy substitution of the form ``x(u=y, v=z)``.
+    """
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
         assert isinstance(subs, tuple)
@@ -391,6 +396,9 @@ class Substitution(Funsor):
 
 
 class Align(Funsor):
+    """
+    Lazy call to ``.align(...)``.
+    """
     def __init__(self, arg, dims, shape):
         assert isinstance(arg, Funsor)
         assert isinstance(dims, tuple)
@@ -425,6 +433,9 @@ class Align(Funsor):
 
 
 class Unary(Funsor):
+    """
+    Lazy unary operation.
+    """
     def __init__(self, op, arg):
         assert callable(op)
         assert isinstance(arg, Funsor)
@@ -459,6 +470,9 @@ _INFIX = {
 
 
 class Binary(Funsor):
+    """
+    Lazy binary operation.
+    """
     def __init__(self, op, lhs, rhs):
         assert callable(op)
         assert isinstance(lhs, Funsor)
@@ -511,6 +525,9 @@ class Binary(Funsor):
 
 
 class Reduction(Funsor):
+    """
+    Lazy reduction.
+    """
     def __init__(self, op, arg, reduce_dims):
         assert callable(op)
         assert isinstance(arg, Funsor)
