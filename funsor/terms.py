@@ -15,25 +15,29 @@ DOMAINS = ('real', 'vector')
 
 
 class ConsHashedMeta(type):
-    _cache = WeakValueDictionary()
-    _init_args = {}
+    _cons_cache = WeakValueDictionary()
+    _argspec_cache = {}
 
     def __call__(cls, *args, **kwargs):
         if kwargs:
             # Convert kwargs to args.
-            if cls not in cls._init_args:
-                cls._init_args[cls] = getargspec(cls.__init__)[0][1:]
+            if cls not in cls._argspec_cache:
+                cls._argspec_cache[cls] = getargspec(cls.__init__)[0][1:]
             args = list(args)
-            for name in cls._init_args[cls][len(args):]:
-                args.append(kwargs[name])
+            for name in cls._argspec_cache[cls][len(args):]:
+                args.append(kwargs.pop(name))
+            assert not kwargs, kwargs
             args = tuple(args)
+
+        # TODO(eb8680) You can insert an effect handling hook here, but
+        # please make sure it is very very cheap ;-)
 
         # Memoize creation.
         key = (cls, args)
-        if key in cls._cache:
-            return cls._cache[key]
+        if key in cls._cons_cache:
+            return cls._cons_cache[key]
         result = super(ConsHashedMeta, cls).__call__(*args)
-        cls._cache[key] = result
+        cls._cons_cache[key] = result
         return result
 
 
@@ -42,13 +46,15 @@ class Funsor(object):
     """
     Abstract base class for immutable functional tensors.
 
-    Derived classes must implement ``__init__()`` methods taking hashable
-    ``*args`` and no ``**kwargs`` so as to support cons hashing.
+    Concrete derived classes must implement ``__init__()`` methods taking
+    hashable ``*args`` and no optional ``**kwargs`` so as to support cons
+    hashing.
 
     .. note:: Probabilistic methods like :meth:`sample` and :meth:`marginal`
         follow the convention that funsors represent log density functions.
         Thus for example the partition function is given by :meth:`logsumexp`.
 
+    :ivar OrderedDict schema: A mapping from dim to size.
     :param tuple dims: A tuple of strings of dimension names.
     :param tuple shape: A tuple of sizes. Each size is either a nonnegative
         integer or a string denoting a continuous domain.
@@ -683,6 +689,5 @@ __all__ = [
     'Unary',
     'Variable',
     'of_shape',
-    'ops',
     'to_funsor',
 ]

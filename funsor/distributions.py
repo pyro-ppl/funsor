@@ -201,7 +201,7 @@ class Normal(Distribution):
                 # Try updating prior from a ground observation.
                 if other.is_observed:
                     for a0, a1 in match_affine(other.params['loc'], d):
-                        print('UPDATE\n  {}\n  {}'.format(self, other))
+                        print('UPDATE {}\n self = {}\n other = {}'.format(dims, self, other))
                         loc1, scale1 = self.params['loc'], self.params['scale']
                         scale2 = other.params['scale']
                         loc2 = (other.value - a0) / a1
