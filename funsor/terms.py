@@ -256,7 +256,7 @@ class Funsor(object):
         return self.binary(ops.sub, other)
 
     def __rsub__(self, other):
-        return self.binary(ops.rsub, other)
+        return to_funsor(other).binary(ops.sub, self)
 
     def __mul__(self, other):
         return self.binary(ops.mul, other)
@@ -268,13 +268,13 @@ class Funsor(object):
         return self.binary(ops.truediv, other)
 
     def __rtruediv__(self, other):
-        return self.binary(ops.rtruediv, other)
+        return to_funsor(other).binary(ops.truediv, self)
 
     def __pow__(self, other):
         return self.binary(ops.pow, other)
 
     def __rpow__(self, other):
-        return self.binary(ops.rpow, other)
+        return to_funsor(other).binary(ops.pow, self)
 
     def __and__(self, other):
         return self.binary(ops.and_, other)

@@ -12,14 +12,6 @@ _builtin_min = min
 _builtin_pow = pow
 
 
-def rsub(a, b):
-    return b - a
-
-
-def rtruediv(a, b):
-    return b / a
-
-
 def abs(x):
     return _builtin_abs(x) if isinstance(x, Number) else x.abs()
 
@@ -41,14 +33,6 @@ def log1p(x):
 
 
 def pow(x, y):
-    result = x ** y
-    # work around shape bug https://github.com/pytorch/pytorch/issues/16685
-    if isinstance(x, Number) and isinstance(y, torch.Tensor):
-        result = result.reshape(y.shape)
-    return result
-
-
-def rpow(y, x):
     result = x ** y
     # work around shape bug https://github.com/pytorch/pytorch/issues/16685
     if isinstance(x, Number) and isinstance(y, torch.Tensor):
@@ -129,8 +113,6 @@ __all__ = [
     'neg',
     'or_',
     'pow',
-    'rpow',
-    'rsub',
     'sample',
     'sub',
     'truediv',
