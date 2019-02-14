@@ -619,9 +619,11 @@ class Number(Funsor):
         return Number(op(self.data))
 
     def binary(self, op, other):
-        if (op is ops.add or op is ops.sub) and self.data == 0:
+        if op is ops.add and self.data == 0:
             return other
-        if (op is ops.mul or op is ops.truediv) and self.data == 1:
+        if op is ops.sub and self.data == 0:
+            return -other
+        if op is ops.mul and self.data == 1:
             return other
         if isinstance(other, numbers.Number):
             if (op is ops.add or op is ops.sub) and other == 0:

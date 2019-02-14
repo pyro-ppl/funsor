@@ -1,6 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
-import math
+import numpy as np
 from numbers import Number
 from operator import add, and_, eq, ge, gt, invert, le, lt, mul, ne, neg, or_, sub, truediv, xor
 
@@ -17,19 +17,19 @@ def abs(x):
 
 
 def sqrt(x):
-    return math.sqrt(x) if isinstance(x, Number) else x.sqrt()
+    return np.sqrt(x) if isinstance(x, Number) else x.sqrt()
 
 
 def exp(x):
-    return math.exp(x) if isinstance(x, Number) else x.exp()
+    return np.exp(x) if isinstance(x, Number) else x.exp()
 
 
 def log(x):
-    return math.log(x) if isinstance(x, Number) else x.log()
+    return np.log(x) if isinstance(x, Number) else x.log()
 
 
 def log1p(x):
-    return math.log1p(x) if isinstance(x, Number) else x.log1p()
+    return np.log1p(x) if isinstance(x, Number) else x.log1p()
 
 
 def pow(x, y):

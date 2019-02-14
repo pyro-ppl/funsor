@@ -6,21 +6,7 @@ import torch
 import funsor
 import funsor.ops as ops
 from funsor.adjoint import backward
-
-
-def check_funsor(x, dims, shape, data=None):
-    """
-    Check dims and shape modulo reordering.
-    """
-    assert isinstance(x, funsor.Funsor)
-    assert set(x.dims) == set(dims)
-    if shape is not None:
-        assert dict(zip(x.dims, x.shape)) == dict(zip(dims, shape))
-    if data is not None:
-        if x.dims != dims:
-            data = data.permute(tuple(dims.index(d) for d in x.dims))
-        assert (x.data == data).all()
-
+from funsor.testing import check_funsor
 
 ARGREDUCE_OPS = [ops.min, ops.max, ops.sample]
 
