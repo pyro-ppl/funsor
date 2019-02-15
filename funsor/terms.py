@@ -486,8 +486,13 @@ class Unary(Funsor):
     def materialize(self):
         return self.arg.materialize().unary(self.op)
 
+    def unary(self, op):
+        if op is ops.neg and self.op is ops.neg:
+            return self.arg
+        return self.arg.unary(op)
+
     def jacobian(self, dim):
-        if dim not in self.arg:
+        if dim not in self.arg.dims:
             return Number(0.)
         if self.op is ops.neg:
             return -self.arg.jacobian(dim)

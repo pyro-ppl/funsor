@@ -1,6 +1,5 @@
 from __future__ import absolute_import, division, print_function
 
-import math
 from collections import OrderedDict, defaultdict
 
 import torch.distributions as dist
@@ -9,6 +8,7 @@ from six import add_metaclass
 import funsor.ops as ops
 from funsor.adjoint import backward
 from funsor.contract import contract
+from funsor.pattern import simplify_sum
 from funsor.terms import ConsHashedMeta, Funsor, Number, Variable, to_funsor
 from funsor.torch import Tensor, align_tensors
 
@@ -35,7 +35,7 @@ def match_affine(expr, dim):
     assert isinstance(expr, Funsor)
     assert isinstance(dim, str)
     a1 = expr.jacobian(dim)
-    if dim not in a1:
+    if dim not in a1.dims:
         a0 = expr(**{dim: 0.})
         yield a0, a1
 
@@ -193,51 +193,38 @@ class Normal(Distribution):
     def __init__(self, loc, scale, value=DEFAULT_VALUE):
         super(Normal, self).__init__(dist.Normal, value=value, loc=loc, scale=scale)
 
-    def contract(self, sum_op, prod_op, other, dims):
-        if sum_op is ops.logaddexp and prod_op is ops.add and isinstance(self.value, Variable):
+    def binary(self, op, other):
+        # Try updating prior from a ground observation.
+        if op is ops.add and isinstance(self.value, Variable):
             d = self.value.name
-            if isinstance(other, Normal) and d not in other.params['scale'].dims:
+            if (isinstance(other, Normal) and other.is_observed and
+                    d not in other.params['scale'].dims and d in other.params['loc'].dims):
+                for a0, a1 in match_affine(other.params['loc'], d):
+                    print('UPDATE\n self = {}\n other = {}'.format(self, other))
+                    loc1, scale1 = self.params['loc'], self.params['scale']
+                    scale2 = other.params['scale']
+                    loc2 = (other.value - a0) / a1
+                    scale2 = scale2 / a1
+                    prec1 = scale1 ** -2
+                    prec2 = scale2 ** -2
 
-                # Try updating prior from a ground observation.
-                if other.is_observed:
-                    for a0, a1 in match_affine(other.params['loc'], d):
-                        print('UPDATE {}\n self = {}\n other = {}'.format(dims, self, other))
-                        loc1, scale1 = self.params['loc'], self.params['scale']
-                        scale2 = other.params['scale']
-                        loc2 = (other.value - a0) / a1
-                        scale2 = scale2 / a1
-                        prec1 = scale1 ** -2
-                        prec2 = scale2 ** -2
-                        prec = prec1 + prec2
-                        loc = loc1 + (loc2 - loc1) * (prec2 / prec)
-                        scale = prec ** -0.5
-                        log_likelihood = (scale.log() - scale1.log() - scale2.log() +
-                                          0.5 * (prec1 * (prec2 / prec)) * (loc2 - loc1) ** 2 -
-                                          math.log(2 * math.pi))
-                        updated = Normal(loc, scale, value=self.value)
+                    # Perform a filter update.
+                    prec3 = prec1 + prec2
+                    loc3 = loc1 + simplify_sum(loc2 - loc1) * (prec2 / prec3)
+                    scale3 = prec3 ** -0.5
+                    updated = Normal(loc3, scale3, value=self.value)
+                    # FIXME add log(a1) term?
 
-                        # Apply reductions.
-                        x, y = log_likelihood, updated
-                        dims = frozenset(dims).intersection(x.dims + y.dims)
-                        x_dims = dims - frozenset(y.dims)
-                        y_dims = dims - frozenset(x.dims)
-                        dims = dims - x_dims - y_dims
-                        x = x.reduce(ops.logaddexp, x_dims)
-                        y = y.reduce(ops.logaddexp, y_dims)
-                        return (x + y).reduce(ops.logaddexp, dims)
+                    # Encapsulate the log_likelihood in a Normal for later pattern matching.
+                    prec4 = prec1 * prec2 / prec3
+                    scale4 = prec4 ** -0.5
+                    loc4 = simplify_sum(loc2 - loc1)
+                    log_likelihood = Normal(loc4, scale4)(value=0.) + a1.abs().log()  # FIXME
+                    result = updated + log_likelihood
+                    print(' result = {}'.format(result))
+                    return result
 
-                # Try integrating out this variable.
-                if d in dims and isinstance(other.value, Variable) and other.value.name not in self.dims:
-                    for a0, a1 in match_affine(other.params['loc'], d):
-                        print('MARGINALIZE\n  {}\n  {}'.format(self, other))
-                        loc1, scale1 = self.params['loc'], self.params['scale']
-                        loc2, scale2 = other.params['loc'], other.params['scale']
-                        loc = a0 + a1 * loc1 + loc2
-                        scale = ((scale1 * a1) ** 2 + scale2 ** 2).sqrt()
-                        updated = Normal(loc, scale, value=other.value)
-                        return updated.reduce(ops.logaddexp, dims - frozenset([d]))
-
-        raise NotImplementedError
+        return super(Normal, self).binary(op, other)
 
 
 ################################################################################

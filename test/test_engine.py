@@ -8,6 +8,7 @@ import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.engine import eval as main_eval
 from funsor.engine.contract_engine import eval as _contract_eval
+from funsor.engine.tree_engine import eval as _tree_eval
 from funsor.engine.engine import EagerEval
 from funsor.engine.optimizer import apply_optimizer
 
@@ -23,6 +24,9 @@ def optimized_eval(x): return EagerEval(main_eval)(apply_optimizer(x))
 
 
 def contract_eval(x): return _contract_eval(x)  # for pytest param naming
+
+
+def tree_eval(x): return _tree_eval(x)  # for pytest param naming
 
 
 @pytest.mark.parametrize('eval', [unoptimized_eval, optimized_eval, contract_eval])
@@ -116,6 +120,7 @@ def test_hmm_discrete_gaussian(eval):
     xfail_param(unoptimized_eval, reason='bad trampoline?'),
     xfail_param(optimized_eval, reason='bad trampoline?'),
     xfail_param(contract_eval, reason='cannot match Substitution(Normal)'),
+    xfail_param(tree_eval, reason='incomplete Normal-Normal math'),
 ])
 def test_hmm_gaussian_gaussian(eval, num_steps):
     trans = dist.Normal(funsor.Variable('prev', 'real'), 0.1)
