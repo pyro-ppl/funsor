@@ -72,7 +72,7 @@ class OpRegistry(Handler):
 
     @dispatch(FunsorOp)
     def process(self, msg):
-        impl = self.dispatcher.resolve((msg["label"],))
+        impl = self.dispatcher.dispatch(msg["label"])
         if impl is not None:
             msg["value"] = impl(*msg["args"], **msg["kwargs"])
         return msg
