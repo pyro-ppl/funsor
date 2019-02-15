@@ -140,9 +140,9 @@ def sample(fn, obs=None, name=None):
     ``apply_stack``.
     """
 
-    # if there are no active Handlers, we just draw a sample and return it as expected:
+    # if there are no active Handlers, we just create a lazy compute graph.
     if not HANDLER_STACK:
-        return fn.sample('value')
+        return Variable(name, fn.schema["value"])
 
     # Otherwise, we initialize a message...
     initial_msg = Sample(**{
@@ -189,7 +189,13 @@ def param(init_value=None, name=None):
     return msg["value"]
 
 
-class deferred(Handler):
+class SelectiveHandler(Handler):
+    def __init__(self, fn=None, match_fn=None):
+        self.match_fn = (lambda msg: True) if match_fn is None else match_fn
+        super(SelectiveHandler, self).__init__(fn=fn)
+
+
+class deferred(SelectiveHandler):
 
     @dispatch(object)
     def process(self, msg):
@@ -197,8 +203,21 @@ class deferred(Handler):
 
     @dispatch(Sample)
     def process(self, msg):
-        if msg["value"] is not None:
+        if msg["value"] is not None and self.match_fn(msg):
             msg["value"] = Variable(msg["name"], msg["fn"].schema["value"])
+        return msg
+
+
+class monte_carlo(SelectiveHandler):
+
+    @dispatch(object)
+    def process(self, msg):
+        return super(monte_carlo, self).process(msg)
+
+    @dispatch(Sample)
+    def process(self, msg):
+        if msg["value"] is not None and self.match_fn(msg):
+            msg["value"] = msg["fn"].sample()
         return msg
 
 
