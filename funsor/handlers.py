@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import functools
+import contextlib
 
 from multipledispatch import dispatch
 
@@ -131,6 +132,24 @@ def apply_stack(msg, stack=None):
     return msg
 
 
+@contextlib.contextmanager
+def stack_swap():
+    """a bit of gross logic for multiprompt handlers"""
+    # TODO put into apply_stack
+    # TODO make more efficient
+    # print("BEFORE", term_label, HANDLER_STACK, prev_stack, prev_pointer)
+    prev_pointer = STACK_POINTER["ptr"]
+    prev_stack = HANDLER_STACK[:]
+    STACK_POINTER["ptr"] = -1
+    HANDLER_STACK.clear()
+    HANDLER_STACK.extend(prev_stack[:len(prev_stack) + prev_pointer + 1])
+    yield
+    STACK_POINTER["ptr"] = prev_pointer  # TODO put into apply_stack
+    HANDLER_STACK.clear()
+    HANDLER_STACK.extend(prev_stack)
+    # print("AFTER", term_label, HANDLER_STACK, prev_stack, prev_pointer)
+
+
 def effectful(term_type, fn=None):
 
     term_label = None
@@ -144,40 +163,24 @@ def effectful(term_type, fn=None):
     if fn is None:
         return functools.partial(effectful, term_type)
 
+    @stack_swap()
     def _fn(*args, **kwargs):
 
-        # TODO put into apply_stack
-        prev_pointer = STACK_POINTER["ptr"]
-        prev_stack = HANDLER_STACK[:]
-        STACK_POINTER["ptr"] = -1
-        HANDLER_STACK.clear()
-        HANDLER_STACK.extend(prev_stack[:len(prev_stack) + prev_pointer + 1])
-
-        # print("BEFORE", term_label, HANDLER_STACK, prev_stack, prev_pointer)
         if not HANDLER_STACK:
-            # TODO be more efficient here
-            STACK_POINTER["ptr"] = prev_pointer  # TODO put into apply_stack
-            HANDLER_STACK.clear()
-            HANDLER_STACK.extend(prev_stack)
-            # print("DEFAULT", term_label, HANDLER_STACK, prev_stack, prev_pointer)
-            return fn(*args, **kwargs)
+            value = fn(*args, **kwargs)
+        else:
+            initial_msg = term_type(
+                name=kwargs.pop("name", None),
+                fn=fn,
+                args=args,
+                kwargs=kwargs,
+                value=None,
+                label=term_label,
+            )
 
-        initial_msg = term_type(
-            name=kwargs.pop("name", None),
-            fn=fn,
-            args=args,
-            kwargs=kwargs,
-            value=None,
-            label=term_label,
-        )
+            value = apply_stack(initial_msg, stack=HANDLER_STACK)["value"]
 
-        final_msg = apply_stack(initial_msg, stack=HANDLER_STACK)
-
-        STACK_POINTER["ptr"] = prev_pointer  # TODO put into apply_stack
-        HANDLER_STACK.clear()
-        HANDLER_STACK.extend(prev_stack)
-        # print("AFTER", term_label, HANDLER_STACK, prev_stack, prev_pointer)
-        return final_msg["value"]
+        return value
 
     return _fn
 
