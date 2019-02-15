@@ -3,52 +3,16 @@ from __future__ import absolute_import, division, print_function
 import functools
 import numbers
 from collections import OrderedDict
-from multipledispatch import dispatch
 from weakref import WeakValueDictionary
 
 from six import add_metaclass
 from six.moves import reduce
 
-import funsor.handlers as handlers
 import funsor.ops as ops
+from funsor.handlers import effectful
 from funsor.six import getargspec, singledispatch
 
 DOMAINS = ('real', 'vector')
-
-
-class MemoizeHandler(handlers.Handler):
-    """Memoize Funsor term instance creation"""
-
-    @dispatch(object)  # boilerplate
-    def process(self, msg):
-        return super(MemoizeHandler, self).process(msg)
-
-    @dispatch(handlers.FunsorOp)
-    def process(self, msg):
-        cls, args, kwargs = msg["label"], msg["args"], msg["kwargs"]
-        if kwargs:
-            # Convert kwargs to args.
-            if cls not in cls._argspec_cache:
-                cls._argspec_cache[cls] = getargspec(cls.__init__)[0][1:]
-            args = list(args)
-            for name in cls._argspec_cache[cls][len(args):]:
-                args.append(kwargs.pop(name))
-            assert not kwargs, kwargs
-            args = tuple(args)
-
-        if (cls, args) in cls._cons_cache:
-            msg["value"] = cls._cons_cache[cls, args]
-        else:
-            result = msg["fn"](*args)
-            result._cons_args = args
-            cls._cons_cache[cls, args] = result
-            msg["value"] = result
-
-        return msg
-
-
-# TODO disable memoization by default
-# handlers.HANDLER_STACK = [MemoizeHandler()]
 
 
 class ConsHashedMeta(type):
@@ -56,8 +20,7 @@ class ConsHashedMeta(type):
     _argspec_cache = {}
 
     def __call__(cls, *args, **kwargs):
-        return handlers.effectful(cls, super(ConsHashedMeta, cls).__call__)(
-            *args, **kwargs)
+        return effectful(cls, super(ConsHashedMeta, cls).__call__)(*args, **kwargs)
 
 
 @add_metaclass(ConsHashedMeta)

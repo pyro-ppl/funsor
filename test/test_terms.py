@@ -8,6 +8,7 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.testing import check_funsor
+from funsor.engine import Memoize
 
 np.seterr(all='ignore')
 
@@ -38,22 +39,23 @@ def test_to_funsor_undefined(x):
 
 
 def test_cons_hash():
-    assert funsor.Variable('x', 3) is funsor.Variable('x', 3)
-    assert funsor.Variable('x', 'real') is funsor.Variable('x', 'real')
-    assert funsor.Variable('x', 'real') is not funsor.Variable('x', 3)
-    assert funsor.Number(0) is funsor.Number(0)
-    assert funsor.Number(0.) is funsor.Number(0.)
-    assert funsor.Number(0.) is not funsor.Number(0)
+    with Memoize():
+        assert funsor.Variable('x', 3) is funsor.Variable('x', 3)
+        assert funsor.Variable('x', 'real') is funsor.Variable('x', 'real')
+        assert funsor.Variable('x', 'real') is not funsor.Variable('x', 3)
+        assert funsor.Number(0) is funsor.Number(0)
+        assert funsor.Number(0.) is funsor.Number(0.)
+        assert funsor.Number(0.) is not funsor.Number(0)
 
-    @funsor.of_shape('real', 2, 2)
-    def f1(x, i, j):
-        return (x ** i + j).sum('i')
+        @funsor.of_shape('real', 2, 2)
+        def f1(x, i, j):
+            return (x ** i + j).sum('i')
 
-    @funsor.of_shape('real', 2, 2)
-    def f2(x, i, j):
-        return (x ** i + j).sum('i')
+        @funsor.of_shape('real', 2, 2)
+        def f2(x, i, j):
+            return (x ** i + j).sum('i')
 
-    assert f1 is f2
+        assert f1 is f2
 
 
 @pytest.mark.parametrize('expr', [
@@ -66,30 +68,32 @@ def test_cons_hash():
     "funsor.Variable('x', 'real')(x=funsor.Number(0))",
 ])
 def test_eval(expr):
-    x = eval(expr)
-    assert x.eval() is x
+    with Memoize():
+        x = eval(expr)
+        assert x.eval() is x
 
 
 @pytest.mark.parametrize('size', [3, 'real'])
 def test_variable(size):
-    x = funsor.Variable('x', size)
-    check_funsor(x, ('x',), (size,))
-    assert funsor.Variable('x', size) is x
-    assert x['x'] is x
-    assert x('x') is x
-    y = funsor.Variable('y', size)
-    assert x['y'] is y
-    assert x('y') is y
-    assert x(x='y') is y
-    assert x(x=y) is y
-    x4 = funsor.Variable('x', 4)
-    assert x4 is not x
-    assert x4['x'] is x4
-    assert x(x=x4) is x4
-    assert x(y=x4) is x
+    with Memoize():
+        x = funsor.Variable('x', size)
+        check_funsor(x, ('x',), (size,))
+        assert funsor.Variable('x', size) is x
+        assert x['x'] is x
+        assert x('x') is x
+        y = funsor.Variable('y', size)
+        assert x['y'] is y
+        assert x('y') is y
+        assert x(x='y') is y
+        assert x(x=y) is y
+        x4 = funsor.Variable('x', 4)
+        assert x4 is not x
+        assert x4['x'] is x4
+        assert x(x=x4) is x4
+        assert x(y=x4) is x
 
-    xp1 = x + 1
-    assert xp1(x=2) == 3
+        xp1 = x + 1
+        assert xp1(x=2) == 3
 
 
 @pytest.mark.parametrize('materialize_f', [False, True])

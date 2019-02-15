@@ -9,6 +9,7 @@ import pytest
 import torch
 
 import funsor
+from funsor.engine import Memoize
 from funsor.torch import align_tensors
 from funsor.testing import check_funsor
 
@@ -19,8 +20,9 @@ def test_to_funsor():
 
 
 def test_cons_hash():
-    x = torch.randn(3, 3)
-    assert funsor.Tensor(('i', 'j'), x) is funsor.Tensor(('i', 'j'), x)
+    with Memoize():
+        x = torch.randn(3, 3)
+        assert funsor.Tensor(('i', 'j'), x) is funsor.Tensor(('i', 'j'), x)
 
 
 def test_indexing():

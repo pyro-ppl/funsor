@@ -8,16 +8,49 @@ Description of the first version of the optimizer:
 from __future__ import absolute_import, division, print_function
 
 import collections
-from multipledispatch import Dispatcher
+from multipledispatch import dispatch, Dispatcher
 
 from opt_einsum.paths import greedy  # TODO move to custom optimizer
 
+from funsor.six import getargspec
+
 from funsor.distributions import Distribution
-from funsor.handlers import OpRegistry
+from funsor.handlers import FunsorOp, Handler, OpRegistry
 from funsor.terms import Binary, Finitary, Number, Reduction, Substitution, Unary
 from funsor.torch import Tensor
 
 from .engine import eval
+
+
+class Memoize(Handler):
+    """Memoize Funsor term instance creation"""
+
+    @dispatch(object)  # boilerplate
+    def process(self, msg):
+        return super(Memoize, self).process(msg)
+
+    @dispatch(FunsorOp)
+    def process(self, msg):
+        cls, args, kwargs = msg["label"], msg["args"], msg["kwargs"]
+        if kwargs:
+            # Convert kwargs to args.
+            if cls not in cls._argspec_cache:
+                cls._argspec_cache[cls] = getargspec(cls.__init__)[0][1:]
+            args = list(args)
+            for name in cls._argspec_cache[cls][len(args):]:
+                args.append(kwargs.pop(name))
+            assert not kwargs, kwargs
+            args = tuple(args)
+
+        if (cls, args) in cls._cons_cache:
+            msg["value"] = cls._cons_cache[cls, args]
+        else:
+            result = msg["fn"](*args)
+            result._cons_args = args
+            cls._cons_cache[cls, args] = result
+            msg["value"] = result
+
+        return msg
 
 
 class Desugar(OpRegistry):

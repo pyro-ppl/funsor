@@ -26,6 +26,14 @@ HANDLER_STACK = []
 STACK_POINTER = {"ptr": -1}
 
 
+def set_default_handlers(*args):
+    assert not args or all(isinstance(arg, Handler) for arg in args)
+    while HANDLER_STACK:
+        HANDLER_STACK[-1].__exit__(None, None, None)
+    for arg in args:
+        arg.__enter__()
+
+
 class Handler(object):
     def __init__(self, fn=None):
         self.fn = fn
@@ -139,18 +147,3 @@ def effectful(term_type, fn=None):
         return value
 
     return _fn
-
-
-def default_handler(handler):
-    """annotate a function with a default handler"""
-    assert isinstance(handler, Handler)
-
-    def _wrapper(fn):
-        def _fn(*args, **kwargs):
-            if not HANDLER_STACK and not isinstance(fn, Handler):
-                with handler:
-                    return fn(*args, **kwargs)
-            return fn(*args, **kwargs)
-        return _fn
-
-    return _wrapper
