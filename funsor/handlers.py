@@ -19,11 +19,7 @@ class Message(dict):
 
 
 class FunsorOp(Message):
-
-    def __init__(self, **fields):
-        super(FunsorOp, self).__init__(**fields)
-        if self["label"] is None:
-            self["label"] = self["fn"]
+    pass
 
 
 HANDLER_STACK = []
@@ -82,12 +78,9 @@ class OpRegistry(Handler):
         return cls.dispatcher.register(tuple(term_types))
 
 
-def apply_stack(msg, stack=None):
+def apply_stack(msg):
 
-    if stack is None:
-        stack = HANDLER_STACK[:]
-
-    for pointer, handler in enumerate(reversed(stack)):
+    for pointer, handler in enumerate(reversed(HANDLER_STACK)):
         STACK_POINTER["ptr"] -= 1
         handler.process(msg)
         if msg["stop"]:
@@ -96,7 +89,7 @@ def apply_stack(msg, stack=None):
     if msg["value"] is None:
         msg["value"] = msg["fn"](*msg["args"], **msg["kwargs"])
 
-    for handler in stack[-pointer-1:]:
+    for handler in HANDLER_STACK[-pointer-1:]:
         STACK_POINTER["ptr"] += 1
         handler.postprocess(msg)
 
@@ -106,19 +99,11 @@ def apply_stack(msg, stack=None):
 @contextlib.contextmanager
 def stack_swap():
     """a bit of gross logic for multiprompt handlers"""
-    # TODO put into apply_stack
-    # TODO make more efficient
-    # print("BEFORE", term_label, HANDLER_STACK, prev_stack, prev_pointer)
-    prev_pointer = STACK_POINTER["ptr"]
-    prev_stack = HANDLER_STACK[:]
-    STACK_POINTER["ptr"] = -1
-    HANDLER_STACK.clear()
-    HANDLER_STACK.extend(prev_stack[:len(prev_stack) + prev_pointer + 1])
+    prev_pointer, STACK_POINTER["ptr"] = STACK_POINTER["ptr"], -1
+    prev_frames = [HANDLER_STACK.pop() for _ in range(-prev_pointer-1)]
     yield
-    STACK_POINTER["ptr"] = prev_pointer  # TODO put into apply_stack
-    HANDLER_STACK.clear()
-    HANDLER_STACK.extend(prev_stack)
-    # print("AFTER", term_label, HANDLER_STACK, prev_stack, prev_pointer)
+    STACK_POINTER["ptr"] = prev_pointer
+    HANDLER_STACK.extend(reversed(prev_frames))
 
 
 def effectful(term_type, fn=None):
@@ -149,7 +134,7 @@ def effectful(term_type, fn=None):
                 label=term_label,
             )
 
-            value = apply_stack(initial_msg, stack=HANDLER_STACK)["value"]
+            value = apply_stack(initial_msg)["value"]
 
         return value
 
