@@ -370,6 +370,9 @@ class Variable(Funsor):
     def __repr__(self):
         return "Variable({}, {})".format(repr(self.name), repr(self.shape[0]))
 
+    def __str__(self):
+        return self.name
+
     @property
     def name(self):
         return self.dims[0]
@@ -466,6 +469,12 @@ class Align(Funsor):
         return self.arg.reduce(op, dims)
 
 
+_PREFIX = {
+    ops.neg: '-',
+    ops.invert: '~',
+}
+
+
 class Unary(Funsor):
     """
     Lazy unary operation.
@@ -478,6 +487,8 @@ class Unary(Funsor):
         self.arg = arg
 
     def __repr__(self):
+        if self.op in _PREFIX:
+            return '{}{}'.format(_PREFIX[self.op], self.arg)
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
 
     def __call__(self, *args, **kwargs):
@@ -661,6 +672,9 @@ class Number(Funsor):
 
     def __repr__(self):
         return 'Number({})'.format(repr(self.data))
+
+    def __str__(self):
+        return str(self.data)
 
     def __call__(self, *args, **kwargs):
         return self

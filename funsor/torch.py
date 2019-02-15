@@ -53,6 +53,11 @@ class Tensor(Funsor):
     def __repr__(self):
         return 'Tensor({}, {})'.format(self.dims, self.data)
 
+    def __str__(self):
+        if not self.dims:
+            return str(self.data.item())
+        return 'Tensor({}, {})'.format(self.dims, self.data)
+
     def __call__(self, *args, **kwargs):
         subs = OrderedDict(zip(self.dims, args))
         for d in self.dims:

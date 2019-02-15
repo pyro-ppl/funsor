@@ -6,12 +6,8 @@ from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.distributions import Distribution
-from funsor.terms import Binary, Funsor
+from funsor.terms import Funsor
 from funsor.pattern import try_match_reduction, match_commutative
-
-################################################################################
-# Limited tree-based engine to for early prototypes
-################################################################################
 
 
 class Contractor(object):
@@ -23,11 +19,6 @@ class Contractor(object):
         self.results = []  # funsors
 
     def add(self, x):
-        if isinstance(x, Binary) and x.op is ops.add:
-            self.add(x.lhs)
-            self.add(x.rhs)
-            return
-
         if not self.reduce_dims.intersection(x.dims):
             # This is effectively a scalar for present purposes.
             self.results.append(x)
@@ -69,11 +60,13 @@ class Contractor(object):
 def _contract(operands, reduce_dims, default_cost=10):
     reduce_dims = frozenset(reduce_dims)
     c = Contractor(reduce_dims)
-    for x in operands:
+    for x in match_commutative(ops.add, *operands):
         c.add(x)
     while c.latents:
         dim, latent, observations = c.pop_latent()
+        print('LATENT {}\n  {}'.format(dim, latent))
         for obs in observations:
+            print('  OBS {}'.format(obs))
             latents = []
             for x in match_commutative(ops.add, latent + obs):
                 if dim not in x.dims:
@@ -87,7 +80,10 @@ def _contract(operands, reduce_dims, default_cost=10):
 
 
 def eval(x):
-    """original contract-based eval implementation, useful for testing"""
+    """
+    Restricted evaluator for log-sum-product-exp contractions on tree-shaped
+    directed graphical models.
+    """
     assert isinstance(x, Funsor)
 
     # Handle log-sum-product-exp contractions.

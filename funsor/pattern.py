@@ -18,6 +18,7 @@ def try_match_tensors(operands):
 
 
 def match_commutative(op, *args):
+    assert callable(op)
     pending = list(args)
     terms = []
     while pending:
@@ -48,8 +49,11 @@ def simplify_sum(x):
             term = term.arg
         counts[term] += sign
 
-    result = Number(0.)
+    result = sum(term * count for term, count in counts.items()
+                 if isinstance(term, (Number, Tensor)))
     for term, count in counts.items():
+        if isinstance(term, (Number, Tensor)):
+            continue
         if count == 0:
             continue
         if count == 1:
