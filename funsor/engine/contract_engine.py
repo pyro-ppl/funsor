@@ -6,35 +6,13 @@ import opt_einsum
 from six.moves import reduce
 
 import funsor.ops as ops
-from funsor.terms import Binary, Funsor, Reduction
+from funsor.pattern import match_commutative, try_match_reduction, try_match_tensors
+from funsor.terms import Funsor
 from funsor.torch import Tensor
 
 #####################################################
 # old basic engine implementation, useful for testing
 #####################################################
-
-
-def _parse_reduction(op, x):
-    if isinstance(x, Reduction) and x.op is op:
-        yield x.arg, x.reduce_dims
-
-
-def _parse_commutative(op, *args):
-    pending = list(args)
-    terms = []
-    while pending:
-        x = pending.pop()
-        if isinstance(x, Binary) and x.op is op:
-            pending.append(x.lhs)
-            pending.append(x.rhs)
-        else:
-            terms.append(x)
-    return terms
-
-
-def _parse_tensors(operands):
-    if all(isinstance(x, Tensor) for x in operands):
-        yield operands
 
 
 def _contract_tensors(*operands, **kwargs):
@@ -113,8 +91,9 @@ def _contract(sum_op, prod_op, operands, reduce_dims, default_cost=10):
 
 def _pairwise_contract(sum_op, prod_op, x, y, rdims):
     if not rdims:
-        return x.binary(prod_op, y)
-    factors = _parse_commutative(prod_op, x, y)
+        xy = x.binary(prod_op, y)
+        return xy
+    factors = match_commutative(prod_op, x, y)
 
     # Reduce one dim at a time.
     for dim in rdims:
@@ -131,34 +110,34 @@ def _pairwise_contract(sum_op, prod_op, x, y, rdims):
         else:
             raise NotImplementedError
         assert dim not in xy.dims
-        factors.extend(_parse_commutative(prod_op, xy))
+        factors.extend(match_commutative(prod_op, xy))
 
     return reduce(prod_op, factors)
 
 
 def eval(x):
     """original contract-based eval implementation, useful for testing"""
-    # Handle trivial case
-    if isinstance(x, Tensor):
-        return x.materialize()
+    assert isinstance(x, Funsor)
 
     # Handle sum-product contractions.
-    for arg, reduce_dims in _parse_reduction(ops.add, x):
-        operands = _parse_commutative(ops.mul, arg)
+    for arg, reduce_dims in try_match_reduction(ops.add, x):
+        operands = match_commutative(ops.mul, arg)
         operands = tuple(x.materialize() for x in operands)
-        for tensors in _parse_tensors(operands):
+        for tensors in try_match_tensors(operands):
             dims = tuple(d for d in arg.dims if d not in reduce_dims)
             return _contract_tensors(*tensors, dims=dims)
         return _contract(ops.add, ops.mul, operands, reduce_dims)
 
     # Handle log-sum-product-exp contractions.
-    for arg, reduce_dims in _parse_reduction(ops.logaddexp, x):
-        operands = _parse_commutative(ops.add, arg)
+    for arg, reduce_dims in try_match_reduction(ops.logaddexp, x):
+        operands = match_commutative(ops.add, arg)
         operands = tuple(x.materialize() for x in operands)
-        for tensors in _parse_tensors(operands):
+        for tensors in try_match_tensors(operands):
             dims = tuple(d for d in arg.dims if d not in reduce_dims)
             return _contract_tensors(*tensors, dims=dims, backend='pyro.ops.einsum.torch_log')
         return _contract(ops.logaddexp, ops.add, operands, reduce_dims)
+
+    return x.materialize()
 
 
 __all__ = [
