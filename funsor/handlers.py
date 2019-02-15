@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 import functools
 import contextlib
 
-from multipledispatch import dispatch
+from multipledispatch import dispatch, Dispatcher
 
 
 class Message(dict):
@@ -57,58 +57,29 @@ class Handler(object):
 
     def __call__(self, *args, **kwargs):
         with self:
-            v = self.fn(*args, **kwargs)
-            return v
+            return self.fn(*args, **kwargs)
 
 
 class OpRegistry(Handler):
     """
     Handler with convenient op registry functionality
     """
-
-    _terms_processed = {}
-    _terms_postprocessed = {}
+    dispatcher = Dispatcher('OpRegistry')
 
     @dispatch(object)
     def process(self, msg):
         return super(OpRegistry, self).process(msg)
 
-    @dispatch(object)
-    def postprocess(self, msg):
-        return super(OpRegistry, self).process(msg)
-
     @dispatch(FunsorOp)
     def process(self, msg):
-        if msg["label"] in self._terms_processed:
-            msg["value"] = self._terms_processed[msg["label"]](
-                *msg["args"], **msg["kwargs"])
-        return msg
-
-    @dispatch(FunsorOp)
-    def postprocess(self, msg):
-        if msg["label"] in self._terms_postprocessed:
-            msg["value"] = self._terms_postprocessed[msg["label"]](
-                *msg["args"], **msg["kwargs"])
+        impl = self.dispatcher.resolve((msg["label"],))
+        if impl is not None:
+            msg["value"] = impl(*msg["args"], **msg["kwargs"])
         return msg
 
     @classmethod
     def register(cls, *term_types, **kwargs):
-        post = kwargs.pop('post', False)
-        assert not kwargs
-
-        def _fn(fn):
-            for term_type in term_types:
-                if post:
-                    assert term_type not in cls._terms_postprocessed, \
-                        "cannot override"
-                    cls._terms_postprocessed[term_type] = fn
-                else:
-                    assert term_type not in cls._terms_processed, \
-                        "cannot override"
-                    cls._terms_processed[term_type] = fn
-            return fn
-
-        return _fn
+        return cls.dispatcher.register(tuple(term_types))
 
 
 def apply_stack(msg, stack=None):

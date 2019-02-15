@@ -8,6 +8,7 @@ Description of the first version of the optimizer:
 from __future__ import absolute_import, division, print_function
 
 import collections
+from multipledispatch import Dispatcher
 
 from opt_einsum.paths import greedy  # TODO move to custom optimizer
 
@@ -20,8 +21,7 @@ from .engine import eval
 
 
 class Desugar(OpRegistry):
-    _terms_processed = {}
-    _terms_postprocessed = {}
+    dispatcher = Dispatcher('Desugar')
 
 
 @Desugar.register(Unary, Binary)
@@ -31,8 +31,7 @@ def binary_to_finitary(op, lhs, rhs=None):
 
 
 class Deoptimize(OpRegistry):
-    _terms_processed = {}
-    _terms_postprocessed = {}
+    dispatcher = Dispatcher('Deoptimize')
     GROUND_TERMS = (Distribution, Substitution, Number, Tensor)
 
 
@@ -86,8 +85,7 @@ def deoptimize_reduction(op, arg, reduce_dims):
 
 
 class Optimize(OpRegistry):
-    _terms_processed = {}
-    _terms_postprocessed = {}
+    dispatcher = Dispatcher('Optimize')
 
 
 @Optimize.register(Reduction)  # TODO need Finitary as well?
