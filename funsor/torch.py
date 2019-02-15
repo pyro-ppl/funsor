@@ -58,6 +58,12 @@ class Tensor(Funsor):
             return str(self.data.item())
         return 'Tensor({}, {})'.format(self.dims, self.data)
 
+    def __int__(self):
+        return int(self.data)
+
+    def __float__(self):
+        return float(self.data)
+
     def __call__(self, *args, **kwargs):
         subs = OrderedDict(zip(self.dims, args))
         for d in self.dims:

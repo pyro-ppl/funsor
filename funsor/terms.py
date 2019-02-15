@@ -170,7 +170,7 @@ class Funsor(object):
 
     def contract(self, sum_op, prod_op, other, dims):
         """
-        This is equivalent to
+        DEPRECATED This is equivalent to
 
             self.binary(prod_op, other).reduce(sum_op, dims)
 
@@ -573,6 +573,65 @@ class Reduction(Funsor):
         return super(Reduction, self).reduce(op, dims)
 
 
+class Branch(Funsor):
+    """
+    Funsor representing a multi-way branch statement.
+
+    This serves as a ragged equivalent to :func:`torch.stack`.
+    This is useful for modeling heterogeneous mixture models.
+
+    Note that while dims may differ across branches, types must agree across
+    branches.
+
+    :param str dim: A dim on which to branch.
+    :param tuple components: An tuple of components of heterogeneous shape.
+    """
+    def __init__(self, dim, components):
+        assert isinstance(dim, str)
+        assert isinstance(components, tuple)
+        assert all(isinstance(c, Funsor) for c in components)
+        schema = OrderedDict([(dim, len(components))])
+        for i, c in enumerate(components):
+            if dim in c.dims:
+                c = c(**{dim: i})
+            schema.update(c.schema)
+        dims = tuple(schema)
+        shape = tuple(schema.values())
+        super(Branch, self).__init__(dims, shape)
+        self.components = components
+
+    @property
+    def dim(self):
+        return self.dims[0]
+
+    def __call__(self, *args, **kwargs):
+        kwargs.update(zip(self.dims, args))
+
+        # Try eagerly slicing.
+        choice = kwargs.pop(self.dim, None)
+        try:
+            choice = int(choice)
+        except (TypeError, ValueError):
+            pass
+        if isinstance(choice, int):
+            return self.components[choice](**kwargs)
+
+        # Try eagerly renaming self.dim.
+        result = self
+        if isinstance(choice, Variable):
+            assert choice.shape[0] == len(self.components)
+            result = Branch(choice.name, self.components)
+            choice = None
+
+        # Eagerly substitute into components, but lazily slice.
+        if kwargs:
+            components = tuple(c(**kwargs) for c in self.components)
+            result = Branch(self.dim, components)
+        if choice is not None:
+            result = Substitution(result, ((self.dim, choice),))
+        return result
+
+
 class Finitary(Funsor):
     """
     Commutative binary operator applied to arbitrary number of operands.
@@ -633,6 +692,12 @@ class Number(Funsor):
     def __str__(self):
         return str(self.data)
 
+    def __int__(self):
+        return int(self.data)
+
+    def __float__(self):
+        return float(self.data)
+
     def __call__(self, *args, **kwargs):
         return self
 
@@ -685,6 +750,7 @@ def of_shape(*shape):
 __all__ = [
     'Align',
     'Binary',
+    'Branch',
     'DOMAINS',
     'Funsor',
     'Number',

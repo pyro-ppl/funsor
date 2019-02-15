@@ -4,11 +4,12 @@ import itertools
 
 import numpy as np
 import pytest
+import torch
 
 import funsor
 import funsor.ops as ops
-from funsor.testing import check_funsor
 from funsor.engine import Memoize
+from funsor.testing import check_funsor
 
 np.seterr(all='ignore')
 
@@ -180,6 +181,31 @@ def test_binary(symbol, data1, data2):
     x2 = funsor.Number(data2)
     actual = binary_eval(symbol, x1, x2)
     check_funsor(actual, (), (), expected_data)
+
+
+def test_branch():
+    with Memoize():
+        x = funsor.Variable('x', 'real')
+        y = funsor.Number(0.5)
+        z = funsor.Tensor(('i', 'j'), torch.randn(10, 5))
+        xyz = funsor.Branch('c', (x, y, z))
+        assert xyz.dims == ('c', 'x', 'i', 'j')
+        assert xyz.shape == (3, 'real', 10, 5)
+
+        assert xyz[0] is x
+        assert xyz[1] is y
+        assert xyz[2] is z
+        assert xyz[funsor.Number(0)] is x
+        assert xyz[funsor.Number(1)] is y
+        assert xyz[funsor.Number(2)] is z
+        assert xyz[funsor.Tensor((), torch.tensor(0))] is x
+        assert xyz[funsor.Tensor((), torch.tensor(1))] is y
+        assert xyz[funsor.Tensor((), torch.tensor(2))] is z
+        assert tuple(xyz) == (x, y, z)
+
+        assert xyz(x=0) is funsor.Branch('c', (x(0), y, z))
+        assert xyz(i=1).dims == funsor.Branch('c', (x, y, z(i=1))).dims
+        assert xyz(i=1).shape == funsor.Branch('c', (x, y, z(i=1))).shape
 
 
 def test_of_shape():
