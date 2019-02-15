@@ -1,11 +1,14 @@
 from __future__ import absolute_import, division, print_function
 
-from six.moves import reduce
-from funsor.six import singledispatch
+import types
+
+import torch
 from multipledispatch import dispatch
+from six.moves import reduce
 
 import funsor.distributions as dist
 from funsor.handlers import Handler, Message, OpRegistry, effectful
+from funsor.six import singledispatch
 from funsor.terms import Binary, Finitary, Funsor, Number, Reduction, Substitution, Unary, Variable
 from funsor.torch import Arange, Tensor
 
@@ -117,7 +120,6 @@ def _tail_call(fn, *args, **kwargs):
     return effectful(TailCall, fn)(*args, **kwargs)
 
 
-@singledispatch
 def eval(x):
     r"""
     Overloaded partial evaluation of deferred expression.
@@ -132,55 +134,38 @@ def eval(x):
     :raises: NotImplementedError
     """
     assert isinstance(x, Funsor)
-    raise NotImplementedError
+    return _eval(x)
 
 
-@eval.register(Tensor)
-def _eval_tensor(x):
-    return Tensor(x.dims, x.data)
+@singledispatch
+def _eval(x):
+    raise ValueError(type(x))
 
 
-@eval.register(dist.Distribution)
-def _eval_distribution(x):
-    return type(x)(**{k: eval(v) for k, v in x.params.items()})
+@_eval.register(Funsor)
+def _eval_funsor(x):
+    return type(x)(*map(_eval, x._ast_values))
 
 
-@eval.register(Number)
-def _eval_number(x):
-    return Number(x.data, type(x.data))
+@_eval.register(str)
+@_eval.register(int)
+@_eval.register(float)
+@_eval.register(type)
+@_eval.register(types.FunctionType)
+@_eval.register(types.BuiltinFunctionType)
+@_eval.register(torch.Tensor)
+def _eval_ground(x):
+    return x
 
 
-@eval.register(Variable)
-def _eval_variable(x):
-    return Variable(x.name, x.shape[0])
+@_eval.register(tuple)
+def _eval_tuple(x):
+    return tuple(map(_eval, x))
 
 
-@eval.register(Substitution)
-def _eval_substitution(x):
-    return Substitution(
-        eval(x.arg),
-        tuple((dim, eval(value)) for (dim, value) in x.subs)
-    )
-
-
-@eval.register(Unary)
-def _eval_unary(x):
-    return Unary(x.op, eval(x.v))
-
-
-@eval.register(Binary)
-def _eval_binary(x):
-    return Binary(x.op, eval(x.lhs), eval(x.rhs))
-
-
-@eval.register(Finitary)
-def _eval_finitary(x):
-    return Finitary(x.op, tuple(eval(tx) for tx in x.operands))
-
-
-@eval.register(Reduction)
-def _eval_reduction(x):
-    return Reduction(x.op, eval(x.arg), x.reduce_dims)
+@_eval.register(frozenset)
+def _eval_frozenset(x):
+    return frozenset(map(_eval, x))
 
 
 __all__ = [

@@ -71,7 +71,7 @@ def test_cons_hash():
 def test_eval(expr):
     with Memoize():
         x = eval(expr)
-        assert x.eval() is x
+        assert funsor.engine.eval(x) is x
 
 
 @pytest.mark.parametrize('size', [3, 'real'])

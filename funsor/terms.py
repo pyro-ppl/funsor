@@ -17,10 +17,26 @@ DOMAINS = ('real', 'vector')
 
 class ConsHashedMeta(type):
     _cons_cache = WeakValueDictionary()
-    _argspec_cache = {}
 
     def __call__(cls, *args, **kwargs):
-        return effectful(cls, super(ConsHashedMeta, cls).__call__)(*args, **kwargs)
+        # TODO do this once on class init.
+        if not hasattr(cls, '_ast_fields'):
+            cls._ast_fields = getargspec(cls.__init__)[0][1:]
+
+        # Convert kwargs to args.
+        if kwargs:
+            args = list(args)
+            for name in cls._ast_fields[len(args):]:
+                args.append(kwargs.pop(name))
+            assert not kwargs, kwargs
+            args = tuple(args)
+
+        return effectful(cls, cls._ast_call)(*args)
+
+    def _ast_call(cls, *args):
+        result = super(ConsHashedMeta, cls).__call__(*args)
+        result._ast_values = args
+        return result
 
 
 @add_metaclass(ConsHashedMeta)
@@ -52,9 +68,6 @@ class Funsor(object):
         self.dims = dims
         self.shape = shape
         self.schema = OrderedDict(zip(dims, shape))
-
-    def eval(self):
-        return type(self)(*self._cons_args)
 
     def __hash__(self):
         return id(self)

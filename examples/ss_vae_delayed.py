@@ -39,7 +39,11 @@ def model(image=None):
 def guide(image):
     pyro.module("nuisance_encoder", nuisance_encoder)
     pyro.module("salient_encoder", salient_encoder)
+
+    # This sample statement is delayed.
     salient = pyro.sample("salient", dist.Normal(salient_encoder(image)))
+
+    # Now we can draw samples before passing through the encoder.
     loc, scale = nuisance_encoder(image, salient)
     nuisance = pyro.sample("nuisance", dist.Normal(loc, scale))
     return salient, nuisance

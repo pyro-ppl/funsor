@@ -9,6 +9,7 @@ import funsor.ops as ops
 from funsor.adjoint import backward
 from funsor.contract import contract
 from funsor.pattern import simplify_sum
+from funsor.six import getargspec
 from funsor.terms import ConsHashedMeta, Funsor, Number, Variable, to_funsor
 from funsor.torch import Tensor, align_tensors
 
@@ -71,8 +72,13 @@ DEFAULT_VALUE = Variable('value', 'real')
 
 class DefaultValueMeta(ConsHashedMeta):
     def __call__(cls, *args, **kwargs):
+        # TODO do this once on class init.
+        if not hasattr(cls, '_ast_fields'):
+            cls._ast_fields = getargspec(cls.__init__)[0][1:]
+
+        kwargs.update(zip(cls._ast_fields, args))
         kwargs.setdefault('value', DEFAULT_VALUE)
-        return super(DefaultValueMeta, cls).__call__(*args, **kwargs)
+        return super(DefaultValueMeta, cls).__call__(**kwargs)
 
 
 @add_metaclass(DefaultValueMeta)
