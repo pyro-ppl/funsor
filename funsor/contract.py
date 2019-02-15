@@ -3,11 +3,11 @@ from __future__ import absolute_import, division, print_function
 import opt_einsum
 
 import funsor.ops as ops
-from funsor.registry import BinaryRegistry
+from funsor.registry import KeyedRegistry
 from funsor.terms import Funsor
 from funsor.torch import Tensor
 
-contract = BinaryRegistry('contract')
+contract = KeyedRegistry()
 
 
 class Contract(Funsor):
@@ -40,12 +40,12 @@ class Contract(Funsor):
 # Contract Implementations
 ################################################################################
 
-@contract.register((ops.add, ops.mul), Funsor, Funsor)
+@contract.register((ops.add, ops.mul), Funsor, Funsor, frozenset)
 def _sumproduct(lhs, rhs, reduce_dims):
     return Contract(ops.add, ops.mul, lhs, rhs, reduce_dims)
 
 
-@contract.register((ops.add, ops.mul), Tensor, Tensor)
+@contract.register((ops.add, ops.mul), Tensor, Tensor, frozenset)
 def _sumproduct_tensor_tensor(lhs, rhs, reduce_dims):
     schema = lhs.schema.copy()
     schema.update(rhs.schema)
@@ -57,12 +57,12 @@ def _sumproduct_tensor_tensor(lhs, rhs, reduce_dims):
     return Tensor(dims, data)
 
 
-@contract.register((ops.logaddexp, ops.add), Funsor, Funsor)
+@contract.register((ops.logaddexp, ops.add), Funsor, Funsor, frozenset)
 def _logsumproductexp(lhs, rhs, reduce_dims):
     return Contract(ops.logaddexp, ops.add, lhs, rhs, reduce_dims)
 
 
-@contract.register((ops.logaddexp, ops.add), Tensor, Tensor)
+@contract.register((ops.logaddexp, ops.add), Tensor, Tensor, frozenset)
 def _logsumproductexp_tensor_tensor(lhs, rhs, reduce_dims):
     schema = lhs.schema.copy()
     schema.update(rhs.schema)

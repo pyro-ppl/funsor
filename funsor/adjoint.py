@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 import torch
 
 import funsor.ops as ops
-from funsor.registry import UnaryRegistry
+from funsor.registry import KeyedRegistry
 from funsor.terms import Funsor
 from funsor.torch import Tensor
 
@@ -22,7 +22,7 @@ class adjoints(object):
             'TODO(eb8680) Unistall effect handler to record compute graph.')
 
 
-backward = UnaryRegistry()
+backward = KeyedRegistry()
 
 
 def argreduce(op, term, dims):
