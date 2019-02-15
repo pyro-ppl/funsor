@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 import types
 
 import torch
-from multipledispatch import dispatch
+from multipledispatch import dispatch, Dispatcher
 from six.moves import reduce
 
 import funsor.distributions as dist
@@ -14,8 +14,7 @@ from funsor.torch import Arange, Tensor
 
 
 class EagerEval(OpRegistry):
-    _terms_processed = {}
-    _terms_postprocessed = {}
+    dispatcher = Dispatcher('EagerEval')
 
 
 @EagerEval.register(Tensor)
