@@ -16,18 +16,6 @@ from funsor.six import getargspec, singledispatch
 DOMAINS = ('real', 'vector')
 
 
-class MemoizeOp(handlers.Message):
-    pass
-
-
-@handlers.effectful(MemoizeOp)
-def _construct_funsor(cls, args):
-    result = super(ConsHashedMeta, cls).__call__(*args)
-    result._cons_args = args
-    cls._cons_cache[cls, args] = result
-    return result
-
-
 class MemoizeHandler(handlers.Handler):
     """Memoize Funsor term instance creation"""
 
@@ -35,24 +23,9 @@ class MemoizeHandler(handlers.Handler):
     def process(self, msg):
         return super(MemoizeHandler, self).process(msg)
 
-    @dispatch(MemoizeOp)
+    @dispatch(handlers.FunsorOp)
     def process(self, msg):
-        key = msg["args"]
-        cls, args = key
-        if key in cls._cons_cache:
-            msg["value"] = cls._cons_cache[key]
-        return msg
-
-
-# TODO disable memoization by default
-handlers.HANDLER_STACK = [MemoizeHandler()]
-
-
-class ConsHashedMeta(type):
-    _cons_cache = WeakValueDictionary()
-    _argspec_cache = {}
-
-    def __call__(cls, *args, **kwargs):
+        cls, args, kwargs = msg["label"], msg["args"], msg["kwargs"]
         if kwargs:
             # Convert kwargs to args.
             if cls not in cls._argspec_cache:
@@ -63,7 +36,28 @@ class ConsHashedMeta(type):
             assert not kwargs, kwargs
             args = tuple(args)
 
-        return _construct_funsor(cls, args)
+        if (cls, args) in cls._cons_cache:
+            msg["value"] = cls._cons_cache[cls, args]
+        else:
+            result = msg["fn"](*args)
+            result._cons_args = args
+            cls._cons_cache[cls, args] = result
+            msg["value"] = result
+
+        return msg
+
+
+# TODO disable memoization by default
+# handlers.HANDLER_STACK = [MemoizeHandler()]
+
+
+class ConsHashedMeta(type):
+    _cons_cache = WeakValueDictionary()
+    _argspec_cache = {}
+
+    def __call__(cls, *args, **kwargs):
+        return handlers.effectful(cls, super(ConsHashedMeta, cls).__call__)(
+            *args, **kwargs)
 
 
 @add_metaclass(ConsHashedMeta)

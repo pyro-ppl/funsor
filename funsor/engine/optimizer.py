@@ -116,7 +116,7 @@ def optimize_reduction(op, arg, reduce_dims):
     # first prepare a reduce_dim counter to avoid early reduction
     reduce_dim_counter = collections.Counter()
     for input in inputs:
-        reduce_dim_counter.update((d, 1) for d in input)
+        reduce_dim_counter.update({d: 1 for d in input})
 
     reduce_op, finitary_op = op, arg.op
     operands = list(arg.operands)
@@ -138,7 +138,7 @@ def optimize_reduction(op, arg, reduce_dims):
 
     # reduce any remaining dims, if necessary
     final_reduce_dims = frozenset(d for (d, count) in reduce_dim_counter.items()
-                                  if count > 0)
+                                  if count > 0) & reduce_dims
     if final_reduce_dims:
         path_end = Reduction(reduce_op, path_end, final_reduce_dims)
     return path_end

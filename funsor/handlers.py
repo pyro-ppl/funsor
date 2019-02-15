@@ -21,10 +21,12 @@ class FunsorOp(Message):
 
     def __init__(self, **fields):
         super(FunsorOp, self).__init__(**fields)
-        self["label"] = self["fn"]
+        if self["label"] is None:
+            self["label"] = self["fn"]
 
 
 HANDLER_STACK = []
+STACK_POINTER = {"ptr": -1}
 
 
 class Handler(object):
@@ -54,7 +56,8 @@ class Handler(object):
 
     def __call__(self, *args, **kwargs):
         with self:
-            return self.fn(*args, **kwargs)
+            v = self.fn(*args, **kwargs)
+            return v
 
 
 class OpRegistry(Handler):
@@ -107,23 +110,33 @@ class OpRegistry(Handler):
         return _fn
 
 
-def apply_stack(msg):
-    for pointer, handler in enumerate(reversed(HANDLER_STACK)):
+def apply_stack(msg, stack=None):
+
+    if stack is None:
+        stack = HANDLER_STACK[:]
+
+    for pointer, handler in enumerate(reversed(stack)):
+        STACK_POINTER["ptr"] -= 1
         handler.process(msg)
         if msg["stop"]:
             break
+
     if msg["value"] is None:
         msg["value"] = msg["fn"](*msg["args"], **msg["kwargs"])
 
-    for handler in HANDLER_STACK[-pointer-1:]:
+    for handler in stack[-pointer-1:]:
+        STACK_POINTER["ptr"] += 1
         handler.postprocess(msg)
+
     return msg
 
 
 def effectful(term_type, fn=None):
 
+    term_label = None
     if not issubclass(term_type, Message):
         # XXX hack to make OpRegistry work
+        term_label = term_type
         term_type = FunsorOp
 
     assert issubclass(term_type, Message)
@@ -133,20 +146,38 @@ def effectful(term_type, fn=None):
 
     def _fn(*args, **kwargs):
 
-        name = kwargs.pop("name", None)
+        # TODO put into apply_stack
+        prev_pointer = STACK_POINTER["ptr"]
+        prev_stack = HANDLER_STACK[:]
+        STACK_POINTER["ptr"] = -1
+        HANDLER_STACK.clear()
+        HANDLER_STACK.extend(prev_stack[:len(prev_stack) + prev_pointer + 1])
 
+        # print("BEFORE", term_label, HANDLER_STACK, prev_stack, prev_pointer)
         if not HANDLER_STACK:
+            # TODO be more efficient here
+            STACK_POINTER["ptr"] = prev_pointer  # TODO put into apply_stack
+            HANDLER_STACK.clear()
+            HANDLER_STACK.extend(prev_stack)
+            # print("DEFAULT", term_label, HANDLER_STACK, prev_stack, prev_pointer)
             return fn(*args, **kwargs)
 
         initial_msg = term_type(
-            name=name,
+            name=kwargs.pop("name", None),
             fn=fn,
             args=args,
             kwargs=kwargs,
             value=None,
+            label=term_label,
         )
 
-        return apply_stack(initial_msg)["value"]
+        final_msg = apply_stack(initial_msg, stack=HANDLER_STACK)
+
+        STACK_POINTER["ptr"] = prev_pointer  # TODO put into apply_stack
+        HANDLER_STACK.clear()
+        HANDLER_STACK.extend(prev_stack)
+        # print("AFTER", term_label, HANDLER_STACK, prev_stack, prev_pointer)
+        return final_msg["value"]
 
     return _fn
 
