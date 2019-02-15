@@ -204,7 +204,7 @@ class Normal(Distribution):
                     loc1, scale1 = self.params['loc'], self.params['scale']
                     scale2 = other.params['scale']
                     loc2 = (other.value - a0) / a1
-                    scale2 = scale2 / a1
+                    scale2 = scale2 / a1.abs()
                     prec1 = scale1 ** -2
                     prec2 = scale2 ** -2
 
