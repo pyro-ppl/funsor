@@ -326,7 +326,7 @@ def function(*signature):
     Decorator to wrap PyTorch functions.
 
     :param tuple inputs: a tuple of input dims tuples.
-    :param tuple otuput: a touple of output dims.
+    :param tuple output: a tuple of output dims.
 
     Example::
 

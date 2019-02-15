@@ -9,7 +9,7 @@ import funsor.distributions as dist
 from funsor.engine.contract_engine import eval as funsor_eval
 
 
-def main(args_):
+def main(args):
     # Declare parameters.
     trans_noise = torch.tensor(0.1, requires_grad=True)
     emit_noise = torch.tensor(0.5, requires_grad=True)
@@ -34,9 +34,9 @@ def main(args_):
 
     # Train model parameters.
     print('---- training ----')
-    data = torch.randn(args_.time_steps)
-    optim = torch.optim.Adam(params, lr=args_.learning_rate)
-    for step in range(args_.train_steps):
+    data = torch.randn(args.time_steps)
+    optim = torch.optim.Adam(params, lr=args.learning_rate)
+    for step in range(args.train_steps):
         optim.zero_grad()
         log_prob = model(data)
         loss = -funsor_eval(log_prob.logsumexp())  # Integrates out delayed variables.
@@ -53,7 +53,7 @@ def main(args_):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Gaussian HMM example")
+    parser = argparse.ArgumentParser(description="Kalman filter example")
     parser.add_argument("-t", "--time-steps", default=10, type=int)
     parser.add_argument("-n", "--train-steps", default=101, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)

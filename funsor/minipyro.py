@@ -12,12 +12,15 @@ found at examples/minipyro.py.
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
+
+import torch
 from multipledispatch import dispatch
 
 import funsor
 import funsor.ops as ops
 from funsor.terms import Funsor, Variable
-from .handlers import apply_stack, effectful, Handler, HANDLER_STACK, Message
+
+from .handlers import HANDLER_STACK, Handler, Message, apply_stack, effectful
 
 
 class Sample(Message):
@@ -85,10 +88,13 @@ class replay(Handler):
         return msg
 
 
-# block allows the selective application of effect handlers to different parts of a model.
-# Sites hidden by block will only have the handlers below block on the HANDLER_STACK applied,
-# allowing inference or other effectful computations to be nested inside models.
 class block(Handler):
+    """
+    This allows the selective application of effect handlers to different parts
+    of a model.  Sites hidden by block will only have the handlers below block
+    on the ``HANDLER_STACK`` applied, allowing inference or other effectful
+    computations to be nested inside models.
+    """
     def __init__(self, fn=None, hide_fn=lambda msg: True):
         self.hide_fn = hide_fn
         super(block, self).__init__(fn)
@@ -100,8 +106,10 @@ class block(Handler):
         return msg
 
 
-# This limited implementation of PlateHandler only implements broadcasting.
 class plate(Handler):
+    """
+    This limited implementation of ``PlateHandler`` only implements broadcasting.
+    """
     def __init__(self, fn, size, dim, name):
         assert dim < 0
         self.size = size
@@ -125,9 +133,12 @@ class plate(Handler):
         return range(self.size)
 
 
-# sample is an effectful version of Distribution.sample(...)
-# When any effect handlers are active, it constructs an initial message and calls apply_stack.
 def sample(fn, obs=None, name=None):
+    """
+    This is an effectful version of ``Distribution.sample(...)``.  When any
+    effect handlers are active, it constructs an initial message and calls
+    ``apply_stack``.
+    """
 
     # if there are no active Handlers, we just draw a sample and return it as expected:
     if not HANDLER_STACK:
@@ -147,9 +158,12 @@ def sample(fn, obs=None, name=None):
     return msg["value"]
 
 
-# param is an effectful version of PARAM_STORE.setdefault
-# When any effect handlers are active, it constructs an initial message and calls apply_stack.
 def param(init_value=None, name=None):
+    """
+    This is an effectful version of ``PARAM_STORE.setdefault``. When any effect
+    handlers are active, it constructs an initial message and calls
+    ``apply_stack``.
+    """
 
     if init_value is None and name is None:
         raise ValueError("empty args to param")
@@ -244,7 +258,7 @@ class log_joint(Handler):
 @effectful(Markov)
 def markov(state):
     """
-    Declaration that behavior after this point in a program depend on behavior
+    Declaration that behavior after this point in a program depends on behavior
     before this point in a program only through the passed ``state`` object,
     which can be a :class:`~funsor.Funsor` or recursive structure built from
     funsors via ``tuple`` or non-funsor keyed ``dict``.
@@ -299,8 +313,10 @@ def ground(value, context):
     return value
 
 
-# This is an attempt to compute a deferred elbo
 def elbo(model, guide, *args, **kwargs):
+    """
+    This is an attempt to compute a deferred elbo.
+    """
     # sample guide
     with funsor.adjoints(), log_joint() as guide_joint:
         guide(*args, **kwargs)
@@ -317,3 +333,80 @@ def elbo(model, guide, *args, **kwargs):
 
     elbo = p - q
     return -elbo  # negate, for use as loss
+
+
+class SVI(object):
+    """
+    This is a unified interface for stochastic variational inference in Pyro.
+    The actual construction of the loss is taken care of by `loss`.
+    See http://docs.pyro.ai/en/stable/inference_algos.html
+    """
+    def __init__(self, model, guide, optim, loss):
+        self.model = model
+        self.guide = guide
+        self.optim = optim
+        self.loss = loss
+
+    # This method handles running the model and guide, constructing the loss
+    # function, and taking a gradient step.
+    def step(self, *args, **kwargs):
+        # This wraps both the call to `model` and `guide` in a `trace` so that
+        # we can record all the parameters that are encountered. Note that
+        # further tracing occurs inside of `loss`.
+        with trace() as param_capture:
+            # We use block here to allow tracing to record parameters only.
+            with block(hide_fn=lambda msg: msg["type"] == "sample"):
+                loss = self.loss(self.model, self.guide, *args, **kwargs)
+        # Differentiate the loss.
+        loss.backward()
+        # Grab all the parameters from the trace.
+        params = [site["value"] for site in param_capture.values()]
+        # Take a step w.r.t. each parameter in params.
+        self.optim(params)
+        # Zero out the gradients so that they don't accumulate.
+        for p in params:
+            p.grad = p.new_zeros(p.shape)
+        return loss.item()
+
+
+class Adam(object):
+    """
+    This is a thin wrapper around the `torch.optim.Adam` class that
+    dynamically generates optimizers for dynamically generated parameters.
+    See http://docs.pyro.ai/en/stable/optimization.html
+    """
+    def __init__(self, optim_args):
+        self.optim_args = optim_args
+        # Each parameter will get its own optimizer, which we keep track
+        # of using this dictionary keyed on parameters.
+        self.optim_objs = {}
+
+    def __call__(self, params):
+        for param in params:
+            # If we've seen this parameter before, use the previously
+            # constructed optimizer.
+            if param in self.optim_objs:
+                optim = self.optim_objs[param]
+            # If we've never seen this parameter before, construct
+            # an Adam optimizer and keep track of it.
+            else:
+                optim = torch.optim.Adam([param.data], **self.optim_args)
+                self.optim_objs[param] = optim
+            # Take a gradient step for the parameter param.
+            optim.step()
+
+
+__all__ = [
+    'Adam',
+    'block',
+    'deferred',
+    'elbo',
+    'get_param_store',
+    'ground',
+    'markov',
+    'param',
+    'plate',
+    'replay',
+    'sample',
+    'trace',
+]
