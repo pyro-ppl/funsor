@@ -117,6 +117,9 @@ def stack_swap():
 
 def effectful(term_type, fn=None):
 
+    if fn is None:
+        return functools.partial(effectful, term_type)
+
     term_label = None
     if not issubclass(term_type, Message):
         # XXX hack to make OpRegistry work
@@ -124,9 +127,6 @@ def effectful(term_type, fn=None):
         term_type = FunsorOp
 
     assert issubclass(term_type, Message)
-
-    if fn is None:
-        return functools.partial(effectful, term_type)
 
     @stack_swap()
     def _fn(*args, **kwargs):
