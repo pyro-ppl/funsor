@@ -1,9 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
 import functools
-import contextlib
 
-from multipledispatch import dispatch, Dispatcher
+from multipledispatch import Dispatcher, dispatch
+
+from funsor.six import contextmanager
 
 
 class Message(dict):
@@ -104,7 +105,7 @@ def apply_stack(msg):
     return msg
 
 
-@contextlib.contextmanager
+@contextmanager
 def stack_swap():
     """a bit of gross logic for multiprompt handlers"""
     prev_pointer, STACK_POINTER["ptr"] = STACK_POINTER["ptr"], -1

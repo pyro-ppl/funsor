@@ -11,6 +11,7 @@ setup(
     author='Uber AI Labs',
     author_email='fritzo@uber.com',
     install_requires=[
+        'contextlib2',
         'multipledispatch',
         'opt_einsum>=2.3.2',
         'pyro-ppl>=0.3',
