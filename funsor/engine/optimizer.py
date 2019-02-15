@@ -8,8 +8,9 @@ Description of the first version of the optimizer:
 from __future__ import absolute_import, division, print_function
 
 import collections
-from multipledispatch import dispatch, Dispatcher
+from weakref import WeakValueDictionary
 
+from multipledispatch import Dispatcher, dispatch
 from opt_einsum.paths import greedy  # TODO move to custom optimizer
 
 from funsor.distributions import Distribution
@@ -22,6 +23,7 @@ from .engine import eval
 
 class Memoize(Handler):
     """Memoize Funsor term instance creation"""
+    _cons_cache = WeakValueDictionary()
 
     @dispatch(object)  # boilerplate
     def process(self, msg):
@@ -31,11 +33,11 @@ class Memoize(Handler):
     def process(self, msg):
         cls, args = msg["label"], msg["args"]
 
-        if (cls, args) in cls._cons_cache:
-            msg["value"] = cls._cons_cache[cls, args]
+        if (cls, args) in self._cons_cache:
+            msg["value"] = self._cons_cache[cls, args]
         else:
             result = msg["fn"](*args)
-            cls._cons_cache[cls, args] = result
+            self._cons_cache[cls, args] = result
             msg["value"] = result
 
         return msg

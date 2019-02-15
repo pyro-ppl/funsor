@@ -27,6 +27,9 @@ def main(args):
             x_curr = funsor.Variable('x_{}'.format(t), 'real')
             log_prob += dist.Normal(loc=x_prev, scale=trans_noise).log_prob(x_curr)
 
+            # If we want, we can immediately marginalize out previous sample sites.
+            log_prob = funsor_eval(log_prob.logsumexp('x_{}'.format(t - 1)))
+
             # An observe statement.
             log_prob += dist.Normal(loc=x_curr, scale=emit_noise).log_prob(y)
 

@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function
 import functools
 import numbers
 from collections import OrderedDict
-from weakref import WeakValueDictionary
 
 from six import add_metaclass
 from six.moves import reduce
@@ -15,14 +14,13 @@ from funsor.six import getargspec, singledispatch
 DOMAINS = ('real', 'vector')
 
 
-class ConsHashedMeta(type):
-    _cons_cache = WeakValueDictionary()
+class FunsorMeta(type):
+
+    def __init__(cls, name, bases, dct):
+        super(FunsorMeta, cls).__init__(name, bases, dct)
+        cls._ast_fields = getargspec(cls.__init__)[0][1:]
 
     def __call__(cls, *args, **kwargs):
-        # TODO do this once on class init.
-        if not hasattr(cls, '_ast_fields'):
-            cls._ast_fields = getargspec(cls.__init__)[0][1:]
-
         # Convert kwargs to args.
         if kwargs:
             args = list(args)
@@ -34,12 +32,12 @@ class ConsHashedMeta(type):
         return effectful(cls, cls._ast_call)(*args)
 
     def _ast_call(cls, *args):
-        result = super(ConsHashedMeta, cls).__call__(*args)
+        result = super(FunsorMeta, cls).__call__(*args)
         result._ast_values = args
         return result
 
 
-@add_metaclass(ConsHashedMeta)
+@add_metaclass(FunsorMeta)
 class Funsor(object):
     """
     Abstract base class for immutable functional tensors.
@@ -678,7 +676,7 @@ class Finitary(Funsor):
             self.operands[1:], self.operands[0].materialize())
 
 
-class AddTypeMeta(ConsHashedMeta):
+class AddTypeMeta(FunsorMeta):
     def __call__(cls, data, dtype=None):
         if dtype is None:
             dtype = type(data)

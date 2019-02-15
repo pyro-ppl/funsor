@@ -10,7 +10,7 @@ from funsor.adjoint import backward
 from funsor.contract import contract
 from funsor.pattern import simplify_sum
 from funsor.six import getargspec
-from funsor.terms import ConsHashedMeta, Funsor, Number, Variable, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Number, Variable, to_funsor
 from funsor.torch import Tensor, align_tensors
 
 
@@ -70,7 +70,7 @@ class AbstractDistribution(object):
 DEFAULT_VALUE = Variable('value', 'real')
 
 
-class DefaultValueMeta(ConsHashedMeta):
+class DefaultValueMeta(FunsorMeta):
     def __call__(cls, *args, **kwargs):
         # TODO do this once on class init.
         if not hasattr(cls, '_ast_fields'):
