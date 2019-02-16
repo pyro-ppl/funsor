@@ -6,6 +6,7 @@ import opt_einsum
 from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.engine import materialize
 from funsor.pattern import match_commutative, try_match_reduction, try_match_tensors
 from funsor.terms import Funsor
 from funsor.torch import Tensor
@@ -35,7 +36,7 @@ def _contract_tensors(*operands, **kwargs):
     kwargs.setdefault('backend', 'torch')
     args = []
     for x in operands:
-        x = x.materialize()
+        x = materialize(x)
         if not isinstance(x, Tensor):
             raise NotImplementedError
         args.extend([x.data, x.dims])
@@ -122,7 +123,7 @@ def eval(x):
     # Handle sum-product contractions.
     for arg, reduce_dims in try_match_reduction(ops.add, x):
         operands = match_commutative(ops.mul, arg)
-        operands = tuple(x.materialize() for x in operands)
+        operands = tuple(materialize(x) for x in operands)
         for tensors in try_match_tensors(operands):
             dims = tuple(d for d in arg.dims if d not in reduce_dims)
             return _contract_tensors(*tensors, dims=dims)
@@ -131,13 +132,13 @@ def eval(x):
     # Handle log-sum-product-exp contractions.
     for arg, reduce_dims in try_match_reduction(ops.logaddexp, x):
         operands = match_commutative(ops.add, arg)
-        operands = tuple(x.materialize() for x in operands)
+        operands = tuple(materialize(x) for x in operands)
         for tensors in try_match_tensors(operands):
             dims = tuple(d for d in arg.dims if d not in reduce_dims)
             return _contract_tensors(*tensors, dims=dims, backend='pyro.ops.einsum.torch_log')
         return _contract(ops.logaddexp, ops.add, operands, reduce_dims)
 
-    return x.materialize()
+    return materialize(x)
 
 
 __all__ = [

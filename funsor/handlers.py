@@ -1,9 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
 import functools
+from weakref import WeakValueDictionary
 
 from multipledispatch import Dispatcher, dispatch
-from weakref import WeakValueDictionary
+from six import add_metaclass
 
 from funsor.six import contextmanager
 
@@ -66,11 +67,17 @@ class Handler(object):
             return self.fn(*args, **kwargs)
 
 
+class OpRegistryMeta(type):
+    def __init__(cls, name, bases, dct):
+        super(OpRegistryMeta, cls).__init__(name, bases, dct)
+        cls.dispatcher = Dispatcher(cls.__name__)
+
+
+@add_metaclass(OpRegistryMeta)
 class OpRegistry(Handler):
     """
     Handler with convenient op registry functionality
     """
-    dispatcher = Dispatcher('OpRegistry')
 
     @dispatch(object)
     def process(self, msg):

@@ -29,12 +29,6 @@ class Contract(Funsor):
         self.rhs = rhs
         self.dim = dim
 
-    def materialize(self):
-        lhs = self.lhs.materialize()
-        rhs = self.rhs.materialize()
-        key = (self.sum_op, self.prod_op)
-        return contract(key, lhs, rhs, self.dim)
-
 
 ################################################################################
 # Contract Implementations

@@ -122,9 +122,6 @@ class Tensor(Funsor):
     def item(self):
         return self.data.item()
 
-    def materialize(self):
-        return self
-
     def align(self, dims, shape=None):
         """
         Create an equivalent :class:`Tensor` whose ``.dims`` are
@@ -320,10 +317,6 @@ class LazyCall(Funsor):
 
     def __call__(self, **subs):
         args = tuple(x(**subs) for x in self.args)
-        return self.fn(*args)
-
-    def materialize(self):
-        args = tuple(x.materialize() for x in self.args)
         return self.fn(*args)
 
 

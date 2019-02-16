@@ -1,20 +1,20 @@
 from __future__ import absolute_import, division, print_function
 
 import collections
-from six.moves import reduce
 
-from multipledispatch import Dispatcher
 from opt_einsum.paths import greedy  # TODO move to custom optimizer
+from six.moves import reduce
 
 from funsor.distributions import Distribution, Normal
 from funsor.handlers import OpRegistry
 from funsor.terms import Binary, Finitary, Funsor, Number, Reduction, Substitution, Unary, Variable
-from funsor.torch import Arange, Tensor
+from funsor.torch import Arange, LazyCall, Tensor
+
 from .interpreter import eval as main_eval
 
 
 class Desugar(OpRegistry):
-    dispatcher = Dispatcher('Desugar')
+    pass
 
 
 @Desugar.register(Unary, Binary)
@@ -24,7 +24,6 @@ def binary_to_finitary(op, lhs, rhs=None):
 
 
 class Deoptimize(OpRegistry):
-    dispatcher = Dispatcher('Deoptimize')
     GROUND_TERMS = (Distribution, Substitution, Number, Tensor)
 
 
@@ -78,7 +77,7 @@ def deoptimize_reduction(op, arg, reduce_dims):
 
 
 class Optimize(OpRegistry):
-    dispatcher = Dispatcher('Optimize')
+    pass
 
 
 @Optimize.register(Reduction)  # TODO need Finitary as well?
@@ -136,25 +135,16 @@ def optimize_reduction(op, arg, reduce_dims):
 
 
 class EagerEval(OpRegistry):
-    dispatcher = Dispatcher('EagerEval')
+    pass
 
 
-@EagerEval.register(Tensor)
-def eager_tensor(dims, data):
-    return Tensor(dims, data).materialize()  # .data
-
-
-@EagerEval.register(Number)
-def eager_number(data, dtype):
-    return Number(data, dtype)
-
-
-# TODO add general Normal
+# TODO add general Distribution
 @EagerEval.register(Normal)
 def eager_distribution(loc, scale, value):
-    return Normal(loc, scale, value=value).materialize()
+    return Normal(loc, scale)(value=value)
 
 
+# TODO separate materialization from eager evaluation
 @EagerEval.register(Variable)
 def eager_variable(name, size):
     if isinstance(size, int):
@@ -170,7 +160,7 @@ def eager_unary(op, v):
 
 @EagerEval.register(Substitution)
 def eager_substitution(arg, subs):  # this is the key...
-    return Substitution(arg, subs).materialize()
+    return arg(**dict(subs))
 
 
 @EagerEval.register(Binary)
@@ -188,6 +178,13 @@ def eager_finitary(op, operands):
 @EagerEval.register(Reduction)
 def eager_reduce(op, arg, reduce_dims):
     return arg.reduce(op, reduce_dims)
+
+
+@EagerEval.register(LazyCall)
+def eager_reduce(fn, args):
+    if all(isinstance(x, (Number, Tensor)) for x in args):
+        return fn(*args)
+    return LazyCall(fn, args)
 
 
 def eval(x):
