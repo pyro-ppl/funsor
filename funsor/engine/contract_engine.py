@@ -6,7 +6,7 @@ import opt_einsum
 from six.moves import reduce
 
 import funsor.ops as ops
-from funsor.engine import materialize
+from funsor.engine.materialize import materialize
 from funsor.pattern import match_commutative, try_match_reduction, try_match_tensors
 from funsor.terms import Funsor
 from funsor.torch import Tensor

@@ -20,16 +20,11 @@ def _materialize_variable(name, size):
 
 
 def materialize(x):
-    with Materialize():
-        x = eval(x)
-
-    with EagerEval():
-        x = eval(x)
-
+    x = Materialize(eval)(x)
+    x = EagerEval(eval)(x)
     return x
 
 
 __all__ = [
-    'Materialize',
     'materialize',
 ]

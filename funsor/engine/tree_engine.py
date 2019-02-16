@@ -6,7 +6,7 @@ from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.distributions import Distribution
-from funsor.engine import materialize
+from funsor.engine.materialize import materialize
 from funsor.pattern import match_commutative, try_match_reduction
 from funsor.terms import Funsor
 
