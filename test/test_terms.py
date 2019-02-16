@@ -8,7 +8,7 @@ import torch
 
 import funsor
 import funsor.ops as ops
-from funsor.engine import Memoize
+from funsor.handlers import Memoize
 from funsor.testing import check_funsor
 
 np.seterr(all='ignore')

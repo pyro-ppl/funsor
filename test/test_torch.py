@@ -9,7 +9,7 @@ import pytest
 import torch
 
 import funsor
-from funsor.engine import Memoize
+from funsor.handlers import Memoize
 from funsor.torch import align_tensors
 from funsor.testing import check_funsor
 

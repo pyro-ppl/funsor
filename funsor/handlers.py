@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 import functools
 
 from multipledispatch import Dispatcher, dispatch
+from weakref import WeakValueDictionary
 
 from funsor.six import contextmanager
 
@@ -85,6 +86,28 @@ class OpRegistry(Handler):
     @classmethod
     def register(cls, *term_types, **kwargs):
         return cls.dispatcher.register(tuple(term_types))
+
+
+class Memoize(Handler):
+    """Memoize Funsor term instance creation"""
+    _cons_cache = WeakValueDictionary()
+
+    @dispatch(object)  # boilerplate
+    def process(self, msg):
+        return super(Memoize, self).process(msg)
+
+    @dispatch(FunsorOp)
+    def process(self, msg):
+        cls, args = msg["label"], msg["args"]
+
+        if (cls, args) in self._cons_cache:
+            msg["value"] = self._cons_cache[cls, args]
+        else:
+            result = msg["fn"](*args)
+            self._cons_cache[cls, args] = result
+            msg["value"] = result
+
+        return msg
 
 
 def apply_stack(msg):
