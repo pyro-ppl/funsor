@@ -5,8 +5,6 @@ import functools
 from multipledispatch import Dispatcher, dispatch
 from weakref import WeakValueDictionary
 
-from funsor.six import contextmanager
-
 
 class Message(dict):
     # TODO use defaultdict
@@ -128,16 +126,6 @@ def apply_stack(msg):
     return msg
 
 
-@contextmanager
-def stack_swap():
-    """a bit of gross logic for multiprompt handlers"""
-    prev_pointer, STACK_POINTER["ptr"] = STACK_POINTER["ptr"], -1
-    prev_frames = [HANDLER_STACK.pop() for _ in range(-prev_pointer-1)]
-    yield
-    STACK_POINTER["ptr"] = prev_pointer
-    HANDLER_STACK.extend(reversed(prev_frames))
-
-
 def effectful(term_type, fn=None):
 
     if fn is None:
@@ -151,7 +139,6 @@ def effectful(term_type, fn=None):
 
     assert issubclass(term_type, Message)
 
-    @stack_swap()
     def _fn(*args, **kwargs):
 
         if not HANDLER_STACK:

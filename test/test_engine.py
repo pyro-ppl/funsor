@@ -6,7 +6,6 @@ import torch
 import funsor
 import funsor.distributions as dist
 import funsor.ops as ops
-from funsor.engine.opteinsum_engine import eval as _opteinsum_eval
 from funsor.engine.contract_engine import eval as _contract_eval
 from funsor.engine.tree_engine import eval as _tree_eval
 
@@ -15,16 +14,13 @@ def xfail_param(*args, **kwargs):
     return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
 
 
-def opteinsum_eval(x): return _opteinsum_eval(x)
-
-
 def contract_eval(x): return _contract_eval(x)  # for pytest param naming
 
 
 def tree_eval(x): return _tree_eval(x)  # for pytest param naming
 
 
-@pytest.mark.parametrize('eval', [opteinsum_eval, contract_eval])
+@pytest.mark.parametrize('eval', [contract_eval])
 @pytest.mark.parametrize('materialize_f', [False, True])
 @pytest.mark.parametrize('materialize_g', [False, True])
 def test_mm(eval, materialize_f, materialize_g):
@@ -53,7 +49,7 @@ def test_mm(eval, materialize_f, materialize_g):
             assert eval_h[i, k] == h[i, k].materialize()
 
 
-@pytest.mark.parametrize('eval', [opteinsum_eval, contract_eval])
+@pytest.mark.parametrize('eval', [contract_eval])
 @pytest.mark.parametrize('materialize_f', [False, True])
 @pytest.mark.parametrize('materialize_g', [False, True])
 def test_logsumproductexp(eval, materialize_f, materialize_g):
@@ -85,7 +81,6 @@ def test_logsumproductexp(eval, materialize_f, materialize_g):
 
 
 @pytest.mark.parametrize('eval', [
-    opteinsum_eval,
     contract_eval,
 ])
 def test_hmm_discrete_gaussian(eval):
@@ -111,7 +106,6 @@ def test_hmm_discrete_gaussian(eval):
 
 @pytest.mark.parametrize('num_steps', [1, 2, 3])
 @pytest.mark.parametrize('eval', [
-    xfail_param(opteinsum_eval, reason='bad trampoline?'),
     xfail_param(contract_eval, reason='cannot match Substitution(Normal)'),
     xfail_param(tree_eval, reason='incomplete Normal-Normal math'),
 ])
