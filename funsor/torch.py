@@ -148,30 +148,29 @@ class Tensor(Funsor):
     def _eager_unary(self, op):
         return Tensor(self.dims, op(self.data))
 
-    def reduce(self, op, dims=None):
-        if op in ops.REDUCE_OP_TO_TORCH:
-            torch_op = ops.REDUCE_OP_TO_TORCH[op]
-            self_dims = frozenset(self.dims)
-            if dims is None:
-                dims = self_dims
+    def _eager_reduce(self, op, dims):
+        if op not in ops.REDUCE_OP_TO_TORCH:
+            return None  # defer to lazy operation
+        torch_op = ops.REDUCE_OP_TO_TORCH[op]
+        self_dims = frozenset(self.dims)
+        assert dims and dims <= self_dims
+
+        # Try to educe all dims.
+        if dims == self_dims:
+            if op is ops.logaddexp:
+                # Work around missing torch.Tensor.logsumexp()
+                return Tensor((), self.data.reshape(-1).logsumexp(0))
+            return Tensor((), torch_op(self.data))
+
+        # Reduce one dim at a time.
+        data = self.data
+        for pos in reversed(sorted(map(self.dims.index, dims))):
+            if op in (ops.min, ops.max):
+                data = getattr(data, op.__name__)(pos)[0]
             else:
-                dims = self_dims.intersection(dims)
-            if not dims:
-                return self
-            if dims == self_dims:
-                if op is ops.logaddexp:
-                    # work around missing torch.Tensor.logsumexp()
-                    return Tensor((), self.data.reshape(-1).logsumexp(0))
-                return Tensor((), torch_op(self.data))
-            data = self.data
-            for pos in reversed(sorted(map(self.dims.index, dims))):
-                if op in (ops.min, ops.max):
-                    data = getattr(data, op.__name__)(pos)[0]
-                else:
-                    data = torch_op(data, pos)
-            dims = tuple(d for d in self.dims if d not in dims)
-            return Tensor(dims, data)
-        return super(Tensor, self).reduce(op, dims)
+                data = torch_op(data, pos)
+        dims = tuple(d for d in self.dims if d not in dims)
+        return Tensor(dims, data)
 
     def contract(self, sum_op, prod_op, other, dims):
         if isinstance(other, Tensor):

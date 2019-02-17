@@ -84,6 +84,10 @@ class Funsor(object):
                 subs[d] = kwargs[d]
         return Substitution(self, tuple((k, to_funsor(v)) for k, v in subs.items()))
 
+    @abstractmethod
+    def _eager_subs(self, **kwargs):
+        raise NotImplementedError
+
     def __getitem__(self, args):
         if not isinstance(args, tuple):
             args = (args,)
@@ -136,27 +140,8 @@ class Funsor(object):
                 "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
 
-    # ------------------------------------------------------------------------
-    # Eager interpretations.
-
-    @abstractmethod
-    def _eager_subs(self, **kwargs):
-        raise NotImplementedError
-
     def _eager_unary(self, op):
         pass  # defer to lazy operation
-
-    def binary(self, op, other):
-        """
-        Broadcasted pointwise binary operation.
-        """
-        assert isinstance(other, Funsor)
-        if isinstance(other, Number):
-            if (op is ops.add or op is ops.sub) and other.data == 0:
-                return self
-            if (op is ops.mul or op is ops.truediv) and other.data == 1:
-                return self
-        return Binary(op, self, other)
 
     def reduce(self, op, dims=None):
         """
@@ -176,11 +161,14 @@ class Funsor(object):
             return self
         return Reduction(op, self, dims)
 
+    def _eager_reduce(self, op, dims):
+        pass  # defer to lazy operation
+
     def contract(self, sum_op, prod_op, other, dims):
         """
         DEPRECATED This is equivalent to
 
-            self.binary(prod_op, other).reduce(sum_op, dims)
+            (self * other).reduce(sum_op, dims)
 
         but we only want to perform eager contractions.
         """
@@ -394,6 +382,8 @@ def _eager_subs(arg, subs):
 class Align(Funsor):
     """
     Lazy call to ``.align(...)``.
+
+    Operations on :class:`Align` funsors do not preserve alignment.
     """
     def __init__(self, arg, dims, shape):
         assert isinstance(arg, Funsor)
@@ -409,7 +399,6 @@ class Align(Funsor):
         self.shape = shape
 
     def _eager_subs(self, **kwargs):
-        # Substitution cannot preserve alignment.
         return self.arg(**kwargs)
 
     def align(self, dims, shape=None):
@@ -421,11 +410,23 @@ class Align(Funsor):
     def _eager_unary(self, op):
         return self.arg._eager_unary(op)
 
-    def binary(self, op, other):
-        return self.arg.binary(op, other)
-
-    def reduce(self, op, dims=None):
+    def _eager_reduce(self, op, dims):
         return self.arg.reduce(op, dims)
+
+
+@dispatch(object, Align, Funsor)
+def eager_binary(op, lhs, rhs):
+    return Binary(op, lhs.arg, rhs)
+
+
+@dispatch(object, Funsor, Align)
+def eager_binary(op, lhs, rhs):
+    return Binary(op, lhs, rhs.arg)
+
+
+@dispatch(object, Align, Align)
+def eager_binary(op, lhs, rhs):
+    return Binary(op, lhs.arg, rhs.arg)
 
 
 _PREFIX = {
@@ -506,12 +507,12 @@ class Binary(Funsor):
 
     def contract(self, sum_op, prod_op, other, dims):
         if dims not in self.dims:
-            return self.binary(prod_op, other)
+            return self * other
         if prod_op is self.op:
             if dims not in self.lhs:
-                return self.lhs.binary(self.op, self.rhs.reduce(sum_op, dims))
+                return Binary(prod_op, self.lhs, self.rhs.reduce(sum_op, dims))
             if dims not in self.rhs:
-                return self.lhs.reduce(sum_op, dims).binary(self.op, self.rhs)
+                return Binary(prod_op, self.lhs.reduce(sum_op, dims), self.rhs)
         return super(Binary, self).contract(sum_op, prod_op, other, dims)
 
     def jacobian(self, dim):
@@ -577,15 +578,16 @@ class Reduction(Funsor):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
         return Reduction(self.op, self.arg(**kwargs), self.reduce_dims)
 
-    def reduce(self, op, dims=None):
+    def _eager_reduce(self, op, dims):
         if op is self.op:
             # Eagerly fuse reductions.
-            if dims is None:
-                dims = frozenset(self.dims)
-            else:
-                dims = frozenset(dims).intersection(self.dims)
-            return Reduction(op, self.arg, self.reduce_dims | dims)
-        return super(Reduction, self).reduce(op, dims)
+            dims = frozenset(dims).intersection(self.dims)
+            return self.arg.reduce(op, self.reduce_dims | dims)
+
+
+@Eager.register(Reduction)
+def _eager_reduce(arg, op, dims):
+    return arg._eager_reduce(op, dims)
 
 
 class Branch(Funsor):

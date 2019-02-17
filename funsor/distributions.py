@@ -126,10 +126,9 @@ class Distribution(Funsor):
             return Tensor(dims, data)
         return type(self)(**params)
 
-    def reduce(self, op, dims):
+    def _eager_reduce(self, op, dims):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in dims:
             return Number(0.)  # distributions are normalized
-        return super(Distribution, self).reduce(op, dims)
 
     # Legacy distributions interface:
 
