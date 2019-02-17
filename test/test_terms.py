@@ -20,12 +20,20 @@ def test_materialize():
     def f(i, j):
         return i + j
 
-    g = f.materialize()
+    g = funsor.materialize(f)
 
     assert g.dims == f.dims
     assert g.shape == f.shape
     for key in itertools.product(*map(range, g.shape)):
         assert f[key] == g[key]
+
+    x = f.reduce(ops.add, frozenset(['i', 'j']))
+    assert not x.dims
+    assert not x.shape
+    y = funsor.materialize(x)
+    assert not y.dims
+    assert not y.shape
+    assert isinstance(y, funsor.Tensor)
 
 
 def test_to_funsor():
@@ -107,7 +115,7 @@ def test_mm(materialize_f, materialize_g, materialize_h):
         return i + j
 
     if materialize_f:
-        f = f.materialize()
+        f = funsor.materialize(f)
         assert isinstance(f, funsor.Tensor)
     check_funsor(f, ('i', 'j'), (3, 4))
 
@@ -116,18 +124,18 @@ def test_mm(materialize_f, materialize_g, materialize_h):
         return j + k
 
     if materialize_g:
-        g = g.materialize()
+        g = funsor.materialize(g)
         assert isinstance(g, funsor.Tensor)
     check_funsor(g, ('j', 'k'), (4, 5))
 
     h = (f * g).sum('j')
     if materialize_h:
-        h = h.materialize()
+        h = funsor.materialize(h)
         assert isinstance(h, funsor.Tensor)
     check_funsor(h, ('i', 'k'), (3, 5))
     for i in range(3):
         for k in range(5):
-            assert h[i, k].materialize() == sum(f[i, j] * g[j, k] for j in range(4))
+            assert funsor.materialize(h[i, k]) == sum(f[i, j] * g[j, k] for j in range(4))
 
 
 def unary_eval(symbol, x):

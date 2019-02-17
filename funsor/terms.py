@@ -132,17 +132,6 @@ class Funsor(object):
                 "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
 
-    # TODO move this to funsor.torch.materialize(-) or similar
-    def materialize(self):
-        """
-        Materializes all discrete variables.
-        """
-        from funsor.torch import Arange
-        kwargs = {dim: Arange(dim, size)
-                  for dim, size in self.schema.items()
-                  if isinstance(size, int)}
-        return self(**kwargs)
-
     def unary(self, op):
         """
         Pointwise unary operation.
@@ -395,10 +384,6 @@ class Substitution(Funsor):
         # FIXME for densities, add log_abs_det_jacobian
         return result
 
-    def materialize(self):
-        subs = {dim: value.materialize() for dim, value in self.subs}
-        return self.arg.materialize()(**subs)
-
 
 class Align(Funsor):
     """
@@ -462,9 +447,6 @@ class Unary(Funsor):
     def __call__(self, *args, **kwargs):
         return self.arg(*args, **kwargs).unary(self.op)
 
-    def materialize(self):
-        return self.arg.materialize().unary(self.op)
-
     def unary(self, op):
         if op is ops.neg and self.op is ops.neg:
             return self.arg
@@ -512,9 +494,6 @@ class Binary(Funsor):
     def __call__(self, *args, **kwargs):
         kwargs.update(zip(self.dims, args))
         return self.lhs(**kwargs).binary(self.op, self.rhs(**kwargs))
-
-    def materialize(self):
-        return self.lhs.materialize().binary(self.op, self.rhs.materialize())
 
     def contract(self, sum_op, prod_op, other, dims):
         if dims not in self.dims:
@@ -569,9 +548,6 @@ class Reduction(Funsor):
                    for value in kwargs.values()):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
         return self.arg(**kwargs).reduce(self.op, self.reduce_dims)
-
-    def materialize(self):
-        return self.arg.materialize().reduce(self.op, self.reduce_dims)
 
     def reduce(self, op, dims=None):
         if op is self.op:
@@ -669,11 +645,6 @@ class Finitary(Funsor):
         return reduce(
             lambda lhs, rhs: lhs.binary(self.op, rhs(**kwargs)),
             self.operands[1:], self.operands[0](**kwargs))
-
-    def materialize(self):
-        return reduce(
-            lambda lhs, rhs: lhs.binary(self.op, rhs.materialize()),
-            self.operands[1:], self.operands[0].materialize())
 
 
 class AddTypeMeta(FunsorMeta):

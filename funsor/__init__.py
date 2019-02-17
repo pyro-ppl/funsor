@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 from funsor.adjoint import adjoints, backward
-from funsor.engine import eval
+from funsor.engine import eval, materialize
 from funsor.handlers import set_default_handlers
 from funsor.terms import Branch, Funsor, Number, Variable, of_shape, to_funsor
 from funsor.torch import Arange, Pointwise, Tensor, function
@@ -24,6 +24,7 @@ __all__ = [
     'eval',
     'function',
     'handlers',
+    'materialize',
     'minipyro',
     'of_shape',
     'ops',

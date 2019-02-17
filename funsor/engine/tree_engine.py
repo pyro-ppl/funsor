@@ -6,8 +6,9 @@ from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.distributions import Distribution
+from funsor.engine.materialize import materialize
+from funsor.pattern import match_commutative, try_match_reduction
 from funsor.terms import Funsor
-from funsor.pattern import try_match_reduction, match_commutative
 
 
 class Contractor(object):
@@ -89,10 +90,10 @@ def eval(x):
     # Handle log-sum-product-exp contractions.
     for arg, reduce_dims in try_match_reduction(ops.logaddexp, x):
         operands = match_commutative(ops.add, arg)
-        operands = tuple(x.materialize() for x in operands)
+        operands = tuple(materialize(x) for x in operands)
         return _contract(operands, reduce_dims)
 
-    return x.materialize()
+    return materialize(x)
 
 
 __all__ = [

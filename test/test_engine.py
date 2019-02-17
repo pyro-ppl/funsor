@@ -7,6 +7,8 @@ import funsor
 import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.engine.contract_engine import eval as _contract_eval
+from funsor.engine.materialize import materialize
+from funsor.engine.opteinsum_engine import eval as _opteinsum_eval
 from funsor.engine.tree_engine import eval as _tree_eval
 
 
@@ -30,14 +32,14 @@ def test_mm(eval, materialize_f, materialize_g):
         return i + j
 
     if materialize_f:
-        f = f.materialize()
+        f = materialize(f)
 
     @funsor.of_shape(4, 5)
     def g(j, k):
         return j + k
 
     if materialize_g:
-        g = g.materialize()
+        g = materialize(g)
 
     h = (f * g).sum('j')
     eval_h = eval(h)
@@ -46,7 +48,7 @@ def test_mm(eval, materialize_f, materialize_g):
     assert eval_h.shape == h.shape
     for i in range(3):
         for k in range(5):
-            assert eval_h[i, k] == h[i, k].materialize()
+            assert eval_h[i, k] == funsor.materialize(h[i, k])
 
 
 @pytest.mark.parametrize('eval', [contract_eval])
@@ -59,14 +61,14 @@ def test_logsumproductexp(eval, materialize_f, materialize_g):
         return i + j
 
     if materialize_f:
-        f = f.materialize()
+        f = funsor.materialize(f)
 
     @funsor.of_shape(4, 5)
     def g(j, k):
         return j + k
 
     if materialize_g:
-        g = g.materialize()
+        g = funsor.materialize(g)
 
     log_prob = funsor.Tensor(('log_prob',), torch.randn(10))
     h = (log_prob[f] + log_prob[g]).logsumexp('j')
@@ -77,7 +79,7 @@ def test_logsumproductexp(eval, materialize_f, materialize_g):
     assert eval_h.shape == h.shape
     for i in range(3):
         for k in range(5):
-            assert (eval_h[i, k] - h[i, k].materialize()) < 1e-6
+            assert (eval_h[i, k] - funsor.materialize(h[i, k])) < 1e-6
 
 
 @pytest.mark.parametrize('eval', [
