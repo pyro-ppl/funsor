@@ -2,25 +2,27 @@ from __future__ import absolute_import, division, print_function
 
 import functools
 import numbers
+from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 
 from six import add_metaclass
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.handlers import effectful
+from funsor.interpretations import Eager
 from funsor.six import getargspec, singledispatch
 
 DOMAINS = ('real', 'vector')
 
 
-class FunsorMeta(type):
+class FunsorMeta(ABCMeta):
 
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
         cls._ast_fields = getargspec(cls.__init__)[0][1:]
 
     def __call__(cls, *args, **kwargs):
+        # TODO move this back into Memoize?
         # Convert kwargs to args.
         if kwargs:
             args = list(args)
@@ -44,7 +46,8 @@ class Funsor(object):
 
     Concrete derived classes must implement ``__init__()`` methods taking
     hashable ``*args`` and no optional ``**kwargs`` so as to support cons
-    hashing.
+    hashing. Concrete derive classes must also implement an ``_eager_subs()``
+    method defining substitution.
 
     .. note:: Probabilistic methods like :meth:`sample` and :meth:`marginal`
         follow the convention that funsors represent log density functions.
@@ -79,6 +82,10 @@ class Funsor(object):
             if d in kwargs:
                 subs[d] = kwargs[d]
         return Substitution(self, tuple((k, to_funsor(v)) for k, v in subs.items()))
+
+    @abstractmethod
+    def _eager_subs(self, **kwargs):
+        raise NotImplementedError
 
     def __getitem__(self, args):
         if not isinstance(args, tuple):
@@ -334,14 +341,8 @@ class Variable(Funsor):
     def name(self):
         return self.dims[0]
 
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
-        if self.name not in kwargs:
-            return self
-        value = kwargs[self.name]
-        if isinstance(value, str):
-            return Variable(value, self.shape[0])
-        return to_funsor(value)
+    def _eager_subs(self, **kwargs):
+        return kwargs.get(self.name, self)
 
     def jacobian(self, dim):
         return Number(float(dim == self.name))
@@ -374,15 +375,19 @@ class Substitution(Funsor):
     def __repr__(self):
         return 'Substitution({}, {})'.format(self.arg, self.subs)
 
-    def __call__(self, *args, **kwargs):
+    def _eager_subs(self, **kwargs):
         # TODO eagerly fuse substitutions.
-        kwargs.update(zip(self.dims, args))
         subs = {dim: value(**kwargs) for dim, value in self.subs}
         for dim, value in self.subs:
             kwargs.pop(dim, None)
         result = self.arg(**kwargs)(**subs)
         # FIXME for densities, add log_abs_det_jacobian
         return result
+
+
+@Eager.register(Substitution)
+def _eager_subs(arg, subs):
+    return arg._eager_subs(**dict(subs))
 
 
 class Align(Funsor):
@@ -402,8 +407,8 @@ class Align(Funsor):
         self.dims = dims
         self.shape = shape
 
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
+    def _eager_subs(self, **kwargs):
+        # Substitution cannot preserve alignment.
         return self.arg(**kwargs)
 
     def align(self, dims, shape=None):
@@ -444,8 +449,8 @@ class Unary(Funsor):
             return '{}{}'.format(_PREFIX[self.op], self.arg)
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
 
-    def __call__(self, *args, **kwargs):
-        return self.arg(*args, **kwargs).unary(self.op)
+    def _eager_subs(self, **kwargs):
+        return Unary(self.op, self.arg(**kwargs))
 
     def unary(self, op):
         if op is ops.neg and self.op is ops.neg:
@@ -491,9 +496,8 @@ class Binary(Funsor):
             return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
-        return self.lhs(**kwargs).binary(self.op, self.rhs(**kwargs))
+    def _eager_subs(self, **kwargs):
+        return Binary(self.op, self.lhs(**kwargs), self.rhs(**kwargs))
 
     def contract(self, sum_op, prod_op, other, dims):
         if dims not in self.dims:
@@ -540,14 +544,13 @@ class Reduction(Funsor):
         return 'Reduction({}, {}, {})'.format(
             self.op.__name__, self.arg, self.reduce_dims)
 
-    def __call__(self, *args, **kwargs):
+    def _eager_subs(self, **kwargs):
         kwargs = {dim: value for dim, value in kwargs.items()
                   if dim in self.dims}
-        kwargs.update(zip(self.dims, args))
         if not all(set(self.reduce_dims).isdisjoint(getattr(value, 'dims', ()))
                    for value in kwargs.values()):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        return self.arg(**kwargs).reduce(self.op, self.reduce_dims)
+        return Reduction(self.op, self.arg(**kwargs), self.reduce_dims)
 
     def reduce(self, op, dims=None):
         if op is self.op:
@@ -591,9 +594,7 @@ class Branch(Funsor):
     def dim(self):
         return self.dims[0]
 
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
-
+    def _eager_subs(self, **kwargs):
         # Try eagerly slicing.
         choice = kwargs.pop(self.dim, None)
         try:
@@ -640,11 +641,8 @@ class Finitary(Funsor):
     def __repr__(self):
         return 'Finitary({}, {})'.format(self.op.__name__, self.operands)
 
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
-        return reduce(
-            lambda lhs, rhs: lhs.binary(self.op, rhs(**kwargs)),
-            self.operands[1:], self.operands[0](**kwargs))
+    def _eager_subs(self, **kwargs):
+        return Finitary(self.op, tuple(x(**kwargs) for x in self.operands))
 
 
 class AddTypeMeta(FunsorMeta):
@@ -680,7 +678,7 @@ class Number(Funsor):
     def __float__(self):
         return float(self.data)
 
-    def __call__(self, *args, **kwargs):
+    def _eager_subs(self, **kwargs):
         return self
 
     def __bool__(self):

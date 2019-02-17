@@ -64,8 +64,8 @@ class Tensor(Funsor):
     def __float__(self):
         return float(self.data)
 
-    def __call__(self, *args, **kwargs):
-        subs = OrderedDict(zip(self.dims, args))
+    def _eager_subs(self, **kwargs):
+        subs = OrderedDict()
         for d in self.dims:
             if d in kwargs:
                 subs[d] = kwargs[d]
@@ -80,7 +80,7 @@ class Tensor(Funsor):
                             'TODO implement simultaneous substitution')
                 result = result._substitute(dim, value)
             return result
-        return super(Tensor, self).__call__(*args, **kwargs)
+        return None  # defer to lazy substitution
 
     def _substitute(self, dim, value):
         pos = self.dims.index(dim)
@@ -237,19 +237,18 @@ class Pointwise(Funsor):
         super(Pointwise, self).__init__(dims, shape)
         self.fn = fn
 
-    def __call__(self, *args, **kwargs):
-        if kwargs:
-            args = list(args)
-            for name in self.dims[len(args):]:
-                if name in kwargs:
-                    args.append(kwargs.pop(name))
-                else:
-                    break
+    def _eager_subs(self, **kwargs):
+        args = []
+        for name in self.dims[len(args):]:
+            if name in kwargs:
+                args.append(kwargs[name])
+            else:
+                break
         if len(args) == len(self.dims) and all(isinstance(x, Tensor) for x in args):
             dims, tensors = align_tensors(*args)
             data = self.fn(*tensors)
             return Tensor(dims, data)
-        return super(Pointwise, self).__call__(*args, **kwargs)
+        return None  # defer to lazy substitution
 
 
 class Function(object):
@@ -275,7 +274,7 @@ class Function(object):
         self.output = output
         self.fn = fn
 
-    def __call__(self, *args):
+    def _eager_subs(self, *args):
         assert len(args) == len(self.inputs)
 
         args = tuple(map(to_funsor, args))

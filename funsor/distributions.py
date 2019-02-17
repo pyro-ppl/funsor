@@ -113,9 +113,7 @@ class Distribution(Funsor):
         return '{}({})'.format(type(self).__name__,
                                ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
-    def __call__(self, *args, **kwargs):
-        kwargs = {d: to_funsor(v) for d, v in kwargs.items() if d in self.dims}
-        kwargs.update(zip(self.dims, map(to_funsor, args)))
+    def _eager_subs(self, **kwargs):
         if not kwargs:
             return self
         params = OrderedDict((k, v(**kwargs)) for k, v in self.params.items())
