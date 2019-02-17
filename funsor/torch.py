@@ -144,7 +144,7 @@ class Tensor(Funsor):
         # TODO unsqueeze and expand
         return Align(self, dims, shape)
 
-    def unary(self, op):
+    def _eager_unary(self, op):
         return Tensor(self.dims, op(self.data))
 
     def binary(self, op, other):

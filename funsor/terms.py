@@ -83,10 +83,6 @@ class Funsor(object):
                 subs[d] = kwargs[d]
         return Substitution(self, tuple((k, to_funsor(v)) for k, v in subs.items()))
 
-    @abstractmethod
-    def _eager_subs(self, **kwargs):
-        raise NotImplementedError
-
     def __getitem__(self, args):
         if not isinstance(args, tuple):
             args = (args,)
@@ -139,10 +135,14 @@ class Funsor(object):
                 "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
 
-    def unary(self, op):
-        """
-        Pointwise unary operation.
-        """
+    # ------------------------------------------------------------------------
+    # Eager interpretations.
+
+    @abstractmethod
+    def _eager_subs(self, **kwargs):
+        raise NotImplementedError
+
+    def _eager_unary(self, op):
         return Unary(op, self)
 
     def binary(self, op, other):
@@ -196,25 +196,25 @@ class Funsor(object):
     # the generic handlers and fall back to super(...).handler.
 
     def __invert__(self):
-        return self.unary(ops.invert)
+        return Unary(ops.invert, self)
 
     def __neg__(self):
-        return self.unary(ops.neg)
+        return Unary(ops.neg, self)
 
     def abs(self):
-        return self.unary(ops.abs)
+        return Unary(ops.abs, self)
 
     def sqrt(self):
-        return self.unary(ops.sqrt)
+        return Unary(ops.sqrt, self)
 
     def exp(self):
-        return self.unary(ops.exp)
+        return Unary(ops.exp, self)
 
     def log(self):
-        return self.unary(ops.log)
+        return Unary(ops.log, self)
 
     def log1p(self):
-        return self.unary(ops.log1p)
+        return Unary(ops.log1p, self)
 
     def __add__(self, other):
         return self.binary(ops.add, to_funsor(other))
@@ -417,8 +417,8 @@ class Align(Funsor):
             shape = tuple(self.schema[d] for d in dims)
         return self.arg.align(dims, shape)
 
-    def unary(self, op):
-        return self.arg.unary(op)
+    def _eager_unary(self, op):
+        return self.arg._eager_unary(op)
 
     def binary(self, op, other):
         return self.arg.binary(op, other)
@@ -452,10 +452,9 @@ class Unary(Funsor):
     def _eager_subs(self, **kwargs):
         return Unary(self.op, self.arg(**kwargs))
 
-    def unary(self, op):
+    def _simplify_unary(self, op):
         if op is ops.neg and self.op is ops.neg:
             return self.arg
-        return self.arg.unary(op)
 
     def jacobian(self, dim):
         if dim not in self.arg.dims:
@@ -687,7 +686,7 @@ class Number(Funsor):
     def item(self):
         return self.data
 
-    def unary(self, op):
+    def _eager_unary(self, op):
         return Number(op(self.data))
 
     def binary(self, op, other):
