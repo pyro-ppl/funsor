@@ -6,7 +6,7 @@ from funsor.handlers import set_default_handlers
 from funsor.terms import Branch, Funsor, Number, Variable, of_shape, to_funsor
 from funsor.torch import Arange, Pointwise, Tensor, function
 
-from . import adjoint, distributions, engine, handlers, minipyro, ops, terms, torch
+from . import adjoint, distributions, engine, handlers, minipyro, ops, terms, torch, interpretations
 
 __all__ = [
     'Arange',
@@ -24,6 +24,7 @@ __all__ = [
     'eval',
     'function',
     'handlers',
+    'interpretations',
     'materialize',
     'minipyro',
     'of_shape',

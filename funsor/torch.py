@@ -70,7 +70,7 @@ class Tensor(Funsor):
         for d in self.dims:
             if d in kwargs:
                 subs[d] = kwargs[d]
-        if all(isinstance(v, (Number, numbers.Number, slice, Tensor, str)) for v in subs.values()):
+        if all(isinstance(v, (Number, Tensor)) for v in subs.values()):
             # Substitute one dim at a time.
             conflicts = list(subs.keys())
             result = self

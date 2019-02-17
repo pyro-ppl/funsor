@@ -35,6 +35,7 @@ class FunsorMeta(ABCMeta):
         return effectful(cls, cls._ast_call)(*args)
 
     def _ast_call(cls, *args):
+        print('FunsorMeta._ast_call {} {}'.format(cls, args))
         result = super(FunsorMeta, cls).__call__(*args)
         result._ast_values = args
         return result
@@ -78,10 +79,13 @@ class Funsor(object):
         """
         Partially evaluates this funsor by substituting dimensions.
         """
+        print('DEBUG Funsor.__call__ {} {} {}'.format(self, args, kwargs))
         subs = OrderedDict(zip(self.dims, args))
         for d in self.dims:
             if d in kwargs:
                 subs[d] = kwargs[d]
+        if not subs:
+            return self
         return Substitution(self, tuple((k, to_funsor(v)) for k, v in subs.items()))
 
     @abstractmethod
@@ -331,6 +335,7 @@ class Variable(Funsor):
         return self.dims[0]
 
     def _eager_subs(self, **kwargs):
+        print('DEBUG Variable._eager_subs {} {} '.format(self, kwargs))
         return kwargs.get(self.name, self)
 
     def jacobian(self, dim):
@@ -344,6 +349,7 @@ class Substitution(Funsor):
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
         assert isinstance(subs, tuple)
+        assert subs
         for dim_value in subs:
             assert isinstance(dim_value, tuple)
             dim, value = dim_value
@@ -369,13 +375,15 @@ class Substitution(Funsor):
         subs = {dim: value(**kwargs) for dim, value in self.subs}
         for dim, value in self.subs:
             kwargs.pop(dim, None)
-        result = self.arg(**kwargs)(**subs)
-        # FIXME for densities, add log_abs_det_jacobian
-        return result
+        # FIXME alpha convert to protect substituted variables
+        return self.arg(**kwargs)(**subs)
 
 
 @Eager.register(Substitution)
 def _eager_subs(arg, subs):
+    print('DEBUG _eager_subs {} {} '.format(arg, subs))
+    if not subs:
+        return arg
     return arg._eager_subs(**dict(subs))
 
 
@@ -705,14 +713,14 @@ class Number(Funsor):
     def __float__(self):
         return float(self.data)
 
-    def _eager_subs(self, **kwargs):
-        return self
-
     def __bool__(self):
         return bool(self.data)
 
     def item(self):
         return self.data
+
+    def _eager_subs(self, **kwargs):
+        return self
 
     def _eager_unary(self, op):
         return Number(op(self.data))
