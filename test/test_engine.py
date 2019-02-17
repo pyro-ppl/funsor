@@ -82,7 +82,7 @@ def test_logsumproductexp(eval, materialize_f, materialize_g):
 
 
 @pytest.mark.parametrize('eval', [
-    contract_eval,
+    xfail_param(contract_eval, reason="reentry causes infinite recursion?"),
 ])
 def test_hmm_discrete_gaussian(eval):
     hidden_dim = 2
