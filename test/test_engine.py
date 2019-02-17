@@ -8,7 +8,6 @@ import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.engine.contract_engine import eval as _contract_eval
 from funsor.engine.materialize import materialize
-from funsor.engine.opteinsum_engine import eval as _opteinsum_eval
 from funsor.engine.tree_engine import eval as _tree_eval
 
 
