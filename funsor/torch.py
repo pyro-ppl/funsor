@@ -10,6 +10,7 @@ import torch
 import funsor.ops as ops
 from funsor.six import getargspec
 from funsor.terms import Align, Funsor, Number, to_funsor
+from multipledispatch import dispatch
 
 
 def align_tensors(*args):
@@ -147,21 +148,6 @@ class Tensor(Funsor):
     def _eager_unary(self, op):
         return Tensor(self.dims, op(self.data))
 
-    def binary(self, op, other):
-        assert isinstance(other, Funsor)
-        if isinstance(other, Number):
-            if (op is ops.add or op is ops.sub) and other.data == 0:
-                return self
-            if (op is ops.mul or op is ops.truediv) and other.data == 1:
-                return self
-            return Tensor(self.dims, op(self.data, other.data))
-        if isinstance(other, Tensor):
-            if self.dims == other.dims:
-                return Tensor(self.dims, op(self.data, other.data))
-            dims, (self_data, other_data) = align_tensors(self, other)
-            return Tensor(dims, op(self_data, other_data))
-        return super(Tensor, self).binary(op, other)
-
     def reduce(self, op, dims=None):
         if op in ops.REDUCE_OP_TO_TORCH:
             torch_op = ops.REDUCE_OP_TO_TORCH[op]
@@ -210,6 +196,24 @@ class Tensor(Funsor):
                 return Tensor(dims, data)
 
         return super(Tensor, self).contract(sum_op, prod_op, other, dims)
+
+
+@dispatch(object, Tensor, Tensor)
+def eager_binary(op, lhs, rhs):
+    if lhs.dims == rhs.dims:
+        return Tensor(lhs.dims, op(lhs.data, rhs.data))
+    dims, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
+    return Tensor(dims, op(lhs_data, rhs_data))
+
+
+@dispatch(object, Tensor, Number)
+def eager_binary(op, lhs, rhs):
+    return Tensor(lhs.data, op(lhs.data, rhs.data))
+
+
+@dispatch(object, Number, Tensor)
+def eager_binary(op, lhs, rhs):
+    return Tensor(rhs.data, op(lhs.data, rhs.data))
 
 
 @to_funsor.register(torch.Tensor)

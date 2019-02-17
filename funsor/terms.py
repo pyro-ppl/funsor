@@ -5,11 +5,12 @@ import numbers
 from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 
+from multipledispatch import dispatch
 from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.handlers import effectful
-from funsor.interpretations import Eager
+from funsor.interpretations import Eager, Simplify
 from funsor.six import getargspec, singledispatch
 
 DOMAINS = ('real', 'vector')
@@ -143,7 +144,7 @@ class Funsor(object):
         raise NotImplementedError
 
     def _eager_unary(self, op):
-        return Unary(op, self)
+        pass  # defer to lazy operation
 
     def binary(self, op, other):
         """
@@ -217,73 +218,73 @@ class Funsor(object):
         return Unary(ops.log1p, self)
 
     def __add__(self, other):
-        return self.binary(ops.add, to_funsor(other))
+        return Binary(ops.add, self, to_funsor(other))
 
     def __radd__(self, other):
-        return self.binary(ops.add, to_funsor(other))
+        return Binary(ops.add, self, to_funsor(other))
 
     def __sub__(self, other):
-        return self.binary(ops.sub, to_funsor(other))
+        return Binary(ops.sub, self, to_funsor(other))
 
     def __rsub__(self, other):
-        return to_funsor(other).binary(ops.sub, self)
+        return Binary(ops.sub, to_funsor(other), self)
 
     def __mul__(self, other):
-        return self.binary(ops.mul, to_funsor(other))
+        return Binary(ops.mul, self, to_funsor(other))
 
     def __rmul__(self, other):
-        return self.binary(ops.mul, to_funsor(other))
+        return Binary(ops.mul, self, to_funsor(other))
 
     def __truediv__(self, other):
-        return self.binary(ops.truediv, to_funsor(other))
+        return Binary(ops.truediv, self, to_funsor(other))
 
     def __rtruediv__(self, other):
-        return to_funsor(other).binary(ops.truediv, self)
+        return Binary(ops.truediv, to_funsor(other), self)
 
     def __pow__(self, other):
-        return self.binary(ops.pow, to_funsor(other))
+        return Binary(ops.pow, self, to_funsor(other))
 
     def __rpow__(self, other):
-        return to_funsor(other).binary(ops.pow, self)
+        return Binary(ops.pow, to_funsor(other), self)
 
     def __and__(self, other):
-        return self.binary(ops.and_, to_funsor(other))
+        return Binary(ops.and_, self, to_funsor(other))
 
     def __rand__(self, other):
-        return self.binary(ops.and_, to_funsor(other))
+        return Binary(ops.and_, self, to_funsor(other))
 
     def __or__(self, other):
-        return self.binary(ops.or_, to_funsor(other))
+        return Binary(ops.or_, self, to_funsor(other))
 
     def __ror__(self, other):
-        return self.binary(ops.or_, to_funsor(other))
+        return Binary(ops.or_, self, to_funsor(other))
 
     def __xor__(self, other):
-        return self.binary(ops.xor, to_funsor(other))
+        return Binary(ops.xor, self, to_funsor(other))
 
     def __eq__(self, other):
-        return self.binary(ops.eq, to_funsor(other))
+        return Binary(ops.eq, self, to_funsor(other))
 
     def __ne__(self, other):
-        return self.binary(ops.ne, to_funsor(other))
+        return Binary(ops.ne, self, to_funsor(other))
 
     def __lt__(self, other):
-        return self.binary(ops.lt, to_funsor(other))
+        return Binary(ops.lt, self, to_funsor(other))
 
     def __le__(self, other):
-        return self.binary(ops.le, to_funsor(other))
+        return Binary(ops.le, self, to_funsor(other))
 
     def __gt__(self, other):
-        return self.binary(ops.gt, to_funsor(other))
+        return Binary(ops.gt, self, to_funsor(other))
 
     def __ge__(self, other):
-        return self.binary(ops.ge, to_funsor(other))
+        return Binary(ops.ge, self, to_funsor(other))
 
     def __min__(self, other):
-        return self.binary(ops.min, to_funsor(other))
+        return Binary(ops.min, self, to_funsor(other))
 
     def __max__(self, other):
-        return self.binary(ops.max, to_funsor(other))
+        return Binary(ops.max, self, to_funsor(other))
 
     def sum(self, dims=None):
         return self.reduce(ops.add, dims)
@@ -464,6 +465,11 @@ class Unary(Funsor):
         raise NotImplementedError
 
 
+@Eager.register(Unary)
+def _eager_unary(op, arg):
+    return arg._eager_unary(op)
+
+
 _INFIX = {
     ops.add: '+',
     ops.sub: '-',
@@ -522,6 +528,26 @@ class Binary(Funsor):
                 return self.lhs.jacobian(dim) / self.rhs
             return (self.lhs.jacobian(dim) * self.rhs - self.lhs * self.rhs.jacobian(dim)) / self.rhs ** 2
         raise NotImplementedError
+
+
+@dispatch(object, Funsor, Funsor)
+def eager_binary(op, lhs, rhs):
+    pass  # defer to lazy operation
+
+
+@Eager.register(Binary)
+def _eager_binary(op, lhs, rhs):
+    return eager_binary(op, lhs, rhs)
+
+
+@dispatch(object, Funsor, Funsor)
+def simplify_binary(op, lhs, rhs):
+    pass  # defer to lazy operation
+
+
+@Simplify.register(Binary)
+def _simplify_binary(op, lhs, rhs):
+    return simplify_binary(op, lhs, rhs)
 
 
 class Reduction(Funsor):
@@ -689,24 +715,38 @@ class Number(Funsor):
     def _eager_unary(self, op):
         return Number(op(self.data))
 
-    def binary(self, op, other):
-        if op is ops.add and self.data == 0:
-            return other
-        if op is ops.sub and self.data == 0:
-            return -other
-        if op is ops.mul and self.data == 1:
-            return other
-        if isinstance(other, Number):
-            if (op is ops.add or op is ops.sub) and other.data == 0:
-                return self
-            if (op is ops.mul or op is ops.truediv) and other.data == 1:
-                return self
-            return Number(op(self.data, other.data))
-        # TODO move this logic into funsor.engine
-        from funsor.torch import Tensor
-        if isinstance(other, Tensor):
-            return Tensor(other.dims, op(self.data, other.data))
-        return super(Number, self).binary(op, other)
+
+@dispatch(object, Number, Number)
+def eager_binary(op, lhs, rhs):
+    return Number(op(lhs.data, rhs.data))
+
+
+@dispatch(object, Number, Funsor)
+def simplify_binary(op, lhs, rhs):
+    if op is ops.add:
+        if lhs.data == 0:
+            return rhs
+    elif op is ops.sub:
+        if lhs.data == 0:
+            return -rhs
+    elif op is ops.mul:
+        if lhs.data == 1:
+            return rhs
+
+
+@dispatch(object, Funsor, Number)
+def simplify_binary(op, lhs, rhs):
+    if op is ops.add or op is ops.sub:
+        if rhs.data == 0:
+            return lhs
+    elif op is ops.mul or op is ops.truediv:
+        if rhs.data == 1:
+            return lhs
+
+
+@dispatch(object, Number, Number)
+def simplify_binary(op, lhs, rhs):
+    return Number(op(lhs.data, rhs.data))
 
 
 def _of_shape(fn, shape):

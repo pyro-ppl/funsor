@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict, defaultdict
 
 import torch.distributions as dist
+from multipledispatch import dispatch
 from six import add_metaclass
 
 import funsor.ops as ops
@@ -197,43 +198,50 @@ class Normal(Distribution):
     def __init__(self, loc, scale, value=DEFAULT_VALUE):
         super(Normal, self).__init__(dist.Normal, value=value, loc=loc, scale=scale)
 
-    def binary(self, op, other):
-        # Try updating prior from a ground observation.
-        if op is ops.add and isinstance(self.value, Variable):
-            d = self.value.name
-            if (isinstance(other, Normal) and other.is_observed and
-                    d not in other.params['scale'].dims and d in other.params['loc'].dims):
-                for a0, a1 in match_affine(other.params['loc'], d):
-                    print('UPDATE\n self = {}\n other = {}'.format(self, other))
-                    loc1, scale1 = self.params['loc'], self.params['scale']
-                    scale2 = other.params['scale']
-                    loc2 = (other.value - a0) / a1
-                    scale2 = scale2 / a1.abs()
-                    prec1 = scale1 ** -2
-                    prec2 = scale2 ** -2
-
-                    # Perform a filter update.
-                    prec3 = prec1 + prec2
-                    loc3 = loc1 + simplify_sum(loc2 - loc1) * (prec2 / prec3)
-                    scale3 = prec3 ** -0.5
-                    updated = Normal(loc3, scale3, value=self.value)
-                    # FIXME add log(a1) term?
-
-                    # Encapsulate the log_likelihood in a Normal for later pattern matching.
-                    prec4 = prec1 * prec2 / prec3
-                    scale4 = prec4 ** -0.5
-                    loc4 = simplify_sum(loc2 - loc1)
-                    log_likelihood = Normal(loc4, scale4)(value=0.) + a1.abs().log()  # FIXME
-                    result = updated + log_likelihood
-                    print(' result = {}'.format(result))
-                    return result
-
-        return super(Normal, self).binary(op, other)
-
 
 ################################################################################
 # Conjugacy Relationships
 ################################################################################
+
+def _binary_normal_normal(lhs, rhs):
+    d = lhs.value.name
+    if d not in rhs.params['scale'].dims and d in rhs.params['loc'].dims:
+        for a0, a1 in match_affine(rhs.params['loc'], d):
+            print('UPDATE\n lhs = {}\n rhs = {}'.format(lhs, rhs))
+            loc1, scale1 = lhs.params['loc'], lhs.params['scale']
+            scale2 = rhs.params['scale']
+            loc2 = (rhs.value - a0) / a1
+            scale2 = scale2 / a1.abs()
+            prec1 = scale1 ** -2
+            prec2 = scale2 ** -2
+
+            # Perform a filter update.
+            prec3 = prec1 + prec2
+            loc3 = loc1 + simplify_sum(loc2 - loc1) * (prec2 / prec3)
+            scale3 = prec3 ** -0.5
+            updated = Normal(loc3, scale3, value=lhs.value)
+            # FIXME add log(a1) term?
+
+            # Encapsulate the log_likelihood in a Normal for later pattern matching.
+            prec4 = prec1 * prec2 / prec3
+            scale4 = prec4 ** -0.5
+            loc4 = simplify_sum(loc2 - loc1)
+            log_likelihood = Normal(loc4, scale4)(value=0.) + a1.abs().log()  # FIXME
+            result = updated + log_likelihood
+            print(' result = {}'.format(result))
+            return result
+
+
+@dispatch(object, Normal, Normal)
+def eager_binary(op, lhs, rhs):
+    # Try updating prior from a ground observation.
+    if op is ops.add:
+        if isinstance(lhs.value, Variable) and rhs.is_observed:
+            return _binary_normal_normal(lhs, rhs)
+        if isinstance(rhs.value, Variable) and lhs.is_observed:
+            return _binary_normal_normal(lhs, rhs)
+        raise NotImplementedError('TODO')
+
 
 @contract.register((ops.logaddexp, ops.mul), Delta, Funsor)
 @contract.register((ops.logaddexp, ops.mul), Delta, Delta)
