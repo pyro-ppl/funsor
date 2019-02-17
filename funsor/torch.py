@@ -207,12 +207,12 @@ def eager_binary(op, lhs, rhs):
 
 @dispatch(object, Tensor, Number)
 def eager_binary(op, lhs, rhs):
-    return Tensor(lhs.data, op(lhs.data, rhs.data))
+    return Tensor(lhs.dims, op(lhs.data, rhs.data))
 
 
 @dispatch(object, Number, Tensor)
 def eager_binary(op, lhs, rhs):
-    return Tensor(rhs.data, op(lhs.data, rhs.data))
+    return Tensor(rhs.dims, op(lhs.data, rhs.data))
 
 
 @to_funsor.register(torch.Tensor)

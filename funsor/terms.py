@@ -35,7 +35,6 @@ class FunsorMeta(ABCMeta):
         return effectful(cls, cls._ast_call)(*args)
 
     def _ast_call(cls, *args):
-        print('FunsorMeta._ast_call {} {}'.format(cls, args))
         result = super(FunsorMeta, cls).__call__(*args)
         result._ast_values = args
         return result
@@ -79,7 +78,6 @@ class Funsor(object):
         """
         Partially evaluates this funsor by substituting dimensions.
         """
-        print('DEBUG Funsor.__call__ {} {} {}'.format(self, args, kwargs))
         subs = OrderedDict(zip(self.dims, args))
         for d in self.dims:
             if d in kwargs:
@@ -335,7 +333,6 @@ class Variable(Funsor):
         return self.dims[0]
 
     def _eager_subs(self, **kwargs):
-        print('DEBUG Variable._eager_subs {} {} '.format(self, kwargs))
         return kwargs.get(self.name, self)
 
     def jacobian(self, dim):
@@ -381,7 +378,6 @@ class Substitution(Funsor):
 
 @Eager.register(Substitution)
 def _eager_subs(arg, subs):
-    print('DEBUG _eager_subs {} {} '.format(arg, subs))
     if not subs:
         return arg
     return arg._eager_subs(**dict(subs))
@@ -594,7 +590,7 @@ class Reduction(Funsor):
 
 
 @Eager.register(Reduction)
-def _eager_reduce(arg, op, dims):
+def _eager_reduce(op, arg, dims):
     return arg._eager_reduce(op, dims)
 
 

@@ -115,13 +115,6 @@ class Distribution(Funsor):
                                ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def _eager_subs(self, **kwargs):
-        # DEBUG
-        if 'value' in kwargs:
-            print('DEBUG Distribution._eager_subs {} {}'.format(self, kwargs))
-            var = self.params['value']
-            var_subs = var(**kwargs)
-            assert var_subs is kwargs['value']
-
         params = OrderedDict((k, v(**kwargs)) for k, v in self.params.items())
         if all(isinstance(v, (Number, Tensor)) for v in params.values()):
             dims, tensors = align_tensors(*params.values())
