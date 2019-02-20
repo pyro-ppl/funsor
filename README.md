@@ -7,7 +7,7 @@ Beware building on top of this unstable prototype.
 
 ## Design
 
-See [design doc](https://docs.google.com/document/d/1LUj-oV5hJe74HJWKtog07Qrcaq4uhZQ5NuYuRevaVFo).
+See [design doc](https://docs.google.com/document/d/1NVlfQnNQ0Aebg8vfIGcJKsnSqAhB4bbClQrb5dwm2OM).
 
 The goal of this library is to generalize [Pyro](http://pyro.ai)'s delayed
 inference algorithms from discrete to continuous variables, and to create
@@ -63,8 +63,10 @@ See [examples/minipyro.py](examples/minipyro.py) for a more complete example.
 - `funsor.ops` is a collection of basic ops: unary, binary, and reductions
 - `funsor.term` contains AST classes for symbolic algebra, including concrete
   PyTorch `Tensor`s
+- `funsor.interpreter` Provides a single function `funsor.eval()` for
+  evaluation of funsors under nonstandard interpretation.
 - `funsor.engine` contains algorithms for symbolic computation including
-  variable elimination. Its interface is `funsor.eval()`.
+  variable elimination.
 - `funsor.distributions` contains standard probability distributions.
 - `funsor.adjoint` implementations of adjoint algorithms, e.g. sampling.
 - `funsor.minipyro` a small Funsor-compatible implementation of Pyro.
