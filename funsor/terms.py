@@ -4,26 +4,16 @@ import itertools
 import numbers
 from collections import OrderedDict
 
-from contextlib2 import contextmanager
 from six import add_metaclass
 from six.moves import ABCMeta, abstractmethod
 
 import funsor.ops as ops
 from funsor.domains import Domain, find_domain
-from funsor.registry import KeyedRegistry
-from funsor.six import contextmanager, getargspec, singledispatch
-
-
-def lazy(cls, *args):
-    return cls(*args)
-
-
-eager = KeyedRegistry()
+from funsor.interpretations import eager, get_interpretation, lazy, reflect
+from funsor.six import getargspec, singledispatch
 
 
 class FunsorMeta(ABCMeta):
-    interpretation = eager  # Use eager interpretation by default.
-
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
         cls._ast_fields = getargspec(cls.__init__)[0][1:]
@@ -38,7 +28,7 @@ class FunsorMeta(ABCMeta):
             args = tuple(args)
 
         # Apply interpretation.
-        result = cls.interpretation(cls, args)
+        result = get_interpretation()(cls, *args)
         if result is not None:
             return result
 
@@ -46,20 +36,6 @@ class FunsorMeta(ABCMeta):
         result = super(FunsorMeta, cls).__call__(*args)
         result._ast_values = args
         return result
-
-
-def set_interpretation(interp):
-    FunsorMeta.interpreation = interp
-
-
-@contextmanager
-def interpretation(interp):
-    old = FunsorMeta.interpretation
-    try:
-        FunsorMeta.interpretation = interp
-        yield
-    finally:
-        FunsorMeta.interpreation = old
 
 
 @add_metaclass(FunsorMeta)
@@ -70,6 +46,8 @@ class Funsor(object):
     Derived classes must implement an :meth:`eager_subs` method.
 
     :param OrderedDict inputs: A mapping from input name to domain.
+        This can be viewed as a typed context or a mapping from
+        free variables to domains.
     :param Domain output: An output domain.
     """
     def __init__(self, inputs, output):
@@ -99,7 +77,7 @@ class Funsor(object):
                 subs[v] = Variable(v, self.inputs[v])
             else:
                 subs[v] = to_funsor(v)
-        return Substitute(self, tuple(subs.items()))
+        return Substitute(self, subs)
 
     def __getitem__(self, args):
         if not isinstance(args, tuple):
@@ -138,25 +116,25 @@ class Funsor(object):
                 "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
 
-    def reduce(self, op, dims=None):
+    def reduce(self, op, bound_vars=None):
         """
-        Reduce along all or a subset of dimensions.
+        Reduce along all or a subset of inputs.
 
         :param callable op: A reduction operation.
-        :param set dims: An optional dim or set of dims to reduce.
-            If unspecified, all dims will be reduced.
+        :param bound_vars: An optional input name or set of names to reduce.
+            If unspecified, all inputs will be reduced.
+        :type bound_vars: str or frozenset
         """
-        # Eagerly convert dims to appropriate things.
-        if dims is None:
-            # Empty dims means "reduce over everything".
-            dims = frozenset(self.dims)
+        # Eagerly convert bound_vars to appropriate things.
+        if bound_vars is None:
+            # Empty bound_vars means "reduce over everything".
+            bound_vars = frozenset(self.inputs)
         else:
-            # A single dim means "reduce over this one dim".
-            if isinstance(dims, str):
-                dims = (dims,)
-            dims = frozenset(dims).intersection(self.dims)
-        # TODO convert reduction over irrelevant dims to multiplication?
-        return Reduce(op, self, dims)
+            # A single name means "reduce over this one variable".
+            if isinstance(bound_vars, str):
+                bound_vars = frozenset([bound_vars])
+            assert bound_vars.issubset(self.inputs)
+        return Reduce(op, self, bound_vars)
 
     @abstractmethod
     def eager_subs(self, subs):
@@ -165,19 +143,19 @@ class Funsor(object):
     def eager_unary(self, op):
         return None  # defer to default implementation
 
-    def eager_reduce(self, op, reduce_dims):
-        assert all(k in self.inputs for k in reduce_dims)
-        if not reduce_dims:
+    def eager_reduce(self, op, bound_vars):
+        assert all(k in self.inputs for k in bound_vars)
+        if not bound_vars:
             return self
 
-        # Try to sum out integer dims. This is mainly useful for testing,
-        # as most dims will be overridden by tensor reduction.
-        int_dims = tuple(sorted(k for k in reduce_dims
+        # Try to sum out integer variables. This is mainly useful for testing,
+        # since reduction is more efficiently implemented by Tensor.
+        int_vars = tuple(sorted(k for k in bound_vars
                                 if isinstance(self.inputs[k].dtype, int)))
-        if int_dims:
+        if int_vars:
             result = 0.
-            for int_values in itertools.product(*(self.inputs[k] for k in int_dims)):
-                subs = dict(zip(int_dims, int_values))
+            for int_values in itertools.product(*(self.inputs[k] for k in int_vars)):
+                subs = dict(zip(int_vars, int_values))
                 result += self(**subs)
             return result
 
@@ -277,26 +255,26 @@ class Funsor(object):
     def __max__(self, other):
         return Binary(ops.max, self, to_funsor(other))
 
-    def sum(self, dims=None):
-        return Reduce(ops.add, self, dims)
+    def sum(self, bound_vars=None):
+        return Reduce(ops.add, self, bound_vars)
 
-    def prod(self, dims=None):
-        return Reduce(ops.mul, self, dims)
+    def prod(self, bound_vars=None):
+        return Reduce(ops.mul, self, bound_vars)
 
-    def logsumexp(self, dims=None):
-        return Reduce(ops.logaddexp, self, dims)
+    def logsumexp(self, bound_vars=None):
+        return Reduce(ops.logaddexp, self, bound_vars)
 
-    def all(self, dims=None):
-        return Reduce(ops.and_, self, dims)
+    def all(self, bound_vars=None):
+        return Reduce(ops.and_, self, bound_vars)
 
-    def any(self, dims=None):
-        return Reduce(ops.or_, self, dims)
+    def any(self, bound_vars=None):
+        return Reduce(ops.or_, self, bound_vars)
 
-    def min(self, dims=None):
-        return Reduce(ops.min, self, dims)
+    def min(self, bound_vars=None):
+        return Reduce(ops.min, self, bound_vars)
 
-    def max(self, dims=None):
-        return Reduce(ops.max, self, dims)
+    def max(self, bound_vars=None):
+        return Reduce(ops.max, self, bound_vars)
 
 
 @singledispatch
@@ -341,7 +319,7 @@ class Substitute(Funsor):
     """
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
-        assert isinstance(subs, tuple)  # FIXME
+        assert isinstance(subs, dict)
         for key, value in subs.items():
             assert isinstance(key, str)
             assert key in arg.inputs
@@ -362,6 +340,7 @@ class Substitute(Funsor):
         raise NotImplementedError('TODO')
 
 
+@lazy.register(Substitute, Funsor, object)
 @eager.register(Substitute, Funsor, object)
 def eager_subs(arg, subs):
     return arg.eager_subs(subs)
@@ -393,6 +372,9 @@ class Unary(Funsor):
     def eager_subs(self, subs):
         arg = Substitute(self.arg, subs)
         return Unary(self.op, arg)
+
+
+lazy.register(Unary, object, Funsor)(reflect)
 
 
 @eager.register(Unary, object, Funsor)
@@ -436,53 +418,53 @@ class Binary(Funsor):
         return Binary(self.op, lhs, rhs)
 
 
-@eager.register(Binary, object, Funsor, Funsor)
-def eager_binary(op, lhs, rhs):
-    return None  # defer to default implementation
+lazy.register(Binary, object, Funsor, Funsor)(lazy)
+eager.register(Binary, object, Funsor, Funsor)(lazy)
 
 
 class Reduce(Funsor):
     """
     Lazy reduction.
     """
-    def __init__(self, op, arg, reduce_dims):
+    def __init__(self, op, arg, bound_vars):
         assert callable(op)
         assert isinstance(arg, Funsor)
-        assert isinstance(reduce_dims, frozenset)
-        inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if k not in reduce_dims)
+        assert isinstance(bound_vars, frozenset)
+        inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if k not in bound_vars)
         output = arg.output
         super(Reduce, self).__init__(inputs, output)
         self.op = op
         self.arg = arg
-        self.reduce_dims = reduce_dims
+        self.bound_vars = bound_vars
 
     def __repr__(self):
         return 'Reduce({}, {}, {})'.format(
-            self.op.__name__, self.arg, self.reduce_dims)
+            self.op.__name__, self.arg, self.bound_vars)
 
-    def eager_subs(self, *args, **kwargs):
-        kwargs = {dim: value for dim, value in kwargs.items()
-                  if dim in self.dims}
-        kwargs.update(zip(self.dims, args))
-        if not all(set(self.reduce_dims).isdisjoint(getattr(value, 'dims', ()))
-                   for value in kwargs.values()):
+    def eager_subs(self, subs):
+        subs = {key: value for key, value in subs.items() if key not in self.bound_vars}
+        if not all(self.bound_vars.isdisjoint(value.inputs)
+                   for value in subs.values()):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        return self.arg(**kwargs).reduce(self.op, self.reduce_dims)
+        return self.arg(**subs).reduce(self.op, self.bound_vars)
 
-    def eager_reduce(self, op, dims=None):
+    def eager_reduce(self, op, bound_vars=None):
         if op is self.op:
             # Eagerly fuse reductions.
-            if dims is None:
-                dims = frozenset(self.dims)
+            if bound_vars is None:
+                bound_vars = frozenset(self.bound_vars)
             else:
-                dims = frozenset(dims).intersection(self.dims)
-            return Reduce(op, self.arg, self.reduce_dims | dims)
-        return super(Reduce, self).reduce(op, dims)
+                bound_vars = frozenset(bound_vars).intersection(self.bound_vars)
+            return Reduce(op, self.arg, self.bound_vars | bound_vars)
+        return super(Reduce, self).reduce(op, bound_vars)
+
+
+lazy.register(Reduce, object, Funsor, frozenset)(reflect)
 
 
 @eager.register(Reduce, object, Funsor, frozenset)
-def eager_reduce(op, arg, reduce_dims):
-    return arg.eager_reduce(op, reduce_dims)
+def eager_reduce(op, arg, bound_vars):
+    return arg.eager_reduce(op, bound_vars)
 
 
 @to_funsor.register(numbers.Number)
@@ -546,7 +528,5 @@ __all__ = [
     'Substitute',
     'Unary',
     'Variable',
-    'interpretation',
-    'set_interpretation',
     'to_funsor',
 ]

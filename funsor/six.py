@@ -5,11 +5,6 @@ import inspect
 import six
 
 try:
-    from contextlib2 import contextmanager
-except ImportError:
-    from contextlib import contextmanager
-
-try:
     from functools import singledispatch  # only in python 3
 except ImportError:
 
@@ -51,7 +46,6 @@ def getargspec(fn):
 
 
 __all__ = [
-    'contextmanager',
     'getargspec',
     'singledispatch',
 ]
