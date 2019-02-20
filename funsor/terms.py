@@ -1,20 +1,28 @@
 from __future__ import absolute_import, division, print_function
 
-import functools
+import itertools
 import numbers
 from collections import OrderedDict
 
+from contextlib2 import contextmanager
 from six import add_metaclass
-from six.moves import reduce
+from six.moves import ABCMeta, abstractmethod
 
 import funsor.ops as ops
-from funsor.handlers import effectful
-from funsor.six import getargspec, singledispatch
+from funsor.domains import Domain, find_domain
+from funsor.registry import KeyedRegistry
+from funsor.six import contextmanager, getargspec, singledispatch
 
-DOMAINS = ('real', 'vector')
+
+def lazy(cls, *args):
+    return cls(*args)
 
 
-class FunsorMeta(type):
+eager = KeyedRegistry()
+
+
+class FunsorMeta(ABCMeta):
+    interpretation = eager  # Use eager interpretation by default.
 
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
@@ -29,12 +37,29 @@ class FunsorMeta(type):
             assert not kwargs, kwargs
             args = tuple(args)
 
-        return effectful(cls, cls._ast_call)(*args)
+        # Apply interpretation.
+        result = cls.interpretation(cls, args)
+        if result is not None:
+            return result
 
-    def _ast_call(cls, *args):
+        # Create a new object.
         result = super(FunsorMeta, cls).__call__(*args)
         result._ast_values = args
         return result
+
+
+def set_interpretation(interp):
+    FunsorMeta.interpreation = interp
+
+
+@contextmanager
+def interpretation(interp):
+    old = FunsorMeta.interpretation
+    try:
+        FunsorMeta.interpretation = interp
+        yield
+    finally:
+        FunsorMeta.interpreation = old
 
 
 @add_metaclass(FunsorMeta)
@@ -42,30 +67,20 @@ class Funsor(object):
     """
     Abstract base class for immutable functional tensors.
 
-    Concrete derived classes must implement ``__init__()`` methods taking
-    hashable ``*args`` and no optional ``**kwargs`` so as to support cons
-    hashing.
+    Derived classes must implement an :meth:`eager_subs` method.
 
-    .. note:: Probabilistic methods like :meth:`sample` and :meth:`marginal`
-        follow the convention that funsors represent log density functions.
-        Thus for example the partition function is given by :meth:`logsumexp`.
-
-    :ivar OrderedDict schema: A mapping from dim to size.
-    :param tuple dims: A tuple of strings of dimension names.
-    :param tuple shape: A tuple of sizes. Each size is either a nonnegative
-        integer or a string denoting a continuous domain.
+    :param OrderedDict inputs: A mapping from input name to domain.
+    :param Domain output: An output domain.
     """
-    def __init__(self, dims, shape):
-        assert isinstance(dims, tuple)
-        assert all(isinstance(d, str) for d in dims)
-        assert len(set(dims)) == len(dims)
-        assert isinstance(shape, tuple)
-        assert all(isinstance(s, int) or s in DOMAINS for s in shape)
-        assert len(dims) == len(shape)
-        super(Funsor, self).__init__()
-        self.dims = dims
-        self.shape = shape
-        self.schema = OrderedDict(zip(dims, shape))
+    def __init__(self, inputs, output):
+        assert isinstance(inputs, OrderedDict)
+        for name, input_ in inputs.items():
+            assert isinstance(name, str)
+            assert isinstance(input_, Domain)
+        assert isinstance(output, Domain)
+        super(Funsor, self).__init__(inputs, output)
+        self.inputs = inputs
+        self.output = output
 
     def __hash__(self):
         return id(self)
@@ -74,11 +89,17 @@ class Funsor(object):
         """
         Partially evaluates this funsor by substituting dimensions.
         """
-        subs = OrderedDict(zip(self.dims, args))
-        for d in self.dims:
-            if d in kwargs:
-                subs[d] = kwargs[d]
-        return Substitution(self, tuple((k, to_funsor(v)) for k, v in subs.items()))
+        # Eagerly restrict to this funsor's inputs and convert to_funsor().
+        subs = OrderedDict(zip(self.inputs, args))
+        for k in self.inputs[len(args):]:
+            if k in kwargs:
+                subs[k] = kwargs[k]
+        for k, v in subs.items():
+            if isinstance(v, str):
+                subs[v] = Variable(v, self.inputs[v])
+            else:
+                subs[v] = to_funsor(v)
+        return Substitute(self, tuple(subs.items()))
 
     def __getitem__(self, args):
         if not isinstance(args, tuple):
@@ -88,37 +109,22 @@ class Funsor(object):
         kwargs = {}
         for pos, arg in enumerate(args):
             if arg is Ellipsis:
-                kwargs.update(zip(reversed(self.dims),
+                kwargs.update(zip(reversed(self.inputs),
                                   reversed(args[1 + pos:])))
                 break
-            kwargs[self.dims[pos]] = arg
+            kwargs[self.inputs[pos]] = arg  # FIXME fix positional indexing
 
         # Handle complete slices like x[:].
-        kwargs = {dim: value
-                  for dim, value in kwargs.items()
+        kwargs = {key: value
+                  for key, value in kwargs.items()
                   if not (isinstance(value, slice) and value == slice(None))}
 
         return self(**kwargs)
 
     # Avoid __setitem__ due to immutability.
 
-    def align(self, dims, shape=None):
-        """
-        Align this funsor to match given ``dims`` and ``shape``.
-
-        This can both permute and add constant dims.  This is mainly useful in
-        preparation for extracting ``.data`` of a :class:`funsor.torch.Tensor`.
-        """
-        if shape is None:
-            assert set(dims) == set(self.dims)
-            shape = tuple(self.schema[d] for d in dims)
-        if dims == self.dims:
-            assert shape == self.shape
-            return self
-        return Align(self, dims, shape)
-
     def __bool__(self):
-        if self.shape:
+        if self.inputs or self.output.shape:
             raise ValueError(
                 "bool value of Funsor with more than one value is ambiguous")
         raise NotImplementedError
@@ -127,28 +133,10 @@ class Funsor(object):
         return self.__bool__()
 
     def item(self):
-        if self.shape:
+        if self.inputs or self.output.shape:
             raise ValueError(
                 "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
-
-    def unary(self, op):
-        """
-        Pointwise unary operation.
-        """
-        return Unary(op, self)
-
-    def binary(self, op, other):
-        """
-        Broadcasted pointwise binary operation.
-        """
-        assert isinstance(other, Funsor)
-        if isinstance(other, Number):
-            if (op is ops.add or op is ops.sub) and other.data == 0:
-                return self
-            if (op is ops.mul or op is ops.truediv) and other.data == 1:
-                return self
-        return Binary(op, self, other)
 
     def reduce(self, op, dims=None):
         """
@@ -158,146 +146,157 @@ class Funsor(object):
         :param set dims: An optional dim or set of dims to reduce.
             If unspecified, all dims will be reduced.
         """
+        # Eagerly convert dims to appropriate things.
         if dims is None:
+            # Empty dims means "reduce over everything".
             dims = frozenset(self.dims)
         else:
+            # A single dim means "reduce over this one dim".
             if isinstance(dims, str):
                 dims = (dims,)
             dims = frozenset(dims).intersection(self.dims)
-        if not dims:
-            return self
-        return Reduction(op, self, dims)
+        # TODO convert reduction over irrelevant dims to multiplication?
+        return Reduce(op, self, dims)
 
-    def contract(self, sum_op, prod_op, other, dims):
-        """
-        DEPRECATED This is equivalent to
-
-            self.binary(prod_op, other).reduce(sum_op, dims)
-
-        but we only want to perform eager contractions.
-        """
-        raise NotImplementedError(
-            "contract({}, {}, {}, {}, {})".format(sum_op.__name__, prod_op.__name__, self, other, dims))
-
-    def jacobian(self, dim):
-        if dim not in self.dims:
-            return Number(0.)
+    @abstractmethod
+    def eager_subs(self, subs):
         raise NotImplementedError
+
+    def eager_unary(self, op):
+        return None  # defer to default implementation
+
+    def eager_reduce(self, op, reduce_dims):
+        assert all(k in self.inputs for k in reduce_dims)
+        if not reduce_dims:
+            return self
+
+        # Try to sum out integer dims. This is mainly useful for testing,
+        # as most dims will be overridden by tensor reduction.
+        int_dims = tuple(sorted(k for k in reduce_dims
+                                if isinstance(self.inputs[k].dtype, int)))
+        if int_dims:
+            result = 0.
+            for int_values in itertools.product(*(self.inputs[k] for k in int_dims)):
+                subs = dict(zip(int_dims, int_values))
+                result += self(**subs)
+            return result
+
+        return None  # defer to default implementation
 
     # ------------------------------------------------------------------------
     # Subclasses should not override these methods; instead override
     # the generic handlers and fall back to super(...).handler.
 
     def __invert__(self):
-        return self.unary(ops.invert)
+        return Unary(ops.invert, self)
 
     def __neg__(self):
-        return self.unary(ops.neg)
+        return Unary(ops.neg, self)
 
     def abs(self):
-        return self.unary(ops.abs)
+        return Unary(ops.abs, self)
 
     def sqrt(self):
-        return self.unary(ops.sqrt)
+        return Unary(ops.sqrt, self)
 
     def exp(self):
-        return self.unary(ops.exp)
+        return Unary(ops.exp, self)
 
     def log(self):
-        return self.unary(ops.log)
+        return Unary(ops.log, self)
 
     def log1p(self):
-        return self.unary(ops.log1p)
+        return Unary(ops.log1p, self)
 
     def __add__(self, other):
-        return self.binary(ops.add, to_funsor(other))
+        return Binary(ops.add, self, to_funsor(other))
 
     def __radd__(self, other):
-        return self.binary(ops.add, to_funsor(other))
+        return Binary(ops.add, self, to_funsor(other))
 
     def __sub__(self, other):
-        return self.binary(ops.sub, to_funsor(other))
+        return Binary(ops.sub, self, to_funsor(other))
 
     def __rsub__(self, other):
-        return to_funsor(other).binary(ops.sub, self)
+        return Binary(ops.sub, to_funsor(other), self)
 
     def __mul__(self, other):
-        return self.binary(ops.mul, to_funsor(other))
+        return Binary(ops.mul, self, to_funsor(other))
 
     def __rmul__(self, other):
-        return self.binary(ops.mul, to_funsor(other))
+        return Binary(ops.mul, self, to_funsor(other))
 
     def __truediv__(self, other):
-        return self.binary(ops.truediv, to_funsor(other))
+        return Binary(ops.truediv, self, to_funsor(other))
 
     def __rtruediv__(self, other):
-        return to_funsor(other).binary(ops.truediv, self)
+        return Binary(ops.truediv, to_funsor(other), self)
 
     def __pow__(self, other):
-        return self.binary(ops.pow, to_funsor(other))
+        return Binary(ops.pow, self, to_funsor(other))
 
     def __rpow__(self, other):
-        return to_funsor(other).binary(ops.pow, self)
+        return Binary(ops.pow, to_funsor(other), self)
 
     def __and__(self, other):
-        return self.binary(ops.and_, to_funsor(other))
+        return Binary(ops.and_, self, to_funsor(other))
 
     def __rand__(self, other):
-        return self.binary(ops.and_, to_funsor(other))
+        return Binary(ops.and_, self, to_funsor(other))
 
     def __or__(self, other):
-        return self.binary(ops.or_, to_funsor(other))
+        return Binary(ops.or_, self, to_funsor(other))
 
     def __ror__(self, other):
-        return self.binary(ops.or_, to_funsor(other))
+        return Binary(ops.or_, self, to_funsor(other))
 
     def __xor__(self, other):
-        return self.binary(ops.xor, to_funsor(other))
+        return Binary(ops.xor, self, to_funsor(other))
 
     def __eq__(self, other):
-        return self.binary(ops.eq, to_funsor(other))
+        return Binary(ops.eq, self, to_funsor(other))
 
     def __ne__(self, other):
-        return self.binary(ops.ne, to_funsor(other))
+        return Binary(ops.ne, self, to_funsor(other))
 
     def __lt__(self, other):
-        return self.binary(ops.lt, to_funsor(other))
+        return Binary(ops.lt, self, to_funsor(other))
 
     def __le__(self, other):
-        return self.binary(ops.le, to_funsor(other))
+        return Binary(ops.le, self, to_funsor(other))
 
     def __gt__(self, other):
-        return self.binary(ops.gt, to_funsor(other))
+        return Binary(ops.gt, self, to_funsor(other))
 
     def __ge__(self, other):
-        return self.binary(ops.ge, to_funsor(other))
+        return Binary(ops.ge, self, to_funsor(other))
 
     def __min__(self, other):
-        return self.binary(ops.min, to_funsor(other))
+        return Binary(ops.min, self, to_funsor(other))
 
     def __max__(self, other):
-        return self.binary(ops.max, to_funsor(other))
+        return Binary(ops.max, self, to_funsor(other))
 
     def sum(self, dims=None):
-        return self.reduce(ops.add, dims)
+        return Reduce(ops.add, self, dims)
 
     def prod(self, dims=None):
-        return self.reduce(ops.mul, dims)
+        return Reduce(ops.mul, self, dims)
 
     def logsumexp(self, dims=None):
-        return self.reduce(ops.logaddexp, dims)
+        return Reduce(ops.logaddexp, self, dims)
 
     def all(self, dims=None):
-        return self.reduce(ops.and_, dims)
+        return Reduce(ops.and_, self, dims)
 
     def any(self, dims=None):
-        return self.reduce(ops.or_, dims)
+        return Reduce(ops.or_, self, dims)
 
     def min(self, dims=None):
-        return self.reduce(ops.min, dims)
+        return Reduce(ops.min, self, dims)
 
     def max(self, dims=None):
-        return self.reduce(ops.max, dims)
+        return Reduce(ops.max, self, dims)
 
 
 @singledispatch
@@ -321,8 +320,10 @@ class Variable(Funsor):
     :param str name: A variable name.
     :param size: A size, either an int or a ``DOMAIN``.
     """
-    def __init__(self, name, size):
-        super(Variable, self).__init__((name,), (size,))
+    def __init__(self, name, output):
+        inputs = OrderedDict([(name, output)])
+        super(Variable, self).__init__(inputs, output)
+        self.name = name
 
     def __repr__(self):
         return "Variable({}, {})".format(repr(self.name), repr(self.shape[0]))
@@ -330,96 +331,40 @@ class Variable(Funsor):
     def __str__(self):
         return self.name
 
-    @property
-    def name(self):
-        return self.dims[0]
-
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
-        if self.name not in kwargs:
-            return self
-        value = kwargs[self.name]
-        if isinstance(value, str):
-            return Variable(value, self.shape[0])
-        return to_funsor(value)
-
-    def jacobian(self, dim):
-        return Number(float(dim == self.name))
+    def eager_subs(self, subs):
+        return subs.get(self.name, self)
 
 
-class Substitution(Funsor):
+class Substitute(Funsor):
     """
     Lazy substitution of the form ``x(u=y, v=z)``.
     """
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
-        assert isinstance(subs, tuple)
-        for dim_value in subs:
-            assert isinstance(dim_value, tuple)
-            dim, value = dim_value
-            assert isinstance(dim, str)
-            assert dim in arg.dims
+        assert isinstance(subs, tuple)  # FIXME
+        for key, value in subs.items():
+            assert isinstance(key, str)
+            assert key in arg.inputs
             assert isinstance(value, Funsor)
-        schema = arg.schema.copy()
-        for dim, value in subs:
-            del schema[dim]
-        for dim, value in subs:
-            schema.update(value.schema)
-        dims = tuple(schema)
-        shape = tuple(schema.values())
-        super(Substitution, self).__init__(dims, shape)
+        inputs = arg.inputs.copy()
+        for key, value in subs:
+            del inputs[key]
+        for key, value in subs:
+            inputs.update(value.inputs)
+        super(Substitute, self).__init__(inputs, arg.output)
         self.arg = arg
         self.subs = subs
 
     def __repr__(self):
-        return 'Substitution({}, {})'.format(self.arg, self.subs)
+        return 'Substitute({}, {})'.format(self.arg, self.subs)
 
-    def __call__(self, *args, **kwargs):
-        # TODO eagerly fuse substitutions.
-        kwargs.update(zip(self.dims, args))
-        subs = {dim: value(**kwargs) for dim, value in self.subs}
-        for dim, value in self.subs:
-            kwargs.pop(dim, None)
-        result = self.arg(**kwargs)(**subs)
-        # FIXME for densities, add log_abs_det_jacobian
-        return result
+    def eager_subs(self, subs):
+        raise NotImplementedError('TODO')
 
 
-class Align(Funsor):
-    """
-    Lazy call to ``.align(...)``.
-    """
-    def __init__(self, arg, dims, shape):
-        assert isinstance(arg, Funsor)
-        assert isinstance(dims, tuple)
-        assert isinstance(shape, tuple)
-        assert all(isinstance(d, str) for d in dims)
-        assert all(isinstance(s, int) or s in DOMAINS for s in shape)
-        for d, s in zip(dims, shape):
-            assert arg.schema.get(d, s) == s
-        super(Align, self).__init__(dims, shape)
-        self.arg = arg
-        self.dims = dims
-        self.shape = shape
-
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
-        return self.arg(**kwargs)
-
-    def align(self, dims, shape=None):
-        if shape is None:
-            assert set(dims) == set(self.dims)
-            shape = tuple(self.schema[d] for d in dims)
-        return self.arg.align(dims, shape)
-
-    def unary(self, op):
-        return self.arg.unary(op)
-
-    def binary(self, op, other):
-        return self.arg.binary(op, other)
-
-    def reduce(self, op, dims=None):
-        return self.arg.reduce(op, dims)
+@eager.register(Substitute, Funsor, object)
+def eager_subs(arg, subs):
+    return arg.eager_subs(subs)
 
 
 _PREFIX = {
@@ -435,7 +380,8 @@ class Unary(Funsor):
     def __init__(self, op, arg):
         assert callable(op)
         assert isinstance(arg, Funsor)
-        super(Unary, self).__init__(arg.dims, arg.shape)
+        output = find_domain(op, arg.output)
+        super(Unary, self).__init__(arg.inputs, output)
         self.op = op
         self.arg = arg
 
@@ -444,20 +390,14 @@ class Unary(Funsor):
             return '{}{}'.format(_PREFIX[self.op], self.arg)
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
 
-    def __call__(self, *args, **kwargs):
-        return self.arg(*args, **kwargs).unary(self.op)
+    def eager_subs(self, subs):
+        arg = Substitute(self.arg, subs)
+        return Unary(self.op, arg)
 
-    def unary(self, op):
-        if op is ops.neg and self.op is ops.neg:
-            return self.arg
-        return self.arg.unary(op)
 
-    def jacobian(self, dim):
-        if dim not in self.arg.dims:
-            return Number(0.)
-        if self.op is ops.neg:
-            return -self.arg.jacobian(dim)
-        raise NotImplementedError
+@eager.register(Unary, object, Funsor)
+def eager_unary(op, arg):
+    return arg.eager_unary(op)
 
 
 _INFIX = {
@@ -477,11 +417,10 @@ class Binary(Funsor):
         assert callable(op)
         assert isinstance(lhs, Funsor)
         assert isinstance(rhs, Funsor)
-        schema = lhs.schema.copy()
-        schema.update(rhs.schema)
-        dims = tuple(schema)
-        shape = tuple(schema.values())
-        super(Binary, self).__init__(dims, shape)
+        inputs = lhs.inputs.copy()
+        inputs.update(rhs.inputs)
+        output = find_domain(op, lhs.output, rhs.output)
+        super(Binary, self).__init__(inputs, output)
         self.op = op
         self.lhs = lhs
         self.rhs = rhs
@@ -491,37 +430,18 @@ class Binary(Funsor):
             return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
-        return self.lhs(**kwargs).binary(self.op, self.rhs(**kwargs))
-
-    def contract(self, sum_op, prod_op, other, dims):
-        if dims not in self.dims:
-            return self.binary(prod_op, other)
-        if prod_op is self.op:
-            if dims not in self.lhs:
-                return self.lhs.binary(self.op, self.rhs.reduce(sum_op, dims))
-            if dims not in self.rhs:
-                return self.lhs.reduce(sum_op, dims).binary(self.op, self.rhs)
-        return super(Binary, self).contract(sum_op, prod_op, other, dims)
-
-    def jacobian(self, dim):
-        if dim not in self.dims:
-            return Number(0.)
-        if self.op is ops.add:
-            return self.lhs.jacobian(dim) + self.rhs.jacobian(dim)
-        if self.op is ops.sub:
-            return self.lhs.jacobian(dim) - self.rhs.jacobian(dim)
-        if self.op is ops.mul:
-            return self.lhs.jacobian(dim) * self.rhs + self.lhs * self.rhs.jacobian(dim)
-        if self.op is ops.truediv:
-            if dim not in self.rhs:
-                return self.lhs.jacobian(dim) / self.rhs
-            return (self.lhs.jacobian(dim) * self.rhs - self.lhs * self.rhs.jacobian(dim)) / self.rhs ** 2
-        raise NotImplementedError
+    def eager_subs(self, subs):
+        lhs = Substitute(self.lhs, subs)
+        rhs = Substitute(self.rhs, subs)
+        return Binary(self.op, lhs, rhs)
 
 
-class Reduction(Funsor):
+@eager.register(Binary, object, Funsor, Funsor)
+def eager_binary(op, lhs, rhs):
+    return None  # defer to default implementation
+
+
+class Reduce(Funsor):
     """
     Lazy reduction.
     """
@@ -529,18 +449,18 @@ class Reduction(Funsor):
         assert callable(op)
         assert isinstance(arg, Funsor)
         assert isinstance(reduce_dims, frozenset)
-        dims = tuple(d for d in arg.dims if d not in reduce_dims)
-        shape = tuple(arg.schema[d] for d in dims)
-        super(Reduction, self).__init__(dims, shape)
+        inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if k not in reduce_dims)
+        output = arg.output
+        super(Reduce, self).__init__(inputs, output)
         self.op = op
         self.arg = arg
         self.reduce_dims = reduce_dims
 
     def __repr__(self):
-        return 'Reduction({}, {}, {})'.format(
+        return 'Reduce({}, {}, {})'.format(
             self.op.__name__, self.arg, self.reduce_dims)
 
-    def __call__(self, *args, **kwargs):
+    def eager_subs(self, *args, **kwargs):
         kwargs = {dim: value for dim, value in kwargs.items()
                   if dim in self.dims}
         kwargs.update(zip(self.dims, args))
@@ -549,127 +469,47 @@ class Reduction(Funsor):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
         return self.arg(**kwargs).reduce(self.op, self.reduce_dims)
 
-    def reduce(self, op, dims=None):
+    def eager_reduce(self, op, dims=None):
         if op is self.op:
             # Eagerly fuse reductions.
             if dims is None:
                 dims = frozenset(self.dims)
             else:
                 dims = frozenset(dims).intersection(self.dims)
-            return Reduction(op, self.arg, self.reduce_dims | dims)
-        return super(Reduction, self).reduce(op, dims)
+            return Reduce(op, self.arg, self.reduce_dims | dims)
+        return super(Reduce, self).reduce(op, dims)
 
 
-class Branch(Funsor):
-    """
-    Funsor representing a multi-way branch statement.
-
-    This serves as a ragged equivalent to :func:`torch.stack`.
-    This is useful for modeling heterogeneous mixture models.
-
-    Note that while dims may differ across branches, types must agree across
-    branches.
-
-    :param str dim: A dim on which to branch.
-    :param tuple components: An tuple of components of heterogeneous shape.
-    """
-    def __init__(self, dim, components):
-        assert isinstance(dim, str)
-        assert isinstance(components, tuple)
-        assert all(isinstance(c, Funsor) for c in components)
-        schema = OrderedDict([(dim, len(components))])
-        for i, c in enumerate(components):
-            if dim in c.dims:
-                c = c(**{dim: i})
-            schema.update(c.schema)
-        dims = tuple(schema)
-        shape = tuple(schema.values())
-        super(Branch, self).__init__(dims, shape)
-        self.components = components
-
-    @property
-    def dim(self):
-        return self.dims[0]
-
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
-
-        # Try eagerly slicing.
-        choice = kwargs.pop(self.dim, None)
-        try:
-            choice = int(choice)
-        except (TypeError, ValueError):
-            pass
-        if isinstance(choice, int):
-            return self.components[choice](**kwargs)
-
-        # Try eagerly renaming self.dim.
-        result = self
-        if isinstance(choice, Variable):
-            assert choice.shape[0] == len(self.components)
-            result = Branch(choice.name, self.components)
-            choice = None
-
-        # Eagerly substitute into components, but lazily slice.
-        if kwargs:
-            components = tuple(c(**kwargs) for c in self.components)
-            result = Branch(self.dim, components)
-        if choice is not None:
-            result = Substitution(result, ((self.dim, choice),))
-        return result
-
-
-class Finitary(Funsor):
-    """
-    Commutative binary operator applied to arbitrary number of operands.
-    Used in the engine to rewrite term graphs to optimized forms.
-    """
-    def __init__(self, op, operands):
-        assert callable(op)
-        assert isinstance(operands, tuple)
-        assert all(isinstance(operand, Funsor) for operand in operands)
-        schema = OrderedDict()
-        for operand in operands:
-            schema.update(operand.schema)
-        dims = tuple(schema)
-        shape = tuple(schema.values())
-        super(Finitary, self).__init__(dims, shape)
-        self.op = op
-        self.operands = operands
-
-    def __repr__(self):
-        return 'Finitary({}, {})'.format(self.op.__name__, self.operands)
-
-    def __call__(self, *args, **kwargs):
-        kwargs.update(zip(self.dims, args))
-        return reduce(
-            lambda lhs, rhs: lhs.binary(self.op, rhs(**kwargs)),
-            self.operands[1:], self.operands[0](**kwargs))
-
-
-class AddTypeMeta(FunsorMeta):
-    def __call__(cls, data, dtype=None):
-        if dtype is None:
-            dtype = type(data)
-        return super(AddTypeMeta, cls).__call__(data, dtype)
+@eager.register(Reduce, object, Funsor, frozenset)
+def eager_reduce(op, arg, reduce_dims):
+    return arg.eager_reduce(op, reduce_dims)
 
 
 @to_funsor.register(numbers.Number)
-@add_metaclass(AddTypeMeta)
 class Number(Funsor):
     """
     Funsor backed by a Python number.
 
     :param numbers.Number data: A python number.
+    :param dtype: A nonnegative integer or the string "real".
     """
-    def __init__(self, data, dtype=None):
+    def __init__(self, data, dtype="real"):
         assert isinstance(data, numbers.Number)
-        assert dtype == type(data)
-        super(Number, self).__init__((), ())
+        if isinstance(dtype, int):
+            data = int(data)
+        else:
+            assert isinstance(dtype, str) and dtype == "real"
+            data = float(data)
+        inputs = OrderedDict()
+        output = Domain((), dtype)
+        super(Number, self).__init__(inputs, output)
         self.data = data
 
     def __repr__(self):
-        return 'Number({})'.format(repr(self.data))
+        if self.output.dtype == "real":
+            return 'Number({}, "real")'.format(repr(self.data))
+        else:
+            return 'Number({}, {})'.format(repr(self.data), self.output.dtype)
 
     def __str__(self):
         return str(self.data)
@@ -680,66 +520,33 @@ class Number(Funsor):
     def __float__(self):
         return float(self.data)
 
-    def __call__(self, *args, **kwargs):
-        return self
-
     def __bool__(self):
         return bool(self.data)
 
     def item(self):
         return self.data
 
-    def unary(self, op):
+    def eager_subs(self, subs):
+        return self
+
+    def eager_unary(self, op):
         return Number(op(self.data))
 
-    def binary(self, op, other):
-        if op is ops.add and self.data == 0:
-            return other
-        if op is ops.sub and self.data == 0:
-            return -other
-        if op is ops.mul and self.data == 1:
-            return other
-        if isinstance(other, Number):
-            if (op is ops.add or op is ops.sub) and other.data == 0:
-                return self
-            if (op is ops.mul or op is ops.truediv) and other.data == 1:
-                return self
-            return Number(op(self.data, other.data))
-        # TODO move this logic into funsor.engine
-        from funsor.torch import Tensor
-        if isinstance(other, Tensor):
-            return Tensor(other.dims, op(self.data, other.data))
-        return super(Number, self).binary(op, other)
 
-
-def _of_shape(fn, shape):
-    args, vargs, kwargs, defaults = getargspec(fn)
-    assert not vargs
-    assert not kwargs
-    dims = tuple(args)
-    args = [Variable(dim, size) for dim, size in zip(dims, shape)]
-    return to_funsor(fn(*args)).align(dims, shape)
-
-
-def of_shape(*shape):
-    """
-    Decorator to construct a :class:`Funsor` with one free :class:`Variable`
-    per function arg.
-    """
-    return functools.partial(_of_shape, shape=shape)
+@eager.register(Binary, object, Number, Number)
+def eager_binary_number_number(op, lhs, rhs):
+    return Number(op(lhs.data, rhs.data))
 
 
 __all__ = [
-    'Align',
     'Binary',
-    'Branch',
-    'DOMAINS',
     'Funsor',
     'Number',
-    'Reduction',
-    'Substitution',
+    'Reduce',
+    'Substitute',
     'Unary',
     'Variable',
-    'of_shape',
+    'interpretation',
+    'set_interpretation',
     'to_funsor',
 ]
