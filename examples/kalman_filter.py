@@ -50,8 +50,7 @@ def main(args):
     # Serve by drawing a posterior sample.
     print('---- serving ----')
     prob = model(data)
-    with funsor.adjoints() as result:
-        prob = funsor.eval(prob.sum())     # Forward filter.
+    prob = funsor.eval(prob.sum())         # Forward filter.
     samples = result.backward(prob.log())  # Bakward sample.
     print(samples)
 

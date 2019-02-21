@@ -6,7 +6,6 @@ import torch.distributions as dist
 from six import add_metaclass
 
 import funsor.ops as ops
-from funsor.adjoint import backward
 from funsor.domains import reals
 from funsor.interpretations import eager
 from funsor.pattern import simplify_sum
@@ -114,32 +113,27 @@ class Distribution(Funsor):
         # TODO handle event dims
         return self(**{self.value.name: value})
 
-    def sample(self):
-        return backward(ops.sample, self, frozenset(self.value.dims))
+    def sample(self, reduced_vars):
+        if len(reduced_vars) != 1:
+            raise NotImplementedError('TODO')
+        value = term.value
+        if not isinstance(value, Variable):
+            raise NotImplementedError
+        if value.name not in reduced_vars:
+            raise NotImplementedError('TODO')
+
+        params = term.params.copy()
+        params.pop('value')
+        if all(isinstance(v, (Number, Tensor)) for v in params.values()):
+            reduced_vars, tensors = align_tensors(*params.values())
+            params = dict(zip(params, tensors))
+            data = term.cls(**params).rsample()
+            return {value.name: Tensor(reduced_vars, data)}
+
+        raise NotImplementedError('TODO')
 
     def transform(self, **transform):
         return self(**transform) + log_abs_det_jacobian(transform)  # sign error?
-
-
-@backward.register(ops.sample, Distribution)
-def _sample_torch_distribution(term, dims):
-    if len(dims) != 1:
-        raise NotImplementedError('TODO')
-    value = term.value
-    if not isinstance(value, Variable):
-        raise NotImplementedError
-    if value.name not in dims:
-        raise NotImplementedError('TODO')
-
-    params = term.params.copy()
-    params.pop('value')
-    if all(isinstance(v, (Number, Tensor)) for v in params.values()):
-        dims, tensors = align_tensors(*params.values())
-        params = dict(zip(params, tensors))
-        data = term.cls(**params).rsample()
-        return {value.name: Tensor(dims, data)}
-
-    raise NotImplementedError('TODO')
 
 
 class Transform(Funsor):
