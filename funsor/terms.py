@@ -161,10 +161,6 @@ class Funsor(object):
 
         return None  # defer to default implementation
 
-    # ------------------------------------------------------------------------
-    # Subclasses should not override these methods; instead override
-    # the generic handlers and fall back to super(...).handler.
-
     def __invert__(self):
         return Unary(ops.invert, self)
 
@@ -296,7 +292,7 @@ class Variable(Funsor):
     Funsor representing a single free variable.
 
     :param str name: A variable name.
-    :param size: A size, either an int or a ``DOMAIN``.
+    :param funsor.domains.Domain output: A domain.
     """
     def __init__(self, name, output):
         inputs = OrderedDict([(name, output)])
@@ -343,6 +339,8 @@ class Substitute(Funsor):
 @lazy.register(Substitute, Funsor, object)
 @eager.register(Substitute, Funsor, object)
 def eager_subs(arg, subs):
+    if set(subs).isdisjoint(arg.inputs):
+        return arg
     return arg.eager_subs(subs)
 
 
@@ -370,7 +368,7 @@ class Unary(Funsor):
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
 
     def eager_subs(self, subs):
-        arg = Substitute(self.arg, subs)
+        arg = eager_subs(self.arg, subs)
         return Unary(self.op, arg)
 
 
@@ -413,8 +411,8 @@ class Binary(Funsor):
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
     def eager_subs(self, subs):
-        lhs = Substitute(self.lhs, subs)
-        rhs = Substitute(self.rhs, subs)
+        lhs = eager_subs(self.lhs, subs)
+        rhs = eager_subs(self.rhs, subs)
         return Binary(self.op, lhs, rhs)
 
 
@@ -467,7 +465,7 @@ def eager_reduce(op, arg, bound_vars):
     return arg.eager_reduce(op, bound_vars)
 
 
-@to_funsor.register(numbers.Number)
+@to_funsor.register(float)
 class Number(Funsor):
     """
     Funsor backed by a Python number.
