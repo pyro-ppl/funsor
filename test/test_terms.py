@@ -65,7 +65,7 @@ def unary_eval(symbol, x):
     return getattr(ops, symbol)(x)
 
 
-@pytest.mark.parametrize('data', [0., 0.5, 1.])
+@pytest.mark.parametrize('data', [0, 0.5, 1])
 @pytest.mark.parametrize('symbol', [
     '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
 ])
@@ -96,8 +96,8 @@ def binary_eval(symbol, x, y):
     return eval('x {} y'.format(symbol))
 
 
-@pytest.mark.parametrize('data1', [0., 0.2, 1.])
-@pytest.mark.parametrize('data2', [0., 0.8, 1.])
+@pytest.mark.parametrize('data1', [0, 0.2, 1])
+@pytest.mark.parametrize('data2', [0, 0.8, 1])
 @pytest.mark.parametrize('symbol', BINARY_OPS + BOOLEAN_OPS)
 def test_binary(symbol, data1, data2):
     dtype = 'real'
