@@ -139,10 +139,11 @@ def sample(fn, obs=None, name=None):
     effect handlers are active, it constructs an initial message and calls
     ``apply_stack``.
     """
+    assert isinstance(fn, Funsor)
 
     # if there are no active Handlers, we just create a lazy compute graph.
     if not HANDLER_STACK:
-        return Variable(name, fn.schema["value"])
+        return Variable(name, fn.output)
 
     # Otherwise, we initialize a message...
     initial_msg = Sample(**{
@@ -204,7 +205,7 @@ class deferred(SelectiveHandler):
     @dispatch(Sample)
     def process(self, msg):
         if msg["value"] is not None and self.match_fn(msg):
-            msg["value"] = Variable(msg["name"], msg["fn"].schema["value"])
+            msg["value"] = Variable(msg["name"], msg["fn"].output)
         return msg
 
 

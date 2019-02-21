@@ -6,7 +6,6 @@ import torch
 
 import funsor
 import funsor.distributions as dist
-from funsor.engine.contract_engine import eval as funsor_eval
 
 
 def main(args):
@@ -17,23 +16,24 @@ def main(args):
 
     # A Gaussian HMM model.
     def model(data):
-        log_prob = 0.
+        prob = 1.
 
         x_curr = 0.
         for t, y in enumerate(data):
             x_prev = x_curr
 
             # A delayed sample statement.
-            x_curr = funsor.Variable('x_{}'.format(t), 'real')
-            log_prob += dist.Normal(loc=x_prev, scale=trans_noise).log_prob(x_curr)
+            x_curr = funsor.Variable('x_{}'.format(t), funsor.reals())
+            prob *= dist.Normal(loc=x_prev, scale=trans_noise, value=x_curr)
 
             # If we want, we can immediately marginalize out previous sample sites.
-            log_prob = funsor_eval(log_prob.logsumexp('x_{}'.format(t - 1)))
+            prob = prob.sum('x_{}'.format(t - 1))
+            # TODO prob = Clever(funsor.eval)(prob)
 
             # An observe statement.
-            log_prob += dist.Normal(loc=x_curr, scale=emit_noise).log_prob(y)
+            prob *= dist.Normal(loc=x_curr, scale=emit_noise, value=y)
 
-        return log_prob
+        return prob
 
     # Train model parameters.
     print('---- training ----')
@@ -41,17 +41,18 @@ def main(args):
     optim = torch.optim.Adam(params, lr=args.learning_rate)
     for step in range(args.train_steps):
         optim.zero_grad()
-        log_prob = model(data)
-        loss = -funsor_eval(log_prob.logsumexp())  # Integrates out delayed variables.
+        prob = model(data)
+        # TODO prob = Clever(funsor.eval)(prob)
+        loss = -prob.sum().log()  # Integrates out delayed variables.
         loss.backward()
         optim.step()
 
     # Serve by drawing a posterior sample.
     print('---- serving ----')
-    log_prob = model(data)
+    prob = model(data)
     with funsor.adjoints() as result:
-        log_prob = funsor_eval(log_prob.logsumexp())  # Forward filter.
-    samples = result.backward(log_prob)               # Bakward sample.
+        prob = funsor.eval(prob.sum())     # Forward filter.
+    samples = result.backward(prob.log())  # Bakward sample.
     print(samples)
 
 
