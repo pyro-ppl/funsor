@@ -7,6 +7,7 @@ from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.adjoint import backward
+from funsor.domains import reals
 from funsor.interpretations import eager
 from funsor.pattern import simplify_sum
 from funsor.six import getargspec
@@ -41,7 +42,7 @@ def match_affine(expr, dim):
         yield a0, a1
 
 
-DEFAULT_VALUE = Variable('value', 'real')
+DEFAULT_VALUE = Variable('value', reals())
 
 
 class DefaultValueMeta(FunsorMeta):

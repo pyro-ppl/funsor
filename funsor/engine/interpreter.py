@@ -7,6 +7,7 @@ import torch
 
 from funsor.six import singledispatch
 from funsor.terms import Funsor
+from funsor.domains import Domain
 
 
 def eval(x):
@@ -43,6 +44,7 @@ def _eval_funsor(x):
 @_eval.register(types.FunctionType)
 @_eval.register(types.BuiltinFunctionType)
 @_eval.register(torch.Tensor)
+@_eval.register(Domain)
 def _eval_ground(x):
     return x
 

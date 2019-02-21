@@ -3,13 +3,13 @@ from __future__ import absolute_import, division, print_function
 from collections import defaultdict
 
 import funsor.ops as ops
-from funsor.terms import Binary, Number, Reduction, Unary
+from funsor.terms import Binary, Number, Reduce, Unary
 from funsor.torch import Tensor
 
 
 def try_match_reduction(op, x):
-    if isinstance(x, Reduction) and x.op is op:
-        yield x.arg, x.reduce_dims
+    if isinstance(x, Reduce) and x.op is op:
+        yield x.arg, x.reduced_vars
 
 
 def try_match_tensors(operands):

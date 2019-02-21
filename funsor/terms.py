@@ -2,10 +2,11 @@ from __future__ import absolute_import, division, print_function
 
 import itertools
 import numbers
+from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
+from weakref import WeakValueDictionary
 
 from six import add_metaclass
-from six.moves import ABCMeta, abstractmethod
 
 import funsor.ops as ops
 from funsor.domains import Domain, find_domain
@@ -14,9 +15,14 @@ from funsor.six import getargspec, singledispatch
 
 
 class FunsorMeta(ABCMeta):
+    _cons_cache = WeakValueDictionary()
+
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
         cls._ast_fields = getargspec(cls.__init__)[0][1:]
+        signature = (cls,) + (object,) * len(cls._ast_fields)
+        lazy.register(*signature)(reflect)
+        eager.register(*signature)(reflect)
 
     def __call__(cls, *args, **kwargs):
         # Convert kwargs to args.
@@ -32,9 +38,13 @@ class FunsorMeta(ABCMeta):
         if result is not None:
             return result
 
-        # Create a new object.
+        # Cons hash result to make equality testing easy.
+        key = (cls, args)
+        if key in cls._cons_cache:
+            return cls._cons_cache[key]
         result = super(FunsorMeta, cls).__call__(*args)
         result._ast_values = args
+        cls._cons_cache[key] = result
         return result
 
 
@@ -43,7 +53,9 @@ class Funsor(object):
     """
     Abstract base class for immutable functional tensors.
 
-    Derived classes must implement an :meth:`eager_subs` method.
+    Concrete derived classes must implement ``__init__()`` methods taking
+    hashable ``*args`` and no optional ``**kwargs`` so as to support cons
+    hashing. Derived classes must implement an :meth:`eager_subs` method.
 
     :param OrderedDict inputs: A mapping from input name to domain.
         This can be viewed as a typed context or a mapping from
@@ -56,7 +68,7 @@ class Funsor(object):
             assert isinstance(name, str)
             assert isinstance(input_, Domain)
         assert isinstance(output, Domain)
-        super(Funsor, self).__init__(inputs, output)
+        super(Funsor, self).__init__()
         self.inputs = inputs
         self.output = output
 
@@ -69,37 +81,15 @@ class Funsor(object):
         """
         # Eagerly restrict to this funsor's inputs and convert to_funsor().
         subs = OrderedDict(zip(self.inputs, args))
-        for k in self.inputs[len(args):]:
+        for k in self.inputs:
             if k in kwargs:
                 subs[k] = kwargs[k]
         for k, v in subs.items():
             if isinstance(v, str):
-                subs[v] = Variable(v, self.inputs[v])
+                subs[k] = Variable(v, self.inputs[k])
             else:
-                subs[v] = to_funsor(v)
-        return Substitute(self, subs)
-
-    def __getitem__(self, args):
-        if not isinstance(args, tuple):
-            args = (args,)
-
-        # Handle Ellipsis notation like x[..., 0].
-        kwargs = {}
-        for pos, arg in enumerate(args):
-            if arg is Ellipsis:
-                kwargs.update(zip(reversed(self.inputs),
-                                  reversed(args[1 + pos:])))
-                break
-            kwargs[self.inputs[pos]] = arg  # FIXME fix positional indexing
-
-        # Handle complete slices like x[:].
-        kwargs = {key: value
-                  for key, value in kwargs.items()
-                  if not (isinstance(value, slice) and value == slice(None))}
-
-        return self(**kwargs)
-
-    # Avoid __setitem__ due to immutability.
+                subs[k] = to_funsor(v)
+        return Substitute(self, tuple(subs.items()))
 
     def __bool__(self):
         if self.inputs or self.output.shape:
@@ -300,7 +290,7 @@ class Variable(Funsor):
         self.name = name
 
     def __repr__(self):
-        return "Variable({}, {})".format(repr(self.name), repr(self.shape[0]))
+        return "Variable({}, {})".format(repr(self.name), repr(self.output))
 
     def __str__(self):
         return self.name
@@ -315,7 +305,8 @@ class Substitute(Funsor):
     """
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
-        assert isinstance(subs, dict)
+        assert isinstance(subs, tuple)
+        subs = OrderedDict(subs)
         for key, value in subs.items():
             assert isinstance(key, str)
             assert key in arg.inputs
@@ -339,6 +330,9 @@ class Substitute(Funsor):
 @lazy.register(Substitute, Funsor, object)
 @eager.register(Substitute, Funsor, object)
 def eager_subs(arg, subs):
+    if isinstance(subs, tuple):
+        subs = dict(subs)
+    assert isinstance(subs, dict)
     if set(subs).isdisjoint(arg.inputs):
         return arg
     return arg.eager_subs(subs)
@@ -370,9 +364,6 @@ class Unary(Funsor):
     def eager_subs(self, subs):
         arg = eager_subs(self.arg, subs)
         return Unary(self.op, arg)
-
-
-lazy.register(Unary, object, Funsor)(reflect)
 
 
 @eager.register(Unary, object, Funsor)
@@ -416,10 +407,6 @@ class Binary(Funsor):
         return Binary(self.op, lhs, rhs)
 
 
-lazy.register(Binary, object, Funsor, Funsor)(reflect)
-eager.register(Binary, object, Funsor, Funsor)(reflect)
-
-
 class Reduce(Funsor):
     """
     Lazy reduction.
@@ -457,15 +444,20 @@ class Reduce(Funsor):
         return super(Reduce, self).reduce(op, reduced_vars)
 
 
-lazy.register(Reduce, object, Funsor, frozenset)(reflect)
-
-
 @eager.register(Reduce, object, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
     return arg.eager_reduce(op, reduced_vars)
 
 
+class AddTypeMeta(FunsorMeta):
+    def __call__(cls, data, dtype=None):
+        if dtype is None:
+            dtype = "real"
+        return super(AddTypeMeta, cls).__call__(data, dtype)
+
+
 @to_funsor.register(float)
+@add_metaclass(AddTypeMeta)
 class Number(Funsor):
     """
     Funsor backed by a Python number.
@@ -473,7 +465,7 @@ class Number(Funsor):
     :param numbers.Number data: A python number.
     :param dtype: A nonnegative integer or the string "real".
     """
-    def __init__(self, data, dtype="real"):
+    def __init__(self, data, dtype=None):
         assert isinstance(data, numbers.Number)
         if isinstance(dtype, int):
             data = int(data)
@@ -510,12 +502,12 @@ class Number(Funsor):
         return self
 
     def eager_unary(self, op):
-        return Number(op(self.data))
+        return Number(op(self.data), self.output.dtype)
 
 
 @eager.register(Binary, object, Number, Number)
 def eager_binary_number_number(op, lhs, rhs):
-    output = find_domain(lhs.output, rhs.output)
+    output = find_domain(op, lhs.output, rhs.output)
     dtype = output.dtype
     return Number(op(lhs.data, rhs.data), dtype)
 

@@ -8,10 +8,19 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     An object representing the type and shape of a :class:`Funsor` input or
     output.
     """
-    def __init__(self, shape, dtype):
+    def __new__(cls, shape, dtype):
         assert isinstance(shape, tuple)
         assert isinstance(dtype, int) or (isinstance(dtype, str) and dtype == 'real')
-        super(Domain, self).__init__(shape, dtype)
+        return super(Domain, cls).__new__(cls, shape, dtype)
+
+    def __repr__(self):
+        if isinstance(self.dtype, int):
+            if not self.shape:
+                return 'ints({})'.format(self.dtype)
+            return 'ints({}, {})'.format(self.dtype, self.shape)
+        if not self.shape:
+            return 'reals()'
+        return 'reals{}'.format(self.shape)
 
     def __iter__(self):
         if isinstance(self.dtype, int) and not self.shape:
@@ -40,7 +49,7 @@ def find_domain(op, *domains):
     :param callable op: An operation.
     :param Domain \*domains: One or more input domains.
     """
-    assert callable(op)
+    assert callable(op), op
     assert all(isinstance(arg, Domain) for arg in domains)
     return domains[0]  # FIXME broadcast here
 
