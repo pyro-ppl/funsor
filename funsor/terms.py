@@ -363,7 +363,7 @@ class Unary(Funsor):
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
 
     def eager_subs(self, subs):
-        arg = eager_subs(self.arg, subs)
+        arg = Substitute(self.arg, subs)
         return Unary(self.op, arg)
 
 
@@ -403,8 +403,8 @@ class Binary(Funsor):
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
     def eager_subs(self, subs):
-        lhs = eager_subs(self.lhs, subs)
-        rhs = eager_subs(self.rhs, subs)
+        lhs = Substitute(self.lhs, subs)
+        rhs = Substitute(self.rhs, subs)
         return Binary(self.op, lhs, rhs)
 
 
