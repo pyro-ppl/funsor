@@ -21,8 +21,8 @@ def reflect(cls, *args):
     return None  # defer to default implementation
 
 
-lazy = KeyedRegistry()
-eager = KeyedRegistry()
+lazy = KeyedRegistry(default=reflect)
+eager = KeyedRegistry(default=reflect)
 
 _INTERPRETATION = eager  # Use eager interpretation by default.
 

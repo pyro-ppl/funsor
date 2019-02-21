@@ -10,7 +10,7 @@ from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import Domain, find_domain
-from funsor.interpretations import eager, get_interpretation, lazy, reflect
+from funsor.interpretations import eager, get_interpretation, lazy
 from funsor.six import getargspec, singledispatch
 
 
@@ -20,9 +20,6 @@ class FunsorMeta(ABCMeta):
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
         cls._ast_fields = getargspec(cls.__init__)[0][1:]
-        signature = (cls,) + (object,) * len(cls._ast_fields)
-        lazy.register(*signature)(reflect)
-        eager.register(*signature)(reflect)
 
     def __call__(cls, *args, **kwargs):
         # Convert kwargs to args.
