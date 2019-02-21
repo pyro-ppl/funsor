@@ -14,22 +14,29 @@ inference algorithms from discrete to continuous variables, and to create
 machinery to enable partially delayed sampling compatible with universality. To
 achieve this goal this library makes three orthogonal design choices:
 
-1.  Combine eager + lazy evaluation. `Funsor`s can be either eager
-    (`funsor.Tensor` simply wraps `torch.Tensor`) or lazy. Lazy funsors are
-    expressions that can involve eager `Tensor`s. This aims to allow partially
-    delayed sampling and partial inference during Pyro program execution.
+1.  Functions are first class objects. Funsors generalize the tensor interface
+    to also cover arbitrary functions of multiple variables ("inputs"), where
+    variables may be integers, real numbers or themselves tensors. Function
+    evaluation / substitution is the basic operation, generalizing tensor
+    indexing.  This allows probability distributions to be first-class Funsors
+    and make use of existing tensor machinery, for example we can generalize
+    tensor contraction to computing analytic integrals in conjugate
+    probabilistic models.
 
-2.  Allow real-valued tensor dimensions. `Funsor` generalizes the tensor
-    interface to also cover arbitrary functions of multiple variables. Indexing
-    is interpreted as function evaluation. This allows probability
-    distributions to be first-class `Funsor`s and make use of existing tensor
-    machinery, for example we can generalize tensor contraction to computing
-    analytic integrals in conjugate probabilistic models.
 
-3.  Named dimensions. To avoid the difficulties of broadcasting and advanced
-    indexing, all `Funsor` dimensions are named, and indexing uses the
-    `__call__` operator. `Funsors` are viewed as quantities with one algebraic
-    free variable per dimension.
+2.  Support nonstandard interpretation. Funsors support user-defined
+    interpretations, including, eager, lazy, mixed eager+lazy, memoized (like
+    opt\_einsum's sharing), and approximate interpretations like Monte Carlo
+    approximations of integration operations (e.g. `.sum()` over a funsor
+    dimension).
+
+3.  Named dimensions. Substitution is the most basic operation of Funsors. To
+    avoid the difficulties of broadcasting and advanced indexing in
+    positionally-indexed tensor libraries, all Funsor dimensions are named.
+    Indexing uses the `.__call__()` method and can be interpreted as
+    substitution (with well-understood semantics).  Funsors are viewed as
+    algebraic expressions with one algebraic free variable per dimension. Each
+    dimension is either covariant (an output) or contravariant (an input).
 
 Using `funsor` we can easily implement Pyro-style
 [delayed sampling](http://pyro.ai/examples/enumeration.html), roughly:
@@ -60,15 +67,13 @@ See [examples/minipyro.py](examples/minipyro.py) for a more complete example.
 
 ## Code organization
 
-- `funsor.ops` is a collection of basic ops: unary, binary, and reductions
-- `funsor.term` contains AST classes for symbolic algebra, including concrete
-  PyTorch `Tensor`s
+- `funsor.ops` is a collection of basic ops: unary, binary, and reductions.
+- `funsor.terms` contains AST classes for symbolic algebra.
+- `funsor.torch` contains wrappers around PyTorch `Tensor`s and functions.
+- `funsor.distributions` contains standard probability distributions.
+- `funsor.interpretations` implements different evaluation strategies.
 - `funsor.interpreter` Provides a single function `funsor.eval()` for
   evaluation of funsors under nonstandard interpretation.
-- `funsor.engine` contains algorithms for symbolic computation including
-  variable elimination.
-- `funsor.distributions` contains standard probability distributions.
-- `funsor.adjoint` implementations of adjoint algorithms, e.g. sampling.
 - `funsor.minipyro` a small Funsor-compatible implementation of Pyro.
 
 ## Related projects
