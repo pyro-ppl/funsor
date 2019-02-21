@@ -7,10 +7,10 @@ from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.adjoint import backward
-from funsor.contract import contract
+from funsor.interpretations import eager
 from funsor.pattern import simplify_sum
 from funsor.six import getargspec
-from funsor.terms import Funsor, FunsorMeta, Number, Variable, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, to_funsor
 from funsor.torch import Tensor, align_tensors
 
 
@@ -39,32 +39,6 @@ def match_affine(expr, dim):
     if dim not in a1.dims:
         a0 = expr(**{dim: 0.})
         yield a0, a1
-
-
-# WIP candidate base distribution interface
-class AbstractDistribution(object):
-    def __init__(self, samples, log_prob):
-        assert isinstance(samples, dict)
-        assert isinstance(log_prob, Funsor)
-        for k, v in samples.items():
-            assert isinstance(k, str)
-            assert isinstance(v, Funsor)
-            assert set(v.dims) == set(log_prob.dims)
-        super(AbstractDistribution, self).__init__()
-        self.samples = samples
-        self.log_prob = log_prob
-
-    @property
-    def dims(self):
-        return self.log_prob.dims
-
-    def sample(self, dims):
-        if not dims:
-            return self
-        log_prob = self.log_prob.reduce(ops.sample, dims)
-        samples = backward(ops.sample, log_prob)
-        samples.update((k, v(**samples)) for k, v in self.samples)
-        return AbstractDistribution(samples, log_prob)
 
 
 DEFAULT_VALUE = Variable('value', 'real')
@@ -113,7 +87,7 @@ class Distribution(Funsor):
         return '{}({})'.format(type(self).__name__,
                                ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
-    def __call__(self, *args, **kwargs):
+    def eager_subs(self, *args, **kwargs):
         kwargs = {d: to_funsor(v) for d, v in kwargs.items() if d in self.dims}
         kwargs.update(zip(self.dims, map(to_funsor, args)))
         if not kwargs:
@@ -127,7 +101,7 @@ class Distribution(Funsor):
             return Tensor(dims, data)
         return type(self)(**params)
 
-    def reduce(self, op, dims):
+    def eager_reduce(self, op, dims):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in dims:
             return Number(0.)  # distributions are normalized
         return super(Distribution, self).reduce(op, dims)
@@ -167,6 +141,31 @@ def _sample_torch_distribution(term, dims):
     raise NotImplementedError('TODO')
 
 
+class Transform(Funsor):
+    """
+    Wrapper for pseudoinvertible torch.distributions.Transform objects.
+    """
+    def __init__(self, input, output, torch_transform):
+        pass  # TODO
+
+    @property
+    def inv(self):
+        pass  # TODO
+
+
+class Bijector(Transform):
+    """
+    Wrapper for invertible torch.distributions.Transform objects.
+    """
+    def log_abs_det_jacobian(self, x, y):
+        pass  # TODO
+
+
+class TransformedDistribution(Distribution):
+    def __init__(self, base_dist, transforms):
+        pass  # TODO
+
+
 ################################################################################
 # Distribution Wrappers
 ################################################################################
@@ -199,60 +198,57 @@ class Normal(Distribution):
     def __init__(self, loc, scale, value=DEFAULT_VALUE):
         super(Normal, self).__init__(dist.Normal, value=value, loc=loc, scale=scale)
 
-    def binary(self, op, other):
-        # Try updating prior from a ground observation.
-        if op is ops.add and isinstance(self.value, Variable):
-            d = self.value.name
-            if (isinstance(other, Normal) and other.is_observed and
-                    d not in other.params['scale'].dims and d in other.params['loc'].dims):
-                for a0, a1 in match_affine(other.params['loc'], d):
-                    print('UPDATE\n self = {}\n other = {}'.format(self, other))
-                    loc1, scale1 = self.params['loc'], self.params['scale']
-                    scale2 = other.params['scale']
-                    loc2 = (other.value - a0) / a1
-                    scale2 = scale2 / a1.abs()
-                    prec1 = scale1 ** -2
-                    prec2 = scale2 ** -2
-
-                    # Perform a filter update.
-                    prec3 = prec1 + prec2
-                    loc3 = loc1 + simplify_sum(loc2 - loc1) * (prec2 / prec3)
-                    scale3 = prec3 ** -0.5
-                    updated = Normal(loc3, scale3, value=self.value)
-                    # FIXME add log(a1) term?
-
-                    # Encapsulate the log_likelihood in a Normal for later pattern matching.
-                    prec4 = prec1 * prec2 / prec3
-                    scale4 = prec4 ** -0.5
-                    loc4 = simplify_sum(loc2 - loc1)
-                    log_likelihood = Normal(loc4, scale4)(value=0.) + a1.abs().log()  # FIXME
-                    result = updated + log_likelihood
-                    print(' result = {}'.format(result))
-                    return result
-
-        return super(Normal, self).binary(op, other)
-
 
 ################################################################################
 # Conjugacy Relationships
 ################################################################################
 
-@contract.register((ops.logaddexp, ops.mul), Delta, Funsor)
-@contract.register((ops.logaddexp, ops.mul), Delta, Delta)
-def _contract_delta(lhs, rhs):
-    return rhs(value=lhs.params['v'])
+@eager.register(Binary, object, Normal, Normal)
+def eager_binary_normal_normal(op, lhs, rhs):
+    if op is not ops.add:
+        return None  # defer to default implementation
 
+    # Try updating prior from a ground observation.
+    if op is ops.add and isinstance(lhs.value, Variable):
+        d = lhs.value.name
+        if (isinstance(rhs, Normal) and rhs.is_observed and
+                d not in rhs.params['scale'].dims and d in rhs.params['loc'].dims):
+            for a0, a1 in match_affine(rhs.params['loc'], d):
+                print('UPDATE\n lhs = {}\n rhs = {}'.format(lhs, rhs))
+                loc1, scale1 = lhs.params['loc'], lhs.params['scale']
+                scale2 = rhs.params['scale']
+                loc2 = (rhs.value - a0) / a1
+                scale2 = scale2 / a1.abs()
+                prec1 = scale1 ** -2
+                prec2 = scale2 ** -2
 
-@contract.register((ops.logaddexp, ops.mul), Normal, Normal)
-def _contract_normal_normal(lhs, rhs, reduce_dims):
-    raise NotImplementedError('TODO')
+                # Perform a filter update.
+                prec3 = prec1 + prec2
+                loc3 = loc1 + simplify_sum(loc2 - loc1) * (prec2 / prec3)
+                scale3 = prec3 ** -0.5
+                updated = Normal(loc3, scale3, value=lhs.value)
+                # FIXME add log(a1) term?
+
+                # Encapsulate the log_likelihood in a Normal for later pattern matching.
+                prec4 = prec1 * prec2 / prec3
+                scale4 = prec4 ** -0.5
+                loc4 = simplify_sum(loc2 - loc1)
+                log_likelihood = Normal(loc4, scale4)(value=0.) + a1.abs().log()  # FIXME
+                result = updated + log_likelihood
+                print(' result = {}'.format(result))
+                return result
+
+    return None  # defer to default implementation
 
 
 __all__ = [
     'Beta',
+    'Bijector',
     'Binomial',
     'Delta',
     'Distribution',
     'Gamma',
     'Normal',
+    'Transform',
+    'TransformedDistribution',
 ]

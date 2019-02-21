@@ -416,8 +416,8 @@ class Binary(Funsor):
         return Binary(self.op, lhs, rhs)
 
 
-lazy.register(Binary, object, Funsor, Funsor)(lazy)
-eager.register(Binary, object, Funsor, Funsor)(lazy)
+lazy.register(Binary, object, Funsor, Funsor)(reflect)
+eager.register(Binary, object, Funsor, Funsor)(reflect)
 
 
 class Reduce(Funsor):
@@ -515,7 +515,9 @@ class Number(Funsor):
 
 @eager.register(Binary, object, Number, Number)
 def eager_binary_number_number(op, lhs, rhs):
-    return Number(op(lhs.data, rhs.data))
+    output = find_domain(lhs.output, rhs.output)
+    dtype = output.dtype
+    return Number(op(lhs.data, rhs.data), dtype)
 
 
 __all__ = [

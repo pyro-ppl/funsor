@@ -79,6 +79,12 @@ class Tensor(Funsor):
     def __float__(self):
         return float(self.data)
 
+    def __bool__(self):
+        return bool(self.data)
+
+    def item(self):
+        return self.data.item()
+
     def eager_subs(self, subs):
         # TODO handle variables.
         if all(isinstance(v, (Number, Tensor)) and not v.inputs for v in subs.values()):
@@ -113,12 +119,6 @@ class Tensor(Funsor):
             return Tensor(dims, data)
         raise RuntimeError('{} should be handled by caller'.format(value))
 
-    def __bool__(self):
-        return bool(self.data)
-
-    def item(self):
-        return self.data.item()
-
     def eager_unary(self, op):
         return Tensor(self.dims, op(self.data))
 
@@ -149,13 +149,13 @@ class Tensor(Funsor):
 
 
 @eager.register(Binary, object, Tensor, Number)
-def eager_binary_tensor_tensor(op, lhs, rhs):
+def eager_binary_tensor_number(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
     return Tensor(data, lhs.inputs, lhs.dtype)
 
 
 @eager.register(Binary, object, Number, Tensor)
-def eager_binary_tensor_tensor(op, lhs, rhs):
+def eager_binary_number_tensor(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
     return Tensor(data, rhs.inputs, rhs.dtype)
 

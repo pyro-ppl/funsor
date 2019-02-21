@@ -1,10 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
 import types
+from collections import OrderedDict
+
 import torch
 
-from funsor.terms import Funsor
 from funsor.six import singledispatch
+from funsor.terms import Funsor
 
 
 def eval(x):
@@ -53,6 +55,16 @@ def _eval_tuple(x):
 @_eval.register(frozenset)
 def _eval_frozenset(x):
     return frozenset(map(_eval, x))
+
+
+@_eval.register(dict)
+def _eval_dict(x):
+    return {key: _eval(value) for key, value in x.items()}
+
+
+@_eval.register(OrderedDict)
+def _eval_ordereddict(x):
+    return OrderedDict((key, _eval(value)) for key, value in x.items())
 
 
 __all__ = [

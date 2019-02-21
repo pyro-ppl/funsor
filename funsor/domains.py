@@ -34,15 +34,15 @@ def ints(size, shape=()):
     return Domain(shape, size)
 
 
-def find_domain(op, *args):
+def find_domain(op, *domains):
     r"""
-    Finds the :class:`Domain` resulting when applying ``op`` to ``args``.
+    Finds the :class:`Domain` resulting when applying ``op`` to ``domains``.
     :param callable op: An operation.
-    :param Domain \*args: One or more input domains.
+    :param Domain \*domains: One or more input domains.
     """
     assert callable(op)
-    assert all(isinstance(arg, Domain) for arg in args)
-    return args[0]  # FIXME broadcast here
+    assert all(isinstance(arg, Domain) for arg in domains)
+    return domains[0]  # FIXME broadcast here
 
 
 __all__ = [
