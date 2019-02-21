@@ -2,11 +2,11 @@ from __future__ import absolute_import, division, print_function
 
 from funsor.adjoint import adjoints, backward
 from funsor.domains import Domain, find_domain, ints, reals
-from funsor.engine import eval
+from funsor.interpreter import eval
 from funsor.terms import Funsor, Number, Variable, to_funsor
 from funsor.torch import Arange, Function, Tensor, function
 
-from . import adjoint, distributions, domains, engine, handlers, interpretations, minipyro, ops, terms, torch
+from . import adjoint, distributions, domains, handlers, interpretations, interpreter, minipyro, ops, terms, torch
 
 __all__ = [
     'Arange',
@@ -21,12 +21,12 @@ __all__ = [
     'backward',
     'distributions',
     'domains',
-    'engine',
     'eval',
     'find_domain',
     'function',
     'handlers',
     'interpretations',
+    'interpreter',
     'ints',
     'minipyro',
     'ops',
