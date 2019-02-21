@@ -12,11 +12,20 @@ class KeyedRegistry(object):
         self.registry = defaultdict(lambda: Dispatcher('f'))
 
     def register(self, key, *types):
+        register = self.registry[key].register
         if self.default:
             objects = (object,) * len(types)
             if objects != types:
-                self.registry[key].register(*objects)(self.default)
-        return self.registry[key].register(*types)
+                register(*objects)(self.default)
+
+        # This decorator supports stacking multiple decorators, which is not
+        # supported by multipledipatch (which returns a Dispatch object rather
+        # than the original function).
+        def decorator(fn):
+            register(*types)(fn)
+            return fn
+
+        return decorator
 
     def __call__(self, key, *args, **kwargs):
         if self.default is None or key in self.registry:

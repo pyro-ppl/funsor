@@ -51,7 +51,7 @@ def main(args):
     print('---- serving ----')
     prob = model(data)
     prob = funsor.eval(prob.sum())         # Forward filter.
-    samples = result.backward(prob.log())  # Bakward sample.
+    samples = prob.backward(prob.log())    # Bakward sample.
     print(samples)
 
 
