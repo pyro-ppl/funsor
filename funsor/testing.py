@@ -30,7 +30,7 @@ def check_funsor(x, inputs, output, data=None):
         if x.inputs != inputs:
             # data = data.permute(tuple(dims.index(d) for d in x.dims))
             return  # TODO
-        if inputs:
+        if inputs or output.shape:
             assert (x.data == data).all()
         else:
             assert x.data == data

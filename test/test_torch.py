@@ -77,30 +77,6 @@ def test_advanced_indexing():
     check_funsor(x(n, m), ('m', 'n'), (M, N))
     check_funsor(x(n, m, k=m), ('m', 'n'), (M, N))
 
-    check_funsor(x[m], ('j', 'm'), (J, M), x.data[m.data].t())
-    check_funsor(x[n], ('j', 'n'), (J, N), x.data[n.data].t())
-    check_funsor(x[:, m], ('i', 'm'), (I, M))
-    check_funsor(x[:, n], ('i', 'n'), (I, N))
-    check_funsor(x[m, n], ('m', 'n'), (M, N))
-    check_funsor(x[n, m], ('m', 'n'), (M, N))
-
-
-def test_ellipsis():
-    data = torch.randn(3, 4, 5)
-    x = funsor.Tensor(('i', 'j', 'k'), data)
-    check_funsor(x, ('i', 'j', 'k'), (3, 4, 5))
-
-    assert x[...] is x
-    check_funsor(x[..., 1, 2, 3], (), (), data[1, 2, 3])
-    check_funsor(x[..., 2, 3], ('i',), (3,), data[..., 2, 3])
-    check_funsor(x[..., 3], ('i', 'j'), (3, 4), data[..., 3])
-    check_funsor(x[1, ..., 2, 3], (), (), data[1, 2, 3])
-    check_funsor(x[1, ..., 3], ('j',), (4,), data[1, ..., 3])
-    check_funsor(x[1, ...], ('j', 'k'), (4, 5), data[1])
-    check_funsor(x[1, 2, ..., 3], (), (), data[1, 2, 3])
-    check_funsor(x[1, 2, ...], ('k',), (5,), data[1, 2])
-    check_funsor(x[1, 2, 3, ...], (), (), data[1, 2, 3])
-
 
 def unary_eval(symbol, x):
     if symbol in ['~', '-']:
@@ -113,15 +89,16 @@ def unary_eval(symbol, x):
     '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
 ])
 def test_unary(symbol, shape):
+    dtype = 'real'
     data = torch.rand(shape) + 0.5
     if symbol == '~':
         data = data.byte()
+        dtype = 2
     expected_data = unary_eval(symbol, data)
-    dims = tuple('abc'[:len(shape)])
 
-    x = funsor.Tensor(dims, data)
+    x = funsor.Tensor(data, dtype=dtype)
     actual = unary_eval(symbol, x)
-    check_funsor(actual, dims, shape, expected_data)
+    check_funsor(actual, {}, funsor.Domain(shape, dtype), expected_data)
 
 
 BINARY_OPS = [
