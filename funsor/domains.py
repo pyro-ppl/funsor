@@ -14,18 +14,25 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
         return super(Domain, cls).__new__(cls, shape, dtype)
 
     def __repr__(self):
+        shape = tuple(self.shape)
         if isinstance(self.dtype, int):
-            if not self.shape:
+            if not shape:
                 return 'ints({})'.format(self.dtype)
-            return 'ints({}, {})'.format(self.dtype, self.shape)
-        if not self.shape:
+            return 'ints({}, {})'.format(self.dtype, shape)
+        if not shape:
             return 'reals()'
-        return 'reals{}'.format(self.shape)
+        return 'reals{}'.format(shape)
 
     def __iter__(self):
         if isinstance(self.dtype, int) and not self.shape:
             return range(self.dtype)
         raise NotImplementedError
+
+    def num_elements(self):
+        result = 1
+        for size in self.shape:
+            result *= size
+        return result
 
 
 def reals(*shape):

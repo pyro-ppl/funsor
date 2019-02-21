@@ -4,12 +4,13 @@ import functools
 from collections import OrderedDict
 
 import torch
+from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import Domain, ints
 from funsor.interpretations import eager
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, Number, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, to_funsor
 
 
 def align_tensors(*args):
@@ -41,6 +42,20 @@ def align_tensors(*args):
     return dims, tensors
 
 
+class TensorMeta(FunsorMeta):
+    """
+    Wrapper to fill in default args and convert between OrderedDict and tuple.
+    """
+    def __call__(cls, data, inputs=None, dtype="real"):
+        if inputs is None:
+            inputs = tuple()
+        elif isinstance(inputs, OrderedDict):
+            inputs = tuple(inputs.items())
+        return super(TensorMeta, cls).__call__(data, inputs, dtype)
+
+
+@to_funsor.register(torch.Tensor)
+@add_metaclass(TensorMeta)
 class Tensor(Funsor):
     """
     Funsor backed by a PyTorch Tensor.
@@ -49,16 +64,16 @@ class Tensor(Funsor):
     :param torch.Tensor data: A PyTorch tensor of appropriate shape.
     """
     def __init__(self, data, inputs=None, dtype="real"):
-        if inputs is None:
-            inputs = OrderedDict()
         assert isinstance(data, torch.Tensor)
-        input_dim = sum(len(i.shape for i in inputs.values()))
+        assert isinstance(inputs, tuple)
+        inputs = OrderedDict(inputs)
+        input_dim = sum(i.num_elements() for i in inputs.values())
         output = Domain(data.shape[input_dim:], dtype)
         super(Tensor, self).__init__(inputs, output)
         self.data = data
 
     def __repr__(self):
-        if self.dtype != "real":
+        if self.output != "real":
             return 'Tensor({}, {}, {})'.format(self.data, self.inputs, repr(self.dtype))
         elif self.inputs:
             return 'Tensor({}, {})'.format(self.data, self.inputs)
@@ -93,7 +108,7 @@ class Tensor(Funsor):
             result = self
             for i, (key, value) in enumerate(subs.items()):
                 if isinstance(value, Funsor):
-                    if not set(value.dims).isdisjoint(conflicts[1 + i:]):
+                    if not set(value.inputs).isdisjoint(conflicts[1 + i:]):
                         raise NotImplementedError(
                             'TODO implement simultaneous substitution')
                 result = result._substitute(key, value)
@@ -120,7 +135,7 @@ class Tensor(Funsor):
         raise RuntimeError('{} should be handled by caller'.format(value))
 
     def eager_unary(self, op):
-        return Tensor(self.dims, op(self.data))
+        return Tensor(op(self.data), self.inputs, self.dtype)
 
     def eager_reduce(self, op, dims=None):
         if op in ops.REDUCE_OP_TO_TORCH:
@@ -170,13 +185,6 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
         data = op(lhs_data, rhs_data)
     return Tensor(data, inputs, lhs.dtype)
-
-
-@to_funsor.register(torch.Tensor)
-def _to_funsor_tensor(x):
-    if x.dim():
-        raise ValueError("cannot convert non-scalar tensor to funsor")
-    return Tensor((), x)
 
 
 class Arange(Tensor):

@@ -69,6 +69,10 @@ class Funsor(object):
         self.inputs = inputs
         self.output = output
 
+    @property
+    def dtype(self):
+        return self.output.dtype
+
     def __hash__(self):
         return id(self)
 
@@ -446,15 +450,18 @@ def eager_reduce(op, arg, reduced_vars):
     return arg.eager_reduce(op, reduced_vars)
 
 
-class AddTypeMeta(FunsorMeta):
+class NumberMeta(FunsorMeta):
+    """
+    Wrapper to fill in default values.
+    """
     def __call__(cls, data, dtype=None):
         if dtype is None:
             dtype = "real"
-        return super(AddTypeMeta, cls).__call__(data, dtype)
+        return super(NumberMeta, cls).__call__(data, dtype)
 
 
-@to_funsor.register(float)
-@add_metaclass(AddTypeMeta)
+@to_funsor.register(numbers.Number)
+@add_metaclass(NumberMeta)
 class Number(Funsor):
     """
     Funsor backed by a Python number.
@@ -475,10 +482,10 @@ class Number(Funsor):
         self.data = data
 
     def __repr__(self):
-        if self.output.dtype == "real":
+        if self.dtype == "real":
             return 'Number({}, "real")'.format(repr(self.data))
         else:
-            return 'Number({}, {})'.format(repr(self.data), self.output.dtype)
+            return 'Number({}, {})'.format(repr(self.data), self.dtype)
 
     def __str__(self):
         return str(self.data)
@@ -499,7 +506,7 @@ class Number(Funsor):
         return self
 
     def eager_unary(self, op):
-        return Number(op(self.data), self.output.dtype)
+        return Number(op(self.data), self.dtype)
 
 
 @eager.register(Binary, object, Number, Number)

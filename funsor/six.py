@@ -18,11 +18,18 @@ except ImportError:
             try:
                 fn = self._cache[type(arg)]
             except KeyError:
-                fn = self._default
+                fn = None
                 for cls in inspect.getmro(type(arg)):
                     if cls in self._registry:
                         fn = self._registry[cls]
                         break
+                if fn is None:
+                    for cls in self._registry:
+                        if isinstance(arg, cls):
+                            fn = self._registry[cls]
+                            break
+                if fn is None:
+                    fn = self._default
                 self._cache[type(arg)] = fn
             return fn(arg)
 

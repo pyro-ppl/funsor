@@ -3,15 +3,15 @@ from __future__ import absolute_import, division, print_function
 
 import itertools
 import operator
-from six.moves import reduce
+from collections import OrderedDict
 
 import pytest
 import torch
+from six.moves import reduce
 
 import funsor
-from funsor.handlers import Memoize
-from funsor.torch import align_tensors
 from funsor.testing import check_funsor
+from funsor.torch import align_tensors
 
 
 def test_to_funsor():
@@ -20,15 +20,15 @@ def test_to_funsor():
 
 
 def test_cons_hash():
-    with Memoize():
-        x = torch.randn(3, 3)
-        assert funsor.Tensor(('i', 'j'), x) is funsor.Tensor(('i', 'j'), x)
+    x = torch.randn(3, 3)
+    assert funsor.Tensor(x) is funsor.Tensor(x)
 
 
 def test_indexing():
     data = torch.randn(4, 5)
-    x = funsor.Tensor(('i', 'j'), data)
-    check_funsor(x, ('i', 'j'), (4, 5), data)
+    inputs = OrderedDict([('i', funsor.ints(4)), ('j', funsor.ints(5))])
+    x = funsor.Tensor(data, inputs)
+    check_funsor(x, inputs, funsor.reals(), data)
 
     assert x() is x
     assert x(k=3) is x
@@ -44,12 +44,6 @@ def test_indexing():
     check_funsor(x(i=1, k=3), ('j',), (5,), data[1])
     check_funsor(x(j=2), ('i',), (4,), data[:, 2])
     check_funsor(x(j=2, k=3), ('i',), (4,), data[:, 2])
-
-    assert x[:] is x
-    assert x[:, :] is x
-    check_funsor(x[0, 0], (), (), data[0, 0])
-    check_funsor(x[0], ('j',), (5,), data[0])
-    check_funsor(x[:, 0], ('i',), (4,), data[:, 0])
 
 
 def test_advanced_indexing():
