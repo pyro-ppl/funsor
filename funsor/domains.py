@@ -2,6 +2,9 @@ from __future__ import absolute_import, division, print_function
 
 from collections import namedtuple
 
+from pyro.distributions.util import broadcast_shape
+from six import integer_types
+
 from funsor.util import lazy_property
 
 
@@ -12,12 +15,12 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     """
     def __new__(cls, shape, dtype):
         assert isinstance(shape, tuple)
-        assert isinstance(dtype, int) or (isinstance(dtype, str) and dtype == 'real')
+        assert isinstance(dtype, integer_types) or (isinstance(dtype, str) and dtype == 'real')
         return super(Domain, cls).__new__(cls, shape, dtype)
 
     def __repr__(self):
         shape = tuple(self.shape)
-        if isinstance(self.dtype, int):
+        if isinstance(self.dtype, integer_types):
             if not shape:
                 return 'ints({})'.format(self.dtype)
             return 'ints({}, {})'.format(self.dtype, shape)
@@ -26,8 +29,9 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
         return 'reals{}'.format(shape)
 
     def __iter__(self):
-        if isinstance(self.dtype, int) and not self.shape:
-            return range(self.dtype)
+        if isinstance(self.dtype, integer_types) and not self.shape:
+            from funsor.terms import Number
+            return (Number(i, self.dtype) for i in range(self.dtype))
         raise NotImplementedError
 
     @lazy_property
@@ -49,7 +53,7 @@ def ints(size, shape=()):
     """
     Construct a bounded integer domain of given shape.
     """
-    assert isinstance(size, int) and size >= 0
+    assert isinstance(size, integer_types) and size >= 0
     return Domain(shape, size)
 
 
@@ -61,7 +65,20 @@ def find_domain(op, *domains):
     """
     assert callable(op), op
     assert all(isinstance(arg, Domain) for arg in domains)
-    return domains[0]  # FIXME broadcast here
+    if len(domains) == 1:
+        return domains[0]
+
+    lhs, rhs = domains
+    if lhs.dtype == 'real' or rhs.dtype == 'real':
+        dtype = "real"
+    else:
+        dtype = op(lhs.dtype, rhs.dtype)
+
+    if lhs.shape == rhs.shape:
+        shape = lhs.shape
+    else:
+        shape = broadcast_shape(lhs.shape, rhs.shape)
+    return Domain(shape, dtype)
 
 
 __all__ = [

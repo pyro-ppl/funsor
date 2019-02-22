@@ -18,7 +18,7 @@ from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 from weakref import WeakValueDictionary
 
-from six import add_metaclass
+from six import add_metaclass, integer_types
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
@@ -197,15 +197,22 @@ class Funsor(object):
         if not reduced_vars:
             return self
 
-        # Try to sum out integer variables. This is mainly useful for testing,
+        # Try to sum out integer scalars. This is mainly useful for testing,
         # since reduction is more efficiently implemented by Tensor.
-        int_vars = tuple(sorted(k for k in reduced_vars
-                                if isinstance(self.inputs[k].dtype, int)))
-        if int_vars:
-            result = 0.
-            for int_values in itertools.product(*(self.inputs[k] for k in int_vars)):
-                subs = dict(zip(int_vars, int_values))
-                result += self(**subs)
+        eager_vars = []
+        lazy_vars = []
+        for k in reduced_vars:
+            if isinstance(self.inputs[k].dtype, integer_types) and not self.inputs[k].shape:
+                eager_vars.append(k)
+            else:
+                lazy_vars.append(k)
+        if eager_vars:
+            result = None
+            for values in itertools.product(*(self.inputs[k] for k in eager_vars)):
+                subs = dict(zip(eager_vars, values))
+                result = self(**subs) if result is None else op(result, self(**subs))
+            if lazy_vars:
+                result = Reduce(op, result, frozenset(lazy_vars))
             return result
 
         return None  # defer to default implementation
@@ -544,8 +551,8 @@ class Number(Funsor):
     """
     def __init__(self, data, dtype=None):
         assert isinstance(data, numbers.Number)
-        if isinstance(dtype, int):
-            data = int(data)
+        if isinstance(dtype, integer_types):
+            data = type(dtype)(data)
         else:
             assert isinstance(dtype, str) and dtype == "real"
             data = float(data)

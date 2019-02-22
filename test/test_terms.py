@@ -1,7 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
+import itertools
+
 import numpy as np
 import pytest
+from six.moves import reduce
 
 import funsor
 import funsor.ops as ops
@@ -65,6 +68,23 @@ def test_variable(domain):
     assert xp1(x=2.) == 3.
 
 
+def test_substitute():
+    x = Variable('x', reals())
+    y = Variable('y', reals())
+    z = Variable('z', reals())
+
+    f = x * y + x * z
+    assert isinstance(f, Binary)
+    assert f.op is ops.add
+
+    assert f(y=2) is x * 2 + x * z
+    assert f(z=2) is x * y + x * 2
+    assert f(y=x) is x * x + x * z
+    assert f(x=y) is y * y + y * z
+    assert f(y=z, z=y) is x * z + x * y
+    assert f(x=y, y=z, z=x) is y * z + y * x
+
+
 def unary_eval(symbol, x):
     if symbol in ['~', '-']:
         return eval('{} x'.format(symbol))
@@ -119,21 +139,53 @@ def test_binary(symbol, data1, data2):
     x1 = Number(data1, dtype)
     x2 = Number(data2, dtype)
     actual = binary_eval(symbol, x1, x2)
+    if dtype == 2:
+        dtype = binary_eval(symbol, dtype, dtype)
     check_funsor(actual, {}, Domain((), dtype), expected_data)
 
 
-def test_substitute():
-    x = Variable('x', reals())
-    y = Variable('y', reals())
-    z = Variable('z', reals())
+@pytest.mark.parametrize('op', ops.REDUCE_OP_TO_TORCH,
+                         ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
+def test_reduce_all(op):
+    x = Variable('x', ints(2))
+    y = Variable('y', ints(3))
+    z = Variable('z', ints(4))
+    f = x * y + z
+    check_funsor(f, {'x': ints(2), 'y': ints(3), 'z': ints(4)}, ints(2 * 3 + 4))
 
-    f = x * y + x * z
-    assert isinstance(f, Binary)
-    assert f.op is ops.add
+    actual = f.reduce(op)
 
-    assert f(y=2) is x * 2 + x * z
-    assert f(z=2) is x * y + x * 2
-    assert f(y=x) is x * x + x * z
-    assert f(x=y) is y * y + y * z
-    assert f(y=z, z=y) is x * z + x * y
-    assert f(x=y, y=z, z=x) is y * z + y * x
+    values = [f(x=i, y=j, z=k)
+              for i in x.output
+              for j in y.output
+              for k in z.output]
+    expected = reduce(op, values)
+    assert actual == expected
+
+
+@pytest.mark.parametrize('reduced_vars', [
+    reduced_vars
+    for num_reduced in range(3 + 1)
+    for reduced_vars in itertools.combinations('xyz', num_reduced)
+])
+@pytest.mark.parametrize('op', ops.REDUCE_OP_TO_TORCH,
+                         ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
+def test_reduce_subset(op, reduced_vars):
+    reduced_vars = frozenset(reduced_vars)
+    x = Variable('x', ints(2))
+    y = Variable('y', ints(3))
+    z = Variable('z', ints(4))
+    f = x * y + z
+    check_funsor(f, {'x': ints(2), 'y': ints(3), 'z': ints(4)}, ints(2 * 3 + 4))
+
+    actual = f.reduce(op, reduced_vars)
+
+    expected = f
+    for v in [x, y, z]:
+        if v.name in reduced_vars:
+            expected = reduce(op, [expected(**{v.name: i}) for i in v.output])
+
+    check_funsor(actual, expected.inputs, expected.output)
+    # TODO check data
+    if not reduced_vars:
+        assert actual is f
