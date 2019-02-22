@@ -240,33 +240,34 @@ def test_reduce_subset(dims, reduced_vars, op_name):
                      atol=1e-5, rtol=1e-5)
 
 
-@pytest.mark.xfail(reason='function is broken')
-def test_function_mm():
+def test_function_matmul():
 
-    @funsor.function(('a', 'b'), ('b', 'c'), ('a', 'c'))
-    def mm(x, y):
+    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    def matmul(x, y):
         return torch.matmul(x, y)
 
-    x = funsor.Tensor(('a', 'b'), torch.randn(3, 4))
-    y = funsor.Tensor(('b', 'c'), torch.randn(4, 5))
-    actual = mm(x, y)
-    expected = funsor.Tensor(('a', 'c'), torch.matmul(x.data, y.data))
-    check_funsor(actual, expected.dims, expected.shape, expected.data)
+    check_funsor(matmul, {'x': reals(3, 4), 'y': reals(4, 5)}, reals(3, 5))
+
+    x = funsor.Tensor(torch.randn(3, 4))
+    y = funsor.Tensor(torch.randn(4, 5))
+    actual = matmul(x, y)
+    expected_data = torch.matmul(x.data, y.data)
+    check_funsor(actual, {}, reals(3, 5), expected_data)
 
 
-@pytest.mark.xfail(reason='function is broken')
-def test_lazy_eval_mm():
+def test_function_lazy_matmul():
 
-    @funsor.function(('a', 'b'), ('b', 'c'), ('a', 'c'))
-    def mm(x, y):
+    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    def matmul(x, y):
         return torch.matmul(x, y)
 
-    x_lazy = funsor.Variable('x', 'real')
-    y = funsor.Tensor(('b', 'c'), torch.randn(4, 5))
-    actual_lazy = mm(x_lazy, y)
-    assert isinstance(actual_lazy, funsor.torch.LazyCall)
+    x_lazy = funsor.Variable('x', reals(3, 4))
+    y = funsor.Tensor(torch.randn(4, 5))
+    actual_lazy = matmul(x_lazy, y)
+    check_funsor(actual_lazy, {'x': reals(3, 4)}, reals(3, 5))
+    assert isinstance(actual_lazy, funsor.terms.Substitute)
 
-    x = funsor.Tensor(('a', 'b'), torch.randn(3, 4))
+    x = funsor.Tensor(torch.randn(3, 4))
     actual = actual_lazy(x=x)
-    expected = funsor.Tensor(('a', 'c'), torch.matmul(x.data, y.data))
-    check_funsor(actual, expected.dims, expected.shape, expected.data)
+    expected_data = torch.matmul(x.data, y.data)
+    check_funsor(actual, {}, reals(3, 5), expected_data)

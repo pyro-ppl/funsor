@@ -363,7 +363,11 @@ class Variable(Funsor):
         return self.name
 
     def eager_subs(self, subs):
-        return subs.get(self.name, self)
+        assert isinstance(subs, tuple)
+        for k, v in subs:
+            if k == self.name:
+                return v
+        return self
 
 
 class Substitute(Funsor):
@@ -373,8 +377,7 @@ class Substitute(Funsor):
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
         assert isinstance(subs, tuple)
-        subs = OrderedDict(subs)
-        for key, value in subs.items():
+        for key, value in subs:
             assert isinstance(key, str)
             assert key in arg.inputs
             assert isinstance(value, Funsor)
@@ -385,26 +388,26 @@ class Substitute(Funsor):
             inputs.update(value.inputs)
         super(Substitute, self).__init__(inputs, arg.output)
         self.arg = arg
-        self.subs = subs
+        self.subs = OrderedDict(subs)
 
     def __repr__(self):
         return 'Substitute({}, {})'.format(self.arg, self.subs)
 
     def eager_subs(self, subs):
-        raise NotImplementedError('TODO')
+        assert isinstance(subs, tuple)
+        old_subs = tuple((k, Substitute(v, subs)) for k, v in self.subs.items())
+        new_subs = tuple((k, v) for k, v in subs if k not in self.subs)
+        subs = old_subs + new_subs
+        return Substitute(self.arg, subs) if subs else self.arg
 
 
 @lazy.register(Substitute, Funsor, object)
 @eager.register(Substitute, Funsor, object)
 def eager_subs(arg, subs):
-    # Convert between dict <-> tuple. Dicts are used in most places,
-    # but tuples are required for cons hashing.
-    if isinstance(subs, tuple):
-        subs = dict(subs)
-    assert isinstance(subs, dict)
+    assert isinstance(subs, tuple)
 
     # Try to eagerly ignore irrelevant substitutions.
-    if set(subs).isdisjoint(arg.inputs):
+    if not any(k in arg.inputs for k, v in subs):
         return arg
 
     # Defer to per-class methods.
