@@ -1,4 +1,3 @@
-
 from __future__ import absolute_import, division, print_function
 
 import itertools
@@ -8,13 +7,17 @@ import pytest
 import torch
 
 import funsor
+from funsor.domains import Domain, ints, reals
 from funsor.testing import check_funsor
 from funsor.torch import align_tensors
 
 
-def test_to_funsor():
-    assert isinstance(funsor.to_funsor(torch.tensor(2)), funsor.Tensor)
-    assert isinstance(funsor.to_funsor(torch.tensor(2.)), funsor.Tensor)
+@pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
+@pytest.mark.parametrize('dtype', [torch.float, torch.long, torch.uint8])
+def test_to_funsor(shape, dtype):
+    t = torch.randn(shape).type(dtype)
+    f = funsor.to_funsor(t)
+    assert isinstance(f, funsor.Tensor)
 
 
 def test_cons_hash():
@@ -24,26 +27,28 @@ def test_cons_hash():
 
 def test_indexing():
     data = torch.randn(4, 5)
-    inputs = OrderedDict([('i', funsor.ints(4)), ('j', funsor.ints(5))])
+    inputs = OrderedDict([('i', ints(4)),
+                          ('j', ints(5))])
     x = funsor.Tensor(data, inputs)
-    check_funsor(x, inputs, funsor.reals(), data)
+    check_funsor(x, inputs, reals(), data)
 
     assert x() is x
     assert x(k=3) is x
-    check_funsor(x(1), ['j'], [5], data[1])
-    check_funsor(x(1, 2), (), (), data[1, 2])
-    check_funsor(x(1, 2, k=3), (), (), data[1, 2])
-    check_funsor(x(1, j=2), (), (), data[1, 2])
-    check_funsor(x(1, j=2, k=3), (), (), data[1, 2])
-    check_funsor(x(1, k=3), ['j'], [5], data[1])
-    check_funsor(x(i=1), ('j',), (5,), data[1])
-    check_funsor(x(i=1, j=2), (), (), data[1, 2])
-    check_funsor(x(i=1, j=2, k=3), (), (), data[1, 2])
-    check_funsor(x(i=1, k=3), ('j',), (5,), data[1])
-    check_funsor(x(j=2), ('i',), (4,), data[:, 2])
-    check_funsor(x(j=2, k=3), ('i',), (4,), data[:, 2])
+    check_funsor(x(1), {'j': ints(5)}, reals(), data[1])
+    check_funsor(x(1, 2), {}, reals(), data[1, 2])
+    check_funsor(x(1, 2, k=3), {}, reals(), data[1, 2])
+    check_funsor(x(1, j=2), {}, reals(), data[1, 2])
+    check_funsor(x(1, j=2, k=3), (), reals(), data[1, 2])
+    check_funsor(x(1, k=3), {'j': ints(5)}, reals(), data[1])
+    check_funsor(x(i=1), {'j': ints(5)}, reals(), data[1])
+    check_funsor(x(i=1, j=2), (), reals(), data[1, 2])
+    check_funsor(x(i=1, j=2, k=3), (), reals(), data[1, 2])
+    check_funsor(x(i=1, k=3), {'j': ints(5)}, reals(), data[1])
+    check_funsor(x(j=2), {'i': ints(4)}, reals(), data[:, 2])
+    check_funsor(x(j=2, k=3), {'i': ints(4)}, reals(), data[:, 2])
 
 
+@pytest.mark.xfail(reason='not implemented')
 def test_advanced_indexing():
     I, J, M, N = 4, 5, 2, 3
     x = funsor.Tensor(('i', 'j'), torch.randn(4, 5))
@@ -122,19 +127,22 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape1 = tuple(sizes[d] for d in dims1)
     shape2 = tuple(sizes[d] for d in dims2)
+    inputs1 = OrderedDict((d, ints(sizes[d])) for d in dims1)
+    inputs2 = OrderedDict((d, ints(sizes[d])) for d in dims2)
     data1 = torch.rand(shape1) + 0.5
     data2 = torch.rand(shape2) + 0.5
+    dtype = 'real'
     if symbol in BOOLEAN_OPS:
+        dtype = 2
         data1 = data1.byte()
         data2 = data2.byte()
-    dims, aligned = align_tensors(funsor.Tensor(dims1, data1),
-                                  funsor.Tensor(dims2, data2))
+    x1 = funsor.Tensor(data1, inputs1, dtype)
+    x2 = funsor.Tensor(data2, inputs2, dtype)
+    inputs, aligned = align_tensors(x1, x2)
     expected_data = binary_eval(symbol, aligned[0], aligned[1])
 
-    x1 = funsor.Tensor(dims1, data1)
-    x2 = funsor.Tensor(dims2, data2)
     actual = binary_eval(symbol, x1, x2)
-    check_funsor(actual, dims, expected_data.shape, expected_data)
+    check_funsor(actual, inputs, Domain((), dtype), expected_data)
 
 
 @pytest.mark.parametrize('scalar', [0.5])
@@ -143,12 +151,13 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
 def test_binary_funsor_scalar(symbol, dims, scalar):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
+    inputs = OrderedDict((d, ints(sizes[d])) for d in dims)
     data1 = torch.rand(shape) + 0.5
     expected_data = binary_eval(symbol, data1, scalar)
 
-    x1 = funsor.Tensor(dims, data1)
+    x1 = funsor.Tensor(data1, inputs)
     actual = binary_eval(symbol, x1, scalar)
-    check_funsor(actual, dims, shape, expected_data)
+    check_funsor(actual, inputs, reals(), expected_data)
 
 
 @pytest.mark.parametrize('scalar', [0.5])
@@ -157,12 +166,13 @@ def test_binary_funsor_scalar(symbol, dims, scalar):
 def test_binary_scalar_funsor(symbol, dims, scalar):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
+    inputs = OrderedDict((d, ints(sizes[d])) for d in dims)
     data1 = torch.rand(shape) + 0.5
     expected_data = binary_eval(symbol, scalar, data1)
 
-    x1 = funsor.Tensor(dims, data1)
+    x1 = funsor.Tensor(data1, inputs)
     actual = binary_eval(symbol, scalar, x1)
-    check_funsor(actual, dims, shape, expected_data)
+    check_funsor(actual, inputs, reals(), expected_data)
 
 
 REDUCE_OPS = ['sum', 'prod', 'logsumexp', 'all', 'any', 'min', 'max']
@@ -173,6 +183,7 @@ REDUCE_OPS = ['sum', 'prod', 'logsumexp', 'all', 'any', 'min', 'max']
 def test_reduce_all(dims, op_name):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
+    inputs = OrderedDict((d, ints(sizes[d])) for d in dims)
     data = torch.rand(shape) + 0.5
     if op_name in ['all', 'any']:
         data = data.byte()
@@ -182,9 +193,9 @@ def test_reduce_all(dims, op_name):
     else:
         expected_data = getattr(data, op_name)()
 
-    x = funsor.Tensor(dims, data)
+    x = funsor.Tensor(data, inputs)
     actual = getattr(x, op_name)()
-    check_funsor(actual, (), (), expected_data)
+    check_funsor(actual, {}, reals(), expected_data)
 
 
 @pytest.mark.parametrize('dims,dims_reduced', [

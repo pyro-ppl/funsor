@@ -16,6 +16,23 @@ from funsor.six import getargspec, singledispatch
 
 
 class FunsorMeta(ABCMeta):
+    """
+    Metaclass for Funsors to perform three tasks:
+
+    1.  Ensure each Funsor class has an attribute ``._ast_fields`` describing
+        its input args.
+    2.  Ensure each Funsor instance has an attribute ``._ast_args`` with
+        values corresponding to its input args. This allows the instance to
+        be reflectively reconstructed under a different interpretation, and
+        is used by :func:`funsor.interpreter.reinterpret`.
+    3.  Cons-hash construction, so that repeatedly calling the constructor
+        with identical args will product the same object. This enables cheap
+        syntactic equality testing using the ``is`` operator, which is
+        is important both for hashing (e.g. for memoizing funsor functions)
+        and for unit testing, since ``.__eq__()`` is overloaded with
+        elementwise semantics. Cons hashing differs from memoization in that
+        it incurs no memory overhead beyond the cons hash dict.
+    """
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
         cls._ast_fields = getargspec(cls.__init__)[0][1:]
@@ -81,6 +98,7 @@ class Funsor(object):
                 subs[k] = kwargs[k]
         for k, v in subs.items():
             if isinstance(v, str):
+                # Allow renaming of inputs via syntax x(y="z").
                 subs[k] = interpret(Variable, v, self.inputs[k])
             else:
                 subs[k] = to_funsor(v)
@@ -129,7 +147,7 @@ class Funsor(object):
         return None  # defer to default implementation
 
     def eager_reduce(self, op, reduced_vars):
-        assert all(k in self.inputs for k in reduced_vars)
+        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
         if not reduced_vars:
             return self
 
@@ -266,6 +284,11 @@ def to_funsor(x):
     """
     Convert to a :class:`Funsor`.
     Only :class:`Funsor`s and scalars are accepted.
+
+    :param x: An object.
+    :return: A Funsor equivalent to ``x``.
+    :rtype: Funsor
+    :raises: ValueError
     """
     raise ValueError("cannot convert to Funsor: {}".format(x))
 
@@ -328,11 +351,17 @@ class Substitute(Funsor):
 @lazy.register(Substitute, Funsor, object)
 @eager.register(Substitute, Funsor, object)
 def eager_subs(arg, subs):
+    # Convert between dict <-> tuple. Dicts are used in most places,
+    # but tuples are required for cons hashing.
     if isinstance(subs, tuple):
         subs = dict(subs)
     assert isinstance(subs, dict)
+
+    # Try to eagerly ignore irrelevant substitutions.
     if set(subs).isdisjoint(arg.inputs):
         return arg
+
+    # Defer to per-class methods.
     return arg.eager_subs(subs)
 
 
@@ -407,7 +436,7 @@ class Binary(Funsor):
 
 class Reduce(Funsor):
     """
-    Lazy reduction.
+    Lazy reduction over multiple variables.
     """
     def __init__(self, op, arg, reduced_vars):
         assert callable(op)
@@ -431,14 +460,11 @@ class Reduce(Funsor):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
         return self.arg(**subs).reduce(self.op, self.reduced_vars)
 
-    def eager_reduce(self, op, reduced_vars=None):
+    def eager_reduce(self, op, reduced_vars):
         if op is self.op:
             # Eagerly fuse reductions.
-            if reduced_vars is None:
-                reduced_vars = frozenset(self.reduced_vars)
-            else:
-                reduced_vars = frozenset(reduced_vars).intersection(self.reduced_vars)
-            reduced_vars |= self.reduced_vars
+            assert isinstance(reduced_vars, frozenset)
+            reduced_vars = reduced_vars.intersection(self.inputs) | self.reduced_vars
             return interpret(Reduce, op, self.arg, reduced_vars)
         return super(Reduce, self).reduce(op, reduced_vars)
 
@@ -450,7 +476,7 @@ def eager_reduce(op, arg, reduced_vars):
 
 class NumberMeta(FunsorMeta):
     """
-    Wrapper to fill in default values.
+    Wrapper to fill in default ``dtype``.
     """
     def __call__(cls, data, dtype=None):
         if dtype is None:

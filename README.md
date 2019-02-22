@@ -23,7 +23,6 @@ achieve this goal this library makes three orthogonal design choices:
     tensor contraction to computing analytic integrals in conjugate
     probabilistic models.
 
-
 2.  Support nonstandard interpretation. Funsors support user-defined
     interpretations, including, eager, lazy, mixed eager+lazy, memoized (like
     opt\_einsum's sharing), and approximate interpretations like Monte Carlo
@@ -71,9 +70,7 @@ See [examples/minipyro.py](examples/minipyro.py) for a more complete example.
 - `funsor.terms` contains AST classes for symbolic algebra.
 - `funsor.torch` contains wrappers around PyTorch `Tensor`s and functions.
 - `funsor.distributions` contains standard probability distributions.
-- `funsor.interpretations` implements different evaluation strategies.
-- `funsor.interpreter` Provides a single function `funsor.eval()` for
-  evaluation of funsors under nonstandard interpretation.
+- `funsor.interpreter` implements different evaluation strategies.
 - `funsor.minipyro` a small Funsor-compatible implementation of Pyro.
 
 ## Related projects

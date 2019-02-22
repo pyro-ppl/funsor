@@ -2,6 +2,8 @@ from __future__ import absolute_import, division, print_function
 
 from collections import namedtuple
 
+from funsor.util import lazy_property
+
 
 class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     """
@@ -28,6 +30,7 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
             return range(self.dtype)
         raise NotImplementedError
 
+    @lazy_property
     def num_elements(self):
         result = 1
         for size in self.shape:

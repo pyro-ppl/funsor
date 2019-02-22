@@ -10,13 +10,14 @@ import funsor.ops as ops
 from funsor.domains import Domain, ints
 from funsor.interpreter import eager, interpret
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, to_funsor
 
 
 def align_tensors(*args):
     r"""
     Permute multiple tensors before applying a broadcasted op.
 
+    This assumes all tensors have the same output shape (event shape).
     This is mainly useful for implementing eager funsor operations.
 
     :param funsor.terms.Funsor \*args: Multiple :class:`Tensor`s and
@@ -26,20 +27,56 @@ def align_tensors(*args):
         with given ``inputs``.
     :rtype: tuple
     """
-    # TODO update this
-    sizes = OrderedDict()
+    # Collect nominal shapes.
+    inputs = OrderedDict()
+    output = None
     for x in args:
-        sizes.update(x.schema)
-    dims = tuple(sizes)
+        inputs.update(x.inputs)
+        if output is None:
+            output = x.output
+        else:
+            assert x.output == output
+
+    # Compute linear shapes.
+    sizes = []
+    shapes = []
+    for domain in inputs.values():
+        size = domain.dtype
+        assert isinstance(size, int)
+        sizes.append(size ** domain.num_elements)
+        shapes.append((size,) * domain.num_elements)
+    sizes = dict(zip(inputs, sizes))
+    shapes = dict(zip(inputs, shapes))
+
+    # Convert each Number or Tensor.
     tensors = []
     for i, x in enumerate(args):
-        x_dims, x = x.dims, x.data
-        if x_dims and x_dims != dims:
-            x = x.data.permute(tuple(x_dims.index(d) for d in dims if d in x_dims))
-            x = x.reshape(tuple(sizes[d] if d in x_dims else 1 for d in dims))
-            assert x.dim() == len(dims)
+        if isinstance(x, Number):
+            tensors.append(x)
+            continue
+
+        x_inputs, x = x.inputs, x.data
+        if x_inputs == inputs:
+            tensors.append(x)
+            continue
+
+        # Squash each multivariate input dim into a single dim.
+        x = x.reshape(tuple(sizes[k] for k in x_inputs) + output.shape)
+
+        # Pemute squashed input dims.
+        x_keys = tuple(x_inputs)
+        x = x.data.permute(tuple(x_keys.index(k) for k in inputs if k in x_inputs))
+
+        # Fill in ones.
+        x = x.reshape(tuple(sizes[k] if k in x_inputs else 1 for k in inputs) +
+                      output.shape)
+
+        # Unsquash multivariate input dims.
+        x = x.reshape(sum((shapes[k] if k in x_inputs else (1,) * len(shapes[k]) for k in inputs),
+                          ()) + output.shape)
         tensors.append(x)
-    return dims, tensors
+
+    return inputs, tensors
 
 
 class TensorMeta(FunsorMeta):
@@ -67,10 +104,14 @@ class Tensor(Funsor):
         assert isinstance(data, torch.Tensor)
         assert isinstance(inputs, tuple)
         inputs = OrderedDict(inputs)
-        input_dim = sum(i.num_elements() for i in inputs.values())
+        input_dim = sum(i.num_elements for i in inputs.values())
         output = Domain(data.shape[input_dim:], dtype)
         super(Tensor, self).__init__(inputs, output)
         self.data = data
+
+    @property
+    def dtype(self):
+        return self.output.dtype
 
     def __repr__(self):
         if self.output != "real":
@@ -101,8 +142,9 @@ class Tensor(Funsor):
         return self.data.item()
 
     def eager_subs(self, subs):
-        # TODO handle variables.
-        if all(isinstance(v, (Number, Tensor)) and not v.inputs for v in subs.values()):
+        if all(isinstance(v, (Number, Tensor)) and not v.inputs or
+                isinstance(v, Variable)
+                for v in subs.values()):
             # Substitute one variable at a time.
             conflicts = list(subs.keys())
             result = self
@@ -111,33 +153,40 @@ class Tensor(Funsor):
                     if not set(value.inputs).isdisjoint(conflicts[1 + i:]):
                         raise NotImplementedError(
                             'TODO implement simultaneous substitution')
-                result = result._substitute(key, value)
+                result = result._eager_subs_one(key, value)
             return result
 
         return None  # defer to default implementation
 
-    def _substitute(self, name, value):
-        pos = self.dims.index()
+    def _eager_subs_one(self, name, value):
+        if isinstance(value, Variable):
+            # Simply rename an input.
+            inputs = OrderedDict((value.name if k == name else k, v)
+                                 for k, v in self.inputs.items())
+            return interpret(Tensor, self.data, inputs, self.dtype)
+
         if isinstance(value, Number):
-            value = value.data
-            dims = self.dims[:pos] + self.dims[1+pos:]
-            data = self.data[(slice(None),) * pos + (value,)]
-            return interpret(Tensor, dims, data)
-        if isinstance(value, Tensor):
-            dims = self.dims[:pos] + value.dims + self.dims[1+pos:]
-            index = [slice(None)] * len(self.dims)
-            index[pos] = value.data
-            for key in value.inputs:
-                if key != name and key in self.inputs:
-                    raise NotImplementedError('TODO')
+            assert self.inputs[name].num_elements == 1
+            inputs = OrderedDict((k, v) for k, v in self.inputs.items() if k != name)
+            index = []
+            for k, domain in self.inputs.items():
+                if k == name:
+                    index.append(int(value.data))
+                    break
+                else:
+                    index.extend([slice(None)] * domain.num_elements)
             data = self.data[tuple(index)]
-            return interpret(Tensor, dims, data)
+            return interpret(Tensor, data, inputs, self.dtype)
+
+        if isinstance(value, Tensor):
+            raise NotImplementedError('TODO')
+
         raise RuntimeError('{} should be handled by caller'.format(value))
 
     def eager_unary(self, op):
         return interpret(Tensor, op(self.data), self.inputs, self.dtype)
 
-    def eager_reduce(self, op, dims=None):
+    def eager_reduce(self, op, reduced_vars):
         if op in ops.REDUCE_OP_TO_TORCH:
             torch_op = ops.REDUCE_OP_TO_TORCH[op]
             self_dims = frozenset(self.dims)

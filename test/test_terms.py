@@ -5,6 +5,7 @@ import pytest
 
 import funsor
 import funsor.ops as ops
+from funsor.domains import Domain, ints, reals
 from funsor.testing import check_funsor
 
 np.seterr(all='ignore')
@@ -17,29 +18,29 @@ def test_to_funsor_undefined(x):
 
 
 def test_cons_hash():
-    assert funsor.Variable('x', funsor.ints(3)) is funsor.Variable('x', funsor.ints(3))
-    assert funsor.Variable('x', funsor.reals()) is funsor.Variable('x', funsor.reals())
-    assert funsor.Variable('x', funsor.reals()) is not funsor.Variable('x', funsor.ints(3))
+    assert funsor.Variable('x', ints(3)) is funsor.Variable('x', ints(3))
+    assert funsor.Variable('x', reals()) is funsor.Variable('x', reals())
+    assert funsor.Variable('x', reals()) is not funsor.Variable('x', ints(3))
     assert funsor.Number(0, 3) is funsor.Number(0, 3)
     assert funsor.Number(0.) is funsor.Number(0.)
     assert funsor.Number(0.) is not funsor.Number(0, 3)
 
 
 @pytest.mark.parametrize('expr', [
-    "funsor.Variable('x', funsor.ints(3))",
-    "funsor.Variable('x', funsor.reals())",
+    "funsor.Variable('x', ints(3))",
+    "funsor.Variable('x', reals())",
     "funsor.Number(0.)",
     "funsor.Number(1, dtype=10)",
-    "-funsor.Variable('x', funsor.reals())",
-    "funsor.Variable('x', funsor.reals()) + funsor.Variable('y', funsor.reals())",
-    "funsor.Variable('x', funsor.reals())(x=funsor.Number(0.))",
+    "-funsor.Variable('x', reals())",
+    "funsor.Variable('x', reals()) + funsor.Variable('y', reals())",
+    "funsor.Variable('x', reals())(x=funsor.Number(0.))",
 ])
 def test_reinterpret(expr):
     x = eval(expr)
     assert funsor.reinterpret(x) is x
 
 
-@pytest.mark.parametrize('domain', [funsor.ints(3), funsor.reals()])
+@pytest.mark.parametrize('domain', [ints(3), reals()])
 def test_variable(domain):
     x = funsor.Variable('x', domain)
     check_funsor(x, {'x': domain}, domain)
@@ -49,7 +50,7 @@ def test_variable(domain):
     assert x('y') is y
     assert x(x='y') is y
     assert x(x=y) is y
-    x4 = funsor.Variable('x', funsor.ints(4))
+    x4 = funsor.Variable('x', ints(4))
     assert x4 is not x
     assert x4('x') is x4
     assert x(x=x4) is x4
@@ -78,7 +79,7 @@ def test_unary(symbol, data):
 
     x = funsor.Number(data, dtype)
     actual = unary_eval(symbol, x)
-    check_funsor(actual, {}, funsor.Domain((), dtype), expected_data)
+    check_funsor(actual, {}, Domain((), dtype), expected_data)
 
 
 BINARY_OPS = [
@@ -102,9 +103,9 @@ def binary_eval(symbol, x, y):
 def test_binary(symbol, data1, data2):
     dtype = 'real'
     if symbol in BOOLEAN_OPS:
+        dtype = 2
         data1 = bool(data1)
         data2 = bool(data2)
-        dtype = 2
     try:
         expected_data = binary_eval(symbol, data1, data2)
     except ZeroDivisionError:
@@ -113,4 +114,4 @@ def test_binary(symbol, data1, data2):
     x1 = funsor.Number(data1, dtype)
     x2 = funsor.Number(data2, dtype)
     actual = binary_eval(symbol, x1, x2)
-    check_funsor(actual, {}, funsor.Domain((), dtype), expected_data)
+    check_funsor(actual, {}, Domain((), dtype), expected_data)
