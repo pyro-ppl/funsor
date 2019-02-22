@@ -18,7 +18,7 @@ from abc import ABCMeta, abstractmethod
 from collections import OrderedDict
 from weakref import WeakValueDictionary
 
-from six import add_metaclass
+from six import add_metaclass, integer_types
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
@@ -197,15 +197,22 @@ class Funsor(object):
         if not reduced_vars:
             return self
 
-        # Try to sum out integer variables. This is mainly useful for testing,
+        # Try to sum out integer scalars. This is mainly useful for testing,
         # since reduction is more efficiently implemented by Tensor.
-        int_vars = tuple(sorted(k for k in reduced_vars
-                                if isinstance(self.inputs[k].dtype, int)))
-        if int_vars:
-            result = 0.
-            for int_values in itertools.product(*(self.inputs[k] for k in int_vars)):
-                subs = dict(zip(int_vars, int_values))
-                result += self(**subs)
+        eager_vars = []
+        lazy_vars = []
+        for k in reduced_vars:
+            if isinstance(self.inputs[k].dtype, integer_types) and not self.inputs[k].shape:
+                eager_vars.append(k)
+            else:
+                lazy_vars.append(k)
+        if eager_vars:
+            result = None
+            for values in itertools.product(*(self.inputs[k] for k in eager_vars)):
+                subs = dict(zip(eager_vars, values))
+                result = self(**subs) if result is None else op(result, self(**subs))
+            if lazy_vars:
+                result = Reduce(op, result, frozenset(lazy_vars))
             return result
 
         return None  # defer to default implementation
@@ -363,7 +370,11 @@ class Variable(Funsor):
         return self.name
 
     def eager_subs(self, subs):
-        return subs.get(self.name, self)
+        assert isinstance(subs, tuple)
+        for k, v in subs:
+            if k == self.name:
+                return v
+        return self
 
 
 class Substitute(Funsor):
@@ -373,8 +384,7 @@ class Substitute(Funsor):
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
         assert isinstance(subs, tuple)
-        subs = OrderedDict(subs)
-        for key, value in subs.items():
+        for key, value in subs:
             assert isinstance(key, str)
             assert key in arg.inputs
             assert isinstance(value, Funsor)
@@ -385,26 +395,26 @@ class Substitute(Funsor):
             inputs.update(value.inputs)
         super(Substitute, self).__init__(inputs, arg.output)
         self.arg = arg
-        self.subs = subs
+        self.subs = OrderedDict(subs)
 
     def __repr__(self):
         return 'Substitute({}, {})'.format(self.arg, self.subs)
 
     def eager_subs(self, subs):
-        raise NotImplementedError('TODO')
+        assert isinstance(subs, tuple)
+        old_subs = tuple((k, Substitute(v, subs)) for k, v in self.subs.items())
+        new_subs = tuple((k, v) for k, v in subs if k not in self.subs)
+        subs = old_subs + new_subs
+        return Substitute(self.arg, subs) if subs else self.arg
 
 
 @lazy.register(Substitute, Funsor, object)
 @eager.register(Substitute, Funsor, object)
 def eager_subs(arg, subs):
-    # Convert between dict <-> tuple. Dicts are used in most places,
-    # but tuples are required for cons hashing.
-    if isinstance(subs, tuple):
-        subs = dict(subs)
-    assert isinstance(subs, dict)
+    assert isinstance(subs, tuple)
 
     # Try to eagerly ignore irrelevant substitutions.
-    if set(subs).isdisjoint(arg.inputs):
+    if not any(k in arg.inputs for k, v in subs):
         return arg
 
     # Defer to per-class methods.
@@ -541,8 +551,8 @@ class Number(Funsor):
     """
     def __init__(self, data, dtype=None):
         assert isinstance(data, numbers.Number)
-        if isinstance(dtype, int):
-            data = int(data)
+        if isinstance(dtype, integer_types):
+            data = type(dtype)(data)
         else:
             assert isinstance(dtype, str) and dtype == "real"
             data = float(data)

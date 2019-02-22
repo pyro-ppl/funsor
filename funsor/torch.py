@@ -16,7 +16,6 @@ def align_tensors(*args):
     r"""
     Permute multiple tensors before applying a broadcasted op.
 
-    This assumes all tensors have the same output shape (event shape).
     This is mainly useful for implementing eager funsor operations.
 
     :param funsor.terms.Funsor \*args: Multiple :class:`Tensor`s and
@@ -28,13 +27,8 @@ def align_tensors(*args):
     """
     # Collect nominal shapes.
     inputs = OrderedDict()
-    output = None
     for x in args:
         inputs.update(x.inputs)
-        if output is None:
-            output = x.output
-        else:
-            assert x.output == output
 
     # Compute linear shapes.
     sizes = []
@@ -54,13 +48,13 @@ def align_tensors(*args):
             tensors.append(x)
             continue
 
-        x_inputs, x = x.inputs, x.data
+        x_inputs, x_output, x = x.inputs, x.output, x.data
         if x_inputs == inputs:
             tensors.append(x)
             continue
 
         # Squash each multivariate input dim into a single dim.
-        x = x.reshape(tuple(sizes[k] for k in x_inputs) + output.shape)
+        x = x.reshape(tuple(sizes[k] for k in x_inputs) + x_output.shape)
 
         # Pemute squashed input dims.
         x_keys = tuple(x_inputs)
@@ -68,11 +62,11 @@ def align_tensors(*args):
 
         # Fill in ones.
         x = x.reshape(tuple(sizes[k] if k in x_inputs else 1 for k in inputs) +
-                      output.shape)
+                      x_output.shape)
 
         # Unsquash multivariate input dims.
         x = x.reshape(sum((shapes[k] if k in x_inputs else (1,) * len(shapes[k]) for k in inputs),
-                          ()) + output.shape)
+                          ()) + x_output.shape)
         tensors.append(x)
 
     return inputs, tensors
@@ -108,10 +102,6 @@ class Tensor(Funsor):
         super(Tensor, self).__init__(inputs, output)
         self.data = data
 
-    @property
-    def dtype(self):
-        return self.output.dtype
-
     def __repr__(self):
         if self.output != "real":
             return 'Tensor({}, {}, {})'.format(self.data, self.inputs, repr(self.dtype))
@@ -141,13 +131,14 @@ class Tensor(Funsor):
         return self.data.item()
 
     def eager_subs(self, subs):
+        assert isinstance(subs, tuple)
         if all(isinstance(v, (Number, Tensor)) and not v.inputs or
                 isinstance(v, Variable)
-                for v in subs.values()):
+                for k, v in subs):
             # Substitute one variable at a time.
-            conflicts = list(subs.keys())
+            conflicts = [k for k, v in subs]
             result = self
-            for i, (key, value) in enumerate(subs.items()):
+            for i, (key, value) in enumerate(subs):
                 if isinstance(value, Funsor):
                     if not set(value.inputs).isdisjoint(conflicts[1 + i:]):
                         raise NotImplementedError(
@@ -254,7 +245,7 @@ class Arange(Tensor):
         super(Arange, self).__init__(data, inputs)
 
 
-class Function(object):
+class Function(Funsor):
     """
     Funsor wrapped by a for PyTorch function.
 
@@ -276,13 +267,16 @@ class Function(object):
         self.fn = fn
 
     def eager_subs(self, subs):
+        assert isinstance(subs, tuple)
+        subs = dict(subs)
         if not all(isinstance(subs.get(key), (Number, Tensor)) for key in self.inputs):
             return None  # defer to default implementation
+
         funsors = tuple(subs[key] for key in self.inputs)
         inputs, tensors = align_tensors(*funsors)
         data = self.fn(*tensors)
         inputs = None  # FIXME
-        return Tensor(data, inputs, self.output)
+        return Tensor(data, inputs, self.dtype)
 
 
 def function(*signature):
