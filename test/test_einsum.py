@@ -5,6 +5,7 @@ import pytest
 from collections import OrderedDict
 
 import torch
+from pyro.ops.contract import naive_ubersum
 
 import funsor
 
@@ -37,6 +38,13 @@ def naive_einsum(eqn, *terms):
     return prod
 
 
+def naive_plated_einsum(eqn, *terms, plates='', modulo_total=False):
+    assert isinstance(eqn, str)
+    assert all(isinstance(term, funsor.Funsor) for term in terms)
+    # ...
+    raise NotImplementedError("TODO implement naive plated einsum")
+
+
 EINSUM_EXAMPLES = [
     "a,b->",
     "ab,a->",
@@ -56,6 +64,36 @@ def test_einsum(equation):
     ]
     expected = torch.einsum(equation, operands)
     actual = naive_einsum(equation, *funsor_operands)
+    assert torch.allclose(expected, actual.data)
+    for output in outputs:
+        for i, output_dim in enumerate(output):
+            assert output_dim in actual.inputs
+            assert actual.inputs[output_dim].dtype == sizes[output_dim]
+
+
+PLATED_EINSUM_EXAMPLES = [
+    ('i->', 'i'),
+    ('i->i', 'i'),
+    (',i->', 'i'),
+    (',i->i', 'i'),
+    ('ai->', 'i'),
+    ('ai->i', 'i'),
+    ('ai->ai', 'i'),
+    (',ai,abij->aij', 'ij'),
+    ('a,ai,bij->bij', 'ij'),
+]
+
+
+@pytest.mark.xfail(reason="naive plated einsum not implemented")
+@pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
+def test_plated_einsum(equation, plates):
+    inputs, outputs, operands, sizes = make_example(equation)
+    funsor_operands = [
+        funsor.Tensor(operand, OrderedDict([(d, funsor.ints(sizes[d])) for d in inp]))
+        for inp, operand in zip(inputs, operands)
+    ]
+    expected = naive_ubersum(equation, *operands, plates=plates, backend='torch')[0]
+    actual = naive_plated_einsum(equation, *funsor_operands, plates=plates)
     assert torch.allclose(expected, actual.data)
     for output in outputs:
         for i, output_dim in enumerate(output):
