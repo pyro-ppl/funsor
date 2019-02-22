@@ -71,7 +71,7 @@ def test_einsum(equation):
             assert actual.inputs[output_dim].dtype == sizes[output_dim]
 
 
-PLATED_EINSUM_EXAMPLES = [
+PLATED_EINSUM_EXAMPLES = [(ex, '') for ex in EINSUM_EXAMPLES] + [
     ('i->', 'i'),
     ('i->i', 'i'),
     (',i->', 'i'),
