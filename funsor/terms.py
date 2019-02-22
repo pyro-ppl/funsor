@@ -629,7 +629,7 @@ class Stack(Funsor):
 
         if pos is None:
             # Eagerly recurse into components.
-            assert not any(self.name in v for k, v in subs)
+            assert not any(self.name in v.inputs for k, v in subs)
             components = tuple(Substitute(x, subs) for x in self.components)
             return Stack(components, self.name)
 
@@ -644,8 +644,10 @@ class Stack(Funsor):
 
         if isinstance(index, Variable):
             # Rename the stacking dimension.
-            result = Stack(self.components, index.name)
-            return Substitute(result, subs) if subs else result
+            components = self.components
+            if subs:
+                components = tuple(Substitute(x, subs) for x in components)
+            return Stack(components, index.name)
 
         # TODO support advanced indexing
 
@@ -664,6 +666,7 @@ __all__ = [
     'Funsor',
     'Number',
     'Reduce',
+    'Stack',
     'Substitute',
     'Unary',
     'Variable',
