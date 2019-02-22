@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import argparse
+from collections import OrderedDict
 
 import torch
 
@@ -20,12 +21,12 @@ def main(args):
 
         trans = dist.Categorical(probs=funsor.Tensor(
             trans_probs,
-            inputs=OrderedDict([('prev', ints(2))]),
+            inputs=OrderedDict([('prev', funsor.ints(2))]),
         ))
 
         emit = dist.Categorical(probs=funsor.Tensor(
-            emit_probs, 
-            inputs=OrderedDict([('latent', ints(2))]),
+            emit_probs,
+            inputs=OrderedDict([('latent', funsor.ints(2))]),
         ))
 
         x_curr = funsor.to_funsor(0)
