@@ -1,15 +1,3 @@
-r"""
-Funsor interpretations
-----------------------
-
-Funsor provides three basic interpretations.
-
-- ``reflect`` is completely lazy, even with respect to substitution.
-- ``lazy`` substitutes eagerly but performs ops lazily.
-- ``eager`` does everything eagerly.
-
-"""
-
 from __future__ import absolute_import, division, print_function
 
 import types
@@ -19,36 +7,9 @@ import torch
 from contextlib2 import contextmanager
 
 from funsor.domains import Domain
-from funsor.registry import KeyedRegistry
 from funsor.six import singledispatch
 
-
-def reflect(cls, *args):
-    return cls(*args)
-
-
-_lazy = KeyedRegistry(default=lambda *args: None)
-_eager = KeyedRegistry(default=lambda *args: None)
-
-
-def lazy(cls, *args):
-    result = _lazy(cls, *args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
-
-
-def eager(cls, *args):
-    result = _eager(cls, *args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
-
-
-lazy.register = _lazy.register
-eager.register = _eager.register
-
-_INTERPRETATION = eager  # Use eager interpretation by default.
+_INTERPRETATION = None  # To be set later in funsor.terms
 
 
 def interpret(cls, *args):
@@ -76,11 +37,10 @@ def interpretation(new):
 @singledispatch
 def reinterpret(x):
     r"""
-    Overloaded reinterpretation deferred expression.
-    Default semantics: do nothing (reflect)
+    Overloaded reinterpretation of a deferred expression.
 
     This handles a limited class of expressions, raising
-    ``NotImplementedError`` in unhandled cases.
+    ``ValueError`` in unhandled cases.
 
     :param x: An input, typically involving deferred
         :class:`~funsor.terms.Funsor`s.
@@ -130,11 +90,8 @@ def _reinterpret_ordereddict(x):
 
 
 __all__ = [
-    'eager',
     'interpret',
     'interpretation',
-    'lazy',
-    'reflect',
     'reinterpret',
     'set_interpretation',
 ]

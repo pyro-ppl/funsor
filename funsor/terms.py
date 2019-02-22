@@ -1,3 +1,15 @@
+r"""
+Funsor interpretations
+----------------------
+
+Funsor provides three basic interpretations.
+
+- ``reflect`` is completely lazy, even with respect to substitution.
+- ``lazy`` substitutes eagerly but performs ops lazily.
+- ``eager`` does everything eagerly.
+
+"""
+
 from __future__ import absolute_import, division, print_function
 
 import itertools
@@ -11,19 +23,59 @@ from six import add_metaclass
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Domain, find_domain
-from funsor.interpreter import eager, interpret, lazy
+from funsor.interpreter import interpret
+from funsor.registry import KeyedRegistry
 from funsor.six import getargspec, singledispatch
+
+
+def reflect(cls, *args):
+    """
+    Construct a funsor, populate ``._ast_values``, and cons hash.
+    """
+    if args in cls._cons_cache:
+        return cls._cons_cache[args]
+    result = super(FunsorMeta, cls).__call__(*args)
+    result._ast_values = args
+    cls._cons_cache[args] = result
+    return result
+
+
+_lazy = KeyedRegistry(default=lambda *args: None)
+_eager = KeyedRegistry(default=lambda *args: None)
+
+
+def lazy(cls, *args):
+    result = _lazy(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
+    return result
+
+
+def eager(cls, *args):
+    result = _eager(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
+    return result
+
+
+lazy.register = _lazy.register
+eager.register = _eager.register
+
+interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
 
 class FunsorMeta(ABCMeta):
     """
-    Metaclass for Funsors to perform three tasks:
+    Metaclass for Funsors to perform three independent tasks:
 
-    1.  Ensure each Funsor class has an attribute ``._ast_fields`` describing
-        its input args.
-    2.  Ensure each Funsor instance has an attribute ``._ast_args`` with
-        values corresponding to its input args. This allows the instance to
-        be reflectively reconstructed under a different interpretation, and
+    1.  Fill in default kwargs and convert kwargs to args before deferring to a
+        nonstandard interpretation. This allows derived metaclasses to fill in
+        defaults and do type conversion, thereby simplifying logic of
+        interpretations.
+    2.  Ensure each Funsor class has an attribute ``._ast_fields`` describing
+        its input args and each Funsor instance has an attribute ``._ast_args``
+        with values corresponding to its input args. This allows the instance
+        to be reflectively reconstructed under a different interpretation, and
         is used by :func:`funsor.interpreter.reinterpret`.
     3.  Cons-hash construction, so that repeatedly calling the constructor
         with identical args will product the same object. This enables cheap
@@ -47,13 +99,7 @@ class FunsorMeta(ABCMeta):
             assert not kwargs, kwargs
             args = tuple(args)
 
-        # Cons hash result to make equality testing easy.
-        if args in cls._cons_cache:
-            return cls._cons_cache[args]
-        result = super(FunsorMeta, cls).__call__(*args)
-        result._ast_values = args
-        cls._cons_cache[args] = result
-        return result
+        return interpret(cls, *args)
 
 
 @add_metaclass(FunsorMeta)
@@ -99,10 +145,10 @@ class Funsor(object):
         for k, v in subs.items():
             if isinstance(v, str):
                 # Allow renaming of inputs via syntax x(y="z").
-                subs[k] = interpret(Variable, v, self.inputs[k])
+                subs[k] = Variable(v, self.inputs[k])
             else:
                 subs[k] = to_funsor(v)
-        return interpret(Substitute, self, tuple(subs.items()))
+        return Substitute(self, tuple(subs.items()))
 
     def __bool__(self):
         if self.inputs or self.output.shape:
@@ -132,12 +178,12 @@ class Funsor(object):
         if reduced_vars is None:
             # Empty reduced_vars means "reduce over everything".
             reduced_vars = frozenset(self.inputs)
-        else:
+        elif isinstance(reduced_vars, str):
             # A single name means "reduce over this one variable".
-            if isinstance(reduced_vars, str):
-                reduced_vars = frozenset([reduced_vars])
-            assert reduced_vars.issubset(self.inputs)
-        return interpret(Reduce, op, self, reduced_vars)
+            reduced_vars = frozenset([reduced_vars])
+        assert isinstance(reduced_vars, frozenset), reduced_vars
+        assert reduced_vars.issubset(self.inputs)
+        return Reduce(op, self, reduced_vars)
 
     @abstractmethod
     def eager_subs(self, subs):
@@ -165,115 +211,115 @@ class Funsor(object):
         return None  # defer to default implementation
 
     def __invert__(self):
-        return interpret(Unary, ops.invert, self)
+        return Unary(ops.invert, self)
 
     def __neg__(self):
-        return interpret(Unary, ops.neg, self)
+        return Unary(ops.neg, self)
 
     def abs(self):
-        return interpret(Unary, ops.abs, self)
+        return Unary(ops.abs, self)
 
     def sqrt(self):
-        return interpret(Unary, ops.sqrt, self)
+        return Unary(ops.sqrt, self)
 
     def exp(self):
-        return interpret(Unary, ops.exp, self)
+        return Unary(ops.exp, self)
 
     def log(self):
-        return interpret(Unary, ops.log, self)
+        return Unary(ops.log, self)
 
     def log1p(self):
-        return interpret(Unary, ops.log1p, self)
+        return Unary(ops.log1p, self)
 
     def __add__(self, other):
-        return interpret(Binary, ops.add, self, to_funsor(other))
+        return Binary(ops.add, self, to_funsor(other))
 
     def __radd__(self, other):
-        return interpret(Binary, ops.add, self, to_funsor(other))
+        return Binary(ops.add, self, to_funsor(other))
 
     def __sub__(self, other):
-        return interpret(Binary, ops.sub, self, to_funsor(other))
+        return Binary(ops.sub, self, to_funsor(other))
 
     def __rsub__(self, other):
-        return interpret(Binary, ops.sub, to_funsor(other), self)
+        return Binary(ops.sub, to_funsor(other), self)
 
     def __mul__(self, other):
-        return interpret(Binary, ops.mul, self, to_funsor(other))
+        return Binary(ops.mul, self, to_funsor(other))
 
     def __rmul__(self, other):
-        return interpret(Binary, ops.mul, self, to_funsor(other))
+        return Binary(ops.mul, self, to_funsor(other))
 
     def __truediv__(self, other):
-        return interpret(Binary, ops.truediv, self, to_funsor(other))
+        return Binary(ops.truediv, self, to_funsor(other))
 
     def __rtruediv__(self, other):
-        return interpret(Binary, ops.truediv, to_funsor(other), self)
+        return Binary(ops.truediv, to_funsor(other), self)
 
     def __pow__(self, other):
-        return interpret(Binary, ops.pow, self, to_funsor(other))
+        return Binary(ops.pow, self, to_funsor(other))
 
     def __rpow__(self, other):
-        return interpret(Binary, ops.pow, to_funsor(other), self)
+        return Binary(ops.pow, to_funsor(other), self)
 
     def __and__(self, other):
-        return interpret(Binary, ops.and_, self, to_funsor(other))
+        return Binary(ops.and_, self, to_funsor(other))
 
     def __rand__(self, other):
-        return interpret(Binary, ops.and_, self, to_funsor(other))
+        return Binary(ops.and_, self, to_funsor(other))
 
     def __or__(self, other):
-        return interpret(Binary, ops.or_, self, to_funsor(other))
+        return Binary(ops.or_, self, to_funsor(other))
 
     def __ror__(self, other):
-        return interpret(Binary, ops.or_, self, to_funsor(other))
+        return Binary(ops.or_, self, to_funsor(other))
 
     def __xor__(self, other):
-        return interpret(Binary, ops.xor, self, to_funsor(other))
+        return Binary(ops.xor, self, to_funsor(other))
 
     def __eq__(self, other):
-        return interpret(Binary, ops.eq, self, to_funsor(other))
+        return Binary(ops.eq, self, to_funsor(other))
 
     def __ne__(self, other):
-        return interpret(Binary, ops.ne, self, to_funsor(other))
+        return Binary(ops.ne, self, to_funsor(other))
 
     def __lt__(self, other):
-        return interpret(Binary, ops.lt, self, to_funsor(other))
+        return Binary(ops.lt, self, to_funsor(other))
 
     def __le__(self, other):
-        return interpret(Binary, ops.le, self, to_funsor(other))
+        return Binary(ops.le, self, to_funsor(other))
 
     def __gt__(self, other):
-        return interpret(Binary, ops.gt, self, to_funsor(other))
+        return Binary(ops.gt, self, to_funsor(other))
 
     def __ge__(self, other):
-        return interpret(Binary, ops.ge, self, to_funsor(other))
+        return Binary(ops.ge, self, to_funsor(other))
 
     def __min__(self, other):
-        return interpret(Binary, ops.min, self, to_funsor(other))
+        return Binary(ops.min, self, to_funsor(other))
 
     def __max__(self, other):
-        return interpret(Binary, ops.max, self, to_funsor(other))
+        return Binary(ops.max, self, to_funsor(other))
 
     def sum(self, reduced_vars=None):
-        return interpret(Reduce, ops.add, self, reduced_vars)
+        return self.reduce(ops.add, reduced_vars)
 
     def prod(self, reduced_vars=None):
-        return interpret(Reduce, ops.mul, self, reduced_vars)
+        return self.reduce(ops.mul, reduced_vars)
 
     def logsumexp(self, reduced_vars=None):
-        return interpret(Reduce, ops.logaddexp, self, reduced_vars)
+        return self.reduce(ops.logaddexp, reduced_vars)
 
     def all(self, reduced_vars=None):
-        return interpret(Reduce, ops.and_, self, reduced_vars)
+        return self.reduce(ops.and_, reduced_vars)
 
     def any(self, reduced_vars=None):
-        return interpret(Reduce, ops.or_, self, reduced_vars)
+        return self.reduce(ops.or_, reduced_vars)
 
     def min(self, reduced_vars=None):
-        return interpret(Reduce, ops.min, self, reduced_vars)
+        return self.reduce(ops.min, reduced_vars)
 
     def max(self, reduced_vars=None):
-        return interpret(Reduce, ops.max, self, reduced_vars)
+        return self.reduce(ops.max, reduced_vars)
 
 
 interpreter.reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
@@ -389,8 +435,8 @@ class Unary(Funsor):
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
 
     def eager_subs(self, subs):
-        arg = interpret(Substitute, self.arg, subs)
-        return interpret(Unary, self.op, arg)
+        arg = Substitute(self.arg, subs)
+        return Unary(self.op, arg)
 
 
 @eager.register(Unary, object, Funsor)
@@ -429,9 +475,9 @@ class Binary(Funsor):
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
     def eager_subs(self, subs):
-        lhs = interpret(Substitute, self.lhs, subs)
-        rhs = interpret(Substitute, self.rhs, subs)
-        return interpret(Binary, self.op, lhs, rhs)
+        lhs = Substitute(self.lhs, subs)
+        rhs = Substitute(self.rhs, subs)
+        return Binary(self.op, lhs, rhs)
 
 
 class Reduce(Funsor):
@@ -465,7 +511,7 @@ class Reduce(Funsor):
             # Eagerly fuse reductions.
             assert isinstance(reduced_vars, frozenset)
             reduced_vars = reduced_vars.intersection(self.inputs) | self.reduced_vars
-            return interpret(Reduce, op, self.arg, reduced_vars)
+            return Reduce(op, self.arg, reduced_vars)
         return super(Reduce, self).reduce(op, reduced_vars)
 
 
@@ -530,7 +576,7 @@ class Number(Funsor):
         return self
 
     def eager_unary(self, op):
-        return interpret(Number, op(self.data), self.dtype)
+        return Number(op(self.data), self.dtype)
 
 
 @eager.register(Binary, object, Number, Number)
@@ -538,7 +584,7 @@ def eager_binary_number_number(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
     output = find_domain(op, lhs.output, rhs.output)
     dtype = output.dtype
-    return interpret(Number, data, dtype)
+    return Number(data, dtype)
 
 
 __all__ = [
@@ -549,5 +595,8 @@ __all__ = [
     'Substitute',
     'Unary',
     'Variable',
+    'eager',
+    'lazy',
+    'reflect',
     'to_funsor',
 ]

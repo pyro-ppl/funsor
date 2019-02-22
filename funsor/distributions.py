@@ -7,10 +7,9 @@ from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import reals
-from funsor.interpreter import eager, interpret
 from funsor.pattern import simplify_sum
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 from funsor.torch import Tensor, align_tensors
 
 
@@ -98,12 +97,12 @@ class Distribution(Funsor):
             params = dict(zip(params, tensors))
             value = params.pop('value')
             data = self.cls(**params).log_prob(value)
-            return interpret(Tensor, data, dims)
+            return Tensor(data, dims)
         return type(self)(**params)
 
     def eager_reduce(self, op, dims):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in dims:
-            return interpret(Number, 0.)  # distributions are normalized
+            return Number(0.)  # distributions are normalized
         return super(Distribution, self).reduce(op, dims)
 
     # Legacy distributions interface:
@@ -128,7 +127,7 @@ class Distribution(Funsor):
             reduced_vars, tensors = align_tensors(*params.values())
             params = dict(zip(params, tensors))
             data = self.cls(**params).rsample()
-            return {value.name: interpret(Tensor, reduced_vars, data)}
+            return {value.name: Tensor(reduced_vars, data)}
 
         raise NotImplementedError('TODO')
 
@@ -221,14 +220,14 @@ def eager_binary_normal_normal(op, lhs, rhs):
                 prec3 = prec1 + prec2
                 loc3 = loc1 + simplify_sum(loc2 - loc1) * (prec2 / prec3)
                 scale3 = prec3 ** -0.5
-                updated = interpret(Normal, loc3, scale3, value=lhs.value)
+                updated = Normal(loc3, scale3, value=lhs.value)
                 # FIXME add log(a1) term?
 
                 # Encapsulate the log_likelihood in a Normal for later pattern matching.
                 prec4 = prec1 * prec2 / prec3
                 scale4 = prec4 ** -0.5
                 loc4 = simplify_sum(loc2 - loc1)
-                log_likelihood = interpret(Normal, loc4, scale4)(value=0.) + a1.abs().log()  # FIXME
+                log_likelihood = Normal(loc4, scale4)(value=0.) + a1.abs().log()  # FIXME
                 result = updated + log_likelihood
                 print(' result = {}'.format(result))
                 return result
