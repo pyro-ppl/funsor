@@ -275,8 +275,7 @@ class Function(Funsor):
         funsors = tuple(subs[key] for key in self.inputs)
         inputs, tensors = align_tensors(*funsors)
         data = self.fn(*tensors)
-        inputs = None  # FIXME
-        return Tensor(data, inputs, self.dtype)
+        return Tensor(data, dtype=self.dtype)
 
 
 def function(*signature):

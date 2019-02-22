@@ -9,7 +9,7 @@ from six.moves import reduce
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, ints, reals
-from funsor.terms import Binary, Number, Variable, to_funsor
+from funsor.terms import Binary, Number, Stack, Variable, to_funsor
 from funsor.testing import check_funsor
 
 np.seterr(all='ignore')
@@ -189,3 +189,42 @@ def test_reduce_subset(op, reduced_vars):
     # TODO check data
     if not reduced_vars:
         assert actual is f
+
+
+def test_stack_simple():
+    x = Number(0.)
+    y = Number(1.)
+    z = Number(4.)
+
+    xyz = Stack((x, y, z), 'i')
+    check_funsor(xyz, {'i': ints(3)}, reals())
+
+    assert xyz(i=Number(0, 3)) is x
+    assert xyz(i=Number(1, 3)) is y
+    assert xyz(i=Number(2, 3)) is z
+    assert xyz.sum('i') == 5.
+
+
+def test_stack_subs():
+    x = Variable('x', reals())
+    y = Variable('y', reals())
+    z = Variable('z', reals())
+    j = Variable('j', ints(3))
+
+    f = Stack((Number(0), x, y * z), 'i')
+    check_funsor(f, {'i': ints(3), 'x': reals(), 'y': reals(), 'z': reals()},
+                 reals())
+
+    assert f(i=Number(0, 3)) is Number(0)
+    assert f(i=Number(1, 3)) is x
+    assert f(i=Number(2, 3)) is y * z
+    assert f(i=j) is Stack((Number(0), x, y * z), 'j')
+    assert f(i='j') is Stack((Number(0), x, y * z), 'j')
+    assert f.sum('i') is Number(0) + x + (y * z)
+
+    assert f(x=0) is Stack((Number(0), Number(0), y * z), 'i')
+    assert f(y=x) is Stack((Number(0), x, x * z), 'i')
+    assert f(x=0, y=x) is Stack((Number(0), Number(0), x * z), 'i')
+    assert f(x=0, y=x, i=Number(2, 3)) is x * z
+    assert f(x=0, i=j) is Stack((Number(0), Number(0), y * z), 'j')
+    assert f(x=0, i='j') is Stack((Number(0), Number(0), y * z), 'j')
