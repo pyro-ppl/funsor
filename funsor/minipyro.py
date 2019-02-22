@@ -139,10 +139,11 @@ def sample(fn, obs=None, name=None):
     effect handlers are active, it constructs an initial message and calls
     ``apply_stack``.
     """
+    assert isinstance(fn, Funsor)
 
     # if there are no active Handlers, we just create a lazy compute graph.
     if not HANDLER_STACK:
-        return Variable(name, fn.schema["value"])
+        return Variable(name, fn.output)
 
     # Otherwise, we initialize a message...
     initial_msg = Sample(**{
@@ -204,7 +205,7 @@ class deferred(SelectiveHandler):
     @dispatch(Sample)
     def process(self, msg):
         if msg["value"] is not None and self.match_fn(msg):
-            msg["value"] = Variable(msg["name"], msg["fn"].schema["value"])
+            msg["value"] = Variable(msg["name"], msg["fn"].output)
         return msg
 
 
@@ -250,8 +251,7 @@ class log_joint(Handler):
                        ).intersection(self.log_prob.dims)
         if hidden_dims:
             marginal = self.log_prob.reduce(ops.sample, hidden_dims)
-            with funsor.adjoints():
-                self.log_prob = funsor.eval(marginal)
+            self.log_prob = funsor.eval(marginal)
             subs = funsor.backward(ops.sample, self.log_prob, hidden_dims)
             msg["value"] = _recursive_map(lambda x: x(**subs), msg["value"])
         return msg
@@ -261,8 +261,7 @@ class log_joint(Handler):
         value = msg["value"]
         if not isinstance(value, (funsor.Number, funsor.Tensor)):
             log_prob = self.log_prob.reduce(ops.sample, value.dims)
-            with funsor.adjoints():
-                self.log_prob = funsor.eval(log_prob)
+            self.log_prob = funsor.eval(log_prob)
             subs = funsor.backward(ops.sample, self.log_prob, value.dims)
             self.samples.update(subs)
             msg["value"] = value(**subs)
@@ -337,7 +336,7 @@ def elbo(model, guide, *args, **kwargs):
     This is an attempt to compute a deferred elbo.
     """
     # sample guide
-    with funsor.adjoints(), log_joint() as guide_joint:
+    with log_joint() as guide_joint:
         guide(*args, **kwargs)
         # FIXME This is only correct for reparametrized sites.
         # FIXME do not marginalize; instead sample.
@@ -346,7 +345,7 @@ def elbo(model, guide, *args, **kwargs):
     tr.update(funsor.backward(ops.sample, q))  # force deferred samples?
 
     # replay model against guide
-    with funsor.adjoints(), log_joint() as model_joint, replay(guide_trace=tr):
+    with log_joint() as model_joint, replay(guide_trace=tr):
         model(*args, **kwargs)
         p = funsor.eval(model_joint.log_prob.logsumexp())
 

@@ -1,34 +1,32 @@
 from __future__ import absolute_import, division, print_function
 
-from funsor.adjoint import adjoints, backward
-from funsor.engine import eval, materialize
-from funsor.handlers import set_default_handlers
-from funsor.terms import Branch, Funsor, Number, Variable, of_shape, to_funsor
-from funsor.torch import Arange, Pointwise, Tensor, function
+from funsor.domains import Domain, find_domain, ints, reals
+from funsor.interpreter import reinterpret
+from funsor.terms import Funsor, Number, Variable, to_funsor
+from funsor.torch import Arange, Function, Tensor, function
 
-from . import adjoint, distributions, engine, handlers, minipyro, ops, terms, torch
+from . import distributions, domains, handlers, interpreter, minipyro, ops, terms, torch
 
 __all__ = [
     'Arange',
-    'Branch',
+    'Domain',
+    'Function',
     'Funsor',
     'Number',
-    'Pointwise',
     'Tensor',
     'Variable',
-    'adjoint',
-    'adjoints',
     'backward',
     'distributions',
-    'engine',
-    'eval',
+    'domains',
+    'find_domain',
     'function',
     'handlers',
-    'materialize',
+    'interpreter',
+    'ints',
     'minipyro',
-    'of_shape',
     'ops',
-    'set_default_handlers',
+    'reals',
+    'reinterpret',
     'terms',
     'to_funsor',
     'torch',

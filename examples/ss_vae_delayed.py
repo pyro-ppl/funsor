@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import argparse
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
@@ -51,7 +52,9 @@ def guide(image):
 
 def main(args):
     # Generate fake data.
-    data = funsor.Tensor(('data',), torch.randn(100))
+    data = funsor.Tensor(torch.randn(100),
+                         inputs=OrderedDict([('data', funsor.ints(100))]),
+                         output=funsor.reals())
 
     # Train.
     optim = pyro.Adam({'lr': args.learning_rate})
