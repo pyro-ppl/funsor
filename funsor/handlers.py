@@ -1,7 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
 import functools
-from weakref import WeakValueDictionary
 
 from multipledispatch import Dispatcher, dispatch
 from six import add_metaclass

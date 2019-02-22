@@ -2,12 +2,10 @@
 from __future__ import absolute_import, division, print_function
 
 import itertools
-import operator
 from collections import OrderedDict
 
 import pytest
 import torch
-from six.moves import reduce
 
 import funsor
 from funsor.testing import check_funsor

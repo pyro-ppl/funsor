@@ -34,9 +34,9 @@ def test_cons_hash():
     "funsor.Variable('x', funsor.reals()) + funsor.Variable('y', funsor.reals())",
     "funsor.Variable('x', funsor.reals())(x=funsor.Number(0.))",
 ])
-def test_eval(expr):
+def test_reinterpret(expr):
     x = eval(expr)
-    assert funsor.eval(x) is x
+    assert funsor.reinterpret(x) is x
 
 
 @pytest.mark.parametrize('domain', [funsor.ints(3), funsor.reals()])

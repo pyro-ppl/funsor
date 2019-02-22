@@ -8,7 +8,7 @@ from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import Domain, ints
-from funsor.interpretations import eager
+from funsor.interpreter import eager, interpret
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, to_funsor
 
@@ -122,7 +122,7 @@ class Tensor(Funsor):
             value = value.data
             dims = self.dims[:pos] + self.dims[1+pos:]
             data = self.data[(slice(None),) * pos + (value,)]
-            return Tensor(dims, data)
+            return interpret(Tensor, dims, data)
         if isinstance(value, Tensor):
             dims = self.dims[:pos] + value.dims + self.dims[1+pos:]
             index = [slice(None)] * len(self.dims)
@@ -131,11 +131,11 @@ class Tensor(Funsor):
                 if key != name and key in self.inputs:
                     raise NotImplementedError('TODO')
             data = self.data[tuple(index)]
-            return Tensor(dims, data)
+            return interpret(Tensor, dims, data)
         raise RuntimeError('{} should be handled by caller'.format(value))
 
     def eager_unary(self, op):
-        return Tensor(op(self.data), self.inputs, self.dtype)
+        return interpret(Tensor, op(self.data), self.inputs, self.dtype)
 
     def eager_reduce(self, op, dims=None):
         if op in ops.REDUCE_OP_TO_TORCH:
@@ -150,8 +150,9 @@ class Tensor(Funsor):
             if dims == self_dims:
                 if op is ops.logaddexp:
                     # work around missing torch.Tensor.logsumexp()
-                    return Tensor((), self.data.reshape(-1).logsumexp(0))
-                return Tensor((), torch_op(self.data))
+                    data = self.data.reshape(-1).logsumexp(0)
+                    return interpret(Tensor, data)
+                return interpret(Tensor, torch_op(self.data))
             data = self.data
             for pos in reversed(sorted(map(self.dims.index, dims))):
                 if op in (ops.min, ops.max):
@@ -159,20 +160,20 @@ class Tensor(Funsor):
                 else:
                     data = torch_op(data, pos)
             dims = tuple(d for d in self.dims if d not in dims)
-            return Tensor(dims, data)
+            return interpret(Tensor, data, dims)
         return super(Tensor, self).reduce(op, dims)
 
 
 @eager.register(Binary, object, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
-    return Tensor(data, lhs.inputs, lhs.dtype)
+    return interpret(Tensor, data, lhs.inputs, lhs.dtype)
 
 
 @eager.register(Binary, object, Number, Tensor)
 def eager_binary_number_tensor(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
-    return Tensor(data, rhs.inputs, rhs.dtype)
+    return interpret(Tensor, data, rhs.inputs, rhs.dtype)
 
 
 @eager.register(Binary, object, Tensor, Tensor)
@@ -184,7 +185,7 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
         data = op(lhs_data, rhs_data)
-    return Tensor(data, inputs, lhs.dtype)
+    return interpret(Tensor, data, inputs, lhs.dtype)
 
 
 class Arange(Tensor):
