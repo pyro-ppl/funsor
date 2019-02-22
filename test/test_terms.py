@@ -9,7 +9,7 @@ from six.moves import reduce
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, ints, reals
-from funsor.terms import Binary, Number, Variable, to_funsor
+from funsor.terms import Binary, Number, Stack, Variable, to_funsor
 from funsor.testing import check_funsor
 
 np.seterr(all='ignore')
@@ -189,3 +189,18 @@ def test_reduce_subset(op, reduced_vars):
     # TODO check data
     if not reduced_vars:
         assert actual is f
+
+
+def test_stack():
+
+    x = Number(0.)
+    y = Number(1.)
+    z = Number(4.)
+
+    xyz = Stack((x, y, z), 'i')
+    check_funsor(xyz, {'i': ints(3)}, reals())
+
+    assert xyz(i=Number(0, 3)) is x
+    assert xyz(i=Number(1, 3)) is y
+    assert xyz(i=Number(2, 3)) is z
+    assert xyz.sum('i') == 5.

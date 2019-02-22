@@ -22,7 +22,7 @@ from six import add_metaclass, integer_types
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Domain, find_domain
+from funsor.domains import Domain, find_domain, ints
 from funsor.interpreter import interpret
 from funsor.registry import KeyedRegistry
 from funsor.six import getargspec, singledispatch
@@ -595,6 +595,68 @@ def eager_binary_number_number(op, lhs, rhs):
     output = find_domain(op, lhs.output, rhs.output)
     dtype = output.dtype
     return Number(data, dtype)
+
+
+class Stack(Funsor):
+    """
+    Stack of funsors along a new input dimension.
+
+    :param tuple components: A tuple of Funsors.
+    :param str name: The name of the new leftmost dimension.
+    """
+    def __init__(self, components, name):
+        assert isinstance(components, tuple)
+        assert components
+        assert not any(name in x.inputs for x in components)
+        assert len(set(x.output for x in components)) == 1
+        output = components[0].output
+        domain = ints(len(components))
+        inputs = OrderedDict([(name, domain)])
+        for x in components:
+            inputs.update(x.inputs)
+        super(Stack, self).__init__(inputs, output)
+        self.components = components
+        self.name = name
+
+    def eager_subs(self, subs):
+        assert isinstance(subs, tuple)
+        assert subs
+        pos = None
+        for i, (k, index) in enumerate(subs):
+            if k == self.name:
+                pos = i
+                break
+
+        if pos is None:
+            # Eagerly recurse into components.
+            assert not any(self.name in v for k, v in subs)
+            components = tuple(Substitute(x, subs) for x in self.components)
+            return Stack(components, self.name)
+
+        # Try to eagerly select an index.
+        assert index.output == ints(len(self.components))
+        subs = subs[:pos] + subs[1 + pos:]
+
+        if isinstance(index, Number):
+            # Select a single component.
+            result = self.components[index.data]
+            return Substitute(result, subs) if subs else result
+
+        if isinstance(index, Variable):
+            # Rename the stacking dimension.
+            result = Stack(self.components, index.name)
+            return Substitute(result, subs) if subs else result
+
+        # TODO support advanced indexing
+
+        if not subs:
+            # We cannot make progress; return to avoid cycling.
+            return None  # defer to default implementation
+
+        # Eagerly recurse into components but lazily substitute.
+        components = tuple(Substitute(x, subs) for x in self.components)
+        result = Stack(components, self.name)
+        return Substitute(result, ((self.name, index),))
 
 
 __all__ = [
