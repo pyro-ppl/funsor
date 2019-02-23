@@ -9,7 +9,7 @@ from six import add_metaclass
 import funsor.ops as ops
 from funsor.domains import Domain, ints
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, to_funsor, eager
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Substitute, Variable, eager, to_funsor
 
 
 def align_tensors(*args):
@@ -246,41 +246,63 @@ class Arange(Tensor):
 
 
 class Function(Funsor):
-    """
-    Funsor wrapped by a for PyTorch function.
+    r"""
+    Funsor wrapped by a PyTorch function.
 
-    Functions are assumed to support broadcasting.
+    Functions are support broadcasting and can be eagerly evaluated on funsors
+    with free variables of int type (i.e. batch dimensions).
 
-    These are often created via the :func:`function` decorator.
+    :class:`Function`s are often created via the :func:`function` decorator.
 
-    :param tuple inputs: A tuple of domains of function arguments.
-    :param funsor.domains.Domain output: An output domain.
     :param callable fn: A PyTorch function to wrap.
+    :param funsor.domains.Domain output: An output domain.
+    :param Funsor \*args: Funsor arguments.
     """
-    def __init__(self, inputs, output, fn):
-        assert isinstance(inputs, tuple)
+    def __init__(self, fn, output, args):
         assert callable(fn)
-        args = getargspec(fn)[0]
-        assert len(inputs) == len(args)
-        inputs = OrderedDict(zip(args, inputs))
+        assert isinstance(args, tuple)
+        inputs = OrderedDict()
+        for arg in args:
+            assert isinstance(arg, Funsor)
+            inputs.update(arg.inputs)
         super(Function, self).__init__(inputs, output)
         self.fn = fn
+        self.args = args
+
+    def __repr__(self):
+        return 'Function({})'.format(', '.join(
+            [type(self).__name__, repr(self.output)] + list(map(repr, self.args))))
+
+    def __str__(self):
+        return 'Function({})'.format(', '.join(
+            [type(self).__name__, str(self.output)] + list(map(str, self.args))))
 
     def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        subs = dict(subs)
-        if not all(isinstance(subs.get(key), (Number, Tensor)) for key in self.inputs):
-            return None  # defer to default implementation
+        args = tuple(Substitute(arg, subs) for arg in self.args)
+        return Function(self.fn, self.output, args)
 
-        funsors = tuple(subs[key] for key in self.inputs)
-        inputs, tensors = align_tensors(*funsors)
-        data = self.fn(*tensors)
-        return Tensor(data, dtype=self.dtype)
+
+@eager.register(Function, object, Domain, tuple)
+def eager_function(fn, output, args):
+    if not all(isinstance(arg, (Number, Tensor)) for arg in args):
+        return None  # defer to default implementation
+    inputs, tensors = align_tensors(*args)
+    data = fn(*tensors)
+    result = Tensor(data, inputs, dtype=output.dtype)
+    assert result.output == output
+    return result
+
+
+def _function(inputs, output, fn):
+    names = getargspec(fn)[0]
+    args = tuple(Variable(name, domain) for (name, domain) in zip(names, inputs))
+    assert len(args) == len(inputs)
+    return Function(fn, output, args)
 
 
 def function(*signature):
     r"""
-    Decorator to wrap PyTorch functions.
+    Decorator to wrap a PyTorch function.
 
     Example::
 
@@ -288,7 +310,7 @@ def function(*signature):
         def matmul(x, y):
             return torch.matmul(x, y)
 
-        @funsor.function(reals(3,4), reals(4,5), reals(3,5))
+        @funsor.function(reals(10), reals(10, 10), reals())
         def mvn_log_prob(loc, scale_tril, x):
             d = torch.distributions.MultivariateNormal(loc, scale_tril)
             return d.log_prob(x)
@@ -297,8 +319,9 @@ def function(*signature):
         domain.
     """
     assert signature
+    assert all(isinstance(d, Domain) for d in signature)
     inputs, output = signature[:-1], signature[-1]
-    return functools.partial(Function, inputs, output)
+    return functools.partial(_function, inputs, output)
 
 
 __all__ = [

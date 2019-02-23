@@ -265,7 +265,7 @@ def test_function_lazy_matmul():
     y = funsor.Tensor(torch.randn(4, 5))
     actual_lazy = matmul(x_lazy, y)
     check_funsor(actual_lazy, {'x': reals(3, 4)}, reals(3, 5))
-    assert isinstance(actual_lazy, funsor.terms.Substitute)
+    assert isinstance(actual_lazy, funsor.Function)
 
     x = funsor.Tensor(torch.randn(3, 4))
     actual = actual_lazy(x=x)
