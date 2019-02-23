@@ -12,6 +12,7 @@ Funsor provides three basic interpretations.
 
 from __future__ import absolute_import, division, print_function
 
+import functools
 import itertools
 import numbers
 from abc import ABCMeta, abstractmethod
@@ -661,6 +662,25 @@ class Stack(Funsor):
         return Substitute(result, ((self.name, index),))
 
 
+def _of_shape(fn, shape):
+    args, vargs, kwargs, defaults = getargspec(fn)
+    assert not vargs
+    assert not kwargs
+    names = tuple(args)
+    args = [Variable(name, size) for name, size in zip(names, shape)]
+    # FIXME implement .align() attribute.
+    # return to_funsor(fn(*args)).align(dims, shape)
+    return to_funsor(fn(*args))
+
+
+def of_shape(*shape):
+    """
+    Decorator to construct a :class:`Funsor` with one free :class:`Variable`
+    per function arg.
+    """
+    return functools.partial(_of_shape, shape=shape)
+
+
 __all__ = [
     'Binary',
     'Funsor',
@@ -672,6 +692,7 @@ __all__ = [
     'Variable',
     'eager',
     'lazy',
+    'of_shape',
     'reflect',
     'to_funsor',
 ]

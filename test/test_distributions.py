@@ -1,96 +1,35 @@
 from __future__ import absolute_import, division, print_function
 
 import math
+from collections import OrderedDict
 
 import pytest
 import torch
 
 import funsor
 import funsor.distributions as dist
+from funsor import Tensor
+from funsor.domains import ints, reals
+from funsor.testing import assert_close, check_funsor
 
 
-@pytest.mark.xfail(reason='distributions are broken')
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
 def test_normal_density(batch_shape):
-    batch_dims = ('x', 'y', 'z')[:len(batch_shape)]
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, ints(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.of_shape('real', 'real', 'real')
+    @funsor.of_shape(reals(), reals(), reals())
     def normal(loc, scale, value):
         return -((value - loc) ** 2) / (2 * scale ** 2) - scale.log() - math.log(math.sqrt(2 * math.pi))
 
-    assert isinstance(normal, funsor.Funsor)
-    assert normal.dims == ('loc', 'scale', 'value')
-    assert normal.shape == ('real', 'real', 'real')
+    check_funsor(normal, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
 
-    loc = funsor.Tensor(batch_dims, torch.randn(batch_shape))
-    scale = funsor.Tensor(batch_dims, torch.randn(batch_shape).exp())
-    value = funsor.Tensor(batch_dims, torch.randn(batch_shape))
-    actual = dist.Normal(loc, scale)(value)
-    assert isinstance(actual, funsor.Tensor)
-    assert actual.dims == batch_dims
-    assert actual.shape == batch_shape
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.randn(batch_shape).exp(), inputs)
+    value = Tensor(torch.randn(batch_shape), inputs)
+    expected = normal(loc=loc, scale=scale, value=value)
+    check_funsor(expected, inputs, reals())
 
-    expected = normal(loc, scale, value)
-    assert isinstance(expected, funsor.Tensor)
-    assert expected.dims == batch_dims
-    assert expected.shape == batch_shape
-    assert ((actual - expected) < 1e-5).all()
-
-
-@pytest.mark.xfail(reason='missing log_abs_det_jacobian term')
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
-def test_log_normal_density(batch_shape):
-    batch_dims = ('x', 'y', 'z')[:len(batch_shape)]
-
-    @funsor.of_shape('real', 'real', 'real')
-    def normal(loc, scale, value):
-        return -((value - loc) ** 2) / (2 * scale ** 2) - scale.log() - math.log(math.sqrt(2 * math.pi))
-
-    assert isinstance(normal, funsor.Funsor)
-    assert normal.dims == ('loc', 'scale', 'value')
-    assert normal.shape == ('real', 'real', 'real')
-
-    value = funsor.Variable('value', 'real')
-    log_normal = normal(value=value.log()).align(('loc', 'scale', 'value'))
-    assert log_normal.dims == ('loc', 'scale', 'value')
-    assert log_normal.shape == ('real', 'real', 'real')
-
-    loc = funsor.Tensor(batch_dims, torch.randn(batch_shape))
-    scale = funsor.Tensor(batch_dims, torch.randn(batch_shape).exp())
-    value = funsor.Tensor(batch_dims, torch.randn(batch_shape).exp())
-    actual = dist.LogNormal(loc, scale)(value)
-    assert isinstance(actual, funsor.Tensor)
-    assert actual.dims == batch_dims
-    assert actual.shape == batch_shape
-
-    expected = normal(loc, scale, value)
-    assert isinstance(expected, funsor.Tensor)
-    assert expected.dims == batch_dims
-    assert expected.shape == batch_shape
-    assert ((actual - expected) < 1e-5).all()
-
-
-@pytest.mark.xfail(reason='distributions are broken')
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
-def test_gamma_density(batch_shape):
-    batch_dims = ('x', 'y', 'z')[:len(batch_shape)]
-
-    concentration = funsor.Tensor(batch_dims, torch.randn(batch_shape).exp())
-    rate = funsor.Tensor(batch_dims, torch.randn(batch_shape).exp())
-    value = funsor.Tensor(batch_dims, torch.randn(batch_shape).exp())
-    actual = dist.Gamma(concentration, rate)(value)
-    assert isinstance(actual, funsor.Tensor)
-    assert actual.dims == batch_dims
-    assert actual.shape == batch_shape
-
-    @funsor.function(funsor.reals(), funsor.reals(), funsor.reals())
-    def gamma(concentration, rate, value):
-        return torch.distributions.Gamma(concentration, rate).log_prob(value)
-
-    expected = gamma(concentration, rate, value)
-    print(actual.data)
-    print(expected.data)
-    assert isinstance(expected, funsor.Tensor)
-    assert expected.dims == batch_dims
-    assert expected.shape == batch_shape
-    assert ((actual.data - expected.data) < 1e-5).all()
+    actual = dist.Normal(loc, scale, value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
