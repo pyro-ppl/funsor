@@ -2,14 +2,12 @@ from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict, defaultdict
 
-import torch.distributions as dist
-from six import add_metaclass
+import pyro.distributions as dist
 
 import funsor.ops as ops
-from funsor.domains import reals
+from funsor.domains import ints, reals
 from funsor.pattern import simplify_sum
-from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Number, Substitute, Variable, eager, to_funsor
 from funsor.torch import Tensor, align_tensors
 
 
@@ -40,64 +38,32 @@ def match_affine(expr, dim):
         yield a0, a1
 
 
-DEFAULT_VALUE = Variable('value', reals())
-
-
-class DefaultValueMeta(FunsorMeta):
-    def __call__(cls, *args, **kwargs):
-        # TODO do this once on class init.
-        if not hasattr(cls, '_ast_fields'):
-            cls._ast_fields = getargspec(cls.__init__)[0][1:]
-
-        kwargs.update(zip(cls._ast_fields, args))
-        kwargs.setdefault('value', DEFAULT_VALUE)
-        return super(DefaultValueMeta, cls).__call__(**kwargs)
-
-
-@add_metaclass(DefaultValueMeta)
 class Distribution(Funsor):
     """
-    Abstract base class for funsors representing univariate probability
-    distributions.
+    Funsor backed by a PyTorch distribution object.
     """
-    def __init__(self, cls, **params):
-        assert issubclass(cls, dist.Distribution)
-        schema = params['value'].schema.copy()
-        self.params = OrderedDict()
-        for k, v in sorted(params.items()):
-            assert isinstance(k, str)
-            v = to_funsor(v)
-            schema.update(v.schema)
-            self.params[k] = v
-        dims = tuple(schema)
-        shape = tuple(schema.values())
-        super(Distribution, self).__init__(dims, shape)
-        self.cls = cls
+    dist_class = "defined by derived classes"
 
-    @property
-    def value(self):
-        return self.params['value']
-
-    @property
-    def is_observed(self):
-        return isinstance(self.value, (Number, Tensor))
+    def __init__(self, *params):
+        params = tuple(zip(self._ast_fields, params))
+        assert any(k == 'value' for k, v in params)
+        inputs = OrderedDict()
+        for name, value in params:
+            assert isinstance(name, str)
+            assert isinstance(value, Funsor)
+            inputs.update(value.inputs)
+        inputs = OrderedDict(inputs)
+        output = reals()
+        super(Distribution, self).__init__(inputs, output)
+        self.params = params
 
     def __repr__(self):
         return '{}({})'.format(type(self).__name__,
-                               ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
+                               ', '.join('{}={}'.format(*kv) for kv in self.params))
 
-    def eager_subs(self, *args, **kwargs):
-        kwargs = {d: to_funsor(v) for d, v in kwargs.items() if d in self.dims}
-        kwargs.update(zip(self.dims, map(to_funsor, args)))
-        if not kwargs:
-            return self
-        params = OrderedDict((k, v(**kwargs)) for k, v in self.params.items())
-        if all(isinstance(v, (Number, Tensor)) for v in params.values()):
-            dims, tensors = align_tensors(*params.values())
-            params = dict(zip(params, tensors))
-            value = params.pop('value')
-            data = self.cls(**params).log_prob(value)
-            return Tensor(data, dims)
+    def eager_subs(self, subs):
+        assert isinstance(subs, tuple)
+        params = OrderedDict((k, Substitute(v, subs)) for k, v in self.params)
         return type(self)(**params)
 
     def eager_reduce(self, op, dims):
@@ -105,92 +71,48 @@ class Distribution(Funsor):
             return Number(0.)  # distributions are normalized
         return super(Distribution, self).reduce(op, dims)
 
-    # Legacy distributions interface:
-
-    def log_prob(self, value, event_dims=()):
-        assert isinstance(self.value, Variable)
-        # TODO handle event dims
-        return self(**{self.value.name: value})
-
-    def sample(self, reduced_vars):
-        if len(reduced_vars) != 1:
-            raise NotImplementedError('TODO')
-        value = self.value
-        if not isinstance(value, Variable):
-            raise NotImplementedError
-        if value.name not in reduced_vars:
-            raise NotImplementedError('TODO')
-
-        params = self.params.copy()
-        params.pop('value')
-        if all(isinstance(v, (Number, Tensor)) for v in params.values()):
-            reduced_vars, tensors = align_tensors(*params.values())
-            params = dict(zip(params, tensors))
-            data = self.cls(**params).rsample()
-            return {value.name: Tensor(reduced_vars, data)}
-
-        raise NotImplementedError('TODO')
-
-    def transform(self, **transform):
-        return self(**transform) + log_abs_det_jacobian(transform)  # sign error?
-
-
-class Transform(Funsor):
-    """
-    Wrapper for pseudoinvertible torch.distributions.Transform objects.
-    """
-    def __init__(self, input, output, torch_transform):
-        pass  # TODO
-
-    @property
-    def inv(self):
-        pass  # TODO
-
-
-class Bijector(Transform):
-    """
-    Wrapper for invertible torch.distributions.Transform objects.
-    """
-    def log_abs_det_jacobian(self, x, y):
-        pass  # TODO
-
-
-class TransformedDistribution(Distribution):
-    def __init__(self, base_dist, transforms):
-        pass  # TODO
+    @classmethod
+    def eager_log_prob(cls, **params):
+        inputs, tensors = align_tensors(*params.values())
+        params = dict(zip(params, tensors))
+        value = params.pop('value')
+        data = cls.dist_class(**params).log_prob(value)
+        return Tensor(data, inputs)
 
 
 ################################################################################
 # Distribution Wrappers
 ################################################################################
 
+class Categorical(Distribution):
+    dist_class = dist.Categorical
 
-class Beta(Distribution):
-    def __init__(self, concentration1, concentration0, value=DEFAULT_VALUE):
-        super(Beta, self).__init__(dist.Beta, value=value,
-                                   concentration1=concentration1, concentration0=concentration0)
-
-
-class Gamma(Distribution):
-    def __init__(self, concentration, rate, value=DEFAULT_VALUE):
-        super(Gamma, self).__init__(dist.Gamma, value=value,
-                                    concentration=concentration, rate=rate)
-
-
-class Binomial(Distribution):
-    def __init__(self, total_count, probs, value=DEFAULT_VALUE):
-        super(Binomial, self).__init__(dist.Binomial, value=value,
-                                       total_count=total_count, probs=probs)
-
-
-class Delta(Distribution):
-    def __init__(self, v, log_density, value=DEFAULT_VALUE):
-        super(Delta, self).__init__(dist.Delta, value=value, v=v, log_density=log_density)
+    def __init__(self, probs=None, value=None):
+        assert value is not None or probs is not None
+        probs = to_funsor(probs) if probs is None else probs
+        value = to_funsor(value) if value is None else value
+        if probs is None:
+            size = value.output.dtype
+            probs = Variable('probs', reals(size))
+        if value is None:
+            size = probs.output.shape[0]
+            value = Variable('value', ints(size))
+        super(Categorical, self).__init__(probs, value)
 
 
 class Normal(Distribution):
-    def __init__(self, loc, scale, value=DEFAULT_VALUE):
-        super(Normal, self).__init__(dist.Normal, value=value, loc=loc, scale=scale)
+    dist_class = dist.Normal
+
+    def __init__(self, loc=None, scale=None, value=None):
+        loc = Variable('loc', reals()) if loc is None else to_funsor(loc)
+        scale = Variable('scale', reals()) if scale is None else to_funsor(scale)
+        value = Variable('value', reals()) if value is None else to_funsor(value)
+        super(Normal, self).__init__(loc, scale, value)
+
+
+@eager.register(Normal, (Number, Tensor), (Number, Tensor), (Number, Tensor))
+def eager_normal(loc, scale, value):
+    return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
 ################################################################################
@@ -236,13 +158,7 @@ def eager_binary_normal_normal(op, lhs, rhs):
 
 
 __all__ = [
-    'Beta',
-    'Bijector',
-    'Binomial',
-    'Delta',
+    'Categorical',
     'Distribution',
-    'Gamma',
     'Normal',
-    'Transform',
-    'TransformedDistribution',
 ]
