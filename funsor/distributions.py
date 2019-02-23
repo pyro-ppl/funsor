@@ -100,6 +100,16 @@ class Categorical(Distribution):
         super(Categorical, self).__init__(probs, value)
 
 
+@eager.register(Categorical, Funsor, Number)
+def eager_categorical(probs, value):
+    return probs[value].log()
+
+
+@eager.register(Categorical, (Number, Tensor), (Number, Tensor))
+def eager_categorical(probs, value):
+    return Categorical.eager_log_prob(probs=probs, value=value)
+
+
 class Normal(Distribution):
     dist_class = dist.Normal
 
@@ -118,6 +128,11 @@ def eager_normal(loc, scale, value):
 ################################################################################
 # Conjugacy Relationships
 ################################################################################
+
+@eager.register(Binary, object, Categorical, Categorical)
+def eager_binary_categorical_categorical(op, lhs, rhs):
+    raise NotImplementedError('TODO')
+
 
 @eager.register(Binary, object, Normal, Normal)
 def eager_binary_normal_normal(op, lhs, rhs):

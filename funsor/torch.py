@@ -210,7 +210,14 @@ class Tensor(Funsor):
 
 @eager.register(Binary, object, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):
-    data = op(lhs.data, rhs.data)
+    if op is ops.getitem:
+        # Shift by that Funsor is using for inputs.
+        index = [slice(None)] * sum(d.num_elements for d in lhs.inputs.values())
+        index.append(rhs.data)
+        index = tuple(index)
+        data = lhs.data[index]
+    else:
+        data = op(lhs.data, rhs.data)
     return Tensor(data, lhs.inputs, lhs.dtype)
 
 
@@ -223,6 +230,8 @@ def eager_binary_number_tensor(op, lhs, rhs):
 @eager.register(Binary, object, Tensor, Tensor)
 def eager_binary_tensor_tensor(op, lhs, rhs):
     assert lhs.dtype == rhs.dtype
+    if op is ops.getitem:
+        raise NotImplementedError('TODO shift dim to index on')
     if lhs.inputs == rhs.inputs:
         inputs = lhs.inputs
         data = op(lhs.data, rhs.data)

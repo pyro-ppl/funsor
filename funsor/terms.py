@@ -308,6 +308,9 @@ class Funsor(object):
     def __max__(self, other):
         return Binary(ops.max, self, to_funsor(other))
 
+    def __getitem__(self, other):
+        return Binary(ops.getitem, self, to_funsor(other))
+
     def sum(self, reduced_vars=None):
         return self.reduce(ops.add, reduced_vars)
 
@@ -660,6 +663,16 @@ class Stack(Funsor):
         components = tuple(Substitute(x, subs) for x in self.components)
         result = Stack(components, self.name)
         return Substitute(result, ((self.name, index),))
+
+    def eager_reduce(self, op, reduced_vars):
+        components = self.components
+        if self.name in reduced_vars:
+            reduced_vars -= frozenset([self.name])
+            if reduced_vars:
+                components = tuple(x.reduce(op, reduced_vars) for x in components)
+            return reduce(op, components)
+        components = tuple(x.reduce(op, reduced_vars) for x in components)
+        return Stack(components, self.name)
 
 
 def _of_shape(fn, shape):

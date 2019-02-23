@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
-import numpy as np
 from numbers import Number
-from operator import add, and_, eq, ge, gt, invert, le, lt, mul, ne, neg, or_, sub, truediv, xor
+from operator import add, and_, eq, ge, getitem, gt, invert, le, lt, mul, ne, neg, or_, sub, truediv, xor
 
+import numpy as np
 import torch
 
 _builtin_abs = abs
@@ -101,6 +101,7 @@ __all__ = [
     'and_',
     'eq',
     'ge',
+    'getitem',
     'gt',
     'invert',
     'le',
