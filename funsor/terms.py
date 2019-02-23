@@ -20,6 +20,7 @@ from collections import OrderedDict
 from weakref import WeakValueDictionary
 
 from six import add_metaclass, integer_types
+from six.moves import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
