@@ -42,7 +42,7 @@ def naive_einsum(eqn, *terms):
     return prod
 
 
-def naive_plated_einsum(eqn, *terms, plates='', modulo_total=False):
+def naive_plated_einsum(eqn, *terms, **kwargs):
     assert isinstance(eqn, str)
     assert all(isinstance(term, funsor.Funsor) for term in terms)
     # ...
