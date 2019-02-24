@@ -3,13 +3,11 @@ from __future__ import absolute_import, division, print_function
 import itertools
 import pytest
 from collections import OrderedDict
-from six.moves import reduce
 
 import torch
 from pyro.ops.contract import naive_ubersum
 
 import funsor
-import funsor.ops as ops
 
 
 def xfail_param(*args, **kwargs):
@@ -63,7 +61,6 @@ EINSUM_EXAMPLES = [
 XFAIL_EINSUM_EXAMPLES = [
     xfail_param("ab->ba", reason="align not implemented"),
 ]
-
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES + XFAIL_EINSUM_EXAMPLES)
