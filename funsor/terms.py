@@ -149,7 +149,7 @@ class Funsor(object):
                 subs[k] = Variable(v, self.inputs[k])
             else:
                 subs[k] = to_funsor(v)
-        return Substitute(self, tuple(subs.items()))
+        return self.eager_subs(tuple(subs.items()))
 
     def __bool__(self):
         if self.inputs or self.output.shape:
@@ -188,6 +188,12 @@ class Funsor(object):
 
     @abstractmethod
     def eager_subs(self, subs):
+        """
+        Internal substitution function. This relies on the user-facing
+        :meth:`__call__` method to coerce non-Funsors to Funsors. Once all
+        inputs are Funsors, :meth:`eager_subs` implementations can recurse to
+        call other :meth:`eager_subs` methods.
+        """
         raise NotImplementedError
 
     def eager_unary(self, op):
@@ -378,50 +384,6 @@ class Variable(Funsor):
         return self
 
 
-class Substitute(Funsor):
-    """
-    Lazy substitution of the form ``x(u=y, v=z)``.
-    """
-    def __init__(self, arg, subs):
-        assert isinstance(arg, Funsor)
-        assert isinstance(subs, tuple)
-        for key, value in subs:
-            assert isinstance(key, str)
-            assert key in arg.inputs
-            assert isinstance(value, Funsor)
-        inputs = arg.inputs.copy()
-        for key, value in subs:
-            del inputs[key]
-        for key, value in subs:
-            inputs.update(value.inputs)
-        super(Substitute, self).__init__(inputs, arg.output)
-        self.arg = arg
-        self.subs = OrderedDict(subs)
-
-    def __repr__(self):
-        return 'Substitute({}, {})'.format(self.arg, self.subs)
-
-    def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        old_subs = tuple((k, Substitute(v, subs)) for k, v in self.subs.items())
-        new_subs = tuple((k, v) for k, v in subs if k not in self.subs)
-        subs = old_subs + new_subs
-        return Substitute(self.arg, subs) if subs else self.arg
-
-
-@lazy.register(Substitute, Funsor, object)
-@eager.register(Substitute, Funsor, object)
-def eager_subs(arg, subs):
-    assert isinstance(subs, tuple)
-
-    # Try to eagerly ignore irrelevant substitutions.
-    if not any(k in arg.inputs for k, v in subs):
-        return arg
-
-    # Defer to per-class methods.
-    return arg.eager_subs(subs)
-
-
 _PREFIX = {
     ops.neg: '-',
     ops.invert: '~',
@@ -446,7 +408,9 @@ class Unary(Funsor):
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
 
     def eager_subs(self, subs):
-        arg = Substitute(self.arg, subs)
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        arg = self.arg.eager_subs(subs)
         return Unary(self.op, arg)
 
 
@@ -486,8 +450,10 @@ class Binary(Funsor):
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
     def eager_subs(self, subs):
-        lhs = Substitute(self.lhs, subs)
-        rhs = Substitute(self.rhs, subs)
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        lhs = self.lhs.eager_subs(subs)
+        rhs = self.rhs.eager_subs(subs)
         return Binary(self.op, lhs, rhs)
 
 
@@ -511,11 +477,12 @@ class Reduce(Funsor):
             self.op.__name__, self.arg, self.reduced_vars)
 
     def eager_subs(self, subs):
-        subs = {key: value for key, value in subs.items() if key not in self.reduced_vars}
-        if not all(self.reduced_vars.isdisjoint(value.inputs)
-                   for value in subs.values()):
+        subs = tuple((k, v) for k, v in subs if k not in self.reduced_vars)
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        if not all(self.reduced_vars.isdisjoint(v.inputs) for k, v in subs):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        return self.arg(**subs).reduce(self.op, self.reduced_vars)
+        return self.arg.eager_subs(subs).reduce(self.op, self.reduced_vars)
 
     def eager_reduce(self, op, reduced_vars):
         if op is self.op:
@@ -621,7 +588,8 @@ class Stack(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        assert subs
+        if not any(k in self.inputs for k, v in subs):
+            return self
         pos = None
         for i, (k, index) in enumerate(subs):
             if k == self.name:
@@ -631,7 +599,7 @@ class Stack(Funsor):
         if pos is None:
             # Eagerly recurse into components.
             assert not any(self.name in v.inputs for k, v in subs)
-            components = tuple(Substitute(x, subs) for x in self.components)
+            components = tuple(x.eager_subs(subs) for x in self.components)
             return Stack(components, self.name)
 
         # Try to eagerly select an index.
@@ -641,25 +609,22 @@ class Stack(Funsor):
         if isinstance(index, Number):
             # Select a single component.
             result = self.components[index.data]
-            return Substitute(result, subs) if subs else result
+            return result.eager_subs(subs)
 
         if isinstance(index, Variable):
             # Rename the stacking dimension.
             components = self.components
             if subs:
-                components = tuple(Substitute(x, subs) for x in components)
+                components = tuple(x.eager_subs(subs) for x in components)
             return Stack(components, index.name)
 
-        # TODO support advanced indexing
-
         if not subs:
-            # We cannot make progress; return to avoid cycling.
-            return None  # defer to default implementation
+            raise NotImplementedError('TODO support advanced indexing in Stack')
 
         # Eagerly recurse into components but lazily substitute.
-        components = tuple(Substitute(x, subs) for x in self.components)
+        components = tuple(x.eager_subs(subs) for x in self.components)
         result = Stack(components, self.name)
-        return Substitute(result, ((self.name, index),))
+        return result.eager_subs(((self.name, index),))
 
 
 def _of_shape(fn, shape):
@@ -687,7 +652,6 @@ __all__ = [
     'Number',
     'Reduce',
     'Stack',
-    'Substitute',
     'Unary',
     'Variable',
     'eager',

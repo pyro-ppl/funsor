@@ -4,12 +4,12 @@ import functools
 from collections import OrderedDict
 
 import torch
-from six import add_metaclass
+from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, ints
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Substitute, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
 
 def align_tensors(*args):
@@ -132,6 +132,16 @@ class Tensor(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        for k, v in subs:
+            if k in self.inputs:
+                for name, domain in v.inputs.items():
+                    if not isinstance(domain.dtype, integer_types):
+                        raise ValueError('Tensors can only depend on integer free variables, '
+                                         'but substituting would make this tensor depend on '
+                                         '"{}" of domain {}'.format(name, domain))
+
         if all(isinstance(v, (Number, Tensor)) and not v.inputs or
                 isinstance(v, Variable)
                 for k, v in subs):
@@ -146,7 +156,7 @@ class Tensor(Funsor):
                 result = result._eager_subs_one(key, value)
             return result
 
-        return None  # defer to default implementation
+        raise NotImplementedError('TODO support advanced indexing into Tensor')
 
     def _eager_subs_one(self, name, value):
         if isinstance(value, Variable):
@@ -171,7 +181,7 @@ class Tensor(Funsor):
         if isinstance(value, Tensor):
             raise NotImplementedError('TODO')
 
-        raise RuntimeError('{} should be handled by caller'.format(value))
+        raise NotImplementedError('TODO support advanced indexing into Tensor')
 
     def eager_unary(self, op):
         return Tensor(op(self.data), self.inputs, self.dtype)
@@ -278,7 +288,9 @@ class Function(Funsor):
             [type(self).__name__, str(self.output)] + list(map(str, self.args))))
 
     def eager_subs(self, subs):
-        args = tuple(Substitute(arg, subs) for arg in self.args)
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        args = tuple(arg.eager_subs(subs) for arg in self.args)
         return Function(self.fn, self.output, args)
 
 
