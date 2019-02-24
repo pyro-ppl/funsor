@@ -59,7 +59,7 @@ EINSUM_EXAMPLES = [
 ]
 
 XFAIL_EINSUM_EXAMPLES = [
-    xfail_param("ab->ba", reason="align not implemented"),
+    xfail_param("ab->ba", reason="align not implemented"),  # see pyro-ppl/funsor#26
 ]
 
 
