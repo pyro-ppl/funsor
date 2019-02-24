@@ -7,7 +7,7 @@ import pyro.distributions as dist
 import funsor.ops as ops
 from funsor.domains import ints, reals
 from funsor.pattern import simplify_sum
-from funsor.terms import Binary, Funsor, Number, Substitute, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Number, Variable, eager, to_funsor
 from funsor.torch import Tensor, align_tensors
 
 
@@ -63,7 +63,9 @@ class Distribution(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        params = OrderedDict((k, Substitute(v, subs)) for k, v in self.params)
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        params = OrderedDict((k, v.eager_subs(subs)) for k, v in self.params)
         return type(self)(**params)
 
     def eager_reduce(self, op, dims):
