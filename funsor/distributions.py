@@ -44,8 +44,8 @@ class Distribution(Funsor):
     """
     dist_class = "defined by derived classes"
 
-    def __init__(self, *params):
-        params = tuple(zip(self._ast_fields, params))
+    def __init__(self, *args):
+        params = tuple(zip(self._ast_fields, args))
         assert any(k == 'value' for k, v in params)
         inputs = OrderedDict()
         for name, value in params:
@@ -87,26 +87,36 @@ class Distribution(Funsor):
 class Categorical(Distribution):
     dist_class = dist.Categorical
 
-    def __init__(self, probs=None, value=None):
-        assert value is not None or probs is not None
-        probs = to_funsor(probs) if probs is None else probs
-        value = to_funsor(value) if value is None else value
-        if probs is None:
-            size = value.output.dtype
-            probs = Variable('probs', reals(size))
+    def __init__(self, probs, value=None):
+        probs = to_funsor(probs)
         if value is None:
             size = probs.output.shape[0]
             value = Variable('value', ints(size))
+        else:
+            value = to_funsor(value)
         super(Categorical, self).__init__(probs, value)
+
+
+@eager.register(Categorical, Funsor, Number)
+def eager_categorical(probs, value):
+    return probs[value].log()
+
+
+@eager.register(Categorical, (Number, Tensor), (Number, Tensor))
+def eager_categorical(probs, value):
+    return Categorical.eager_log_prob(probs=probs, value=value)
 
 
 class Normal(Distribution):
     dist_class = dist.Normal
 
-    def __init__(self, loc=None, scale=None, value=None):
-        loc = Variable('loc', reals()) if loc is None else to_funsor(loc)
-        scale = Variable('scale', reals()) if scale is None else to_funsor(scale)
-        value = Variable('value', reals()) if value is None else to_funsor(value)
+    def __init__(self, loc, scale, value=None):
+        loc = to_funsor(loc)
+        scale = to_funsor(scale)
+        if value is None:
+            value = Variable('value', reals())
+        else:
+            value = to_funsor(value)
         super(Normal, self).__init__(loc, scale, value)
 
 
@@ -118,6 +128,11 @@ def eager_normal(loc, scale, value):
 ################################################################################
 # Conjugacy Relationships
 ################################################################################
+
+@eager.register(Binary, object, Categorical, Categorical)
+def eager_binary_categorical_categorical(op, lhs, rhs):
+    raise NotImplementedError('TODO')
+
 
 @eager.register(Binary, object, Normal, Normal)
 def eager_binary_normal_normal(op, lhs, rhs):

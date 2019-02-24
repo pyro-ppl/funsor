@@ -5,6 +5,7 @@ from collections import namedtuple
 from pyro.distributions.util import broadcast_shape
 from six import integer_types
 
+import funsor.ops as ops
 from funsor.util import lazy_property
 
 
@@ -69,6 +70,11 @@ def find_domain(op, *domains):
         return domains[0]
 
     lhs, rhs = domains
+    if op is ops.getitem:
+        dtype = lhs.dtype
+        shape = lhs.shape[rhs.num_elements:]
+        return Domain(shape, dtype)
+
     if lhs.dtype == 'real' or rhs.dtype == 'real':
         dtype = "real"
     else:
