@@ -1,9 +1,15 @@
 from __future__ import absolute_import, division, print_function
 
+import os
+
 import torch
 
 from funsor.terms import Funsor
 from funsor.torch import Tensor
+
+
+if 'TORCH_TENSOR_TYPE' in os.environ:
+    torch.set_default_tensor_type(os.environ['TORCH_TENSOR_TYPE'])
 
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):

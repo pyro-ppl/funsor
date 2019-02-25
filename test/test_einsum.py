@@ -1,6 +1,5 @@
 from __future__ import absolute_import, division, print_function
 
-import os
 import itertools
 import pytest
 from collections import OrderedDict
@@ -9,10 +8,6 @@ import torch
 from pyro.ops.contract import naive_ubersum
 
 import funsor
-
-
-if torch.cuda.is_available():
-    torch.set_default_tensor_type(os.environ.get('TORCH_TENSOR_TYPE', 'torch.DoubleTensor'))
 
 
 def xfail_param(*args, **kwargs):

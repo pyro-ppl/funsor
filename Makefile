@@ -15,7 +15,7 @@ test: lint FORCE
 	@echo PASS
 
 test-cuda:
-	TORCH_TENSOR_TYPE=torch.cuda.DoubleTensor pytest -v
+	TORCH_TENSOR_TYPE=torch.cuda.FloatTensor pytest -v
 
 clean: FORCE
 	git clean -dfx -e pyro-egg.info

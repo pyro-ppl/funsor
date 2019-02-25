@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function
 import math
 from collections import OrderedDict
 
-import os
 import pytest
 import torch
 
@@ -12,10 +11,6 @@ import funsor.distributions as dist
 from funsor import Tensor
 from funsor.domains import ints, reals
 from funsor.testing import assert_close, check_funsor
-
-
-if torch.cuda.is_available():
-    torch.set_default_tensor_type(os.environ.get('TORCH_TENSOR_TYPE', 'torch.DoubleTensor'))
 
 
 @pytest.mark.xfail(reason='TODO fix eager_binary_tensor_tensor(ops.getitem,-,-)')
