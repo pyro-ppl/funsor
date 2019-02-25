@@ -1,10 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
+import os
 import itertools
 
 import numpy as np
 import pytest
 from six.moves import reduce
+import torch
 
 import funsor
 import funsor.ops as ops
@@ -13,6 +15,10 @@ from funsor.terms import Binary, Number, Stack, Variable, to_funsor
 from funsor.testing import check_funsor
 
 np.seterr(all='ignore')
+
+
+if torch.cuda.is_available():
+    torch.set_default_tensor_type(os.environ.get('TORCH_TENSOR_TYPE', 'torch.DoubleTensor'))
 
 
 def test_to_funsor():

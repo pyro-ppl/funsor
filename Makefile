@@ -14,6 +14,9 @@ test: lint FORCE
 	@#python examples/minipyro.py --xfail-if-not-implemented
 	@echo PASS
 
+test-cuda:
+	TORCH_TENSOR_TYPE=torch.cuda.DoubleTensor pytest -v
+
 clean: FORCE
 	git clean -dfx -e pyro-egg.info
 

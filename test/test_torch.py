@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import os
 import itertools
 from collections import OrderedDict
 
@@ -10,6 +11,10 @@ import funsor
 from funsor.domains import Domain, ints, reals
 from funsor.testing import assert_close, check_funsor
 from funsor.torch import align_tensors
+
+
+if torch.cuda.is_available():
+    torch.set_default_tensor_type(os.environ.get('TORCH_TENSOR_TYPE', 'torch.DoubleTensor'))
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
