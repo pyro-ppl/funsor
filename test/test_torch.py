@@ -96,14 +96,14 @@ def test_advanced_indexing_tensor(output_shape):
         ('j', ints(3)),
         ('k', ints(4)),
     ]))
-    i = Tensor(random_tensor(ints(2, (5,))), OrderedDict([
+    i = Tensor(random_tensor(2, (5,)), OrderedDict([
         ('u', ints(5)),
     ]))
-    j = Tensor(random_tensor(ints(3, (6, 5))), OrderedDict([
+    j = Tensor(random_tensor(3, (6, 5)), OrderedDict([
         ('v', ints(6)),
         ('u', ints(5)),
     ]))
-    k = Tensor(random_tensor(ints(4, (6,))), OrderedDict([
+    k = Tensor(random_tensor(4, (6,)), OrderedDict([
         ('v', ints(6)),
     ]))
 
@@ -185,11 +185,14 @@ def unary_eval(symbol, x):
     return getattr(x, symbol)()
 
 
-@pytest.mark.parametrize('shape', [(), (4,), (2, 3)])
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b')])
 @pytest.mark.parametrize('symbol', [
     '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
 ])
-def test_unary(symbol, shape):
+def test_unary(symbol, dims):
+    sizes = {'a': 3, 'b': 4}
+    shape = tuple(sizes[d] for d in dims)
+    inputs = OrderedDict((d, ints(sizes[d])) for d in dims)
     dtype = 'real'
     data = torch.rand(shape) + 0.5
     if symbol == '~':
@@ -197,9 +200,9 @@ def test_unary(symbol, shape):
         dtype = 2
     expected_data = unary_eval(symbol, data)
 
-    x = Tensor(data, dtype=dtype)
+    x = Tensor(data, inputs, dtype)
     actual = unary_eval(symbol, x)
-    check_funsor(actual, {}, funsor.Domain(shape, dtype), expected_data)
+    check_funsor(actual, inputs, funsor.Domain((), dtype), expected_data)
 
 
 BINARY_OPS = [

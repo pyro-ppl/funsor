@@ -131,11 +131,6 @@ def eager_normal(loc, scale, value):
 # Conjugacy Relationships
 ################################################################################
 
-@eager.register(Binary, object, Categorical, Categorical)
-def eager_binary_categorical_categorical(op, lhs, rhs):
-    raise NotImplementedError('TODO')
-
-
 @eager.register(Binary, object, Normal, Normal)
 def eager_binary_normal_normal(op, lhs, rhs):
     if op is not ops.add:

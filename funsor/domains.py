@@ -1,9 +1,11 @@
 from __future__ import absolute_import, division, print_function
 
+import operator
 from collections import namedtuple
 
 from pyro.distributions.util import broadcast_shape
 from six import integer_types
+from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.util import lazy_property
@@ -16,7 +18,12 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     """
     def __new__(cls, shape, dtype):
         assert isinstance(shape, tuple)
-        assert isinstance(dtype, integer_types) or (isinstance(dtype, str) and dtype == 'real')
+        if isinstance(dtype, integer_types):
+            assert not shape
+        elif isinstance(dtype, str):
+            assert dtype == 'real'
+        else:
+            raise ValueError(repr(dtype))
         return super(Domain, cls).__new__(cls, shape, dtype)
 
     def __repr__(self):
@@ -37,10 +44,7 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
 
     @lazy_property
     def num_elements(self):
-        result = 1
-        for size in self.shape:
-            result *= size
-        return result
+        return reduce(operator.mul, self.shape, 1)
 
 
 def reals(*shape):
@@ -50,12 +54,12 @@ def reals(*shape):
     return Domain(shape, 'real')
 
 
-def ints(size, shape=()):
+def ints(size):
     """
-    Construct a bounded integer domain of given shape.
+    Construct a bounded integer domain of scalar shape.
     """
     assert isinstance(size, integer_types) and size >= 0
-    return Domain(shape, size)
+    return Domain((), size)
 
 
 def find_domain(op, *domains):
