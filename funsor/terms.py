@@ -189,9 +189,9 @@ class Funsor(object):
 
     def align(self, names):
         """
-        Align this funsor to match given ``dims`` and ``shape``.
-        This can both permute and add constant dims.  This is mainly useful in
-        preparation for extracting ``.data`` of a :class:`funsor.torch.Tensor`.
+        Align this funsor to match given ``names``.
+        This is mainly useful in preparation for extracting ``.data``
+        of a :class:`funsor.torch.Tensor`.
         """
         assert isinstance(names, tuple)
         if not names or names == tuple(self.inputs):
