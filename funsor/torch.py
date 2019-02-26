@@ -159,12 +159,11 @@ class Tensor(Funsor):
                 inputs.update(subs[k].inputs)
             else:
                 inputs[k] = domain
-        output = self.output
 
         # Construct a dict with each input's positional dim,
         # counting from the right so as to support broadcasting.ft.
+        total_size = len(inputs) + len(self.output.shape)  # Assumes only scalar indices.
         new_dims = {}
-        total_size = len(inputs) + len(output.shape)  # Assumes only scalar indices.
         for k, domain in inputs.items():
             if domain.num_elements != 1:
                 raise NotImplementedError('TODO support vector indexing')
@@ -197,13 +196,11 @@ class Tensor(Funsor):
         # Construct a [:] slice for the output.
         for i, size in enumerate(self.output.shape):
             offset_from_right = len(self.output.shape) - i - 1
-            index.extend(torch.arange(size).reshape(
+            index.append(torch.arange(size).reshape(
                 (-1,) + (1,) * offset_from_right))
 
         data = self.data[tuple(index)]
-        result = Tensor(data, inputs, self.dtype)
-        assert result.output == self.output
-        return result
+        return Tensor(data, inputs, self.dtype)
 
     def eager_unary(self, op):
         return Tensor(op(self.data), self.inputs, self.dtype)

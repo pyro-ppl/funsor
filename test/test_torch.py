@@ -48,37 +48,90 @@ def test_indexing():
     check_funsor(x(j=2, k=3), {'i': ints(4)}, reals(), data[:, 2])
 
 
-@pytest.mark.xfail(reason='not implemented')
-def test_advanced_indexing():
+def test_advanced_indexing_shape():
     I, J, M, N = 4, 5, 2, 3
-    x = Tensor(('i', 'j'), torch.randn(4, 5))
-    m = Tensor(('m',), torch.tensor([2, 3]))
-    n = Tensor(('n',), torch.tensor([0, 1, 1]))
+    x = Tensor(torch.randn(4, 5), OrderedDict([
+        ('i', ints(I)),
+        ('j', ints(J)),
+    ]))
+    m = Tensor(torch.tensor([2, 3]), OrderedDict([('m', ints(M))]))
+    n = Tensor(torch.tensor([0, 1, 1]), OrderedDict([('n', ints(N))]))
+    assert x.data.shape == (4, 5)
 
-    assert x.shape == (4, 5)
+    check_funsor(x(i=m), {'j': ints(J), 'm': ints(M)}, reals())
+    check_funsor(x(i=m, j=n), {'m': ints(M), 'n': ints(N)}, reals())
+    check_funsor(x(i=m, j=n, k=m), {'m': ints(M), 'n': ints(N)}, reals())
+    check_funsor(x(i=m, k=m), {'j': ints(J), 'm': ints(M)}, reals())
+    check_funsor(x(i=n), {'j': ints(J), 'n': ints(N)}, reals())
+    check_funsor(x(i=n, k=m), {'j': ints(J), 'n': ints(N)}, reals())
+    check_funsor(x(j=m), {'i': ints(I), 'm': ints(M)}, reals())
+    check_funsor(x(j=m, i=n), {'m': ints(M), 'n': ints(N)}, reals())
+    check_funsor(x(j=m, i=n, k=m), {'m': ints(M), 'n': ints(N)}, reals())
+    check_funsor(x(j=m, k=m), {'i': ints(I), 'm': ints(M)}, reals())
+    check_funsor(x(j=n), {'i': ints(I), 'n': ints(N)}, reals())
+    check_funsor(x(j=n, k=m), {'i': ints(I), 'n': ints(N)}, reals())
+    check_funsor(x(m), {'j': ints(J), 'm': ints(M)}, reals())
+    check_funsor(x(m, j=n), {'m': ints(M), 'n': ints(N)}, reals())
+    check_funsor(x(m, j=n, k=m), {'m': ints(M), 'n': ints(N)}, reals())
+    check_funsor(x(m, k=m), {'j': ints(J), 'm': ints(M)}, reals())
+    check_funsor(x(m, n), {'m': ints(M), 'n': ints(N)}, reals())
+    check_funsor(x(m, n, k=m), {'m': ints(M), 'n': ints(N)}, reals())
+    check_funsor(x(n), {'j': ints(J), 'n': ints(N)}, reals())
+    check_funsor(x(n, k=m), {'j': ints(J), 'n': ints(N)}, reals())
+    check_funsor(x(n, m), {'m': ints(M), 'n': ints(N)}, reals())
+    check_funsor(x(n, m, k=m), {'m': ints(M), 'n': ints(N)}, reals())
 
-    check_funsor(x(i=m), ('j', 'm'), (J, M))
-    check_funsor(x(i=m, j=n), ('m', 'n'), (M, N))
-    check_funsor(x(i=m, j=n, k=m), ('m', 'n'), (M, N))
-    check_funsor(x(i=m, k=m), ('j', 'm'), (J, M))
-    check_funsor(x(i=n), ('j', 'n'), (J, N))
-    check_funsor(x(i=n, k=m), ('j', 'n'), (J, N))
-    check_funsor(x(j=m), ('i', 'm'), (I, M))
-    check_funsor(x(j=m, i=n), ('m', 'n'), (M, N))
-    check_funsor(x(j=m, i=n, k=m), ('m', 'n'), (M, N))
-    check_funsor(x(j=m, k=m), ('i', 'm'), (I, M))
-    check_funsor(x(j=n), ('i', 'n'), (I, N))
-    check_funsor(x(j=n, k=m), ('i', 'n'), (I, N))
-    check_funsor(x(m), ('j', 'm'), (J, M), x.data[m.data].t())
-    check_funsor(x(m, j=n), ('m', 'n'), (M, N))
-    check_funsor(x(m, j=n, k=m), ('m', 'n'), (M, N))
-    check_funsor(x(m, k=m), ('j', 'm'), (J, M), x.data[m.data].t())
-    check_funsor(x(m, n), ('m', 'n'), (M, N))
-    check_funsor(x(m, n, k=m), ('m', 'n'), (M, N))
-    check_funsor(x(n), ('j', 'n'), (J, N), x.data[n.data].t())
-    check_funsor(x(n, k=m), ('j', 'n'), (J, N), x.data[n.data].t())
-    check_funsor(x(n, m), ('m', 'n'), (M, N))
-    check_funsor(x(n, m, k=m), ('m', 'n'), (M, N))
+
+@pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
+def test_advanced_indexing_tensor(output_shape):
+    #      u   v
+    #     / \ / \
+    #    i   j   k
+    #     \  |  /
+    #      \ | /
+    #        x
+    x = Tensor(torch.randn((2, 3, 4) + output_shape), OrderedDict([
+        ('i', ints(2)),
+        ('j', ints(3)),
+        ('k', ints(4)),
+    ]))
+    i = Tensor(random_tensor(ints(2, (5,))), OrderedDict([
+        ('u', ints(5)),
+    ]))
+    j = Tensor(random_tensor(ints(3, (6, 5))), OrderedDict([
+        ('v', ints(6)),
+        ('u', ints(5)),
+    ]))
+    k = Tensor(random_tensor(ints(4, (6,))), OrderedDict([
+        ('v', ints(6)),
+    ]))
+
+    expected_data = torch.empty((5, 6) + output_shape)
+    for u in range(5):
+        for v in range(6):
+            expected_data[u, v] = x.data[i.data[u], j.data[v, u], k.data[v]]
+    expected = Tensor(expected_data, OrderedDict([
+        ('u', ints(5)),
+        ('v', ints(6)),
+    ]))
+
+    assert_equiv(expected, x(i, j, k))
+    assert_equiv(expected, x(i=i, j=j, k=k))
+
+    assert_equiv(expected, x(i=i, j=j)(k=k))
+    assert_equiv(expected, x(j=j, k=k)(i=i))
+    assert_equiv(expected, x(k=k, i=i)(j=j))
+
+    assert_equiv(expected, x(i=i)(j=j, k=k))
+    assert_equiv(expected, x(j=j)(k=k, i=i))
+    assert_equiv(expected, x(k=k)(i=i, j=j))
+
+    assert_equiv(expected, x(i=i)(j=j)(k=k))
+    assert_equiv(expected, x(i=i)(k=k)(j=j))
+    assert_equiv(expected, x(j=j)(i=i)(k=k))
+    assert_equiv(expected, x(j=j)(k=k)(i=i))
+    assert_equiv(expected, x(k=k)(i=i)(j=j))
+    assert_equiv(expected, x(k=k)(j=j)(i=i))
 
 
 def unary_eval(symbol, x):
@@ -286,54 +339,3 @@ def test_align():
         for j in range(3):
             for k in range(4):
                 assert x(i=i, j=j, k=k) == y(i=i, j=j, k=k)
-
-
-#      u   v
-#     / \ / \
-#    i   j   k
-#     \  |  /
-#      \ | /
-#        x
-def test_advanced_indexing_tensor():
-    x = Tensor(torch.randn(2, 3, 4), OrderedDict([
-        ('i', ints(2)),
-        ('j', ints(3)),
-        ('k', ints(4)),
-    ]))
-    i = Tensor(random_tensor(ints(2, (5,))), OrderedDict([
-        ('u', ints(5)),
-    ]))
-    j = Tensor(random_tensor(ints(3, (6, 5))), OrderedDict([
-        ('v', ints(6)),
-        ('u', ints(5)),
-    ]))
-    k = Tensor(random_tensor(ints(4, (6,))), OrderedDict([
-        ('v', ints(6)),
-    ]))
-
-    expected_data = torch.empty(5, 6)
-    for u in range(5):
-        for v in range(6):
-            expected_data[u, v] = x.data[i.data[u], j.data[v, u], k.data[v]]
-    expected = Tensor(expected_data, OrderedDict([
-        ('u', ints(5)),
-        ('v', ints(6)),
-    ]))
-
-    assert_equiv(expected, x(i, j, k))
-    assert_equiv(expected, x(i=i, j=j, k=k))
-
-    assert_equiv(expected, x(i=i, j=j)(k=k))
-    assert_equiv(expected, x(j=j, k=k)(i=i))
-    assert_equiv(expected, x(k=k, i=i)(j=j))
-
-    assert_equiv(expected, x(i=i)(j=j, k=k))
-    assert_equiv(expected, x(j=j)(k=k, i=i))
-    assert_equiv(expected, x(k=k)(i=i, j=j))
-
-    assert_equiv(expected, x(i=i)(j=j)(k=k))
-    assert_equiv(expected, x(i=i)(k=k)(j=j))
-    assert_equiv(expected, x(j=j)(i=i)(k=k))
-    assert_equiv(expected, x(j=j)(k=k)(i=i))
-    assert_equiv(expected, x(k=k)(i=i)(j=j))
-    assert_equiv(expected, x(k=k)(j=j)(i=i))
