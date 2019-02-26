@@ -130,6 +130,21 @@ class Tensor(Funsor):
     def item(self):
         return self.data.item()
 
+    def align(self, names):
+        assert isinstance(names, tuple)
+        assert all(name in self.inputs for name in names)
+        if not names or names == tuple(self.inputs):
+            return self
+        inputs = OrderedDict((name, self.inputs[name]) for name in names)
+        inputs.update(self.inputs)
+
+        if any(d.shape for d in self.inputs.values()):
+            raise NotImplementedError("TODO: Implement align with vector indices.")
+        old_dims = tuple(self.inputs)
+        new_dims = tuple(inputs)
+        data = self.data.permute(tuple(old_dims.index(d) for d in new_dims))
+        return Tensor(data, inputs, self.dtype)
+
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
         if not any(k in self.inputs for k, v in subs):

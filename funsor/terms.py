@@ -192,6 +192,11 @@ class Funsor(object):
         Align this funsor to match given ``names``.
         This is mainly useful in preparation for extracting ``.data``
         of a :class:`funsor.torch.Tensor`.
+
+        :param tuple names: A tuple of strings representing all names
+            but in a new order.
+        :return: A permuted funsor equivalent to self.
+        :rtype: Funsor
         """
         assert isinstance(names, tuple)
         if not names or names == tuple(self.inputs):
