@@ -228,3 +228,16 @@ def test_stack_subs():
     assert f(x=0, y=x, i=Number(2, 3)) is x * z
     assert f(x=0, i=j) is Stack((Number(0), Number(0), y * z), 'j')
     assert f(x=0, i='j') is Stack((Number(0), Number(0), y * z), 'j')
+
+
+def test_align_simple():
+    x = Variable('x', reals())
+    y = Variable('y', reals())
+    z = Variable('z', reals())
+    f = z + y * x
+    assert tuple(f.inputs) == ('z', 'y', 'x')
+    g = f.align(('x', 'y', 'z'))
+    assert tuple(g.inputs) == ('x', 'y', 'z')
+    for k, v in f.inputs.items():
+        assert g.inputs[k] == v
+    assert f(x=1, y=2, z=3) == g(x=1, y=2, z=3)

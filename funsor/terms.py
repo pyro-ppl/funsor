@@ -187,6 +187,17 @@ class Funsor(object):
         assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
 
+    def align(self, names):
+        """
+        Align this funsor to match given ``names``.
+        This is mainly useful in preparation for extracting ``.data``
+        of a :class:`funsor.torch.Tensor`.
+        """
+        assert isinstance(names, tuple)
+        if not names or names == tuple(self.inputs):
+            return self
+        return Align(self, names)
+
     @abstractmethod
     def eager_subs(self, subs):
         """
@@ -569,6 +580,50 @@ def eager_binary_number_number(op, lhs, rhs):
     return Number(data, dtype)
 
 
+class Align(Funsor):
+    """
+    Lazy call to ``.align(...)``.
+    """
+    def __init__(self, arg, names):
+        assert isinstance(arg, Funsor)
+        assert isinstance(names, tuple)
+        assert all(isinstance(name, str) for name in names)
+        assert all(name in arg.inputs for name in names)
+        inputs = OrderedDict((name, arg.inputs[name]) for name in names)
+        inputs.update(arg.inputs)
+        output = arg.output
+        super(Align, self).__init__(inputs, output)
+        self.arg = arg
+
+    def align(self, names):
+        return self.arg.align(names)
+
+    def eager_subs(self, subs):
+        assert isinstance(subs, tuple)
+        return self.arg.eager_subs(subs)
+
+    def eager_unary(self, op):
+        return self.arg.eager_unary(op)
+
+    def eager_reduce(self, op, reduced_vars):
+        return self.arg.eager_reduce(op, reduced_vars)
+
+
+@eager.register(Binary, object, Align, Funsor)
+def eager_binary_align_funsor(op, lhs, rhs):
+    return Binary(op, lhs.arg, rhs)
+
+
+@eager.register(Binary, object, Funsor, Align)
+def eager_binary_funsor_align(op, lhs, rhs):
+    return Binary(op, lhs, rhs.arg)
+
+
+@eager.register(Binary, object, Align, Align)
+def eager_binary_align_align(op, lhs, rhs):
+    return Binary(op, lhs.arg, rhs.arg)
+
+
 class Stack(Funsor):
     """
     Stack of funsors along a new input dimension.
@@ -647,9 +702,7 @@ def _of_shape(fn, shape):
     assert not kwargs
     names = tuple(args)
     args = [Variable(name, size) for name, size in zip(names, shape)]
-    # FIXME implement .align() attribute.
-    # return to_funsor(fn(*args)).align(dims, shape)
-    return to_funsor(fn(*args))
+    return to_funsor(fn(*args)).align(names)
 
 
 def of_shape(*shape):

@@ -28,7 +28,7 @@ def test_categorical_density(size, batch_shape):
 
     probs = Tensor(torch.randn(batch_shape + (size,)), inputs)
     value = Tensor((torch.rand(batch_shape) * size).long().clamp(min=0, max=size-1), inputs)
-    expected = categorical(probs=probs, value=value)
+    expected = categorical(probs, value)
     check_funsor(expected, inputs, reals())
 
     actual = dist.Categorical(probs, value)
@@ -50,7 +50,7 @@ def test_normal_density(batch_shape):
     loc = Tensor(torch.randn(batch_shape), inputs)
     scale = Tensor(torch.randn(batch_shape).exp(), inputs)
     value = Tensor(torch.randn(batch_shape), inputs)
-    expected = normal(loc=loc, scale=scale, value=value)
+    expected = normal(loc, scale, value)
     check_funsor(expected, inputs, reals())
 
     actual = dist.Normal(loc, scale, value)
