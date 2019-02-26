@@ -10,10 +10,9 @@ import funsor
 import funsor.distributions as dist
 from funsor import Tensor
 from funsor.domains import ints, reals
-from funsor.testing import assert_close, check_funsor
+from funsor.testing import assert_close, check_funsor, random_tensor
 
 
-@pytest.mark.xfail(reason='TODO fix eager_binary_tensor_tensor(ops.getitem,-,-)')
 @pytest.mark.parametrize('size', [4])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
 def test_categorical_density(size, batch_shape):
@@ -26,8 +25,10 @@ def test_categorical_density(size, batch_shape):
 
     check_funsor(categorical, {'probs': reals(size), 'value': ints(size)}, reals())
 
-    probs = Tensor(torch.randn(batch_shape + (size,)), inputs)
-    value = Tensor((torch.rand(batch_shape) * size).long().clamp(min=0, max=size-1), inputs)
+    probs_data = torch.randn(batch_shape + (size,)).exp()
+    probs_data /= probs_data.sum(-1, keepdim=True)
+    probs = Tensor(probs_data, inputs)
+    value = Tensor(random_tensor(ints(size, batch_shape)), inputs, size)
     expected = categorical(probs, value)
     check_funsor(expected, inputs, reals())
 

@@ -161,7 +161,7 @@ class Tensor(Funsor):
                 inputs[k] = domain
 
         # Construct a dict with each input's positional dim,
-        # counting from the right so as to support broadcasting.ft.
+        # counting from the right so as to support broadcasting.
         total_size = len(inputs) + len(self.output.shape)  # Assumes only scalar indices.
         new_dims = {}
         for k, domain in inputs.items():
@@ -258,16 +258,26 @@ def eager_binary_number_tensor(op, lhs, rhs):
 
 @eager.register(Binary, object, Tensor, Tensor)
 def eager_binary_tensor_tensor(op, lhs, rhs):
-    assert lhs.output.shape == rhs.output.shape
+    # Compute inputs and outputs.
     dtype = find_domain(op, lhs.output, rhs.output).dtype
-    if op is ops.getitem:
-        raise NotImplementedError('TODO shift dim to index on')
     if lhs.inputs == rhs.inputs:
         inputs = lhs.inputs
-        data = op(lhs.data, rhs.data)
+        lhs_data, rhs_data = lhs.data, rhs.data
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
+
+    if op is ops.getitem:
+        # getitem has special shape semantics.
+        if rhs.output.shape:
+            raise NotImplementedError('TODO support vector indexing')
+        assert lhs.output.shape == (rhs.dtype,)
+        index = [torch.arange(size).reshape((-1,) + (1,) * (lhs_data.dim() - pos - 2))
+                 for pos, size in enumerate(lhs_data.shape)]
+        index[-1] = rhs_data
+        data = lhs_data[tuple(index)]
+    else:
         data = op(lhs_data, rhs_data)
+
     return Tensor(data, inputs, dtype)
 
 
