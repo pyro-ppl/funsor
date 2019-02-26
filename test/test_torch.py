@@ -8,6 +8,7 @@ import torch
 
 import funsor
 from funsor.domains import Domain, ints, reals
+from funsor.terms import Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import Tensor, align_tensors
 
@@ -113,6 +114,50 @@ def test_advanced_indexing_tensor(output_shape):
     expected = Tensor(expected_data, OrderedDict([
         ('u', ints(5)),
         ('v', ints(6)),
+    ]))
+
+    assert_equiv(expected, x(i, j, k))
+    assert_equiv(expected, x(i=i, j=j, k=k))
+
+    assert_equiv(expected, x(i=i, j=j)(k=k))
+    assert_equiv(expected, x(j=j, k=k)(i=i))
+    assert_equiv(expected, x(k=k, i=i)(j=j))
+
+    assert_equiv(expected, x(i=i)(j=j, k=k))
+    assert_equiv(expected, x(j=j)(k=k, i=i))
+    assert_equiv(expected, x(k=k)(i=i, j=j))
+
+    assert_equiv(expected, x(i=i)(j=j)(k=k))
+    assert_equiv(expected, x(i=i)(k=k)(j=j))
+    assert_equiv(expected, x(j=j)(i=i)(k=k))
+    assert_equiv(expected, x(j=j)(k=k)(i=i))
+    assert_equiv(expected, x(k=k)(i=i)(j=j))
+    assert_equiv(expected, x(k=k)(j=j)(i=i))
+
+
+@pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
+def test_advanced_indexing_lazy(output_shape):
+    x = Tensor(torch.randn((2, 3, 4) + output_shape), OrderedDict([
+        ('i', ints(2)),
+        ('j', ints(3)),
+        ('k', ints(4)),
+    ]))
+    u = Variable('u', ints(2))
+    v = Variable('v', ints(3))
+    i = 1 - u
+    j = 2 - v
+    k = u + v
+
+    expected_data = torch.empty((2, 3) + output_shape)
+    i_data = funsor.torch.materialize(i).data
+    j_data = funsor.torch.materialize(j).data
+    k_data = funsor.torch.materialize(k).data
+    for u in range(2):
+        for v in range(3):
+            expected_data[u, v] = x.data[i_data[u], j_data[v], k_data[u, v]]
+    expected = Tensor(expected_data, OrderedDict([
+        ('u', ints(2)),
+        ('v', ints(3)),
     ]))
 
     assert_equiv(expected, x(i, j, k))

@@ -76,9 +76,15 @@ def find_domain(op, *domains):
         return Domain(shape, dtype)
 
     if lhs.dtype == 'real' or rhs.dtype == 'real':
-        dtype = "real"
+        dtype = 'real'
+    elif op in (ops.add, ops.mul, ops.pow, ops.max, ops.min):
+        dtype = op(lhs.dtype - 1, rhs.dtype - 1) + 1
+    elif op in (ops.and_, ops.or_, ops.xor):
+        dtype = 2
+    elif lhs.dtype == rhs.dtype:
+        dtype = lhs.dtype
     else:
-        dtype = op(lhs.dtype, rhs.dtype)
+        raise NotImplementedError('TODO')
 
     if lhs.shape == rhs.shape:
         shape = lhs.shape

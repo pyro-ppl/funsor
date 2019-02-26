@@ -7,7 +7,7 @@ import torch
 from six import add_metaclass, integer_types
 
 import funsor.ops as ops
-from funsor.domains import Domain, ints
+from funsor.domains import Domain, find_domain, ints
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
@@ -258,7 +258,8 @@ def eager_binary_number_tensor(op, lhs, rhs):
 
 @eager.register(Binary, object, Tensor, Tensor)
 def eager_binary_tensor_tensor(op, lhs, rhs):
-    assert lhs.dtype == rhs.dtype
+    assert lhs.output.shape == rhs.output.shape
+    dtype = find_domain(op, lhs.output, rhs.output).dtype
     if op is ops.getitem:
         raise NotImplementedError('TODO shift dim to index on')
     if lhs.inputs == rhs.inputs:
@@ -267,7 +268,7 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
         data = op(lhs_data, rhs_data)
-    return Tensor(data, inputs, lhs.dtype)
+    return Tensor(data, inputs, dtype)
 
 
 def arange(name, size):
