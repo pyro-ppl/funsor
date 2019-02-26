@@ -271,3 +271,14 @@ def test_function_lazy_matmul():
     actual = actual_lazy(x=x)
     expected_data = torch.matmul(x.data, y.data)
     check_funsor(actual, {}, reals(3, 5), expected_data)
+
+
+def test_align():
+    x = funsor.Tensor(torch.randn(2, 3, 4), OrderedDict([('i', reals()), ('j', reals()), ('k', reals())]))
+    y = x.align(('j', 'k', 'i'))
+    assert isinstance(y, funsor.Tensor)
+    assert tuple(y.inputs) == ('j', 'k', 'i')
+    for i in range(2):
+        for j in range(3):
+            for k in range(4):
+                assert x(i=i, j=j, k=k) == y(i=i, j=j, k=k)
