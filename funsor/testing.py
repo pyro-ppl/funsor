@@ -1,7 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
 import torch
+from six import integer_types
 
+from funsor.domains import Domain
 from funsor.terms import Funsor
 from funsor.torch import Tensor
 
@@ -31,10 +33,34 @@ def check_funsor(x, inputs, output, data=None):
     if output is not None:
         assert x.output == output
     if data is not None:
-        if x.inputs != inputs:
-            # data = data.permute(tuple(dims.index(d) for d in x.dims))
-            return  # TODO
-        if inputs or output.shape:
-            assert (x.data == data).all()
+        if x.inputs == inputs:
+            x_data = x.data
         else:
-            assert x.data == data
+            x_data = x.align(tuple(inputs)).data
+        if inputs or output.shape:
+            assert (x_data == data).all()
+        else:
+            assert x_data == data
+
+
+def assert_equiv(x, y):
+    """
+    Check that two funsors are equivalent up to permutation of inputs.
+    """
+    check_funsor(x, y.inputs, y.output, y.data)
+
+
+def random_tensor(domain):
+    """
+    Creates a random :class:`torch.Tensor` suitable for a given
+    :class:`~funsor.domains.Domain`.
+    """
+    assert isinstance(domain, Domain)
+    if isinstance(domain.dtype, integer_types):
+        return torch.multinomial(torch.ones(domain.dtype),
+                                 domain.num_elements,
+                                 replacement=True).reshape(domain.shape)
+    elif domain.dtype == "real":
+        return torch.randn(domain.shape)
+    else:
+        raise ValueError('unknown dtype: {}'.format(repr(domain.dtype)))
