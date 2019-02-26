@@ -9,7 +9,7 @@ import torch
 import funsor
 import funsor.distributions as dist
 from funsor import Tensor
-from funsor.domains import ints, reals
+from funsor.domains import bint, reals
 from funsor.testing import assert_close, check_funsor, random_tensor
 
 
@@ -17,13 +17,13 @@ from funsor.testing import assert_close, check_funsor, random_tensor
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
 def test_categorical_density(size, batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, ints(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.of_shape(reals(size), ints(size))
+    @funsor.of_shape(reals(size), bint(size))
     def categorical(probs, value):
         return probs[value].log()
 
-    check_funsor(categorical, {'probs': reals(size), 'value': ints(size)}, reals())
+    check_funsor(categorical, {'probs': reals(size), 'value': bint(size)}, reals())
 
     probs_data = torch.randn(batch_shape + (size,)).exp()
     probs_data /= probs_data.sum(-1, keepdim=True)
@@ -40,7 +40,7 @@ def test_categorical_density(size, batch_shape):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
 def test_normal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, ints(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
     @funsor.of_shape(reals(), reals(), reals())
     def normal(loc, scale, value):

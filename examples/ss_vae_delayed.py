@@ -53,7 +53,7 @@ def guide(image):
 def main(args):
     # Generate fake data.
     data = funsor.Tensor(torch.randn(100),
-                         inputs=OrderedDict([('data', funsor.ints(100))]),
+                         inputs=OrderedDict([('data', funsor.bint(100))]),
                          output=funsor.reals())
 
     # Train.

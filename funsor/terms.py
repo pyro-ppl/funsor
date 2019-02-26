@@ -24,7 +24,7 @@ from six.moves import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Domain, find_domain, ints
+from funsor.domains import Domain, find_domain, bint
 from funsor.interpreter import interpret
 from funsor.registry import KeyedRegistry
 from funsor.six import getargspec, singledispatch
@@ -642,7 +642,7 @@ class Stack(Funsor):
         assert not any(name in x.inputs for x in components)
         assert len(set(x.output for x in components)) == 1
         output = components[0].output
-        domain = ints(len(components))
+        domain = bint(len(components))
         inputs = OrderedDict([(name, domain)])
         for x in components:
             inputs.update(x.inputs)
@@ -667,7 +667,7 @@ class Stack(Funsor):
             return Stack(components, self.name)
 
         # Try to eagerly select an index.
-        assert index.output == ints(len(self.components))
+        assert index.output == bint(len(self.components))
         subs = subs[:pos] + subs[1 + pos:]
 
         if isinstance(index, Number):

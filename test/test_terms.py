@@ -8,7 +8,7 @@ from six.moves import reduce
 
 import funsor
 import funsor.ops as ops
-from funsor.domains import Domain, ints, reals
+from funsor.domains import Domain, bint, reals
 from funsor.terms import Binary, Number, Stack, Variable, to_funsor
 from funsor.testing import check_funsor
 
@@ -26,16 +26,16 @@ def test_to_funsor_undefined(x):
 
 
 def test_cons_hash():
-    assert Variable('x', ints(3)) is Variable('x', ints(3))
+    assert Variable('x', bint(3)) is Variable('x', bint(3))
     assert Variable('x', reals()) is Variable('x', reals())
-    assert Variable('x', reals()) is not Variable('x', ints(3))
+    assert Variable('x', reals()) is not Variable('x', bint(3))
     assert Number(0, 3) is Number(0, 3)
     assert Number(0.) is Number(0.)
     assert Number(0.) is not Number(0, 3)
 
 
 @pytest.mark.parametrize('expr', [
-    "Variable('x', ints(3))",
+    "Variable('x', bint(3))",
     "Variable('x', reals())",
     "Number(0.)",
     "Number(1, dtype=10)",
@@ -48,7 +48,7 @@ def test_reinterpret(expr):
     assert funsor.reinterpret(x) is x
 
 
-@pytest.mark.parametrize('domain', [ints(3), reals()])
+@pytest.mark.parametrize('domain', [bint(3), reals()])
 def test_variable(domain):
     x = Variable('x', domain)
     check_funsor(x, {'x': domain}, domain)
@@ -58,7 +58,7 @@ def test_variable(domain):
     assert x('y') is y
     assert x(x='y') is y
     assert x(x=y) is y
-    x4 = Variable('x', ints(4))
+    x4 = Variable('x', bint(4))
     assert x4 is not x
     assert x4('x') is x4
     assert x(x=x4) is x4
@@ -145,12 +145,12 @@ def test_binary(symbol, data1, data2):
 @pytest.mark.parametrize('op', ops.REDUCE_OP_TO_TORCH,
                          ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
 def test_reduce_all(op):
-    x = Variable('x', ints(2))
-    y = Variable('y', ints(3))
-    z = Variable('z', ints(4))
+    x = Variable('x', bint(2))
+    y = Variable('y', bint(3))
+    z = Variable('z', bint(4))
     f = x * y + z
     dtype = f.dtype
-    check_funsor(f, {'x': ints(2), 'y': ints(3), 'z': ints(4)}, Domain((), dtype))
+    check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
     if op is ops.logaddexp:
         pytest.skip()
 
@@ -173,12 +173,12 @@ def test_reduce_all(op):
                          ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
 def test_reduce_subset(op, reduced_vars):
     reduced_vars = frozenset(reduced_vars)
-    x = Variable('x', ints(2))
-    y = Variable('y', ints(3))
-    z = Variable('z', ints(4))
+    x = Variable('x', bint(2))
+    y = Variable('y', bint(3))
+    z = Variable('z', bint(4))
     f = x * y + z
     dtype = f.dtype
-    check_funsor(f, {'x': ints(2), 'y': ints(3), 'z': ints(4)}, Domain((), dtype))
+    check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
     if op is ops.logaddexp:
         pytest.skip()
 
@@ -201,7 +201,7 @@ def test_stack_simple():
     z = Number(4.)
 
     xyz = Stack((x, y, z), 'i')
-    check_funsor(xyz, {'i': ints(3)}, reals())
+    check_funsor(xyz, {'i': bint(3)}, reals())
 
     assert xyz(i=Number(0, 3)) is x
     assert xyz(i=Number(1, 3)) is y
@@ -213,10 +213,10 @@ def test_stack_subs():
     x = Variable('x', reals())
     y = Variable('y', reals())
     z = Variable('z', reals())
-    j = Variable('j', ints(3))
+    j = Variable('j', bint(3))
 
     f = Stack((Number(0), x, y * z), 'i')
-    check_funsor(f, {'i': ints(3), 'x': reals(), 'y': reals(), 'z': reals()},
+    check_funsor(f, {'i': bint(3), 'x': reals(), 'y': reals(), 'z': reals()},
                  reals())
 
     assert f(i=Number(0, 3)) is Number(0)

@@ -30,8 +30,8 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
         shape = tuple(self.shape)
         if isinstance(self.dtype, integer_types):
             if not shape:
-                return 'ints({})'.format(self.dtype)
-            return 'ints({}, {})'.format(self.dtype, shape)
+                return 'bint({})'.format(self.dtype)
+            return 'bint({}, {})'.format(self.dtype, shape)
         if not shape:
             return 'reals()'
         return 'reals{}'.format(shape)
@@ -54,7 +54,7 @@ def reals(*shape):
     return Domain(shape, 'real')
 
 
-def ints(size):
+def bint(size):
     """
     Construct a bounded integer domain of scalar shape.
     """
@@ -100,6 +100,6 @@ def find_domain(op, *domains):
 __all__ = [
     'Domain',
     'find_domain',
-    'ints',
+    'bint',
     'reals',
 ]

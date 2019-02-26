@@ -21,12 +21,12 @@ def main(args):
 
         trans = dist.Categorical(probs=funsor.Tensor(
             trans_probs,
-            inputs=OrderedDict([('prev', funsor.ints(2))]),
+            inputs=OrderedDict([('prev', funsor.bint(2))]),
         ))
 
         emit = dist.Categorical(probs=funsor.Tensor(
             emit_probs,
-            inputs=OrderedDict([('latent', funsor.ints(2))]),
+            inputs=OrderedDict([('latent', funsor.bint(2))]),
         ))
 
         x_curr = funsor.to_funsor(0)
@@ -34,7 +34,7 @@ def main(args):
             x_prev = x_curr
 
             # A delayed sample statement.
-            x_curr = funsor.Variable('x_{}'.format(t), funsor.ints())
+            x_curr = funsor.Variable('x_{}'.format(t), funsor.bint())
             prob *= trans(prev=x_prev, value=x_curr)
 
             prob *= emit(latent=x_curr, value=y)

@@ -67,7 +67,7 @@ XFAIL_EINSUM_EXAMPLES = [
 def test_einsum(equation):
     inputs, outputs, operands, sizes = make_example(equation)
     funsor_operands = [
-        funsor.Tensor(operand, OrderedDict([(d, funsor.ints(sizes[d])) for d in inp]))
+        funsor.Tensor(operand, OrderedDict([(d, funsor.bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)
     ]
     expected = torch.einsum(equation, operands)
@@ -98,7 +98,7 @@ PLATED_EINSUM_EXAMPLES = [(ex, '') for ex in EINSUM_EXAMPLES] + [
 def test_plated_einsum(equation, plates):
     inputs, outputs, operands, sizes = make_example(equation)
     funsor_operands = [
-        funsor.Tensor(operand, OrderedDict([(d, funsor.ints(sizes[d])) for d in inp]))
+        funsor.Tensor(operand, OrderedDict([(d, funsor.bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)
     ]
     expected = naive_ubersum(equation, *operands, plates=plates, backend='torch', modulo_total=False)[0]

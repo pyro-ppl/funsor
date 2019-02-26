@@ -7,7 +7,7 @@ import torch
 from six import add_metaclass, integer_types
 
 import funsor.ops as ops
-from funsor.domains import Domain, find_domain, ints
+from funsor.domains import Domain, find_domain, bint
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
@@ -275,7 +275,7 @@ def arange(name, size):
     :rtype: Tensor
     """
     data = torch.arange(size)
-    inputs = OrderedDict([(name, ints(size))])
+    inputs = OrderedDict([(name, bint(size))])
     return Tensor(data, inputs, dtype=size)
 
 

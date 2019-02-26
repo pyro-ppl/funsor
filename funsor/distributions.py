@@ -5,7 +5,7 @@ from collections import OrderedDict, defaultdict
 import pyro.distributions as dist
 
 import funsor.ops as ops
-from funsor.domains import ints, reals
+from funsor.domains import bint, reals
 from funsor.pattern import simplify_sum
 from funsor.terms import Binary, Funsor, Number, Variable, eager, to_funsor
 from funsor.torch import Tensor, align_tensors
@@ -93,7 +93,7 @@ class Categorical(Distribution):
         probs = to_funsor(probs)
         if value is None:
             size = probs.output.shape[0]
-            value = Variable('value', ints(size))
+            value = Variable('value', bint(size))
         else:
             value = to_funsor(value)
         super(Categorical, self).__init__(probs, value)
