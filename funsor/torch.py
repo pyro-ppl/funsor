@@ -7,7 +7,7 @@ import torch
 from six import add_metaclass, integer_types
 
 import funsor.ops as ops
-from funsor.domains import Domain, ints
+from funsor.domains import Domain, find_domain, ints
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
@@ -96,8 +96,9 @@ class Tensor(Funsor):
     def __init__(self, data, inputs=None, dtype="real"):
         assert isinstance(data, torch.Tensor)
         assert isinstance(inputs, tuple)
+        assert all(isinstance(d.dtype, integer_types) for k, d in inputs)
         inputs = OrderedDict(inputs)
-        input_dim = sum(i.num_elements for i in inputs.values())
+        input_dim = sum(d.num_elements for d in inputs.values())
         output = Domain(data.shape[input_dim:], dtype)
         super(Tensor, self).__init__(inputs, output)
         self.data = data
@@ -147,56 +148,59 @@ class Tensor(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        if not any(k in self.inputs for k, v in subs):
+        subs = {k: materialize(v) for k, v in subs if k in self.inputs}
+        if not subs:
             return self
-        for k, v in subs:
-            if k in self.inputs:
-                for name, domain in v.inputs.items():
-                    if not isinstance(domain.dtype, integer_types):
-                        raise ValueError('Tensors can only depend on integer free variables, '
-                                         'but substituting would make this tensor depend on '
-                                         '"{}" of domain {}'.format(name, domain))
 
-        if all(isinstance(v, (Number, Tensor)) and not v.inputs or
-                isinstance(v, Variable)
-                for k, v in subs):
-            # Substitute one variable at a time.
-            conflicts = [k for k, v in subs]
-            result = self
-            for i, (key, value) in enumerate(subs):
-                if isinstance(value, Funsor):
-                    if not set(value.inputs).isdisjoint(conflicts[1 + i:]):
-                        raise NotImplementedError(
-                            'TODO implement simultaneous substitution')
-                result = result._eager_subs_one(key, value)
-            return result
+        # Compute result shapes.
+        inputs = OrderedDict()
+        for k, domain in self.inputs.items():
+            if k in subs:
+                inputs.update(subs[k].inputs)
+            else:
+                inputs[k] = domain
 
-        raise NotImplementedError('TODO support advanced indexing into Tensor')
+        # Construct a dict with each input's positional dim,
+        # counting from the right so as to support broadcasting.ft.
+        total_size = len(inputs) + len(self.output.shape)  # Assumes only scalar indices.
+        new_dims = {}
+        for k, domain in inputs.items():
+            if domain.num_elements != 1:
+                raise NotImplementedError('TODO support vector indexing')
+            new_dims[k] = len(new_dims) - total_size
 
-    def _eager_subs_one(self, name, value):
-        if isinstance(value, Variable):
-            # Simply rename an input.
-            inputs = OrderedDict((value.name if k == name else k, v)
-                                 for k, v in self.inputs.items())
-            return Tensor(self.data, inputs, self.dtype)
-
-        if isinstance(value, Number):
-            assert self.inputs[name].num_elements == 1
-            inputs = OrderedDict((k, v) for k, v in self.inputs.items() if k != name)
-            index = []
-            for k, domain in self.inputs.items():
-                if k == name:
-                    index.append(int(value.data))
-                    break
+        # Use advanced indexing to construct a simultaneous substitution.
+        index = []
+        for k, domain in self.inputs.items():
+            if k in subs:
+                v = subs.get(k)
+                if isinstance(v, Number):
+                    index.append(int(v.data))
                 else:
-                    index.extend([slice(None)] * domain.num_elements)
-            data = self.data[tuple(index)]
-            return Tensor(data, inputs, self.dtype)
+                    # Permute and expand v.data to end up at new_dims.
+                    assert isinstance(v, Tensor)
+                    v = v.align(tuple(k2 for k2 in inputs if k2 in v.inputs))
+                    assert isinstance(v, Tensor)
+                    v_shape = [1] * total_size
+                    for k2, size in zip(v.inputs, v.data.shape):
+                        v_shape[new_dims[k2]] = size
+                    index.append(v.data.reshape(tuple(v_shape)))
+            else:
+                # Construct a [:] slice for this preserved input.
+                if domain.num_elements != 1:
+                    raise NotImplementedError('TODO support vector indexing')
+                offset_from_right = -1 - new_dims[k]
+                index.append(torch.arange(domain.dtype).reshape(
+                    (-1,) + (1,) * offset_from_right))
 
-        if isinstance(value, Tensor):
-            raise NotImplementedError('TODO')
+        # Construct a [:] slice for the output.
+        for i, size in enumerate(self.output.shape):
+            offset_from_right = len(self.output.shape) - i - 1
+            index.append(torch.arange(size).reshape(
+                (-1,) + (1,) * offset_from_right))
 
-        raise NotImplementedError('TODO support advanced indexing into Tensor')
+        data = self.data[tuple(index)]
+        return Tensor(data, inputs, self.dtype)
 
     def eager_unary(self, op):
         return Tensor(op(self.data), self.inputs, self.dtype)
@@ -254,7 +258,8 @@ def eager_binary_number_tensor(op, lhs, rhs):
 
 @eager.register(Binary, object, Tensor, Tensor)
 def eager_binary_tensor_tensor(op, lhs, rhs):
-    assert lhs.dtype == rhs.dtype
+    assert lhs.output.shape == rhs.output.shape
+    dtype = find_domain(op, lhs.output, rhs.output).dtype
     if op is ops.getitem:
         raise NotImplementedError('TODO shift dim to index on')
     if lhs.inputs == rhs.inputs:
@@ -263,20 +268,40 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
         data = op(lhs_data, rhs_data)
-    return Tensor(data, inputs, lhs.dtype)
+    return Tensor(data, inputs, dtype)
 
 
-class Arange(Tensor):
+def arange(name, size):
     """
     Helper to create a named :func:`torch.arange` funsor.
 
     :param str name: A variable name.
     :param int size: A size.
+    :rtype: Tensor
     """
-    def __init__(self, name, size):
-        data = torch.arange(size)
-        inputs = OrderedDict([(name, ints(size))])
-        super(Arange, self).__init__(data, inputs)
+    data = torch.arange(size)
+    inputs = OrderedDict([(name, ints(size))])
+    return Tensor(data, inputs, dtype=size)
+
+
+def materialize(x):
+    """
+    Attempt to convert a Funsor to a :class:`~funsor.terms.Number` or
+    :class:`Tensor` by substituting :func:`arange`s into its free variables.
+    """
+    assert isinstance(x, Funsor)
+    if isinstance(x, (Number, Tensor)):
+        return x
+    subs = []
+    for name, domain in x.inputs.items():
+        if not isinstance(domain.dtype, integer_types):
+            raise ValueError('materialize() requires integer free variables but found '
+                             '"{}" of domain {}'.format(name, domain))
+        if domain.shape:
+            raise NotImplementedError('TODO implement arange with nontrivial shape')
+        subs.append((name, arange(name, domain.dtype)))
+    subs = tuple(subs)
+    return x.eager_subs(subs)
 
 
 class Function(Funsor):
@@ -361,9 +386,10 @@ def function(*signature):
 
 
 __all__ = [
-    'Arange',
     'Function',
     'Tensor',
     'align_tensors',
+    'arange',
     'function',
+    'materialize',
 ]
