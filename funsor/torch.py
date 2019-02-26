@@ -7,7 +7,7 @@ import torch
 from six import add_metaclass, integer_types
 
 import funsor.ops as ops
-from funsor.domains import Domain, find_domain, ints
+from funsor.domains import Domain, find_domain, bint
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
@@ -25,21 +25,12 @@ def align_tensors(*args):
         with given ``inputs``.
     :rtype: tuple
     """
-    # Collect nominal shapes.
+    # Compute result shapes.
     inputs = OrderedDict()
     for x in args:
         inputs.update(x.inputs)
-
-    # Compute linear shapes.
-    sizes = []
-    shapes = []
-    for domain in inputs.values():
-        size = domain.dtype
-        assert isinstance(size, int)
-        sizes.append(size ** domain.num_elements)
-        shapes.append((size,) * domain.num_elements)
-    sizes = dict(zip(inputs, sizes))
-    shapes = dict(zip(inputs, shapes))
+    sizes = {k: domain.dtype for k, domain in inputs.items()}
+    assert all(isinstance(size, integer_types) for size in sizes.values())
 
     # Convert each Number or Tensor.
     tensors = []
@@ -65,8 +56,7 @@ def align_tensors(*args):
                       x_output.shape)
 
         # Unsquash multivariate input dims.
-        x = x.reshape(sum((shapes[k] if k in x_inputs else (1,) * len(shapes[k]) for k in inputs),
-                          ()) + x_output.shape)
+        x = x.reshape(tuple(sizes[k] if k in x_inputs else 1 for k in inputs) + x_output.shape)
         tensors.append(x)
 
     return inputs, tensors
@@ -98,8 +88,7 @@ class Tensor(Funsor):
         assert isinstance(inputs, tuple)
         assert all(isinstance(d.dtype, integer_types) for k, d in inputs)
         inputs = OrderedDict(inputs)
-        input_dim = sum(d.num_elements for d in inputs.values())
-        output = Domain(data.shape[input_dim:], dtype)
+        output = Domain(data.shape[len(inputs):], dtype)
         super(Tensor, self).__init__(inputs, output)
         self.data = data
 
@@ -165,8 +154,7 @@ class Tensor(Funsor):
         total_size = len(inputs) + len(self.output.shape)  # Assumes only scalar indices.
         new_dims = {}
         for k, domain in inputs.items():
-            if domain.num_elements != 1:
-                raise NotImplementedError('TODO support vector indexing')
+            assert not domain.shape
             new_dims[k] = len(new_dims) - total_size
 
         # Use advanced indexing to construct a simultaneous substitution.
@@ -187,8 +175,6 @@ class Tensor(Funsor):
                     index.append(v.data.reshape(tuple(v_shape)))
             else:
                 # Construct a [:] slice for this preserved input.
-                if domain.num_elements != 1:
-                    raise NotImplementedError('TODO support vector indexing')
                 offset_from_right = -1 - new_dims[k]
                 index.append(torch.arange(domain.dtype).reshape(
                     (-1,) + (1,) * offset_from_right))
@@ -224,13 +210,12 @@ class Tensor(Funsor):
             offset = 0
             for k, domain in self.inputs.items():
                 if k in reduced_vars:
-                    if domain.num_elements > 1:
-                        raise NotImplementedError('TODO')
+                    assert not domain.shape
                     data = torch_op(data, dim=offset)
                     if op is ops.min or op is ops.max:
                         data = data[0]
                 else:
-                    offset += domain.num_elements
+                    offset += 1
             inputs = OrderedDict((k, v) for k, v in self.inputs.items()
                                  if k not in reduced_vars)
             return Tensor(data, inputs, self.dtype)
@@ -241,7 +226,7 @@ class Tensor(Funsor):
 def eager_binary_tensor_number(op, lhs, rhs):
     if op is ops.getitem:
         # Shift by that Funsor is using for inputs.
-        index = [slice(None)] * sum(d.num_elements for d in lhs.inputs.values())
+        index = [slice(None)] * len(lhs.inputs)
         index.append(rhs.data)
         index = tuple(index)
         data = lhs.data[index]
@@ -290,7 +275,7 @@ def arange(name, size):
     :rtype: Tensor
     """
     data = torch.arange(size)
-    inputs = OrderedDict([(name, ints(size))])
+    inputs = OrderedDict([(name, bint(size))])
     return Tensor(data, inputs, dtype=size)
 
 
@@ -307,8 +292,7 @@ def materialize(x):
         if not isinstance(domain.dtype, integer_types):
             raise ValueError('materialize() requires integer free variables but found '
                              '"{}" of domain {}'.format(name, domain))
-        if domain.shape:
-            raise NotImplementedError('TODO implement arange with nontrivial shape')
+        assert not domain.shape
         subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
     return x.eager_subs(subs)

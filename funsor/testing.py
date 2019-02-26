@@ -1,9 +1,11 @@
 from __future__ import absolute_import, division, print_function
 
+import operator
+
 import torch
 from six import integer_types
+from six.moves import reduce
 
-from funsor.domains import Domain
 from funsor.terms import Funsor
 from funsor.torch import Tensor
 
@@ -50,17 +52,18 @@ def assert_equiv(x, y):
     check_funsor(x, y.inputs, y.output, y.data)
 
 
-def random_tensor(domain):
+def random_tensor(dtype, shape):
     """
     Creates a random :class:`torch.Tensor` suitable for a given
     :class:`~funsor.domains.Domain`.
     """
-    assert isinstance(domain, Domain)
-    if isinstance(domain.dtype, integer_types):
-        return torch.multinomial(torch.ones(domain.dtype),
-                                 domain.num_elements,
-                                 replacement=True).reshape(domain.shape)
-    elif domain.dtype == "real":
-        return torch.randn(domain.shape)
+    assert isinstance(shape, tuple)
+    if isinstance(dtype, integer_types):
+        num_elements = reduce(operator.mul, shape, 1)
+        return torch.multinomial(torch.ones(dtype),
+                                 num_elements,
+                                 replacement=True).reshape(shape)
+    elif dtype == "real":
+        return torch.randn(shape)
     else:
-        raise ValueError('unknown dtype: {}'.format(repr(domain.dtype)))
+        raise ValueError('unknown dtype: {}'.format(repr(dtype)))

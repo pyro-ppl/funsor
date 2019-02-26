@@ -1,6 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
-from funsor.domains import Domain, find_domain, ints, reals
+from funsor.domains import Domain, find_domain, bint, reals
 from funsor.interpreter import reinterpret
 from funsor.terms import Funsor, Number, Variable, of_shape, to_funsor
 from funsor.torch import Function, Tensor, arange, function
@@ -22,7 +22,7 @@ __all__ = [
     'function',
     'handlers',
     'interpreter',
-    'ints',
+    'bint',
     'minipyro',
     'of_shape',
     'ops',
