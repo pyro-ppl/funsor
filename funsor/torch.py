@@ -161,7 +161,7 @@ class Tensor(Funsor):
                 inputs[k] = domain
 
         # Construct a dict with each input's positional dim,
-        # counting from the right so as to support broadcasting.ft.
+        # counting from the right so as to support broadcasting.
         total_size = len(inputs) + len(self.output.shape)  # Assumes only scalar indices.
         new_dims = {}
         for k, domain in inputs.items():
