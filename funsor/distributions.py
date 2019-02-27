@@ -1,6 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 
 import pyro.distributions as dist
 from six import add_metaclass
@@ -9,33 +9,6 @@ import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 from funsor.torch import Tensor, align_tensors, materialize
-
-
-def log_abs_det(jacobian):
-    result = 0.
-    for i, row in jacobian.items():
-        for j, entry in row.items():
-            if i != j:
-                raise NotImplementedError('TODO handle non-diagonal jacobians')
-                result += ops.log(entry)
-    return result
-
-
-def log_abs_det_jacobian(transform):
-    jacobian = defaultdict(dict)
-    for key, value in transform.items():
-        for dim in value.dims:
-            jacobian[key][dim] = value.jacobian(dim)
-    return log_abs_det(jacobian)
-
-
-def match_affine(expr, dim):
-    assert isinstance(expr, Funsor)
-    assert isinstance(dim, str)
-    a1 = expr.jacobian(dim)
-    if dim not in a1.dims:
-        a0 = expr(**{dim: 0.})
-        yield a0, a1
 
 
 class Distribution(Funsor):
