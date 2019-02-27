@@ -7,8 +7,7 @@ from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
-from funsor.pattern import simplify_sum
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 from funsor.torch import Tensor, align_tensors, materialize
 
 
@@ -139,50 +138,18 @@ class Normal(Distribution):
 
 
 @eager.register(Normal, (Number, Tensor), (Number, Tensor), (Number, Tensor))
-def eager_normal(loc, scale, value):
+def eager_normal_ground(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
-################################################################################
-# Conjugacy Relationships
-################################################################################
-
-@eager.register(Binary, object, Normal, Normal)
-def eager_binary_normal_normal(op, lhs, rhs):
-    if op is not ops.add:
-        return None  # defer to default implementation
-
-    # Try updating prior from a ground observation.
-    if op is ops.add and isinstance(lhs.value, Variable):
-        d = lhs.value.name
-        if (isinstance(rhs, Normal) and rhs.is_observed and
-                d not in rhs.params['scale'].dims and d in rhs.params['loc'].dims):
-            for a0, a1 in match_affine(rhs.params['loc'], d):
-                print('UPDATE\n lhs = {}\n rhs = {}'.format(lhs, rhs))
-                loc1, scale1 = lhs.params['loc'], lhs.params['scale']
-                scale2 = rhs.params['scale']
-                loc2 = (rhs.value - a0) / a1
-                scale2 = scale2 / a1.abs()
-                prec1 = scale1 ** -2
-                prec2 = scale2 ** -2
-
-                # Perform a filter update.
-                prec3 = prec1 + prec2
-                loc3 = loc1 + simplify_sum(loc2 - loc1) * (prec2 / prec3)
-                scale3 = prec3 ** -0.5
-                updated = Normal(loc3, scale3, value=lhs.value)
-                # FIXME add log(a1) term?
-
-                # Encapsulate the log_likelihood in a Normal for later pattern matching.
-                prec4 = prec1 * prec2 / prec3
-                scale4 = prec4 ** -0.5
-                loc4 = simplify_sum(loc2 - loc1)
-                log_likelihood = Normal(loc4, scale4)(value=0.) + a1.abs().log()  # FIXME
-                result = updated + log_likelihood
-                print(' result = {}'.format(result))
-                return result
-
-    return None  # defer to default implementation
+# TODO
+# @eager.register(
+#     Normal,
+#     (Number, Tensor, Normal, Gaussian, Variable),  # TODO handle affine fns of vars
+#     (Number, Tensor),
+#     (Number, Tensor, Normal, Gaussian, Variable))  # TODO handle affine fns of vars
+# def eager_normal_ideal(op, lhs, rhs):
+#     raise NotImplementedError('TODO')
 
 
 __all__ = [
