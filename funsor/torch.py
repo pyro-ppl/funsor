@@ -49,14 +49,12 @@ def align_tensors(*args):
 
         # Pemute squashed input dims.
         x_keys = tuple(x_inputs)
-        x = x.data.permute(tuple(x_keys.index(k) for k in inputs if k in x_inputs))
+        x = x.permute(tuple(x_keys.index(k) for k in inputs if k in x_inputs) +
+                      tuple(range(len(x_inputs), x.dim())))
 
-        # Fill in ones.
+        # Unsquash multivariate input dims by filling in ones.
         x = x.reshape(tuple(sizes[k] if k in x_inputs else 1 for k in inputs) +
                       x_output.shape)
-
-        # Unsquash multivariate input dims.
-        x = x.reshape(tuple(sizes[k] if k in x_inputs else 1 for k in inputs) + x_output.shape)
         tensors.append(x)
 
     return inputs, tensors

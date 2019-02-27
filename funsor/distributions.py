@@ -3,12 +3,13 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict, defaultdict
 
 import pyro.distributions as dist
+from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.pattern import simplify_sum
-from funsor.terms import Binary, Funsor, Number, Variable, eager, to_funsor
-from funsor.torch import Tensor, align_tensors
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.torch import Tensor, align_tensors, materialize
 
 
 def log_abs_det(jacobian):
@@ -68,10 +69,10 @@ class Distribution(Funsor):
         params = OrderedDict((k, v.eager_subs(subs)) for k, v in self.params)
         return type(self)(**params)
 
-    def eager_reduce(self, op, dims):
-        if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in dims:
+    def eager_reduce(self, op, reduced_vars):
+        if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
             return Number(0.)  # distributions are normalized
-        return super(Distribution, self).reduce(op, dims)
+        return super(Distribution, self).reduce(op, reduced_vars)
 
     @classmethod
     def eager_log_prob(cls, **params):
@@ -86,6 +87,15 @@ class Distribution(Funsor):
 # Distribution Wrappers
 ################################################################################
 
+class CategoricalMeta(FunsorMeta):
+    """
+    Wrapper to fill in default params.
+    """
+    def __call__(cls, probs, value=None):
+        return super(CategoricalMeta, cls).__call__(probs, value)
+
+
+@add_metaclass(CategoricalMeta)
 class Categorical(Distribution):
     dist_class = dist.Categorical
 
@@ -106,6 +116,12 @@ def eager_categorical(probs, value):
 
 @eager.register(Categorical, (Number, Tensor), (Number, Tensor))
 def eager_categorical(probs, value):
+    return Categorical.eager_log_prob(probs=probs, value=value)
+
+
+@eager.register(Categorical, (Number, Tensor), Variable)
+def eager_categorical(probs, value):
+    value = materialize(value)
     return Categorical.eager_log_prob(probs=probs, value=value)
 
 

@@ -17,29 +17,33 @@ def main(args):
 
     # A discrete HMM model.
     def model(data):
-        prob = funsor.to_funsor(1.)
+        log_prob = funsor.to_funsor(0.)
 
         trans = dist.Categorical(probs=funsor.Tensor(
             trans_probs,
-            inputs=OrderedDict([('prev', funsor.bint(2))]),
+            inputs=OrderedDict([('prev', funsor.bint(args.hidden_dim))]),
         ))
 
         emit = dist.Categorical(probs=funsor.Tensor(
             emit_probs,
-            inputs=OrderedDict([('latent', funsor.bint(2))]),
+            inputs=OrderedDict([('latent', funsor.bint(args.hidden_dim))]),
         ))
 
-        x_curr = funsor.to_funsor(0)
+        x_curr = funsor.Number(0, args.hidden_dim)
         for t, y in enumerate(data):
             x_prev = x_curr
 
             # A delayed sample statement.
-            x_curr = funsor.Variable('x_{}'.format(t), funsor.bint())
-            prob *= trans(prev=x_prev, value=x_curr)
+            x_curr = funsor.Variable('x_{}'.format(t), funsor.bint(args.hidden_dim))
+            log_prob += trans(prev=x_prev, value=x_curr)
 
-            prob *= emit(latent=x_curr, value=y)
+            if isinstance(x_prev, funsor.Variable):
+                log_prob = log_prob.logsumexp(x_prev.name)
 
-        return prob
+            log_prob += emit(latent=x_curr, value=y)
+
+        log_prob = log_prob.logsumexp()
+        return log_prob
 
     # Train model parameters.
     print('---- training ----')
@@ -47,8 +51,9 @@ def main(args):
     optim = torch.optim.Adam(params, lr=args.learning_rate)
     for step in range(args.train_steps):
         optim.zero_grad()
-        prob = model(data)
-        loss = -prob.sum().log()  # Integrates out delayed variables.
+        log_prob = model(data)
+        assert not log_prob.inputs, 'free variables remain'
+        loss = -log_prob.data
         loss.backward()
         optim.step()
 
@@ -58,6 +63,7 @@ if __name__ == '__main__':
     parser.add_argument("-t", "--time-steps", default=10, type=int)
     parser.add_argument("-n", "--train-steps", default=101, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)
+    parser.add_argument("-d", "--hidden-dim", default=2, type=int)
     parser.add_argument("--eager", action='store_true')
     parser.add_argument("--filter", action='store_true')
     parser.add_argument("--xfail-if-not-implemented", action='store_true')
