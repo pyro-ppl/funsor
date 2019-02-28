@@ -11,26 +11,39 @@ from funsor.torch import Tensor
 
 
 @pytest.mark.parametrize('expr,expected_type', [
-    ('g.logsumexp("x")', Tensor),
-    ('g + 1', Gaussian),
-    ('1 + g', Gaussian),
-    ('g + shift', Gaussian),
-    ('shift + g', Gaussian),
-    ('g + g', Gaussian),
+    ('g1.logsumexp("x")', Tensor),
+    ('g1 + 1', Gaussian),
+    ('1 + g1', Gaussian),
+    ('g1 + shift', Gaussian),
+    ('shift + g1', Gaussian),
+    ('g1 + g1', Gaussian),
+    ('g1 + g2', Gaussian),
 ])
 def test_smoke(expr, expected_type):
-    log_density = torch.tensor([0.0, 1.0])
-    loc = torch.tensor([[0.0, 0.1, 0.2],
-                        [2.0, 3.0, 4.0]])
-    scale_tril = torch.tensor([[[1.0, 0.0, 0.0],
-                                [0.1, 1.0, 0.0],
-                                [0.2, 0.3, 1.0]],
-                               [[1.0, 0.0, 0.0],
-                                [0.1, 1.0, 0.0],
-                                [0.2, 0.3, 1.0]]])
-    inputs = OrderedDict([('i', bint(2)), ('x', reals(3))])
-    g = Gaussian(log_density, loc, scale_tril, inputs)
-    assert isinstance(g, Gaussian)
+    g1 = Gaussian(
+        log_density=torch.tensor([0.0, 1.0]),
+        loc=torch.tensor([[0.0, 0.1, 0.2],
+                          [2.0, 3.0, 4.0]]),
+        scale_tril=torch.tensor([[[1.0, 0.0, 0.0],
+                                  [0.1, 1.0, 0.0],
+                                  [0.2, 0.3, 1.0]],
+                                 [[1.0, 0.0, 0.0],
+                                  [0.1, 1.0, 0.0],
+                                  [0.2, 0.3, 1.0]]]),
+        inputs=OrderedDict([('i', bint(2)), ('x', reals(3))]))
+    assert isinstance(g1, Gaussian)
+
+    g2 = Gaussian(
+        log_density=torch.tensor([0.0, 1.0]),
+        loc=torch.tensor([[0.0, 0.1],
+                          [2.0, 3.0]]),
+        scale_tril=torch.tensor([[[1.0, 0.0],
+                                  [0.2, 1.0]],
+                                 [[1.0, 0.0],
+                                  [0.2, 1.0]]]),
+        inputs=OrderedDict([('i', bint(2)), ('y', reals(2))]))
+    assert isinstance(g2, Gaussian)
+
     shift = Tensor(torch.tensor([-1., 1.]), OrderedDict([('i', bint(2))]))
     assert isinstance(shift, Tensor)
 

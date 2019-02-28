@@ -30,6 +30,24 @@ def _mv(mat, vec):
     return torch.matmul(mat, vec.unsqueeze(-1)).squeeze(-1)
 
 
+def _compute_offsets(inputs):
+    """
+    Compute offsets of real dims into the concatenated Gaussian dims.
+
+    :param OrderedDict inputs: A schema mapping variable name to domain.
+    :return: a pair ``(offsets, total)``.
+    :rtype: tuple
+    """
+    assert isinstance(inputs, OrderedDict)
+    offsets = {}
+    total = 0
+    for key, domain in inputs.items():
+        if domain.dtype == 'real':
+            offsets[key] = total
+            total += domain.num_elements
+    return offsets, total
+
+
 def to_affine(x):
     """
     Attempt to convert a Funsor to a combination of
@@ -50,27 +68,50 @@ def to_affine(x):
     return x.eager_subs(subs)
 
 
-def align_gaussians(lhs_inputs, lhs_log_density, lhs_loc, lhs_precision,
-                    rhs_inputs, rhs_log_density, rhs_loc, rhs_precision):
+def align_gaussian(new_inputs, old_inputs, log_density, loc, precision):
     """
-    Align a pair of Gaussian distributions.
+    Align data of a Gaussian distribution to a new ``inputs`` shape.
 
     Note that this inputs and returns ``precision`` matrices rather than
-    ``scale_tril`` matrices.
+    ``scale_tril`` matrices, since precision matrices can correctly be
+    augmented with zero columns and rows.
     """
-    assert isinstance(lhs_inputs, OrderedDict)
-    assert isinstance(rhs_inputs, OrderedDict)
-    if lhs_inputs == rhs_inputs:
-        inputs = lhs_inputs
-    else:
-        inputs = lhs_inputs.copy()
-        inputs.update(rhs_inputs)
+    assert isinstance(new_inputs, OrderedDict)
+    assert isinstance(old_inputs, OrderedDict)
+    assert isinstance(log_density, torch.Tensor)
+    assert isinstance(loc, torch.Tensor)
+    assert isinstance(precision, torch.Tensor)
 
-        raise NotImplementedError('TODO')
+    # Align int inputs.
+    # Since these are are managed as in Tensor, we can defer to align_tensor().
+    new_ints = OrderedDict((k, d) for k, d in new_inputs.items() if d.dtype != 'real')
+    old_ints = OrderedDict((k, d) for k, d in old_inputs.items() if d.dtype != 'real')
+    if new_ints != old_ints:
+        old_inputs, (log_density, loc, precision) = align_tensors(
+                Tensor(log_density, old_ints),
+                Tensor(loc, old_ints),
+                Tensor(precision, old_ints))
 
-    lhs_moments = lhs_log_density, lhs_loc, lhs_precision
-    rhs_moments = rhs_log_density, rhs_loc, rhs_precision
-    return inputs, lhs_moments, rhs_moments
+    # Align real inputs, which are all concatenated in the rightmost dims.
+    new_offsets, new_dim = _compute_offsets(new_inputs)
+    old_offsets, old_dim = _compute_offsets(old_inputs)
+    assert loc.shape[-1:] == (old_dim,)
+    assert precision.shape[-2:] == (old_dim, old_dim)
+    if new_offsets != old_offsets:
+        old_loc = loc
+        old_precision = precision
+        loc = old_loc.new_zeros(old_loc.shape[:-1] + (new_dim,))
+        precision = old_loc.new_zeros(old_loc.shape[:-1] + (new_dim, new_dim))
+        for key, new_offset in new_offsets.items():
+            if key in old_offsets:
+                offset = old_offsets[key]
+                num_elements = old_inputs[key].num_elements
+                old_slice = slice(offset, offset + num_elements)
+                new_slice = slice(new_offset, new_offset + num_elements)
+                loc[..., new_slice] = old_loc[..., old_slice]
+                precision[..., new_slice, new_slice] = old_precision[..., old_slice, old_slice]
+
+    return log_density, loc, precision
 
 
 class GaussianMeta(FunsorMeta):
@@ -136,11 +177,11 @@ class Gaussian(Funsor):
             if real_vars <= reduced_vars:
                 result = Tensor(log_density, inputs)
             else:
-                mask = []
-                for k, d in self.inputs.items():
-                    if d.dtype == 'real':
-                        mask.extend([k not in reduced_vars] * d.num_elements)
-                index = torch.tensor([i for i, m in enumerate(mask) if m])
+                offsets, _ = _compute_offsets(self.inputs)
+                index = []
+                for key, domain in inputs.items():
+                    index.extend(range(offsets[key], offsets[key] + domain.num_elements))
+                index = torch.tensor(index)
 
                 loc = self.loc[..., index]
                 self_covariance = torch.matmul(self.scale_tril,
@@ -235,14 +276,15 @@ def eager_binary_gaussian_gaussian(op, lhs, rhs):
         # This is similar to a Kalman filter update, but also keeps track of
         # the marginal likelihood.
 
-        # Align moments.
+        # Align data.
+        inputs = lhs.inputs.copy()
+        inputs.update(rhs.inputs)
         lhs_precision = _scale_tril_to_precision(lhs.scale_tril)
         rhs_precision = _scale_tril_to_precision(rhs.scale_tril)
-        inputs, lhs_moments, rhs_moments = align_gaussians(
-            lhs.inputs, lhs.log_density, lhs.loc, lhs_precision,
-            rhs.inputs, rhs.log_density, rhs.loc, rhs_precision)
-        lhs_log_density, lhs_loc, lhs_precision = lhs_moments
-        rhs_log_density, rhs_loc, rhs_precision = rhs_moments
+        lhs_log_density, lhs_loc, lhs_precision = align_gaussian(
+                inputs, lhs.inputs, lhs.log_density, lhs.loc, lhs_precision)
+        rhs_log_density, rhs_loc, rhs_precision = align_gaussian(
+                inputs, rhs.inputs, rhs.log_density, rhs.loc, rhs_precision)
 
         # Fuse aligned Gaussians.
         precision = lhs_precision + rhs_precision
