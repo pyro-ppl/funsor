@@ -50,6 +50,29 @@ def to_affine(x):
     return x.eager_subs(subs)
 
 
+def align_gaussians(lhs_inputs, lhs_log_density, lhs_loc, lhs_precision,
+                    rhs_inputs, rhs_log_density, rhs_loc, rhs_precision):
+    """
+    Align a pair of Gaussian distributions.
+
+    Note that this inputs and returns ``precision`` matrices rather than
+    ``scale_tril`` matrices.
+    """
+    assert isinstance(lhs_inputs, OrderedDict)
+    assert isinstance(rhs_inputs, OrderedDict)
+    if lhs_inputs == rhs_inputs:
+        inputs = lhs_inputs
+    else:
+        inputs = lhs_inputs.copy()
+        inputs.update(rhs_inputs)
+
+        raise NotImplementedError('TODO')
+
+    lhs_moments = lhs_log_density, lhs_loc, lhs_precision
+    rhs_moments = rhs_log_density, rhs_loc, rhs_precision
+    return inputs, lhs_moments, rhs_moments
+
+
 class GaussianMeta(FunsorMeta):
     """
     Wrapper to convert between OrderedDict and tuple.
@@ -136,8 +159,13 @@ class Gaussian(Funsor):
 @eager.register(Binary, object, Gaussian, Number)
 def eager_binary_gaussian_number(op, lhs, rhs):
     if op is ops.add or op is ops.sub:
+        # Add a constant log_density term to a Gaussian.
         log_density = op(lhs.log_density, rhs.data)
         return Gaussian(log_density, lhs.loc, lhs.scale_tril, lhs.inputs)
+
+    if op is ops.mul or op is ops.truediv:
+        # Scale a Gaussian, as under pyro.poutine.scale.
+        raise NotImplementedError('TODO')
 
     return None  # defer to default implementation
 
@@ -145,8 +173,13 @@ def eager_binary_gaussian_number(op, lhs, rhs):
 @eager.register(Binary, object, Number, Gaussian)
 def eager_binary_number_gaussian(op, lhs, rhs):
     if op is ops.add:
+        # Add a constant log_density term to a Gaussian.
         log_density = op(lhs.data, rhs.log_density)
         return Gaussian(log_density, rhs.loc, rhs.scale_tril, rhs.inputs)
+
+    if op is ops.mul:
+        # Scale a Gaussian, as under pyro.poutine.scale.
+        raise NotImplementedError('TODO')
 
     return None  # defer to default implementation
 
@@ -154,6 +187,7 @@ def eager_binary_number_gaussian(op, lhs, rhs):
 @eager.register(Binary, object, Gaussian, Tensor)
 def eager_binary_gaussian_tensor(op, lhs, rhs):
     if op is ops.add or op is ops.sub:
+        # Add a batch-dependent log_density term to a Gaussian.
         nonreal_inputs = OrderedDict((k, d) for k, d in lhs.inputs.items()
                                      if d.dtype != 'real')
         inputs, (rhs_data, log_density, loc, scale_tril) = align_tensors(
@@ -165,12 +199,17 @@ def eager_binary_gaussian_tensor(op, lhs, rhs):
         inputs.update(lhs.inputs)
         return Gaussian(log_density, loc, scale_tril, inputs)
 
+    if op is ops.mul or op is ops.truediv:
+        # Scale a Gaussian, as under pyro.poutine.scale.
+        raise NotImplementedError('TODO')
+
     return None  # defer to default implementation
 
 
 @eager.register(Binary, object, Tensor, Gaussian)
 def eager_binary_tensor_gaussian(op, lhs, rhs):
     if op is ops.add:
+        # Add a batch-dependent log_density term to a Gaussian.
         nonreal_inputs = OrderedDict((k, d) for k, d in rhs.inputs.items()
                                      if d.dtype != 'real')
         inputs, (lhs_data, log_density, loc, scale_tril) = align_tensors(
@@ -182,26 +221,37 @@ def eager_binary_tensor_gaussian(op, lhs, rhs):
         inputs.update(rhs.inputs)
         return Gaussian(log_density, loc, scale_tril, inputs)
 
+    if op is ops.mul:
+        # Scale a Gaussian, as under pyro.poutine.scale.
+        raise NotImplementedError('TODO')
+
     return None  # defer to default implementation
 
 
 @eager.register(Binary, object, Gaussian, Gaussian)
 def eager_binary_gaussian_gaussian(op, lhs, rhs):
     if op is ops.add:
+        # Fuse two Gaussians by adding their log-densities pointwise.
+        # This is similar to a Kalman filter update, but also keeps track of
+        # the marginal likelihood.
 
-        if lhs.inputs != rhs.inputs:
-            raise NotImplementedError('TODO align vectors and matrices')
-
-        inputs = lhs.inputs
+        # Align moments.
         lhs_precision = _scale_tril_to_precision(lhs.scale_tril)
         rhs_precision = _scale_tril_to_precision(rhs.scale_tril)
+        inputs, lhs_moments, rhs_moments = align_gaussians(
+            lhs.inputs, lhs.log_density, lhs.loc, lhs_precision,
+            rhs.inputs, rhs.log_density, rhs.loc, rhs_precision)
+        lhs_log_density, lhs_loc, lhs_precision = lhs_moments
+        rhs_log_density, rhs_loc, rhs_precision = rhs_moments
+
+        # Fuse aligned Gaussians.
         precision = lhs_precision + rhs_precision
         scale_tril_inv = torch.cholesky(precision)
         scale_tril = torch.inverse(scale_tril_inv)
-        precision_loc = _mv(lhs_precision, lhs.loc) + _mv(rhs_precision, rhs.loc)
+        precision_loc = _mv(lhs_precision, lhs_loc) + _mv(rhs_precision, rhs_loc)
         loc = _mv(scale_tril, _mv(scale_tril.transpose(-1, 2), precision_loc))
-        log_density = (lhs.log_density + rhs.log_density +  # FIXME add missing terms
-                       _batch_mahalanobis(scale_tril, lhs.loc - rhs.loc))
+        log_density = (lhs_log_density + rhs_log_density +  # FIXME add missing terms
+                       _batch_mahalanobis(scale_tril, lhs_loc - rhs_loc))
         return Gaussian(log_density, loc, scale_tril, inputs)
 
     return None  # defer to default implementation
