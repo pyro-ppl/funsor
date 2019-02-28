@@ -1,23 +1,62 @@
 from __future__ import absolute_import, division, print_function
 
+from collections import OrderedDict
+
 import torch
-from six import integer_types
+from six import add_metaclass, integer_types
+from torch.distributions.multivariate_normal import _batch_mahalanobis
 
 import funsor.ops as ops
-from funsor.terms import Binary, Funsor, Number, eager
-from funsor.torch import Tensor, materialize, align_tensors
 from funsor.domains import reals
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
+from funsor.torch import Tensor, align_tensors, arange
 
 
 def _issubshape(subshape, supershape):
     if len(subshape) > len(supershape):
         return False
-    for sub, sup in zip(reversed(subshape, supershape)):
+    for sub, sup in zip(reversed(subshape), reversed(supershape)):
         if sub not in (1, sup):
             return False
     return True
 
 
+def _scale_tril_to_precision(scale_tril):
+    scale_tril_inv = torch.inv(scale_tril)
+    return torch.matmul(scale_tril_inv.transpose(-1, -2), scale_tril_inv)
+
+
+def to_affine(x):
+    """
+    Attempt to convert a Funsor to a combination of
+    :class:`~funsor.terms.Number`s, :class:`Tensor`s, and affine functions of
+    :class:`~funsor.terms.Variable`s by substituting :func:`arange`s into its
+    free variables and rearranging terms.
+    """
+    assert isinstance(x, Funsor)
+    if isinstance(x, (Number, Tensor)):
+        return x
+    subs = []
+    for name, domain in x.inputs.items():
+        if not isinstance(domain.dtype, integer_types):
+            raise NotImplementedError('TODO')
+        assert not domain.shape
+        subs.append((name, arange(name, domain.dtype)))
+    subs = tuple(subs)
+    return x.eager_subs(subs)
+
+
+class GaussianMeta(FunsorMeta):
+    """
+    Wrapper to convert between OrderedDict and tuple.
+    """
+    def __call__(cls, log_density, loc, scale_tril, inputs):
+        if isinstance(inputs, OrderedDict):
+            inputs = tuple(inputs.items())
+        return super(GaussianMeta, cls).__call__(log_density, loc, scale_tril, inputs)
+
+
+@add_metaclass(GaussianMeta)
 class Gaussian(Funsor):
     """
     Funsor representing a batched joint Gaussian distribution as a log-density
@@ -27,6 +66,8 @@ class Gaussian(Funsor):
         assert isinstance(log_density, torch.Tensor)
         assert isinstance(loc, torch.Tensor)
         assert isinstance(scale_tril, torch.Tensor)
+        assert isinstance(inputs, tuple)
+        inputs = OrderedDict(inputs)
 
         # Compute total dimension of all real inputs.
         dim = sum(d.num_elements for d in inputs.values() if d.dtype == 'real')
@@ -50,7 +91,7 @@ class Gaussian(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = {k: materialize(v) for k, v in subs if k in self.inputs}
+        subs = {k: to_affine(v) for k, v in subs if k in self.inputs}
         if not subs:
             return self
 
@@ -58,9 +99,9 @@ class Gaussian(Funsor):
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
-            raise NotImplementedError('TODO')
+            raise NotImplementedError('TODO marginalize a real variable')
         elif op is ops.add:
-            raise NotImplementedError('TODO')
+            raise NotImplementedError('TODO product-reduce along a plate dimension')
 
         return None  # defer to default implementation
 
@@ -70,6 +111,15 @@ def eager_binary_gaussian_number(op, lhs, rhs):
     if op is ops.add or op is ops.sub:
         log_density = op(lhs.log_density, rhs.data)
         return Gaussian(log_density, lhs.loc, lhs.scale_tril)
+
+    return None  # defer to default implementation
+
+
+@eager.register(Binary, object, Number, Gaussian)
+def eager_binary_number_gaussian(op, lhs, rhs):
+    if op is ops.add:
+        log_density = op(lhs.data, rhs.log_density)
+        return Gaussian(log_density, rhs.loc, rhs.scale_tril)
 
     return None  # defer to default implementation
 
@@ -88,9 +138,45 @@ def eager_binary_gaussian_tensor(op, lhs, rhs):
     return None  # defer to default implementation
 
 
+@eager.register(Binary, object, Tensor, Gaussian)
+def eager_binary_tensor_gaussian(op, lhs, rhs):
+    if op is ops.add:
+        inputs, (lhs_data, log_density, loc, scale_tril) = align_tensors(
+                lhs.data,
+                Tensor(rhs.log_density, lhs.inputs),
+                Tensor(rhs.loc, lhs.inputs),
+                Tensor(rhs.scale_tril, lhs.inputs))
+        log_density = op(lhs_data, log_density)
+        return Gaussian(log_density, loc, scale_tril, inputs)
+
+    return None  # defer to default implementation
+
+
 @eager.register(Binary, object, Gaussian, Gaussian)
 def eager_binary_gaussian_gaussian(op, lhs, rhs):
     if op is ops.add:
-        raise NotImplementedError('TODO Gaussian fusion')
+
+        if lhs.inputs != rhs.inputs:
+            raise NotImplementedError('TODO align vectors and matrices')
+
+        inputs = lhs.inputs
+        lhs_precision = _scale_tril_to_precision(lhs.scale_tril)
+        rhs_precision = _scale_tril_to_precision(rhs.scale_tril)
+        precision = lhs_precision + rhs_precision
+        scale_tril_inv = torch.cholesky(precision)
+        scale_tril = torch.inverse(scale_tril_inv)
+        loc = torch.matmul(scale_tril,
+                           torch.matmul(scale_tril.transpose(-1, 2),
+                                        torch.matmul(lhs_precision, lhs.loc) +
+                                        torch.matmul(rhs_precision, rhs.loc)))
+        log_density = (lhs.log_density + rhs.log_density +  # FIXME add missing terms
+                       _batch_mahalanobis(scale_tril, lhs.loc, rhs.loc))
+        return Gaussian(log_density, loc, scale_tril, inputs)
 
     return None  # defer to default implementation
+
+
+__all__ = [
+    'Gaussian',
+    'to_affine',
+]
