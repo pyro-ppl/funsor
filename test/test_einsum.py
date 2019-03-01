@@ -13,7 +13,7 @@ from funsor.terms import reflect, Binary
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
 
-from funsor.testing import make_einsum_example
+from funsor.testing import assert_close, make_einsum_example
 
 
 def make_chain_einsum(num_steps):
@@ -74,8 +74,6 @@ EINSUM_EXAMPLES = [
     "ab,bc,cd->da",
     make_chain_einsum(5),
     make_hmm_einsum(6),
-    # make_hmm_einsum(20),  # slows down tests if optimized=False
-    # make_hmm_einsum(50),  # slows down tests if optimized=False
 ]
 
 
@@ -85,15 +83,45 @@ EINSUM_EXAMPLES = [
 def test_einsum(equation, optimized, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
-    if optimized:
-        with interpretation(reflect):
-            naive_ast = naive_einsum(equation, *funsor_operands, backend=backend)
-            optimized_ast = apply_optimizer(naive_ast)
-        print("Naive expression: {}".format(naive_ast))
-        print("Optimized expression: {}".format(optimized_ast))
-        actual = reinterpret(optimized_ast)  # eager by default
-    else:
-        actual = naive_einsum(equation, *funsor_operands, backend=backend)
+
+    with interpretation(reflect):
+        naive_ast = naive_einsum(equation, *funsor_operands, backend=backend)
+        optimized_ast = apply_optimizer(naive_ast)
+    print("Naive expression: {}".format(naive_ast))
+    print("Optimized expression: {}".format(optimized_ast))
+    actual_optimized = reinterpret(optimized_ast)  # eager by default
+    actual = naive_einsum(equation, *funsor_operands, backend=backend)
+
+    assert_close(actual, actual_optimized, atol=1e-4)
+
+    assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
+    if len(outputs[0]) > 0:
+        actual = actual.align(tuple(outputs[0]))
+
+    assert expected.shape == actual.data.shape
+    assert torch.allclose(expected, actual.data)
+    for output in outputs:
+        for i, output_dim in enumerate(output):
+            assert output_dim in actual.inputs
+            assert actual.inputs[output_dim].dtype == sizes[output_dim]
+
+
+OPTIMIZED_EINSUM_EXAMPLES = [
+    make_chain_einsum(t) for t in range(2, 100, 10)
+] + [
+    make_hmm_einsum(t) for t in range(2, 100, 10)
+]
+
+
+@pytest.mark.parametrize('equation', OPTIMIZED_EINSUM_EXAMPLES)
+@pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_log'])
+def test_optimized_einsum(equation, backend):
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+    expected = opt_einsum.contract(equation, *operands, backend=backend)
+    with interpretation(reflect):
+        naive_ast = naive_einsum(equation, *funsor_operands, backend=backend)
+        optimized_ast = apply_optimizer(naive_ast)
+    actual = reinterpret(optimized_ast)  # eager by default
 
     assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
     if len(outputs[0]) > 0:
