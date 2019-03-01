@@ -23,7 +23,7 @@ class Affine(Funsor):
             assert var.dtype == 'real'
             inputs.update(coeff.inputs)
             inputs.update(var.inputs)
-        return super(Affine, self).__init__(constant, linear)
+        return super(Affine, self).__init__(inputs, output)
 
     def eager_subs(self, subs):
         raise NotImplementedError
@@ -41,6 +41,8 @@ def to_affine(x):
 
     On failure, this raises a ``ValueError``.
 
+    :param Funsor x:
+    :rtype: Affine
     :param
     :raises: ValueError
     """
