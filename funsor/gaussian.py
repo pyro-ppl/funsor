@@ -170,11 +170,11 @@ class Gaussian(Funsor):
                        Tensor(self.scale_tril, int_inputs)]
             tensors.extend(subs.values())
             inputs, tensors = align_tensors(*tensors)
-            offsets, event_dim = _compute_offsets(self.inputs)
+            offsets, event_size = _compute_offsets(self.inputs)
             batch_dim = tensors[0].dim()
             batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
             (log_density, loc, scale_tril), values = tensors[:3], tensors[3:]
-            value = loc.new_tensor(batch_shape + (event_dim,))
+            value = loc.new_empty(batch_shape + (event_size,))
             for k, value_k in zip(subs, values):
                 offset = offsets[k]
                 value_k = value_k.reshape(value_k.shape[:batch_dim] + (-1,))
@@ -199,7 +199,8 @@ class Gaussian(Funsor):
                 offsets, _ = _compute_offsets(self.inputs)
                 index = []
                 for key, domain in inputs.items():
-                    index.extend(range(offsets[key], offsets[key] + domain.num_elements))
+                    if domain.dtype == 'real':
+                        index.extend(range(offsets[key], offsets[key] + domain.num_elements))
                 index = torch.tensor(index)
 
                 loc = self.loc[..., index]
