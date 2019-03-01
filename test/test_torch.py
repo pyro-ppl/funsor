@@ -387,3 +387,29 @@ def test_align():
         for j in range(3):
             for k in range(4):
                 assert x(i=i, j=j, k=k) == y(i=i, j=j, k=k)
+
+
+@pytest.mark.parametrize('equation', [
+    'a->a',
+    'a,a->a',
+    'a,b->',
+    'a,b->a',
+    'a,b->b',
+    'a,b->ab',
+    'a,b->ba',
+    'ab,ba->',
+    'ab,ba->a',
+    'ab,ba->b',
+    'ab,ba->ab',
+    'ab,ba->ba',
+    'ab,bc->ac',
+])
+def test_einsum(equation):
+    sizes = dict(a=2, b=3, c=4)
+    inputs, outputs = equation.split('->')
+    inputs = inputs.split(',')
+    tensors = [torch.randn(tuple(sizes[d] for d in dims)) for dims in inputs]
+    funsors = [Tensor(x) for x in tensors]
+    expected = Tensor(torch.einsum(equation, *tensors))
+    actual = funsor.einsum(equation, *funsors)
+    assert_close(actual, expected)
