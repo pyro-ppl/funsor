@@ -113,7 +113,7 @@ class Normal(Distribution):
 
 
 @eager.register(Normal, (Number, Tensor), (Number, Tensor), (Number, Tensor))
-def eager_normal_ground(loc, scale, value):
+def eager_normal_const_const_const(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
@@ -130,7 +130,7 @@ def eager_normal_const_const_variable(loc, scale, value):
 
 
 @eager.register(Normal, Variable, (Number, Tensor), Variable)
-def eager_normal_const_const_variable(loc, scale, value):
+def eager_normal_variable_const_variable(loc, scale, value):
     assert loc.output == reals()
     assert value.output == reals()
     assert loc.name != value.name
