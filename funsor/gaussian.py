@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import math
 from collections import OrderedDict
 
 import torch
@@ -187,14 +188,21 @@ class Gaussian(Funsor):
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
-            # Marginalize out real variables.
+            # Marginalize out real variables, but keep mixtures lazy.
+            assert all(v in self.inputs for v in reduced_vars)
             real_vars = frozenset(k for k, d in self.inputs.items() if d.dtype == "real")
-            if reduced_vars.isdisjoint(real_vars):
+            reduced_reals = reduced_vars & real_vars
+            reduced_ints = reduced_vars - real_vars
+            if not reduced_reals:
                 return None  # defer to default implementation
-            inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in real_vars)
+
+            inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in reduced_reals)
             log_density = self.log_density
-            if real_vars <= reduced_vars:
-                result = Tensor(log_density, inputs)
+            if reduced_reals == real_vars:
+                dim = self.loc.size(-1)
+                half_log_det = self.scale_tril.diagonal(dim1=-1, dim2=-2).log().sum()
+                data = log_density - half_log_det - 0.5 * math.log(2 * math.pi) * dim
+                result = Tensor(data, inputs)
             else:
                 offsets, _ = _compute_offsets(self.inputs)
                 index = []
@@ -208,9 +216,12 @@ class Gaussian(Funsor):
                                                self.scale_tril.transpose(-1, -2))
                 covariance = self_covariance[..., index.unsqueeze(-1), index]
                 scale_tril = torch.cholesky(covariance)
+                reduced_dim = sum(self.inputs[k].num_elements for k in reduced_reals)
+                log_density = log_density - 0.5 * math.log(2 * math.pi) * reduced_dim
+                # FIXME add log determinant terms
                 result = Gaussian(log_density, loc, scale_tril, inputs)
-            # FIXME add log (2 pi) terms?
-            return result.reduce(ops.logaddexp, reduced_vars - real_vars)
+
+            return result.reduce(ops.logaddexp, reduced_ints)
 
         elif op is ops.add:
             raise NotImplementedError('TODO product-reduce along a plate dimension')

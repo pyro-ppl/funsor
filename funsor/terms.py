@@ -184,6 +184,8 @@ class Funsor(object):
             # A single name means "reduce over this one variable".
             reduced_vars = frozenset([reduced_vars])
         assert isinstance(reduced_vars, frozenset), reduced_vars
+        if not reduced_vars:
+            return self
         assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
 

@@ -28,8 +28,8 @@ from funsor.terms import Number
     ('(g1 + g2)(i=i0)', Gaussian),
     ('(g1 + g2)(x=x0, y=y0)', Tensor),
     ('g1.logsumexp("x")', Tensor),
-    # ('(g1 + g2).logsumexp("x")', Gaussian),
-    # ('(g1 + g2).logsumexp("y")', Gaussian),
+    ('(g1 + g2).logsumexp("x")', Gaussian),
+    ('(g1 + g2).logsumexp("y")', Gaussian),
     ('(g1 + g2).logsumexp(frozenset(["x", "y"]))', Tensor),
 ])
 def test_smoke(expr, expected_type):
