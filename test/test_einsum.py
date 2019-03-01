@@ -9,6 +9,10 @@ from pyro.ops.contract import naive_ubersum
 
 import funsor
 
+from funsor.terms import reflect
+from funsor.interpreter import interpretation, reinterpret
+from funsor.optimizer import apply_optimizer
+
 
 def xfail_param(*args, **kwargs):
     return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
@@ -64,14 +68,25 @@ XFAIL_EINSUM_EXAMPLES = [
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES + XFAIL_EINSUM_EXAMPLES)
-def test_einsum(equation):
+@pytest.mark.parametrize('optimized', [False, True])
+def test_einsum(equation, optimized):
     inputs, outputs, operands, sizes = make_example(equation)
     funsor_operands = [
         funsor.Tensor(operand, OrderedDict([(d, funsor.bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)
     ]
     expected = torch.einsum(equation, operands)
-    actual = naive_einsum(equation, *funsor_operands)
+
+    if optimized:
+        with interpretation(reflect):
+            naive_ast = naive_einsum(equation, *funsor_operands)
+            optimized_ast = apply_optimizer(naive_ast)
+        print("Naive expression: {}".format(naive_ast))
+        print("Optimized expression: {}".format(optimized_ast))
+        actual = reinterpret(optimized_ast)  # eager by default
+    else:
+        actual = naive_einsum(equation, *funsor_operands)
+
     assert expected.shape == actual.data.shape
     assert torch.allclose(expected, actual.data)
     for output in outputs:
