@@ -3,10 +3,12 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 
 import pyro.distributions as dist
+import torch
 from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
+from funsor.gaussian import Gaussian
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 from funsor.torch import Tensor, align_tensors, materialize
 
@@ -115,14 +117,36 @@ def eager_normal_ground(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
-# TODO
-# @eager.register(
-#     Normal,
-#     (Number, Tensor, Normal, Gaussian, Variable),  # TODO handle affine fns of vars
-#     (Number, Tensor),
-#     (Number, Tensor, Normal, Gaussian, Variable))  # TODO handle affine fns of vars
-# def eager_normal_ideal(op, lhs, rhs):
-#     raise NotImplementedError('TODO')
+@eager.register(Normal, (Number, Tensor), (Number, Tensor), Variable)
+def eager_normal_const_const_variable(loc, scale, value):
+    assert value.output == reals()
+    inputs, (loc, scale) = align_tensors(loc, scale)
+    inputs.update(value.inputs)
+
+    log_density = loc.new_zeros(loc)
+    loc = loc.unsqueeze(-1)
+    precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
+    return Gaussian(log_density, loc, precision, inputs)
+
+
+@eager.register(Normal, Variable, (Number, Tensor), Variable)
+def eager_normal_const_const_variable(loc, scale, value):
+    assert loc.output == reals()
+    assert value.output == reals()
+    assert loc.name != value.name
+    inputs = scale.inputs.copy()
+    inputs.update(loc.inputs)
+    inputs.update(value.inputs)
+
+    log_density = scale.new_zeros(scale.shape)
+    loc = scale.new_zeros(scale.shape + (2,))
+    inputs, (loc, scale) = align_tensors(loc, scale)
+    inputs.update(value.inputs)
+    log_density = loc.new_zeros(loc)
+    loc = loc.unsqueeze(-1)
+    p = scale.pow(-2)
+    precision = torch.stack([p, -p, -p, p], -1).reshape(p.shape + (2, 2))
+    return Gaussian(log_density, loc, precision, inputs)
 
 
 __all__ = [
