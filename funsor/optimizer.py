@@ -104,29 +104,31 @@ distribute.register = _distribute.register
 
 @distribute.register(Finitary, object, tuple)
 def distribute_finitary(op, operands):
-    if all(isinstance(term, Reduce) for term in operands) and \
-            all(term.op == operands[0].op for term in operands) and \
-            (operands[0].op, op) in DISTRIBUTIVE_OPS:
-        # Finitary(Reduce, Reduce) -> Reduce(Finitary(lhs.arg, rhs.arg))
-        new_operands = []
-        new_reduced_vars = set()
-        for term in operands:
-            new_operands.append(term.arg)
-            new_reduced_vars = new_reduced_vars.union(term.reduced_vars)
+    if len(operands) == 1:
+        return operands[0]
 
-        with interpretation(reflect):
-            return Reduce(operands[0].op, Finitary(op, tuple(new_operands)), new_reduced_vars)
-    elif any(isinstance(term, Finitary) and (term.op, op) in DISTRIBUTIVE_OPS
-             for term in operands):
-        # a * b * (c + d) -> (a * b * c) + (a * b * d)
-        return None  # skip this pass for now
-        # for i, term in enumerate(operands):
-        #     if isinstance(term, Finitary) and (term.op, op) in DISTRIBUTIVE_OPS:
-        #         new_operands = []
-        #         for term_operand in term.operands:
-        #             new_operands.append(
-        #                 Finitary(op, (term_operand,) + operands[:i] + operands[i+1:]))
-        #         return Finitary(term.op, new_operands)
+    reduce_op = None
+    reduce_terms, remaining_terms, reduced_vars = [], [], frozenset()
+    for term in operands:
+        # term is not reduce -> do nothing
+        # term is reduce but does not distribute -> do nothing
+        # term is reduce and distributes -> put into reduce_terms
+        if isinstance(term, Reduce):
+            if not reduce_op or not (reduce_op, op) in DISTRIBUTIVE_OPS:
+                reduce_op = term.op
+            if term.op == reduce_op and (reduce_op, op) in DISTRIBUTIVE_OPS:
+                reduce_terms.append(term)
+                reduced_vars = reduced_vars | term.reduced_vars
+            else:
+                remaining_terms.append(term)
+        else:
+            remaining_terms.append(term)
+
+    if reduce_terms:
+        remaining_terms.append(
+            Reduce(reduce_op, Finitary(op, tuple(term.arg for term in reduce_terms)), reduced_vars))
+
+        return Finitary(op, remaining_terms)
 
     return None
 
