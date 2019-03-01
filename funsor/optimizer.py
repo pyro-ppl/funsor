@@ -178,8 +178,8 @@ def optimize_reduction(op, arg, reduced_vars):
 
         # don't reduce a dimension too early - keep a collections.Counter
         # and only reduce when the dimension is removed from all lhs terms in path
-        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & set(ta.inputs.keys())})
-        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & set(tb.inputs.keys())})
+        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & frozenset(ta.inputs.keys())})
+        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & frozenset(tb.inputs.keys())})
 
         # reduce variables that don't appear in other terms
         both_vars = frozenset(ta.inputs.keys()) | frozenset(tb.inputs.keys())
