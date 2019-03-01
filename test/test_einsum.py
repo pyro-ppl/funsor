@@ -16,10 +16,10 @@ from funsor.testing import xfail_param, make_einsum_example
 
 
 def make_hmm_einsum(num_steps):
-    inputs = []
+    inputs = [str(opt_einsum.get_symbol(0))]
     for t in range(num_steps):
         inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)))
-        inputs.append(str(opt_einsum.get_symbol(t)))
+        inputs.append(str(opt_einsum.get_symbol(t+1)))
     equation = ",".join(inputs) + "->"
     return equation
 
