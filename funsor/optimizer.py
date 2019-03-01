@@ -146,6 +146,9 @@ def optimize_reduction(op, arg, reduced_vars):
     Recursively convert large Reduce(Finitary) ops to many smaller versions
     by reordering execution with a modified opt_einsum optimizer
     """
+    if not reduced_vars:  # null reduction
+        return arg
+
     # build opt_einsum optimizer IR
     inputs = []
     size_dict = {}
@@ -175,13 +178,22 @@ def optimize_reduction(op, arg, reduced_vars):
 
         # don't reduce a dimension too early - keep a collections.Counter
         # and only reduce when the dimension is removed from all lhs terms in path
-        reduce_dim_counter.subtract((d, 1) for d in reduced_vars & set(ta.inputs.keys()))
-        reduce_dim_counter.subtract((d, 1) for d in reduced_vars & set(tb.inputs.keys()))
+        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & set(ta.inputs.keys())})
+        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & set(tb.inputs.keys())})
 
-        path_end_reduced_vars = frozenset(d for d in reduced_vars & (set(ta.inputs.keys()) | set(tb.inputs.keys()))
+        # reduce variables that don't appear in other terms
+        both_vars = frozenset(ta.inputs.keys()) | frozenset(tb.inputs.keys())
+        path_end_reduced_vars = frozenset(d for d in reduced_vars & both_vars
                                           if reduce_dim_counter[d] == 0)
 
-        path_end = Reduce(reduce_op, path_end_finitary, path_end_reduced_vars)
+        # count new appearance of variables that aren't reduced
+        reduce_dim_counter.update({d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)})
+
+        if path_end_reduced_vars:
+            path_end = Reduce(reduce_op, path_end_finitary, path_end_reduced_vars)
+        else:
+            path_end = path_end_finitary
+
         operands[a] = path_end
 
     # reduce any remaining dims, if necessary

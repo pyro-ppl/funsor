@@ -15,6 +15,14 @@ from funsor.optimizer import apply_optimizer
 from funsor.testing import xfail_param, make_einsum_example
 
 
+def make_chain_einsum(num_steps):
+    inputs = [str(opt_einsum.get_symbol(0))]
+    for t in range(num_steps):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)))
+    equation = ",".join(inputs) + "->"
+    return equation
+
+
 def make_hmm_einsum(num_steps):
     inputs = [str(opt_einsum.get_symbol(0))]
     for t in range(num_steps):
@@ -52,10 +60,10 @@ EINSUM_EXAMPLES = [
     "a,a->",
     "a,a->a",
     "a,a,a,ab->ab",
-    "a,ab,bc,cd->",
-    make_hmm_einsum(10),
-    # make_hmm_einsum(15),  # slows down tests
+    make_chain_einsum(5),
+    make_hmm_einsum(6),
     # make_hmm_einsum(20),  # slows down tests
+    # make_hmm_einsum(50),  # slows down tests
 ]
 
 XFAIL_EINSUM_EXAMPLES = [
@@ -67,6 +75,8 @@ XFAIL_EINSUM_EXAMPLES = [
 @pytest.mark.parametrize('optimized', [False, True])
 def test_einsum(equation, optimized):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+    assert equation == ",".join(["".join(operand.inputs.keys()) for operand in funsor_operands]) + "->" + ",".join(outputs)
+
     expected = opt_einsum.contract(equation, *operands, backend='torch')
     if optimized:
         with interpretation(reflect):
