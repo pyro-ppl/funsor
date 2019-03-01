@@ -116,6 +116,17 @@ def distribute_finitary(op, operands):
 
         with interpretation(reflect):
             return Reduce(operands[0].op, Finitary(op, tuple(new_operands)), new_reduced_vars)
+    elif any(isinstance(term, Finitary) and (term.op, op) in DISTRIBUTIVE_OPS
+             for term in operands):
+        # a * b * (c + d) -> (a * b * c) + (a * b * d)
+        for i, term in enumerate(operands):
+            if isinstance(term, Finitary) and (term.op, op) in DISTRIBUTIVE_OPS:
+                new_operands = []
+                for term_operand in term.operands:
+                    new_operands.append(
+                        Finitary(op, (term_operand,) + operands[:i] + operands[i+1:]))
+                return Finitary(term.op, new_operands)
+
     return None
 
 
