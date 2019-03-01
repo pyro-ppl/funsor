@@ -8,9 +8,16 @@ import torch
 
 import funsor
 import funsor.distributions as dist
-from funsor import Tensor
 from funsor.domains import bint, reals
+from funsor.terms import Variable
 from funsor.testing import assert_close, check_funsor, random_tensor
+from funsor.torch import Tensor
+
+
+def test_categorical_defaults():
+    probs = Variable('probs', reals(3))
+    value = Variable('value', bint(3))
+    assert dist.Categorical(probs) is dist.Categorical(probs, value)
 
 
 @pytest.mark.parametrize('size', [4])
@@ -35,6 +42,13 @@ def test_categorical_density(size, batch_shape):
     actual = dist.Categorical(probs, value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
+
+
+def test_normal_defaults():
+    loc = Variable('loc', reals())
+    scale = Variable('scale', reals())
+    value = Variable('value', reals())
+    assert dist.Normal(loc, scale) is dist.Normal(loc, scale, value)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
