@@ -196,10 +196,9 @@ def optimize_reduction(op, arg, reduced_vars):
         # count new appearance of variables that aren't reduced
         reduce_dim_counter.update({d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)})
 
-        with interpretation(reflect):
-            path_end = Finitary(finitary_op, (ta, tb))
-            if path_end_reduced_vars:
-                path_end = Reduce(reduce_op, path_end, path_end_reduced_vars)
+        path_end = Binary(finitary_op, ta, tb)
+        if path_end_reduced_vars:
+            path_end = Reduce(reduce_op, path_end, path_end_reduced_vars)
 
         operands[a] = path_end
 
@@ -207,8 +206,7 @@ def optimize_reduction(op, arg, reduced_vars):
     final_reduced_vars = frozenset(d for (d, count) in reduce_dim_counter.items()
                                    if count > 0) & reduced_vars
     if final_reduced_vars:
-        with interpretation(reflect):
-            path_end = Reduce(reduce_op, path_end, final_reduced_vars)
+        path_end = Reduce(reduce_op, path_end, final_reduced_vars)
     return path_end
 
 
