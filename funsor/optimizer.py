@@ -47,23 +47,6 @@ def eager_finitary(op, operands):
     return reduce(lambda lhs, rhs: Binary(op, lhs, rhs), operands)
 
 
-def desugar(cls, *args):
-    result = _desugar(cls, *args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
-
-
-_desugar = KeyedRegistry(default=lambda *args: None)
-desugar.register = _desugar.register
-
-
-@desugar.register(Binary, object, Funsor, Funsor)
-def binary_to_finitary(op, lhs, rhs):
-    """convert Binary to Finitary"""
-    return Finitary(op, (lhs, rhs))
-
-
 def associate(cls, *args):
     result = _associate(cls, *args)
     if result is None:
@@ -73,6 +56,12 @@ def associate(cls, *args):
 
 _associate = KeyedRegistry(default=lambda *args: None)
 associate.register = _associate.register
+
+
+@associate.register(Binary, object, Funsor, Funsor)
+def binary_to_finitary(op, lhs, rhs):
+    """convert Binary to Finitary"""
+    return Finitary(op, (lhs, rhs))
 
 
 @associate.register(Finitary, object, tuple)
@@ -209,9 +198,6 @@ def optimize_reduction(op, arg, reduced_vars):
 
 
 def apply_optimizer(x):
-
-    with interpretation(desugar):
-        x = reinterpret(x)
 
     with interpretation(associate):
         x = reinterpret(x)

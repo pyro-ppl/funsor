@@ -62,8 +62,8 @@ EINSUM_EXAMPLES = [
     "a,a,a,ab->ab",
     make_chain_einsum(5),
     make_hmm_einsum(6),
-    # make_hmm_einsum(20),  # slows down tests
-    # make_hmm_einsum(50),  # slows down tests
+    # make_hmm_einsum(20),  # slows down tests if optimized=False
+    # make_hmm_einsum(50),  # slows down tests if optimized=False
 ]
 
 XFAIL_EINSUM_EXAMPLES = [
