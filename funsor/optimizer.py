@@ -15,6 +15,7 @@ from funsor.torch import Tensor
 class Finitary(Funsor):
     """
     Lazy finitary operation. Used internally in the optimizer.
+    Finitary(op, operands) == six.moves.reduce(op, operands)
     """
     def __init__(self, op, operands):
         assert callable(op)
@@ -63,26 +64,21 @@ def binary_to_finitary(op, lhs, rhs):
     return Finitary(op, (lhs, rhs))
 
 
-def deoptimize(cls, *args):
-    result = _deoptimize(cls, *args)
+def associate(cls, *args):
+    result = _associate(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
 
 
-_deoptimize = KeyedRegistry(default=lambda *args: None)
-deoptimize.register = _deoptimize.register
+_associate = KeyedRegistry(default=lambda *args: None)
+associate.register = _associate.register
 
 
-@deoptimize.register(Finitary, object, tuple)
-def deoptimize_finitary(op, operands):
-    """
-    Rewrite to the largest possible Finitary(Finitary/Reduce) by moving Reduces
-    Assumes that all input Finitary ops have been rewritten
-    """
-    # two cases to rewrite, which we handle in separate branches:
-    if all(isinstance(term, (Finitary, Number, Tensor, Variable)) for term in operands):  # TODO check distributivity
-        # Case 1) Finitary(Finitary) -> Finitary
+@associate.register(Finitary, object, tuple)
+def associate_finitary(op, operands):
+    if all(isinstance(term, (Finitary, Number, Tensor, Variable)) for term in operands):
+        # Finitary(Finitary) -> Finitary
         new_operands = []
         for term in operands:
             if isinstance(term, Finitary) and term.op == op:
@@ -92,28 +88,12 @@ def deoptimize_finitary(op, operands):
 
         with interpretation(reflect):
             return Finitary(op, tuple(new_operands))
-    elif all(isinstance(term, Reduce) for term in operands):  # TODO check distributivity
-        # Case 2) Finitary(Reduce, Reduce) -> Reduce(Finitary(lhs.arg, rhs.arg))
-        new_operands = []
-        new_reduced_vars = set()
-        for term in operands:
-            new_operands.append(term.arg)
-            new_reduced_vars = new_reduced_vars.union(term.reduced_vars)
-
-        with interpretation(reflect):
-            return Reduce(operands[0].op, Finitary(op, tuple(new_operands)), new_reduced_vars)
-    elif all(not isinstance(term, (Reduce, Finitary)) for term in operands):
-        with interpretation(reflect):
-            return Finitary(op, operands)  # nothing to do, reflect
     else:
-        # Note: if we can't rewrite all operands in the finitary, fail for now
-        # A more sophisticated strategy is to apply this rule recursively
-        # Alternatively, we could do this rewrite on Binary ops instead of Finitary
-        raise NotImplementedError("TODO(eb8680) handle mixed case")
+        return None
 
 
-@deoptimize.register(Reduce, object, Reduce, frozenset)
-def deoptimize_reduce(op, arg, reduced_vars):
+@associate.register(Reduce, object, Reduce, frozenset)
+def associate_reduce(op, arg, reduced_vars):
     """
     Rewrite to the largest possible Reduce(Finitary) by combining Reduces
     Assumes that all input Reduce/Finitary ops have been rewritten
@@ -123,6 +103,33 @@ def deoptimize_reduce(op, arg, reduced_vars):
         new_reduced_vars = reduced_vars.union(arg.reduced_vars)
         return Reduce(op, arg.arg, new_reduced_vars)
     return None
+
+
+def distribute(cls, *args):
+    result = _distribute(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
+    return result
+
+
+_distribute = KeyedRegistry(default=lambda *args: None)
+distribute.register = _distribute.register
+
+
+@distribute.register(Finitary, object, tuple)
+def distribute_finitary(op, operands):
+    if all(isinstance(term, Reduce) and term.op != op for term in operands):
+        # Finitary(Reduce, Reduce) -> Reduce(Finitary(lhs.arg, rhs.arg))
+        new_operands = []
+        new_reduced_vars = set()
+        for term in operands:
+            new_operands.append(term.arg)
+            new_reduced_vars = new_reduced_vars.union(term.reduced_vars)
+
+        with interpretation(reflect):
+            return Reduce(operands[0].op, Finitary(op, tuple(new_operands)), new_reduced_vars)
+    else:
+        return None
 
 
 def optimize(cls, *args):
@@ -146,9 +153,6 @@ def optimize_reduction(op, arg, reduced_vars):
     Recursively convert large Reduce(Finitary) ops to many smaller versions
     by reordering execution with a modified opt_einsum optimizer
     """
-    if not reduced_vars:  # null reduction
-        return arg
-
     # build opt_einsum optimizer IR
     inputs = []
     size_dict = {}
@@ -174,7 +178,6 @@ def optimize_reduction(op, arg, reduced_vars):
     for (a, b) in path:
         ta = operands[a]
         tb = operands.pop(b)
-        path_end_finitary = Binary(finitary_op, ta, tb)
 
         # don't reduce a dimension too early - keep a collections.Counter
         # and only reduce when the dimension is removed from all lhs terms in path
@@ -189,10 +192,10 @@ def optimize_reduction(op, arg, reduced_vars):
         # count new appearance of variables that aren't reduced
         reduce_dim_counter.update({d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)})
 
-        if path_end_reduced_vars:
-            path_end = Reduce(reduce_op, path_end_finitary, path_end_reduced_vars)
-        else:
-            path_end = path_end_finitary
+        with interpretation(reflect):
+            path_end = Finitary(finitary_op, (ta, tb))
+            if path_end_reduced_vars:
+                path_end = Reduce(reduce_op, path_end, path_end_reduced_vars)
 
         operands[a] = path_end
 
@@ -200,7 +203,8 @@ def optimize_reduction(op, arg, reduced_vars):
     final_reduced_vars = frozenset(d for (d, count) in reduce_dim_counter.items()
                                    if count > 0) & reduced_vars
     if final_reduced_vars:
-        path_end = Reduce(reduce_op, path_end, final_reduced_vars)
+        with interpretation(reflect):
+            path_end = Reduce(reduce_op, path_end, final_reduced_vars)
     return path_end
 
 
@@ -209,7 +213,10 @@ def apply_optimizer(x):
     with interpretation(desugar):
         x = reinterpret(x)
 
-    with interpretation(deoptimize):
+    with interpretation(associate):
+        x = reinterpret(x)
+
+    with interpretation(distribute):
         x = reinterpret(x)
 
     with interpretation(optimize):
