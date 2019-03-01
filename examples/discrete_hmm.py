@@ -47,7 +47,7 @@ def main(args):
 
     # Train model parameters.
     print('---- training ----')
-    data = torch.ones(args.time_steps)
+    data = torch.ones(args.time_steps, dtype=torch.long)
     optim = torch.optim.Adam(params, lr=args.learning_rate)
     for step in range(args.train_steps):
         optim.zero_grad()
