@@ -7,9 +7,9 @@ from opt_einsum.paths import greedy
 
 from funsor.domains import find_domain
 from funsor.interpreter import interpretation, reinterpret
+from funsor.ops import ASSOCIATIVE_OPS, DISTRIBUTIVE_OPS
 from funsor.registry import KeyedRegistry
-from funsor.terms import eager, reflect, Binary, Funsor, Number, Reduce, Variable
-from funsor.torch import Tensor
+from funsor.terms import eager, reflect, Binary, Funsor, Reduce
 
 
 class Finitary(Funsor):
@@ -66,19 +66,16 @@ def binary_to_finitary(op, lhs, rhs):
 
 @associate.register(Finitary, object, tuple)
 def associate_finitary(op, operands):
-    if all(isinstance(term, (Finitary, Number, Tensor, Variable)) for term in operands):
-        # Finitary(Finitary) -> Finitary
-        new_operands = []
-        for term in operands:
-            if isinstance(term, Finitary) and term.op == op:
-                new_operands.extend(term.operands)
-            else:
-                new_operands.append(term)
+    # Finitary(Finitary) -> Finitary
+    new_operands = []
+    for term in operands:
+        if isinstance(term, Finitary) and (term.op, op) in ASSOCIATIVE_OPS:
+            new_operands.extend(term.operands)
+        else:
+            new_operands.append(term)
 
-        with interpretation(reflect):
-            return Finitary(op, tuple(new_operands))
-    else:
-        return None
+    with interpretation(reflect):
+        return Finitary(op, tuple(new_operands))
 
 
 @associate.register(Reduce, object, Reduce, frozenset)
@@ -87,7 +84,7 @@ def associate_reduce(op, arg, reduced_vars):
     Rewrite to the largest possible Reduce(Finitary) by combining Reduces
     Assumes that all input Reduce/Finitary ops have been rewritten
     """
-    if arg.op == op:
+    if (arg.op, op) in ASSOCIATIVE_OPS:
         # Reduce(Reduce) -> Reduce
         new_reduced_vars = reduced_vars.union(arg.reduced_vars)
         return Reduce(op, arg.arg, new_reduced_vars)
@@ -107,7 +104,9 @@ distribute.register = _distribute.register
 
 @distribute.register(Finitary, object, tuple)
 def distribute_finitary(op, operands):
-    if all(isinstance(term, Reduce) and term.op != op for term in operands):
+    if all(isinstance(term, Reduce) for term in operands) and \
+            all(term.op == operands[0].op for term in operands) and \
+            (operands[0].op, op) in DISTRIBUTIVE_OPS:
         # Finitary(Reduce, Reduce) -> Reduce(Finitary(lhs.arg, rhs.arg))
         new_operands = []
         new_reduced_vars = set()
@@ -117,8 +116,7 @@ def distribute_finitary(op, operands):
 
         with interpretation(reflect):
             return Reduce(operands[0].op, Finitary(op, tuple(new_operands)), new_reduced_vars)
-    else:
-        return None
+    return None
 
 
 def optimize(cls, *args):
