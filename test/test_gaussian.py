@@ -37,12 +37,12 @@ def test_smoke(expr, expected_type):
         log_density=torch.tensor([0.0, 1.0]),
         loc=torch.tensor([[0.0, 0.1, 0.2],
                           [2.0, 3.0, 4.0]]),
-        scale_tril=torch.tensor([[[1.0, 0.0, 0.0],
-                                  [0.1, 1.0, 0.0],
-                                  [0.2, 0.3, 1.0]],
-                                 [[1.0, 0.0, 0.0],
-                                  [0.1, 1.0, 0.0],
-                                  [0.2, 0.3, 1.0]]]),
+        precision=torch.tensor([[[1.0, 0.1, 0.2],
+                                 [0.1, 1.0, 0.3],
+                                 [0.2, 0.3, 1.0]],
+                                [[1.0, 0.1, 0.2],
+                                 [0.1, 1.0, 0.3],
+                                 [0.2, 0.3, 1.0]]]),
         inputs=OrderedDict([('i', bint(2)), ('x', reals(3))]))
     assert isinstance(g1, Gaussian)
 
@@ -50,10 +50,10 @@ def test_smoke(expr, expected_type):
         log_density=torch.tensor([0.0, 1.0]),
         loc=torch.tensor([[0.0, 0.1],
                           [2.0, 3.0]]),
-        scale_tril=torch.tensor([[[1.0, 0.0],
-                                  [0.2, 1.0]],
-                                 [[1.0, 0.0],
-                                  [0.2, 1.0]]]),
+        precision=torch.tensor([[[1.0, 0.2],
+                                 [0.2, 1.0]],
+                                [[1.0, 0.2],
+                                 [0.2, 1.0]]]),
         inputs=OrderedDict([('i', bint(2)), ('y', reals(2))]))
     assert isinstance(g2, Gaussian)
 
