@@ -33,7 +33,8 @@ def make_hmm_einsum(num_steps):
     return equation
 
 
-def naive_einsum(eqn, *terms, backend='torch'):
+def naive_einsum(eqn, *terms, **kwargs):
+    backend = kwargs.pop('backend', 'torch')
     if backend == 'torch':
         sum_op, prod_op = ops.add, ops.mul
     elif backend == 'pyro.ops.einsum.torch_log':
