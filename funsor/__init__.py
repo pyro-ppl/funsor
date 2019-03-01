@@ -5,7 +5,7 @@ from funsor.interpreter import reinterpret
 from funsor.terms import Funsor, Number, Variable, of_shape, to_funsor
 from funsor.torch import Function, Tensor, arange, einsum, function
 
-from . import distributions, domains, gaussian, handlers, interpreter, minipyro, ops, terms, torch
+from . import affine, distributions, domains, gaussian, handlers, interpreter, minipyro, ops, terms, torch
 
 __all__ = [
     'Domain',
@@ -14,6 +14,7 @@ __all__ = [
     'Number',
     'Tensor',
     'Variable',
+    'affine',
     'arange',
     'backward',
     'bint',
