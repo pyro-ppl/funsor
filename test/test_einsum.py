@@ -75,8 +75,6 @@ XFAIL_EINSUM_EXAMPLES = [
 @pytest.mark.parametrize('optimized', [False, True])
 def test_einsum(equation, optimized):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    assert equation == ",".join(["".join(operand.inputs.keys()) for operand in funsor_operands]) + "->" + ",".join(outputs)
-
     expected = opt_einsum.contract(equation, *operands, backend='torch')
     if optimized:
         with interpretation(reflect):

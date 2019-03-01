@@ -67,6 +67,9 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
         Tensor(operand, collections.OrderedDict([(d, bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)
     ]
+
+    assert equation == \
+        ",".join(["".join(operand.inputs.keys()) for operand in funsor_operands]) + "->" + ",".join(outputs)
     return inputs, outputs, sizes, operands, funsor_operands
 
 
