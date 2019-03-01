@@ -7,7 +7,7 @@ import torch
 from six import add_metaclass, integer_types
 
 import funsor.ops as ops
-from funsor.domains import Domain, find_domain, bint
+from funsor.domains import Domain, bint, find_domain, reals
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
@@ -377,11 +377,35 @@ def function(*signature):
     return functools.partial(_function, inputs, output)
 
 
+def einsum(equation, *operands):
+    """
+    Wrapper around :func:`torch.einsum` to operate on real-valued Funsors.
+
+    Note this operates only on the ``output`` tensor. To perform sum-product
+    contractions on named dimensions, instead use ``+`` and
+    :class:`~funsor.terms.Reduce`.
+    """
+    assert isinstance(equation, str)
+    assert isinstance(operands, tuple)
+    for x in operands:
+        assert isinstance(x, Funsor)
+        assert x.dtype == 'real'
+    inputs, output = equation.split('->')
+    inputs = inputs.split(',')
+    sizes = {dim: size
+             for input_, operand in zip(inputs, operands)
+             for dim, size in zip(input_, operand.output.shape)}
+    output = reals(*(sizes[dim] for dim in output))
+    fn = functools.partial(torch.einsum, equation)
+    return Function(fn, output, operands)
+
+
 __all__ = [
     'Function',
     'Tensor',
     'align_tensors',
     'arange',
+    'einsum',
     'function',
     'materialize',
 ]
