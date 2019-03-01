@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import pytest
 
+import opt_einsum
 import torch
 from pyro.ops.contract import naive_ubersum
 
@@ -12,6 +13,15 @@ from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
 
 from funsor.testing import xfail_param, make_einsum_example
+
+
+def make_hmm_einsum(num_steps):
+    inputs = []
+    for t in range(num_steps):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)))
+        inputs.append(str(opt_einsum.get_symbol(t)))
+    equation = ",".join(inputs) + "->"
+    return equation
 
 
 def naive_einsum(eqn, *terms):
@@ -43,6 +53,9 @@ EINSUM_EXAMPLES = [
     "a,a->a",
     "a,a,a,ab->ab",
     "a,ab,bc,cd->",
+    make_hmm_einsum(10),
+    # make_hmm_einsum(15),  # slows down tests
+    # make_hmm_einsum(20),  # slows down tests
 ]
 
 XFAIL_EINSUM_EXAMPLES = [
@@ -54,7 +67,7 @@ XFAIL_EINSUM_EXAMPLES = [
 @pytest.mark.parametrize('optimized', [False, True])
 def test_einsum(equation, optimized):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    expected = torch.einsum(equation, operands)
+    expected = opt_einsum.contract(equation, *operands, backend='torch')
     if optimized:
         with interpretation(reflect):
             naive_ast = naive_einsum(equation, *funsor_operands)
