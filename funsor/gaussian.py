@@ -9,8 +9,7 @@ from torch.distributions.multivariate_normal import _batch_mahalanobis
 import funsor.ops as ops
 from funsor.domains import reals
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
-from funsor.torch import Tensor, align_tensors
-from funsor.affine import Affine, to_affine
+from funsor.torch import Tensor, align_tensors, materialize
 
 
 def _issubshape(subshape, supershape):
@@ -142,14 +141,14 @@ class Gaussian(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = OrderedDict((k, to_affine(v)) for k, v in subs if k in self.inputs)
+        subs = OrderedDict((k, materialize(v)) for k, v in subs if k in self.inputs)
         if not subs:
             return self
         inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in subs)
         for k, v in subs.items():
             inputs.update(v.inputs)
 
-        assert all(isinstance(v, Affine) for v in subs.items())
+        assert all(isinstance(v, (Number, Tensor)) for v in subs.items())
 
         old_offsets, old_dim = _compute_offsets(self.inputs)
         new_offsets, new_dim = _compute_offsets(inputs)
@@ -161,9 +160,7 @@ class Gaussian(Funsor):
                 coeff.transpose(-1, -2))
 
         old_loc = self.loc.new_zeros(log_density.shape + (old_dim,))
-        for k, affine in subs.items():
-            for c, var in affine.items():
-                raise NotImplementedError('TODO')
+        # TODO add parts
         loc = _mv(coeff_pinv, old_loc)
         log_density += 'TODO'
         scale_tril = 'TODO'
