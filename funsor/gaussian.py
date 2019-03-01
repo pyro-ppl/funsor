@@ -3,13 +3,14 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 
 import torch
+from pyro.distributions.util import broadcast_shape
 from six import add_metaclass, integer_types
 from torch.distributions.multivariate_normal import _batch_mahalanobis
 
 import funsor.ops as ops
 from funsor.domains import reals
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
-from funsor.torch import Tensor, align_tensors, materialize
+from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 
 
 def _issubshape(subshape, supershape):
@@ -67,11 +68,9 @@ def align_gaussian(new_inputs, old_inputs, log_density, loc, precision):
     new_ints = OrderedDict((k, d) for k, d in new_inputs.items() if d.dtype != 'real')
     old_ints = OrderedDict((k, d) for k, d in old_inputs.items() if d.dtype != 'real')
     if new_ints != old_ints:
-        # FIXME this does not align to new ints.
-        old_inputs, (log_density, loc, precision) = align_tensors(
-                Tensor(log_density, old_ints),
-                Tensor(loc, old_ints),
-                Tensor(precision, old_ints))
+        log_density = align_tensor(new_ints, Tensor(log_density, old_ints))
+        loc = align_tensor(new_ints, Tensor(loc, old_ints))
+        precision = align_tensor(new_ints, Tensor(precision, old_ints))
 
     # Align real inputs, which are all concatenated in the rightmost dims.
     new_offsets, new_dim = _compute_offsets(new_inputs)
@@ -144,28 +143,47 @@ class Gaussian(Funsor):
         subs = OrderedDict((k, materialize(v)) for k, v in subs if k in self.inputs)
         if not subs:
             return self
-        inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in subs)
-        for k, v in subs.items():
-            inputs.update(v.inputs)
 
-        assert all(isinstance(v, (Number, Tensor)) for v in subs.items())
+        # This currently handles only substitution of constants.
+        if not all(isinstance(v, (Number, Tensor)) for v in subs.values()):
+            raise NotImplementedError('TODO handle substitution of affine functions of variables')
 
-        old_offsets, old_dim = _compute_offsets(self.inputs)
-        new_offsets, new_dim = _compute_offsets(inputs)
+        # First perform any integer substitution, i.e. slicing into a batch.
+        int_subs = tuple((k, v) for k, v in subs.items() if v.dtype != 'real')
+        real_subs = tuple((k, v) for k, v in subs.items() if v.dtype == 'real')
+        if int_subs:
+            int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
+            real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
+            tensors = [self.log_density, self.loc, self.scale_tril]
+            funsors = [Tensor(x, int_inputs).eager_subs(int_subs) for x in tensors]
+            inputs = funsors[0].inputs.copy()
+            inputs.update(real_inputs)
+            int_result = Gaussian(funsors[0].data, funsors[1].data, funsors[2].data, inputs)
+            return int_result.eager_subs(real_subs)
 
-        log_density = 'TODO'
-        coeff = self.loc.new_zeros(log_density.shape + (new_dim, old_dim))
-        coeff_pinv = torch.matmul(
-                torch.inverse(torch.matmul(coeff.transpose(-1, -2), coeff)),
-                coeff.transpose(-1, -2))
+        # Try to perform a complete substitution of all real variables, resulting in a Tensor.
+        assert real_subs and not int_subs
+        if all(k in subs for k, d in self.inputs.items() if d.dtype == 'real'):
+            int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
+            tensors = [Tensor(self.log_density, int_inputs),
+                       Tensor(self.loc, int_inputs),
+                       Tensor(self.scale_tril, int_inputs)]
+            tensors.extend(subs.values())
+            inputs, tensors = align_tensors(*tensors)
+            offsets, event_dim = _compute_offsets(self.inputs)
+            batch_dim = tensors[0].dim()
+            batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
+            (log_density, loc, scale_tril), values = tensors[:3], tensors[3:]
+            value = loc.new_tensor(batch_shape + (event_dim,))
+            for k, value_k in zip(subs, values):
+                offset = offsets[k]
+                value_k = value_k.reshape(value_k.shape[:batch_dim] + (-1,))
+                assert value_k.size(-1) == self.inputs[k].num_elements
+                value[..., offset: offset + self.inputs[k].num_elements] = value_k
+            result = log_density - 0.5 * _batch_mahalanobis(scale_tril, value - loc)
+            return Tensor(result, inputs)
 
-        old_loc = self.loc.new_zeros(log_density.shape + (old_dim,))
-        # TODO add parts
-        loc = _mv(coeff_pinv, old_loc)
-        log_density += 'TODO'
-        scale_tril = 'TODO'
-
-        return Gaussian(log_density, loc, scale_tril, inputs)
+        raise NotImplementedError('TODO implement partial substitution of real variables')
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
@@ -293,7 +311,7 @@ def eager_binary_gaussian_gaussian(op, lhs, rhs):
         scale_tril_inv = torch.cholesky(precision)
         scale_tril = torch.inverse(scale_tril_inv)
         precision_loc = _mv(lhs_precision, lhs_loc) + _mv(rhs_precision, rhs_loc)
-        loc = _mv(scale_tril, _mv(scale_tril.transpose(-1, 2), precision_loc))
+        loc = _mv(scale_tril, _mv(scale_tril.transpose(-1, -2), precision_loc))
         log_density = (lhs_log_density + rhs_log_density +  # FIXME add missing terms
                        _batch_mahalanobis(scale_tril, lhs_loc - rhs_loc))
         return Gaussian(log_density, loc, scale_tril, inputs)
