@@ -106,9 +106,9 @@ def test_einsum(equation, backend):
 
 
 OPTIMIZED_EINSUM_EXAMPLES = [
-    make_chain_einsum(t) for t in range(2, 100, 10)
+    make_chain_einsum(t) for t in range(2, 50, 10)
 ] + [
-    make_hmm_einsum(t) for t in range(2, 100, 10)
+    make_hmm_einsum(t) for t in range(2, 50, 10)
 ]
 
 
