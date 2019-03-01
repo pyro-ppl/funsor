@@ -1,11 +1,15 @@
 from __future__ import absolute_import, division, print_function
 
+import collections
+import itertools
 import operator
+import pytest
 
 import torch
 from six import integer_types
 from six.moves import reduce
 
+from funsor.domains import bint
 from funsor.terms import Funsor
 from funsor.torch import Tensor
 
@@ -43,6 +47,27 @@ def check_funsor(x, inputs, output, data=None):
             assert (x_data == data).all()
         else:
             assert x_data == data
+
+
+def xfail_param(*args, **kwargs):
+    return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
+
+
+def make_einsum_example(equation, fill=None, sizes=(2, 3)):
+    symbols = sorted(set(equation) - set(',->'))
+    sizes = {dim: size for dim, size in zip(symbols, itertools.cycle(sizes))}
+    inputs, outputs = equation.split('->')
+    inputs = inputs.split(',')
+    outputs = outputs.split(',')
+    operands = []
+    for dims in inputs:
+        shape = tuple(sizes[dim] for dim in dims)
+        operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
+    funsor_operands = [
+        Tensor(operand, collections.OrderedDict([(d, bint(sizes[d])) for d in inp]))
+        for inp, operand in zip(inputs, operands)
+    ]
+    return inputs, outputs, sizes, operands, funsor_operands
 
 
 def assert_equiv(x, y):

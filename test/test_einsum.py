@@ -1,8 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
-import itertools
 import pytest
-from collections import OrderedDict
 
 import torch
 from pyro.ops.contract import naive_ubersum
@@ -13,22 +11,7 @@ from funsor.terms import reflect
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
 
-
-def xfail_param(*args, **kwargs):
-    return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
-
-
-def make_example(equation, fill=None, sizes=(2, 3)):
-    symbols = sorted(set(equation) - set(',->'))
-    sizes = {dim: size for dim, size in zip(symbols, itertools.cycle(sizes))}
-    inputs, outputs = equation.split('->')
-    inputs = inputs.split(',')
-    outputs = outputs.split(',')
-    operands = []
-    for dims in inputs:
-        shape = tuple(sizes[dim] for dim in dims)
-        operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
-    return inputs, outputs, operands, sizes
+from funsor.testing import xfail_param, make_einsum_example
 
 
 def naive_einsum(eqn, *terms):
@@ -70,13 +53,8 @@ XFAIL_EINSUM_EXAMPLES = [
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES + XFAIL_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('optimized', [False, True])
 def test_einsum(equation, optimized):
-    inputs, outputs, operands, sizes = make_example(equation)
-    funsor_operands = [
-        funsor.Tensor(operand, OrderedDict([(d, funsor.bint(sizes[d])) for d in inp]))
-        for inp, operand in zip(inputs, operands)
-    ]
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = torch.einsum(equation, operands)
-
     if optimized:
         with interpretation(reflect):
             naive_ast = naive_einsum(equation, *funsor_operands)
@@ -111,11 +89,7 @@ PLATED_EINSUM_EXAMPLES = [(ex, '') for ex in EINSUM_EXAMPLES] + [
 @pytest.mark.xfail(reason="naive plated einsum not implemented")
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
 def test_plated_einsum(equation, plates):
-    inputs, outputs, operands, sizes = make_example(equation)
-    funsor_operands = [
-        funsor.Tensor(operand, OrderedDict([(d, funsor.bint(sizes[d])) for d in inp]))
-        for inp, operand in zip(inputs, operands)
-    ]
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = naive_ubersum(equation, *operands, plates=plates, backend='torch', modulo_total=False)[0]
     actual = naive_plated_einsum(equation, *funsor_operands, plates=plates)
     assert expected.shape == actual.data.shape
