@@ -178,14 +178,14 @@ def optimize_reduction(op, arg, reduced_vars):
         reduce_dim_counter.subtract((d, 1) for d in reduced_vars & set(tb.inputs.keys()))
 
         path_end_reduced_vars = frozenset(d for d in reduced_vars & (set(ta.inputs.keys()) | set(tb.inputs.keys()))
-                                         if reduce_dim_counter[d] == 0)
+                                          if reduce_dim_counter[d] == 0)
 
         path_end = Reduce(reduce_op, path_end_finitary, path_end_reduced_vars)
         operands[a] = path_end
 
     # reduce any remaining dims, if necessary
     final_reduced_vars = frozenset(d for (d, count) in reduce_dim_counter.items()
-                                  if count > 0) & reduced_vars
+                                   if count > 0) & reduced_vars
     if final_reduced_vars:
         path_end = Reduce(reduce_op, path_end, final_reduced_vars)
     return path_end
