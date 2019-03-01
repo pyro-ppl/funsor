@@ -7,8 +7,9 @@ import torch
 from pyro.ops.contract import naive_ubersum
 
 import funsor
+import funsor.ops as ops
 
-from funsor.terms import reflect
+from funsor.terms import reflect, Binary
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
 
@@ -32,7 +33,14 @@ def make_hmm_einsum(num_steps):
     return equation
 
 
-def naive_einsum(eqn, *terms):
+def naive_einsum(eqn, *terms, backend='torch'):
+    if backend == 'torch':
+        sum_op, prod_op = ops.add, ops.mul
+    elif backend == 'pyro.ops.einsum.torch_log':
+        sum_op, prod_op = ops.logaddexp, ops.add
+    else:
+        raise ValueError("{} backend not implemented".format(backend))
+
     assert isinstance(eqn, str)
     assert all(isinstance(term, funsor.Funsor) for term in terms)
     inputs, output = eqn.split('->')
@@ -42,9 +50,9 @@ def naive_einsum(eqn, *terms):
     reduce_dims = tuple(d for d in input_dims - output_dims)
     prod = terms[0]
     for term in terms[1:]:
-        prod = prod * term
+        prod = Binary(prod_op, prod, term)
     for reduce_dim in reduce_dims:
-        prod = prod.sum(reduce_dim)
+        prod = prod.reduce(sum_op, reduce_dim)
     return prod
 
 
@@ -72,18 +80,19 @@ EINSUM_EXAMPLES = [
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('optimized', [False, True])
-def test_einsum(equation, optimized):
+@pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
+def test_einsum(equation, optimized, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    expected = opt_einsum.contract(equation, *operands, backend='torch')
+    expected = opt_einsum.contract(equation, *operands, backend=backend)
     if optimized:
         with interpretation(reflect):
-            naive_ast = naive_einsum(equation, *funsor_operands)
+            naive_ast = naive_einsum(equation, *funsor_operands, backend=backend)
             optimized_ast = apply_optimizer(naive_ast)
         print("Naive expression: {}".format(naive_ast))
         print("Optimized expression: {}".format(optimized_ast))
         actual = reinterpret(optimized_ast)  # eager by default
     else:
-        actual = naive_einsum(equation, *funsor_operands)
+        actual = naive_einsum(equation, *funsor_operands, backend=backend)
 
     assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
     if len(outputs[0]) > 0:
