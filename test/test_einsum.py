@@ -78,9 +78,8 @@ EINSUM_EXAMPLES = [
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('optimized', [False, True])
 @pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
-def test_einsum(equation, optimized, backend):
+def test_einsum(equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
 
