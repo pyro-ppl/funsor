@@ -9,7 +9,8 @@ from torch.distributions.multivariate_normal import _batch_mahalanobis
 import funsor.ops as ops
 from funsor.domains import reals
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
-from funsor.torch import Tensor, align_tensors, arange
+from funsor.torch import Tensor, align_tensors
+from funsor.affine import Affine, to_affine
 
 
 def _issubshape(subshape, supershape):
@@ -46,26 +47,6 @@ def _compute_offsets(inputs):
             offsets[key] = total
             total += domain.num_elements
     return offsets, total
-
-
-def to_affine(x):
-    """
-    Attempt to convert a Funsor to a combination of
-    :class:`~funsor.terms.Number`s, :class:`Tensor`s, and affine functions of
-    :class:`~funsor.terms.Variable`s by substituting :func:`arange`s into its
-    free variables and rearranging terms.
-    """
-    assert isinstance(x, Funsor)
-    if isinstance(x, (Number, Tensor)):
-        return x
-    subs = []
-    for name, domain in x.inputs.items():
-        if not isinstance(domain.dtype, integer_types):
-            raise NotImplementedError('TODO')
-        assert not domain.shape
-        subs.append((name, arange(name, domain.dtype)))
-    subs = tuple(subs)
-    return x.eager_subs(subs)
 
 
 def align_gaussian(new_inputs, old_inputs, log_density, loc, precision):
@@ -160,11 +141,16 @@ class Gaussian(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = {k: to_affine(v) for k, v in subs if k in self.inputs}
+        subs = OrderedDict((k, to_affine(v)) for k, v in subs if k in self.inputs)
         if not subs:
             return self
+        inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in subs)
+        for k, v in subs:
+            inputs.update(v.inputs)
 
-        raise NotImplementedError('TODO')
+        assert all(isinstance(v, Affine) for v in subs.items())
+
+        raise NotImplementedError('TODO(easy) incorporate affine terms')
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
@@ -189,6 +175,7 @@ class Gaussian(Funsor):
                 covariance = self_covariance[..., index.unsqueeze(-1), index]
                 scale_tril = torch.cholesky(covariance)
                 result = Gaussian(log_density, loc, scale_tril, inputs)
+            # FIXME add log (2 pi) terms?
             return result.reduce(ops.logaddexp, reduced_vars - real_vars)
 
         elif op is ops.add:
@@ -301,5 +288,5 @@ def eager_binary_gaussian_gaussian(op, lhs, rhs):
 
 __all__ = [
     'Gaussian',
-    'to_affine',
+    'align_gaussian',
 ]
