@@ -151,11 +151,12 @@ def optimize_reduction(op, arg, reduced_vars):
     size_dict = {}
     for operand in arg.operands:
         inputs.append(frozenset(d for d in operand.inputs.keys()))
-        size_dict.update({k: (REAL_SIZE if v.dtype == 'real' else v.dtype)
+        size_dict.update({k: ((REAL_SIZE * v.num_elements) if v.dtype == 'real' else v.dtype)
                           for k, v in operand.inputs.items()})
     outputs = frozenset().union(*inputs) - reduced_vars
 
     # optimize path with greedy opt_einsum optimizer
+    # TODO switch to new 'auto' strategy when it's released
     path = greedy(inputs, outputs, size_dict)
 
     # convert path IR back to sequence of Reduce(Finitary(...))
