@@ -119,13 +119,14 @@ def distribute_finitary(op, operands):
     elif any(isinstance(term, Finitary) and (term.op, op) in DISTRIBUTIVE_OPS
              for term in operands):
         # a * b * (c + d) -> (a * b * c) + (a * b * d)
-        for i, term in enumerate(operands):
-            if isinstance(term, Finitary) and (term.op, op) in DISTRIBUTIVE_OPS:
-                new_operands = []
-                for term_operand in term.operands:
-                    new_operands.append(
-                        Finitary(op, (term_operand,) + operands[:i] + operands[i+1:]))
-                return Finitary(term.op, new_operands)
+        return None  # skip this pass for now
+        # for i, term in enumerate(operands):
+        #     if isinstance(term, Finitary) and (term.op, op) in DISTRIBUTIVE_OPS:
+        #         new_operands = []
+        #         for term_operand in term.operands:
+        #             new_operands.append(
+        #                 Finitary(op, (term_operand,) + operands[:i] + operands[i+1:]))
+        #         return Finitary(term.op, new_operands)
 
     return None
 
@@ -151,6 +152,9 @@ def optimize_reduction(op, arg, reduced_vars):
     Recursively convert large Reduce(Finitary) ops to many smaller versions
     by reordering execution with a modified opt_einsum optimizer
     """
+    if not (op, arg.op) in DISTRIBUTIVE_OPS:
+        return None
+
     # build opt_einsum optimizer IR
     inputs = []
     size_dict = {}
