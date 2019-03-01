@@ -68,6 +68,7 @@ def align_gaussian(new_inputs, old_inputs, log_density, loc, precision):
     new_ints = OrderedDict((k, d) for k, d in new_inputs.items() if d.dtype != 'real')
     old_ints = OrderedDict((k, d) for k, d in old_inputs.items() if d.dtype != 'real')
     if new_ints != old_ints:
+        # FIXME this does not align to new ints.
         old_inputs, (log_density, loc, precision) = align_tensors(
                 Tensor(log_density, old_ints),
                 Tensor(loc, old_ints),
@@ -145,12 +146,29 @@ class Gaussian(Funsor):
         if not subs:
             return self
         inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in subs)
-        for k, v in subs:
+        for k, v in subs.items():
             inputs.update(v.inputs)
 
         assert all(isinstance(v, Affine) for v in subs.items())
 
-        raise NotImplementedError('TODO(easy) incorporate affine terms')
+        old_offsets, old_dim = _compute_offsets(self.inputs)
+        new_offsets, new_dim = _compute_offsets(inputs)
+
+        log_density = 'TODO'
+        coeff = self.loc.new_zeros(log_density.shape + (new_dim, old_dim))
+        coeff_pinv = torch.matmul(
+                torch.inverse(torch.matmul(coeff.transpose(-1, -2), coeff)),
+                coeff.transpose(-1, -2))
+
+        old_loc = self.loc.new_zeros(log_density.shape + (old_dim,))
+        for k, affine in subs.items():
+            for c, var in affine.items():
+                raise NotImplementedError('TODO')
+        loc = _mv(coeff_pinv, old_loc)
+        log_density += 'TODO'
+        scale_tril = 'TODO'
+
+        return Gaussian(log_density, loc, scale_tril, inputs)
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
