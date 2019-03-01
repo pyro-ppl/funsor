@@ -12,7 +12,7 @@ from funsor.terms import reflect
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
 
-from funsor.testing import xfail_param, make_einsum_example
+from funsor.testing import make_einsum_example
 
 
 def make_chain_einsum(num_steps):
@@ -36,6 +36,7 @@ def naive_einsum(eqn, *terms):
     assert isinstance(eqn, str)
     assert all(isinstance(term, funsor.Funsor) for term in terms)
     inputs, output = eqn.split('->')
+    assert len(output.split(',')) == 1
     input_dims = frozenset(d for inp in inputs.split(',') for d in inp)
     output_dims = frozenset(d for d in output)
     reduce_dims = tuple(d for d in input_dims - output_dims)
@@ -60,18 +61,16 @@ EINSUM_EXAMPLES = [
     "a,a->",
     "a,a->a",
     "a,a,a,ab->ab",
+    "ab->ba",
+    "ab,bc,cd->da",
     make_chain_einsum(5),
     make_hmm_einsum(6),
     # make_hmm_einsum(20),  # slows down tests if optimized=False
     # make_hmm_einsum(50),  # slows down tests if optimized=False
 ]
 
-XFAIL_EINSUM_EXAMPLES = [
-    xfail_param("ab->ba", reason="align not implemented"),  # see pyro-ppl/funsor#26
-]
 
-
-@pytest.mark.parametrize('equation', EINSUM_EXAMPLES + XFAIL_EINSUM_EXAMPLES)
+@pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('optimized', [False, True])
 def test_einsum(equation, optimized):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
@@ -85,6 +84,10 @@ def test_einsum(equation, optimized):
         actual = reinterpret(optimized_ast)  # eager by default
     else:
         actual = naive_einsum(equation, *funsor_operands)
+
+    assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
+    if len(outputs[0]) > 0:
+        actual = actual.align(tuple(outputs[0]))
 
     assert expected.shape == actual.data.shape
     assert torch.allclose(expected, actual.data)
