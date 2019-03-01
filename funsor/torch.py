@@ -12,6 +12,40 @@ from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
 
+def align_tensor(new_inputs, x):
+    r"""
+    Permute and expand a tensor to match desired ``new_inputs``.
+
+    :param OrderedDict new_inputs: A target set of inputs.
+    :param funsor.terms.Funsor x: A :class:`Tensor`s or
+        :class:`~funsor.terms.Number`.
+    :return: a number or :class:`torch.Tensor` that can be broadcast to other
+        tensors with inputs ``new_inputs``.
+    :rtype: tuple
+    """
+    assert isinstance(new_inputs, OrderedDict)
+    assert isinstance(x, (Number, Tensor))
+    assert all(isinstance(d.dtype, integer_types) for d in x.inputs.values())
+
+    data = x.data
+    if isinstance(x, Number):
+        return data
+
+    old_inputs = x.inputs
+    if old_inputs == new_inputs:
+        return data
+
+    # Pemute squashed input dims.
+    x_keys = tuple(old_inputs)
+    data = data.permute(tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
+                        tuple(range(len(old_inputs), data.dim())))
+
+    # Unsquash multivariate input dims by filling in ones.
+    data = data.reshape(tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +
+                        x.output.shape)
+    return data
+
+
 def align_tensors(*args):
     r"""
     Permute multiple tensors before applying a broadcasted op.
@@ -25,38 +59,10 @@ def align_tensors(*args):
         with given ``inputs``.
     :rtype: tuple
     """
-    # Compute result shapes.
     inputs = OrderedDict()
     for x in args:
         inputs.update(x.inputs)
-    sizes = {k: domain.dtype for k, domain in inputs.items()}
-    assert all(isinstance(size, integer_types) for size in sizes.values())
-
-    # Convert each Number or Tensor.
-    tensors = []
-    for i, x in enumerate(args):
-        if isinstance(x, Number):
-            tensors.append(x)
-            continue
-
-        x_inputs, x_output, x = x.inputs, x.output, x.data
-        if x_inputs == inputs:
-            tensors.append(x)
-            continue
-
-        # Squash each multivariate input dim into a single dim.
-        x = x.reshape(tuple(sizes[k] for k in x_inputs) + x_output.shape)
-
-        # Pemute squashed input dims.
-        x_keys = tuple(x_inputs)
-        x = x.permute(tuple(x_keys.index(k) for k in inputs if k in x_inputs) +
-                      tuple(range(len(x_inputs), x.dim())))
-
-        # Unsquash multivariate input dims by filling in ones.
-        x = x.reshape(tuple(sizes[k] if k in x_inputs else 1 for k in inputs) +
-                      x_output.shape)
-        tensors.append(x)
-
+    tensors = [align_tensor(inputs, x) for x in args]
     return inputs, tensors
 
 
@@ -403,6 +409,7 @@ def einsum(equation, *operands):
 __all__ = [
     'Function',
     'Tensor',
+    'align_tensor',
     'align_tensors',
     'arange',
     'einsum',
