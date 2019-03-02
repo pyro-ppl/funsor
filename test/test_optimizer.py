@@ -76,6 +76,7 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
     inputs1, outputs1, sizes1, operands1, _ = make_einsum_example(eqn1, sizes=(3,))
     inputs2, outputs2, sizes2, operands2, funsor_operands2 = make_einsum_example(eqn2, sizes=(3,))
 
+    # hack to normalize the probs for ground-truth comparison
     operands1 = [torch.distributions.Categorical(probs=operand).probs
                  for operand in operands1]
 
@@ -91,11 +92,13 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
             for inp, operand in zip(inputs1, operands1)
         ]
 
-    with interpretation(reflect):
-        output1 = naive_einsum(eqn1, *tuple(funsor_operands1), backend=backend1)
+        output1 = naive_einsum(eqn1, *funsor_operands1, backend=backend1)
         output1 = apply_optimizer(output1) if optimize1 else output1
-        output2 = naive_einsum(outputs1[0] + "," + eqn2, *tuple([output1] + funsor_operands2), backend=backend2)
+        output2 = naive_einsum(outputs1[0] + "," + eqn2, *([output1] + funsor_operands2), backend=backend2)
         output2 = apply_optimizer(output2) if optimize2 else output2
 
+    actual1 = reinterpret(output1)
     actual2 = reinterpret(output2)
+
+    assert torch.allclose(expected1, actual1.data)
     assert torch.allclose(expected2, actual2.data)
