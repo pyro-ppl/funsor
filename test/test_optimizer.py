@@ -5,19 +5,17 @@ from collections import OrderedDict
 
 import opt_einsum
 import torch
-from pyro.ops.contract import naive_ubersum
 
 import funsor
-import funsor.ops as ops
 
 from funsor.distributions import Categorical
 from funsor.domains import bint
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
-from funsor.terms import reflect, Binary, Variable
+from funsor.terms import reflect, Variable
 from funsor.torch import Tensor
 
-from funsor.testing import assert_close, make_einsum_example, naive_einsum
+from funsor.testing import make_einsum_example, naive_einsum
 
 
 def make_chain_einsum(num_steps):
@@ -87,7 +85,7 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
     with interpretation(reflect):
         funsor_operands1 = [
             Categorical(probs=Tensor(
-                operand,  # XXX .abs()?
+                operand,
                 inputs=OrderedDict([(d, bint(sizes1[d])) for d in inp[:-1]])
             ))(value=Variable(inp[-1], bint(sizes1[inp[-1]])))
             for inp, operand in zip(inputs1, operands1)

@@ -7,9 +7,8 @@ import torch
 from pyro.ops.contract import naive_ubersum
 
 import funsor
-import funsor.ops as ops
 
-from funsor.terms import reflect, Binary
+from funsor.terms import reflect
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
 
