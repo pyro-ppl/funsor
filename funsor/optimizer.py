@@ -128,7 +128,7 @@ def distribute_finitary(op, operands):
         remaining_terms.append(
             Reduce(reduce_op, Finitary(op, tuple(term.arg for term in reduce_terms)), reduced_vars))
 
-        return Finitary(op, remaining_terms)
+        return Finitary(op, tuple(remaining_terms))
 
     return None
 
