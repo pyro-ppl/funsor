@@ -94,22 +94,24 @@ REDUCE_OP_TO_TORCH = {
 }
 
 
-# TODO fill out all pairs
 ASSOCIATIVE_OPS = frozenset([
-    (add, add),
-    (mul, mul),
-    (logaddexp, logaddexp),
-    (and_, and_),
-    (or_, or_),
-    (min, min),
-    (max, max),
+    add,
+    mul,
+    logaddexp,
+    and_,
+    or_,
+    min,
+    max,
 ])
 
 
-# TODO fill out all pairs
 DISTRIBUTIVE_OPS = frozenset([
     (logaddexp, add),
     (add, mul),
+    (max, mul),
+    (min, mul),
+    (max, add),
+    (min, add),
 ])
 
 

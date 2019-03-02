@@ -69,7 +69,7 @@ def associate_finitary(op, operands):
     # Finitary(Finitary) -> Finitary
     new_operands = []
     for term in operands:
-        if isinstance(term, Finitary) and (term.op, op) in ASSOCIATIVE_OPS:
+        if isinstance(term, Finitary) and term.op is op and op in ASSOCIATIVE_OPS:
             new_operands.extend(term.operands)
         else:
             new_operands.append(term)
@@ -84,7 +84,7 @@ def associate_reduce(op, arg, reduced_vars):
     Rewrite to the largest possible Reduce(Finitary) by combining Reduces
     Assumes that all input Reduce/Finitary ops have been rewritten
     """
-    if (arg.op, op) in ASSOCIATIVE_OPS:
+    if arg.op is op and op in ASSOCIATIVE_OPS:
         # Reduce(Reduce) -> Reduce
         new_reduced_vars = reduced_vars.union(arg.reduced_vars)
         return Reduce(op, arg.arg, new_reduced_vars)
@@ -104,6 +104,7 @@ distribute.register = _distribute.register
 
 @distribute.register(Finitary, object, tuple)
 def distribute_finitary(op, operands):
+    # TODO raise an error or warning on name collision
     if len(operands) == 1:
         return operands[0]
 
