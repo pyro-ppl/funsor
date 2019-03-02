@@ -125,10 +125,9 @@ def distribute_finitary(op, operands):
         else:
             remaining_terms.append(term)
 
-    if reduce_terms:
-        remaining_terms.append(
-            Reduce(reduce_op, Finitary(op, tuple(term.arg for term in reduce_terms)), reduced_vars))
-
+    if len(reduce_terms) > 1:
+        new_finitary_term = Finitary(op, tuple(term.arg for term in reduce_terms))
+        remaining_terms.append(Reduce(reduce_op, new_finitary_term, reduced_vars))
         return Finitary(op, tuple(remaining_terms))
 
     return None

@@ -64,7 +64,6 @@ def test_optimized_einsum(equation, backend):
             assert actual.inputs[output_dim].dtype == sizes[output_dim]
 
 
-@pytest.mark.xfail(reason="recursion errors?")
 @pytest.mark.parametrize("eqn1,eqn2", [
     ("ab,bc,cd->d", "de,ef,fg->"),
 ])
@@ -76,8 +75,8 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
     inputs1, outputs1, sizes1, operands1, _ = make_einsum_example(eqn1, sizes=(3,))
     inputs2, outputs2, sizes2, operands2, funsor_operands2 = make_einsum_example(eqn2, sizes=(3,))
 
-    # hack to normalize the probs for ground-truth comparison
-    operands1 = [torch.distributions.Categorical(probs=operand).probs
+    # normalize the probs for ground-truth comparison
+    operands1 = [operand.abs() / operand.abs().sum(-1, keepdim=True)
                  for operand in operands1]
 
     expected1 = opt_einsum.contract(eqn1, *operands1, backend=backend1)
@@ -88,7 +87,7 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
             Categorical(probs=Tensor(
                 operand,
                 inputs=OrderedDict([(d, bint(sizes1[d])) for d in inp[:-1]])
-            ))(value=Variable(inp[-1], bint(sizes1[inp[-1]])))
+            ))(value=Variable(inp[-1], bint(sizes1[inp[-1]]))).exp()
             for inp, operand in zip(inputs1, operands1)
         ]
 
