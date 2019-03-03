@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import math
 from collections import OrderedDict
 
 import pyro.distributions as dist
@@ -133,7 +134,7 @@ def eager_normal(loc, scale, value):
     inputs, (loc, scale) = align_tensors(loc, scale)
     inputs.update(value.inputs)
 
-    log_density = loc.new_zeros(loc)
+    log_density = -0.5 * math.log(2 * math.pi) - scale.log()
     loc = loc.unsqueeze(-1)
     precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
     return Gaussian(log_density, loc, precision, inputs)
@@ -150,7 +151,7 @@ def eager_normal(loc, scale, value):
     inputs.update(loc.inputs)
     inputs.update(value.inputs)
 
-    log_density = scale.new_zeros(scale.shape)
+    log_density = -0.5 * math.log(2 * math.pi) - scale.log()
     loc = scale.new_zeros(scale.shape + (2,))
     inputs, (loc, scale) = align_tensors(loc, scale)
     inputs.update(value.inputs)

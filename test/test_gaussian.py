@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import itertools
 from collections import OrderedDict
 
 import pytest
@@ -8,11 +9,13 @@ import torch
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.terms import Number
-from funsor.testing import assert_close, random_gaussian, random_tensor
+from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 
 
 def id_from_inputs(inputs):
+    if not inputs:
+        return '()'
     return ','.join(k + ''.join(map(str, d.shape)) for k, d in inputs.items())
 
 
@@ -92,9 +95,47 @@ def test_smoke(expr, expected_type):
     {'x': reals(2, 3)},
     {'x': reals(), 'y': reals()},
     {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 4), 'z': reals()},
+    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-def test_binary_gaussian_number(int_inputs, real_inputs):
+def test_eager_subs(int_inputs, real_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(sorted(real_inputs.items()))
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+
+    g = random_gaussian(inputs)
+
+    for order in itertools.permutations(inputs):
+        ground_values = {}
+        dependent_values = {}
+        for i, name in enumerate(order):
+            upstream = OrderedDict([(k, inputs[k]) for k in order[:i] if k in int_inputs])
+            value = random_tensor(upstream, inputs[name])
+            ground_values[name] = value(**ground_values)
+            dependent_values[name] = value
+
+        expected = g(**ground_values)
+        actual = g
+        for k in reversed(order):
+            with xfail_if_not_implemented():
+                actual = actual(**{k: dependent_values[k]})
+        assert_close(actual, expected, atol=1e-4)
+
+
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
+    {'i': bint(2), 'j': bint(3)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals()},
+    {'x': reals(4)},
+    {'x': reals(2, 3)},
+    {'x': reals(), 'y': reals()},
+    {'x': reals(2), 'y': reals(3)},
+    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+], ids=id_from_inputs)
+def test_add_gaussian_number(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
@@ -121,9 +162,9 @@ def test_binary_gaussian_number(int_inputs, real_inputs):
     {'x': reals(2, 3)},
     {'x': reals(), 'y': reals()},
     {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 4), 'z': reals()},
+    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-def test_binary_gaussian_tensor(int_inputs, real_inputs):
+def test_add_gaussian_tensor(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
@@ -154,7 +195,7 @@ def test_binary_gaussian_tensor(int_inputs, real_inputs):
     {'x': reals(), 'y': reals(4)},
     {'y': reals(4), 'z': reals(2, 3)},
 ], ids=id_from_inputs)
-def test_binary_gaussian_gaussian(lhs_inputs, rhs_inputs):
+def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs):
     lhs_inputs = OrderedDict(sorted(lhs_inputs.items()))
     rhs_inputs = OrderedDict(sorted(rhs_inputs.items()))
     inputs = lhs_inputs.copy()
@@ -168,3 +209,27 @@ def test_binary_gaussian_gaussian(lhs_inputs, rhs_inputs):
               for name, domain in real_inputs.items()}
 
     assert_close((g1 + g2)(**values), g1(**values) + g2(**values))
+
+
+@pytest.mark.xfail(reason='math error')
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
+    {'i': bint(2), 'j': bint(3)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals(), 'y': reals()},
+    {'x': reals(2), 'y': reals(3)},
+    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    {'w': reals(5), 'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+], ids=id_from_inputs)
+def test_logsumexp(int_inputs, real_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(sorted(real_inputs.items()))
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+
+    g = random_gaussian(inputs)
+    g_xy = g.logsumexp(frozenset(['x', 'y']))
+    assert_close(g_xy, g.logsumexp('x').logsumexp('y'))
+    assert_close(g_xy, g.logsumexp('y').logsumexp('x'))

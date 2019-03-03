@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import contextlib
 import itertools
 import operator
 from collections import OrderedDict
@@ -13,6 +14,14 @@ from funsor.domains import Domain, bint
 from funsor.gaussian import Gaussian
 from funsor.terms import Binary, Funsor
 from funsor.torch import Tensor
+
+
+@contextlib.contextmanager
+def xfail_if_not_implemented(msg="Not implemented"):
+    try:
+        yield
+    except NotImplementedError as e:
+        pytest.xfail(reason="{}: {}".format(msg, e))
 
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
