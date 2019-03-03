@@ -122,12 +122,13 @@ class Normal(Distribution):
 
 
 @eager.register(Normal, (Number, Tensor), (Number, Tensor), (Number, Tensor))
-def eager_normal_const_const_const(loc, scale, value):
+def eager_normal(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
+# Create a Gaussian from a ground observation.
 @eager.register(Normal, (Number, Tensor), (Number, Tensor), Variable)
-def eager_normal_const_const_variable(loc, scale, value):
+def eager_normal(loc, scale, value):
     assert value.output == reals()
     inputs, (loc, scale) = align_tensors(loc, scale)
     inputs.update(value.inputs)
@@ -138,8 +139,10 @@ def eager_normal_const_const_variable(loc, scale, value):
     return Gaussian(log_density, loc, precision, inputs)
 
 
+# Create a Gaussian from a noisy identity transform.
+# This is extrememly limited but suffices for examples/kalman_filter.py
 @eager.register(Normal, Variable, (Number, Tensor), Variable)
-def eager_normal_variable_const_variable(loc, scale, value):
+def eager_normal(loc, scale, value):
     assert loc.output == reals()
     assert value.output == reals()
     assert loc.name != value.name

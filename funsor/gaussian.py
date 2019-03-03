@@ -47,7 +47,8 @@ def _vmv(mat, vec):
 
 def _compute_offsets(inputs):
     """
-    Compute offsets of real dims into the concatenated Gaussian dims.
+    Compute offsets of real inputs into the concatenated Gaussian dims.
+    This ignores all int inputs.
 
     :param OrderedDict inputs: A schema mapping variable name to domain.
     :return: a pair ``(offsets, total)``.
@@ -174,22 +175,27 @@ class Gaussian(Funsor):
         # Try to perform a complete substitution of all real variables, resulting in a Tensor.
         assert real_subs and not int_subs
         if all(k in subs for k, d in self.inputs.items() if d.dtype == 'real'):
+            # Broadcast all component tensors.
             int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
             tensors = [Tensor(self.log_density, int_inputs),
                        Tensor(self.loc, int_inputs),
                        Tensor(self.precision, int_inputs)]
             tensors.extend(subs.values())
             inputs, tensors = align_tensors(*tensors)
-            offsets, event_size = _compute_offsets(self.inputs)
             batch_dim = tensors[0].dim()
             batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
             (log_density, loc, precision), values = tensors[:3], tensors[3:]
+
+            # Form the concatenated value.
+            offsets, event_size = _compute_offsets(self.inputs)
             value = loc.new_empty(batch_shape + (event_size,))
             for k, value_k in zip(subs, values):
                 offset = offsets[k]
                 value_k = value_k.reshape(value_k.shape[:batch_dim] + (-1,))
                 assert value_k.size(-1) == self.inputs[k].num_elements
                 value[..., offset: offset + self.inputs[k].num_elements] = value_k
+
+            # Evaluate the non-normalized log density.
             result = log_density - 0.5 * _vmv(precision, value - loc)
             return Tensor(result, inputs)
 
@@ -226,7 +232,7 @@ class Gaussian(Funsor):
                 covariance = self_covariance[..., index.unsqueeze(-1), index]
                 scale_tril = torch.cholesky(covariance)
                 inv_scale_tril = torch.inverse(scale_tril)
-                precision = torch.matmul(inv_scale_tril.transpose(-1, -2), inv_scale_tril)
+                precision = torch.matmul(inv_scale_tril, inv_scale_tril.transpose(-1, -2))
                 reduced_dim = sum(self.inputs[k].num_elements for k in reduced_reals)
                 log_density = log_density - 0.5 * math.log(2 * math.pi) * reduced_dim
                 # FIXME add log determinant terms
