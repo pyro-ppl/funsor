@@ -1,12 +1,17 @@
 from __future__ import absolute_import, division, print_function
 
+import collections
+import itertools
 import operator
+import pytest
 
 import torch
 from six import integer_types
 from six.moves import reduce
 
-from funsor.terms import Funsor
+import funsor.ops as ops
+from funsor.domains import bint
+from funsor.terms import Binary, Funsor
 from funsor.torch import Tensor
 
 
@@ -45,6 +50,30 @@ def check_funsor(x, inputs, output, data=None):
             assert x_data == data
 
 
+def xfail_param(*args, **kwargs):
+    return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
+
+
+def make_einsum_example(equation, fill=None, sizes=(2, 3)):
+    symbols = sorted(set(equation) - set(',->'))
+    sizes = {dim: size for dim, size in zip(symbols, itertools.cycle(sizes))}
+    inputs, outputs = equation.split('->')
+    inputs = inputs.split(',')
+    outputs = outputs.split(',')
+    operands = []
+    for dims in inputs:
+        shape = tuple(sizes[dim] for dim in dims)
+        operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
+    funsor_operands = [
+        Tensor(operand, collections.OrderedDict([(d, bint(sizes[d])) for d in inp]))
+        for inp, operand in zip(inputs, operands)
+    ]
+
+    assert equation == \
+        ",".join(["".join(operand.inputs.keys()) for operand in funsor_operands]) + "->" + ",".join(outputs)
+    return inputs, outputs, sizes, operands, funsor_operands
+
+
 def assert_equiv(x, y):
     """
     Check that two funsors are equivalent up to permutation of inputs.
@@ -67,3 +96,27 @@ def random_tensor(dtype, shape):
         return torch.randn(shape)
     else:
         raise ValueError('unknown dtype: {}'.format(repr(dtype)))
+
+
+def naive_einsum(eqn, *terms, **kwargs):
+    backend = kwargs.pop('backend', 'torch')
+    if backend == 'torch':
+        sum_op, prod_op = ops.add, ops.mul
+    elif backend == 'pyro.ops.einsum.torch_log':
+        sum_op, prod_op = ops.logaddexp, ops.add
+    else:
+        raise ValueError("{} backend not implemented".format(backend))
+
+    assert isinstance(eqn, str)
+    assert all(isinstance(term, Funsor) for term in terms)
+    inputs, output = eqn.split('->')
+    assert len(output.split(',')) == 1
+    input_dims = frozenset(d for inp in inputs.split(',') for d in inp)
+    output_dims = frozenset(d for d in output)
+    reduce_dims = tuple(d for d in input_dims - output_dims)
+    prod = terms[0]
+    for term in terms[1:]:
+        prod = Binary(prod_op, prod, term)
+    for reduce_dim in reduce_dims:
+        prod = prod.reduce(sum_op, reduce_dim)
+    return prod

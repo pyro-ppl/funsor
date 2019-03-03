@@ -94,8 +94,31 @@ REDUCE_OP_TO_TORCH = {
 }
 
 
+ASSOCIATIVE_OPS = frozenset([
+    add,
+    mul,
+    logaddexp,
+    and_,
+    or_,
+    min,
+    max,
+])
+
+
+DISTRIBUTIVE_OPS = frozenset([
+    (logaddexp, add),
+    (add, mul),
+    (max, mul),
+    (min, mul),
+    (max, add),
+    (min, add),
+])
+
+
 __all__ = [
     'REDUCE_OP_TO_TORCH',
+    'ASSOCIATIVE_OPS',
+    'DISTRIBUTIVE_OPS',
     'abs',
     'add',
     'and_',

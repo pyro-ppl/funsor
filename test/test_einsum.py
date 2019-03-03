@@ -1,45 +1,22 @@
 from __future__ import absolute_import, division, print_function
 
-import itertools
 import pytest
 from collections import OrderedDict
 
+import opt_einsum
 import torch
 from pyro.ops.contract import naive_ubersum
 
 import funsor
 
+from funsor.distributions import Categorical
+from funsor.domains import bint
+from funsor.terms import reflect, Variable
+from funsor.torch import Tensor
+from funsor.interpreter import interpretation, reinterpret
+from funsor.optimizer import apply_optimizer
 
-def xfail_param(*args, **kwargs):
-    return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
-
-
-def make_example(equation, fill=None, sizes=(2, 3)):
-    symbols = sorted(set(equation) - set(',->'))
-    sizes = {dim: size for dim, size in zip(symbols, itertools.cycle(sizes))}
-    inputs, outputs = equation.split('->')
-    inputs = inputs.split(',')
-    outputs = outputs.split(',')
-    operands = []
-    for dims in inputs:
-        shape = tuple(sizes[dim] for dim in dims)
-        operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
-    return inputs, outputs, operands, sizes
-
-
-def naive_einsum(eqn, *terms):
-    assert isinstance(eqn, str)
-    assert all(isinstance(term, funsor.Funsor) for term in terms)
-    inputs, output = eqn.split('->')
-    input_dims = frozenset(d for inp in inputs.split(',') for d in inp)
-    output_dims = frozenset(d for d in output)
-    reduce_dims = tuple(d for d in input_dims - output_dims)
-    prod = terms[0]
-    for term in terms[1:]:
-        prod = prod * term
-    for reduce_dim in reduce_dims:
-        prod = prod.sum(reduce_dim)
-    return prod
+from funsor.testing import assert_close, make_einsum_example, naive_einsum
 
 
 def naive_plated_einsum(eqn, *terms, **kwargs):
@@ -55,23 +32,69 @@ EINSUM_EXAMPLES = [
     "a,a->",
     "a,a->a",
     "a,a,a,ab->ab",
-    "a,ab,bc,cd->",
-]
-
-XFAIL_EINSUM_EXAMPLES = [
-    xfail_param("ab->ba", reason="align not implemented"),  # see pyro-ppl/funsor#26
+    "ab->ba",
+    "ab,bc,cd->da",
 ]
 
 
-@pytest.mark.parametrize('equation', EINSUM_EXAMPLES + XFAIL_EINSUM_EXAMPLES)
-def test_einsum(equation):
-    inputs, outputs, operands, sizes = make_example(equation)
-    funsor_operands = [
-        funsor.Tensor(operand, OrderedDict([(d, funsor.bint(sizes[d])) for d in inp]))
-        for inp, operand in zip(inputs, operands)
-    ]
-    expected = torch.einsum(equation, operands)
-    actual = naive_einsum(equation, *funsor_operands)
+@pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
+@pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
+def test_einsum(equation, backend):
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+    expected = opt_einsum.contract(equation, *operands, backend=backend)
+
+    with interpretation(reflect):
+        naive_ast = naive_einsum(equation, *funsor_operands, backend=backend)
+        optimized_ast = apply_optimizer(naive_ast)
+    print("Naive expression: {}".format(naive_ast))
+    print("Optimized expression: {}".format(optimized_ast))
+    actual_optimized = reinterpret(optimized_ast)  # eager by default
+    actual = naive_einsum(equation, *funsor_operands, backend=backend)
+
+    assert_close(actual, actual_optimized, atol=1e-4)
+
+    assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
+    if len(outputs[0]) > 0:
+        actual = actual.align(tuple(outputs[0]))
+
+    assert expected.shape == actual.data.shape
+    assert torch.allclose(expected, actual.data)
+    for output in outputs:
+        for i, output_dim in enumerate(output):
+            assert output_dim in actual.inputs
+            assert actual.inputs[output_dim].dtype == sizes[output_dim]
+
+
+@pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
+def test_einsum_categorical(equation):
+    inputs, outputs, sizes, operands, _ = make_einsum_example(equation)
+    operands = [operand.abs() / operand.abs().sum(-1, keepdim=True)
+                for operand in operands]
+
+    expected = opt_einsum.contract(equation, *operands, backend='torch')
+
+    with interpretation(reflect):
+        funsor_operands = [
+            Categorical(probs=Tensor(
+                operand,
+                inputs=OrderedDict([(d, bint(sizes[d])) for d in inp[:-1]])
+            ))(value=Variable(inp[-1], bint(sizes[inp[-1]]))).exp()
+            for inp, operand in zip(inputs, operands)
+        ]
+
+        naive_ast = naive_einsum(equation, *funsor_operands)
+        optimized_ast = apply_optimizer(naive_ast)
+
+    print("Naive expression: {}".format(naive_ast))
+    print("Optimized expression: {}".format(optimized_ast))
+    actual_optimized = reinterpret(optimized_ast)  # eager by default
+    actual = naive_einsum(equation, *map(reinterpret, funsor_operands))
+
+    assert_close(actual, actual_optimized, atol=1e-4)
+
+    if len(outputs[0]) > 0:
+        actual = actual.align(tuple(outputs[0]))
+
     assert expected.shape == actual.data.shape
     assert torch.allclose(expected, actual.data)
     for output in outputs:
@@ -96,11 +119,7 @@ PLATED_EINSUM_EXAMPLES = [(ex, '') for ex in EINSUM_EXAMPLES] + [
 @pytest.mark.xfail(reason="naive plated einsum not implemented")
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
 def test_plated_einsum(equation, plates):
-    inputs, outputs, operands, sizes = make_example(equation)
-    funsor_operands = [
-        funsor.Tensor(operand, OrderedDict([(d, funsor.bint(sizes[d])) for d in inp]))
-        for inp, operand in zip(inputs, operands)
-    ]
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = naive_ubersum(equation, *operands, plates=plates, backend='torch', modulo_total=False)[0]
     actual = naive_plated_einsum(equation, *funsor_operands, plates=plates)
     assert expected.shape == actual.data.shape
