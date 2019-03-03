@@ -13,17 +13,15 @@ class Y(nn.Module):
         self.approx_fix_f = approx_fix_f
         self.buffers.loss = 0  # FIXME
 
-        def approx_f(_, *args):
-            return self.approx_fix_f(*args)
-
-        self.approx_f = approx_f
+    def approx_f(self, fn, *args):
+        return self.approx_fix_f(*args)
 
     def forward(self, *args):
+        # TODO Unroll to multiple depths, gathering loss at each depth.
         value0 = self.approx_fix_f(None, *args)
         value1 = self.f(self.approx_f, *args)
         self.buffers.loss = (value0 - value1).abs().sum()
-        value = 0.5 * (value0 + value1)
-        return value
+        return value1
 
 
 def main(args):

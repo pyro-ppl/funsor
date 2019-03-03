@@ -20,12 +20,12 @@ TRUNCATION_DEPTHS = defaultdict(int)
 def truncate(fn, output):
     TRUNCATION_DEPTHS[fn] += 1
     if TRUNCATION_DEPTHS[fn] <= MAX_TRUNCATION_DEPTH:
-        result = fn
+        approx_fn = fn
     else:
-        def result(*args, **kwargs):
+        def approx_fn(fn, *args):
             return Tensor(torch.tensor(float('nan')).expand(output.shape))
     try:
-        yield result
+        yield approx_fn
     finally:
         TRUNCATION_DEPTHS[fn] -= 1
 
@@ -74,8 +74,8 @@ class Fix(Funsor):
 
 @truncated.register(Fix, object, Domain, tuple)
 def eager_function(fn, output, args):
-    with truncate(fn) as t:
-        return fn(t, *args)
+    with truncate(fn) as approx_fn:
+        return fn(approx_fn, *args)
 
 
 def _fix(inputs, output, fn):
