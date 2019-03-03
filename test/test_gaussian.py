@@ -110,3 +110,38 @@ def test_binary_gaussian_number(int_inputs, real_inputs):
     assert_close((g + n)(**values), g(**values) + n)
     assert_close((n + g)(**values), n + g(**values))
     assert_close((g - n)(**values), g(**values) - n, atol=1e-4)
+
+
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
+    {'i': bint(2), 'j': bint(3)},
+], ids=lambda p: '-'.join(p.keys()))
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals()},
+    {'x': reals(4)},
+    {'x': reals(2, 3)},
+    {'x': reals(), 'y': reals()},
+    {'x': reals(2), 'y': reals(3)},
+    {'x': reals(4), 'y': reals(2, 4), 'z': reals()},
+], ids=lambda p: '-'.join(k + str(v.shape) for k, v in p.items()))
+def test_binary_gaussian_tensor(int_inputs, real_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(sorted(real_inputs.items()))
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+
+    batch_shape = tuple(domain.dtype for domain in int_inputs.values())
+    event_shape = (sum(domain.num_elements for domain in real_inputs.values()),)
+    log_density = torch.randn(batch_shape)
+    loc = torch.randn(batch_shape + event_shape)
+    prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
+    precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
+    g = Gaussian(log_density, loc, precision, inputs)
+    t = Tensor(torch.randn(batch_shape), int_inputs)
+    values = {name: Tensor(torch.randn(domain.shape))
+              for name, domain in real_inputs.items()}
+
+    assert_close((g + t)(**values), g(**values) + t, atol=1e-4)
+    assert_close((t + g)(**values), t + g(**values), atol=1e-4)
+    assert_close((g - t)(**values), g(**values) - t, atol=1e-4)
