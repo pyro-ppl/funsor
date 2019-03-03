@@ -35,7 +35,7 @@ def test_categorical_density(size, batch_shape):
     probs_data = torch.randn(batch_shape + (size,)).exp()
     probs_data /= probs_data.sum(-1, keepdim=True)
     probs = Tensor(probs_data, inputs)
-    value = Tensor(random_tensor(size, batch_shape), inputs, size)
+    value = random_tensor(inputs, bint(size))
     expected = categorical(probs, value)
     check_funsor(expected, inputs, reals())
 

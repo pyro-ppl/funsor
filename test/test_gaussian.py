@@ -8,8 +8,12 @@ import torch
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.terms import Number
-from funsor.testing import assert_close
+from funsor.testing import assert_close, random_gaussian, random_tensor
 from funsor.torch import Tensor
+
+
+def id_from_inputs(inputs):
+    return ','.join(k + ''.join(map(str, d.shape)) for k, d in inputs.items())
 
 
 @pytest.mark.parametrize('expr,expected_type', [
@@ -81,7 +85,7 @@ def test_smoke(expr, expected_type):
     {},
     {'i': bint(2)},
     {'i': bint(2), 'j': bint(3)},
-], ids=lambda p: '-'.join(p.keys()))
+], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
     {'x': reals()},
     {'x': reals(4)},
@@ -89,26 +93,20 @@ def test_smoke(expr, expected_type):
     {'x': reals(), 'y': reals()},
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 4), 'z': reals()},
-], ids=lambda p: '-'.join(k + str(v.shape) for k, v in p.items()))
+], ids=id_from_inputs)
 def test_binary_gaussian_number(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
-    batch_shape = tuple(domain.dtype for domain in int_inputs.values())
-    event_shape = (sum(domain.num_elements for domain in real_inputs.values()),)
-    log_density = torch.randn(batch_shape)
-    loc = torch.randn(batch_shape + event_shape)
-    prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
-    precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
-    g = Gaussian(log_density, loc, precision, inputs)
+    g = random_gaussian(inputs)
     n = Number(1.234)
-    values = {name: Tensor(torch.randn(domain.shape))
+    values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
-    assert_close((g + n)(**values), g(**values) + n)
-    assert_close((n + g)(**values), n + g(**values))
+    assert_close((g + n)(**values), g(**values) + n, atol=1e-4)
+    assert_close((n + g)(**values), n + g(**values), atol=1e-4)
     assert_close((g - n)(**values), g(**values) - n, atol=1e-4)
 
 
@@ -116,7 +114,7 @@ def test_binary_gaussian_number(int_inputs, real_inputs):
     {},
     {'i': bint(2)},
     {'i': bint(2), 'j': bint(3)},
-], ids=lambda p: '-'.join(p.keys()))
+], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
     {'x': reals()},
     {'x': reals(4)},
@@ -124,24 +122,49 @@ def test_binary_gaussian_number(int_inputs, real_inputs):
     {'x': reals(), 'y': reals()},
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 4), 'z': reals()},
-], ids=lambda p: '-'.join(k + str(v.shape) for k, v in p.items()))
+], ids=id_from_inputs)
 def test_binary_gaussian_tensor(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
-    batch_shape = tuple(domain.dtype for domain in int_inputs.values())
-    event_shape = (sum(domain.num_elements for domain in real_inputs.values()),)
-    log_density = torch.randn(batch_shape)
-    loc = torch.randn(batch_shape + event_shape)
-    prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
-    precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
-    g = Gaussian(log_density, loc, precision, inputs)
-    t = Tensor(torch.randn(batch_shape), int_inputs)
-    values = {name: Tensor(torch.randn(domain.shape))
+    g = random_gaussian(inputs)
+    t = random_tensor(int_inputs, reals())
+    values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
     assert_close((g + t)(**values), g(**values) + t, atol=1e-4)
     assert_close((t + g)(**values), t + g(**values), atol=1e-4)
     assert_close((g - t)(**values), g(**values) - t, atol=1e-4)
+
+
+@pytest.mark.xfail(reason='math error')
+@pytest.mark.parametrize('lhs_inputs', [
+    {'x': reals()},
+    {'y': reals(4)},
+    {'z': reals(2, 3)},
+    {'x': reals(), 'y': reals(4)},
+    {'y': reals(4), 'z': reals(2, 3)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('rhs_inputs', [
+    {'x': reals()},
+    {'y': reals(4)},
+    {'z': reals(2, 3)},
+    {'x': reals(), 'y': reals(4)},
+    {'y': reals(4), 'z': reals(2, 3)},
+], ids=id_from_inputs)
+def test_binary_gaussian_gaussian(lhs_inputs, rhs_inputs):
+    lhs_inputs = OrderedDict(sorted(lhs_inputs.items()))
+    rhs_inputs = OrderedDict(sorted(rhs_inputs.items()))
+    inputs = lhs_inputs.copy()
+    inputs.update(rhs_inputs)
+    int_inputs = OrderedDict((k, d) for k, d in inputs.items() if d.dtype != 'real')
+    real_inputs = OrderedDict((k, d) for k, d in inputs.items() if d.dtype == 'real')
+
+    g1 = random_gaussian(lhs_inputs)
+    g2 = random_gaussian(rhs_inputs)
+    values = {name: random_tensor(int_inputs, domain)
+              for name, domain in real_inputs.items()}
+
+    assert_close((g1 + g2)(**values), g1(**values) + g2(**values))

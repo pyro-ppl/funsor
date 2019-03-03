@@ -1,16 +1,16 @@
 from __future__ import absolute_import, division, print_function
 
-import collections
 import itertools
 import operator
-import pytest
+from collections import OrderedDict
 
+import pytest
 import torch
-from six import integer_types
 from six.moves import reduce
 
 import funsor.ops as ops
-from funsor.domains import bint
+from funsor.domains import Domain, bint
+from funsor.gaussian import Gaussian
 from funsor.terms import Binary, Funsor
 from funsor.torch import Tensor
 
@@ -65,7 +65,7 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
         shape = tuple(sizes[dim] for dim in dims)
         operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
     funsor_operands = [
-        Tensor(operand, collections.OrderedDict([(d, bint(sizes[d])) for d in inp]))
+        Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)
     ]
 
@@ -81,21 +81,35 @@ def assert_equiv(x, y):
     check_funsor(x, y.inputs, y.output, y.data)
 
 
-def random_tensor(dtype, shape):
+def random_tensor(inputs, output):
     """
-    Creates a random :class:`torch.Tensor` suitable for a given
-    :class:`~funsor.domains.Domain`.
+    Creates a random :class:`funsor.torch.Tensor` with given inputs and output.
     """
-    assert isinstance(shape, tuple)
-    if isinstance(dtype, integer_types):
+    assert isinstance(inputs, OrderedDict)
+    assert isinstance(output, Domain)
+    shape = tuple(d.dtype for d in inputs.values()) + output.shape
+    if output.dtype == 'real':
+        data = torch.randn(shape)
+    else:
         num_elements = reduce(operator.mul, shape, 1)
-        return torch.multinomial(torch.ones(dtype),
+        data = torch.multinomial(torch.ones(output.dtype),
                                  num_elements,
                                  replacement=True).reshape(shape)
-    elif dtype == "real":
-        return torch.randn(shape)
-    else:
-        raise ValueError('unknown dtype: {}'.format(repr(dtype)))
+    return Tensor(data, inputs, output.dtype)
+
+
+def random_gaussian(inputs):
+    """
+    Creates a random :class:`funsor.gaussian.Gaussian` with given inputs.
+    """
+    assert isinstance(inputs, OrderedDict)
+    batch_shape = tuple(d.dtype for d in inputs.values() if d.dtype != 'real')
+    event_shape = (sum(d.num_elements for d in inputs.values() if d.dtype == 'real'),)
+    log_density = torch.randn(batch_shape)
+    loc = torch.randn(batch_shape + event_shape)
+    prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
+    precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
+    return Gaussian(log_density, loc, precision, inputs)
 
 
 def naive_einsum(eqn, *terms, **kwargs):

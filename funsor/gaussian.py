@@ -149,6 +149,10 @@ class Gaussian(Funsor):
         self.batch_shape = batch_shape
         self.event_shape = (dim,)
 
+    def __repr__(self):
+        return 'Gaussian(..., ({}))'.format(' '.join(
+            '({}, {}),'.format(*kv) for kv in self.inputs.items()))
+
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
         subs = OrderedDict((k, materialize(v)) for k, v in subs if k in self.inputs)
