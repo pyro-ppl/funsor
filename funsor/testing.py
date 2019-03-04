@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 import contextlib
 import itertools
 import operator
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 
 import pytest
 import torch
@@ -24,18 +24,39 @@ def xfail_if_not_implemented(msg="Not implemented"):
         pytest.xfail(reason="{}: {}".format(msg, e))
 
 
+class ActualExpected(namedtuple('LazyComparison', ['actual', 'expected'])):
+    """
+    Lazy string formatter for test assertions.
+    """
+    def __repr__(self):
+        return '\n'.join(['Expected:', str(self.expected), 'Actual:', str(self.actual)])
+
+
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
-    assert isinstance(actual, Funsor)
-    assert isinstance(expected, Funsor)
-    assert actual.inputs == expected.inputs, (actual.inputs, expected.inputs)
-    assert actual.output == expected.output
+    msg = ActualExpected(actual, expected)
+    assert type(actual) == type(expected), msg
+    if isinstance(actual, Funsor):
+        assert isinstance(actual, Funsor)
+        assert isinstance(expected, Funsor)
+        assert actual.inputs == expected.inputs, (actual.inputs, expected.inputs)
+        assert actual.output == expected.output, (actual.output, expected.output)
+
     if isinstance(actual, Tensor):
-        if actual.data.dtype in (torch.long, torch.uint8):
-            assert (actual.data == expected.data).all()
+        assert_close(actual.data, expected.data, atol=atol, rtol=rtol)
+    elif isinstance(actual, Gaussian):
+        assert_close(actual.log_density, expected.log_density, atol=atol, rtol=rtol)
+        assert_close(actual.loc, expected.loc, atol=atol, rtol=rtol)
+        assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)
+    elif isinstance(actual, torch.Tensor):
+        assert actual.dtype == expected.dtype, msg
+        if actual.dtype in (torch.long, torch.uint8):
+            assert (actual == expected).all(), msg
         else:
-            diff = (actual.data.detach() - expected.data.detach()).abs()
-            assert diff.max() < atol
-            assert (diff / (atol + expected.data.detach().abs())).max() < rtol
+            diff = (actual.detach() - expected.detach()).abs()
+            if atol is not None:
+                assert diff.max() < atol, msg
+            if rtol is not None:
+                assert (diff / (atol + expected.detach().abs())).max() < rtol, msg
     else:
         raise ValueError('cannot compare objects of type {}'.format(type(actual)))
 

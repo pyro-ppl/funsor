@@ -238,8 +238,8 @@ class Gaussian(Funsor):
                 inv_scale_tril = torch.inverse(scale_tril)
                 precision = torch.matmul(inv_scale_tril, inv_scale_tril.transpose(-1, -2))
                 reduced_dim = sum(self.inputs[k].num_elements for k in reduced_reals)
-                log_density = log_density - 0.5 * math.log(2 * math.pi) * reduced_dim
-                # FIXME add log determinant terms
+                log_det_terms = _log_det_tril(scale_tril) - _log_det_tril(self_scale_tril)
+                log_density = log_density - 0.5 * math.log(2 * math.pi) * reduced_dim + log_det_terms
                 result = Gaussian(log_density, loc, precision, inputs)
 
             return result.reduce(ops.logaddexp, reduced_ints)
@@ -340,8 +340,8 @@ def eager_binary_gaussian_gaussian(op, lhs, rhs):
         precision = lhs_precision + rhs_precision
         scale_tril = torch.inverse(torch.cholesky(precision))
         loc = _mv(scale_tril, _mv(scale_tril.transpose(-1, -2), precision_loc))
-        log_det_terms = _vmv(lhs_precision, lhs_loc) + _vmv(rhs_precision, rhs_loc) - _vmv(precision, loc)
-        log_density = lhs_log_density + rhs_log_density + 0.5 * log_det_terms
+        likelihood_terms = _vmv(lhs_precision, lhs_loc) + _vmv(rhs_precision, rhs_loc) - _vmv(precision, loc)
+        log_density = lhs_log_density + rhs_log_density + 0.5 * likelihood_terms
         return Gaussian(log_density, loc, scale_tril, inputs)
 
     return None  # defer to default implementation

@@ -211,7 +211,6 @@ def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs):
     assert_close((g1 + g2)(**values), g1(**values) + g2(**values))
 
 
-@pytest.mark.xfail(reason='math error')
 @pytest.mark.parametrize('int_inputs', [
     {},
     {'i': bint(2)},
@@ -231,5 +230,5 @@ def test_logsumexp(int_inputs, real_inputs):
 
     g = random_gaussian(inputs)
     g_xy = g.logsumexp(frozenset(['x', 'y']))
-    assert_close(g_xy, g.logsumexp('x').logsumexp('y'))
-    assert_close(g_xy, g.logsumexp('y').logsumexp('x'))
+    assert_close(g_xy, g.logsumexp('x').logsumexp('y'), atol=1e-4, rtol=None)
+    assert_close(g_xy, g.logsumexp('y').logsumexp('x'), atol=1e-4, rtol=None)
