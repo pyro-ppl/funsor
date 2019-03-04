@@ -21,7 +21,7 @@ def xfail_if_not_implemented(msg="Not implemented"):
     try:
         yield
     except NotImplementedError as e:
-        pytest.xfail(reason="{}: {}".format(msg, e))
+        pytest.xfail(reason='{}:\n{}'.format(msg, e))
 
 
 class ActualExpected(namedtuple('LazyComparison', ['actual', 'expected'])):

@@ -22,11 +22,6 @@ def _issubshape(subshape, supershape):
     return True
 
 
-def _scale_tril_to_precision(scale_tril):
-    scale_tril_inv = torch.inverse(scale_tril)
-    return torch.matmul(scale_tril_inv.transpose(-1, -2), scale_tril_inv)
-
-
 def _log_det_tril(x):
     return x.diagonal(dim1=-1, dim2=-2).log().sum()
 
@@ -93,14 +88,22 @@ def align_gaussian(new_inputs, old):
         old_precision = precision
         loc = old_loc.new_zeros(old_loc.shape[:-1] + (new_dim,))
         precision = old_loc.new_zeros(old_loc.shape[:-1] + (new_dim, new_dim))
-        for key, new_offset in new_offsets.items():
-            if key in old_offsets:
-                offset = old_offsets[key]
-                num_elements = old.inputs[key].num_elements
-                old_slice = slice(offset, offset + num_elements)
-                new_slice = slice(new_offset, new_offset + num_elements)
-                loc[..., new_slice] = old_loc[..., old_slice]
-                precision[..., new_slice, new_slice] = old_precision[..., old_slice, old_slice]
+        for k1, new_offset1 in new_offsets.items():
+            if k1 not in old_offsets:
+                continue
+            offset1 = old_offsets[k1]
+            num_elements1 = old.inputs[k1].num_elements
+            old_slice1 = slice(offset1, offset1 + num_elements1)
+            new_slice1 = slice(new_offset1, new_offset1 + num_elements1)
+            loc[..., new_slice1] = old_loc[..., old_slice1]
+            for k2, new_offset2 in new_offsets.items():
+                if k2 not in old_offsets:
+                    continue
+                offset2 = old_offsets[k2]
+                num_elements2 = old.inputs[k2].num_elements
+                old_slice2 = slice(offset2, offset2 + num_elements2)
+                new_slice2 = slice(new_offset2, new_offset2 + num_elements2)
+                precision[..., new_slice1, new_slice2] = old_precision[..., old_slice1, old_slice2]
 
     return log_density, loc, precision
 
@@ -219,8 +222,8 @@ class Gaussian(Funsor):
             log_density = self.log_density
             if reduced_reals == real_vars:
                 dim = self.loc.size(-1)
-                neg_half_log_det = _log_det_tril(torch.cholesky(self.precision))
-                data = log_density + neg_half_log_det - 0.5 * math.log(2 * math.pi) * dim
+                log_det_term = _log_det_tril(torch.cholesky(self.precision))
+                data = log_density + log_det_term - 0.5 * math.log(2 * math.pi) * dim
                 result = Tensor(data, inputs)
             else:
                 offsets, _ = _compute_offsets(self.inputs)
@@ -238,8 +241,8 @@ class Gaussian(Funsor):
                 inv_scale_tril = torch.inverse(scale_tril)
                 precision = torch.matmul(inv_scale_tril, inv_scale_tril.transpose(-1, -2))
                 reduced_dim = sum(self.inputs[k].num_elements for k in reduced_reals)
-                log_det_terms = _log_det_tril(scale_tril) - _log_det_tril(self_scale_tril)
-                log_density = log_density - 0.5 * math.log(2 * math.pi) * reduced_dim + log_det_terms
+                log_det_term = _log_det_tril(scale_tril) - _log_det_tril(self_scale_tril)
+                log_density = log_density + log_det_term - 0.5 * math.log(2 * math.pi) * reduced_dim
                 result = Gaussian(log_density, loc, precision, inputs)
 
             return result.reduce(ops.logaddexp, reduced_ints)
@@ -327,7 +330,7 @@ def eager_binary_gaussian_gaussian(op, lhs, rhs):
     if op is ops.add:
         # Fuse two Gaussians by adding their log-densities pointwise.
         # This is similar to a Kalman filter update, but also keeps track of
-        # the marginal likelihood.
+        # the marginal likelihood which accumulates into log_density.
 
         # Align data.
         inputs = lhs.inputs.copy()
@@ -339,10 +342,10 @@ def eager_binary_gaussian_gaussian(op, lhs, rhs):
         precision_loc = _mv(lhs_precision, lhs_loc) + _mv(rhs_precision, rhs_loc)
         precision = lhs_precision + rhs_precision
         scale_tril = torch.inverse(torch.cholesky(precision))
-        loc = _mv(scale_tril, _mv(scale_tril.transpose(-1, -2), precision_loc))
-        likelihood_terms = _vmv(lhs_precision, lhs_loc) + _vmv(rhs_precision, rhs_loc) - _vmv(precision, loc)
-        log_density = lhs_log_density + rhs_log_density + 0.5 * likelihood_terms
-        return Gaussian(log_density, loc, scale_tril, inputs)
+        loc = _mv(scale_tril.transpose(-1, -2), _mv(scale_tril, precision_loc))
+        quadratic_term = _vmv(lhs_precision, loc - lhs_loc) + _vmv(rhs_precision, loc - rhs_loc)
+        log_density = lhs_log_density + rhs_log_density - 0.5 * quadratic_term
+        return Gaussian(log_density, loc, precision, inputs)
 
     return None  # defer to default implementation
 

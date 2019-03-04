@@ -180,7 +180,6 @@ def test_add_gaussian_tensor(int_inputs, real_inputs):
     assert_close((g - t)(**values), g(**values) - t, atol=1e-4)
 
 
-@pytest.mark.xfail(reason='math error')
 @pytest.mark.parametrize('lhs_inputs', [
     {'x': reals()},
     {'y': reals(4)},
@@ -208,7 +207,7 @@ def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs):
     values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
-    assert_close((g1 + g2)(**values), g1(**values) + g2(**values))
+    assert_close((g1 + g2)(**values), g1(**values) + g2(**values), atol=1e-4, rtol=None)
 
 
 @pytest.mark.parametrize('int_inputs', [
