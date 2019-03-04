@@ -75,7 +75,7 @@ def test_normal_density(batch_shape):
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
-def test_normal_gaussian(batch_shape):
+def test_normal_gaussian_1(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -90,6 +90,48 @@ def test_normal_gaussian(batch_shape):
     g = dist.Normal(loc, scale)
     assert isinstance(g, Gaussian)
     actual = g(value=value)
+    check_funsor(actual, inputs, reals())
+
+    assert_close(actual, expected, atol=1e-4)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
+def test_normal_gaussian_2(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.randn(batch_shape).exp(), inputs)
+    value = Tensor(torch.randn(batch_shape), inputs)
+
+    expected = dist.Normal(loc, scale, value)
+    assert isinstance(expected, Tensor)
+    check_funsor(expected, inputs, reals())
+
+    g = dist.Normal(Variable('value', reals()), scale, loc)
+    assert isinstance(g, Gaussian)
+    actual = g(value=value)
+    check_funsor(actual, inputs, reals())
+
+    assert_close(actual, expected, atol=1e-4)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
+def test_normal_gaussian_3(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.randn(batch_shape).exp(), inputs)
+    value = Tensor(torch.randn(batch_shape), inputs)
+
+    expected = dist.Normal(loc, scale, value)
+    assert isinstance(expected, Tensor)
+    check_funsor(expected, inputs, reals())
+
+    g = dist.Normal(Variable('loc', reals()), scale)
+    assert isinstance(g, Gaussian)
+    actual = g(loc=loc, value=value)
     check_funsor(actual, inputs, reals())
 
     assert_close(actual, expected, atol=1e-4)
