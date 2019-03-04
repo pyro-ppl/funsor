@@ -14,6 +14,22 @@ from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 from funsor.torch import Tensor, align_tensors, materialize
 
 
+def numbers_to_tensors(*args):
+    """
+    Convert :class:`~funsor.terms.Number`s to :class:`funsor.torch.Tensor`s,
+    using any provided tensor as a prototype, if available.
+    """
+    if any(isinstance(x, Number) for x in args):
+        new_tensor = torch.tensor
+        for x in args:
+            if isinstance(x, Tensor):
+                new_tensor = x.data.new_tensor
+                break
+        args = tuple(Tensor(new_tensor(x.data), dtype=x.dtype) if isinstance(x, Number) else x
+                     for x in args)
+    return args
+
+
 class Distribution(Funsor):
     """
     Funsor backed by a PyTorch distribution object.
@@ -73,6 +89,7 @@ class CategoricalMeta(FunsorMeta):
             value = Variable('value', bint(size))
         else:
             value = to_funsor(value)
+        probs, value = numbers_to_tensors(probs, value)
         return super(CategoricalMeta, cls).__call__(probs, value)
 
 
@@ -111,6 +128,7 @@ class NormalMeta(FunsorMeta):
             value = Variable('value', reals())
         else:
             value = to_funsor(value)
+        loc, scale, value = numbers_to_tensors(loc, scale, value)
         return super(NormalMeta, cls).__call__(loc, scale, value)
 
 
@@ -125,6 +143,19 @@ class Normal(Distribution):
 @eager.register(Normal, (Number, Tensor), (Number, Tensor), (Number, Tensor))
 def eager_normal(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
+
+
+# Create a Gaussian from a ground observation.
+@eager.register(Normal, Variable, (Number, Tensor), (Number, Tensor))
+def eager_normal(loc, scale, value):
+    assert loc.output == reals()
+    inputs, (scale, value) = align_tensors(scale, value)
+    inputs.update(loc.inputs)
+
+    log_density = -0.5 * math.log(2 * math.pi) - scale.log()
+    loc = value.unsqueeze(-1)
+    precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
+    return Gaussian(log_density, loc, precision, inputs)
 
 
 # Create a Gaussian from a ground observation.
@@ -147,17 +178,13 @@ def eager_normal(loc, scale, value):
     assert loc.output == reals()
     assert value.output == reals()
     assert loc.name != value.name
-    inputs = scale.inputs.copy()
-    inputs.update(loc.inputs)
+    inputs = loc.inputs.copy()
+    inputs.update(scale.inputs)
     inputs.update(value.inputs)
 
-    log_density = -0.5 * math.log(2 * math.pi) - scale.log()
-    loc = scale.new_zeros(scale.shape + (2,))
-    inputs, (loc, scale) = align_tensors(loc, scale)
-    inputs.update(value.inputs)
-    log_density = loc.new_zeros(loc)
-    loc = loc.unsqueeze(-1)
-    p = scale.pow(-2)
+    log_density = -0.5 * math.log(2 * math.pi) - scale.data.log()
+    loc = scale.data.new_zeros(scale.data.shape + (2,))
+    p = scale.data.pow(-2)
     precision = torch.stack([p, -p, -p, p], -1).reshape(p.shape + (2, 2))
     return Gaussian(log_density, loc, precision, inputs)
 

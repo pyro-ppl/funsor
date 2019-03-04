@@ -18,7 +18,7 @@ def main(args):
     def model(data):
         log_prob = funsor.to_funsor(0.)
 
-        x_curr = funsor.Number(0.)
+        x_curr = funsor.Tensor(torch.tensor(0.))
         for t, y in enumerate(data):
             x_prev = x_curr
 
