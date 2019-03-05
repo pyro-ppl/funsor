@@ -15,15 +15,9 @@ from funsor.terms import reflect, Variable
 from funsor.torch import Tensor
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
+from funsor.testing import assert_close, make_einsum_example
 
-from funsor.testing import assert_close, make_einsum_example, naive_einsum
-
-
-def naive_plated_einsum(eqn, *terms, **kwargs):
-    assert isinstance(eqn, str)
-    assert all(isinstance(term, funsor.Funsor) for term in terms)
-    # ...
-    raise NotImplementedError("TODO implement naive plated einsum")
+from funsor.einsum import naive_einsum, naive_plated_einsum
 
 
 EINSUM_EXAMPLES = [
@@ -116,12 +110,17 @@ PLATED_EINSUM_EXAMPLES = [(ex, '') for ex in EINSUM_EXAMPLES] + [
 ]
 
 
-@pytest.mark.xfail(reason="naive plated einsum not implemented")
+@pytest.mark.xfail(reason="naive plated einsum not working")
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
-def test_plated_einsum(equation, plates):
+@pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
+def test_plated_einsum(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    expected = naive_ubersum(equation, *operands, plates=plates, backend='torch', modulo_total=False)[0]
-    actual = naive_plated_einsum(equation, *funsor_operands, plates=plates)
+    expected = naive_ubersum(equation, *operands, plates=plates, backend=backend, modulo_total=True)[0]
+    actual = naive_plated_einsum(equation, *funsor_operands, plates=plates, backend=backend)
+
+    if len(outputs[0]) > 0:
+        actual = actual.align(tuple(outputs[0]))
+
     assert expected.shape == actual.data.shape
     assert torch.allclose(expected, actual.data)
     for output in outputs:

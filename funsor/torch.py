@@ -383,7 +383,7 @@ def function(*signature):
     return functools.partial(_function, inputs, output)
 
 
-def einsum(equation, *operands):
+def torch_einsum(equation, *operands):
     """
     Wrapper around :func:`torch.einsum` to operate on real-valued Funsors.
 
@@ -412,7 +412,7 @@ __all__ = [
     'align_tensor',
     'align_tensors',
     'arange',
-    'einsum',
+    'torch_einsum',
     'function',
     'materialize',
 ]

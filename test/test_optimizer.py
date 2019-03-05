@@ -15,7 +15,8 @@ from funsor.optimizer import apply_optimizer
 from funsor.terms import reflect, Variable
 from funsor.torch import Tensor
 
-from funsor.testing import make_einsum_example, naive_einsum
+from funsor.testing import make_einsum_example
+from funsor.einsum import naive_einsum
 
 
 def make_chain_einsum(num_steps):
