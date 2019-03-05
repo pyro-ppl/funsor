@@ -1,7 +1,14 @@
 from __future__ import absolute_import, division, print_function
 
 import funsor.ops as ops
-from funsor.terms import Binary, Funsor
+from funsor.terms import Binary, Funsor, Unary
+
+
+def _global_local(sum_op, prod_op, term, sum_dims, plate_dims):
+    term_sum = term.reduce(sum_op, sum_dims)
+    global_part = term.reduce(sum_op, sum_dims)
+    local_part = Binary(prod_op, term, Unary(ops.PRODUCT_INVERSES[prod_op], term_sum))
+    return global_part, local_part
 
 
 def naive_einsum(eqn, *terms, **kwargs):
