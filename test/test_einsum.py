@@ -107,6 +107,8 @@ PLATED_EINSUM_EXAMPLES = [(ex, '') for ex in EINSUM_EXAMPLES] + [
     ('ai->ai', 'i'),
     (',ai,abij->aij', 'ij'),
     ('a,ai,bij->bij', 'ij'),
+    (',ai,abij->', 'ij'),
+    ('a,ai,bij->', 'ij'),
 ]
 
 
