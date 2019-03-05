@@ -16,24 +16,23 @@ def main(args):
 
     # A Gaussian HMM model.
     def model(data):
-        prob = 1.
+        log_prob = funsor.to_funsor(0.)
 
-        x_curr = 0.
+        x_curr = funsor.Tensor(torch.tensor(0.))
         for t, y in enumerate(data):
             x_prev = x_curr
 
             # A delayed sample statement.
             x_curr = funsor.Variable('x_{}'.format(t), funsor.reals())
-            prob *= dist.Normal(loc=x_prev, scale=trans_noise, value=x_curr)
+            log_prob += dist.Normal(x_prev, trans_noise, value=x_curr)
 
-            # If we want, we can immediately marginalize out previous sample sites.
-            prob = prob.sum('x_{}'.format(t - 1))
-            # TODO prob = Clever(funsor.eval)(prob)
+            if isinstance(x_prev, funsor.Variable):
+                log_prob = log_prob.logsumexp(x_prev.name)
 
-            # An observe statement.
-            prob *= dist.Normal(loc=x_curr, scale=emit_noise, value=y)
+            log_prob += dist.Normal(x_curr, emit_noise, value=y)
 
-        return prob
+        log_prob = log_prob.logsumexp()
+        return log_prob
 
     # Train model parameters.
     print('---- training ----')
@@ -41,18 +40,11 @@ def main(args):
     optim = torch.optim.Adam(params, lr=args.learning_rate)
     for step in range(args.train_steps):
         optim.zero_grad()
-        prob = model(data)
-        # TODO prob = Clever(funsor.eval)(prob)
-        loss = -prob.sum().log()  # Integrates out delayed variables.
+        log_prob = model(data)
+        assert not log_prob.inputs, 'free variables remain'
+        loss = -log_prob.data
         loss.backward()
         optim.step()
-
-    # Serve by drawing a posterior sample.
-    print('---- serving ----')
-    prob = model(data)
-    prob = funsor.eval(prob.sum())         # Forward filter.
-    samples = prob.backward(prob.log())    # Bakward sample.
-    print(samples)
 
 
 if __name__ == '__main__':

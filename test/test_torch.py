@@ -91,21 +91,22 @@ def test_advanced_indexing_tensor(output_shape):
     #     \  |  /
     #      \ | /
     #        x
-    x = Tensor(torch.randn((2, 3, 4) + output_shape), OrderedDict([
+    output = reals(*output_shape)
+    x = random_tensor(OrderedDict([
         ('i', bint(2)),
         ('j', bint(3)),
         ('k', bint(4)),
-    ]))
-    i = Tensor(random_tensor(2, (5,)), OrderedDict([
+    ]), output)
+    i = random_tensor(OrderedDict([
         ('u', bint(5)),
-    ]))
-    j = Tensor(random_tensor(3, (6, 5)), OrderedDict([
+    ]), bint(2))
+    j = random_tensor(OrderedDict([
         ('v', bint(6)),
         ('u', bint(5)),
-    ]))
-    k = Tensor(random_tensor(4, (6,)), OrderedDict([
+    ]), bint(3))
+    k = random_tensor(OrderedDict([
         ('v', bint(6)),
-    ]))
+    ]), bint(4))
 
     expected_data = torch.empty((5, 6) + output_shape)
     for u in range(5):

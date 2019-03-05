@@ -35,7 +35,7 @@ def align_tensor(new_inputs, x):
     if old_inputs == new_inputs:
         return data
 
-    # Pemute squashed input dims.
+    # Permute squashed input dims.
     x_keys = tuple(old_inputs)
     data = data.permute(tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
                         tuple(range(len(old_inputs), data.dim())))

@@ -18,6 +18,7 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     """
     def __new__(cls, shape, dtype):
         assert isinstance(shape, tuple)
+        assert all(isinstance(size, integer_types) for size in shape)
         if isinstance(dtype, integer_types):
             assert not shape
         elif isinstance(dtype, str):
