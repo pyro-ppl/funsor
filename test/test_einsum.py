@@ -45,12 +45,12 @@ def test_einsum(equation, backend):
     actual_optimized = reinterpret(optimized_ast)  # eager by default
     actual = naive_einsum(equation, *funsor_operands, backend=backend)
 
-    assert_close(actual, actual_optimized, atol=1e-4)
-
     assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
     if len(outputs[0]) > 0:
         actual = actual.align(tuple(outputs[0]))
+        actual_optimized = actual_optimized.align(tuple(outputs[0]))
 
+    assert_close(actual, actual_optimized, atol=1e-4)
     assert expected.shape == actual.data.shape
     assert torch.allclose(expected, actual.data)
     for output in outputs:
@@ -84,10 +84,11 @@ def test_einsum_categorical(equation):
     actual_optimized = reinterpret(optimized_ast)  # eager by default
     actual = naive_einsum(equation, *map(reinterpret, funsor_operands))
 
-    assert_close(actual, actual_optimized, atol=1e-4)
-
     if len(outputs[0]) > 0:
         actual = actual.align(tuple(outputs[0]))
+        actual_optimized = actual_optimized.align(tuple(outputs[0]))
+
+    assert_close(actual, actual_optimized, atol=1e-4)
 
     assert expected.shape == actual.data.shape
     assert torch.allclose(expected, actual.data)
@@ -104,7 +105,7 @@ PLATED_EINSUM_EXAMPLES = [
     (',ai,abij->', 'ij'),
     ('a,ai,bij->', 'ij'),
     ('ai,abi,bci,cdi->', 'i'),
-    ('aij,abij,bcij,cdij->', 'ij'),
+    ('aij,abij,bcij->', 'ij'),
     ('a,abi,bcij,cdij->', 'ij'),
 ]
 
@@ -120,10 +121,11 @@ def test_plated_einsum(equation, plates, backend):
     actual_optimized = reinterpret(optimized_ast)  # eager by default
     actual = naive_plated_einsum(equation, *funsor_operands, plates=plates, backend=backend)
 
-    assert_close(actual, actual_optimized, atol=1e-4)
-
     if len(outputs[0]) > 0:
         actual = actual.align(tuple(outputs[0]))
+        actual_optimized = actual_optimized.align(tuple(outputs[0]))
+
+    assert_close(actual, actual_optimized, atol=1e-3 if backend == 'torch' else 1e-4)
 
     assert expected.shape == actual.data.shape
     assert torch.allclose(expected, actual.data)
