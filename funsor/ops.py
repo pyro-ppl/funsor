@@ -83,6 +83,16 @@ def sample(x, y):
     raise ValueError
 
 
+def reciprocal(x):
+    if isinstance(x, Number):
+        return 1. / x
+    if isinstance(x, torch.Tensor):
+        result = x.reciprocal()
+        result.clamp_(max=torch.finfo(result.dtype).max)
+        return result
+    raise ValueError("No reciprocal for type {}".format(type(x)))
+
+
 REDUCE_OP_TO_TORCH = {
     add: torch.sum,
     mul: torch.prod,
@@ -115,10 +125,17 @@ DISTRIBUTIVE_OPS = frozenset([
 ])
 
 
+PRODUCT_INVERSES = {
+    mul: reciprocal,
+    add: neg,
+}
+
+
 __all__ = [
-    'REDUCE_OP_TO_TORCH',
     'ASSOCIATIVE_OPS',
     'DISTRIBUTIVE_OPS',
+    'PRODUCT_INVERSES',
+    'REDUCE_OP_TO_TORCH',
     'abs',
     'add',
     'and_',
@@ -137,6 +154,7 @@ __all__ = [
     'neg',
     'or_',
     'pow',
+    'reciprocal',
     'sample',
     'sub',
     'truediv',

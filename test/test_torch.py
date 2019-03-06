@@ -10,7 +10,7 @@ import funsor
 from funsor.domains import Domain, bint, reals
 from funsor.terms import Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
-from funsor.torch import Tensor, align_tensors
+from funsor.torch import Tensor, align_tensors, torch_einsum
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
@@ -412,5 +412,5 @@ def test_einsum(equation):
     tensors = [torch.randn(tuple(sizes[d] for d in dims)) for dims in inputs]
     funsors = [Tensor(x) for x in tensors]
     expected = Tensor(torch.einsum(equation, *tensors))
-    actual = funsor.einsum(equation, *funsors)
+    actual = torch_einsum(equation, *funsors)
     assert_close(actual, expected)
