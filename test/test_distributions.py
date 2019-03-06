@@ -22,7 +22,7 @@ def test_categorical_defaults():
 
 
 @pytest.mark.parametrize('size', [4])
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_categorical_density(size, batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -52,20 +52,26 @@ def test_delta_defaults():
     assert dist.Delta(v, log_density) is dist.Delta(v, log_density, value)
 
 
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
-def test_delta_density(batch_shape):
+@pytest.mark.parametrize('event_shape', [(), (4,), (3, 2)], ids=str)
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_delta_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals(), reals())
+    @funsor.function(reals(*event_shape), reals(), reals(*event_shape), reals())
     def delta(v, log_density, value):
-        return (v == value).type(v.dtype).log() + log_density
+        eq = (v == value)
+        for _ in range(len(event_shape)):
+            eq = eq.min(dim=-1)[0]
+        return eq.type(v.dtype).log() + log_density
 
-    check_funsor(delta, {'v': reals(), 'log_density': reals(), 'value': reals()}, reals())
+    check_funsor(delta, {'v': reals(*event_shape),
+                         'log_density': reals(),
+                         'value': reals(*event_shape)}, reals())
 
-    v = Tensor(torch.randn(batch_shape), inputs)
+    v = Tensor(torch.randn(batch_shape + event_shape), inputs)
     log_density = Tensor(torch.randn(batch_shape).exp(), inputs)
-    for value in [v, Tensor(torch.randn(batch_shape), inputs)]:
+    for value in [v, Tensor(torch.randn(batch_shape + event_shape), inputs)]:
         expected = delta(v, log_density, value)
         check_funsor(expected, inputs, reals())
 
@@ -81,7 +87,7 @@ def test_normal_defaults():
     assert dist.Normal(loc, scale) is dist.Normal(loc, scale, value)
 
 
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_normal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -103,7 +109,7 @@ def test_normal_density(batch_shape):
     assert_close(actual, expected)
 
 
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_normal_gaussian_1(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -124,7 +130,7 @@ def test_normal_gaussian_1(batch_shape):
     assert_close(actual, expected, atol=1e-4)
 
 
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_normal_gaussian_2(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -145,7 +151,7 @@ def test_normal_gaussian_2(batch_shape):
     assert_close(actual, expected, atol=1e-4)
 
 
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_normal_gaussian_3(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))

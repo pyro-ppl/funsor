@@ -141,7 +141,13 @@ class Delta(Distribution):
 
 @eager.register(Delta, Tensor, Tensor, Tensor)
 def eager_delta(v, log_density, value):
-    return Delta.eager_log_prob(v=v, log_density=log_density, value=value)
+    # This handles event_dim specially, and hence cannot use the
+    # generic Delta.eager_log_prob() method.
+    assert v.output == value.output
+    event_dim = len(v.output.shape)
+    inputs, (v, log_density, value) = align_tensors(v, log_density, value)
+    data = dist.Delta(v, log_density, event_dim).log_prob(value)
+    return Tensor(data, inputs)
 
 
 class Normal(Distribution):
