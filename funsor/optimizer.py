@@ -180,6 +180,7 @@ def optimize_reduction(op, arg, reduced_vars):
     reduce_op, finitary_op = op, arg.op
     operands = list(arg.operands)
     for (a, b) in path:
+        b, a = tuple(sorted((a, b), reverse=True))
         tb = operands.pop(b)
         ta = operands.pop(a)
 
