@@ -105,7 +105,7 @@ PLATED_EINSUM_EXAMPLES = [
     (',ai,abij->', 'ij'),
     ('a,ai,bij->', 'ij'),
     ('ai,abi,bci,cdi->', 'i'),
-    ('aij,abij,bcij,cdij->', 'ij'),
+    ('aij,abij,bcij->', 'ij'),
     ('a,abi,bcij,cdij->', 'ij'),
 ]
 
