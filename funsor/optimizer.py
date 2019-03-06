@@ -157,7 +157,6 @@ def optimize_reduction(op, arg, reduced_vars):
     if not (op, arg.op) in DISTRIBUTIVE_OPS:
         return None
 
-    # import pdb; pdb.set_trace()
     # build opt_einsum optimizer IR
     inputs = []
     size_dict = {}
@@ -196,8 +195,6 @@ def optimize_reduction(op, arg, reduced_vars):
 
         # count new appearance of variables that aren't reduced
         reduce_dim_counter.update({d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)})
-
-        print(frozenset(ta.inputs), frozenset(tb.inputs), path_end_reduced_vars, reduce_dim_counter)
 
         path_end = Binary(finitary_op, ta, tb)
         if path_end_reduced_vars:
