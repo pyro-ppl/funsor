@@ -125,7 +125,7 @@ def test_plated_einsum(equation, plates, backend):
         actual = actual.align(tuple(outputs[0]))
         actual_optimized = actual_optimized.align(tuple(outputs[0]))
 
-    assert_close(actual, actual_optimized, atol=1e-4)
+    assert_close(actual, actual_optimized, atol=1e-3 if backend == 'torch' else 1e-4)
 
     assert expected.shape == actual.data.shape
     assert torch.allclose(expected, actual.data)
