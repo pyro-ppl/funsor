@@ -4,7 +4,9 @@ from collections import defaultdict, OrderedDict
 from six.moves import reduce
 
 import funsor.ops as ops
-from funsor.terms import Binary, Funsor
+from funsor.interpreter import interpretation, reinterpret
+from funsor.optimizer import apply_optimizer
+from funsor.terms import Funsor, reflect
 
 
 def naive_einsum(eqn, *terms, **kwargs):
@@ -21,14 +23,9 @@ def naive_einsum(eqn, *terms, **kwargs):
     inputs, output = eqn.split('->')
     assert len(output.split(',')) == 1
     input_dims = frozenset(d for inp in inputs.split(',') for d in inp)
-    output_dims = frozenset(d for d in output)
-    reduce_dims = tuple(d for d in input_dims - output_dims)
-    prod = terms[0]
-    for term in terms[1:]:
-        prod = Binary(prod_op, prod, term)
-    for reduce_dim in reduce_dims:
-        prod = prod.reduce(sum_op, reduce_dim)
-    return prod
+    output_dims = frozenset(output)
+    reduce_dims = input_dims - output_dims
+    return reduce(prod_op, terms).reduce(sum_op, reduce_dims)
 
 
 def _partition(terms, sum_vars):
@@ -63,8 +60,18 @@ def _partition(terms, sum_vars):
 
 
 def naive_plated_einsum(eqn, *terms, **kwargs):
-    backend = kwargs.pop('backend', 'torch')
+    """
+    Implements Tensor Variable Elimination (Algorithm 1 in [Obermeyer et al 2019])
+
+    [Obermeyer et al 2019] Obermeyer, F., Bingham, E., Jankowiak, M., Chiu, J.,
+        Pradhan, N., Rush, A., and Goodman, N.  Tensor Variable Elimination for
+        Plated Factor Graphs, 2019
+    """
     plates = kwargs.pop('plates', '')
+    if not plates:
+        return naive_einsum(eqn, *terms, **kwargs)
+
+    backend = kwargs.pop('backend', 'torch')
     if backend == 'torch':
         sum_op, prod_op = ops.add, ops.mul
     elif backend == 'pyro.ops.einsum.torch_log':
@@ -97,6 +104,7 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
     for var, ordinal in var_tree.items():
         ordinal_to_var[ordinal].add(var)
 
+    # Direct translation of Algorithm 1
     scalars = []
     while term_tree:
         leaf = max(term_tree, key=len)
@@ -116,3 +124,10 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
                 term_tree[new_plates].append(term)
 
     return reduce(prod_op, scalars)
+
+
+def einsum(eqn, *terms, **kwargs):
+    with interpretation(reflect):
+        naive_ast = naive_plated_einsum(eqn, *terms, **kwargs)
+        optimized_ast = apply_optimizer(naive_ast)
+    return reinterpret(optimized_ast)  # eager by default
