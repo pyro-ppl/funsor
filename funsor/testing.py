@@ -51,6 +51,12 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         if actual.dtype in (torch.long, torch.uint8):
             assert (actual == expected).all(), msg
         else:
+            eq = (actual == expected)
+            if eq.all():
+                return
+            if eq.any():
+                actual = actual[~eq]
+                expected = expected[~eq]
             diff = (actual.detach() - expected.detach()).abs()
             if atol is not None:
                 assert diff.max() < atol, msg

@@ -45,6 +45,35 @@ def test_categorical_density(size, batch_shape):
     assert_close(actual, expected)
 
 
+def test_delta_defaults():
+    v = Variable('v', reals())
+    log_density = Variable('log_density', reals())
+    value = Variable('value', reals())
+    assert dist.Delta(v, log_density) is dist.Delta(v, log_density, value)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)])
+def test_delta_density(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.function(reals(), reals(), reals(), reals())
+    def delta(v, log_density, value):
+        return (v == value).type(v.dtype).log() + log_density
+
+    check_funsor(delta, {'v': reals(), 'log_density': reals(), 'value': reals()}, reals())
+
+    v = Tensor(torch.randn(batch_shape), inputs)
+    log_density = Tensor(torch.randn(batch_shape).exp(), inputs)
+    for value in [v, Tensor(torch.randn(batch_shape), inputs)]:
+        expected = delta(v, log_density, value)
+        check_funsor(expected, inputs, reals())
+
+        actual = dist.Delta(v, log_density, value)
+        check_funsor(actual, inputs, reals())
+        assert_close(actual, expected)
+
+
 def test_normal_defaults():
     loc = Variable('loc', reals())
     scale = Variable('scale', reals())
