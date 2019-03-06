@@ -62,7 +62,7 @@ def test_delta_density(batch_shape, event_shape):
     def delta(v, log_density, value):
         eq = (v == value)
         for _ in range(len(event_shape)):
-            eq = eq.min(dim=-1)[0]
+            eq = eq.all(dim=-1)
         return eq.type(v.dtype).log() + log_density
 
     check_funsor(delta, {'v': reals(*event_shape),
