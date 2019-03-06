@@ -97,28 +97,30 @@ def test_einsum_categorical(equation):
             assert actual.inputs[output_dim].dtype == sizes[output_dim]
 
 
-PLATED_EINSUM_EXAMPLES = [(ex, '') for ex in EINSUM_EXAMPLES] + [
+PLATED_EINSUM_EXAMPLES = [
     ('i->', 'i'),
-    ('i->i', 'i'),
     (',i->', 'i'),
-    (',i->i', 'i'),
     ('ai->', 'i'),
-    ('ai->i', 'i'),
-    ('ai->ai', 'i'),
-    (',ai,abij->aij', 'ij'),
-    ('a,ai,bij->bij', 'ij'),
     (',ai,abij->', 'ij'),
     ('a,ai,bij->', 'ij'),
+    ('ai,abi,bci,cdi->', 'i'),
+    ('aij,abij,bcij,cdij->', 'ij'),
+    ('a,abi,bcij,cdij->', 'ij'),
 ]
 
 
-@pytest.mark.xfail(reason="naive plated einsum not working")
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
 def test_plated_einsum(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    expected = naive_ubersum(equation, *operands, plates=plates, backend=backend, modulo_total=True)[0]
+    expected = naive_ubersum(equation, *operands, plates=plates, backend=backend, modulo_total=False)[0]
+    with interpretation(reflect):
+        naive_ast = naive_plated_einsum(equation, *funsor_operands, plates=plates, backend=backend)
+        optimized_ast = apply_optimizer(naive_ast)
+    actual_optimized = reinterpret(optimized_ast)  # eager by default
     actual = naive_plated_einsum(equation, *funsor_operands, plates=plates, backend=backend)
+
+    assert_close(actual, actual_optimized, atol=1e-4)
 
     if len(outputs[0]) > 0:
         actual = actual.align(tuple(outputs[0]))
