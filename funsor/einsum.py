@@ -111,7 +111,7 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
         leaf_terms = term_tree.pop(leaf)
         leaf_reduce_vars = ordinal_to_var[leaf]
         for (group_terms, group_vars) in _partition(leaf_terms, leaf_reduce_vars):
-            term = reduce(prod_op, group_terms).reduce(sum_op, group_vars)
+            term = reduce(prod_op, group_terms).reduce(sum_op, frozenset(group_vars))
             remaining_vars = frozenset(term.inputs) & reduce_vars
             if not remaining_vars:
                 scalars.append(term.reduce(prod_op, leaf))

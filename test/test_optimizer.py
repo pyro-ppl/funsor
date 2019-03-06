@@ -108,7 +108,7 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
 def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
 
     assert num_obs_plates >= num_hidden_plates
-    t0 = num_obs_plates
+    t0 = num_obs_plates + 1
 
     obs_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_obs_plates))
     hidden_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_hidden_plates))
@@ -123,8 +123,8 @@ def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
 
 PLATED_EINSUM_EXAMPLES = [
     make_plated_hmm_einsum(num_steps, num_obs_plates=b, num_hidden_plates=a)
-    for num_steps in range(2, 6)
-    for (a, b) in [(0, 1), (0, 2), (0, 0), (1, 1), (1, 2), (1, 2)]
+    for num_steps in range(3, 50, 6)
+    for (a, b) in [(0, 1), (0, 2), (0, 0), (1, 1), (1, 2)]
 ]
 
 
