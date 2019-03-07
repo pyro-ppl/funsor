@@ -30,6 +30,17 @@ def numbers_to_tensors(*args):
     return args
 
 
+class DistributionMeta(FunsorMeta):
+    """
+    Wrapper to fill in default values and convert Numbers to Tensors.
+    """
+    def __call__(cls, *args, **kwargs):
+        args = cls._fill_defaults(*args, **kwargs)
+        args = numbers_to_tensors(*args)
+        return super(DistributionMeta, cls).__call__(*args)
+
+
+@add_metaclass(DistributionMeta)
 class Distribution(Funsor):
     """
     Funsor backed by a PyTorch distribution object.
@@ -78,75 +89,91 @@ class Distribution(Funsor):
 # Distribution Wrappers
 ################################################################################
 
-class CategoricalMeta(FunsorMeta):
-    """
-    Wrapper to fill in default params.
-    """
-    def __call__(cls, probs, value=None):
+class Categorical(Distribution):
+    dist_class = dist.Categorical
+
+    @staticmethod
+    def _fill_defaults(probs, value=None):
         probs = to_funsor(probs)
         if value is None:
             size = probs.output.shape[0]
             value = Variable('value', bint(size))
         else:
             value = to_funsor(value)
-        probs, value = numbers_to_tensors(probs, value)
-        return super(CategoricalMeta, cls).__call__(probs, value)
-
-
-@add_metaclass(CategoricalMeta)
-class Categorical(Distribution):
-    dist_class = dist.Categorical
+        return probs, value
 
     def __init__(self, probs, value=None):
         super(Categorical, self).__init__(probs, value)
 
 
-@eager.register(Categorical, Funsor, Number)
+@eager.register(Categorical, Funsor, Tensor)
 def eager_categorical(probs, value):
     return probs[value].log()
 
 
-@eager.register(Categorical, (Number, Tensor), (Number, Tensor))
+@eager.register(Categorical, Tensor, Tensor)
 def eager_categorical(probs, value):
     return Categorical.eager_log_prob(probs=probs, value=value)
 
 
-@eager.register(Categorical, (Number, Tensor), Variable)
+@eager.register(Categorical, Tensor, Variable)
 def eager_categorical(probs, value):
     value = materialize(value)
     return Categorical.eager_log_prob(probs=probs, value=value)
 
 
-class NormalMeta(FunsorMeta):
-    """
-    Wrapper to fill in default params.
-    """
-    def __call__(cls, loc, scale, value=None):
+class Delta(Distribution):
+    dist_class = dist.Delta
+
+    @staticmethod
+    def _fill_defaults(v, log_density=0, value=None):
+        v = to_funsor(v)
+        log_density = to_funsor(log_density)
+        if value is None:
+            value = Variable('value', reals())
+        else:
+            value = to_funsor(value)
+        return v, log_density, value
+
+    def __init__(self, v, log_density=0, value=None):
+        return super(Delta, self).__init__(v, log_density, value)
+
+
+@eager.register(Delta, Tensor, Tensor, Tensor)
+def eager_delta(v, log_density, value):
+    # This handles event_dim specially, and hence cannot use the
+    # generic Delta.eager_log_prob() method.
+    assert v.output == value.output
+    event_dim = len(v.output.shape)
+    inputs, (v, log_density, value) = align_tensors(v, log_density, value)
+    data = dist.Delta(v, log_density, event_dim).log_prob(value)
+    return Tensor(data, inputs)
+
+
+class Normal(Distribution):
+    dist_class = dist.Normal
+
+    @staticmethod
+    def _fill_defaults(loc, scale, value=None):
         loc = to_funsor(loc)
         scale = to_funsor(scale)
         if value is None:
             value = Variable('value', reals())
         else:
             value = to_funsor(value)
-        loc, scale, value = numbers_to_tensors(loc, scale, value)
-        return super(NormalMeta, cls).__call__(loc, scale, value)
-
-
-@add_metaclass(NormalMeta)
-class Normal(Distribution):
-    dist_class = dist.Normal
+        return loc, scale, value
 
     def __init__(self, loc, scale, value=None):
         super(Normal, self).__init__(loc, scale, value)
 
 
-@eager.register(Normal, (Number, Tensor), (Number, Tensor), (Number, Tensor))
+@eager.register(Normal, Tensor, Tensor, Tensor)
 def eager_normal(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
 # Create a Gaussian from a ground observation.
-@eager.register(Normal, Variable, (Number, Tensor), (Number, Tensor))
+@eager.register(Normal, Variable, Tensor, Tensor)
 def eager_normal(loc, scale, value):
     assert loc.output == reals()
     inputs, (scale, value) = align_tensors(scale, value)
@@ -159,7 +186,7 @@ def eager_normal(loc, scale, value):
 
 
 # Create a Gaussian from a ground observation.
-@eager.register(Normal, (Number, Tensor), (Number, Tensor), Variable)
+@eager.register(Normal, Tensor, Tensor, Variable)
 def eager_normal(loc, scale, value):
     assert value.output == reals()
     inputs, (loc, scale) = align_tensors(loc, scale)
@@ -173,7 +200,7 @@ def eager_normal(loc, scale, value):
 
 # Create a Gaussian from a noisy identity transform.
 # This is extrememly limited but suffices for examples/kalman_filter.py
-@eager.register(Normal, Variable, (Number, Tensor), Variable)
+@eager.register(Normal, Variable, Tensor, Variable)
 def eager_normal(loc, scale, value):
     assert loc.output == reals()
     assert value.output == reals()
@@ -191,6 +218,7 @@ def eager_normal(loc, scale, value):
 
 __all__ = [
     'Categorical',
+    'Delta',
     'Distribution',
     'Normal',
 ]
