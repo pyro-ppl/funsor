@@ -1,7 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
+import functools
+from collections import namedtuple
 from numbers import Number
-from operator import add, and_, eq, ge, getitem, gt, invert, le, lt, mul, ne, neg, or_, sub, truediv, xor
+import operator
 
 import numpy as np
 import torch
@@ -12,26 +14,68 @@ _builtin_min = min
 _builtin_pow = pow
 
 
+class Op(namedtuple('Op', ['fn'])):
+    def __new__(cls, fn):
+        result = super(Op, cls).__new__(cls, fn)
+        functools.update_wrapper(result, fn)
+        return result
+
+    def __call__(self, *args):
+        return self.fn(*args)
+
+    def __repr__(self):
+        return self.__name__
+
+
+class AssociativeOp(Op):
+    pass
+
+
+eq = Op(operator.eq)
+ge = Op(operator.ge)
+getitem = Op(operator.getitem)
+gt = Op(operator.gt)
+invert = Op(operator.invert)
+le = Op(operator.le)
+lt = Op(operator.lt)
+mul = Op(operator.mul)
+ne = Op(operator.ne)
+neg = Op(operator.neg)
+sub = Op(operator.sub)
+truediv = Op(operator.truediv)
+
+add = AssociativeOp(operator.add)
+and_ = AssociativeOp(operator.and_)
+or_ = AssociativeOp(operator.or_)
+xor = AssociativeOp(operator.xor)
+
+
+@Op
 def abs(x):
     return _builtin_abs(x) if isinstance(x, Number) else x.abs()
 
 
+@Op
 def sqrt(x):
     return np.sqrt(x) if isinstance(x, Number) else x.sqrt()
 
 
+@Op
 def exp(x):
     return np.exp(x) if isinstance(x, Number) else x.exp()
 
 
+@Op
 def log(x):
     return np.log(x) if isinstance(x, Number) else x.log()
 
 
+@Op
 def log1p(x):
     return np.log1p(x) if isinstance(x, Number) else x.log1p()
 
 
+@Op
 def pow(x, y):
     result = x ** y
     # work around shape bug https://github.com/pytorch/pytorch/issues/16685
@@ -40,6 +84,7 @@ def pow(x, y):
     return result
 
 
+@AssociativeOp
 def min(x, y):
     if hasattr(x, '__min__'):
         return x.__min__(y)
@@ -54,6 +99,7 @@ def min(x, y):
     return _builtin_min(x, y)
 
 
+@AssociativeOp
 def max(x, y):
     if hasattr(x, '__max__'):
         return x.__max__(y)
@@ -68,21 +114,25 @@ def max(x, y):
     return _builtin_max(x, y)
 
 
+@AssociativeOp
 def logaddexp(x, y):
     shift = max(x, y)
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
 # just a placeholder
+@Op
 def marginal(x, y):
     raise ValueError
 
 
 # just a placeholder
+@Op
 def sample(x, y):
     raise ValueError
 
 
+@Op
 def reciprocal(x):
     if isinstance(x, Number):
         return 1. / x
@@ -104,17 +154,6 @@ REDUCE_OP_TO_TORCH = {
 }
 
 
-ASSOCIATIVE_OPS = frozenset([
-    add,
-    mul,
-    logaddexp,
-    and_,
-    or_,
-    min,
-    max,
-])
-
-
 DISTRIBUTIVE_OPS = frozenset([
     (logaddexp, add),
     (add, mul),
@@ -132,19 +171,23 @@ PRODUCT_INVERSES = {
 
 
 __all__ = [
-    'ASSOCIATIVE_OPS',
+    'AssociativeOp',
     'DISTRIBUTIVE_OPS',
+    'Op',
     'PRODUCT_INVERSES',
     'REDUCE_OP_TO_TORCH',
     'abs',
     'add',
     'and_',
     'eq',
+    'exp',
     'ge',
     'getitem',
     'gt',
     'invert',
     'le',
+    'log',
+    'log1p',
     'lt',
     'marginal',
     'max',
@@ -156,11 +199,8 @@ __all__ = [
     'pow',
     'reciprocal',
     'sample',
+    'sqrt',
     'sub',
     'truediv',
     'xor',
-    'sqrt',
-    'exp',
-    'log',
-    'log1p',
 ]
