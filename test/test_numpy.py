@@ -177,6 +177,33 @@ def test_advanced_indexing_lazy(output_shape):
     assert_equiv(expected, x(k=k)(j=j)(i=i))
 
 
+def unary_eval(symbol, x):
+    if symbol in ['~', '-']:
+        return eval('{} x'.format(symbol))
+    return getattr(np, symbol)(x)
+
+
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b')])
+@pytest.mark.parametrize('symbol', [
+    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
+])
+@pytest.mark.xfail(reason="bad operand type for XXX: 'Array'")
+def test_unary(symbol, dims):
+    sizes = {'a': 3, 'b': 4}
+    shape = tuple(sizes[d] for d in dims)
+    inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
+    dtype = 'real'
+    data = np.random.uniform(size=shape) + 0.5
+    if symbol == '~':
+        data = data.astype(np.uint8)
+        dtype = 2
+    expected_data = unary_eval(symbol, data)
+
+    x = Array(data, inputs, dtype)
+    actual = unary_eval(symbol, x)
+    check_funsor(actual, inputs, funsor.Domain((), dtype), expected_data)
+
+
 def test_align():
     x = Array(np.random.randn(2, 3, 4), OrderedDict([
         ('i', bint(2)),
