@@ -233,10 +233,15 @@ class log_joint(Handler):
         if any(self.log_probs.keys()):
             # Assume the program is finished and
             # completely contract out all variables.
-            terms = list(self.log_probs.values())
+            factors = list(self.log_probs.values())
             plates = frozenset().union(*self.log_probs)
-            log_prob = funsor.einsum.tensor_variable_elimination(
-                ops.logaddexp, ops.add, terms, plates)
+            samples = frozenset().union(*(f.inputs for f in factors)) - plates
+            log_prob = funsor.contract.sum_product(
+                sum_op=ops.logaddexp,
+                prod_op=ops.add,
+                factors=factors,
+                sum_vars=samples,
+                prod_vars=plates)
             self.log_probs[frozenset()] = log_prob
         return self.log_probs[frozenset()]
 
@@ -273,12 +278,15 @@ class log_joint(Handler):
         # Eliminate samples and plates via tensor variable elimination.
         # This is analagous to pyro 0.3's contract_tensor_tree().
         with funsor.trace_monte_carlo_approximations() as subs:
-            self.log_probs = funsor.einsum.partial_tensor_variable_elimination(
+            factors = funsor.contract.partial_sum_product(
                 sum_op=ops.logaddexp,
                 prod_op=ops.add,
+                factors=self.log_probs.values(),
                 sum_vars=dead_samples,
-                prod_vars=dead_plates,
-                funsor_tree=self.log_probs)
+                prod_vars=dead_plates)
+        self.log_probs.clear()
+        for f in factors:
+            self.log_probs[plates.intersection(f.inputs)] += f
 
         # The logaddexp reductions during elimination may have been interepreted as
         # Monte Carlo sampling, in which case we need to update self.samples and msg["value"].
