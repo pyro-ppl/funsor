@@ -60,8 +60,8 @@ def align_arrays(*args):
     inputs = OrderedDict()
     for x in args:
         inputs.update(x.inputs)
-    tensors = [align_array(inputs, x) for x in args]
-    return inputs, tensors
+    arrays = [align_array(inputs, x) for x in args]
+    return inputs, arrays
 
 
 class ArrayMeta(FunsorMeta):
@@ -224,7 +224,7 @@ class Array(Funsor):
 
 
 @eager.register(Binary, object, Array, Number)
-def eager_binary_tensor_number(op, lhs, rhs):
+def eager_binary_array_number(op, lhs, rhs):
     if op is ops.getitem:
         # Shift by that Funsor is using for inputs.
         index = [slice(None)] * len(lhs.inputs)
@@ -237,13 +237,13 @@ def eager_binary_tensor_number(op, lhs, rhs):
 
 
 @eager.register(Binary, object, Number, Array)
-def eager_binary_number_tensor(op, lhs, rhs):
+def eager_binary_number_array(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
     return Array(data, rhs.inputs, rhs.dtype)
 
 
 @eager.register(Binary, object, Array, Array)
-def eager_binary_tensor_tensor(op, lhs, rhs):
+def eager_binary_array_array(op, lhs, rhs):
     # Compute inputs and outputs.
     dtype = find_domain(op, lhs.output, rhs.output).dtype
     if lhs.inputs == rhs.inputs:
@@ -273,7 +273,7 @@ def arange(name, size):
 
     :param str name: A variable name.
     :param int size: A size.
-    :rtype: Tensor
+    :rtype: Array
     """
     data = np.arange(size)
     inputs = OrderedDict([(name, bint(size))])
