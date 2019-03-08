@@ -7,6 +7,7 @@ import torch
 
 import funsor
 import funsor.distributions as dist
+from funsor import Tensor
 
 
 def main(args):
@@ -40,7 +41,7 @@ def main(args):
             if isinstance(x_prev, funsor.Variable):
                 log_prob = log_prob.logsumexp(x_prev.name)
 
-            log_prob += emit(latent=x_curr, value=y)
+            log_prob += emit(latent=x_curr, value=Tensor(y, dtype=2))
 
         log_prob = log_prob.logsumexp()
         return log_prob
