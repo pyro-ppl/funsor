@@ -8,7 +8,7 @@ import torch
 
 import funsor
 from funsor.domains import Domain, bint, reals
-from funsor.terms import Variable
+from funsor.terms import Variable, Number
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import Tensor, align_tensors, torch_einsum
 
@@ -55,8 +55,8 @@ def test_advanced_indexing_shape():
         ('i', bint(I)),
         ('j', bint(J)),
     ]))
-    m = Tensor(torch.tensor([2, 3]), OrderedDict([('m', bint(M))]))
-    n = Tensor(torch.tensor([0, 1, 1]), OrderedDict([('n', bint(N))]))
+    m = Tensor(torch.tensor([2, 3]), OrderedDict([('m', bint(M))]), 4)
+    n = Tensor(torch.tensor([0, 1, 1]), OrderedDict([('n', bint(N))]), 5)
     assert x.data.shape == (4, 5)
 
     check_funsor(x(i=m), {'j': bint(J), 'm': bint(M)}, reals())
@@ -145,8 +145,8 @@ def test_advanced_indexing_lazy(output_shape):
     ]))
     u = Variable('u', bint(2))
     v = Variable('v', bint(3))
-    i = 1 - u
-    j = 2 - v
+    i = Number(1, 2) - u
+    j = Number(2, 3) - v
     k = u + v
 
     expected_data = torch.empty((2, 3) + output_shape)
