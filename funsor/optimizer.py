@@ -1,15 +1,15 @@
 from __future__ import absolute_import, division, print_function
 
 import collections
-from six.moves import reduce
 
 from opt_einsum.paths import greedy
+from six.moves import reduce
 
 from funsor.domains import find_domain
 from funsor.interpreter import interpretation, reinterpret
-from funsor.ops import ASSOCIATIVE_OPS, DISTRIBUTIVE_OPS
+from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import eager, reflect, Binary, Funsor, Reduce
+from funsor.terms import Binary, Funsor, Reduce, eager, reflect
 
 
 class Finitary(Funsor):
@@ -64,12 +64,12 @@ def binary_to_finitary(op, lhs, rhs):
     return Finitary(op, (lhs, rhs))
 
 
-@associate.register(Finitary, object, tuple)
+@associate.register(Finitary, AssociativeOp, tuple)
 def associate_finitary(op, operands):
     # Finitary(Finitary) -> Finitary
     new_operands = []
     for term in operands:
-        if isinstance(term, Finitary) and term.op is op and op in ASSOCIATIVE_OPS:
+        if isinstance(term, Finitary) and term.op is op:
             new_operands.extend(term.operands)
         else:
             new_operands.append(term)
@@ -78,13 +78,13 @@ def associate_finitary(op, operands):
         return Finitary(op, tuple(new_operands))
 
 
-@associate.register(Reduce, object, Reduce, frozenset)
+@associate.register(Reduce, AssociativeOp, Reduce, frozenset)
 def associate_reduce(op, arg, reduced_vars):
     """
     Rewrite to the largest possible Reduce(Finitary) by combining Reduces
     Assumes that all input Reduce/Finitary ops have been rewritten
     """
-    if arg.op is op and op in ASSOCIATIVE_OPS:
+    if arg.op is op:
         # Reduce(Reduce) -> Reduce
         new_reduced_vars = reduced_vars.union(arg.reduced_vars)
         return Reduce(op, arg.arg, new_reduced_vars)

@@ -199,7 +199,7 @@ def eager_normal(loc, scale, value):
 
 
 # Create a Gaussian from a noisy identity transform.
-# This is extrememly limited but suffices for examples/kalman_filter.py
+# This is extremely limited but suffices for examples/kalman_filter.py
 @eager.register(Normal, Variable, Tensor, Variable)
 def eager_normal(loc, scale, value):
     assert loc.output == reals()
