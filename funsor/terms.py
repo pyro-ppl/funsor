@@ -16,7 +16,7 @@ import functools
 import itertools
 import numbers
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict
+from collections import OrderedDict, Hashable
 from weakref import WeakValueDictionary
 
 from six import add_metaclass, integer_types
@@ -30,15 +30,20 @@ from funsor.registry import KeyedRegistry
 from funsor.six import getargspec, singledispatch
 
 
+def _cons_cache_key(*args):
+    return tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+
+
 def reflect(cls, *args):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
     """
-    if args in cls._cons_cache:
-        return cls._cons_cache[args]
+    cache_key = _cons_cache_key(*args)
+    if cache_key in cls._cons_cache:
+        return cls._cons_cache[cache_key]
     result = super(FunsorMeta, cls).__call__(*args)
     result._ast_values = args
-    cls._cons_cache[args] = result
+    cls._cons_cache[cache_key] = result
     return result
 
 
@@ -545,7 +550,6 @@ class Number(Funsor):
             data = type(dtype)(data)
         else:
             assert isinstance(dtype, str) and dtype == "real"
-            data = float(data)
         inputs = OrderedDict()
         output = Domain((), dtype)
         super(Number, self).__init__(inputs, output)
