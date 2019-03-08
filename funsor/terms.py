@@ -147,9 +147,13 @@ class Funsor(object):
         for k, v in subs.items():
             if isinstance(v, str):
                 # Allow renaming of inputs via syntax x(y="z").
-                subs[k] = Variable(v, self.inputs[k])
+                v = Variable(v, self.inputs[k])
             else:
-                subs[k] = to_funsor(v)
+                v = to_funsor(v)
+            if v.output != self.inputs[k]:
+                raise TypeError('Expected substitution of {} to have type {}, but got {}'
+                                .format(repr(k), v.output, self.inputs[k]))
+            subs[k] = v
         return self.eager_subs(tuple(subs.items()))
 
     def __bool__(self):
