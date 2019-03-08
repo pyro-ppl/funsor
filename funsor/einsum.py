@@ -59,7 +59,7 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
     plate_dims = frozenset(plates) - output_dims
     reduce_vars = input_dims - output_dims - frozenset(plates)
 
-    output_plates = output_dims & plate_dims
+    output_plates = output_dims & frozenset(plates)
     if not all(output_plates.issubset(inp) for inp in inputs):
         raise NotImplementedError("TODO")
 

@@ -102,21 +102,11 @@ PLATED_EINSUM_EXAMPLES = [
     ('i->', 'i'),
     (',i->', 'i'),
     ('ai->', 'i'),
-    ('ai->i', 'i'),
-    ('ai->ai', 'i'),
     (',ai,abij->', 'ij'),
-    ('i,ai,abij->', 'ij'),
-    ('i,ai,abij->i', 'ij'),
-    ('i,ai,abij->ai', 'ij'),
     ('a,ai,bij->', 'ij'),
     ('ai,abi,bci,cdi->', 'i'),
     ('aij,abij,bcij->', 'ij'),
     ('a,abi,bcij,cdij->', 'ij'),
-    ('iab,ibc->', 'ij'),
-    ('iab,ibc->i', 'ij'),
-    ('iab,ibc->ia', 'ij'),
-    ('iab,ibc->ic', 'ij'),
-    ('iab,ibc->iac', 'ij'),
 ]
 
 
