@@ -61,7 +61,6 @@ def test_variable(domain):
     x4 = Variable('x', bint(4))
     assert x4 is not x
     assert x4('x') is x4
-    assert x(x=x4) is x4
     assert x(y=x4) is x
 
     xp1 = x + 1.
