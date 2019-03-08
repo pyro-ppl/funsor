@@ -59,7 +59,7 @@ def _partition(terms, sum_vars):
     return components
 
 
-def naive_plated_einsum(eqn, *terms, **kwargs):
+def tensor_variable_elimination(sum_op, prod_op, terms, plates):
     """
     Implements Tensor Variable Elimination (Algorithm 1 in [Obermeyer et al 2019])
 
@@ -67,29 +67,11 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
         Pradhan, N., Rush, A., and Goodman, N.  Tensor Variable Elimination for
         Plated Factor Graphs, 2019
     """
-    plates = kwargs.pop('plates', '')
-    if not plates:
-        return naive_einsum(eqn, *terms, **kwargs)
-
-    backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend == 'pyro.ops.einsum.torch_log':
-        sum_op, prod_op = ops.logaddexp, ops.add
-    else:
-        raise ValueError("{} backend not implemented".format(backend))
-
-    assert isinstance(eqn, str)
     assert all(isinstance(term, Funsor) for term in terms)
-    inputs, output = eqn.split('->')
-    assert len(output.split(',')) == 1
-    input_dims = frozenset(d for inp in inputs.split(',') for d in inp)
-    output_dims = frozenset(d for d in output)
-    plate_dims = frozenset(plates) - output_dims
-    reduce_vars = input_dims - output_dims - frozenset(plates)
 
-    if output_dims:
-        raise NotImplementedError("TODO")
+    input_dims = frozenset(d for term in terms for d in term.inputs)
+    plate_dims = frozenset(plates)
+    reduce_vars = input_dims - frozenset(plates)
 
     var_tree = {}
     term_tree = defaultdict(list)
@@ -124,6 +106,35 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
                 term_tree[new_plates].append(term)
 
     return reduce(prod_op, scalars)
+
+
+def naive_plated_einsum(eqn, *terms, **kwargs):
+    plates = kwargs.pop('plates', '')
+    if not plates:
+        return naive_einsum(eqn, *terms, **kwargs)
+
+    backend = kwargs.pop('backend', 'torch')
+    if backend == 'torch':
+        sum_op, prod_op = ops.add, ops.mul
+    elif backend == 'pyro.ops.einsum.torch_log':
+        sum_op, prod_op = ops.logaddexp, ops.add
+    else:
+        raise ValueError("{} backend not implemented".format(backend))
+
+    assert isinstance(eqn, str)
+    assert all(isinstance(term, Funsor) for term in terms)
+    inputs, output = eqn.split('->')
+    inputs = inputs.split(',')
+    assert len(inputs) == len(terms)
+    assert len(output.split(',')) == 1
+    for input_, term in zip(inputs, terms):
+        assert set(input_) == set(term.inputs)
+
+    output_dims = frozenset(output)
+    if output_dims:
+        raise NotImplementedError("TODO")
+
+    return tensor_variable_elimination(sum_op, prod_op, terms, plates)
 
 
 def einsum(eqn, *terms, **kwargs):
