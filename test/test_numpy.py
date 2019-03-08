@@ -3,7 +3,7 @@ from collections import OrderedDict
 import pytest
 
 import funsor
-from funsor import bint, reals, Variable
+from funsor import bint, reals, Variable, Number
 from funsor.numpy import Array
 import numpy as np
 
@@ -142,8 +142,8 @@ def test_advanced_indexing_lazy(output_shape):
     ]))
     u = Variable('u', bint(2))
     v = Variable('v', bint(3))
-    i = 1 - u
-    j = 2 - v
+    i = Number(1, 2) - u
+    j = Number(2, 3) - v
     k = u + v
 
     expected_data = np.empty((2, 3) + output_shape)
