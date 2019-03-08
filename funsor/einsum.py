@@ -63,7 +63,8 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
     if not all(output_plates.issubset(inp) for inp in inputs):
         raise NotImplementedError("TODO")
 
-    return sum_product(sum_op, prod_op, terms, reduce_vars, plate_dims)
+    eliminate = plate_dims | reduce_vars
+    return sum_product(sum_op, prod_op, terms, eliminate, frozenset(plates))
 
 
 def einsum(eqn, *terms, **kwargs):

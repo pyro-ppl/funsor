@@ -37,7 +37,7 @@ def _partition(terms, sum_vars):
     return components
 
 
-def partial_sum_product(sum_op, prod_op, factors, sum_vars=frozenset(), prod_vars=frozenset()):
+def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
     """
     Performs partial sum-product contraction of a collection of factors.
 
@@ -48,13 +48,14 @@ def partial_sum_product(sum_op, prod_op, factors, sum_vars=frozenset(), prod_var
     assert callable(prod_op)
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
-    assert isinstance(sum_vars, frozenset)
-    assert isinstance(prod_vars, frozenset)
+    assert isinstance(eliminate, frozenset)
+    assert isinstance(plates, frozenset)
+    sum_vars = eliminate - plates
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
     for f in factors:
-        ordinal = prod_vars.intersection(f.inputs)
+        ordinal = plates.intersection(f.inputs)
         ordinal_to_factors[ordinal].append(f)
         for var in sum_vars.intersection(f.inputs):
             var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
@@ -72,24 +73,27 @@ def partial_sum_product(sum_op, prod_op, factors, sum_vars=frozenset(), prod_var
             f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf))
+                results.append(f.reduce(prod_op, leaf & eliminate))
             else:
                 new_plates = frozenset().union(
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
+                if not (leaf - new_plates).issubset(eliminate):
+                    raise ValueError("cannot reduce {} before {}".format(
+                        remaining_sum_vars, (leaf - new_plates) - eliminate))
                 f = f.reduce(prod_op, leaf - new_plates)
                 ordinal_to_factors[new_plates].append(f)
 
     return results
 
 
-def sum_product(sum_op, prod_op, factors, sum_vars=frozenset(), prod_vars=frozenset()):
+def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
     """
     Performs sum-product contraction of a collection of factors.
 
     :return: a single contracted Funsor.
     :rtype: :class:`~funsor.terms.Funsor`
     """
-    factors = partial_sum_product(sum_op, prod_op, factors, sum_vars, prod_vars)
+    factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates)
     return reduce(prod_op, factors)

@@ -4,9 +4,10 @@ from collections import OrderedDict
 
 import pytest
 
-from funsor.contract import _partition
+import funsor.ops as ops
+from funsor.contract import _partition, partial_sum_product, sum_product
 from funsor.domains import bint
-from funsor.testing import random_tensor
+from funsor.testing import assert_close, random_tensor
 
 
 @pytest.mark.parametrize('inputs,dims,expected_num_components', [
@@ -52,3 +53,28 @@ def test_partition(inputs, dims, expected_num_components):
             if x is not y:
                 if dims.intersection(x.inputs, y.inputs):
                     assert component_dict[x] == component_dict[y]
+
+
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.add, ops.mul), (ops.logaddexp, ops.add)])
+@pytest.mark.parametrize('inputs,plates', [('a,abi,bcij', 'ij')])
+@pytest.mark.parametrize('vars1,vars2', [
+    ('', 'abcij'),
+    ('c', 'abij'),
+    ('cj', 'abi'),
+    ('bcj', 'ai'),
+    ('bcij', 'a'),
+    ('abcij', ''),
+])
+def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
+    inputs = inputs.split(',')
+    factors = [random_tensor(OrderedDict((d, bint(2)) for d in ds)) for ds in inputs]
+    plates = frozenset(plates)
+    vars1 = frozenset(vars1)
+    vars2 = frozenset(vars2)
+
+    factors1 = partial_sum_product(sum_op, prod_op, factors, vars1, plates)
+    factors2 = partial_sum_product(sum_op, prod_op, factors1, vars2, plates)
+    actual = reduce(prod_op, factors2)
+
+    expected = sum_product(sum_op, prod_op, factors, vars1 | vars2, plates)
+    assert_close(actual, expected)
