@@ -7,6 +7,7 @@ import torch
 from contextlib2 import contextmanager
 
 from funsor.domains import Domain
+from funsor.ops import Op
 from funsor.six import singledispatch
 
 _INTERPRETATION = None  # To be set later in funsor.terms
@@ -65,6 +66,7 @@ def reinterpret_funsor(x):
 @reinterpret.register(types.BuiltinFunctionType)
 @reinterpret.register(torch.Tensor)
 @reinterpret.register(Domain)
+@reinterpret.register(Op)
 def _reinterpret_ground(x):
     return x
 
