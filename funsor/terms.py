@@ -148,6 +148,8 @@ class Funsor(object):
             if isinstance(v, str):
                 # Allow renaming of inputs via syntax x(y="z").
                 v = Variable(v, self.inputs[k])
+            elif isinstance(v, numbers.Number):
+                v = Number(v, self.inputs[k].dtype)
             else:
                 v = to_funsor(v)
             if v.output != self.inputs[k]:
