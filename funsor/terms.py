@@ -550,6 +550,7 @@ class Number(Funsor):
             data = type(dtype)(data)
         else:
             assert isinstance(dtype, str) and dtype == "real"
+            data = float(data)
         inputs = OrderedDict()
         output = Domain((), dtype)
         super(Number, self).__init__(inputs, output)

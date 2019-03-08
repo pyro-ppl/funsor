@@ -147,9 +147,9 @@ def test_advanced_indexing_lazy(output_shape):
     k = u + v
 
     expected_data = np.empty((2, 3) + output_shape)
-    i_data = funsor.numpy.materialize(i).data
-    j_data = funsor.numpy.materialize(j).data
-    k_data = funsor.numpy.materialize(k).data
+    i_data = funsor.numpy.materialize(i).data.astype(np.int64)
+    j_data = funsor.numpy.materialize(j).data.astype(np.int64)
+    k_data = funsor.numpy.materialize(k).data.astype(np.int64)
     for u in range(2):
         for v in range(3):
             expected_data[u, v] = x.data[i_data[u], j_data[v], k_data[u, v]]

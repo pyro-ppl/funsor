@@ -187,7 +187,8 @@ class Array(Funsor):
             index.append(np.arange(size).reshape(
                 (-1,) + (1,) * offset_from_right))
 
-        data = self.data[tuple(index)]
+        # Due to dtype promotion some index data might have np.float values
+        data = self.data[tuple(i.astype(np.int64) if isinstance(i, np.ndarray) else i for i in index)]
         return Array(data, inputs, self.dtype)
 
     def eager_unary(self, op):
