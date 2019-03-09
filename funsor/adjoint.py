@@ -82,6 +82,8 @@ def adjoint_binary(out_adj, out, op, lhs, rhs):
 
 @adjoint_ops.register(Reduce, Funsor, Funsor, AssociativeOp, Funsor, frozenset)
 def adjoint_reduce(out_adj, out, op, arg, reduced_vars):
-    assert op is ops.logaddexp
-    in_adj = out_adj + (0. * arg)  # XXX hack to simulate "expand"
+    if op is ops.logaddexp:
+        in_adj = out_adj + (arg * 0.)  # XXX hack to simulate "expand"
+    elif op is ops.add:  # plate!
+        in_adj = out_adj + (out + -arg)
     return {arg: in_adj}
