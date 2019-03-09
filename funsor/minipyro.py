@@ -11,14 +11,15 @@ found at examples/minipyro.py.
 """
 from __future__ import absolute_import, division, print_function
 
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import torch
 from multipledispatch import dispatch
 
 import funsor
 import funsor.ops as ops
-from funsor.terms import Funsor, Variable
+from funsor.domains import bint
+from funsor.terms import Funsor, Number, Variable
 
 from .handlers import HANDLER_STACK, Handler, Message, apply_stack, effectful
 
@@ -31,7 +32,7 @@ class Param(Message):
     pass
 
 
-class Markov(Message):
+class Barrier(Message):
     pass
 
 
@@ -107,13 +108,11 @@ class block(Handler):
 
 
 class plate(Handler):
-    """
-    This limited implementation of ``PlateHandler`` only implements broadcasting.
-    """
-    def __init__(self, fn, size, dim, name):
-        assert dim < 0
+    def __init__(self, fn, name, size):
+        assert isinstance(name, str)
+        assert isinstance(size, int) and size > 0
+        self.name = name
         self.size = size
-        self.dim = dim
         super(plate, self).__init__(fn)
 
     @dispatch(object)
@@ -122,11 +121,8 @@ class plate(Handler):
 
     @dispatch(Sample)
     def process(self, msg):
-        batch_shape = msg["fn"].batch_shape
-        if len(batch_shape) < -self.dim or batch_shape[self.dim] != self.size:
-            batch_shape = [1] * (-self.dim - len(batch_shape)) + list(batch_shape)
-            batch_shape[self.dim] = self.size
-            msg["fn"] = msg["fn"].expand(tuple(batch_shape))
+        msg.setdefault("plates", set()).add(self.name)
+        msg["fn"] = msg["fn"].expand(OrderedDict([(self.name, bint(self.size))]))
         return msg
 
     def __iter__(self):
@@ -228,9 +224,26 @@ class log_joint(Handler):
     """
 
     def __enter__(self):
-        self.log_prob = funsor.to_funsor(0.)
-        self.samples = OrderedDict()
+        self.log_probs = defaultdict(lambda: Number(0))  # plate set -> log_prob
+        self.samples = OrderedDict()  # site name -> value
         return self
+
+    @property
+    def log_prob(self):
+        if any(self.log_probs.keys()):
+            # Assume the program is finished and
+            # completely contract out all variables.
+            factors = list(self.log_probs.values())
+            plates = frozenset().union(*self.log_probs)
+            samples = frozenset().union(*(f.inputs for f in factors)) - plates
+            log_prob = funsor.contract.sum_product(
+                sum_op=ops.logaddexp,
+                prod_op=ops.add,
+                factors=factors,
+                sum_vars=samples,
+                prod_vars=plates)
+            self.log_probs[frozenset()] = log_prob
+        return self.log_probs[frozenset()]
 
     @dispatch(object)
     def process(self, msg):
@@ -240,41 +253,75 @@ class log_joint(Handler):
     def process(self, msg):
         assert msg["value"] is not None
         self.samples[msg["name"]] = msg["value"]
-        self.log_prob += msg["fn"].log_prob(msg["value"])
+        plates = frozenset(msg.get("plates", ()))
+        self.log_probs[plates] += msg["fn"](msg["value"])
         return msg
 
-    @dispatch(Markov)
+    @dispatch(Barrier)
     def process(self, msg):
-        funsors = []
-        _recursive_map(funsors.append, msg["value"])
-        hidden_dims = (frozenset(self.samples) - frozenset(funsors)
-                       ).intersection(self.log_prob.dims)
-        if hidden_dims:
-            marginal = self.log_prob.reduce(ops.sample, hidden_dims)
-            self.log_prob = funsor.eval(marginal)
-            subs = funsor.backward(ops.sample, self.log_prob, hidden_dims)
+        # Collect complete set of free variables, both delayed samples and plates.
+        free_vars = frozenset(v for f in self.log_probs.values() for v in f.inputs)
+        plates = frozenset().union(*self.log_probs)
+        assert all(v in self.samples or v in plates for v in free_vars)
+
+        # Collect the subset of variables that are exposed downstream.
+        live_funsors = []
+        _recursive_map(live_funsors.append, msg["value"])
+        live_vars = frozenset(v for f in live_funsors for v in f.inputs)
+        assert live_vars.issubset(free_vars)
+
+        # Compute variables that are safe to eliminate.
+        dead_vars = free_vars - live_vars
+        dead_samples = dead_vars.intersection(self.samples)
+        dead_plates = dead_vars.intersection(plates)
+
+        # Eliminate samples and plates via tensor variable elimination.
+        # This is analagous to pyro 0.3's contract_tensor_tree().
+        with funsor.trace_monte_carlo_approximations() as subs:
+            factors = funsor.contract.partial_sum_product(
+                sum_op=ops.logaddexp,
+                prod_op=ops.add,
+                factors=self.log_probs.values(),
+                sum_vars=dead_samples,
+                prod_vars=dead_plates)
+        self.log_probs.clear()
+        for f in factors:
+            self.log_probs[plates.intersection(f.inputs)] += f
+
+        # The logaddexp reductions during elimination may have been interepreted as
+        # Monte Carlo sampling, in which case we need to update self.samples and msg["value"].
+        if subs:
+            for name, sample in self.samples.items():
+                self.samples[name] = sample(**subs)
             msg["value"] = _recursive_map(lambda x: x(**subs), msg["value"])
+
         return msg
 
     @dispatch(Ground)
     def process(self, msg):
+        # Determine whether any delayed samples need to be marginalized.
         value = msg["value"]
-        if not isinstance(value, (funsor.Number, funsor.Tensor)):
-            log_prob = self.log_prob.reduce(ops.sample, value.dims)
-            self.log_prob = funsor.eval(log_prob)
-            subs = funsor.backward(ops.sample, self.log_prob, value.dims)
+        plates = frozenset().union(*self.log_probs)
+        delayed_samples = frozenset(value.inputs) - plates
+        if delayed_samples:
+            with funsor.trace_monte_carlo_approximations() as subs:
+                self.log_probs = funsor.einsum.partial_tensor_variable_elimination(
+                    sum_op=ops.logaddexp,
+                    prod_op=ops.add,
+                    sum_vars=delayed_samples,
+                    prod_vars=frozenset(),
+                    funsor_tree=self.log_probs)
             self.samples.update(subs)
             msg["value"] = value(**subs)
             context = msg["context"]
             for key, value in list(context.items()):
                 if isinstance(value, Funsor):
                     context[key] = value(**subs)
-
         return msg
 
 
-@effectful(Markov)
-def markov(state):
+@effectful(Barrier)
+def barrier(state):
     """
     Declaration that behavior after this point in a program depends on behavior
     before this point in a program only through the passed ``state`` object,
@@ -286,7 +333,7 @@ def markov(state):
        x = 0
        for t in range(100):
            x = pyro.sample("x_{}".format(t), trans(x))
-           x = pyro.markov(x)  # it is now safe to marginalize past xs
+           x = pyro.barrier(x)  # it is now safe to marginalize past xs
            pyro.sample("y_{}".format(t), emit(x), obs=data[t])
     """
     # if there are no active Handlers, we just return the state
@@ -416,12 +463,12 @@ class Adam(object):
 
 __all__ = [
     'Adam',
+    'barrier',
     'block',
     'deferred',
     'elbo',
     'get_param_store',
     'ground',
-    'markov',
     'param',
     'plate',
     'replay',

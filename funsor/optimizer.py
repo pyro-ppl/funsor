@@ -1,15 +1,15 @@
 from __future__ import absolute_import, division, print_function
 
 import collections
-from six.moves import reduce
 
 from opt_einsum.paths import greedy
+from six.moves import reduce
 
 from funsor.domains import find_domain
 from funsor.interpreter import interpretation, reinterpret
-from funsor.ops import ASSOCIATIVE_OPS, DISTRIBUTIVE_OPS
+from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import eager, reflect, Binary, Funsor, Reduce
+from funsor.terms import Binary, Funsor, Reduce, eager, reflect
 
 
 class Finitary(Funsor):
@@ -42,7 +42,7 @@ class Finitary(Funsor):
         return Finitary(self.op, operands)
 
 
-@eager.register(Finitary, object, tuple)
+@eager.register(Finitary, AssociativeOp, tuple)
 def eager_finitary(op, operands):
     return reduce(lambda lhs, rhs: Binary(op, lhs, rhs), operands)
 
@@ -58,18 +58,18 @@ _associate = KeyedRegistry(default=lambda *args: None)
 associate.register = _associate.register
 
 
-@associate.register(Binary, object, Funsor, Funsor)
+@associate.register(Binary, AssociativeOp, Funsor, Funsor)
 def binary_to_finitary(op, lhs, rhs):
     """convert Binary to Finitary"""
     return Finitary(op, (lhs, rhs))
 
 
-@associate.register(Finitary, object, tuple)
+@associate.register(Finitary, AssociativeOp, tuple)
 def associate_finitary(op, operands):
     # Finitary(Finitary) -> Finitary
     new_operands = []
     for term in operands:
-        if isinstance(term, Finitary) and term.op is op and op in ASSOCIATIVE_OPS:
+        if isinstance(term, Finitary) and term.op is op:
             new_operands.extend(term.operands)
         else:
             new_operands.append(term)
@@ -78,13 +78,13 @@ def associate_finitary(op, operands):
         return Finitary(op, tuple(new_operands))
 
 
-@associate.register(Reduce, object, Reduce, frozenset)
+@associate.register(Reduce, AssociativeOp, Reduce, frozenset)
 def associate_reduce(op, arg, reduced_vars):
     """
     Rewrite to the largest possible Reduce(Finitary) by combining Reduces
     Assumes that all input Reduce/Finitary ops have been rewritten
     """
-    if arg.op is op and op in ASSOCIATIVE_OPS:
+    if arg.op is op:
         # Reduce(Reduce) -> Reduce
         new_reduced_vars = reduced_vars.union(arg.reduced_vars)
         return Reduce(op, arg.arg, new_reduced_vars)
@@ -102,7 +102,7 @@ _distribute = KeyedRegistry(default=lambda *args: None)
 distribute.register = _distribute.register
 
 
-@distribute.register(Finitary, object, tuple)
+@distribute.register(Finitary, AssociativeOp, tuple)
 def distribute_finitary(op, operands):
     # TODO raise an error or warning on name collision
     if len(operands) == 1:
@@ -148,7 +148,7 @@ optimize.register = _optimize.register
 REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimizer
 
 
-@optimize.register(Reduce, object, Finitary, frozenset)
+@optimize.register(Reduce, AssociativeOp, Finitary, frozenset)
 def optimize_reduction(op, arg, reduced_vars):
     r"""
     Recursively convert large Reduce(Finitary) ops to many smaller versions

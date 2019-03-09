@@ -24,8 +24,9 @@ from six.moves import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Domain, find_domain, bint
+from funsor.domains import Domain, bint, find_domain
 from funsor.interpreter import interpret
+from funsor.ops import AssociativeOp, Op
 from funsor.registry import KeyedRegistry
 from funsor.six import getargspec, singledispatch
 
@@ -152,9 +153,15 @@ class Funsor(object):
         for k, v in subs.items():
             if isinstance(v, str):
                 # Allow renaming of inputs via syntax x(y="z").
-                subs[k] = Variable(v, self.inputs[k])
+                v = Variable(v, self.inputs[k])
+            elif isinstance(v, numbers.Number):
+                v = Number(v, self.inputs[k].dtype)
             else:
-                subs[k] = to_funsor(v)
+                v = to_funsor(v)
+            if v.output != self.inputs[k]:
+                raise TypeError('Expected substitution of {} to have type {}, but got {}'
+                                .format(repr(k), v.output, self.inputs[k]))
+            subs[k] = v
         return self.eager_subs(tuple(subs.items()))
 
     def __bool__(self):
@@ -441,7 +448,7 @@ class Unary(Funsor):
         return Unary(self.op, arg)
 
 
-@eager.register(Unary, object, Funsor)
+@eager.register(Unary, Op, Funsor)
 def eager_unary(op, arg):
     return arg.eager_unary(op)
 
@@ -520,7 +527,7 @@ class Reduce(Funsor):
         return super(Reduce, self).reduce(op, reduced_vars)
 
 
-@eager.register(Reduce, object, Funsor, frozenset)
+@eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
     return arg.eager_reduce(op, reduced_vars)
 
@@ -584,7 +591,7 @@ class Number(Funsor):
         return Number(op(self.data), self.dtype)
 
 
-@eager.register(Binary, object, Number, Number)
+@eager.register(Binary, Op, Number, Number)
 def eager_binary_number_number(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
     output = find_domain(op, lhs.output, rhs.output)
@@ -621,17 +628,17 @@ class Align(Funsor):
         return self.arg.eager_reduce(op, reduced_vars)
 
 
-@eager.register(Binary, object, Align, Funsor)
+@eager.register(Binary, Op, Align, Funsor)
 def eager_binary_align_funsor(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs)
 
 
-@eager.register(Binary, object, Funsor, Align)
+@eager.register(Binary, Op, Funsor, Align)
 def eager_binary_funsor_align(op, lhs, rhs):
     return Binary(op, lhs, rhs.arg)
 
 
-@eager.register(Binary, object, Align, Align)
+@eager.register(Binary, Op, Align, Align)
 def eager_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
 
