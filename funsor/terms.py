@@ -135,6 +135,9 @@ class Funsor(object):
     def __hash__(self):
         return id(self)
 
+    def __repr__(self):
+        return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_args)))
+
     def __call__(self, *args, **kwargs):
         """
         Partially evaluates this funsor by substituting dimensions.

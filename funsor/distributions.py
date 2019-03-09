@@ -151,18 +151,17 @@ def eager_delta(v, log_density, value):
     return Tensor(data, inputs)
 
 
-@eager.register(Delta, Tensor, Funsor, Variable)
+@eager.register(Delta, Funsor, Funsor, Variable)
+@eager.register(Delta, Variable, Funsor, Variable)
 def eager_delta(v, log_density, value):
     assert v.output == value.output
-    vs = OrderedDict([(v.name, value)])
-    return funsor.delta.Delta(vs, log_density)
+    return funsor.delta.Delta(value.name, v, log_density)
 
 
-@eager.register(Delta, Variable, Funsor, Tensor)
+@eager.register(Delta, Variable, Funsor, Funsor)
 def eager_delta(v, log_density, value):
     assert v.output == value.output
-    vs = OrderedDict([(value.name, v)])
-    return funsor.delta.Delta(vs, log_density)
+    return funsor.delta.Delta(v.name, value, log_density)
 
 
 class Normal(Distribution):
