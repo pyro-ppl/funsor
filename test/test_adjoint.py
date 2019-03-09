@@ -142,22 +142,6 @@ def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
     return (equation, ''.join(set(obs_plates + hidden_plates)))
 
 
-def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
-
-    assert num_obs_plates >= num_hidden_plates
-    t0 = num_obs_plates + 1
-
-    obs_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_obs_plates))
-    hidden_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_hidden_plates))
-
-    inputs = [str(opt_einsum.get_symbol(t0))]
-    for t in range(t0, num_steps+t0):
-        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
-        inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
-    equation = ",".join(inputs) + "->"
-    return (equation, ''.join(set(obs_plates + hidden_plates)))
-
-
 OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
     make_plated_hmm_einsum(num_steps, num_obs_plates=b, num_hidden_plates=a)
     for num_steps in [40, 50]  # range(20, 50, 6)
