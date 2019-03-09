@@ -124,3 +124,69 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
         assert isinstance(actual, funsor.Tensor)
         assert expected.shape == actual.data.shape
         assert torch.allclose(expected, actual.data, atol=1e-7)
+
+
+def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
+
+    assert num_obs_plates >= num_hidden_plates
+    t0 = num_obs_plates + 1
+
+    obs_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_obs_plates))
+    hidden_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_hidden_plates))
+
+    inputs = [str(opt_einsum.get_symbol(t0))]
+    for t in range(t0, num_steps+t0):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
+        inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
+    equation = ",".join(inputs) + "->"
+    return (equation, ''.join(set(obs_plates + hidden_plates)))
+
+
+def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
+
+    assert num_obs_plates >= num_hidden_plates
+    t0 = num_obs_plates + 1
+
+    obs_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_obs_plates))
+    hidden_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_hidden_plates))
+
+    inputs = [str(opt_einsum.get_symbol(t0))]
+    for t in range(t0, num_steps+t0):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
+        inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
+    equation = ",".join(inputs) + "->"
+    return (equation, ''.join(set(obs_plates + hidden_plates)))
+
+
+OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
+    make_plated_hmm_einsum(num_steps, num_obs_plates=b, num_hidden_plates=a)
+    for num_steps in [40, 50]  # range(20, 50, 6)
+    for (a, b) in [(0, 0), (0, 1), (0, 2), (1, 1), (1, 2)]
+]
+
+
+@pytest.mark.parametrize('equation,plates', OPTIMIZED_PLATED_EINSUM_EXAMPLES)
+@pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
+def test_optimized_plated_einsum_adjoint(equation, plates, backend):
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+
+    with interpretation(reflect):
+        fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
+        actuals = adjoint(fwd_expr, funsor_operands)
+
+    for operand in operands:
+        pyro_require_backward(operand)
+    expected_out = pyro_einsum(equation, *operands,
+                               modulo_total=False,
+                               plates=plates,
+                               backend=backend)[0]
+    expected_out._pyro_backward()
+
+    for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
+        actual = reinterpret(actuals[fv])
+        expected = tv._pyro_backward_result
+        if inp:
+            actual = actual.align(tuple(inp))
+        assert isinstance(actual, funsor.Tensor)
+        assert expected.shape == actual.data.shape
+        assert torch.allclose(expected, actual.data, atol=1e-7)
