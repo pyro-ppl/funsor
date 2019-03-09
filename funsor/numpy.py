@@ -6,7 +6,7 @@ import numpy as np
 from six import add_metaclass, integer_types
 
 import funsor.ops as ops
-from funsor.domains import Domain, bint, find_domain
+from funsor.domains import Domain, bint, find_domain, reals
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, to_funsor
 
 
@@ -137,9 +137,14 @@ class Array(Funsor):
         data = np.transpose(self.data, (tuple(old_dims.index(d) for d in new_dims)))
         return Array(data, inputs, self.dtype)
 
-    def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        subs = {k: materialize(v) for k, v in subs if k in self.inputs}
+    def eager_subs(self, dim_subs):
+        assert isinstance(dim_subs, tuple)
+        subs = {}
+        for k, v in dim_subs:
+            if k in self.inputs:
+                if not isinstance(v, Number):
+                    assert v.output != reals(), "subs for dim {} must be of bounded integer (bint) type.".format(k)
+                subs[k] = materialize(v)
         if not subs:
             return self
 
@@ -222,6 +227,21 @@ class Array(Funsor):
                                  if k not in reduced_vars)
             return Array(data, inputs, self.dtype)
         return super(Array, self).eager_reduce(op, reduced_vars)
+    #
+    # def abs(self):
+    #     return Unary(ops.abs, self)
+    #
+    # def sqrt(self):
+    #     return Unary(ops.sqrt, self)
+    #
+    # def exp(self):
+    #     return Unary(ops.exp, self)
+    #
+    # def log(self):
+    #     return Unary(ops.log, self)
+    #
+    # def log1p(self):
+    #     return Unary(ops.log1p, self)
 
 
 @eager.register(Binary, object, Array, Number)

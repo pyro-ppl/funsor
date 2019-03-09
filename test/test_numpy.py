@@ -52,8 +52,8 @@ def test_advanced_indexing_shape():
         ('i', bint(I)),
         ('j', bint(J)),
     ]))
-    m = Array(np.array([2, 3]), OrderedDict([('m', bint(M))]))
-    n = Array(np.array([0, 1, 1]), OrderedDict([('n', bint(N))]))
+    m = Array(np.array([2, 3]), OrderedDict([('m', bint(M))]), 4)
+    n = Array(np.array([0, 1, 1]), OrderedDict([('n', bint(N))]), 5)
     assert x.data.shape == (4, 5)
 
     check_funsor(x(i=m), {'j': bint(J), 'm': bint(M)}, reals())
@@ -180,14 +180,16 @@ def test_advanced_indexing_lazy(output_shape):
 def unary_eval(symbol, x):
     if symbol in ['~', '-']:
         return eval('{} x'.format(symbol))
-    return getattr(np, symbol)(x)
+    elif isinstance(x, np.ndarray) or np.isscalar(x):
+        return getattr(np, symbol)(x)
+    else:
+        return getattr(x, symbol)()
 
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b')])
 @pytest.mark.parametrize('symbol', [
     '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
 ])
-@pytest.mark.xfail(reason="bad operand type for XXX: 'Array'")
 def test_unary(symbol, dims):
     sizes = {'a': 3, 'b': 4}
     shape = tuple(sizes[d] for d in dims)

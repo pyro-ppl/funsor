@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+from funsor.six import singledispatch
 from numbers import Number
 from operator import add, and_, eq, ge, getitem, gt, invert, le, lt, mul, ne, neg, or_, sub, truediv, xor
 
@@ -13,23 +14,23 @@ _builtin_pow = pow
 
 
 def abs(x):
-    return _builtin_abs(x) if isinstance(x, Number) else x.abs()
+    return np.abs(x)
 
 
 def sqrt(x):
-    return np.sqrt(x) if isinstance(x, Number) else x.sqrt()
+    return np.sqrt(x)
 
 
 def exp(x):
-    return np.exp(x) if isinstance(x, Number) else x.exp()
+    return np.exp(x)
 
 
 def log(x):
-    return np.log(x) if isinstance(x, Number) else x.log()
+    return np.log(x)
 
 
 def log1p(x):
-    return np.log1p(x) if isinstance(x, Number) else x.log1p()
+    return np.log1p(x)
 
 
 def pow(x, y):
@@ -55,17 +56,7 @@ def min(x, y):
 
 
 def max(x, y):
-    if hasattr(x, '__max__'):
-        return x.__max__(y)
-    if hasattr(y, '__max__'):
-        return y.__max__(x)
-    if isinstance(x, torch.Tensor):
-        if isinstance(y, torch.Tensor):
-            return torch.max(x, y)
-        return x.clamp(min=y)
-    if isinstance(y, torch.Tensor):
-        return y.clamp(min=x)
-    return _builtin_max(x, y)
+    return np.max(x, y)
 
 
 def logaddexp(x, y):
