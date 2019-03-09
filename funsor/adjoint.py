@@ -36,16 +36,14 @@ def adjoint(expr, targets, start=Number(0.)):
         output, fn, inputs = tape_recorder.tape.pop()
         in_adjs = adjoint_ops(fn, adjoint_values[output], output, *inputs)
         for v, adjv in in_adjs.items():
-            if isinstance(v, Variable):
-                multiplicities[v] += 1
+            multiplicities[v] += 1
             adjoint_values[v] = adjoint_values[v] + adjv  # product in logspace
 
     target_adjs = {}
     for v in targets:
-        if isinstance(v, Variable):
-            target_adjs[v] = adjoint_values[v] / multiplicities[v]
-        else:
-            target_adjs[v] = adjoint_values[v] + v
+        target_adjs[v] = adjoint_values[v] / multiplicities[v]
+        if not isinstance(v, Variable):
+            target_adjs[v] = target_adjs[v] + v
     return target_adjs
 
 
@@ -85,5 +83,5 @@ def adjoint_reduce(out_adj, out, op, arg, reduced_vars):
     if op is ops.logaddexp:
         in_adj = out_adj + (arg * 0.)  # XXX hack to simulate "expand"
     elif op is ops.add:  # plate!
-        in_adj = out_adj + (out + -arg)
+        in_adj = out_adj + (out - arg)
     return {arg: in_adj}

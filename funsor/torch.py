@@ -13,6 +13,13 @@ from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
 
+def _clamp_infs(x):
+    """helper to ensure (-inf) - (-inf) == (-inf) and 0 / 0 == 0"""
+    assert isinstance(x, torch.Tensor)
+    x.clamp_(max=torch.finfo(x.dtype).max)
+    return x
+
+
 def align_tensor(new_inputs, x):
     r"""
     Permute and expand a tensor to match desired ``new_inputs``.
@@ -237,12 +244,16 @@ def eager_binary_tensor_number(op, lhs, rhs):
         data = lhs.data[index]
     else:
         data = op(lhs.data, rhs.data)
+    if op in (ops.sub, ops.truediv):
+        data = _clamp_infs(data)
     return Tensor(data, lhs.inputs, lhs.dtype)
 
 
 @eager.register(Binary, Op, Number, Tensor)
 def eager_binary_number_tensor(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
+    if op in (ops.sub, ops.truediv):
+        data = _clamp_infs(data)
     return Tensor(data, rhs.inputs, rhs.dtype)
 
 
@@ -268,6 +279,8 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         data = op(lhs_data, rhs_data)
 
+    if op in (ops.sub, ops.truediv):
+        data = _clamp_infs(data)
     return Tensor(data, inputs, dtype)
 
 
