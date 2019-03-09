@@ -8,6 +8,7 @@ from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
+from funsor.ops import Op
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
@@ -226,7 +227,7 @@ class Tensor(Funsor):
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
 
-@eager.register(Binary, object, Tensor, Number)
+@eager.register(Binary, Op, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):
     if op is ops.getitem:
         # Shift by that Funsor is using for inputs.
@@ -239,13 +240,13 @@ def eager_binary_tensor_number(op, lhs, rhs):
     return Tensor(data, lhs.inputs, lhs.dtype)
 
 
-@eager.register(Binary, object, Number, Tensor)
+@eager.register(Binary, Op, Number, Tensor)
 def eager_binary_number_tensor(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
     return Tensor(data, rhs.inputs, rhs.dtype)
 
 
-@eager.register(Binary, object, Tensor, Tensor)
+@eager.register(Binary, Op, Tensor, Tensor)
 def eager_binary_tensor_tensor(op, lhs, rhs):
     # Compute inputs and outputs.
     dtype = find_domain(op, lhs.output, rhs.output).dtype
