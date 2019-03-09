@@ -9,6 +9,7 @@ from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import reals
+from funsor.ops import Op
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 
@@ -253,7 +254,7 @@ class Gaussian(Funsor):
         return None  # defer to default implementation
 
 
-@eager.register(Binary, object, Gaussian, Number)
+@eager.register(Binary, Op, Gaussian, Number)
 def eager_binary_gaussian_number(op, lhs, rhs):
     if op is ops.add or op is ops.sub:
         # Add a constant log_density term to a Gaussian.
@@ -267,7 +268,7 @@ def eager_binary_gaussian_number(op, lhs, rhs):
     return None  # defer to default implementation
 
 
-@eager.register(Binary, object, Number, Gaussian)
+@eager.register(Binary, Op, Number, Gaussian)
 def eager_binary_number_gaussian(op, lhs, rhs):
     if op is ops.add:
         # Add a constant log_density term to a Gaussian.
@@ -281,7 +282,7 @@ def eager_binary_number_gaussian(op, lhs, rhs):
     return None  # defer to default implementation
 
 
-@eager.register(Binary, object, Gaussian, Tensor)
+@eager.register(Binary, Op, Gaussian, Tensor)
 def eager_binary_gaussian_tensor(op, lhs, rhs):
     if op is ops.add or op is ops.sub:
         # Add a batch-dependent log_density term to a Gaussian.
@@ -303,7 +304,7 @@ def eager_binary_gaussian_tensor(op, lhs, rhs):
     return None  # defer to default implementation
 
 
-@eager.register(Binary, object, Tensor, Gaussian)
+@eager.register(Binary, Op, Tensor, Gaussian)
 def eager_binary_tensor_gaussian(op, lhs, rhs):
     if op is ops.add:
         # Add a batch-dependent log_density term to a Gaussian.
@@ -325,7 +326,7 @@ def eager_binary_tensor_gaussian(op, lhs, rhs):
     return None  # defer to default implementation
 
 
-@eager.register(Binary, object, Gaussian, Gaussian)
+@eager.register(Binary, Op, Gaussian, Gaussian)
 def eager_binary_gaussian_gaussian(op, lhs, rhs):
     if op is ops.add:
         # Fuse two Gaussians by adding their log-densities pointwise.
