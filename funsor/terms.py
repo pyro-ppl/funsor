@@ -250,6 +250,8 @@ class Funsor(object):
 
         return None  # defer to default implementation
 
+    # The following methods conform to a standard array/tensor interface.
+
     def __invert__(self):
         return Unary(ops.invert, self)
 
@@ -270,6 +272,31 @@ class Funsor(object):
 
     def log1p(self):
         return Unary(ops.log1p, self)
+
+    # The following reductions are treated as Unary ops because they
+    # reduce over output shape while preserving all inputs.
+    # To reduce over inputs, instead call .reduce(op, reduced_vars).
+
+    def sum(self):
+        return Unary(ops.add, self)
+
+    def prod(self):
+        return Unary(ops.mul, self)
+
+    def logsumexp(self):
+        return Unary(ops.logaddexp, self)
+
+    def all(self):
+        return Unary(ops.and_, self)
+
+    def any(self):
+        return Unary(ops.or_, self)
+
+    def min(self):
+        return Unary(ops.min, self)
+
+    def max(self):
+        return Unary(ops.max, self)
 
     def __add__(self, other):
         return Binary(ops.add, self, to_funsor(other))
@@ -342,27 +369,6 @@ class Funsor(object):
 
     def __getitem__(self, other):
         return Binary(ops.getitem, self, to_funsor(other))
-
-    def sum(self, reduced_vars=None):
-        return self.reduce(ops.add, reduced_vars)
-
-    def prod(self, reduced_vars=None):
-        return self.reduce(ops.mul, reduced_vars)
-
-    def logsumexp(self, reduced_vars=None):
-        return self.reduce(ops.logaddexp, reduced_vars)
-
-    def all(self, reduced_vars=None):
-        return self.reduce(ops.and_, reduced_vars)
-
-    def any(self, reduced_vars=None):
-        return self.reduce(ops.or_, reduced_vars)
-
-    def min(self, reduced_vars=None):
-        return self.reduce(ops.min, reduced_vars)
-
-    def max(self, reduced_vars=None):
-        return self.reduce(ops.max, reduced_vars)
 
 
 interpreter.reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
