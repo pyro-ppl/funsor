@@ -116,6 +116,7 @@ class GaussianMeta(FunsorMeta):
     def __call__(cls, log_density, loc, precision, inputs):
         if isinstance(inputs, OrderedDict):
             inputs = tuple(inputs.items())
+        assert isinstance(inputs, tuple)
         return super(GaussianMeta, cls).__call__(log_density, loc, precision, inputs)
 
 
