@@ -211,9 +211,9 @@ def test_mvn_gaussian(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    loc = Tensor(torch.randn(batch_shape + (4,)), inputs)
-    scale_tril = Tensor(_random_scale_tril(batch_shape + (4, 4)), inputs)
-    value = Tensor(torch.randn(batch_shape + (4,)), inputs)
+    loc = Tensor(torch.randn(batch_shape + (3,)), inputs)
+    scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
+    value = Tensor(torch.randn(batch_shape + (3,)), inputs)
 
     expected = dist.MultivariateNormal(loc, scale_tril, value)
     assert isinstance(expected, Tensor)
@@ -224,4 +224,4 @@ def test_mvn_gaussian(batch_shape):
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
 
-    assert_close(actual, expected, atol=1e-4)
+    assert_close(actual, expected, atol=1e-3, rtol=1e-4)
