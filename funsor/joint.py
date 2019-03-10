@@ -3,27 +3,36 @@ from __future__ import absolute_import, division, print_function
 from six import add_metaclass
 
 import funsor.ops as ops
+from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.gaussian import Gaussian
-from funsor.ops import AssociativeOp
+from funsor.ops import AddOp
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, to_funsor
 from funsor.torch import Tensor
-from funsor.delta import Delta
 
 
-class JointNormalFormMeta(FunsorMeta):
+class JointMeta(FunsorMeta):
     """
-    Wrapper to fill in default values.
+    Wrapper to fill in defaults and move log_density terms into gaussian.
     """
     def __call__(cls, gaussian=0, deltas=()):
         gaussian = to_funsor(gaussian)
-        return super(JointNormalForm, cls).__call__(gaussian, deltas)
+
+        # Move all log_density terms into gaussian part.
+        deltas = list(deltas)
+        for i, d in enumerate(deltas):
+            if d.log_density is not Number(0):
+                gaussian += d.log_density
+                deltas[i] = Delta(d.name, d.point)
+        deltas = tuple(deltas)
+
+        return super(Joint, cls).__call__(gaussian, deltas)
 
 
-@add_metaclass(JointNormalFormMeta)
-class JointNormalForm(Funsor):
+@add_metaclass(JointMeta)
+class Joint(Funsor):
     """
-    Normal form for a joint log probability density.
+    Normal form for a joint log probability density funsor.
     """
     def __init__(self, gaussian, deltas):
         assert isinstance(gaussian, (Number, Tensor, Gaussian))
@@ -45,50 +54,80 @@ class JointNormalForm(Funsor):
         for x in self.deltas:
             x = x.eager_subs(subs)
             if isinstance(x, Delta):
+                assert x.log_density is Number(0)
                 deltas.append(x)
             elif isinstance(x, (Number, Tensor)):
                 gaussian += x
             else:
                 raise ValueError('Cannot substitute {}'.format(x))
         deltas = tuple(deltas)
-        return JointNormalForm(gaussian, deltas)
+        return Joint(gaussian, deltas)
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
-            if reduced_vars == frozenset(self.inputs):
-                return self.gaussian.eager_reduce(reduced_vars)
-            for var in reduced_vars:
-                if var in self.gaussian.inputs and self.inputs[var].dtype != 'real':
-                    raise ValueError('Mixture distributions are not supported')
-            raise NotImplementedError('TODO eliminate a random variable')
+            # Integrate out a delayed variable.
+            gaussian_vars = reduced_vars.intersection(self.gaussian.inputs)
+            gaussian = self.gaussian.reduce(ops.logaddexp, gaussian_vars)
+            assert (reduced_vars - gaussian_vars).issubset(d.name for d in self.deltas)
+            deltas = tuple(d for d in self.deltas if d.name not in reduced_vars)
+            return Joint(gaussian, deltas)
+
+        if op is ops.sample:
+            # Sample a delayed variable.
+            # FIXME how do we retrieve the variable value?
+            assert reduced_vars.issubset(self.gaussian.inputs)
+            gaussian = self.gaussian.reduce(ops.sample, reduced_vars)
+            return Joint(0, self.deltas) + gaussian
 
         if op is ops.add:
-            raise NotImplementedError('TODO eliminate a plate')
+            # Eliminate a plate.
+            raise NotImplementedError('TODO')
 
         return None  # defer to default implementation
 
 
-@eager.register(Binary, AssociativeOp, JointNormalForm, (Number, Tensor, Gaussian))
-def eager_binary_joint_gaussian(op, joint, gaussian):
-    if op is ops.add:
-        # Accumulate a lazy Categorical or Normal random variable.
-        for d in joint.deltas:
-            if d.name in gaussian.inputs:
-                gaussian += d
-        gaussian = joint.gaussian + gaussian
-        return JointNormalForm(gaussian, joint.deltas)
+@eager.register(Binary, AddOp, Joint, (Number, Tensor, Gaussian))
+def eager_add(op, joint, gaussian):
+    # Add a log_prob term for a delayed factor.
+    gaussian = gaussian(**{d.name: d.point for d in joint.deltas})
+    gaussian = joint.gaussian + gaussian
+    return Joint(gaussian, joint.deltas)
+
+
+@eager.register(Binary, AddOp, Joint, Delta)
+def eager_add(op, joint, delta):
+    # Add an eagerly sampled value.
+    joint = joint(**{delta.name: delta.point})
+    # FIXME this can miss some substitutions of self into delta
+    return Joint(joint.gaussian, joint.deltas + (delta,))
+
+
+@eager.register(Binary, AddOp, Joint, Joint)
+def eager_add(op, joint, other):
+    # Fuse two joint distributions.
+    for d in other.deltas:
+        joint += d
+    joint += other.gaussian
+    return joint
+
+
+@eager.register(Binary, AddOp, Joint, Binary)
+def eager_add(op, joint, other):
+    if other.op is op:
+        # Recursively decompose sums.
+        joint += other.lhs
+        joint += other.rhs
+        return joint
 
     return None  # defer to default implementation
 
 
-@eager.register(Binary, AssociativeOp, JointNormalForm, Delta)
-def eager_binary_joint_delta(op, joint, gaussian):
-    if op is ops.add:
-        raise NotImplementedError('TODO accumulate a monte carlo sample')
-
-    return None  # defer to default implementation
+@eager.register(Binary, AddOp, Joint, Funsor)
+def eager_add(op, joint, other):
+    # TODO Can we monte carlo sample here?
+    raise ValueError('Cannot accumulate joint distribution of {}'.format(other))
 
 
 __all__ = [
-    'JointNormalForm',
+    'Joint',
 ]
