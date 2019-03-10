@@ -8,6 +8,7 @@ import torch
 
 import funsor
 import funsor.distributions as dist
+from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.terms import Variable
@@ -78,6 +79,14 @@ def test_delta_density(batch_shape, event_shape):
         actual = dist.Delta(v, log_density, value)
         check_funsor(actual, inputs, reals())
         assert_close(actual, expected)
+
+
+def test_delta_delta():
+    v = Variable('v', reals(2))
+    point = Tensor(torch.randn(2))
+    log_density = Tensor(torch.tensor(0.5))
+    d = dist.Delta(point, log_density, v)
+    assert d is Delta('v', point, log_density)
 
 
 def test_normal_defaults():

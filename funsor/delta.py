@@ -27,7 +27,7 @@ class Delta(Funsor):
     Normalized delta distribution binding a single variable.
 
     :param str name: Name of the bound variable.
-    :param Funsor value: Value of the bound variable.
+    :param Funsor point: Value of the bound variable.
     :param Funsor log_density: Optional log density to be added when evaluating
         at a point. This is needed to make :class:`Delta` closed under
         differentiable substitution.
