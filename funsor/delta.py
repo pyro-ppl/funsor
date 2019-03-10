@@ -7,7 +7,8 @@ from six import add_metaclass
 import funsor.ops as ops
 from funsor.domains import reals
 from funsor.ops import Op
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, eager, to_funsor
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.torch import Tensor
 
 
 class DeltaMeta(FunsorMeta):

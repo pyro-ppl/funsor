@@ -67,7 +67,14 @@ def exp(x):
 
 @Op
 def log(x):
-    return np.log(x) if isinstance(x, Number) else x.log()
+    if isinstance(x, Number):
+        return np.log(x)
+    elif isinstance(x, torch.Tensor):
+        if x.dtype in (torch.uint8, torch.long):
+            x = x.float()
+        return x.log()
+    else:
+        return x.log()
 
 
 @Op
