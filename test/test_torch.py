@@ -343,6 +343,47 @@ def test_reduce_subset(dims, reduced_vars, op):
                      atol=1e-5, rtol=1e-5)
 
 
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('event_shape', [(), (4,), (2, 3)])
+@pytest.mark.parametrize('op', REDUCE_OPS, ids=str)
+def test_reduce_event(op, event_shape, dims):
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    batch_shape = tuple(sizes[d] for d in dims)
+    shape = batch_shape + event_shape
+    inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
+    torch_op = REDUCE_OP_TO_TORCH[op]
+    data = torch.rand(shape) + 0.5
+    dtype = 'real'
+    if op in [ops.and_, ops.or_]:
+        data = data.byte()
+    if op is ops.logaddexp:
+        # work around missing torch.Tensor.logsumexp()
+        expected_data = data.reshape(batch_shape + (-1,)).logsumexp(0)
+    else:
+        expected_data = torch_op(data)
+
+    x = Tensor(data, inputs, dtype=dtype)
+    actual = getattr(x, torch_op.__name__)()
+    check_funsor(actual, inputs, Domain((), dtype), expected_data)
+
+
+@pytest.mark.parametrize('shape', [(), (4,), (2, 3)])
+def test_all_equal(shape):
+    inputs = OrderedDict()
+    data1 = torch.rand(shape) + 0.5
+    data2 = torch.rand(shape) + 0.5
+    dtype = 'real'
+
+    x1 = Tensor(data1, inputs, dtype=dtype)
+    x2 = Tensor(data2, inputs, dtype=dtype)
+    assert (x1 == x1).all()
+    assert (x2 == x2).all()
+    assert not (x1 == x2).all()
+    assert not (x1 != x1).any()
+    assert not (x2 != x2).any()
+    assert (x1 != x2).any()
+
+
 def test_function_matmul():
 
     @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
