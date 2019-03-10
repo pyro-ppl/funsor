@@ -112,15 +112,33 @@ def eager_add(op, joint, other):
     return None  # defer to default implementation
 
 
-@eager.register(Binary, AddOp, Joint, Funsor)
-def eager_add(op, joint, other):
-    # TODO Can we monte carlo sample here?
-    raise ValueError('Cannot accumulate joint distribution of {}'.format(other))
-
-
 @eager.register(Binary, AddOp, Funsor, Joint)
 def eager_add(op, other, joint):
     return joint + other
+
+
+@eager.register(Binary, AddOp, (Number, Tensor, Gaussian), Delta)
+def eager_add(op, gaussian, delta):
+    gaussian = gaussian(**{delta.name: delta.point})
+    return Joint(gaussian, (delta,))
+
+
+@eager.register(Binary, AddOp, Delta, (Number, Tensor, Gaussian))
+def eager_add(op, delta, gaussian):
+    gaussian = gaussian(**{delta.name: delta.point})
+    return Joint(gaussian, (delta,))
+
+
+@eager.register(Binary, AddOp, Delta, Delta)
+def eager_add(op, lhs, rhs):
+    if lhs.name == rhs.name:
+        raise NotImplementedError
+    if rhs.name in lhs.inputs:
+        assert lhs.name not in rhs.inputs
+        lhs = lhs(**{rhs.name: rhs.point})
+    elif lhs.name in rhs.inputs:
+        rhs = rhs(**{lhs.name: lhs.point})
+    return Joint(deltas=(lhs, rhs))
 
 
 __all__ = [
