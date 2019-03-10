@@ -86,7 +86,7 @@ def test_delta_delta():
     point = Tensor(torch.randn(2))
     log_density = Tensor(torch.tensor(0.5))
     d = dist.Delta(point, log_density, v)
-    assert d is Delta('v', point, log_density)
+    assert d is Delta('v', point) + log_density
 
 
 def test_normal_defaults():
