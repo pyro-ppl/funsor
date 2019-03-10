@@ -356,11 +356,9 @@ def test_reduce_event(op, event_shape, dims):
     dtype = 'real'
     if op in [ops.and_, ops.or_]:
         data = data.byte()
-    if op is ops.logaddexp:
-        # work around missing torch.Tensor.logsumexp()
-        expected_data = data.reshape(batch_shape + (-1,)).logsumexp(0)
-    else:
-        expected_data = torch_op(data)
+    expected_data = torch_op(data.reshape(batch_shape + (-1,)), -1)
+    if op in [ops.min, ops.max]:
+        expected_data = expected_data[0]
 
     x = Tensor(data, inputs, dtype=dtype)
     actual = getattr(x, torch_op.__name__)()
