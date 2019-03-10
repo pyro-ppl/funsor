@@ -16,7 +16,10 @@ from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to
 def _clamp_infs(x):
     """helper to ensure (-inf) - (-inf) == (-inf) and 0 / 0 == 0"""
     assert isinstance(x, torch.Tensor)
-    x.clamp_(max=torch.finfo(x.dtype).max)
+    try:
+        x.clamp_(max=torch.finfo(x.dtype).max)
+    except TypeError:
+        pass
     return x
 
 

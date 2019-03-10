@@ -11,8 +11,8 @@ import funsor
 
 from funsor.domains import bint
 from funsor.terms import reflect, Variable
-from funsor.interpreter import interpretation, reinterpret
-from funsor.testing import make_einsum_example  # , xfail_param
+from funsor.interpreter import interpretation
+from funsor.testing import make_einsum_example, make_plated_hmm_einsum
 
 from funsor.einsum import naive_einsum, naive_plated_einsum, einsum
 from funsor.adjoint import adjoint
@@ -44,7 +44,7 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
 
     with interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
-        actuals = adjoint(fwd_expr, funsor_operands)
+    actuals = adjoint(fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
@@ -54,7 +54,7 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
     expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
-        actual = reinterpret(actuals[fv])
+        actual = actuals[fv]
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))
@@ -73,10 +73,10 @@ def test_einsum_adjoint_unary_marginals(einsum_impl, equation, backend):
     targets = [Variable(k, bint(sizes[k])) for k in set(sizes)]
     with interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
-        actuals = adjoint(fwd_expr, targets)
+    actuals = adjoint(fwd_expr, targets)
 
     for target in targets:
-        actual = reinterpret(actuals[target])
+        actual = actuals[target]
 
         expected = opt_einsum.contract(equation + target.name, *operands,
                                        backend=backend)
@@ -105,7 +105,7 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
 
     with interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, plates=plates, backend=backend)
-        actuals = adjoint(fwd_expr, funsor_operands)
+    actuals = adjoint(fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
@@ -116,8 +116,7 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
     expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
-        print(actuals[fv])
-        actual = reinterpret(actuals[fv])
+        actual = actuals[fv]
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))
@@ -126,25 +125,9 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
-def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
-
-    assert num_obs_plates >= num_hidden_plates
-    t0 = num_obs_plates + 1
-
-    obs_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_obs_plates))
-    hidden_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_hidden_plates))
-
-    inputs = [str(opt_einsum.get_symbol(t0))]
-    for t in range(t0, num_steps+t0):
-        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
-        inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
-    equation = ",".join(inputs) + "->"
-    return (equation, ''.join(set(obs_plates + hidden_plates)))
-
-
 OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
     make_plated_hmm_einsum(num_steps, num_obs_plates=b, num_hidden_plates=a)
-    for num_steps in [40, 50]  # range(20, 50, 6)
+    for num_steps in range(20, 50, 6)
     for (a, b) in [(0, 0), (0, 1), (0, 2), (1, 1), (1, 2)]
 ]
 
@@ -156,7 +139,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
 
     with interpretation(reflect):
         fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
-        actuals = adjoint(fwd_expr, funsor_operands)
+    actuals = adjoint(fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
@@ -167,7 +150,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
-        actual = reinterpret(actuals[fv])
+        actual = actuals[fv]
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))

@@ -7,7 +7,7 @@ import funsor.ops as ops
 from funsor.interpreter import interpretation, reinterpret
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Funsor, Number, Reduce, Variable, reflect
+from funsor.terms import Binary, Funsor, Number, Reduce, Variable, eager
 from funsor.torch import Tensor
 
 
@@ -17,7 +17,7 @@ class AdjointTape(object):
         self.tape = []
 
     def __call__(self, cls, *args):
-        result = reflect(cls, *args)
+        result = eager(cls, *args)
         if cls in (Reduce, Binary, Tensor):
             self.tape.append((result, cls, args))
         return result
@@ -80,8 +80,9 @@ def adjoint_binary(out_adj, out, op, lhs, rhs):
 
 @adjoint_ops.register(Reduce, Funsor, Funsor, AssociativeOp, Funsor, frozenset)
 def adjoint_reduce(out_adj, out, op, arg, reduced_vars):
+    assert op in (ops.logaddexp, ops.add)
+
     if op is ops.logaddexp:
-        in_adj = out_adj + (arg * 0.)  # XXX hack to simulate "expand"
+        return {arg: out_adj + (arg * 0.)}  # XXX hack to simulate "expand"
     elif op is ops.add:  # plate!
-        in_adj = out_adj + (out - arg)
-    return {arg: in_adj}
+        return {arg: out_adj + (out - arg)}
