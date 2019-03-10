@@ -59,8 +59,8 @@ def pyro_sample(name, dist, obs=None):
     return value
 
 # ...later during inference...
-log_prob = trace_log_prob.logsumexp()  # collapses delayed variables
-loss = -funsor.eval(log_prob)          # performs variable elimination
+log_prob = trace_log_prob.reduce(logsaddexp)  # collapses delayed variables
+loss = -funsor.eval(log_prob)                 # performs variable elimination
 ```
 See [examples/minipyro.py](examples/minipyro.py) for a more complete example.
 
