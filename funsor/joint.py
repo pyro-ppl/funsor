@@ -128,6 +128,11 @@ def eager_add(op, joint, other):
     raise ValueError('Cannot accumulate joint distribution of {}'.format(other))
 
 
+@eager.register(Binary, AddOp, Funsor, Joint)
+def eager_add(op, other, joint):
+    return joint + other
+
+
 __all__ = [
     'Joint',
 ]
