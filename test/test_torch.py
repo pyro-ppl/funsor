@@ -7,7 +7,9 @@ import pytest
 import torch
 
 import funsor
+import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
+from funsor.ops import REDUCE_OP_TO_TORCH
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import Tensor, align_tensors, torch_einsum
@@ -276,26 +278,26 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     check_funsor(actual, inputs, reals(), expected_data)
 
 
-REDUCE_OPS = ['sum', 'prod', 'logsumexp', 'all', 'any', 'min', 'max']
+REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
 
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
-@pytest.mark.parametrize('op_name', REDUCE_OPS)
-def test_reduce_all(dims, op_name):
+@pytest.mark.parametrize('op', REDUCE_OPS, ids=str)
+def test_reduce_all(dims, op):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
     data = torch.rand(shape) + 0.5
-    if op_name in ['all', 'any']:
+    if op in [ops.and_, ops.or_]:
         data = data.byte()
-    if op_name == 'logsumexp':
+    if op is ops.logaddexp:
         # work around missing torch.Tensor.logsumexp()
         expected_data = data.reshape(-1).logsumexp(0)
     else:
-        expected_data = getattr(data, op_name)()
+        expected_data = REDUCE_OP_TO_TORCH[op](data)
 
     x = Tensor(data, inputs)
-    actual = getattr(x, op_name)()
+    actual = x.reduce(op)
     check_funsor(actual, {}, reals(), expected_data)
 
 
@@ -305,19 +307,19 @@ def test_reduce_all(dims, op_name):
     for num_reduced in range(len(dims) + 2)
     for reduced_vars in itertools.combinations(dims, num_reduced)
 ])
-@pytest.mark.parametrize('op_name', REDUCE_OPS)
-def test_reduce_subset(dims, reduced_vars, op_name):
+@pytest.mark.parametrize('op', REDUCE_OPS)
+def test_reduce_subset(dims, reduced_vars, op):
     reduced_vars = frozenset(reduced_vars)
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
     data = torch.rand(shape) + 0.5
     dtype = 'real'
-    if op_name in ['all', 'any']:
+    if op in [ops.and_, ops.or_]:
         data = data.byte()
         dtype = 2
     x = Tensor(data, inputs, dtype)
-    actual = getattr(x, op_name)(reduced_vars)
+    actual = x.reduce(op, reduced_vars)
     expected_inputs = OrderedDict(
         (d, bint(sizes[d])) for d in dims if d not in reduced_vars)
 
@@ -326,17 +328,16 @@ def test_reduce_subset(dims, reduced_vars, op_name):
         assert actual is x
     else:
         if reduced_vars == frozenset(dims):
-            if op_name == 'logsumexp':
+            if op is ops.logaddexp:
                 # work around missing torch.Tensor.logsumexp()
                 data = data.reshape(-1).logsumexp(0)
             else:
-                data = getattr(data, op_name)()
+                data = REDUCE_OP_TO_TORCH[op](data)
         else:
             for pos in reversed(sorted(map(dims.index, reduced_vars))):
-                if op_name in ('min', 'max'):
-                    data = getattr(data, op_name)(pos)[0]
-                else:
-                    data = getattr(data, op_name)(pos)
+                data = REDUCE_OP_TO_TORCH[op](data, pos)
+                if op in (ops.min, ops.max):
+                    data = data[0]
         check_funsor(actual, expected_inputs, Domain((), dtype))
         assert_close(actual, Tensor(data, expected_inputs, dtype),
                      atol=1e-5, rtol=1e-5)
