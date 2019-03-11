@@ -7,6 +7,7 @@ import pyro.distributions as dist
 import torch
 from six import add_metaclass
 
+import funsor.delta
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
@@ -148,6 +149,19 @@ def eager_delta(v, log_density, value):
     inputs, (v, log_density, value) = align_tensors(v, log_density, value)
     data = dist.Delta(v, log_density, event_dim).log_prob(value)
     return Tensor(data, inputs)
+
+
+@eager.register(Delta, Funsor, Funsor, Variable)
+@eager.register(Delta, Variable, Funsor, Variable)
+def eager_delta(v, log_density, value):
+    assert v.output == value.output
+    return funsor.delta.Delta(value.name, v, log_density)
+
+
+@eager.register(Delta, Variable, Funsor, Funsor)
+def eager_delta(v, log_density, value):
+    assert v.output == value.output
+    return funsor.delta.Delta(v.name, value, log_density)
 
 
 class Normal(Distribution):
