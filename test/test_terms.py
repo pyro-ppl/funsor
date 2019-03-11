@@ -205,7 +205,7 @@ def test_stack_simple():
     assert xyz(i=Number(0, 3)) is x
     assert xyz(i=Number(1, 3)) is y
     assert xyz(i=Number(2, 3)) is z
-    assert xyz.sum('i') == 5.
+    assert xyz.reduce(ops.add, 'i') == 5.
 
 
 def test_stack_subs():
@@ -223,7 +223,7 @@ def test_stack_subs():
     assert f(i=Number(2, 3)) is y * z
     assert f(i=j) is Stack((Number(0), x, y * z), 'j')
     assert f(i='j') is Stack((Number(0), x, y * z), 'j')
-    assert f.sum('i') is Number(0) + x + (y * z)
+    assert f.reduce(ops.add, 'i') is Number(0) + x + (y * z)
 
     assert f(x=0) is Stack((Number(0), Number(0), y * z), 'i')
     assert f(y=x) is Stack((Number(0), x, x * z), 'i')

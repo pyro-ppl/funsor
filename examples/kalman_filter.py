@@ -6,7 +6,7 @@ import torch
 
 import funsor
 import funsor.distributions as dist
-
+import funsor.ops as ops
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
 from funsor.terms import lazy
@@ -31,11 +31,11 @@ def main(args):
             log_prob += dist.Normal(x_prev, trans_noise, value=x_curr)
 
             if not args.lazy and isinstance(x_prev, funsor.Variable):
-                log_prob = log_prob.logsumexp(x_prev.name)
+                log_prob = log_prob.reduce(ops.logaddexp, x_prev.name)
 
             log_prob += dist.Normal(x_curr, emit_noise, value=y)
 
-        log_prob = log_prob.logsumexp()
+        log_prob = log_prob.reduce(ops.logaddexp)
         return log_prob
 
     # Train model parameters.
