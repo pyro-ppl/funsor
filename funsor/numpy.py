@@ -137,14 +137,8 @@ class Array(Funsor):
         data = np.transpose(self.data, (tuple(old_dims.index(d) for d in new_dims)))
         return Array(data, inputs, self.dtype)
 
-    def eager_subs(self, dim_subs):
-        assert isinstance(dim_subs, tuple)
-        subs = {}
-        for k, v in dim_subs:
-            if k in self.inputs:
-                if not isinstance(v, Number):
-                    assert v.output != reals(), "subs for dim {} must be of bounded integer (bint) type.".format(k)
-                subs[k] = materialize(v)
+    def eager_subs(self, subs):
+        assert isinstance(subs, tuple)
         if not subs:
             return self
 
