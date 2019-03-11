@@ -13,11 +13,12 @@ from funsor.torch import Tensor
 
 class DeltaMeta(FunsorMeta):
     """
-    Wrapper to convert point to a funsor.
+    Wrapper to fill in defaults.
     """
-    def __call__(cls, name, point):
+    def __call__(cls, name, point, log_density=0):
         point = to_funsor(point)
-        return super(DeltaMeta, cls).__call__(name, point)
+        log_density = to_funsor(log_density)
+        return super(DeltaMeta, cls).__call__(name, point, log_density)
 
 
 @add_metaclass(DeltaMeta)
@@ -27,16 +28,23 @@ class Delta(Funsor):
 
     :param str name: Name of the bound variable.
     :param Funsor point: Value of the bound variable.
+    :param Funsor log_density: Optional log density to be added when evaluating
+        at a point. This is needed to make :class:`Delta` closed under
+        differentiable substitution.
     """
-    def __init__(self, name, point):
+    def __init__(self, name, point, log_density=0):
         assert isinstance(name, str)
         assert isinstance(point, Funsor)
+        assert isinstance(log_density, Funsor)
+        assert log_density.output == reals()
         inputs = OrderedDict([(name, point.output)])
         inputs.update(point.inputs)
+        inputs.update(log_density.inputs)
         output = reals()
         super(Delta, self).__init__(inputs, output)
         self.name = name
         self.point = point
+        self.log_density = log_density
 
     def eager_subs(self, subs):
         value = None
@@ -54,16 +62,17 @@ class Delta(Funsor):
 
         name = self.name
         point = self.point.eager_subs(index_part)
+        log_density = self.log_density.eager_subs(index_part)
         if value is not None:
             if isinstance(value, Variable):
                 name = value.name
             elif isinstance(value, (Number, Tensor)) and isinstance(point, (Number, Tensor)):
-                return (value == point).all().log()
+                return (value == point).all().log() + log_density
             else:
                 # TODO Compute a jacobian, update log_prob, and emit another Delta.
                 raise ValueError('Cannot substitute a {} into a Delta'
                                  .format(type(value).__name__))
-        return Delta(name, point)
+        return Delta(name, point, log_density)
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
