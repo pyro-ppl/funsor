@@ -125,7 +125,10 @@ def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
     assert isinstance(y, torch.Tensor)
-    return x + -y.clamp(max=torch.finfo(y.dtype).max)
+    try:
+        return x + -y.clamp(max=torch.finfo(y.dtype).max)
+    except TypeError:
+        return x + -y.clamp(max=torch.iinfo(y.dtype).max)
 
 
 @Op
@@ -133,7 +136,10 @@ def safediv(x, y):
     if isinstance(y, Number):
         return truediv(x, y)
     assert isinstance(y, torch.Tensor)
-    return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
+    try:
+        return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
+    except TypeError:
+        return x * y.reciprocal().clamp(max=torch.iinfo(y.dtype).max)
 
 
 # just a placeholder
