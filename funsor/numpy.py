@@ -227,21 +227,6 @@ class Array(Funsor):
                                  if k not in reduced_vars)
             return Array(data, inputs, self.dtype)
         return super(Array, self).eager_reduce(op, reduced_vars)
-    #
-    # def abs(self):
-    #     return Unary(ops.abs, self)
-    #
-    # def sqrt(self):
-    #     return Unary(ops.sqrt, self)
-    #
-    # def exp(self):
-    #     return Unary(ops.exp, self)
-    #
-    # def log(self):
-    #     return Unary(ops.log, self)
-    #
-    # def log1p(self):
-    #     return Unary(ops.log1p, self)
 
 
 @eager.register(Binary, object, Array, Number)

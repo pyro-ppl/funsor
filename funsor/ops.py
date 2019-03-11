@@ -6,6 +6,7 @@ from numbers import Number
 import operator
 
 import numpy as np
+from funsor.six import singledispatch
 import torch
 
 _builtin_abs = abs
@@ -51,11 +52,21 @@ xor = AssociativeOp(operator.xor)
 
 
 @Op
+@singledispatch
+def abs(x):
+    return _builtin_abs(x)
+
+
+@Op
+@abs.register(torch.Tensor)
+@abs.register(np.ndarray)
+@abs.register(np.generic)
 def abs(x):
     return np.abs(x)
 
 
 @Op
+@singledispatch
 def sqrt(x):
     return np.sqrt(x)
 
@@ -141,6 +152,17 @@ REDUCE_OP_TO_TORCH = {
     logaddexp: torch.logsumexp,
     min: torch.min,
     max: torch.max,
+}
+
+
+REDUCE_OP_TO_NUMPY = {
+    add: np.sum,
+    mul: np.prod,
+    and_: np.all,
+    or_: np.any,
+    logaddexp: np.logaddexp,
+    min: np.min,
+    max: np.max,
 }
 
 
