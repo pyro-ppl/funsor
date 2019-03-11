@@ -5,6 +5,7 @@ import itertools
 import operator
 from collections import OrderedDict, namedtuple
 
+import numpy as np
 import pytest
 import torch
 import opt_einsum
@@ -12,6 +13,7 @@ from six.moves import reduce
 
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
+from funsor.numpy import Array
 from funsor.terms import Funsor
 from funsor.torch import Tensor
 
@@ -132,6 +134,23 @@ def random_tensor(inputs, output=reals()):
                                  num_elements,
                                  replacement=True).reshape(shape)
     return Tensor(data, inputs, output.dtype)
+
+
+def random_array(inputs, output):
+    """
+    Creates a random :class:`funsor.numpy.Array` with given inputs and output.
+    """
+    assert isinstance(inputs, OrderedDict)
+    assert isinstance(output, Domain)
+    shape = tuple(d.dtype for d in inputs.values()) + output.shape
+    if output.dtype == 'real':
+        data = np.random.normal(size=shape)
+    else:
+        num_elements = reduce(operator.mul, shape, 1)
+        data = np.random.choice(np.arange(output.dtype),
+                                size=num_elements,
+                                replace=True).reshape(shape)
+    return Array(data, inputs, output.dtype)
 
 
 def random_gaussian(inputs):
