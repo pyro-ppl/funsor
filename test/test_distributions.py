@@ -80,7 +80,7 @@ def test_delta_density(batch_shape, event_shape):
         assert_close(actual, expected)
 
 
-def test_normal_defaults():
+def test_mvn_defaults():
     loc = Variable('loc', reals())
     scale = Variable('scale', reals())
     value = Variable('value', reals())
@@ -88,20 +88,20 @@ def test_normal_defaults():
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_normal_density(batch_shape):
+def test_mvn_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
     @funsor.of_shape(reals(), reals(), reals())
-    def normal(loc, scale, value):
+    def mvn(loc, scale, value):
         return -((value - loc) ** 2) / (2 * scale ** 2) - scale.log() - math.log(math.sqrt(2 * math.pi))
 
-    check_funsor(normal, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
+    check_funsor(mvn, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
 
     loc = Tensor(torch.randn(batch_shape), inputs)
     scale = Tensor(torch.randn(batch_shape).exp(), inputs)
     value = Tensor(torch.randn(batch_shape), inputs)
-    expected = normal(loc, scale, value)
+    expected = mvn(loc, scale, value)
     check_funsor(expected, inputs, reals())
 
     actual = dist.Normal(loc, scale, value)
@@ -110,7 +110,7 @@ def test_normal_density(batch_shape):
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_normal_gaussian_1(batch_shape):
+def test_mvn_gaussian_1(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -131,7 +131,7 @@ def test_normal_gaussian_1(batch_shape):
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_normal_gaussian_2(batch_shape):
+def test_mvn_gaussian_2(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -152,7 +152,7 @@ def test_normal_gaussian_2(batch_shape):
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_normal_gaussian_3(batch_shape):
+def test_mvn_gaussian_3(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -170,3 +170,58 @@ def test_normal_gaussian_3(batch_shape):
     check_funsor(actual, inputs, reals())
 
     assert_close(actual, expected, atol=1e-4)
+
+
+def test_mvn_defaults():
+    loc = Variable('loc', reals(3))
+    scale_tril = Variable('scale', reals(3, 3))
+    value = Variable('value', reals(3))
+    assert dist.MultivariateNormal(loc, scale_tril) is dist.MultivariateNormal(loc, scale_tril, value)
+
+
+def _random_scale_tril(shape):
+    data = torch.randn(shape)
+    return torch.distributions.transform_to(torch.distributions.constraints.lower_cholesky)(data)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_mvn_density(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.function(reals(3), reals(3, 3), reals(3), reals())
+    def mvn(loc, scale_tril, value):
+        return torch.distributions.MultivariateNormal(loc, scale_tril=scale_tril).log_prob(value)
+
+    check_funsor(mvn, {'loc': reals(3), 'scale_tril': reals(3, 3), 'value': reals(3)}, reals())
+
+    loc = Tensor(torch.randn(batch_shape + (3,)), inputs)
+    scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
+    value = Tensor(torch.randn(batch_shape + (3,)), inputs)
+    expected = mvn(loc, scale_tril, value)
+    check_funsor(expected, inputs, reals())
+
+    actual = dist.MultivariateNormal(loc, scale_tril, value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_mvn_gaussian(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape + (3,)), inputs)
+    scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
+    value = Tensor(torch.randn(batch_shape + (3,)), inputs)
+
+    expected = dist.MultivariateNormal(loc, scale_tril, value)
+    assert isinstance(expected, Tensor)
+    check_funsor(expected, inputs, reals())
+
+    g = dist.MultivariateNormal(loc, scale_tril)
+    assert isinstance(g, Gaussian)
+    actual = g(value=value)
+    check_funsor(actual, inputs, reals())
+
+    assert_close(actual, expected, atol=1e-3, rtol=1e-4)
