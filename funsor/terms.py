@@ -16,7 +16,7 @@ import functools
 import itertools
 import numbers
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict
+from collections import OrderedDict, Hashable
 from weakref import WeakValueDictionary
 
 from six import add_metaclass, integer_types
@@ -35,11 +35,12 @@ def reflect(cls, *args):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
     """
-    if args in cls._cons_cache:
-        return cls._cons_cache[args]
+    cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+    if cache_key in cls._cons_cache:
+        return cls._cons_cache[cache_key]
     result = super(FunsorMeta, cls).__call__(*args)
     result._ast_values = args
-    cls._cons_cache[args] = result
+    cls._cons_cache[cache_key] = result
     return result
 
 

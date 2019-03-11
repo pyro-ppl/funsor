@@ -127,6 +127,28 @@ def logaddexp(x, y):
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
+@Op
+def safesub(x, y):
+    if isinstance(y, Number):
+        return sub(x, y)
+    assert isinstance(y, torch.Tensor)
+    try:
+        return x + -y.clamp(max=torch.finfo(y.dtype).max)
+    except TypeError:
+        return x + -y.clamp(max=torch.iinfo(y.dtype).max)
+
+
+@Op
+def safediv(x, y):
+    if isinstance(y, Number):
+        return truediv(x, y)
+    assert isinstance(y, torch.Tensor)
+    try:
+        return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
+    except TypeError:
+        return x * y.reciprocal().clamp(max=torch.iinfo(y.dtype).max)
+
+
 # just a placeholder
 @Op
 def marginal(x, y):
@@ -137,17 +159,6 @@ def marginal(x, y):
 @Op
 def sample(x, y):
     raise ValueError
-
-
-@Op
-def reciprocal(x):
-    if isinstance(x, Number):
-        return 1. / x
-    if isinstance(x, torch.Tensor):
-        result = x.reciprocal()
-        result.clamp_(max=torch.finfo(result.dtype).max)
-        return result
-    raise ValueError("No reciprocal for type {}".format(type(x)))
 
 
 REDUCE_OP_TO_TORCH = {
@@ -172,8 +183,8 @@ DISTRIBUTIVE_OPS = frozenset([
 
 
 PRODUCT_INVERSES = {
-    mul: reciprocal,
-    add: neg,
+    mul: safediv,
+    add: safesub,
 }
 
 
@@ -204,7 +215,8 @@ __all__ = [
     'neg',
     'or_',
     'pow',
-    'reciprocal',
+    'safediv',
+    'safesub',
     'sample',
     'sqrt',
     'sub',
