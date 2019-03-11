@@ -120,6 +120,22 @@ def logaddexp(x, y):
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
+@Op
+def safesub(x, y):
+    if isinstance(y, Number):
+        return sub(x, y)
+    assert isinstance(y, torch.Tensor)
+    return x + -y.clamp(max=torch.finfo(y.dtype).max)
+
+
+@Op
+def safediv(x, y):
+    if isinstance(y, Number):
+        return truediv(x, y)
+    assert isinstance(y, torch.Tensor)
+    return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
+
+
 # just a placeholder
 @Op
 def marginal(x, y):
@@ -154,8 +170,8 @@ DISTRIBUTIVE_OPS = frozenset([
 
 
 PRODUCT_INVERSES = {
-    mul: truediv,
-    add: sub,
+    mul: safediv,
+    add: safesub,
 }
 
 

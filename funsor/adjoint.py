@@ -85,4 +85,4 @@ def adjoint_reduce(out_adj, out, op, arg, reduced_vars):
     if op is ops.logaddexp:
         return {arg: out_adj + (arg * 0.)}  # XXX hack to simulate "expand"
     elif op is ops.add:  # plate!
-        return {arg: out_adj + (out - arg)}
+        return {arg: out_adj + Binary(ops.safesub, out, arg)}
