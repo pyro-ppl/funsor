@@ -21,8 +21,8 @@ def test_eager_subs_ground():
     point1 = Tensor(torch.randn(3))
     point2 = Tensor(torch.randn(3))
     d = Delta('foo', point1)
-    check_funsor(d(foo=point1), {}, reals(3), torch.zeros(3))
-    check_funsor(d(foo=point2), {}, reals(3), torch.tensor(-float('inf')).expand((3,)))
+    check_funsor(d(foo=point1), {}, reals(), torch.tensor(0.))
+    check_funsor(d(foo=point2), {}, reals(), torch.tensor(-float('inf')))
 
 
 def test_add_delta_funsor():
