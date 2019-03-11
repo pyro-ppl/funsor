@@ -13,10 +13,19 @@ from funsor.torch import Tensor
 
 class JointMeta(FunsorMeta):
     """
-    Wrapper to fill in defaults.
+    Wrapper to fill in defaults and move log_density terms into gaussian.
     """
     def __call__(cls, gaussian=0, deltas=()):
         gaussian = to_funsor(gaussian)
+
+        # Move all log_density terms into gaussian part.
+        deltas = list(deltas)
+        for i, d in enumerate(deltas):
+            if d.log_density is not Number(0):
+                gaussian += d.log_density
+                deltas[i] = Delta(d.name, d.point)
+        deltas = tuple(deltas)
+
         return super(Joint, cls).__call__(gaussian, deltas)
 
 
@@ -45,6 +54,7 @@ class Joint(Funsor):
         for x in self.deltas:
             x = x.eager_subs(subs)
             if isinstance(x, Delta):
+                assert x.log_density is Number(0)
                 deltas.append(x)
             elif isinstance(x, (Number, Tensor)):
                 gaussian += x
