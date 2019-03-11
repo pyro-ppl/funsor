@@ -6,7 +6,7 @@ import numpy as np
 from six import add_metaclass, integer_types
 
 import funsor.ops as ops
-from funsor.domains import Domain, bint, find_domain, reals
+from funsor.domains import Domain, bint, find_domain
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, to_funsor
 
 
@@ -139,6 +139,7 @@ class Array(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
+        subs = {k: materialize(v) for k, v in subs if k in self.inputs}
         if not subs:
             return self
 

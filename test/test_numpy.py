@@ -47,14 +47,14 @@ def test_indexing():
 
 
 def test_advanced_indexing_shape():
-    I, J, M, N = 4, 5, 2, 3
-    x = Array(np.random.normal(size=(4, 5)), OrderedDict([
+    I, J, M, N = 4, 4, 2, 3
+    x = Array(np.random.normal(size=(I, J)), OrderedDict([
         ('i', bint(I)),
         ('j', bint(J)),
     ]))
-    m = Array(np.array([2, 3]), OrderedDict([('m', bint(M))]), 4)
-    n = Array(np.array([0, 1, 1]), OrderedDict([('n', bint(N))]), 5)
-    assert x.data.shape == (4, 5)
+    m = Array(np.array([2, 3]), OrderedDict([('m', bint(M))]), I)
+    n = Array(np.array([0, 1, 1]), OrderedDict([('n', bint(N))]), J)
+    assert x.data.shape == (I, J)
 
     check_funsor(x(i=m), {'j': bint(J), 'm': bint(M)}, reals())
     check_funsor(x(i=m, j=n), {'m': bint(M), 'n': bint(N)}, reals())

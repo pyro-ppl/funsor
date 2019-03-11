@@ -31,15 +31,11 @@ from funsor.registry import KeyedRegistry
 from funsor.six import getargspec, singledispatch
 
 
-def _cons_cache_key(*args):
-    return tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
-
-
 def reflect(cls, *args):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
     """
-    cache_key = _cons_cache_key(*args)
+    cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
     result = super(FunsorMeta, cls).__call__(*args)
