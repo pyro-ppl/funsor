@@ -6,7 +6,6 @@ from numbers import Number
 import operator
 
 import numpy as np
-from funsor.six import singledispatch
 import torch
 
 _builtin_abs = abs
@@ -52,38 +51,28 @@ xor = AssociativeOp(operator.xor)
 
 
 @Op
-@singledispatch
 def abs(x):
-    return _builtin_abs(x)
+    return _builtin_abs(x) if isinstance(x, Number) else x.abs()
 
 
 @Op
-@abs.register(torch.Tensor)
-@abs.register(np.ndarray)
-@abs.register(np.generic)
-def abs(x):
-    return np.abs(x)
-
-
-@Op
-@singledispatch
 def sqrt(x):
-    return np.sqrt(x)
+    return np.sqrt(x) if isinstance(x, Number) else x.sqrt()
 
 
 @Op
 def exp(x):
-    return np.exp(x)
+    return np.exp(x) if isinstance(x, Number) else x.exp()
 
 
 @Op
 def log(x):
-    return np.log(x)
+    return np.log(x) if isinstance(x, Number) else x.log()
 
 
 @Op
 def log1p(x):
-    return np.log1p(x)
+    return np.log1p(x) if isinstance(x, Number) else x.log1p()
 
 
 @Op
@@ -112,7 +101,17 @@ def min(x, y):
 
 @AssociativeOp
 def max(x, y):
-    return np.max(x, y)
+    if hasattr(x, '__max__'):
+        return x.__max__(y)
+    if hasattr(y, '__max__'):
+        return y.__max__(x)
+    if isinstance(x, torch.Tensor):
+        if isinstance(y, torch.Tensor):
+            return torch.max(x, y)
+        return x.clamp(min=y)
+    if isinstance(y, torch.Tensor):
+        return y.clamp(min=x)
+    return _builtin_max(x, y)
 
 
 @AssociativeOp
@@ -152,17 +151,6 @@ REDUCE_OP_TO_TORCH = {
     logaddexp: torch.logsumexp,
     min: torch.min,
     max: torch.max,
-}
-
-
-REDUCE_OP_TO_NUMPY = {
-    add: np.sum,
-    mul: np.prod,
-    and_: np.all,
-    or_: np.any,
-    logaddexp: np.logaddexp,
-    min: np.min,
-    max: np.max,
 }
 
 

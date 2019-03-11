@@ -187,41 +187,8 @@ class Array(Funsor):
             index.append(np.arange(size).reshape(
                 (-1,) + (1,) * offset_from_right))
 
-        # Due to dtype promotion some index data might have np.float values
         data = self.data[tuple(index)]
         return Array(data, inputs, self.dtype)
-
-    def eager_unary(self, op):
-        return Array(op(self.data), self.inputs, self.dtype)
-
-    def eager_reduce(self, op, reduced_vars):
-        if op in ops.REDUCE_OP_TO_TORCH:
-            torch_op = ops.REDUCE_OP_TO_TORCH[op]
-            assert isinstance(reduced_vars, frozenset)
-            self_vars = frozenset(self.inputs)
-            reduced_vars = reduced_vars & self_vars
-            if reduced_vars == self_vars:
-                # Reduce all dims at once.
-                if op is ops.logaddexp:
-                    data = np.logaddexp.reduce(np.reshape(self.data, -1), 0)
-                    return Array(data, dtype=self.dtype)
-                return Array(torch_op(self.data), dtype=self.dtype)
-
-            # Reduce one dim at a time.
-            data = self.data
-            offset = 0
-            for k, domain in self.inputs.items():
-                if k in reduced_vars:
-                    assert not domain.shape
-                    data = torch_op(data, dim=offset)
-                    if op is ops.min or op is ops.max:
-                        data = data[0]
-                else:
-                    offset += 1
-            inputs = OrderedDict((k, v) for k, v in self.inputs.items()
-                                 if k not in reduced_vars)
-            return Array(data, inputs, self.dtype)
-        return super(Array, self).eager_reduce(op, reduced_vars)
 
 
 @eager.register(Binary, object, Array, Number)
