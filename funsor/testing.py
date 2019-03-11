@@ -7,6 +7,7 @@ from collections import OrderedDict, namedtuple
 
 import pytest
 import torch
+import opt_einsum
 from six.moves import reduce
 
 from funsor.domains import Domain, bint, reals
@@ -145,3 +146,36 @@ def random_gaussian(inputs):
     prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
     precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
     return Gaussian(log_density, loc, precision, inputs)
+
+
+def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
+
+    assert num_obs_plates >= num_hidden_plates
+    t0 = num_obs_plates + 1
+
+    obs_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_obs_plates))
+    hidden_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_hidden_plates))
+
+    inputs = [str(opt_einsum.get_symbol(t0))]
+    for t in range(t0, num_steps+t0):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
+        inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
+    equation = ",".join(inputs) + "->"
+    return (equation, ''.join(set(obs_plates + hidden_plates)))
+
+
+def make_chain_einsum(num_steps):
+    inputs = [str(opt_einsum.get_symbol(0))]
+    for t in range(num_steps):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)))
+    equation = ",".join(inputs) + "->"
+    return equation
+
+
+def make_hmm_einsum(num_steps):
+    inputs = [str(opt_einsum.get_symbol(0))]
+    for t in range(num_steps):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)))
+        inputs.append(str(opt_einsum.get_symbol(t+1)))
+    equation = ",".join(inputs) + "->"
+    return equation

@@ -44,7 +44,7 @@ class Finitary(Funsor):
 
 @eager.register(Finitary, AssociativeOp, tuple)
 def eager_finitary(op, operands):
-    return reduce(lambda lhs, rhs: Binary(op, lhs, rhs), operands)
+    return reduce(op, operands)
 
 
 def associate(cls, *args):
@@ -211,6 +211,22 @@ def optimize_reduction(op, arg, reduced_vars):
     return path_end
 
 
+def desugar(cls, *args):
+    result = _desugar(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
+    return result
+
+
+_desugar = KeyedRegistry(default=lambda *args: None)
+desugar.register = _desugar.register
+
+
+@desugar.register(Finitary, AssociativeOp, tuple)
+def desugar_finitary(op, operands):
+    return reduce(op, operands)
+
+
 def apply_optimizer(x):
 
     with interpretation(associate):
@@ -220,6 +236,9 @@ def apply_optimizer(x):
         x = reinterpret(x)
 
     with interpretation(optimize):
+        x = reinterpret(x)
+
+    with interpretation(desugar):
         x = reinterpret(x)
 
     return reinterpret(x)  # use previous interpretation
