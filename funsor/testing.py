@@ -10,7 +10,7 @@ import pytest
 import torch
 from six.moves import reduce
 
-from funsor.domains import Domain, bint
+from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.numpy import Array
 from funsor.terms import Funsor
@@ -118,7 +118,7 @@ def assert_equiv(x, y):
     check_funsor(x, y.inputs, y.output, y.data)
 
 
-def random_tensor(inputs, output):
+def random_tensor(inputs, output=reals()):
     """
     Creates a random :class:`funsor.torch.Tensor` with given inputs and output.
     """

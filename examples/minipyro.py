@@ -7,6 +7,7 @@ import torch
 import funsor
 import funsor.distributions as dist
 import funsor.minipyro as pyro
+import funsor.ops as ops
 
 
 def main(args):
@@ -57,7 +58,7 @@ def main(args):
                        if node["type"] == "sample")
 
         # integrate out deferred variables
-        log_prob = log_prob.logsumexp()
+        log_prob = log_prob.reduce(ops.logaddexp)
 
         loss = -funsor.eval(log_prob)  # does all the work
 

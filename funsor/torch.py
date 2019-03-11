@@ -194,6 +194,13 @@ class Tensor(Funsor):
         return Tensor(data, inputs, self.dtype)
 
     def eager_unary(self, op):
+        if op in ops.REDUCE_OP_TO_TORCH:
+            batch_dim = len(self.data.shape) - len(self.output.shape)
+            data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
+            data = ops.REDUCE_OP_TO_TORCH[op](data, -1)
+            if op is ops.min or op is ops.max:
+                data = data[0]
+            return Tensor(data, self.inputs, self.dtype)
         return Tensor(op(self.data), self.inputs, self.dtype)
 
     def eager_reduce(self, op, reduced_vars):
