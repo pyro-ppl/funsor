@@ -6,6 +6,7 @@ from collections import OrderedDict
 import pytest
 import torch
 
+import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.terms import Number
@@ -36,10 +37,10 @@ def id_from_inputs(inputs):
     ('(g1 + g2)(i=i0)', Gaussian),
     ('(g1 + g2)(x=x0, y=y0)', Tensor),
     ('(g2 + g1)(x=x0, y=y0)', Tensor),
-    ('g1.logsumexp("x")', Tensor),
-    ('(g1 + g2).logsumexp("x")', Gaussian),
-    ('(g1 + g2).logsumexp("y")', Gaussian),
-    ('(g1 + g2).logsumexp(frozenset(["x", "y"]))', Tensor),
+    ('g1.reduce(ops.logaddexp, "x")', Tensor),
+    ('(g1 + g2).reduce(ops.logaddexp, "x")', Gaussian),
+    ('(g1 + g2).reduce(ops.logaddexp, "y")', Gaussian),
+    ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
 ])
 def test_smoke(expr, expected_type):
     g1 = Gaussian(
@@ -228,6 +229,6 @@ def test_logsumexp(int_inputs, real_inputs):
     inputs.update(real_inputs)
 
     g = random_gaussian(inputs)
-    g_xy = g.logsumexp(frozenset(['x', 'y']))
-    assert_close(g_xy, g.logsumexp('x').logsumexp('y'), atol=1e-4, rtol=None)
-    assert_close(g_xy, g.logsumexp('y').logsumexp('x'), atol=1e-4, rtol=None)
+    g_xy = g.reduce(ops.logaddexp, frozenset(['x', 'y']))
+    assert_close(g_xy, g.reduce(ops.logaddexp, 'x').reduce(ops.logaddexp, 'y'), atol=1e-4, rtol=None)
+    assert_close(g_xy, g.reduce(ops.logaddexp, 'y').reduce(ops.logaddexp, 'x'), atol=1e-4, rtol=None)

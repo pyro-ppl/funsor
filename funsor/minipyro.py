@@ -387,14 +387,14 @@ def elbo(model, guide, *args, **kwargs):
         guide(*args, **kwargs)
         # FIXME This is only correct for reparametrized sites.
         # FIXME do not marginalize; instead sample.
-        q = guide_joint.log_prob.logsumexp()
+        q = guide_joint.log_prob.reduce(ops.logaddexp)
     tr = guide_joint.samples
     tr.update(funsor.backward(ops.sample, q))  # force deferred samples?
 
     # replay model against guide
     with log_joint() as model_joint, replay(guide_trace=tr):
         model(*args, **kwargs)
-        p = funsor.eval(model_joint.log_prob.logsumexp())
+        p = funsor.eval(model_joint.log_prob.reduce(ops.logaddexp))
 
     elbo = p - q
     return -elbo  # negate, for use as loss
