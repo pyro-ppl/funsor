@@ -9,7 +9,7 @@ import torch
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
-from funsor.ops import REDUCE_OP_TO_TORCH
+from funsor.torch import REDUCE_OP_TO_TORCH
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import Tensor, align_tensors, torch_einsum
@@ -190,7 +190,7 @@ def unary_eval(symbol, x):
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b')])
 @pytest.mark.parametrize('symbol', [
-    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
+    'abs', 'sqrt', 'exp', 'log', 'log1p',
 ])
 def test_unary(symbol, dims):
     sizes = {'a': 3, 'b': 4}
