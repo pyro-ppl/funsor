@@ -202,6 +202,8 @@ __all__ = [
     'neg',
     'or_',
     'pow',
+    'safediv',
+    'safesub',
     'sample',
     'sqrt',
     'sub',
