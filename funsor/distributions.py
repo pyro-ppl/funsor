@@ -198,11 +198,12 @@ def eager_normal(loc, scale, value):
 
     inputs, (loc, scale) = align_tensors(loc, scale)
     inputs.update(value.inputs)
+    discrete_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
-    log_density = -0.5 * math.log(2 * math.pi) - scale.log()
+    log_prob = -0.5 * math.log(2 * math.pi) - scale.log()
     loc = loc.unsqueeze(-1)
     precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
-    return Gaussian(log_density, loc, precision, inputs)
+    return Tensor(log_prob, discrete_inputs) + Gaussian(loc, precision, inputs)
 
 
 # Create a Gaussian from a noisy identity transform.
@@ -215,12 +216,13 @@ def eager_normal(loc, scale, value):
     inputs = loc.inputs.copy()
     inputs.update(scale.inputs)
     inputs.update(value.inputs)
+    discrete_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
-    log_density = -0.5 * math.log(2 * math.pi) - scale.data.log()
+    log_prob = -0.5 * math.log(2 * math.pi) - scale.data.log()
     loc = scale.data.new_zeros(scale.data.shape + (2,))
     p = scale.data.pow(-2)
     precision = torch.stack([p, -p, -p, p], -1).reshape(p.shape + (2, 2))
-    return Gaussian(log_density, loc, precision, inputs)
+    return Tensor(log_prob, discrete_inputs) + Gaussian(loc, precision, inputs)
 
 
 class MultivariateNormal(Distribution):
@@ -261,11 +263,12 @@ def eager_mvn(loc, scale_tril, value):
     dim, = loc.output.shape
     inputs, (loc, scale_tril) = align_tensors(loc, scale_tril)
     inputs.update(value.inputs)
+    discrete_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
-    log_density = -0.5 * dim * math.log(2 * math.pi) - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+    log_prob = -0.5 * dim * math.log(2 * math.pi) - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
     inv_scale_tril = torch.inverse(scale_tril)
     precision = torch.matmul(inv_scale_tril.transpose(-1, -2), inv_scale_tril)
-    return Gaussian(log_density, loc, precision, inputs)
+    return Tensor(log_prob, discrete_inputs) + Gaussian(loc, precision, inputs)
 
 
 __all__ = [

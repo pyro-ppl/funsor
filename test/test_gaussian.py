@@ -9,6 +9,7 @@ import torch
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
+from funsor.joint import Joint
 from funsor.terms import Number
 from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor

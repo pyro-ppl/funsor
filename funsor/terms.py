@@ -138,7 +138,7 @@ class Funsor(object):
         return id(self)
 
     def __repr__(self):
-        return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_args)))
+        return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_values)))
 
     def __call__(self, *args, **kwargs):
         """

@@ -10,7 +10,7 @@ import funsor
 import funsor.distributions as dist
 from funsor.delta import Delta
 from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian
+from funsor.joint import Joint
 from funsor.terms import Variable
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import Tensor
@@ -132,7 +132,7 @@ def test_normal_gaussian_1(batch_shape):
     check_funsor(expected, inputs, reals())
 
     g = dist.Normal(loc, scale)
-    assert isinstance(g, Gaussian)
+    assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
 
@@ -153,7 +153,7 @@ def test_normal_gaussian_2(batch_shape):
     check_funsor(expected, inputs, reals())
 
     g = dist.Normal(Variable('value', reals()), scale, loc)
-    assert isinstance(g, Gaussian)
+    assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
 
@@ -174,7 +174,7 @@ def test_normal_gaussian_3(batch_shape):
     check_funsor(expected, inputs, reals())
 
     g = dist.Normal(Variable('loc', reals()), scale)
-    assert isinstance(g, Gaussian)
+    assert isinstance(g, Joint)
     actual = g(loc=loc, value=value)
     check_funsor(actual, inputs, reals())
 
@@ -229,7 +229,7 @@ def test_mvn_gaussian(batch_shape):
     check_funsor(expected, inputs, reals())
 
     g = dist.MultivariateNormal(loc, scale_tril)
-    assert isinstance(g, Gaussian)
+    assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
 

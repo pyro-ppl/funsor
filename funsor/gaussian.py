@@ -185,7 +185,7 @@ class Gaussian(Funsor):
                        Tensor(self.precision, int_inputs)]
             tensors.extend(subs.values())
             inputs, tensors = align_tensors(*tensors)
-            batch_dim = tensors[0].dim()
+            batch_dim = self.loc.dim() - 1
             batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
             (loc, precision), values = tensors[:2], tensors[2:]
 
@@ -200,7 +200,9 @@ class Gaussian(Funsor):
 
             # Evaluate the non-normalized log density.
             result = -0.5 * _vmv(precision, value - loc)
-            return Tensor(result, inputs)
+            result = Tensor(result, inputs)
+            assert result.output == reals()
+            return result
 
         raise NotImplementedError('TODO implement partial substitution of real variables')
 
