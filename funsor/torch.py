@@ -433,6 +433,8 @@ def _exp(x):
 
 @Op.register(ops.log, torch.Tensor)
 def _log(x):
+    if x.dtype in (torch.uint8, torch.long):
+        x = x.float()
     return x.log()
 
 
