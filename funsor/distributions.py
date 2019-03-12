@@ -171,10 +171,13 @@ class Normal(Distribution):
     def _fill_defaults(loc, scale, value=None):
         loc = to_funsor(loc)
         scale = to_funsor(scale)
+        assert loc.output == reals()
+        assert scale.output == reals()
         if value is None:
             value = Variable('value', reals())
         else:
             value = to_funsor(value)
+        assert value.output == loc.output
         return loc, scale, value
 
     def __init__(self, loc, scale, value=None):
@@ -188,21 +191,11 @@ def eager_normal(loc, scale, value):
 
 # Create a Gaussian from a ground observation.
 @eager.register(Normal, Variable, Tensor, Tensor)
-def eager_normal(loc, scale, value):
-    assert loc.output == reals()
-    inputs, (scale, value) = align_tensors(scale, value)
-    inputs.update(loc.inputs)
-
-    log_density = -0.5 * math.log(2 * math.pi) - scale.log()
-    loc = value.unsqueeze(-1)
-    precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
-    return Gaussian(log_density, loc, precision, inputs)
-
-
-# Create a Gaussian from a ground observation.
 @eager.register(Normal, Tensor, Tensor, Variable)
 def eager_normal(loc, scale, value):
-    assert value.output == reals()
+    if isinstance(loc, Variable):
+        loc, value = value, loc
+
     inputs, (loc, scale) = align_tensors(loc, scale)
     inputs.update(value.inputs)
 
@@ -230,9 +223,55 @@ def eager_normal(loc, scale, value):
     return Gaussian(log_density, loc, precision, inputs)
 
 
+class MultivariateNormal(Distribution):
+    dist_class = dist.MultivariateNormal
+
+    @staticmethod
+    def _fill_defaults(loc, scale_tril, value=None):
+        loc = to_funsor(loc)
+        scale_tril = to_funsor(scale_tril)
+        assert loc.dtype == 'real'
+        assert scale_tril.dtype == 'real'
+        assert len(loc.output.shape) == 1
+        dim = loc.output.shape[0]
+        assert scale_tril.output.shape == (dim, dim)
+        if value is None:
+            value = Variable('value', reals(dim))
+        else:
+            value = to_funsor(value)
+        assert value.output == loc.output
+        return loc, scale_tril, value
+
+    def __init__(self, loc, scale_tril, value=None):
+        super(MultivariateNormal, self).__init__(loc, scale_tril, value)
+
+
+@eager.register(MultivariateNormal, Tensor, Tensor, Tensor)
+def eager_mvn(loc, scale_tril, value):
+    return MultivariateNormal.eager_log_prob(loc=loc, scale_tril=scale_tril, value=value)
+
+
+# Create a Gaussian from a ground observation.
+@eager.register(MultivariateNormal, Tensor, Tensor, Variable)
+@eager.register(MultivariateNormal, Variable, Tensor, Tensor)
+def eager_mvn(loc, scale_tril, value):
+    if isinstance(loc, Variable):
+        loc, value = value, loc
+
+    dim, = loc.output.shape
+    inputs, (loc, scale_tril) = align_tensors(loc, scale_tril)
+    inputs.update(value.inputs)
+
+    log_density = -0.5 * dim * math.log(2 * math.pi) - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+    inv_scale_tril = torch.inverse(scale_tril)
+    precision = torch.matmul(inv_scale_tril.transpose(-1, -2), inv_scale_tril)
+    return Gaussian(log_density, loc, precision, inputs)
+
+
 __all__ = [
     'Categorical',
     'Delta',
     'Distribution',
+    'MultivariateNormal',
     'Normal',
 ]

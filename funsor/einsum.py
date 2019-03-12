@@ -13,7 +13,7 @@ def naive_einsum(eqn, *terms, **kwargs):
     backend = kwargs.pop('backend', 'torch')
     if backend == 'torch':
         sum_op, prod_op = ops.add, ops.mul
-    elif backend == 'pyro.ops.einsum.torch_log':
+    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
         sum_op, prod_op = ops.logaddexp, ops.add
     else:
         raise ValueError("{} backend not implemented".format(backend))
@@ -43,7 +43,7 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
     backend = kwargs.pop('backend', 'torch')
     if backend == 'torch':
         sum_op, prod_op = ops.add, ops.mul
-    elif backend == 'pyro.ops.einsum.torch_log':
+    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
         sum_op, prod_op = ops.logaddexp, ops.add
     else:
         raise ValueError("{} backend not implemented".format(backend))

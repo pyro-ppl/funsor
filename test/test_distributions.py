@@ -179,3 +179,58 @@ def test_normal_gaussian_3(batch_shape):
     check_funsor(actual, inputs, reals())
 
     assert_close(actual, expected, atol=1e-4)
+
+
+def test_mvn_defaults():
+    loc = Variable('loc', reals(3))
+    scale_tril = Variable('scale', reals(3, 3))
+    value = Variable('value', reals(3))
+    assert dist.MultivariateNormal(loc, scale_tril) is dist.MultivariateNormal(loc, scale_tril, value)
+
+
+def _random_scale_tril(shape):
+    data = torch.randn(shape)
+    return torch.distributions.transform_to(torch.distributions.constraints.lower_cholesky)(data)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_mvn_density(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.function(reals(3), reals(3, 3), reals(3), reals())
+    def mvn(loc, scale_tril, value):
+        return torch.distributions.MultivariateNormal(loc, scale_tril=scale_tril).log_prob(value)
+
+    check_funsor(mvn, {'loc': reals(3), 'scale_tril': reals(3, 3), 'value': reals(3)}, reals())
+
+    loc = Tensor(torch.randn(batch_shape + (3,)), inputs)
+    scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
+    value = Tensor(torch.randn(batch_shape + (3,)), inputs)
+    expected = mvn(loc, scale_tril, value)
+    check_funsor(expected, inputs, reals())
+
+    actual = dist.MultivariateNormal(loc, scale_tril, value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_mvn_gaussian(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape + (3,)), inputs)
+    scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
+    value = Tensor(torch.randn(batch_shape + (3,)), inputs)
+
+    expected = dist.MultivariateNormal(loc, scale_tril, value)
+    assert isinstance(expected, Tensor)
+    check_funsor(expected, inputs, reals())
+
+    g = dist.MultivariateNormal(loc, scale_tril)
+    assert isinstance(g, Gaussian)
+    actual = g(value=value)
+    check_funsor(actual, inputs, reals())
+
+    assert_close(actual, expected, atol=1e-3, rtol=1e-4)
