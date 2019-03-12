@@ -8,7 +8,7 @@ import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.gaussian import Gaussian
-from funsor.ops import AddOp
+from funsor.ops import AddOp, Op
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, eager, to_funsor
 from funsor.torch import Tensor
 
@@ -72,7 +72,7 @@ class Joint(Funsor):
         if op is ops.logaddexp:
             # Integrate out delayed discrete variables.
             discrete_vars = reduced_vars.intersection(self.discrete.inputs)
-            mixture_params = frozenset(self.gaussian.inputs).union(x.inputs for x in self.deltas)
+            mixture_params = frozenset(self.gaussian.inputs).union(x.point.inputs for x in self.deltas)
             lazy_vars = discrete_vars & mixture_params  # Mixtures must remain lazy.
             discrete_vars -= mixture_params
             discrete = self.discrete.reduce(op, discrete_vars)
@@ -85,7 +85,8 @@ class Joint(Funsor):
             # Integrate out delayed degenerate variables, i.e. drop them.
             deltas = tuple(d for d in self.deltas if d.name not in reduced_vars)
 
-            return Joint(deltas, discrete, gaussian).reduce(ops.logaddexp, lazy_vars)
+            assert not lazy_vars
+            return (Joint(deltas, discrete) + gaussian).reduce(ops.logaddexp, lazy_vars)
 
         if op is ops.add:
             raise NotImplementedError('TODO product-reduce along a plate dimension')
@@ -147,8 +148,12 @@ def eager_add(op, joint, other):
     # Update with a delayed gaussian random variable.
     subs = tuple((d.name, d.point) for d in joint.deltas if d in other.inputs)
     if subs:
-        return joint + other.eager_subs(subs)
-    return Joint(joint.deltas, joint.discrete, joint.gaussian + other)
+        other = other.eager_subs(subs)
+    if joint.gaussian is not Number(0):
+        other = joint.gaussian + other
+    if not isinstance(other, Gaussian):
+        return Joint(joint.deltas, joint.discrete) + other
+    return Joint(joint.deltas, joint.discrete, other)
 
 
 @eager.register(Binary, AddOp, Joint, Binary)
@@ -207,6 +212,12 @@ def eager_add(op, gaussian, discrete):
 @eager.register(Binary, AddOp, (Number, Tensor), Gaussian)
 def eager_add(op, discrete, gaussian):
     return Joint(discrete=discrete, gaussian=gaussian)
+
+
+@eager.register(Binary, Op, Gaussian, (Number, Tensor))
+def eager_binary(op, gaussian, discrete):
+    if op is ops.sub:
+        return Joint(discrete=-discrete, gaussian=gaussian)
 
 
 __all__ = [

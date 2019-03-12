@@ -217,11 +217,12 @@ class Gaussian(Funsor):
                 return None  # defer to default implementation
 
             inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in reduced_reals)
+            int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
             if reduced_reals == real_vars:
                 dim = self.loc.size(-1)
                 log_det_term = _log_det_tril(torch.cholesky(self.precision))
                 data = log_det_term - 0.5 * math.log(2 * math.pi) * dim
-                result = Tensor(data, inputs)
+                result = Tensor(data, int_inputs)
             else:
                 offsets, _ = _compute_offsets(self.inputs)
                 index = []
@@ -239,7 +240,7 @@ class Gaussian(Funsor):
                 precision = torch.matmul(inv_scale_tril, inv_scale_tril.transpose(-1, -2))
                 reduced_dim = sum(self.inputs[k].num_elements for k in reduced_reals)
                 log_det_term = _log_det_tril(scale_tril) - _log_det_tril(self_scale_tril)
-                log_prob = Tensor(log_det_term - 0.5 * math.log(2 * math.pi) * reduced_dim, inputs)
+                log_prob = Tensor(log_det_term - 0.5 * math.log(2 * math.pi) * reduced_dim, int_inputs)
                 result = log_prob + Gaussian(loc, precision, inputs)
 
             return result.reduce(ops.logaddexp, reduced_ints)
@@ -259,6 +260,7 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     # Align data.
     inputs = lhs.inputs.copy()
     inputs.update(rhs.inputs)
+    int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
     lhs_loc, lhs_precision = align_gaussian(inputs, lhs)
     rhs_loc, rhs_precision = align_gaussian(inputs, rhs)
 
@@ -268,7 +270,7 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     scale_tril = torch.inverse(torch.cholesky(precision))
     loc = _mv(scale_tril.transpose(-1, -2), _mv(scale_tril, precision_loc))
     quadratic_term = _vmv(lhs_precision, loc - lhs_loc) + _vmv(rhs_precision, loc - rhs_loc)
-    likelihood = Tensor(-0.5 * quadratic_term, inputs)
+    likelihood = Tensor(-0.5 * quadratic_term, int_inputs)
     return likelihood + Gaussian(loc, precision, inputs)
 
 

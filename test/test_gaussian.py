@@ -229,5 +229,5 @@ def test_logsumexp(int_inputs, real_inputs):
 
     g = random_gaussian(inputs)
     g_xy = g.reduce(ops.logaddexp, frozenset(['x', 'y']))
-    assert_close(g_xy, g.reduce(ops.logaddexp, 'x').reduce(ops.logaddexp, 'y'), atol=1e-4, rtol=None)
-    assert_close(g_xy, g.reduce(ops.logaddexp, 'y').reduce(ops.logaddexp, 'x'), atol=1e-4, rtol=None)
+    assert_close(g_xy, g.reduce(ops.logaddexp, 'x').reduce(ops.logaddexp, 'y'), atol=1e-3, rtol=None)
+    assert_close(g_xy, g.reduce(ops.logaddexp, 'y').reduce(ops.logaddexp, 'x'), atol=1e-3, rtol=None)

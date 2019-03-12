@@ -6,13 +6,14 @@ import operator
 from collections import OrderedDict, namedtuple
 
 import numpy as np
+import opt_einsum
 import pytest
 import torch
-import opt_einsum
 from six.moves import reduce
 
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
+from funsor.joint import Joint
 from funsor.numpy import Array
 from funsor.terms import Funsor
 from funsor.torch import Tensor
@@ -48,6 +49,14 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     elif isinstance(actual, Gaussian):
         assert_close(actual.loc, expected.loc, atol=atol, rtol=rtol)
         assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)
+    elif isinstance(actual, Joint):
+        actual_deltas = {d.name: d.point for d in actual.deltas}
+        expected_deltas = {d.name: d.point for d in expected.deltas}
+        assert set(actual_deltas) == set(expected_deltas)
+        for name, actual_point in actual_deltas.items():
+            assert_close(actual_point, expected_deltas[name])
+        assert_close(actual.discrete, expected.discrete, atol=atol, rtol=rtol)
+        assert_close(actual.gaussian, expected.gaussian, atol=atol, rtol=rtol)
     elif isinstance(actual, torch.Tensor):
         assert actual.dtype == expected.dtype, msg
         if actual.dtype in (torch.long, torch.uint8):
