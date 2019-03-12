@@ -53,9 +53,6 @@ class Joint(Funsor):
         assert isinstance(gaussian, (Number, Tensor, Gaussian))
         discrete = self.discrete.eager_subs(subs)
         gaussian = self.gaussian.eager_subs(subs)
-        if isinstance(gaussian, (Number, Tensor)) and gaussian is not Number(0):
-            discrete += gaussian
-            gaussian = Number(0)
         deltas = []
         for x in self.deltas:
             x = x.eager_subs(subs)
@@ -66,13 +63,13 @@ class Joint(Funsor):
             else:
                 raise ValueError('Cannot substitute {}'.format(x))
         deltas = tuple(deltas)
-        return Joint(deltas, discrete, gaussian)
+        return Joint(deltas, discrete) + gaussian
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
             # Integrate out delayed discrete variables.
             discrete_vars = reduced_vars.intersection(self.discrete.inputs)
-            mixture_params = frozenset(self.gaussian.inputs).union(x.point.inputs for x in self.deltas)
+            mixture_params = frozenset(self.gaussian.inputs).union(*(x.point.inputs for x in self.deltas))
             lazy_vars = discrete_vars & mixture_params  # Mixtures must remain lazy.
             discrete_vars -= mixture_params
             discrete = self.discrete.reduce(op, discrete_vars)
@@ -96,6 +93,7 @@ class Joint(Funsor):
 
 @eager.register(Joint, tuple, Funsor, Funsor)
 def eager_joint(deltas, discrete, gaussian):
+    # Demote a Joint to a simpler elementart funsor.
     if not deltas:
         if gaussian is Number(0):
             return discrete
@@ -126,10 +124,10 @@ def eager_add(op, joint, other):
 def eager_add(op, joint, delta):
     # Update with a degenerate distribution, typically a monte carlo sample.
     if delta.name in joint.inputs:
-        joint = joint.eager_subs((delta.name, delta.point))
+        joint = joint.eager_subs(((delta.name, delta.point),))
     for d in joint.deltas:
         if d.name in delta.inputs:
-            delta = delta.eager_subs((d.name, d.point))
+            delta = delta.eager_subs(((d.name, d.point),))
     deltas = joint.deltas + (delta,)
     return Joint(deltas, joint.discrete, joint.gaussian)
 
@@ -190,13 +188,19 @@ def eager_add(op, lhs, rhs):
 
 @eager.register(Binary, AddOp, Delta, (Number, Tensor, Gaussian))
 def eager_add(op, delta, other):
-    if delta.name in other:
-        other = other.eager_subs((delta.name, delta.point))
+    if delta.name in other.inputs:
+        other = other.eager_subs(((delta.name, delta.point),))
         assert isinstance(other, (Number, Tensor, Gaussian))
     if isinstance(other, (Number, Tensor)):
         return Joint((delta,), discrete=other)
     else:
         return Joint((delta,), gaussian=other)
+
+
+@eager.register(Binary, Op, Delta, (Number, Tensor))
+def eager_binary(op, delta, other):
+    if op is ops.sub:
+        return delta + -other
 
 
 @eager.register(Binary, AddOp, (Number, Tensor, Gaussian), Delta)

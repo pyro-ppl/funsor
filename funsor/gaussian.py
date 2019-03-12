@@ -24,7 +24,7 @@ def _issubshape(subshape, supershape):
 
 
 def _log_det_tril(x):
-    return x.diagonal(dim1=-1, dim2=-2).log().sum()
+    return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
 
 
 def _mv(mat, vec):
