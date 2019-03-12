@@ -443,7 +443,7 @@ def _log1p(x):
     return x.log1p()
 
 
-@Op.register(ops.pow, Number, torch.Tensor)
+@Op.register(ops.pow, object, torch.Tensor)
 def _pow(x, y):
     result = x ** y
     # work around shape bug https://github.com/pytorch/pytorch/issues/16685
@@ -451,7 +451,7 @@ def _pow(x, y):
 
 
 @Op.register(ops.pow, torch.Tensor, torch.Tensor)
-@Op.register(ops.pow, torch.Tensor, Number)
+@Op.register(ops.pow, torch.Tensor, object)
 def _pow(x, y):
     return x ** y
 
