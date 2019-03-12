@@ -1,14 +1,11 @@
 from __future__ import absolute_import, division, print_function
 
-import functools
-from collections import namedtuple
 from numbers import Number
 import operator
 
 import numpy as np
+from multipledispatch import Dispatcher
 
-from funsor.registry import KeyedRegistry
-from funsor.six import getargspec
 
 _builtin_abs = abs
 _builtin_max = max
@@ -16,30 +13,16 @@ _builtin_min = min
 _builtin_pow = pow
 
 
-class Op(namedtuple('Op', ['fn'])):
-    keyed_registry = KeyedRegistry()
-
-    def __new__(cls, fn):
-        result = super(Op, cls).__new__(cls, fn)
-        # register as default op impl for object args
-        functools.update_wrapper(result, fn)
-        args, vargs, kwargs, default = getargspec(fn)
-        assert not vargs
-        assert not kwargs
-        default_signature = (object,) * len(args)
-        cls.keyed_registry.register_impl(result, lambda *args: fn(*args), *default_signature)
-        return result
-
-    def __call__(self, *args):
-        return self.keyed_registry(self, *args)
+class Op(Dispatcher):
+    def __init__(self, fn):
+        super(Op, self).__init__(fn.__name__)
+        # register as default operation
+        for nargs in (1, 2):
+            default_signature = (object,) * nargs
+            self.add(default_signature, fn)
 
     def __repr__(self):
         return self.__name__
-
-    @classmethod
-    def register(cls, op, *types):
-        assert isinstance(op, Op)
-        return cls.keyed_registry.register(op, *types)
 
 
 class AssociativeOp(Op):
@@ -70,7 +53,7 @@ def abs(x):
     return x.abs()
 
 
-@Op.register(abs, Number)
+@abs.register(Number)
 def _abs(x):
     return _builtin_abs(x)
 

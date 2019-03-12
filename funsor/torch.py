@@ -8,7 +8,7 @@ from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.ops import Op, AssociativeOp
+from funsor.ops import Op
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
@@ -416,84 +416,84 @@ def torch_einsum(equation, *operands):
 
 # Register Ops
 
-@Op.register(ops.abs, torch.Tensor)
+@ops.abs.register(torch.Tensor)
 def _abs(x):
     return x.abs()
 
 
-@Op.register(ops.sqrt, torch.Tensor)
+@ops.sqrt.register(torch.Tensor)
 def _sqrt(x):
     return x.sqrt()
 
 
-@Op.register(ops.exp, torch.Tensor)
+@ops.exp.register(torch.Tensor)
 def _exp(x):
     return x.exp()
 
 
-@Op.register(ops.log, torch.Tensor)
+@ops.log.register(torch.Tensor)
 def _log(x):
     if x.dtype in (torch.uint8, torch.long):
         x = x.float()
     return x.log()
 
 
-@Op.register(ops.log1p, torch.Tensor)
+@ops.log1p.register(torch.Tensor)
 def _log1p(x):
     return x.log1p()
 
 
-@Op.register(ops.pow, object, torch.Tensor)
+@ops.pow.register(object, torch.Tensor)
 def _pow(x, y):
     result = x ** y
     # work around shape bug https://github.com/pytorch/pytorch/issues/16685
     return result.reshape(y.shape)
 
 
-@Op.register(ops.pow, torch.Tensor, torch.Tensor)
-@Op.register(ops.pow, torch.Tensor, object)
+@ops.pow.register(torch.Tensor, torch.Tensor)
+@ops.pow.register(torch.Tensor, object)
 def _pow(x, y):
     return x ** y
 
 
-@AssociativeOp.register(ops.min, torch.Tensor, torch.Tensor)
+@ops.min.register(torch.Tensor, torch.Tensor)
 def _min(x, y):
     return torch.min(x, y)
 
 
-@AssociativeOp.register(ops.min, object, torch.Tensor)
+@ops.min.register(object, torch.Tensor)
 def _min(x, y):
     return y.clamp(max=x)
 
 
-@AssociativeOp.register(ops.min, torch.Tensor, object)
+@ops.min.register(torch.Tensor, object)
 def _min(x, y):
     return x.clamp(max=y)
 
 
-@AssociativeOp.register(ops.max, torch.Tensor, torch.Tensor)
+@ops.max.register(torch.Tensor, torch.Tensor)
 def _max(x, y):
     return torch.max(x, y)
 
 
-@AssociativeOp.register(ops.max, object, torch.Tensor)
+@ops.max.register(object, torch.Tensor)
 def _max(x, y):
     return y.clamp(min=x)
 
 
-@AssociativeOp.register(ops.max, torch.Tensor, object)
+@ops.max.register(torch.Tensor, object)
 def _max(x, y):
     return x.clamp(min=y)
 
 
-@Op.register(ops.reciprocal, torch.Tensor)
+@ops.reciprocal.register(torch.Tensor)
 def _reciprocal(x):
     result = x.reciprocal()
     result.clamp_(max=torch.finfo(result.dtype).max)
     return result
 
 
-@Op.register(ops.safesub, object, torch.Tensor)
+@ops.safesub.register(object, torch.Tensor)
 def _safesub(x, y):
     try:
         return x + -y.clamp(max=torch.finfo(y.dtype).max)
@@ -501,7 +501,7 @@ def _safesub(x, y):
         return x + -y.clamp(max=torch.iinfo(y.dtype).max)
 
 
-@Op.register(ops.safediv, object, torch.Tensor)
+@ops.safediv.register(object, torch.Tensor)
 def _safediv(x, y):
     try:
         return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
