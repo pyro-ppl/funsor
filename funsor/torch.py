@@ -491,6 +491,22 @@ def _reciprocal(x):
     return result
 
 
+@Op.register(ops.safesub, object, torch.Tensor)
+def safesub(x, y):
+    try:
+        return x + -y.clamp(max=torch.finfo(y.dtype).max)
+    except TypeError:
+        return x + -y.clamp(max=torch.iinfo(y.dtype).max)
+
+
+@Op.register(ops.safesub, object, torch.Tensor)
+def safediv(x, y):
+    try:
+        return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
+    except TypeError:
+        return x * y.reciprocal().clamp(max=torch.iinfo(y.dtype).max)
+
+
 REDUCE_OP_TO_TORCH = {
     ops.add: torch.sum,
     ops.mul: torch.prod,
