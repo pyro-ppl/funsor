@@ -60,9 +60,11 @@ def main(args):
         loc, scale = encode(data)
         z = funsor.Variable('z', reals(20))
         q = dist.Normal(loc, scale, value=z)
+
         probs = decode(z)
-        p = dist.Bernoulli(probs)
-        elbo = (q + (p - q).exp()).reduce(ops.logaddexp)
+        p = dist.Bernoulli(probs, value=data)
+
+        elbo = (q.exp() * (p - q)).reduce(ops.add)
         loss = -elbo
         return loss.data
 
