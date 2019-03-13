@@ -185,6 +185,15 @@ class Funsor(object):
     def __nonzero__(self):
         return self.__bool__()
 
+    def __len__(self):
+        if not self.output.shape:
+            raise ValueError('Funsor with empty shape has no len()')
+        return self.output.shape[0]
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
     def item(self):
         if self.inputs or self.output.shape:
             raise ValueError(

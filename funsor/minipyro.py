@@ -389,7 +389,6 @@ def elbo(model, guide, *args, **kwargs):
         # FIXME do not marginalize; instead sample.
         q = guide_joint.log_prob.reduce(ops.logaddexp)
     tr = guide_joint.samples
-    tr.update(funsor.backward(ops.sample, q))  # force deferred samples?
 
     # replay model against guide
     with log_joint() as model_joint, replay(guide_trace=tr):

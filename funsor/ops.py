@@ -123,18 +123,6 @@ def safediv(x, y):
         return truediv(x, y)
 
 
-# just a placeholder
-@Op
-def marginal(x, y):
-    raise ValueError
-
-
-# just a placeholder
-@Op
-def sample(x, y):
-    raise ValueError
-
-
 @Op
 def reciprocal(x):
     if isinstance(x, Number):
@@ -176,7 +164,6 @@ __all__ = [
     'log',
     'log1p',
     'lt',
-    'marginal',
     'max',
     'min',
     'mul',
@@ -186,7 +173,6 @@ __all__ = [
     'pow',
     'safediv',
     'safesub',
-    'sample',
     'sqrt',
     'sub',
     'truediv',
