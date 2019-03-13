@@ -5,7 +5,7 @@ from multipledispatch import dispatch
 import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.gaussian import Gaussian
-from funsor.ops import AssociativeOp
+from funsor.ops import AssociativeOp, Op
 from funsor.registry import KeyedRegistry
 from funsor.terms import Binary, Funsor, Reduce, eager
 from funsor.torch import Tensor
@@ -38,7 +38,7 @@ approximate = KeyedRegistry(lambda *args: None)
 
 
 # Try to sample from lhs.
-@approximate.register(Binary, AssociativeOp, (Tensor, Gaussian), Funsor)
+@approximate.register(Binary, Op, (Tensor, Gaussian), Funsor)
 def approximate_binary(reduced_vars, op, lhs, rhs):
     if op is ops.add:
         return sample(lhs, reduced_vars) + rhs
