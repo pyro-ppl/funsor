@@ -27,6 +27,14 @@ class JointMeta(FunsorMeta):
 class Joint(Funsor):
     """
     Normal form for a joint log probability density funsor.
+
+    :param tuple deltas: A possibly-empty tuple of degenerate distributions
+        represented as :class:`~funsor.delta.Delta` funsors.
+    :param Funsor discrete: A joint discrete log mass function represented as
+        a :class:`~funsor.terms.Number` or `~funsor.terms.Tensor`.
+    :param Funsor gaussian: An optional joint multivariate normal distribution
+        a represented as :class:`~funsor.gaussian.Gaussian` or ``Number(0)`` if
+        absent.
     """
     def __init__(self, deltas, discrete, gaussian):
         assert isinstance(deltas, tuple)
