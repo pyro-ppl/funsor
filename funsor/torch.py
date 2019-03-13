@@ -234,6 +234,12 @@ class Tensor(Funsor):
             return Tensor(data, inputs, self.dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
+    def sample(self, sampled_vars):
+        sampled_vars = sampled_vars.intersection(self.inputs)
+        if not sampled_vars:
+            return self
+        raise NotImplementedError('TODO')
+
 
 @eager.register(Binary, Op, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):

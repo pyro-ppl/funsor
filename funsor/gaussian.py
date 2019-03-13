@@ -250,6 +250,13 @@ class Gaussian(Funsor):
 
         return None  # defer to default implementation
 
+    def sample(self, sampled_vars):
+        sampled_vars = sampled_vars.intersection(self.inputs)
+        if not sampled_vars:
+            return self
+        assert all(self.inputs[k].dtype == 'real' for k in sampled_vars)
+        raise NotImplementedError('TODO')
+
 
 @eager.register(Binary, AddOp, Gaussian, Gaussian)
 def eager_add_gaussian_gaussian(op, lhs, rhs):

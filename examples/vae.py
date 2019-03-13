@@ -55,7 +55,7 @@ def main(args):
     def decode(z):
         return decoder(z)
 
-    @funsor.interpretation(funsor.monte_carlo)
+    @funsor.interpreter.interpretation(funsor.interpreter.monte_carlo)
     def loss_function(data):
         loc, scale = encode(data)
         z = funsor.Variable('z', reals(20))

@@ -2,11 +2,13 @@ r"""
 Funsor interpretations
 ----------------------
 
-Funsor provides three basic interpretations.
+Funsor provides four basic interpretations.
 
 - ``reflect`` is completely lazy, even with respect to substitution.
 - ``lazy`` substitutes eagerly but performs ops lazily.
-- ``eager`` does everything eagerly.
+- ``eager`` performs all analytic computations eagerly, but does no approximation.
+- ``monte_carlo`` performs analytic computations eagerly, and falls back to
+    Monte Carlo sampling to compute intractable integrals.
 
 """
 
@@ -44,15 +46,15 @@ def reflect(cls, *args):
     return result
 
 
-_lazy = KeyedRegistry(default=lambda *args: None)
-_eager = KeyedRegistry(default=lambda *args: None)
-
-
 def lazy(cls, *args):
     result = _lazy(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
+
+
+_lazy = KeyedRegistry(default=lambda *args: None)
+lazy.register = _lazy.register
 
 
 def eager(cls, *args):
@@ -62,8 +64,19 @@ def eager(cls, *args):
     return result
 
 
-lazy.register = _lazy.register
+_eager = KeyedRegistry(default=lambda *args: None)
 eager.register = _eager.register
+
+
+def monte_carlo(cls, *args):
+    result = _monte_carlo(cls, *args)
+    if result is None:
+        result = eager(cls, *args)
+    return result
+
+
+_monte_carlo = KeyedRegistry(lambda *args: None)
+monte_carlo.register = _monte_carlo.register
 
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
@@ -222,6 +235,12 @@ class Funsor(object):
         assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
 
+    def sample(self, sampled_vars):
+        assert isinstance(sampled_vars, frozenset)
+        if sampled_vars.isdisjoint(self.inputs):
+            return self
+        raise NotImplementedError
+
     def align(self, names):
         """
         Align this funsor to match given ``names``.
@@ -274,6 +293,9 @@ class Funsor(object):
                 result = Reduce(op, result, frozenset(lazy_vars))
             return result
 
+        return None  # defer to default implementation
+
+    def monte_carlo_logsumexp(self, reduced_vars):
         return None  # defer to default implementation
 
     # The following methods conform to a standard array/tensor interface.
@@ -559,6 +581,19 @@ def eager_reduce(op, arg, reduced_vars):
     return arg.eager_reduce(op, reduced_vars)
 
 
+@monte_carlo.register(Reduce, AssociativeOp, Funsor, frozenset)
+def monte_carlo_reduce(op, arg, reduced_vars):
+    if op is ops.logaddexp:
+        # First try to perform integrals analytically.
+        result = arg.eager_reduce(op, reduced_vars)
+        # If any variables remain, try to monte carlo sample them.
+        if isinstance(result, Reduce) and result.op is ops.logaddexp:
+            result = result.arg.monte_carlo_logsumexp(result.reduced_vars)
+            return result
+
+    return None  # defer to default implementation
+
+
 class NumberMeta(FunsorMeta):
     """
     Wrapper to fill in default ``dtype``.
@@ -768,6 +803,7 @@ __all__ = [
     'Unary',
     'Variable',
     'eager',
+    'monte_carlo',
     'lazy',
     'of_shape',
     'reflect',

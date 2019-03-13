@@ -98,6 +98,9 @@ class Joint(Funsor):
 
         return None  # defer to default implementation
 
+    def monte_carlo_logsumexp(self, reduced_vars):
+        raise NotImplementedError('TODO sample variables')
+
 
 @eager.register(Joint, tuple, Funsor, Funsor)
 def eager_joint(deltas, discrete, gaussian):
