@@ -29,6 +29,10 @@ class AssociativeOp(Op):
     pass
 
 
+class AddOp(AssociativeOp):
+    pass
+
+
 eq = Op(operator.eq)
 ge = Op(operator.ge)
 getitem = Op(operator.getitem)
@@ -41,7 +45,7 @@ neg = Op(operator.neg)
 sub = Op(operator.sub)
 truediv = Op(operator.truediv)
 
-add = AssociativeOp(operator.add)
+add = AddOp(operator.add)
 and_ = AssociativeOp(operator.and_)
 mul = AssociativeOp(operator.mul)
 or_ = AssociativeOp(operator.or_)

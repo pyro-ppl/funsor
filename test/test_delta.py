@@ -44,7 +44,7 @@ def test_reduce():
 
 
 @pytest.mark.parametrize('log_density', [0, 1.234])
-def test_reduce(log_density):
+def test_reduce_density(log_density):
     point = Tensor(torch.randn(3))
     d = Delta('foo', point, log_density)
     # Note that log_density affects ground substitution but does not affect reduction.

@@ -92,6 +92,7 @@ class Tensor(Funsor):
         assert isinstance(data, torch.Tensor)
         assert isinstance(inputs, tuple)
         assert all(isinstance(d.dtype, integer_types) for k, d in inputs)
+        assert len(inputs) <= data.dim()
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
         super(Tensor, self).__init__(inputs, output)

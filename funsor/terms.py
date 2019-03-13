@@ -138,7 +138,20 @@ class Funsor(object):
         return id(self)
 
     def __repr__(self):
-        return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_args)))
+        return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_values)))
+
+    def _pretty(self, lines, indent=0):
+        lines.append((indent, type(self).__name__))
+        for arg in self._ast_values:
+            if isinstance(arg, Funsor):
+                arg._pretty(lines, indent + 1)
+            else:
+                lines.append((indent + 1, str(arg)))
+
+    def pretty(self):
+        lines = []
+        self._pretty(lines)
+        return '\n'.join('|   ' * indent + text for indent, text in lines)
 
     def __call__(self, *args, **kwargs):
         """

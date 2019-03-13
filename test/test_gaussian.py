@@ -9,6 +9,7 @@ import torch
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
+from funsor.joint import Joint
 from funsor.terms import Number
 from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
@@ -21,30 +22,29 @@ def id_from_inputs(inputs):
 
 
 @pytest.mark.parametrize('expr,expected_type', [
-    ('g1 + 1', Gaussian),
-    ('g1 - 1', Gaussian),
-    ('1 + g1', Gaussian),
-    ('g1 + shift', Gaussian),
-    ('g1 - shift', Gaussian),
-    ('shift + g1', Gaussian),
-    ('g1 + g1', Gaussian),
+    ('g1 + 1', Joint),
+    ('g1 - 1', Joint),
+    ('1 + g1', Joint),
+    ('g1 + shift', Joint),
+    ('g1 - shift', Joint),
+    ('shift + g1', Joint),
+    ('g1 + g1', Joint),
     ('g1(i=i0)', Gaussian),
     ('g2(i=i0)', Gaussian),
-    ('g1(i=i0) + g2(i=i0)', Gaussian),
-    ('g1(i=i0) + g2', Gaussian),
+    ('g1(i=i0) + g2(i=i0)', Joint),
+    ('g1(i=i0) + g2', Joint),
     ('g1(x=x0)', Tensor),
     ('g2(y=y0)', Tensor),
-    ('(g1 + g2)(i=i0)', Gaussian),
+    ('(g1 + g2)(i=i0)', Joint),
     ('(g1 + g2)(x=x0, y=y0)', Tensor),
     ('(g2 + g1)(x=x0, y=y0)', Tensor),
     ('g1.reduce(ops.logaddexp, "x")', Tensor),
-    ('(g1 + g2).reduce(ops.logaddexp, "x")', Gaussian),
-    ('(g1 + g2).reduce(ops.logaddexp, "y")', Gaussian),
+    ('(g1 + g2).reduce(ops.logaddexp, "x")', Joint),
+    ('(g1 + g2).reduce(ops.logaddexp, "y")', Joint),
     ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
 ])
 def test_smoke(expr, expected_type):
     g1 = Gaussian(
-        log_density=torch.tensor([0.0, 1.0]),
         loc=torch.tensor([[0.0, 0.1, 0.2],
                           [2.0, 3.0, 4.0]]),
         precision=torch.tensor([[[1.0, 0.1, 0.2],
@@ -57,7 +57,6 @@ def test_smoke(expr, expected_type):
     assert isinstance(g1, Gaussian)
 
     g2 = Gaussian(
-        log_density=torch.tensor([0.0, 1.0]),
         loc=torch.tensor([[0.0, 0.1],
                           [2.0, 3.0]]),
         precision=torch.tensor([[[1.0, 0.2],
@@ -230,5 +229,5 @@ def test_logsumexp(int_inputs, real_inputs):
 
     g = random_gaussian(inputs)
     g_xy = g.reduce(ops.logaddexp, frozenset(['x', 'y']))
-    assert_close(g_xy, g.reduce(ops.logaddexp, 'x').reduce(ops.logaddexp, 'y'), atol=1e-4, rtol=None)
-    assert_close(g_xy, g.reduce(ops.logaddexp, 'y').reduce(ops.logaddexp, 'x'), atol=1e-4, rtol=None)
+    assert_close(g_xy, g.reduce(ops.logaddexp, 'x').reduce(ops.logaddexp, 'y'), atol=1e-3, rtol=None)
+    assert_close(g_xy, g.reduce(ops.logaddexp, 'y').reduce(ops.logaddexp, 'x'), atol=1e-3, rtol=None)
