@@ -1,6 +1,5 @@
 from __future__ import absolute_import, division, print_function
 
-import itertools
 from collections import OrderedDict
 
 import pytest
@@ -114,11 +113,11 @@ def test_smoke(expr, expected_type):
     x0 = Tensor(torch.tensor([0.5, 0.6, 0.7]))
     assert isinstance(x0, Tensor)
 
-    assert ops
     result = eval(expr)
     assert isinstance(result, expected_type)
 
 
+@xfail_if_not_implemented()
 @pytest.mark.parametrize('int_inputs', [
     {},
     {'i': bint(2)},
@@ -132,26 +131,22 @@ def test_smoke(expr, expected_type):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-def test_eager_subs(int_inputs, real_inputs):
+def test_reduce(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
+    t = random_tensor(int_inputs)
     g = random_gaussian(inputs)
+    truth = {name: random_tensor(int_inputs, domain) for name, domain in real_inputs.items()}
 
-    for order in itertools.permutations(inputs):
-        ground_values = {}
-        dependent_values = {}
-        for i, name in enumerate(order):
-            upstream = OrderedDict([(k, inputs[k]) for k in order[:i] if k in int_inputs])
-            value = random_tensor(upstream, inputs[name])
-            ground_values[name] = value(**ground_values)
-            dependent_values[name] = value
+    state = 0
+    state += g
+    state += t
+    for name, point in truth.items():
+        state += Delta(name, point)
+    actual = state.reduce(ops.logaddexp, frozenset(truth))
 
-        expected = g(**ground_values)
-        actual = g
-        for k in reversed(order):
-            with xfail_if_not_implemented():
-                actual = actual(**{k: dependent_values[k]})
-        assert_close(actual, expected, atol=1e-4)
+    expected = t + g(**truth)
+    assert_close(actual, expected)

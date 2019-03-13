@@ -125,6 +125,8 @@ def eager_add(op, joint, delta):
     # Update with a degenerate distribution, typically a monte carlo sample.
     if delta.name in joint.inputs:
         joint = joint.eager_subs(((delta.name, delta.point),))
+        if not isinstance(joint, Joint):
+            return joint + delta
     for d in joint.deltas:
         if d.name in delta.inputs:
             delta = delta.eager_subs(((d.name, d.point),))
