@@ -11,10 +11,14 @@ from funsor.terms import Binary, Funsor, Reduce, eager
 from funsor.torch import Tensor
 
 
+################################################################################
+# Monte Carlo interpretation
+################################################################################
+
 def monte_carlo(cls, *args):
-    result = _monte_carlo(cls, *args)
+    result = eager(cls, *args)
     if result is None:
-        result = eager(cls, *args)
+        result = _monte_carlo(cls, *args)
     return result
 
 
