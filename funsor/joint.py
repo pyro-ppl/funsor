@@ -164,17 +164,6 @@ def eager_add(op, joint, other):
     return Joint(joint.deltas, joint.discrete, other)
 
 
-@eager.register(Binary, AddOp, Joint, Binary)
-def eager_add(op, joint, other):
-    if other.op is op:
-        # Recursively decompose sums.
-        joint += other.lhs
-        joint += other.rhs
-        return joint
-
-    return None  # defer to default implementation
-
-
 @eager.register(Binary, AddOp, (Funsor, Align, Delta), Joint)
 def eager_add(op, other, joint):
     return joint + other
