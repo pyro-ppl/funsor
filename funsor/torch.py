@@ -450,8 +450,7 @@ def _pow(x, y):
     return result.reshape(y.shape)
 
 
-@ops.pow.register(torch.Tensor, torch.Tensor)
-@ops.pow.register(torch.Tensor, object)
+@ops.pow.register(torch.Tensor, (object, torch.Tensor))
 def _pow(x, y):
     return x ** y
 
