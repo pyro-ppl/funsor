@@ -1,12 +1,11 @@
 from __future__ import absolute_import, division, print_function
 
-import functools
-from collections import namedtuple
 from numbers import Number
 import operator
 
 import numpy as np
-import torch
+from multipledispatch import Dispatcher
+
 
 _builtin_abs = abs
 _builtin_max = max
@@ -14,14 +13,13 @@ _builtin_min = min
 _builtin_pow = pow
 
 
-class Op(namedtuple('Op', ['fn'])):
-    def __new__(cls, fn):
-        result = super(Op, cls).__new__(cls, fn)
-        functools.update_wrapper(result, fn)
-        return result
-
-    def __call__(self, *args):
-        return self.fn(*args)
+class Op(Dispatcher):
+    def __init__(self, fn):
+        super(Op, self).__init__(fn.__name__)
+        # register as default operation
+        for nargs in (1, 2):
+            default_signature = (object,) * nargs
+            self.add(default_signature, fn)
 
     def __repr__(self):
         return self.__name__
@@ -52,43 +50,37 @@ xor = AssociativeOp(operator.xor)
 
 @Op
 def abs(x):
-    return _builtin_abs(x) if isinstance(x, Number) else x.abs()
+    return x.abs()
+
+
+@abs.register(Number)
+def _abs(x):
+    return _builtin_abs(x)
 
 
 @Op
 def sqrt(x):
-    return np.sqrt(x) if isinstance(x, Number) else x.sqrt()
+    return np.sqrt(x)
 
 
 @Op
 def exp(x):
-    return np.exp(x) if isinstance(x, Number) else x.exp()
+    return np.exp(x)
 
 
 @Op
 def log(x):
-    if isinstance(x, Number):
-        return np.log(x)
-    elif isinstance(x, torch.Tensor):
-        if x.dtype in (torch.uint8, torch.long):
-            x = x.float()
-        return x.log()
-    else:
-        return x.log()
+    return np.log(x)
 
 
 @Op
 def log1p(x):
-    return np.log1p(x) if isinstance(x, Number) else x.log1p()
+    return np.log1p(x)
 
 
 @Op
 def pow(x, y):
-    result = x ** y
-    # work around shape bug https://github.com/pytorch/pytorch/issues/16685
-    if isinstance(x, Number) and isinstance(y, torch.Tensor):
-        result = result.reshape(y.shape)
-    return result
+    return x ** y
 
 
 @AssociativeOp
@@ -97,12 +89,6 @@ def min(x, y):
         return x.__min__(y)
     if hasattr(y, '__min__'):
         return y.__min__(x)
-    if isinstance(x, torch.Tensor):
-        if isinstance(y, torch.Tensor):
-            return torch.min(x, y)
-        return x.clamp(max=y)
-    if isinstance(y, torch.Tensor):
-        return y.clamp(max=x)
     return _builtin_min(x, y)
 
 
@@ -112,12 +98,6 @@ def max(x, y):
         return x.__max__(y)
     if hasattr(y, '__max__'):
         return y.__max__(x)
-    if isinstance(x, torch.Tensor):
-        if isinstance(y, torch.Tensor):
-            return torch.max(x, y)
-        return x.clamp(min=y)
-    if isinstance(y, torch.Tensor):
-        return y.clamp(min=x)
     return _builtin_max(x, y)
 
 
@@ -131,22 +111,12 @@ def logaddexp(x, y):
 def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
-    assert isinstance(y, torch.Tensor)
-    try:
-        return x + -y.clamp(max=torch.finfo(y.dtype).max)
-    except TypeError:
-        return x + -y.clamp(max=torch.iinfo(y.dtype).max)
 
 
 @Op
 def safediv(x, y):
     if isinstance(y, Number):
         return truediv(x, y)
-    assert isinstance(y, torch.Tensor)
-    try:
-        return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
-    except TypeError:
-        return x * y.reciprocal().clamp(max=torch.iinfo(y.dtype).max)
 
 
 # just a placeholder
@@ -161,15 +131,11 @@ def sample(x, y):
     raise ValueError
 
 
-REDUCE_OP_TO_TORCH = {
-    add: torch.sum,
-    mul: torch.prod,
-    and_: torch.all,
-    or_: torch.any,
-    logaddexp: torch.logsumexp,
-    min: torch.min,
-    max: torch.max,
-}
+@Op
+def reciprocal(x):
+    if isinstance(x, Number):
+        return 1. / x
+    raise ValueError("No reciprocal for type {}".format(type(x)))
 
 
 DISTRIBUTIVE_OPS = frozenset([
@@ -193,7 +159,6 @@ __all__ = [
     'DISTRIBUTIVE_OPS',
     'Op',
     'PRODUCT_INVERSES',
-    'REDUCE_OP_TO_TORCH',
     'abs',
     'add',
     'and_',

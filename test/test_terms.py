@@ -11,6 +11,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.terms import Binary, Number, Stack, Variable, to_funsor
 from funsor.testing import check_funsor
+from funsor.torch import REDUCE_OP_TO_TORCH
 
 np.seterr(all='ignore')
 
@@ -141,8 +142,8 @@ def test_binary(symbol, data1, data2):
     check_funsor(actual, {}, Domain((), dtype), expected_data)
 
 
-@pytest.mark.parametrize('op', ops.REDUCE_OP_TO_TORCH,
-                         ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
+@pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
+                         ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
 def test_reduce_all(op):
     x = Variable('x', bint(2))
     y = Variable('y', bint(3))
@@ -168,8 +169,8 @@ def test_reduce_all(op):
     for num_reduced in range(3 + 1)
     for reduced_vars in itertools.combinations('xyz', num_reduced)
 ])
-@pytest.mark.parametrize('op', ops.REDUCE_OP_TO_TORCH,
-                         ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
+@pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
+                         ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
 def test_reduce_subset(op, reduced_vars):
     reduced_vars = frozenset(reduced_vars)
     x = Variable('x', bint(2))
