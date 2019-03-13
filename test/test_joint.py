@@ -117,7 +117,6 @@ def test_smoke(expr, expected_type):
     assert isinstance(result, expected_type)
 
 
-@xfail_if_not_implemented()
 @pytest.mark.parametrize('int_inputs', [
     {},
     {'i': bint(2)},
@@ -145,7 +144,8 @@ def test_reduce(int_inputs, real_inputs):
     state += g
     state += t
     for name, point in truth.items():
-        state += Delta(name, point)
+        with xfail_if_not_implemented():
+            state += Delta(name, point)
     actual = state.reduce(ops.logaddexp, frozenset(truth))
 
     expected = t + g(**truth)
