@@ -11,6 +11,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.terms import Binary, Number, Stack, Variable, to_funsor
 from funsor.testing import check_funsor
+from funsor.torch import REDUCE_OP_TO_TORCH
 
 np.seterr(all='ignore')
 
@@ -141,8 +142,8 @@ def test_binary(symbol, data1, data2):
     check_funsor(actual, {}, Domain((), dtype), expected_data)
 
 
-@pytest.mark.parametrize('op', ops.REDUCE_OP_TO_TORCH,
-                         ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
+@pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
+                         ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
 def test_reduce_all(op):
     x = Variable('x', bint(2))
     y = Variable('y', bint(3))
@@ -168,8 +169,8 @@ def test_reduce_all(op):
     for num_reduced in range(3 + 1)
     for reduced_vars in itertools.combinations('xyz', num_reduced)
 ])
-@pytest.mark.parametrize('op', ops.REDUCE_OP_TO_TORCH,
-                         ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
+@pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
+                         ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
 def test_reduce_subset(op, reduced_vars):
     reduced_vars = frozenset(reduced_vars)
     x = Variable('x', bint(2))
@@ -205,7 +206,7 @@ def test_stack_simple():
     assert xyz(i=Number(0, 3)) is x
     assert xyz(i=Number(1, 3)) is y
     assert xyz(i=Number(2, 3)) is z
-    assert xyz.sum('i') == 5.
+    assert xyz.reduce(ops.add, 'i') == 5.
 
 
 def test_stack_subs():
@@ -223,7 +224,7 @@ def test_stack_subs():
     assert f(i=Number(2, 3)) is y * z
     assert f(i=j) is Stack((Number(0), x, y * z), 'j')
     assert f(i='j') is Stack((Number(0), x, y * z), 'j')
-    assert f.sum('i') is Number(0) + x + (y * z)
+    assert f.reduce(ops.add, 'i') is Number(0) + x + (y * z)
 
     assert f(x=0) is Stack((Number(0), Number(0), y * z), 'i')
     assert f(y=x) is Stack((Number(0), x, x * z), 'i')

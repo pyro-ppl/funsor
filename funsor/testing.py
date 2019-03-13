@@ -5,12 +5,16 @@ import itertools
 import operator
 from collections import OrderedDict, namedtuple
 
+import numpy as np
+import opt_einsum
 import pytest
 import torch
 from six.moves import reduce
 
-from funsor.domains import Domain, bint
+from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
+from funsor.joint import Joint
+from funsor.numpy import Array
 from funsor.terms import Funsor
 from funsor.torch import Tensor
 
@@ -43,9 +47,16 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     if isinstance(actual, Tensor):
         assert_close(actual.data, expected.data, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
-        assert_close(actual.log_density, expected.log_density, atol=atol, rtol=rtol)
         assert_close(actual.loc, expected.loc, atol=atol, rtol=rtol)
         assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)
+    elif isinstance(actual, Joint):
+        actual_deltas = {d.name: d.point for d in actual.deltas}
+        expected_deltas = {d.name: d.point for d in expected.deltas}
+        assert set(actual_deltas) == set(expected_deltas)
+        for name, actual_point in actual_deltas.items():
+            assert_close(actual_point, expected_deltas[name])
+        assert_close(actual.discrete, expected.discrete, atol=atol, rtol=rtol)
+        assert_close(actual.gaussian, expected.gaussian, atol=atol, rtol=rtol)
     elif isinstance(actual, torch.Tensor):
         assert actual.dtype == expected.dtype, msg
         if actual.dtype in (torch.long, torch.uint8):
@@ -116,7 +127,7 @@ def assert_equiv(x, y):
     check_funsor(x, y.inputs, y.output, y.data)
 
 
-def random_tensor(inputs, output):
+def random_tensor(inputs, output=reals()):
     """
     Creates a random :class:`funsor.torch.Tensor` with given inputs and output.
     """
@@ -133,6 +144,23 @@ def random_tensor(inputs, output):
     return Tensor(data, inputs, output.dtype)
 
 
+def random_array(inputs, output):
+    """
+    Creates a random :class:`funsor.numpy.Array` with given inputs and output.
+    """
+    assert isinstance(inputs, OrderedDict)
+    assert isinstance(output, Domain)
+    shape = tuple(d.dtype for d in inputs.values()) + output.shape
+    if output.dtype == 'real':
+        data = np.random.normal(size=shape)
+    else:
+        num_elements = reduce(operator.mul, shape, 1)
+        data = np.random.choice(np.arange(output.dtype),
+                                size=num_elements,
+                                replace=True).reshape(shape)
+    return Array(data, inputs, output.dtype)
+
+
 def random_gaussian(inputs):
     """
     Creates a random :class:`funsor.gaussian.Gaussian` with given inputs.
@@ -140,8 +168,40 @@ def random_gaussian(inputs):
     assert isinstance(inputs, OrderedDict)
     batch_shape = tuple(d.dtype for d in inputs.values() if d.dtype != 'real')
     event_shape = (sum(d.num_elements for d in inputs.values() if d.dtype == 'real'),)
-    log_density = torch.randn(batch_shape)
     loc = torch.randn(batch_shape + event_shape)
     prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
     precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
-    return Gaussian(log_density, loc, precision, inputs)
+    return Gaussian(loc, precision, inputs)
+
+
+def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
+
+    assert num_obs_plates >= num_hidden_plates
+    t0 = num_obs_plates + 1
+
+    obs_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_obs_plates))
+    hidden_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_hidden_plates))
+
+    inputs = [str(opt_einsum.get_symbol(t0))]
+    for t in range(t0, num_steps+t0):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
+        inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
+    equation = ",".join(inputs) + "->"
+    return (equation, ''.join(set(obs_plates + hidden_plates)))
+
+
+def make_chain_einsum(num_steps):
+    inputs = [str(opt_einsum.get_symbol(0))]
+    for t in range(num_steps):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)))
+    equation = ",".join(inputs) + "->"
+    return equation
+
+
+def make_hmm_einsum(num_steps):
+    inputs = [str(opt_einsum.get_symbol(0))]
+    for t in range(num_steps):
+        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)))
+        inputs.append(str(opt_einsum.get_symbol(t+1)))
+    equation = ",".join(inputs) + "->"
+    return equation

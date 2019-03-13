@@ -16,25 +16,9 @@ from funsor.optimizer import apply_optimizer
 from funsor.terms import reflect, Variable
 from funsor.torch import Tensor
 
-from funsor.testing import make_einsum_example, assert_close
+from funsor.testing import assert_close, make_einsum_example, \
+    make_chain_einsum, make_hmm_einsum, make_plated_hmm_einsum
 from funsor.einsum import naive_einsum, naive_plated_einsum, einsum
-
-
-def make_chain_einsum(num_steps):
-    inputs = [str(opt_einsum.get_symbol(0))]
-    for t in range(num_steps):
-        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)))
-    equation = ",".join(inputs) + "->"
-    return equation
-
-
-def make_hmm_einsum(num_steps):
-    inputs = [str(opt_einsum.get_symbol(0))]
-    for t in range(num_steps):
-        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)))
-        inputs.append(str(opt_einsum.get_symbol(t+1)))
-    equation = ",".join(inputs) + "->"
-    return equation
 
 
 OPTIMIZED_EINSUM_EXAMPLES = [
@@ -103,22 +87,6 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
 
     assert torch.allclose(expected1, actual1.data)
     assert torch.allclose(expected2, actual2.data)
-
-
-def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
-
-    assert num_obs_plates >= num_hidden_plates
-    t0 = num_obs_plates + 1
-
-    obs_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_obs_plates))
-    hidden_plates = ''.join(opt_einsum.get_symbol(i) for i in range(num_hidden_plates))
-
-    inputs = [str(opt_einsum.get_symbol(t0))]
-    for t in range(t0, num_steps+t0):
-        inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
-        inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
-    equation = ",".join(inputs) + "->"
-    return (equation, ''.join(set(obs_plates + hidden_plates)))
 
 
 PLATED_EINSUM_EXAMPLES = [

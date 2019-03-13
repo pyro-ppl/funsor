@@ -8,6 +8,7 @@ from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
+from funsor.ops import Op
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
@@ -91,6 +92,7 @@ class Tensor(Funsor):
         assert isinstance(data, torch.Tensor)
         assert isinstance(inputs, tuple)
         assert all(isinstance(d.dtype, integer_types) for k, d in inputs)
+        assert len(inputs) <= data.dim()
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
         super(Tensor, self).__init__(inputs, output)
@@ -193,11 +195,18 @@ class Tensor(Funsor):
         return Tensor(data, inputs, self.dtype)
 
     def eager_unary(self, op):
+        if op in REDUCE_OP_TO_TORCH:
+            batch_dim = len(self.data.shape) - len(self.output.shape)
+            data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
+            data = REDUCE_OP_TO_TORCH[op](data, -1)
+            if op is ops.min or op is ops.max:
+                data = data[0]
+            return Tensor(data, self.inputs, self.dtype)
         return Tensor(op(self.data), self.inputs, self.dtype)
 
     def eager_reduce(self, op, reduced_vars):
-        if op in ops.REDUCE_OP_TO_TORCH:
-            torch_op = ops.REDUCE_OP_TO_TORCH[op]
+        if op in REDUCE_OP_TO_TORCH:
+            torch_op = REDUCE_OP_TO_TORCH[op]
             assert isinstance(reduced_vars, frozenset)
             self_vars = frozenset(self.inputs)
             reduced_vars = reduced_vars & self_vars
@@ -226,7 +235,7 @@ class Tensor(Funsor):
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
 
-@eager.register(Binary, object, Tensor, Number)
+@eager.register(Binary, Op, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):
     if op is ops.getitem:
         # Shift by that Funsor is using for inputs.
@@ -239,13 +248,13 @@ def eager_binary_tensor_number(op, lhs, rhs):
     return Tensor(data, lhs.inputs, lhs.dtype)
 
 
-@eager.register(Binary, object, Number, Tensor)
+@eager.register(Binary, Op, Number, Tensor)
 def eager_binary_number_tensor(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
     return Tensor(data, rhs.inputs, rhs.dtype)
 
 
-@eager.register(Binary, object, Tensor, Tensor)
+@eager.register(Binary, Op, Tensor, Tensor)
 def eager_binary_tensor_tensor(op, lhs, rhs):
     # Compute inputs and outputs.
     dtype = find_domain(op, lhs.output, rhs.output).dtype
@@ -406,7 +415,113 @@ def torch_einsum(equation, *operands):
     return Function(fn, output, operands)
 
 
+# Register Ops
+
+@ops.abs.register(torch.Tensor)
+def _abs(x):
+    return x.abs()
+
+
+@ops.sqrt.register(torch.Tensor)
+def _sqrt(x):
+    return x.sqrt()
+
+
+@ops.exp.register(torch.Tensor)
+def _exp(x):
+    return x.exp()
+
+
+@ops.log.register(torch.Tensor)
+def _log(x):
+    if x.dtype in (torch.uint8, torch.long):
+        x = x.float()
+    return x.log()
+
+
+@ops.log1p.register(torch.Tensor)
+def _log1p(x):
+    return x.log1p()
+
+
+@ops.pow.register(object, torch.Tensor)
+def _pow(x, y):
+    result = x ** y
+    # work around shape bug https://github.com/pytorch/pytorch/issues/16685
+    return result.reshape(y.shape)
+
+
+@ops.pow.register(torch.Tensor, (object, torch.Tensor))
+def _pow(x, y):
+    return x ** y
+
+
+@ops.min.register(torch.Tensor, torch.Tensor)
+def _min(x, y):
+    return torch.min(x, y)
+
+
+@ops.min.register(object, torch.Tensor)
+def _min(x, y):
+    return y.clamp(max=x)
+
+
+@ops.min.register(torch.Tensor, object)
+def _min(x, y):
+    return x.clamp(max=y)
+
+
+@ops.max.register(torch.Tensor, torch.Tensor)
+def _max(x, y):
+    return torch.max(x, y)
+
+
+@ops.max.register(object, torch.Tensor)
+def _max(x, y):
+    return y.clamp(min=x)
+
+
+@ops.max.register(torch.Tensor, object)
+def _max(x, y):
+    return x.clamp(min=y)
+
+
+@ops.reciprocal.register(torch.Tensor)
+def _reciprocal(x):
+    result = x.reciprocal()
+    result.clamp_(max=torch.finfo(result.dtype).max)
+    return result
+
+
+@ops.safesub.register(object, torch.Tensor)
+def _safesub(x, y):
+    try:
+        return x + -y.clamp(max=torch.finfo(y.dtype).max)
+    except TypeError:
+        return x + -y.clamp(max=torch.iinfo(y.dtype).max)
+
+
+@ops.safediv.register(object, torch.Tensor)
+def _safediv(x, y):
+    try:
+        return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
+    except TypeError:
+        return x * y.reciprocal().clamp(max=torch.iinfo(y.dtype).max)
+
+
+REDUCE_OP_TO_TORCH = {
+    ops.add: torch.sum,
+    ops.mul: torch.prod,
+    ops.and_: torch.all,
+    ops.or_: torch.any,
+    ops.logaddexp: torch.logsumexp,
+    ops.min: torch.min,
+    ops.max: torch.max,
+}
+
+
 __all__ = [
+    'REDUCE_OP_TO_TORCH',
     'Function',
     'Tensor',
     'align_tensor',

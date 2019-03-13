@@ -16,7 +16,7 @@ import functools
 import itertools
 import numbers
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict
+from collections import OrderedDict, Hashable
 from weakref import WeakValueDictionary
 
 from six import add_metaclass, integer_types
@@ -24,8 +24,9 @@ from six.moves import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Domain, find_domain, bint
+from funsor.domains import Domain, bint, find_domain
 from funsor.interpreter import interpret
+from funsor.ops import AssociativeOp, Op
 from funsor.registry import KeyedRegistry
 from funsor.six import getargspec, singledispatch
 
@@ -34,11 +35,12 @@ def reflect(cls, *args):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
     """
-    if args in cls._cons_cache:
-        return cls._cons_cache[args]
+    cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+    if cache_key in cls._cons_cache:
+        return cls._cons_cache[cache_key]
     result = super(FunsorMeta, cls).__call__(*args)
     result._ast_values = args
-    cls._cons_cache[args] = result
+    cls._cons_cache[cache_key] = result
     return result
 
 
@@ -134,6 +136,22 @@ class Funsor(object):
 
     def __hash__(self):
         return id(self)
+
+    def __repr__(self):
+        return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_values)))
+
+    def _pretty(self, lines, indent=0):
+        lines.append((indent, type(self).__name__))
+        for arg in self._ast_values:
+            if isinstance(arg, Funsor):
+                arg._pretty(lines, indent + 1)
+            else:
+                lines.append((indent + 1, str(arg)))
+
+    def pretty(self):
+        lines = []
+        self._pretty(lines)
+        return '\n'.join('|   ' * indent + text for indent, text in lines)
 
     def __call__(self, *args, **kwargs):
         """
@@ -249,6 +267,8 @@ class Funsor(object):
 
         return None  # defer to default implementation
 
+    # The following methods conform to a standard array/tensor interface.
+
     def __invert__(self):
         return Unary(ops.invert, self)
 
@@ -269,6 +289,31 @@ class Funsor(object):
 
     def log1p(self):
         return Unary(ops.log1p, self)
+
+    # The following reductions are treated as Unary ops because they
+    # reduce over output shape while preserving all inputs.
+    # To reduce over inputs, instead call .reduce(op, reduced_vars).
+
+    def sum(self):
+        return Unary(ops.add, self)
+
+    def prod(self):
+        return Unary(ops.mul, self)
+
+    def logsumexp(self):
+        return Unary(ops.logaddexp, self)
+
+    def all(self):
+        return Unary(ops.and_, self)
+
+    def any(self):
+        return Unary(ops.or_, self)
+
+    def min(self):
+        return Unary(ops.min, self)
+
+    def max(self):
+        return Unary(ops.max, self)
 
     def __add__(self, other):
         return Binary(ops.add, self, to_funsor(other))
@@ -341,27 +386,6 @@ class Funsor(object):
 
     def __getitem__(self, other):
         return Binary(ops.getitem, self, to_funsor(other))
-
-    def sum(self, reduced_vars=None):
-        return self.reduce(ops.add, reduced_vars)
-
-    def prod(self, reduced_vars=None):
-        return self.reduce(ops.mul, reduced_vars)
-
-    def logsumexp(self, reduced_vars=None):
-        return self.reduce(ops.logaddexp, reduced_vars)
-
-    def all(self, reduced_vars=None):
-        return self.reduce(ops.and_, reduced_vars)
-
-    def any(self, reduced_vars=None):
-        return self.reduce(ops.or_, reduced_vars)
-
-    def min(self, reduced_vars=None):
-        return self.reduce(ops.min, reduced_vars)
-
-    def max(self, reduced_vars=None):
-        return self.reduce(ops.max, reduced_vars)
 
 
 interpreter.reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
@@ -442,7 +466,7 @@ class Unary(Funsor):
         return Unary(self.op, arg)
 
 
-@eager.register(Unary, object, Funsor)
+@eager.register(Unary, Op, Funsor)
 def eager_unary(op, arg):
     return arg.eager_unary(op)
 
@@ -521,7 +545,7 @@ class Reduce(Funsor):
         return super(Reduce, self).reduce(op, reduced_vars)
 
 
-@eager.register(Reduce, object, Funsor, frozenset)
+@eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
     return arg.eager_reduce(op, reduced_vars)
 
@@ -585,7 +609,7 @@ class Number(Funsor):
         return Number(op(self.data), self.dtype)
 
 
-@eager.register(Binary, object, Number, Number)
+@eager.register(Binary, Op, Number, Number)
 def eager_binary_number_number(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
     output = find_domain(op, lhs.output, rhs.output)
@@ -622,17 +646,17 @@ class Align(Funsor):
         return self.arg.eager_reduce(op, reduced_vars)
 
 
-@eager.register(Binary, object, Align, Funsor)
+@eager.register(Binary, Op, Align, Funsor)
 def eager_binary_align_funsor(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs)
 
 
-@eager.register(Binary, object, Funsor, Align)
+@eager.register(Binary, Op, Funsor, Align)
 def eager_binary_funsor_align(op, lhs, rhs):
     return Binary(op, lhs, rhs.arg)
 
 
-@eager.register(Binary, object, Align, Align)
+@eager.register(Binary, Op, Align, Align)
 def eager_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
 

@@ -42,9 +42,9 @@ class Finitary(Funsor):
         return Finitary(self.op, operands)
 
 
-@eager.register(Finitary, object, tuple)
+@eager.register(Finitary, AssociativeOp, tuple)
 def eager_finitary(op, operands):
-    return reduce(lambda lhs, rhs: Binary(op, lhs, rhs), operands)
+    return reduce(op, operands)
 
 
 def associate(cls, *args):
@@ -58,7 +58,7 @@ _associate = KeyedRegistry(default=lambda *args: None)
 associate.register = _associate.register
 
 
-@associate.register(Binary, object, Funsor, Funsor)
+@associate.register(Binary, AssociativeOp, Funsor, Funsor)
 def binary_to_finitary(op, lhs, rhs):
     """convert Binary to Finitary"""
     return Finitary(op, (lhs, rhs))
@@ -102,7 +102,7 @@ _distribute = KeyedRegistry(default=lambda *args: None)
 distribute.register = _distribute.register
 
 
-@distribute.register(Finitary, object, tuple)
+@distribute.register(Finitary, AssociativeOp, tuple)
 def distribute_finitary(op, operands):
     # TODO raise an error or warning on name collision
     if len(operands) == 1:
@@ -148,7 +148,7 @@ optimize.register = _optimize.register
 REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimizer
 
 
-@optimize.register(Reduce, object, Finitary, frozenset)
+@optimize.register(Reduce, AssociativeOp, Finitary, frozenset)
 def optimize_reduction(op, arg, reduced_vars):
     r"""
     Recursively convert large Reduce(Finitary) ops to many smaller versions
@@ -211,6 +211,22 @@ def optimize_reduction(op, arg, reduced_vars):
     return path_end
 
 
+def desugar(cls, *args):
+    result = _desugar(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
+    return result
+
+
+_desugar = KeyedRegistry(default=lambda *args: None)
+desugar.register = _desugar.register
+
+
+@desugar.register(Finitary, AssociativeOp, tuple)
+def desugar_finitary(op, operands):
+    return reduce(op, operands)
+
+
 def apply_optimizer(x):
 
     with interpretation(associate):
@@ -220,6 +236,9 @@ def apply_optimizer(x):
         x = reinterpret(x)
 
     with interpretation(optimize):
+        x = reinterpret(x)
+
+    with interpretation(desugar):
         x = reinterpret(x)
 
     return reinterpret(x)  # use previous interpretation
