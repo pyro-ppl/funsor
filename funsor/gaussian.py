@@ -269,7 +269,9 @@ class Gaussian(Funsor):
             results = []
             for key, domain in real_inputs.items():
                 data = sample[..., offsets[key]: offsets[key] + domain.num_elements]
-                point = Tensor(data, int_inputs, domain)
+                data = data.reshape(self.loc.shape[:-1] + domain.shape)
+                point = Tensor(data, int_inputs)
+                assert point.output == domain
                 results.append(Delta(key, point))
             return reduce(ops.add, results)
 
