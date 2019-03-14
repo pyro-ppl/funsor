@@ -5,8 +5,10 @@ from collections import OrderedDict
 
 import torch
 from six import add_metaclass, integer_types
+from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import Op
 from funsor.six import getargspec
@@ -235,7 +237,6 @@ class Tensor(Funsor):
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
     def sample(self, sampled_vars):
-        from funsor.delta import Delta  # FIXME
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self

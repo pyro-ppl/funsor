@@ -8,7 +8,6 @@ import funsor.ops as ops
 from funsor.domains import reals
 from funsor.ops import Op
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
-from funsor.torch import Tensor
 
 
 class DeltaMeta(FunsorMeta):
@@ -66,7 +65,7 @@ class Delta(Funsor):
         if value is not None:
             if isinstance(value, Variable):
                 name = value.name
-            elif isinstance(value, (Number, Tensor)) and isinstance(point, (Number, Tensor)):
+            elif not any(d.dtype == 'real' for side in (value, point) for d in side.inputs.values()):
                 return (value == point).all().log() + log_density
             else:
                 # TODO Compute a jacobian, update log_prob, and emit another Delta.
