@@ -5,8 +5,10 @@ from collections import OrderedDict
 
 import torch
 from six import add_metaclass, integer_types
+from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import Op
 from funsor.six import getargspec
@@ -233,6 +235,47 @@ class Tensor(Funsor):
                                  if k not in reduced_vars)
             return Tensor(data, inputs, self.dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
+
+    def sample(self, sampled_vars, sample_inputs=None):
+        assert self.output == reals()
+        sampled_vars = sampled_vars.intersection(self.inputs)
+        if not sampled_vars:
+            return self
+
+        # Partition inputs into sample_inputs + batch_inputs + event_inputs.
+        if sample_inputs is None:
+            sample_inputs = OrderedDict()
+        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
+        batch_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in sampled_vars)
+        event_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k in sampled_vars)
+        be_inputs = batch_inputs.copy()
+        be_inputs.update(event_inputs)
+        sb_inputs = sample_inputs.copy()
+        sb_inputs.update(batch_inputs)
+
+        # Sample all variables in a single Categorical call.
+        logits = align_tensor(be_inputs, self.data)
+        flat_logits = logits.reshape(logits.shape[:len(batch_inputs)] + (-1,))
+        sample_shape = tuple(d.dtype for d in sample_inputs.values())
+        flat_sample = torch.distributions.Categorical(logits=flat_logits).sample(sample_shape)
+        results = []
+        for name, domain in reversed(list(event_inputs.items())):
+            size = domain.dtype
+            point = Tensor(flat_sample % size, sb_inputs, bint(size))
+            flat_sample = flat_sample / size
+            results.append(Delta(name, point))
+
+        # Apply an optional dice factor to preserve differentiability.
+        if flat_logits.requires_grad:
+            index = [torch.arange(n).reshape((n,) + (1,) * (flat_sample.dim() - i))
+                     for i, n in enumerate(flat_sample.shape)]
+            index.append(flat_sample)
+            log_prob = flat_logits[index]
+            assert log_prob.shape == flat_sample.shape
+            results.append(Tensor(log_prob - log_prob.detach(), sb_inputs))
+
+        return reduce(ops.add, results)
 
 
 @eager.register(Binary, Op, Tensor, Number)
