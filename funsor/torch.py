@@ -255,14 +255,14 @@ class Tensor(Funsor):
         sb_inputs.update(batch_inputs)
 
         # Sample all variables in a single Categorical call.
-        logits = align_tensor(be_inputs, self.data)
+        logits = align_tensor(be_inputs, self)
         flat_logits = logits.reshape(logits.shape[:len(batch_inputs)] + (-1,))
         sample_shape = tuple(d.dtype for d in sample_inputs.values())
         flat_sample = torch.distributions.Categorical(logits=flat_logits).sample(sample_shape)
         results = []
         for name, domain in reversed(list(event_inputs.items())):
             size = domain.dtype
-            point = Tensor(flat_sample % size, sb_inputs, bint(size))
+            point = Tensor(flat_sample % size, sb_inputs, size)
             flat_sample = flat_sample / size
             results.append(Delta(name, point))
 

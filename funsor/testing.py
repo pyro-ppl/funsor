@@ -1,10 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
-import contextlib
 import itertools
 import operator
 from collections import OrderedDict, namedtuple
 
+import contextlib2
 import numpy as np
 import opt_einsum
 import pytest
@@ -19,7 +19,7 @@ from funsor.terms import Funsor
 from funsor.torch import Tensor
 
 
-@contextlib.contextmanager
+@contextlib2.contextmanager
 def xfail_if_not_implemented(msg="Not implemented"):
     try:
         yield
@@ -33,6 +33,14 @@ class ActualExpected(namedtuple('LazyComparison', ['actual', 'expected'])):
     """
     def __repr__(self):
         return '\n'.join(['Expected:', str(self.expected), 'Actual:', str(self.actual)])
+
+
+def id_from_inputs(inputs):
+    if isinstance(inputs, (dict, OrderedDict)):
+        inputs = inputs.items()
+    if not inputs:
+        return '()'
+    return ','.join(k + ''.join(map(str, d.shape)) for k, d in inputs)
 
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):

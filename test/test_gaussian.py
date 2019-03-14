@@ -11,14 +11,8 @@ from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.joint import Joint
 from funsor.terms import Number
-from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
+from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
-
-
-def id_from_inputs(inputs):
-    if not inputs:
-        return '()'
-    return ','.join(k + ''.join(map(str, d.shape)) for k, d in inputs.items())
 
 
 @pytest.mark.parametrize('expr,expected_type', [
