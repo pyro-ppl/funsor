@@ -98,6 +98,20 @@ class Joint(Funsor):
 
         return None  # defer to default implementation
 
+    def sample(self, sampled_vars, sample_inputs=None):
+        discrete_vars = sampled_vars.intersection(self.discrete.inputs)
+        gaussian_vars = frozenset(k for k in sampled_vars
+                                  if k in self.gaussian.inputs
+                                  if self.gaussian.inputs[k].dtype == 'real')
+        result = self
+        if discrete_vars:
+            discrete = result.discrete.sample(discrete_vars, sample_inputs)
+            result = Joint(result.deltas, gaussian=result.gaussian) + discrete
+        if gaussian_vars:
+            gaussian = result.gaussian.sample(gaussian_vars, sample_inputs)
+            result = Joint(result.deltas, result.discrete) + gaussian
+        return result
+
 
 @eager.register(Joint, tuple, Funsor, Funsor)
 def eager_joint(deltas, discrete, gaussian):
