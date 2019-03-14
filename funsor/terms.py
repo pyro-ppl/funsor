@@ -235,7 +235,7 @@ class Funsor(object):
         assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
 
-    def sample(self, sampled_vars):
+    def sample(self, sampled_vars, sample_inputs=None):
         assert isinstance(sampled_vars, frozenset)
         if sampled_vars.isdisjoint(self.inputs):
             return self

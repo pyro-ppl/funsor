@@ -252,7 +252,7 @@ class Gaussian(Funsor):
 
         return None  # defer to default implementation
 
-    def sample(self, sampled_vars):
+    def sample(self, sampled_vars, sample_inputs=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
