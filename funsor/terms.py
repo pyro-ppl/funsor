@@ -584,7 +584,7 @@ def eager_reduce(op, arg, reduced_vars):
 @monte_carlo.register(Reduce, AssociativeOp, Funsor, frozenset)
 def monte_carlo_reduce(op, arg, reduced_vars):
     if op is ops.logaddexp:
-        # First try to perform integrals analytically.
+        # First try to compute integrals analytically.
         result = arg.eager_reduce(op, reduced_vars)
         # If any variables remain, try to monte carlo sample them.
         if isinstance(result, Reduce) and result.op is ops.logaddexp:

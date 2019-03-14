@@ -235,10 +235,39 @@ class Tensor(Funsor):
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
     def sample(self, sampled_vars):
+        from funsor.delta import Delta  # FIXME
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
-        raise NotImplementedError('TODO')
+
+        # Partition inputs into preserved inputs + sampled_inputs.
+        assert self.output == reals()
+        inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in sampled_vars)
+        sampled_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k in sampled_vars)
+        aligned_inputs = inputs.copy()
+        aligned_inputs.update(sampled_inputs)
+        logits = align_tensor(aligned_inputs, self.data)
+
+        # Sample all variables in a single Categorical call.
+        flat_logits = logits.reshape(logits.shape[:len(inputs)] + (-1,))
+        flat_sample = torch.distributions.Categorical(logits=flat_logits).sample()
+        results = []
+        for name, domain in reversed(list(sampled_inputs.items())):
+            size = domain.dtype
+            point = Tensor(flat_sample % size, inputs, bint(size))
+            flat_sample = flat_sample / size
+            results.append(Delta(name, point))
+
+        # Apply an optional DiCE factor to preserve differentiability.
+        if flat_logits.requires_grad:
+            index = [torch.arange(n).reshape((n,) + (1,) * (flat_sample.dim() - i))
+                     for i, n in enumerate(flat_sample.shape)]
+            index.append(flat_sample)
+            log_prob = flat_logits[index]
+            assert log_prob.shape == flat_sample.shape
+            results.append(Tensor(log_prob - log_prob.detach(), inputs))
+
+        return reduce(ops.add, results)
 
 
 @eager.register(Binary, Op, Tensor, Number)
