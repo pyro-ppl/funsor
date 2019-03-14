@@ -1,10 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
+import contextlib
 import itertools
 import operator
 from collections import OrderedDict, namedtuple
 
-import contextlib2
 import numpy as np
 import opt_einsum
 import pytest
@@ -19,7 +19,7 @@ from funsor.terms import Funsor
 from funsor.torch import Tensor
 
 
-@contextlib2.contextmanager
+@contextlib.contextmanager
 def xfail_if_not_implemented(msg="Not implemented"):
     try:
         yield

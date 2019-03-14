@@ -258,19 +258,28 @@ class Gaussian(Funsor):
             return self
         assert all(self.inputs[k].dtype == 'real' for k in sampled_vars)
 
+        # Partition inputs into sample_inputs + int_inputs + real_inputs.
+        if sample_inputs is None:
+            sample_inputs = OrderedDict()
+        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
         int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
         real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
+        inputs = sample_inputs.copy()
+        inputs.update(int_inputs)
+
         if sampled_vars == frozenset(real_inputs):
             scale_tril = torch.inverse(torch.cholesky(self.precision))
             assert self.loc.shape == scale_tril.shape[:-1]
-            white_noise = torch.randn(self.loc.shape)
+            shape = sample_shape + self.loc.shape
+            white_noise = torch.randn(shape)
             sample = self.loc + _mv(scale_tril, white_noise)
             offsets, _ = _compute_offsets(real_inputs)
             results = []
             for key, domain in real_inputs.items():
                 data = sample[..., offsets[key]: offsets[key] + domain.num_elements]
-                data = data.reshape(self.loc.shape[:-1] + domain.shape)
-                point = Tensor(data, int_inputs)
+                data = data.reshape(shape[:-1] + domain.shape)
+                point = Tensor(data, inputs)
                 assert point.output == domain
                 results.append(Delta(key, point))
             return reduce(ops.add, results)

@@ -99,6 +99,9 @@ class Joint(Funsor):
         return None  # defer to default implementation
 
     def sample(self, sampled_vars, sample_inputs=None):
+        if sample_inputs is None:
+            sample_inputs = OrderedDict()
+        assert frozenset(sample_inputs).isdisjoint(self.inputs)
         discrete_vars = sampled_vars.intersection(self.discrete.inputs)
         gaussian_vars = frozenset(k for k in sampled_vars
                                   if k in self.gaussian.inputs
@@ -108,6 +111,8 @@ class Joint(Funsor):
             discrete = result.discrete.sample(discrete_vars, sample_inputs)
             result = Joint(result.deltas, gaussian=result.gaussian) + discrete
         if gaussian_vars:
+            sample_inputs = OrderedDict((k, v) for k, v in sample_inputs.items()
+                                        if k not in result.gaussian.inputs)
             gaussian = result.gaussian.sample(gaussian_vars, sample_inputs)
             result = Joint(result.deltas, result.discrete) + gaussian
         return result
@@ -168,7 +173,7 @@ def eager_add(op, joint, other):
 @eager.register(Binary, AddOp, Joint, Gaussian)
 def eager_add(op, joint, other):
     # Update with a delayed gaussian random variable.
-    subs = tuple((d.name, d.point) for d in joint.deltas if d in other.inputs)
+    subs = tuple((d.name, d.point) for d in joint.deltas if d.name in other.inputs)
     if subs:
         other = other.eager_subs(subs)
     if joint.gaussian is not Number(0):
