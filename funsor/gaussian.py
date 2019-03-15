@@ -6,12 +6,15 @@ from collections import OrderedDict
 import torch
 from pyro.distributions.util import broadcast_shape
 from six import add_metaclass, integer_types
+from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.ops import AddOp
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
+from funsor.util import lazy_property
 
 
 def _issubshape(subshape, supershape):
@@ -123,6 +126,13 @@ class Gaussian(Funsor):
     """
     Funsor representing a batched joint Gaussian distribution as a log-density
     function.
+
+    Note that :class:`Gaussian`s are not normalized, rather they are
+    canonicalized to evaluate to zero at their maximum value (at ``loc``). This
+    canonical form is useful because it allows :class:`Gaussian`s with
+    incomplete information, i.e. zero eigenvalues in the precision matrix.
+    These incomplete distributions arise when making low-dimensional
+    observations on higher dimensional hidden state.
     """
     def __init__(self, loc, precision, inputs):
         assert isinstance(loc, torch.Tensor)
@@ -206,6 +216,14 @@ class Gaussian(Funsor):
 
         raise NotImplementedError('TODO implement partial substitution of real variables')
 
+    @lazy_property
+    def _log_normalizer(self):
+        dim = self.loc.size(-1)
+        log_det_term = _log_det_tril(torch.cholesky(self.precision))
+        data = log_det_term - 0.5 * math.log(2 * math.pi) * dim
+        inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
+        return Tensor(data, inputs)
+
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
             # Marginalize out real variables, but keep mixtures lazy.
@@ -217,13 +235,10 @@ class Gaussian(Funsor):
                 return None  # defer to default implementation
 
             inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in reduced_reals)
-            int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
             if reduced_reals == real_vars:
-                dim = self.loc.size(-1)
-                log_det_term = _log_det_tril(torch.cholesky(self.precision))
-                data = log_det_term - 0.5 * math.log(2 * math.pi) * dim
-                result = Tensor(data, int_inputs)
+                result = self._log_normalizer
             else:
+                int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
                 offsets, _ = _compute_offsets(self.inputs)
                 index = []
                 for key, domain in inputs.items():
@@ -249,6 +264,41 @@ class Gaussian(Funsor):
             raise NotImplementedError('TODO product-reduce along a plate dimension')
 
         return None  # defer to default implementation
+
+    def sample(self, sampled_vars, sample_inputs=None):
+        sampled_vars = sampled_vars.intersection(self.inputs)
+        if not sampled_vars:
+            return self
+        assert all(self.inputs[k].dtype == 'real' for k in sampled_vars)
+
+        # Partition inputs into sample_inputs + int_inputs + real_inputs.
+        if sample_inputs is None:
+            sample_inputs = OrderedDict()
+        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
+        int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
+        real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
+        inputs = sample_inputs.copy()
+        inputs.update(int_inputs)
+
+        if sampled_vars == frozenset(real_inputs):
+            scale_tril = torch.inverse(torch.cholesky(self.precision))
+            assert self.loc.shape == scale_tril.shape[:-1]
+            shape = sample_shape + self.loc.shape
+            white_noise = torch.randn(shape)
+            sample = self.loc + _mv(scale_tril, white_noise)
+            offsets, _ = _compute_offsets(real_inputs)
+            results = []
+            for key, domain in real_inputs.items():
+                data = sample[..., offsets[key]: offsets[key] + domain.num_elements]
+                data = data.reshape(shape[:-1] + domain.shape)
+                point = Tensor(data, inputs)
+                assert point.output == domain
+                results.append(Delta(key, point))
+            results.append(self._log_normalizer)
+            return reduce(ops.add, results)
+
+        raise NotImplementedError('TODO implement partial sampling of real variables')
 
 
 @eager.register(Binary, AddOp, Gaussian, Gaussian)
