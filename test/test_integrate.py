@@ -6,10 +6,14 @@ import torch
 
 import funsor
 
+import funsor.ops as ops
+from funsor.interpreter import interpretation
+from funsor.optimizer import Finitary
+from funsor.terms import reflect
 from funsor.testing import assert_close, make_einsum_example
 
 from funsor.einsum import naive_einsum
-from funsor.integrate import naive_integrate_einsum
+from funsor.integrate import integrate, naive_integrate_einsum, naive_integrate
 
 
 EINSUM_EXAMPLES = [
@@ -28,7 +32,7 @@ EINSUM_EXAMPLES = [
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
-def test_integrate_einsum(equation, backend):
+def test_integrate_einsum_product(equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
 
@@ -48,3 +52,20 @@ def test_integrate_einsum(equation, backend):
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
             assert actual.inputs[output_dim].dtype == sizes[output_dim]
+
+
+@pytest.mark.xfail(reason="wtf?")
+@pytest.mark.parametrize('equation1,equation2', list(zip(EINSUM_EXAMPLES, EINSUM_EXAMPLES)))
+def test_integrate_naive_norm(equation1, equation2):
+
+    funsor_operands1 = [a.abs() for a in make_einsum_example(equation1)[-1]]
+    funsor_operands2 = [a.abs() for a in make_einsum_example(equation2)[-1]]
+
+    with interpretation(reflect):
+        measure = Finitary(ops.mul, tuple(funsor_operands1))
+        integrand = Finitary(ops.mul, tuple(funsor_operands2))
+
+    expected = naive_integrate(measure, integrand)
+    actual = integrate(measure, integrand)
+
+    assert_close(expected, actual, atol=1e-4)

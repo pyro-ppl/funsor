@@ -6,7 +6,7 @@ import torch
 
 import funsor.ops as ops
 from funsor.distributions import Gaussian, Delta
-from funsor.interpreter import interpretation
+from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary
 from funsor.terms import Funsor, Number, Variable, reflect
 from funsor.torch import Tensor
@@ -67,6 +67,10 @@ def integrate(measure, integrand):
         raise NotImplementedError("TODO implement any other cases")
 
 
+##############################
+# utilities for testing follow
+##############################
+
 def integrate_sum_product(sum_op, prod_op, factors, eliminate=frozenset()):
     """
     Utility for testing against einsum tests
@@ -113,3 +117,8 @@ def naive_integrate_einsum(eqn, *terms, **kwargs):
     if backend == 'pyro.ops.einsum.torch_log':
         result = result.log()
     return result
+
+
+def naive_integrate(measure, integrand):
+    intermediate = reinterpret(measure) * reinterpret(integrand)
+    return intermediate.reduce(ops.add, frozenset(intermediate.inputs))
