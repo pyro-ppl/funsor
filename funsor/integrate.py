@@ -80,8 +80,12 @@ def integrate_finitary(measure, integrand):
     if integrand.op is ops.mul:
         # pull out terms that do not depend on the measure
         constants, new_operands = find_constants(measure, integrand.operands)
+
+        # this term should equal Finitary(mul, constants) for probability measures
+        outer = Integrate(measure, Finitary(integrand.op, constants))
+
+        # the rest of the integral
         inner = Integrate(measure, Finitary(integrand.op, new_operands))
-        outer = Integrate(measure, Finitary(integrand.op, constants))  # should be 1
         return outer * inner
 
     return None
