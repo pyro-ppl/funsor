@@ -32,7 +32,7 @@ EINSUM_EXAMPLES = [
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
-def test_integrate_einsum_product(equation, backend):
+def test_integrate_einsum_product_measure(equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
 
@@ -54,7 +54,6 @@ def test_integrate_einsum_product(equation, backend):
             assert actual.inputs[output_dim].dtype == sizes[output_dim]
 
 
-@pytest.mark.xfail(reason="wtf?")
 @pytest.mark.parametrize('equation1,equation2',
                          list(zip(EINSUM_EXAMPLES, EINSUM_EXAMPLES)))
 def test_integrate_naive_pair(equation1, equation2):
@@ -70,5 +69,4 @@ def test_integrate_naive_pair(equation1, equation2):
     expected = naive_integrate(measure, integrand)
     actual = integrate(measure, integrand)
 
-    print(expected / actual)
     assert_close(expected, actual, atol=1e-4)
