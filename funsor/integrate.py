@@ -58,7 +58,7 @@ class Integrate(Funsor):
 
 @optimize.register(Integrate, GROUND_TERMS, GROUND_TERMS)
 @eager.register(Integrate, GROUND_TERMS, GROUND_TERMS)
-def integrate_ground(measure, integrand):
+def integrate_ground_ground(measure, integrand):
     reduced_vars = frozenset(measure.inputs) | frozenset(integrand.inputs)
     return (measure * integrand).reduce(ops.add, reduced_vars)
 
@@ -72,7 +72,7 @@ def integrate_reduce(measure, integrand):
 
 
 @optimize.register(Integrate, GROUND_TERMS, Finitary)
-def integrate_finitary(measure, integrand):
+def integrate_ground_finitary(measure, integrand):
     # exploit linearity of integration
     if integrand.op is ops.add:
         return Finitary(
@@ -80,8 +80,8 @@ def integrate_finitary(measure, integrand):
             tuple(Integrate(measure, operand) for operand in integrand.operands)
         )
 
+    # pull out constant terms that do not depend on the measure
     if integrand.op is ops.mul:
-        # pull out terms that do not depend on the measure
         constants, new_operands = _find_constants(measure, integrand.operands)
         if new_operands and constants:
             # this term should equal Finitary(mul, constants) for probability measures
@@ -90,28 +90,18 @@ def integrate_finitary(measure, integrand):
             inner = Integrate(measure, Finitary(integrand.op, new_operands))
             return outer * inner
         elif not new_operands and constants:
-            inner = 1.
-            outer = Finitary(ops.mul, tuple(Integrate(measure, c) for c in constants))
-            return outer * inner
+            return Finitary(ops.mul, tuple(Integrate(measure, c) for c in constants))
 
     return None
 
 
-@optimize.register(Integrate, Finitary, Finitary)
-def integrate_finitary_finitary(measure, integrand):
-    # exploit linearity of integration
-    if integrand.op is ops.add:
-        return Finitary(
-            ops.add,
-            tuple(Integrate(measure, operand) for operand in integrand.operands)
-        )
-
-    if integrand.op is ops.mul and measure.op is ops.mul and len(measure.operands) > 1:
-        # TODO topologically order the measures according to their variables
+@optimize.register(Integrate, Finitary, (Finitary,) + GROUND_TERMS)
+def integrate_finitary_ground(measure, integrand):
+    # recursively apply law of iterated expectation
+    if measure.op is ops.mul and len(measure.operands) > 1:
+        # TODO topologically order the measure terms according to their variables
         root_measure = measure.operands[0]
         remaining_measure = Finitary(measure.op, measure.operands[1:])
-
-        # recursively apply law of iterated expectations
         return Integrate(root_measure, Integrate(remaining_measure, integrand))
 
     return None
