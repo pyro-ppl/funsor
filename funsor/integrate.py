@@ -1,12 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
+from six import integer_types
 
 import torch
 
 import funsor.ops as ops
 from funsor.distributions import Gaussian, Delta
-from funsor.domains import bint
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary
 from funsor.terms import Funsor, Number, Reduce, Variable, eager, reflect
@@ -17,7 +17,7 @@ GROUND_TERMS = (Tensor, Gaussian, Delta, Number, Variable)
 
 
 def _make_base_measure(arg, reduced_vars):
-    if not all(isinstance(d, bint) for d in arg.inputs.values()):
+    if not all(isinstance(d.dtype, integer_types) for d in arg.inputs.values()):
         raise NotImplementedError("TODO implement continuous base measures")
 
     sizes = OrderedDict(set((var, dtype) for var, dtype in arg.inputs.items()))
@@ -28,7 +28,7 @@ def _make_base_measure(arg, reduced_vars):
     return reflect(Finitary, ops.mul, terms) if len(terms) > 1 else terms[0]
 
 
-def find_constants(measure, operands):
+def _find_constants(measure, operands):
     constants, new_operands = [], []
     for operand in operands:
         if frozenset(measure.inputs) & frozenset(operand.inputs):
@@ -79,10 +79,10 @@ def integrate_finitary(measure, integrand):
 
     if integrand.op is ops.mul:
         # pull out terms that do not depend on the measure
-        constants, new_operands = find_constants(measure, integrand.operands)
+        constants, new_operands = _find_constants(measure, integrand.operands)
 
         # this term should equal Finitary(mul, constants) for probability measures
-        outer = Integrate(measure, Finitary(integrand.op, constants))
+        outer = Integrate(measure, Finitary(integrand.op, constants)) if constants else 1.
 
         # the rest of the integral
         inner = Integrate(measure, Finitary(integrand.op, new_operands))
@@ -101,13 +101,10 @@ def integrate_finitary_finitary(measure, integrand):
         )
 
     if integrand.op is ops.mul and measure.op is ops.mul:
-        # topologically order the measures according to their variables
+        # TODO topologically order the measures according to their variables
         assert len(measure.operands) > 1
         root_measure = measure.operands[0]
-        if len(measure.operands) > 2:
-            remaining_measure = Finitary(measure.op, measure.operands[1:])
-        else:
-            remaining_measure = measure.operands[1]
+        remaining_measure = Finitary(measure.op, measure.operands[1:])
 
         # recursively apply law of iterated expectations
         return Integrate(root_measure, Integrate(remaining_measure, integrand))
