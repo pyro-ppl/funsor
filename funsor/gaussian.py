@@ -14,6 +14,7 @@ from funsor.domains import reals
 from funsor.ops import AddOp
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
+from funsor.util import lazy_property
 
 
 def _issubshape(subshape, supershape):
@@ -125,6 +126,13 @@ class Gaussian(Funsor):
     """
     Funsor representing a batched joint Gaussian distribution as a log-density
     function.
+
+    Note that :class:`Gaussian`s are not normalized, rather they are
+    canonicalized to evaluate to zero at their maximum value (at ``loc``). This
+    canonical form is useful because it allows :class:`Gaussian`s with
+    incomplete information, i.e. zero eigenvalues in the precision matrix.
+    These incomplete distributions arise when making low-dimensional
+    observations on higher dimensional hidden state.
     """
     def __init__(self, loc, precision, inputs):
         assert isinstance(loc, torch.Tensor)
@@ -208,6 +216,14 @@ class Gaussian(Funsor):
 
         raise NotImplementedError('TODO implement partial substitution of real variables')
 
+    @lazy_property
+    def _log_normalizer(self):
+        dim = self.loc.size(-1)
+        log_det_term = _log_det_tril(torch.cholesky(self.precision))
+        data = log_det_term - 0.5 * math.log(2 * math.pi) * dim
+        inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
+        return Tensor(data, inputs)
+
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
             # Marginalize out real variables, but keep mixtures lazy.
@@ -219,13 +235,10 @@ class Gaussian(Funsor):
                 return None  # defer to default implementation
 
             inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in reduced_reals)
-            int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
             if reduced_reals == real_vars:
-                dim = self.loc.size(-1)
-                log_det_term = _log_det_tril(torch.cholesky(self.precision))
-                data = log_det_term - 0.5 * math.log(2 * math.pi) * dim
-                result = Tensor(data, int_inputs)
+                result = self._log_normalizer
             else:
+                int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
                 offsets, _ = _compute_offsets(self.inputs)
                 index = []
                 for key, domain in inputs.items():
@@ -282,6 +295,7 @@ class Gaussian(Funsor):
                 point = Tensor(data, inputs)
                 assert point.output == domain
                 results.append(Delta(key, point))
+            results.append(self._log_normalizer)
             return reduce(ops.add, results)
 
         raise NotImplementedError('TODO implement partial sampling of real variables')

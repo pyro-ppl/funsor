@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import contextlib
 import itertools
+import numbers
 import operator
 from collections import OrderedDict, namedtuple
 
@@ -15,7 +16,7 @@ from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.joint import Joint
 from funsor.numpy import Array
-from funsor.terms import Funsor
+from funsor.terms import Funsor, Number
 from funsor.torch import Tensor
 
 
@@ -52,7 +53,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert actual.inputs == expected.inputs, (actual.inputs, expected.inputs)
         assert actual.output == expected.output, (actual.output, expected.output)
 
-    if isinstance(actual, Tensor):
+    if isinstance(actual, (Number, Tensor)):
         assert_close(actual.data, expected.data, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
         assert_close(actual.loc, expected.loc, atol=atol, rtol=rtol)
@@ -81,6 +82,12 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
                 assert diff.max() < atol, msg
             if rtol is not None:
                 assert (diff / (atol + expected.detach().abs())).max() < rtol, msg
+    elif isinstance(actual, numbers.Number):
+        diff = abs(actual - expected)
+        if atol is not None:
+            assert diff < atol, msg
+        if rtol is not None:
+            assert diff < (atol + expected) * rtol, msg
     else:
         raise ValueError('cannot compare objects of type {}'.format(type(actual)))
 
