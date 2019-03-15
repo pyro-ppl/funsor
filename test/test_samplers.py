@@ -135,11 +135,11 @@ def test_joint_shape(sample_inputs, int_event_inputs, real_event_inputs):
 @pytest.mark.parametrize('batch_inputs', [
     (),
     (('b', bint(4)),),
-    (('b', bint(3)), ('c', bint(2))),
+    (('b', bint(2)), ('c', bint(2))),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('event_inputs', [
-    (('e', bint(2)),),
-    (('e', bint(2)), ('f', bint(3))),
+    (('e', bint(3)),),
+    (('e', bint(2)), ('f', bint(2))),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('test_grad', [False, True], ids=['value', 'grad'])
 def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
@@ -166,6 +166,11 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
         assert_close(actual, expected, atol=0.1, rtol=None)
 
 
+# This is a stub for a future PR.
+def Integrate(log_measure, integrand, reduced_vars):
+    pytest.xfail(reason='Integrate is not implemented')
+
+
 @pytest.mark.parametrize('batch_inputs', [
     (),
     (('b', bint(4)),),
@@ -190,15 +195,13 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
     # Check zeroth moment.
     assert_close(q.reduce(ops.logaddexp, q_vars),
                  p.reduce(ops.logaddexp, p_vars), atol=1e-6, rtol=None)
-
-    pytest.xfail(reason='infinite loop')
     for k1, d1 in event_inputs.items():
         x = Variable(k1, d1)
         # Check first moments.
-        assert_close((q.exp() * x).reduce(ops.add, q_vars),
-                     (p.exp() * x).reduce(ops.add, p_vars), atol=1e-2, rtol=None)
+        assert_close(Integrate(q, x, q_vars),
+                     Integrate(p, x, p_vars), atol=1e-2, rtol=None)
         for k2, d2 in event_inputs.item():
             y = Variable(k2, d2)
             # Check second moments.
-            assert_close((q.exp() * (x * y)).reduce(ops.add, q_vars),
-                         (p.exp() * (x * y)).reduce(ops.add, p_vars), atol=1e-2, rtol=None)
+            assert_close(Integrate(q, x * y, q_vars),
+                         Integrate(p, x * y, p_vars), atol=1e-2, rtol=None)
