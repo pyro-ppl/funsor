@@ -1,22 +1,10 @@
-r"""
-Funsor interpretations
-----------------------
-
-Funsor provides three basic interpretations.
-
-- ``reflect`` is completely lazy, even with respect to substitution.
-- ``lazy`` substitutes eagerly but performs ops lazily.
-- ``eager`` does everything eagerly.
-
-"""
-
 from __future__ import absolute_import, division, print_function
 
 import functools
 import itertools
 import numbers
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict, Hashable
+from collections import Hashable, OrderedDict
 from weakref import WeakValueDictionary
 
 from six import add_metaclass, integer_types
@@ -25,15 +13,15 @@ from six.moves import reduce
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain
-from funsor.interpreter import interpret
+from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, Op
-from funsor.registry import KeyedRegistry
 from funsor.six import getargspec, singledispatch
 
 
 def reflect(cls, *args):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
+    This is the only interpretation allowed to construct funsors.
     """
     cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
@@ -44,26 +32,39 @@ def reflect(cls, *args):
     return result
 
 
-_lazy = KeyedRegistry(default=lambda *args: None)
-_eager = KeyedRegistry(default=lambda *args: None)
-
-
+@dispatched_interpretation
 def lazy(cls, *args):
-    result = _lazy(cls, *args)
+    """
+    Substitute eagerly but perform ops lazily.
+    """
+    result = lazy.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
 
 
+@dispatched_interpretation
 def eager(cls, *args):
-    result = _eager(cls, *args)
+    """
+    Eagerly execute ops with known implementations.
+    """
+    result = eager.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
 
 
-lazy.register = _lazy.register
-eager.register = _eager.register
+@dispatched_interpretation
+def sequential(cls, *args):
+    """
+    Eagerly execute ops with known implementations; additonally execute
+    vectorized ops sequentially if no known vectorized implementation exists.
+    """
+    result = sequential.dispatch(cls, *args)
+    if result is None:
+        result = eager(cls, *args)
+    return result
+
 
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
@@ -243,6 +244,13 @@ class Funsor(object):
         return None  # defer to default implementation
 
     def eager_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        if not reduced_vars:
+            return self
+
+        return None  # defer to default implementation
+
+    def sequential_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
         if not reduced_vars:
             return self
@@ -550,6 +558,11 @@ def eager_reduce(op, arg, reduced_vars):
     return arg.eager_reduce(op, reduced_vars)
 
 
+@sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
+def sequential_reduce(op, arg, reduced_vars):
+    return arg.sequential_reduce(op, reduced_vars)
+
+
 class NumberMeta(FunsorMeta):
     """
     Wrapper to fill in default ``dtype``.
@@ -762,5 +775,6 @@ __all__ = [
     'lazy',
     'of_shape',
     'reflect',
+    'sequential',
     'to_funsor',
 ]

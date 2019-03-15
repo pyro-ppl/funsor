@@ -8,6 +8,7 @@ from contextlib2 import contextmanager
 
 from funsor.domains import Domain
 from funsor.ops import Op
+from funsor.registry import KeyedRegistry
 from funsor.six import singledispatch
 
 _INTERPRETATION = None  # To be set later in funsor.terms
@@ -91,7 +92,18 @@ def _reinterpret_ordereddict(x):
     return OrderedDict((key, reinterpret(value)) for key, value in x.items())
 
 
+def dispatched_interpretation(fn):
+    """
+    Decorator to create a dispatched interpretation function.
+    """
+    registry = KeyedRegistry(default=lambda *args: None)
+    fn.register = registry.register
+    fn.dispatch = registry.__call__
+    return fn
+
+
 __all__ = [
+    'dispatched_interpretation',
     'interpret',
     'interpretation',
     'reinterpret',
