@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
+from multipledispatch import dispatch
 
 import torch
 
@@ -25,46 +26,63 @@ def find_constants(measure, operands):
     return tuple(constants), tuple(new_operands)
 
 
+@dispatch(object, object)
 def integrate(measure, integrand):
-    assert isinstance(measure, (Finitary,) + GROUND_TERMS)
-    assert isinstance(integrand, (Finitary,) + GROUND_TERMS)
+    raise NotImplementedError
 
-    if isinstance(integrand, GROUND_TERMS):
-        # base case of the recursion
-        reduced_vars = frozenset(measure.inputs) | frozenset(integrand.inputs)
-        return (measure * integrand).reduce(ops.add, reduced_vars)
-        # return eager_integrate(measure, integrand)
 
+@integrate.register(GROUND_TERMS, GROUND_TERMS)
+def integrate_base(measure, integrand):
+    reduced_vars = frozenset(measure.inputs) | frozenset(integrand.inputs)
+    return (measure * integrand).reduce(ops.add, reduced_vars)
+
+
+@integrate.register(GROUND_TERMS, Finitary)
+def integrate_finitary(measure, integrand):
     # exploit linearity of integration
-    elif isinstance(integrand, Finitary) and isinstance(integrand.op, ops.AddOp):
+    if integrand.op is ops.add:
         return Finitary(
             ops.add,
             tuple(integrate(measure, operand) for operand in integrand.operands)
         )
 
-    elif isinstance(integrand, Finitary) and integrand.op is ops.mul:
+    if integrand.op is ops.mul:
+        # pull out terms that do not depend on the measure
+        constants, new_operands = find_constants(measure, integrand.operands)
+        new_integrand = Finitary(integrand.op, new_operands)
+        inner = integrate(measure, new_integrand)
+        return Finitary(ops.mul, constants + (inner,))
 
+    return None
+
+
+@integrate.register(Finitary, Finitary)
+def integrate_finitary_finitary(measure, integrand):
+    # exploit linearity of integration
+    if integrand.op is ops.add:
+        return Finitary(
+            ops.add,
+            tuple(integrate(measure, operand) for operand in integrand.operands)
+        )
+
+    if integrand.op is ops.mul and measure.op is ops.mul:
         # pull out terms that do not depend on the measure
         constants, new_operands = find_constants(measure, integrand.operands)
         new_integrand = Finitary(integrand.op, new_operands)
 
-        if isinstance(measure, Finitary) and measure.op is ops.mul:
-            # topologically order the measures according to their variables
-            assert len(measure.operands) > 1
-            root_measure = measure.operands[0]
-            if len(measure.operands) > 2:
-                remaining_measure = Finitary(measure.op, measure.operands[1:])
-            else:
-                remaining_measure = measure.operands[1]
-
-            # recursively apply law of iterated expectations
-            inner = integrate(root_measure, integrate(remaining_measure, new_integrand))
+        # topologically order the measures according to their variables
+        assert len(measure.operands) > 1
+        root_measure = measure.operands[0]
+        if len(measure.operands) > 2:
+            remaining_measure = Finitary(measure.op, measure.operands[1:])
         else:
-            inner = integrate(measure, new_integrand)
+            remaining_measure = measure.operands[1]
 
+        # recursively apply law of iterated expectations
+        inner = integrate(root_measure, integrate(remaining_measure, new_integrand))
         return Finitary(ops.mul, constants + (inner,))
-    else:
-        raise NotImplementedError("TODO implement any other cases")
+
+    return None
 
 
 ##############################
