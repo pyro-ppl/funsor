@@ -82,10 +82,6 @@ class Delta(Funsor):
 
         return None  # defer to default implementation
 
-    def sample(self, sampled_vars):
-        assert all(k == self.name for k in sampled_vars if k in self.inputs)
-        return self
-
 
 @eager.register(Binary, Op, Delta, (Funsor, Delta, Align))
 def eager_binary(op, lhs, rhs):

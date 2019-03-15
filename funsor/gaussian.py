@@ -6,10 +6,8 @@ from collections import OrderedDict
 import torch
 from pyro.distributions.util import broadcast_shape
 from six import add_metaclass, integer_types
-from six.moves import reduce
 
 import funsor.ops as ops
-from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.ops import AddOp
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
@@ -251,29 +249,6 @@ class Gaussian(Funsor):
             raise NotImplementedError('TODO product-reduce along a plate dimension')
 
         return None  # defer to default implementation
-
-    def sample(self, sampled_vars, sample_inputs=None):
-        sampled_vars = sampled_vars.intersection(self.inputs)
-        if not sampled_vars:
-            return self
-        assert all(self.inputs[k].dtype == 'real' for k in sampled_vars)
-
-        int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
-        real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
-        if sampled_vars == frozenset(real_inputs):
-            scale_tril = torch.inverse(torch.cholesky(self.precision))
-            assert self.loc.shape == scale_tril.shape[:-1]
-            white_noise = torch.randn(self.loc.shape)
-            sample = self.loc + _mv(scale_tril, white_noise)
-            offsets, _ = _compute_offsets(real_inputs)
-            results = []
-            for key, domain in real_inputs.items():
-                data = sample[..., offsets[key]: offsets[key] + domain.num_elements]
-                point = Tensor(data, int_inputs, domain)
-                results.append(Delta(key, point))
-            return reduce(ops.add, results)
-
-        raise NotImplementedError('TODO implement partial sampling of real variables')
 
 
 @eager.register(Binary, AddOp, Gaussian, Gaussian)
