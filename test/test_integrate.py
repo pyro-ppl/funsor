@@ -1,21 +1,21 @@
 from __future__ import absolute_import, division, print_function
 
-from collections import OrderedDict
+from collections import OrderedDict  # noqa: F401
 import pytest
-import torch
+import torch  # noqa: F401
 
 import funsor
 
 import funsor.ops as ops
-from funsor.domains import bint
+from funsor.domains import bint  # noqa: F401
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary, optimize
 from funsor.terms import reflect
 from funsor.testing import assert_close, make_einsum_example
-from funsor.torch import Tensor
+from funsor.torch import Tensor  # noqa: F401
 
-from funsor.einsum import einsum, naive_einsum
-from funsor.integrate import Integrate, naive_integrate_einsum, naive_integrate
+from funsor.einsum import einsum
+from funsor.integrate import Integrate, naive_integrate_einsum
 
 
 EINSUM_EXAMPLES = [
@@ -41,7 +41,7 @@ EINSUM_EXAMPLES = [
 def test_integrate_einsum_product_measure(equation, backend, fill):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation, fill=fill)
 
-    # extras = [Tensor(torch.ones((sizes[v],)) / float(sizes[v]), 
+    # extras = [Tensor(torch.ones((sizes[v],)) / float(sizes[v]),
     #                  OrderedDict([(v, bint(sizes[v]))]))
     #           for inp in inputs for v in inp]
     extras = []
@@ -60,7 +60,7 @@ def test_integrate_einsum_product_measure(equation, backend, fill):
             assert actual.inputs[output_dim].dtype == sizes[output_dim]
 
 
-@pytest.mark.xfail(reason="wtf?")
+@pytest.mark.xfail(reason="not a correct test")
 @pytest.mark.parametrize('equation1,equation2',
                          list(zip(EINSUM_EXAMPLES, EINSUM_EXAMPLES)))
 def test_integrate_naive_pair(equation1, equation2):
@@ -73,7 +73,9 @@ def test_integrate_naive_pair(equation1, equation2):
         measure = Finitary(ops.mul, tuple(funsor_operands1))
         integrand = Finitary(ops.mul, tuple(funsor_operands2))
 
-    expected = naive_integrate(measure, integrand)
+    intermediate = reinterpret(measure) * reinterpret(integrand)
+    expected = intermediate.reduce(ops.add, frozenset(intermediate.inputs))
+
     with interpretation(optimize):
         actual = Integrate(measure, integrand)
     actual = reinterpret(actual)

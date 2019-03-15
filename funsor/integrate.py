@@ -9,7 +9,7 @@ import funsor.ops as ops
 from funsor.distributions import Gaussian, Delta
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary, optimize
-from funsor.terms import Funsor, Number, Reduce, Variable, eager, reflect, to_funsor
+from funsor.terms import Funsor, Number, Reduce, Variable, eager, reflect
 from funsor.torch import Tensor
 
 
@@ -86,12 +86,12 @@ def integrate_finitary(measure, integrand):
         if new_operands and constants:
             # this term should equal Finitary(mul, constants) for probability measures
             # outer = Integrate(measure, Finitary(integrand.op, constants))
-            outer = Finitary(ops.mul, tuple(Integrate(measure, c) for c in constants)) 
+            outer = Finitary(ops.mul, tuple(Integrate(measure, c) for c in constants))
             inner = Integrate(measure, Finitary(integrand.op, new_operands))
             return outer * inner
         elif not new_operands and constants:
             inner = 1.
-            outer = Finitary(ops.mul, tuple(Integrate(measure, c) for c in constants)) 
+            outer = Finitary(ops.mul, tuple(Integrate(measure, c) for c in constants))
             return outer * inner
 
     return None
@@ -121,31 +121,15 @@ def integrate_finitary_finitary(measure, integrand):
 # utilities for testing follow
 ##############################
 
-def integrate_sum_product(sum_op, prod_op, factors, eliminate=frozenset()):
-    """
-    Utility for testing against einsum tests
-    """
-    assert sum_op is ops.add
-    assert prod_op is ops.mul
-
-    with interpretation(reflect):
-        integrand = Finitary(prod_op, tuple(factors))
-        measure = _make_base_measure(integrand, eliminate, normalized=False)
-
-    with interpretation(optimize):
-        print("MEASURE: {}\n".format(measure))
-        print("INTEGRAND: {}\n".format(integrand))
-        result = Integrate(measure, integrand)
-        print("RESULT: {}\n".format(result))
-    return reinterpret(result)
-
-
 def naive_integrate_einsum(eqn, *terms, **kwargs):
+    """
+    Use for testing Integrate against einsum
+    """
     assert "plates" not in kwargs
 
     backend = kwargs.pop('backend', 'torch')
     if backend in ('torch', 'pyro.ops.einsum.torch_log'):
-        sum_op, prod_op = ops.add, ops.mul
+        prod_op = ops.mul
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
@@ -161,12 +145,18 @@ def naive_integrate_einsum(eqn, *terms, **kwargs):
 
     if backend == 'pyro.ops.einsum.torch_log':
         terms = tuple(term.exp() for term in terms)
-    result = integrate_sum_product(sum_op, prod_op, terms, reduce_vars)
+
+    with interpretation(reflect):
+        integrand = Finitary(prod_op, tuple(terms))
+        measure = _make_base_measure(integrand, reduce_vars, normalized=False)
+
+    with interpretation(optimize):
+        print("MEASURE: {}\n".format(measure))
+        print("INTEGRAND: {}\n".format(integrand))
+        result = Integrate(measure, integrand)
+        print("RESULT: {}\n".format(result))
+
     if backend == 'pyro.ops.einsum.torch_log':
         result = result.log()
-    return result
 
-
-def naive_integrate(measure, integrand):
-    intermediate = reinterpret(measure) * reinterpret(integrand)
-    return intermediate.reduce(ops.add, frozenset(intermediate.inputs))
+    return reinterpret(result)
