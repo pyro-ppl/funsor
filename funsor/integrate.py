@@ -1,7 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
-from multipledispatch import dispatch
 
 import torch
 
@@ -9,7 +8,7 @@ import funsor.ops as ops
 from funsor.distributions import Gaussian, Delta
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary
-from funsor.terms import Funsor, Number, Variable, reflect
+from funsor.terms import Funsor, Number, Variable, eager, reflect
 from funsor.torch import Tensor
 
 
@@ -26,43 +25,54 @@ def find_constants(measure, operands):
     return tuple(constants), tuple(new_operands)
 
 
-@dispatch(object, object)
-def integrate(measure, integrand):
-    raise NotImplementedError
+class Integrate(Funsor):
+
+    def __init__(self, measure, integrand):
+        assert isinstance(measure, Funsor)
+        assert isinstance(integrand, Funsor)
+        inputs = OrderedDict([(k, d) for t in (measure, integrand)
+                              for k, d in t.items()])
+        output = integrand.output
+        super(Integrate, self).__init__(inputs, output)
+        self.measure = measure
+        self.integrand = integrand
+
+    def eager_subs(self, subs):
+        raise NotImplementedError("TODO implement subs")
 
 
-@integrate.register(GROUND_TERMS, GROUND_TERMS)
+@eager.register(Integrate, GROUND_TERMS, GROUND_TERMS)
 def integrate_base(measure, integrand):
     reduced_vars = frozenset(measure.inputs) | frozenset(integrand.inputs)
     return (measure * integrand).reduce(ops.add, reduced_vars)
 
 
-@integrate.register(GROUND_TERMS, Finitary)
+@eager.register(Integrate, GROUND_TERMS, Finitary)
 def integrate_finitary(measure, integrand):
     # exploit linearity of integration
     if integrand.op is ops.add:
         return Finitary(
             ops.add,
-            tuple(integrate(measure, operand) for operand in integrand.operands)
+            tuple(Integrate(measure, operand) for operand in integrand.operands)
         )
 
     if integrand.op is ops.mul:
         # pull out terms that do not depend on the measure
         constants, new_operands = find_constants(measure, integrand.operands)
         new_integrand = Finitary(integrand.op, new_operands)
-        inner = integrate(measure, new_integrand)
+        inner = Integrate(measure, new_integrand)
         return Finitary(ops.mul, constants + (inner,))
 
     return None
 
 
-@integrate.register(Finitary, Finitary)
+@eager.register(Integrate, Finitary, Finitary)
 def integrate_finitary_finitary(measure, integrand):
     # exploit linearity of integration
     if integrand.op is ops.add:
         return Finitary(
             ops.add,
-            tuple(integrate(measure, operand) for operand in integrand.operands)
+            tuple(Integrate(measure, operand) for operand in integrand.operands)
         )
 
     if integrand.op is ops.mul and measure.op is ops.mul:
@@ -79,7 +89,7 @@ def integrate_finitary_finitary(measure, integrand):
             remaining_measure = measure.operands[1]
 
         # recursively apply law of iterated expectations
-        inner = integrate(root_measure, integrate(remaining_measure, new_integrand))
+        inner = Integrate(root_measure, Integrate(remaining_measure, new_integrand))
         return Finitary(ops.mul, constants + (inner,))
 
     return None
@@ -107,7 +117,7 @@ def integrate_sum_product(sum_op, prod_op, factors, eliminate=frozenset()):
         measure = Finitary(prod_op, var_tensors) if len(var_tensors) > 1 else var_tensors[0]
         integrand = Finitary(prod_op, tuple(factors))
 
-    return integrate(measure, integrand)
+    return Integrate(measure, integrand)
 
 
 def naive_integrate_einsum(eqn, *terms, **kwargs):

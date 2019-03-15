@@ -13,7 +13,7 @@ from funsor.terms import reflect
 from funsor.testing import assert_close, make_einsum_example
 
 from funsor.einsum import naive_einsum
-from funsor.integrate import integrate, naive_integrate_einsum, naive_integrate
+from funsor.integrate import Integrate, naive_integrate_einsum, naive_integrate
 
 
 EINSUM_EXAMPLES = [
@@ -67,6 +67,6 @@ def test_integrate_naive_pair(equation1, equation2):
         integrand = Finitary(ops.mul, tuple(funsor_operands2))
 
     expected = naive_integrate(measure, integrand)
-    actual = integrate(measure, integrand)
+    actual = Integrate(measure, integrand)
 
     assert_close(expected, actual, atol=1e-4)
