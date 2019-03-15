@@ -55,9 +55,11 @@ def test_integrate_einsum_product(equation, backend):
 
 
 @pytest.mark.xfail(reason="wtf?")
-@pytest.mark.parametrize('equation1,equation2', list(zip(EINSUM_EXAMPLES, EINSUM_EXAMPLES)))
-def test_integrate_naive_norm(equation1, equation2):
+@pytest.mark.parametrize('equation1,equation2',
+                         list(zip(EINSUM_EXAMPLES, EINSUM_EXAMPLES)))
+def test_integrate_naive_pair(equation1, equation2):
 
+    # identical structure
     funsor_operands1 = [a.abs() for a in make_einsum_example(equation1)[-1]]
     funsor_operands2 = [a.abs() for a in make_einsum_example(equation2)[-1]]
 
@@ -68,4 +70,5 @@ def test_integrate_naive_norm(equation1, equation2):
     expected = naive_integrate(measure, integrand)
     actual = integrate(measure, integrand)
 
+    print(expected / actual)
     assert_close(expected, actual, atol=1e-4)
