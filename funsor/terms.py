@@ -12,7 +12,7 @@ from six.moves import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Domain, bint, find_domain
+from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, Op
 from funsor.six import getargspec, singledispatch
@@ -213,6 +213,41 @@ class Funsor(object):
             return self
         assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
+
+    def sample(self, sampled_vars, sample_inputs=None):
+        """
+        Create a Monte Carlo approximation to this funsor by replacing
+        functions of ``sampled_vars`` with :class:`~funsor.delta.Delta`s.
+
+        If ``sample_inputs`` is not provided, the result is a :class:`Funsor`
+        with the same ``.inputs`` and ``.output`` as the original funsor, so
+        that self can be replaced by the sample in expectation computations::
+
+            y = x.sample(sampled_vars)
+            assert y.inputs == x.inputs
+            assert y.output == x.output
+            exact = (x.exp() * integrand).reduce(ops.add)
+            approx = (y.exp() * integrand).reduce(ops.add)
+
+        If ``sample_inputs`` is provided, this creates a batch of samples
+        that are intended to be averaged, however this reduction is not
+        performed by the :meth:`sample` method::
+
+            y = x.sample(sampled_vars, sample_inputs)
+            total = reduce(ops.mul, d.num_elements) for d in sample_inputs.values())
+            exact = (x.exp() * integrand).reduce(ops.add)
+            approx = (y.exp() * integrand).reduce(ops.add) / total
+
+        :param frozenset sampled_vars: A set of input variables to sample.
+        :param OrderedDict sample_inputs: An optional mapping from variable
+            name to :class:`~funsor.domains.Domain` over which samples will
+            be batched.
+        """
+        assert self.output == reals()
+        assert isinstance(sampled_vars, frozenset)
+        if sampled_vars.isdisjoint(self.inputs):
+            return self
+        raise NotImplementedError
 
     def align(self, names):
         """
