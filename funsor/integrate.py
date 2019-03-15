@@ -8,7 +8,7 @@ import funsor.ops as ops
 from funsor.distributions import Gaussian, Delta
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary
-from funsor.terms import Funsor, Number, Variable, eager, reflect
+from funsor.terms import Funsor, Number, Reduce, Variable, eager, reflect
 from funsor.torch import Tensor
 
 
@@ -47,6 +47,14 @@ def integrate_base(measure, integrand):
     return (measure * integrand).reduce(ops.add, reduced_vars)
 
 
+@eager.register(Integrate, Funsor, Reduce)
+def integrate_reduce(measure, integrand):
+    if integrand.reduced_vars:
+        raise NotImplementedError("TODO convert Reduce into Integrate over product")
+        # return Integrate(measure, Integrate(base_measure, integrand.arg))
+    return Integrate(measure, integrand.arg)
+
+
 @eager.register(Integrate, GROUND_TERMS, Finitary)
 def integrate_finitary(measure, integrand):
     # exploit linearity of integration
@@ -76,10 +84,6 @@ def integrate_finitary_finitary(measure, integrand):
         )
 
     if integrand.op is ops.mul and measure.op is ops.mul:
-        # pull out terms that do not depend on the measure
-        constants, new_operands = find_constants(measure, integrand.operands)
-        new_integrand = Finitary(integrand.op, new_operands)
-
         # topologically order the measures according to their variables
         assert len(measure.operands) > 1
         root_measure = measure.operands[0]
@@ -89,8 +93,7 @@ def integrate_finitary_finitary(measure, integrand):
             remaining_measure = measure.operands[1]
 
         # recursively apply law of iterated expectations
-        inner = Integrate(root_measure, Integrate(remaining_measure, new_integrand))
-        return Finitary(ops.mul, constants + (inner,))
+        return Integrate(root_measure, Integrate(remaining_measure, integrand))
 
     return None
 
