@@ -211,6 +211,13 @@ def optimize_reduction(op, arg, reduced_vars):
     return path_end
 
 
+@optimize.register(Finitary, AssociativeOp, tuple)
+def remove_single_finitary(op, operands):
+    if len(operands) == 1:
+        return operands[0]
+    return None
+
+
 def desugar(cls, *args):
     result = _desugar(cls, *args)
     if result is None:
