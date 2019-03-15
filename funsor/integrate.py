@@ -24,9 +24,7 @@ def _make_base_measure(arg, reduced_vars, normalized=True):
     terms = tuple(
         Tensor(torch.ones((d.dtype,)) / float(d.dtype), OrderedDict([(var, d)]))
         if normalized else
-        Tensor(torch.ones((d.dtype,)) / 1., OrderedDict([(var, d)]))
-        # to_funsor(1. / float(d.dtype))
-        # to_funsor(torch.tensor(1.))
+        Tensor(torch.ones((d.dtype,)), OrderedDict([(var, d)]))
         for var, d in sizes.items() if var in reduced_vars
     )
     return Finitary(ops.mul, terms) if len(terms) > 1 else terms[0]
