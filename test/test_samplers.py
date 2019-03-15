@@ -5,9 +5,12 @@ from collections import OrderedDict
 
 import pytest
 
+import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.joint import Joint
-from funsor.testing import id_from_inputs, random_gaussian, random_tensor
+from funsor.terms import Variable
+from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
+from funsor.torch import materialize
 
 
 @pytest.mark.parametrize('sample_inputs', [
@@ -24,7 +27,7 @@ from funsor.testing import id_from_inputs, random_gaussian, random_tensor
     (('e', bint(2)),),
     (('e', bint(2)), ('f', bint(3))),
 ], ids=id_from_inputs)
-def test_tensor_smoke(sample_inputs, batch_inputs, event_inputs):
+def test_tensor_shape(sample_inputs, batch_inputs, event_inputs):
     be_inputs = OrderedDict(batch_inputs + event_inputs)
     expected_inputs = OrderedDict(sample_inputs + batch_inputs + event_inputs)
     sample_inputs = OrderedDict(sample_inputs)
@@ -58,7 +61,7 @@ def test_tensor_smoke(sample_inputs, batch_inputs, event_inputs):
     (('e', reals()),),
     (('e', reals()), ('f', reals(2))),
 ], ids=id_from_inputs)
-def test_gaussian_smoke(sample_inputs, batch_inputs, event_inputs):
+def test_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
     be_inputs = OrderedDict(batch_inputs + event_inputs)
     expected_inputs = OrderedDict(sample_inputs + batch_inputs + event_inputs)
     sample_inputs = OrderedDict(sample_inputs)
@@ -98,7 +101,7 @@ def test_gaussian_smoke(sample_inputs, batch_inputs, event_inputs):
     (('g', reals()),),
     (('g', reals()), ('h', reals(4))),
 ], ids=id_from_inputs)
-def test_joint_smoke(sample_inputs, int_event_inputs, real_event_inputs):
+def test_joint_shape(sample_inputs, int_event_inputs, real_event_inputs):
     event_inputs = int_event_inputs + real_event_inputs
     discrete_inputs = OrderedDict(int_event_inputs)
     gaussian_inputs = OrderedDict(event_inputs)
@@ -125,3 +128,64 @@ def test_joint_smoke(sample_inputs, int_event_inputs, real_event_inputs):
                 assert y is x
     if xfail:
         pytest.xfail(reason='Not implemented')
+
+
+@pytest.mark.parametrize('batch_inputs', [
+    (),
+    (('b', bint(4)),),
+    (('b', bint(4)), ('c', bint(2))),
+], ids=id_from_inputs)
+@pytest.mark.parametrize('event_inputs', [
+    (('e', bint(2)),),
+    (('e', bint(2)), ('f', bint(3))),
+], ids=id_from_inputs)
+def test_tensor_distribution(event_inputs, batch_inputs):
+    num_samples = 50000
+    sample_inputs = OrderedDict(n=bint(num_samples))
+    be_inputs = OrderedDict(batch_inputs + event_inputs)
+    batch_inputs = OrderedDict(batch_inputs)
+    event_inputs = OrderedDict(event_inputs)
+    sampled_vars = frozenset(event_inputs)
+    p = random_tensor(be_inputs)
+
+    q = p.sample(sampled_vars, sample_inputs) - ops.log(num_samples)
+    mq = materialize(q).reduce(ops.logaddexp, 'n')
+    mq = mq.align(tuple(p.inputs))
+    assert_close(mq, p, atol=0.1, rtol=None)
+
+
+@pytest.mark.skip(reason='infinite loop')
+@pytest.mark.parametrize('batch_inputs', [
+    (),
+    (('b', bint(4)),),
+    (('b', bint(4)), ('c', bint(5))),
+], ids=id_from_inputs)
+@pytest.mark.parametrize('event_inputs', [
+    (('e', reals()),),
+    (('e', reals()), ('f', reals(2))),
+], ids=id_from_inputs)
+def test_gaussian_distribution(event_inputs, batch_inputs):
+    num_samples = 10000
+    sample_inputs = OrderedDict(n=bint(num_samples))
+    be_inputs = OrderedDict(batch_inputs + event_inputs)
+    batch_inputs = OrderedDict(batch_inputs)
+    event_inputs = OrderedDict(event_inputs)
+    sampled_vars = frozenset(event_inputs)
+    p = random_gaussian(be_inputs)
+
+    q = p.sample(sampled_vars, sample_inputs) - ops.log(num_samples)
+    p_vars = sampled_vars
+    q_vars = sampled_vars | frozenset(['n'])
+    # Check zeroth moment.
+    assert_close(q.reduce(ops.logaddexp, q_vars),
+                 p.reduce(ops.logaddexp, p_vars), atol=1e-6, rtol=None)
+    for k1, d1 in event_inputs.item():
+        x = Variable(k1, d1)
+        # Check first moments.
+        assert_close((q.exp() * x).reduce(ops.add, q_vars),
+                     (p.exp() * x).reduce(ops.add, p_vars), atol=1e-2, rtol=None)
+        for k2, d2 in event_inputs.item():
+            y = Variable(k2, d2)
+            # Check second moments.
+            assert_close((q.exp() * (x * y)).reduce(ops.add, q_vars),
+                         (p.exp() * (x * y)).reduce(ops.add, p_vars), atol=1e-2, rtol=None)

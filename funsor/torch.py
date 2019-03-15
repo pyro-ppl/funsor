@@ -197,14 +197,15 @@ class Tensor(Funsor):
         return Tensor(data, inputs, self.dtype)
 
     def eager_unary(self, op):
+        dtype = find_domain(op, self.output).dtype
         if op in REDUCE_OP_TO_TORCH:
             batch_dim = len(self.data.shape) - len(self.output.shape)
             data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
             data = REDUCE_OP_TO_TORCH[op](data, -1)
             if op is ops.min or op is ops.max:
                 data = data[0]
-            return Tensor(data, self.inputs, self.dtype)
-        return Tensor(op(self.data), self.inputs, self.dtype)
+            return Tensor(data, self.inputs, dtype)
+        return Tensor(op(self.data), self.inputs, dtype)
 
     def eager_reduce(self, op, reduced_vars):
         if op in REDUCE_OP_TO_TORCH:
@@ -256,9 +257,11 @@ class Tensor(Funsor):
 
         # Sample all variables in a single Categorical call.
         logits = align_tensor(be_inputs, self)
-        flat_logits = logits.reshape(logits.shape[:len(batch_inputs)] + (-1,))
+        batch_shape = logits.shape[:len(batch_inputs)]
+        flat_logits = logits.reshape(batch_shape + (-1,))
         sample_shape = tuple(d.dtype for d in sample_inputs.values())
         flat_sample = torch.distributions.Categorical(logits=flat_logits).sample(sample_shape)
+        assert flat_sample.shape == sample_shape + batch_shape
         results = []
         for name, domain in reversed(list(event_inputs.items())):
             size = domain.dtype
@@ -266,14 +269,31 @@ class Tensor(Funsor):
             flat_sample = flat_sample / size
             results.append(Delta(name, point))
 
-        # Apply an optional dice factor to preserve differentiability.
+        # Account for the log normalizer factor.
+        # Derivation: Let f be a nonnormalized distribution (a funsor), and
+        #   consider operations in linear space (source code is in log space).
+        #   Let x0 ~ f/|f| be a monte carlo sample from a normalized f.
+        #                              f(x0) / |f|      # dice numerator
+        #   Let g = delta(x=x0) |f| -----------------
+        #                           detach(f(x0)/|f|)   # dice denominator
+        #                       f(x0) |detach(f)|
+        #         = delta(x=x0) -----------------  be a dice approximation of f.
+        #                         detach(f(x0))
+        #   Then g should be an unbiased estimator of f in value and all
+        #   derivatives, including the normalier |f|.
+        #   In case f = detach(f), we can simplify to
+        #       g = delta(x=x0) |detach(f)|.
         if flat_logits.requires_grad:
+            # Apply a dice factor to preserve differentiability.
             index = [torch.arange(n).reshape((n,) + (1,) * (flat_sample.dim() - i))
                      for i, n in enumerate(flat_sample.shape)]
             index.append(flat_sample)
             log_prob = flat_logits[index]
             assert log_prob.shape == flat_sample.shape
-            results.append(Tensor(log_prob - log_prob.detach(), sb_inputs))
+            results.append(Tensor(flat_logits.detach().logsumexp(-1) +
+                                  (log_prob - log_prob.detach()), sb_inputs))
+        else:
+            results.append(Tensor(flat_logits.logsumexp(-1), batch_inputs))
 
         return reduce(ops.add, results)
 
