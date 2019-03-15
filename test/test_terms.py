@@ -9,7 +9,8 @@ from six.moves import reduce
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
-from funsor.terms import Binary, Number, Stack, Variable, to_funsor
+from funsor.interpreter import interpretation
+from funsor.terms import Binary, Number, Stack, Variable, sequential, to_funsor
 from funsor.testing import check_funsor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
@@ -154,7 +155,8 @@ def test_reduce_all(op):
     if op is ops.logaddexp:
         pytest.skip()
 
-    actual = f.reduce(op)
+    with interpretation(sequential):
+        actual = f.reduce(op)
 
     values = [f(x=i, y=j, z=k)
               for i in x.output
@@ -182,7 +184,8 @@ def test_reduce_subset(op, reduced_vars):
     if op is ops.logaddexp:
         pytest.skip()
 
-    actual = f.reduce(op, reduced_vars)
+    with interpretation(sequential):
+        actual = f.reduce(op, reduced_vars)
 
     expected = f
     for v in [x, y, z]:
