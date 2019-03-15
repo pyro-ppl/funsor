@@ -4,13 +4,15 @@ import itertools
 from collections import OrderedDict
 
 import pytest
+import torch
+from torch.autograd import grad
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.joint import Joint
 from funsor.terms import Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
-from funsor.torch import materialize
+from funsor.torch import align_tensors, materialize
 
 
 @pytest.mark.parametrize('sample_inputs', [
@@ -133,13 +135,14 @@ def test_joint_shape(sample_inputs, int_event_inputs, real_event_inputs):
 @pytest.mark.parametrize('batch_inputs', [
     (),
     (('b', bint(4)),),
-    (('b', bint(4)), ('c', bint(2))),
+    (('b', bint(3)), ('c', bint(2))),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('event_inputs', [
     (('e', bint(2)),),
     (('e', bint(2)), ('f', bint(3))),
 ], ids=id_from_inputs)
-def test_tensor_distribution(event_inputs, batch_inputs):
+@pytest.mark.parametrize('test_grad', [False, True], ids=['value', 'grad'])
+def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
     num_samples = 50000
     sample_inputs = OrderedDict(n=bint(num_samples))
     be_inputs = OrderedDict(batch_inputs + event_inputs)
@@ -147,11 +150,20 @@ def test_tensor_distribution(event_inputs, batch_inputs):
     event_inputs = OrderedDict(event_inputs)
     sampled_vars = frozenset(event_inputs)
     p = random_tensor(be_inputs)
+    p.data.requires_grad_(test_grad)
 
     q = p.sample(sampled_vars, sample_inputs) - ops.log(num_samples)
     mq = materialize(q).reduce(ops.logaddexp, 'n')
     mq = mq.align(tuple(p.inputs))
     assert_close(mq, p, atol=0.1, rtol=None)
+
+    if test_grad:
+        _, (p_data, mq_data) = align_tensors(p, mq)
+        assert p_data.shape == mq_data.shape
+        probe = torch.randn(p_data.shape)
+        expected = grad((p_data.exp() * probe).sum(), [p.data])[0]
+        actual = grad((mq_data.exp() * probe).sum(), [p.data])[0]
+        assert_close(actual, expected, atol=0.1, rtol=None)
 
 
 @pytest.mark.skip(reason='infinite loop')

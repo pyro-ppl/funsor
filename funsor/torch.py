@@ -263,36 +263,37 @@ class Tensor(Funsor):
         flat_sample = torch.distributions.Categorical(logits=flat_logits).sample(sample_shape)
         assert flat_sample.shape == sample_shape + batch_shape
         results = []
+        mod_sample = flat_sample
         for name, domain in reversed(list(event_inputs.items())):
             size = domain.dtype
-            point = Tensor(flat_sample % size, sb_inputs, size)
-            flat_sample = flat_sample / size
+            point = Tensor(mod_sample % size, sb_inputs, size)
+            mod_sample = mod_sample / size
             results.append(Delta(name, point))
 
         # Account for the log normalizer factor.
         # Derivation: Let f be a nonnormalized distribution (a funsor), and
         #   consider operations in linear space (source code is in log space).
-        #   Let x0 ~ f/|f| be a monte carlo sample from a normalized f.
+        #   Let x0 ~ f/|f| be a monte carlo sample from a normalized f/|f|.
         #                              f(x0) / |f|      # dice numerator
         #   Let g = delta(x=x0) |f| -----------------
         #                           detach(f(x0)/|f|)   # dice denominator
-        #                       f(x0) |detach(f)|
+        #                       |detach(f)| f(x0)
         #         = delta(x=x0) -----------------  be a dice approximation of f.
         #                         detach(f(x0))
-        #   Then g should be an unbiased estimator of f in value and all
-        #   derivatives, including the normalier |f|.
-        #   In case f = detach(f), we can simplify to
-        #       g = delta(x=x0) |detach(f)|.
+        #   Then g is an unbiased estimator of f in value and all derivatives.
+        #   In the special case f = detach(f), we can simplify to
+        #       g = delta(x=x0) |f|.
         if flat_logits.requires_grad:
             # Apply a dice factor to preserve differentiability.
-            index = [torch.arange(n).reshape((n,) + (1,) * (flat_sample.dim() - i))
-                     for i, n in enumerate(flat_sample.shape)]
+            index = [torch.arange(n).reshape((n,) + (1,) * (flat_logits.dim() - i - 2))
+                     for i, n in enumerate(flat_logits.shape[:-1])]
             index.append(flat_sample)
             log_prob = flat_logits[index]
             assert log_prob.shape == flat_sample.shape
             results.append(Tensor(flat_logits.detach().logsumexp(-1) +
                                   (log_prob - log_prob.detach()), sb_inputs))
         else:
+            # This is the special case f = detach(f).
             results.append(Tensor(flat_logits.logsumexp(-1), batch_inputs))
 
         return reduce(ops.add, results)
