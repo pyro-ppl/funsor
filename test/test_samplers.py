@@ -166,7 +166,6 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
         assert_close(actual, expected, atol=0.1, rtol=None)
 
 
-@pytest.mark.skip(reason='infinite loop')
 @pytest.mark.parametrize('batch_inputs', [
     (),
     (('b', bint(4)),),
@@ -191,7 +190,9 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
     # Check zeroth moment.
     assert_close(q.reduce(ops.logaddexp, q_vars),
                  p.reduce(ops.logaddexp, p_vars), atol=1e-6, rtol=None)
-    for k1, d1 in event_inputs.item():
+
+    pytest.xfail(reason='infinite loop')
+    for k1, d1 in event_inputs.items():
         x = Variable(k1, d1)
         # Check first moments.
         assert_close((q.exp() * x).reduce(ops.add, q_vars),

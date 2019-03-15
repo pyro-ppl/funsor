@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 
 from six import add_metaclass
+from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.delta import Delta
@@ -185,6 +186,14 @@ def eager_add(op, joint, other):
     if subs:
         return joint + other.eager_subs(subs)
     return Joint(joint.deltas, joint.discrete + other, joint.gaussian)
+
+
+@eager.register(Binary, Op, Joint, (Number, Tensor))
+def eager_add(op, joint, other):
+    if op is ops.sub:
+        return joint + -other
+
+    return None  # defer to default implementation
 
 
 @eager.register(Binary, AddOp, Joint, Gaussian)
