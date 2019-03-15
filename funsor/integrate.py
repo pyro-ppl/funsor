@@ -6,6 +6,7 @@ import torch
 
 import funsor.ops as ops
 from funsor.distributions import Gaussian, Delta
+from funsor.domains import bint
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary
 from funsor.terms import Funsor, Number, Reduce, Variable, eager, reflect
@@ -13,6 +14,18 @@ from funsor.torch import Tensor
 
 
 GROUND_TERMS = (Tensor, Gaussian, Delta, Number, Variable)
+
+
+def _make_base_measure(arg, reduced_vars):
+    if not all(isinstance(d, bint) for d in arg.inputs.values()):
+        raise NotImplementedError("TODO implement continuous base measures")
+
+    sizes = OrderedDict(set((var, dtype) for var, dtype in arg.inputs.items()))
+    terms = tuple(
+        Tensor(torch.ones((d.dtype,)) / float(d.dtype), OrderedDict([(var, d)]))
+        for var, d in sizes.items() if var in reduced_vars
+    )
+    return reflect(Finitary, ops.mul, terms) if len(terms) > 1 else terms[0]
 
 
 def find_constants(measure, operands):
@@ -42,7 +55,7 @@ class Integrate(Funsor):
 
 
 @eager.register(Integrate, GROUND_TERMS, GROUND_TERMS)
-def integrate_base(measure, integrand):
+def integrate_ground(measure, integrand):
     reduced_vars = frozenset(measure.inputs) | frozenset(integrand.inputs)
     return (measure * integrand).reduce(ops.add, reduced_vars)
 
@@ -50,8 +63,8 @@ def integrate_base(measure, integrand):
 @eager.register(Integrate, Funsor, Reduce)
 def integrate_reduce(measure, integrand):
     if integrand.reduced_vars:
-        raise NotImplementedError("TODO convert Reduce into Integrate over product")
-        # return Integrate(measure, Integrate(base_measure, integrand.arg))
+        base_measure = _make_base_measure(integrand.arg, integrand.reduced_vars)
+        return Integrate(measure, Integrate(base_measure, integrand.arg))
     return Integrate(measure, integrand.arg)
 
 
@@ -67,9 +80,9 @@ def integrate_finitary(measure, integrand):
     if integrand.op is ops.mul:
         # pull out terms that do not depend on the measure
         constants, new_operands = find_constants(measure, integrand.operands)
-        new_integrand = Finitary(integrand.op, new_operands)
-        inner = Integrate(measure, new_integrand)
-        return Finitary(ops.mul, constants + (inner,))
+        inner = Integrate(measure, Finitary(integrand.op, new_operands))
+        outer = Integrate(measure, Finitary(integrand.op, constants))  # should be 1
+        return outer * inner
 
     return None
 
@@ -110,15 +123,8 @@ def integrate_sum_product(sum_op, prod_op, factors, eliminate=frozenset()):
     assert prod_op is ops.mul
 
     with interpretation(reflect):
-        sizes = OrderedDict(set((var, dtype) for factor in factors
-                                for var, dtype in factor.inputs.items()))
-        var_tensors = tuple(
-            Tensor(torch.ones((size.dtype,)) / float(size.dtype),
-                   OrderedDict([(var, size)]))
-            for var, size in sizes.items() if var in eliminate
-        )
-        measure = Finitary(prod_op, var_tensors) if len(var_tensors) > 1 else var_tensors[0]
         integrand = Finitary(prod_op, tuple(factors))
+        measure = _make_base_measure(integrand, eliminate)
 
     return Integrate(measure, integrand)
 
