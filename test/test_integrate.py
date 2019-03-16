@@ -21,14 +21,14 @@ from funsor.integrate import Integrate, naive_integrate_einsum
 EINSUM_EXAMPLES = [
     "a,b->",
     "ab,a->",
-    # "a,a->",
-    # "a,a,a,ab->",
-    # "ab->",
-    # "ab,bc,cd->",
-    # "abc,bcd,def->",
-    # "abc,abc,bcd,bcd,def,def->",
-    # "ab,bc,cd,de->",
-    # "ab,ab,bc,bc,cd,cd->",
+    "a,a->",
+    "a,a,a,ab->",
+    "ab->",
+    "ab,bc,cd->",
+    "abc,bcd,def->",
+    "abc,abc,bcd,bcd,def,def->",
+    "ab,bc,cd,de->",
+    "ab,ab,bc,bc,cd,cd->",
 ]
 
 
