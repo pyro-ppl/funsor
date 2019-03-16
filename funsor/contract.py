@@ -1,99 +1,194 @@
 from __future__ import absolute_import, division, print_function
 
-from collections import defaultdict, OrderedDict
-from six.moves import reduce
+from collections import OrderedDict
+from six import integer_types
 
-from funsor.terms import Funsor
+import torch
 
-
-def _partition(terms, sum_vars):
-    # Construct a bipartite graph between terms and the vars
-    neighbors = OrderedDict([(t, []) for t in terms])
-    for term in terms:
-        for dim in term.inputs.keys():
-            if dim in sum_vars:
-                neighbors[term].append(dim)
-                neighbors.setdefault(dim, []).append(term)
-
-    # Partition the bipartite graph into connected components for contraction.
-    components = []
-    while neighbors:
-        v, pending = neighbors.popitem()
-        component = OrderedDict([(v, None)])  # used as an OrderedSet
-        for v in pending:
-            component[v] = None
-        while pending:
-            v = pending.pop()
-            for v in neighbors.pop(v):
-                if v not in component:
-                    component[v] = None
-                    pending.append(v)
-
-        # Split this connected component into tensors and dims.
-        component_terms = tuple(v for v in component if isinstance(v, Funsor))
-        if component_terms:
-            component_dims = frozenset(v for v in component if not isinstance(v, Funsor))
-            components.append((component_terms, component_dims))
-    return components
+import funsor.ops as ops
+from funsor.distributions import Gaussian, Delta
+from funsor.interpreter import interpretation, reinterpret
+from funsor.optimizer import Finitary, optimize
+from funsor.terms import Funsor, Number, Reduce, Variable, eager
+from funsor.torch import Tensor
 
 
-def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
+ATOMS = (Tensor, Gaussian, Delta, Number, Variable)
+
+
+def _make_base_measure(arg, reduced_vars, normalized=False):
+    if not all(isinstance(d.dtype, integer_types) for d in arg.inputs.values()):
+        raise NotImplementedError("TODO implement continuous base measures")
+
+    sizes = OrderedDict(set((var, dtype) for var, dtype in arg.inputs.items()))
+    terms = tuple(
+        Tensor(torch.ones((d.dtype,)) / float(d.dtype), OrderedDict([(var, d)]))
+        if normalized else
+        Tensor(torch.ones((d.dtype,)), OrderedDict([(var, d)]))
+        for var, d in sizes.items() if var in reduced_vars
+    )
+    return Finitary(ops.mul, terms) if len(terms) > 1 else terms[0]
+
+
+def _find_constants(measure, operands, reduced_vars):
+    constants, new_operands = [], []
+    for operand in operands:
+        if reduced_vars & frozenset(measure.inputs) & frozenset(operand.inputs):
+            new_operands.append(operand)
+        else:
+            constants.append(operand)
+    return tuple(constants), tuple(new_operands)
+
+
+def _simplify_contract(measure, integrand, reduced_vars):
+    meas_vars = frozenset(measure.inputs)
+    int_vars = frozenset(integrand.inputs)
+    assert reduced_vars <= meas_vars | int_vars
+    progress = False
+    if not reduced_vars <= meas_vars:
+        integrand = integrand.reduce(ops.add, reduced_vars - meas_vars)
+        reduced_vars = reduced_vars & meas_vars
+        progress = True
+    if not reduced_vars <= int_vars:
+        measure = measure.reduce(ops.add, reduced_vars - int_vars)
+        reduced_vars = reduced_vars & int_vars
+        progress = True
+
+    if progress:
+        return Contract(measure, integrand, reduced_vars)
+
+    return None
+
+
+class Contract(Funsor):
+
+    def __init__(self, measure, integrand, reduced_vars):
+        assert isinstance(measure, Funsor)
+        assert isinstance(integrand, Funsor)
+        assert isinstance(reduced_vars, frozenset)
+        inputs = OrderedDict([(k, d) for t in (measure, integrand)
+                              for k, d in t.inputs.items() if k not in reduced_vars])
+        output = integrand.output
+        super(Contract, self).__init__(inputs, output)
+        self.measure = measure
+        self.integrand = integrand
+        self.reduced_vars = reduced_vars
+
+    def eager_subs(self, subs):
+        raise NotImplementedError("TODO implement subs")
+
+
+@optimize.register(Contract, ATOMS, ATOMS, frozenset)
+@eager.register(Contract, ATOMS, ATOMS, frozenset)
+def contract_ground_ground(measure, integrand, reduced_vars):
+    result = _simplify_contract(measure, integrand, reduced_vars)
+    if result is not None:
+        return result
+
+    return (measure * integrand).reduce(ops.add, reduced_vars)
+
+
+@optimize.register(Contract, Funsor, Reduce, frozenset)
+def contract_reduce(measure, integrand, reduced_vars):
+    result = _simplify_contract(measure, integrand, reduced_vars)
+    if result is not None:
+        return result
+
+    # XXX should we be doing this conversion at all given that Reduce
+    # is already handled by the optimizer?
+    if integrand.op is ops.add:
+        base_measure = _make_base_measure(integrand.arg, integrand.reduced_vars, normalized=False)
+        inner = Contract(base_measure, integrand.arg, integrand.reduced_vars)
+        return Contract(measure, inner, reduced_vars)
+    return None
+
+
+@optimize.register(Contract, ATOMS, Finitary, frozenset)
+def contract_ground_finitary(measure, integrand, reduced_vars):
+    result = _simplify_contract(measure, integrand, reduced_vars)
+    if result is not None:
+        return result
+
+    # exploit linearity of integration
+    if integrand.op is ops.add:
+        return Finitary(
+            ops.add,
+            tuple(Contract(measure, operand, reduced_vars) for operand in integrand.operands)
+        )
+
+    # pull out constant terms that do not depend on the measure
+    if integrand.op is ops.mul:
+        constants, new_operands = _find_constants(measure, integrand.operands, reduced_vars)
+        if new_operands and constants:
+            # this term should equal Finitary(mul, constants) for probability measures
+            outer = Finitary(ops.mul, constants)
+            inner = Contract(measure, Finitary(integrand.op, new_operands), reduced_vars)
+            return outer * inner
+        elif not new_operands and constants:
+            return Finitary(ops.mul, constants)
+
+    return None
+
+
+@optimize.register(Contract, Finitary, (Finitary,) + ATOMS, frozenset)
+def contract_finitary_ground(measure, integrand, reduced_vars):
+    result = _simplify_contract(measure, integrand, reduced_vars)
+    if result is not None:
+        return result
+
+    # recursively apply law of iterated expectation
+    assert len(measure.operands) > 1, "Finitary with one operand should have been passed through"
+    if measure.op is ops.mul:
+        # TODO topologically order the measure terms according to their variables
+        root_measure = measure.operands[0]
+        remaining_measure = Finitary(measure.op, measure.operands[1:])
+        inner = Contract(remaining_measure, integrand, reduced_vars & frozenset(remaining_measure.inputs))
+        return Contract(root_measure, inner, reduced_vars & frozenset(root_measure.inputs))
+
+    return None
+
+
+##############################
+# utilities for testing follow
+##############################
+
+def naive_contract_einsum(eqn, *terms, **kwargs):
     """
-    Performs partial sum-product contraction of a collection of factors.
-
-    :return: a list of partially contracted Funsors.
-    :rtype: list
+    Use for testing Contract against einsum
     """
-    assert callable(sum_op)
-    assert callable(prod_op)
-    assert isinstance(factors, (tuple, list))
-    assert all(isinstance(f, Funsor) for f in factors)
-    assert isinstance(eliminate, frozenset)
-    assert isinstance(plates, frozenset)
-    sum_vars = eliminate - plates
+    assert "plates" not in kwargs
 
-    var_to_ordinal = {}
-    ordinal_to_factors = defaultdict(list)
-    for f in factors:
-        ordinal = plates.intersection(f.inputs)
-        ordinal_to_factors[ordinal].append(f)
-        for var in sum_vars.intersection(f.inputs):
-            var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+    backend = kwargs.pop('backend', 'torch')
+    if backend in ('torch', 'pyro.ops.einsum.torch_log'):
+        prod_op = ops.mul
+    else:
+        raise ValueError("{} backend not implemented".format(backend))
 
-    ordinal_to_vars = defaultdict(set)
-    for var, ordinal in var_to_ordinal.items():
-        ordinal_to_vars[ordinal].add(var)
+    assert isinstance(eqn, str)
+    assert all(isinstance(term, Funsor) for term in terms)
+    inputs, output = eqn.split('->')
+    inputs = inputs.split(',')
+    assert len(inputs) == len(terms)
+    assert len(output.split(',')) == 1
+    input_dims = frozenset(d for inp in inputs for d in inp)
+    output_dims = frozenset(d for d in output)
+    reduced_vars = input_dims - output_dims
 
-    results = []
-    while ordinal_to_factors:
-        leaf = max(ordinal_to_factors, key=len)
-        leaf_factors = ordinal_to_factors.pop(leaf)
-        leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
-            remaining_sum_vars = sum_vars.intersection(f.inputs)
-            if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf & eliminate))
-            else:
-                new_plates = frozenset().union(
-                    *(var_to_ordinal[v] for v in remaining_sum_vars))
-                if new_plates == leaf:
-                    raise ValueError("intractable!")
-                if not (leaf - new_plates).issubset(eliminate):
-                    raise ValueError("cannot reduce {} before {}".format(
-                        remaining_sum_vars, (leaf - new_plates) - eliminate))
-                f = f.reduce(prod_op, leaf - new_plates)
-                ordinal_to_factors[new_plates].append(f)
+    if backend == 'pyro.ops.einsum.torch_log':
+        terms = tuple(term.exp() for term in terms)
 
-    return results
+    with interpretation(optimize):
+        integrand = Finitary(prod_op, tuple(terms))
+        measure = _make_base_measure(integrand, reduced_vars, normalized=False)
+        assert frozenset(measure.inputs) == reduced_vars
+        # measure = Number(1.)
 
+        print("MEASURE: {}\n".format(measure))
+        print("INTEGRAND: {}\n".format(integrand))
+        result = Contract(measure, integrand, reduced_vars)
+        print("RESULT: {}\n".format(result))
 
-def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
-    """
-    Performs sum-product contraction of a collection of factors.
+    if backend == 'pyro.ops.einsum.torch_log':
+        result = result.log()
 
-    :return: a single contracted Funsor.
-    :rtype: :class:`~funsor.terms.Funsor`
-    """
-    factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates)
-    return reduce(prod_op, factors)
+    return reinterpret(result)
