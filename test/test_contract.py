@@ -56,20 +56,20 @@ def test_contract_einsum_product_measure(equation, backend, fill):
             assert actual.inputs[output_dim].dtype == sizes[output_dim]
 
 
+@pytest.mark.xfail(reason="topological sorting not implemented")
 @pytest.mark.parametrize('equation1', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('equation2', EINSUM_EXAMPLES)
 def test_contract_naive_pair(equation1, equation2):
 
     # identical structure
-    funsor_operands1 = [a.abs() for a in make_einsum_example(equation1)[-1]]
-    funsor_operands2 = [a.abs() for a in make_einsum_example(equation2)[-1]]
+    funsor_operands1 = make_einsum_example(equation1)[-1]
+    funsor_operands2 = make_einsum_example(equation2)[-1]
 
     with interpretation(optimize):
         measure = Finitary(ops.mul, tuple(funsor_operands1))
         integrand = Finitary(ops.mul, tuple(funsor_operands2))
 
-        intermediate = measure * integrand
-        expected = intermediate.reduce(ops.add)
+        expected = (measure * integrand).reduce(ops.add)
 
         actual = Contract(measure, integrand,
                           frozenset(measure.inputs) | frozenset(integrand.inputs))
