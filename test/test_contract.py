@@ -72,7 +72,7 @@ def test_contract_naive_pair(equation1, equation2):
         expected = intermediate.reduce(ops.add)
 
         actual = Contract(measure, integrand,
-                           frozenset(measure.inputs) | frozenset(integrand.inputs))
+                          frozenset(measure.inputs) | frozenset(integrand.inputs))
 
     actual = reinterpret(actual)
     expected = reinterpret(expected)
