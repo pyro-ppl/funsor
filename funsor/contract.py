@@ -40,7 +40,32 @@ def _find_constants(measure, operands, reduced_vars):
     return tuple(constants), tuple(new_operands)
 
 
+def _order_measures(measure, reduced_vars):
+    assert isinstance(measure, Finitary)
+
+    # old behavior (incorrect?)
+    root_measure = measure.operands[0]
+    remaining_measure = Finitary(measure.op, measure.operands[1:])
+
+    # new behavior (suboptimal; linear (?) in number of integrands at each step...)
+    # terms = measure.operands
+    # term_to_terms = {
+    #     term: set(t for t in terms if set(t.inputs) & set(term.inputs))
+    #     for term in terms
+    # }
+    # while terms:
+    #     term = terms.pop()
+    #     new_terms.append(term)
+    #     for child_term in term_to_terms[term]:
+    #         pass
+
+    return root_measure, remaining_measure
+
+
 def _simplify_contract(measure, integrand, reduced_vars):
+    """
+    Reduce free variables that do not appear explicitly in the measure
+    """
     meas_vars = frozenset(measure.inputs)
     int_vars = frozenset(integrand.inputs)
     assert reduced_vars <= meas_vars | int_vars
@@ -140,10 +165,12 @@ def contract_finitary_ground(measure, integrand, reduced_vars):
     assert len(measure.operands) > 1, "Finitary with one operand should have been passed through"
     if measure.op is ops.mul:
         # TODO topologically order the measure terms according to their variables
-        root_measure = measure.operands[0]
-        remaining_measure = Finitary(measure.op, measure.operands[1:])
-        inner = Contract(remaining_measure, integrand, reduced_vars & frozenset(remaining_measure.inputs))
-        return Contract(root_measure, inner, reduced_vars & frozenset(root_measure.inputs))
+        root_measure, remaining_measure = _order_measures(measure, reduced_vars)
+        if remaining_measure is not None:
+            inner = Contract(remaining_measure, integrand,
+                             reduced_vars & frozenset(remaining_measure.inputs))
+            return Contract(root_measure, inner,
+                            reduced_vars & frozenset(root_measure.inputs))
 
     return None
 
