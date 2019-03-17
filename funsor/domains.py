@@ -72,7 +72,11 @@ def find_domain(op, *domains):
     assert callable(op), op
     assert all(isinstance(arg, Domain) for arg in domains)
     if len(domains) == 1:
-        return domains[0]
+        dtype = domains[0].dtype
+        shape = domains[0].shape
+        if op is ops.log or op is ops.exp:
+            dtype = 'real'
+        return Domain(shape, dtype)
 
     lhs, rhs = domains
     if op is ops.getitem:
