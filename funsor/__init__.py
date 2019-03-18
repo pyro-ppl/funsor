@@ -6,7 +6,7 @@ from funsor.terms import Funsor, Number, Variable, of_shape, to_funsor
 from funsor.torch import Function, Tensor, arange, function, torch_einsum
 
 from . import (adjoint, contract, delta, distributions, domains, einsum, gaussian, handlers, interpreter, joint,
-               minipyro, ops, terms, torch)
+               minipyro, pattern, ops, terms, torch)
 
 __all__ = [
     'Domain',
@@ -33,6 +33,7 @@ __all__ = [
     'minipyro',
     'of_shape',
     'ops',
+    'pattern',
     'reals',
     'reinterpret',
     'terms',
