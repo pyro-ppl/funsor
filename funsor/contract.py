@@ -16,9 +16,9 @@ from funsor.torch import Tensor
 ATOMS = (Tensor, Gaussian, Delta, Number, Variable)
 
 
-def _make_base_measure(arg, reduced_vars, normalized=False):
+def _make_base_lhs(arg, reduced_vars, normalized=False):
     if not all(isinstance(d.dtype, integer_types) for d in arg.inputs.values()):
-        raise NotImplementedError("TODO implement continuous base measures")
+        raise NotImplementedError("TODO implement continuous base lhss")
 
     sizes = OrderedDict(set((var, dtype) for var, dtype in arg.inputs.items()))
     terms = tuple(
@@ -30,25 +30,25 @@ def _make_base_measure(arg, reduced_vars, normalized=False):
     return Finitary(ops.mul, terms) if len(terms) > 1 else terms[0]
 
 
-def _find_constants(measure, operands, reduced_vars):
+def _find_constants(lhs, operands, reduced_vars):
     constants, new_operands = [], []
     for operand in operands:
-        if reduced_vars & frozenset(measure.inputs) & frozenset(operand.inputs):
+        if reduced_vars & frozenset(lhs.inputs) & frozenset(operand.inputs):
             new_operands.append(operand)
         else:
             constants.append(operand)
     return tuple(constants), tuple(new_operands)
 
 
-def _order_measures(measure, reduced_vars):
-    assert isinstance(measure, Finitary)
+def _order_lhss(lhs, reduced_vars):
+    assert isinstance(lhs, Finitary)
 
     # old behavior (incorrect?)
-    root_measure = measure.operands[0]
-    remaining_measure = Finitary(measure.op, measure.operands[1:])
+    root_lhs = lhs.operands[0]
+    remaining_lhs = Finitary(lhs.op, lhs.operands[1:])
 
-    # new behavior (suboptimal; linear (?) in number of integrands at each step...)
-    # terms = measure.operands
+    # new behavior (suboptimal; linear (?) in number of rhss at each step...)
+    # terms = lhs.operands
     # term_to_terms = {
     #     term: set(t for t in terms if set(t.inputs) & set(term.inputs))
     #     for term in terms
@@ -59,44 +59,44 @@ def _order_measures(measure, reduced_vars):
     #     for child_term in term_to_terms[term]:
     #         pass
 
-    return root_measure, remaining_measure
+    return root_lhs, remaining_lhs
 
 
-def _simplify_contract(measure, integrand, reduced_vars):
+def _simplify_contract(lhs, rhs, reduced_vars):
     """
-    Reduce free variables that do not appear explicitly in the measure
+    Reduce free variables that do not appear explicitly in the lhs
     """
-    meas_vars = frozenset(measure.inputs)
-    int_vars = frozenset(integrand.inputs)
+    meas_vars = frozenset(lhs.inputs)
+    int_vars = frozenset(rhs.inputs)
     assert reduced_vars <= meas_vars | int_vars
     progress = False
     if not reduced_vars <= meas_vars:
-        integrand = integrand.reduce(ops.add, reduced_vars - meas_vars)
+        rhs = rhs.reduce(ops.add, reduced_vars - meas_vars)
         reduced_vars = reduced_vars & meas_vars
         progress = True
     if not reduced_vars <= int_vars:
-        measure = measure.reduce(ops.add, reduced_vars - int_vars)
+        lhs = lhs.reduce(ops.add, reduced_vars - int_vars)
         reduced_vars = reduced_vars & int_vars
         progress = True
 
     if progress:
-        return Contract(measure, integrand, reduced_vars)
+        return Contract(lhs, rhs, reduced_vars)
 
     return None
 
 
 class Contract(Funsor):
 
-    def __init__(self, measure, integrand, reduced_vars):
-        assert isinstance(measure, Funsor)
-        assert isinstance(integrand, Funsor)
+    def __init__(self, lhs, rhs, reduced_vars):
+        assert isinstance(lhs, Funsor)
+        assert isinstance(rhs, Funsor)
         assert isinstance(reduced_vars, frozenset)
-        inputs = OrderedDict([(k, d) for t in (measure, integrand)
+        inputs = OrderedDict([(k, d) for t in (lhs, rhs)
                               for k, d in t.inputs.items() if k not in reduced_vars])
-        output = integrand.output
+        output = rhs.output
         super(Contract, self).__init__(inputs, output)
-        self.measure = measure
-        self.integrand = integrand
+        self.lhs = lhs
+        self.rhs = rhs
         self.reduced_vars = reduced_vars
 
     def eager_subs(self, subs):
@@ -105,49 +105,49 @@ class Contract(Funsor):
 
 @optimize.register(Contract, ATOMS, ATOMS, frozenset)
 @eager.register(Contract, ATOMS, ATOMS, frozenset)
-def contract_ground_ground(measure, integrand, reduced_vars):
-    result = _simplify_contract(measure, integrand, reduced_vars)
+def contract_ground_ground(lhs, rhs, reduced_vars):
+    result = _simplify_contract(lhs, rhs, reduced_vars)
     if result is not None:
         return result
 
-    return (measure * integrand).reduce(ops.add, reduced_vars)
+    return (lhs * rhs).reduce(ops.add, reduced_vars)
 
 
 @optimize.register(Contract, Funsor, Reduce, frozenset)
-def contract_reduce(measure, integrand, reduced_vars):
-    result = _simplify_contract(measure, integrand, reduced_vars)
+def contract_reduce(lhs, rhs, reduced_vars):
+    result = _simplify_contract(lhs, rhs, reduced_vars)
     if result is not None:
         return result
 
     # XXX should we be doing this conversion at all given that Reduce
     # is already handled by the optimizer?
-    if integrand.op is ops.add:
-        base_measure = _make_base_measure(integrand.arg, integrand.reduced_vars, normalized=False)
-        inner = Contract(base_measure, integrand.arg, integrand.reduced_vars)
-        return Contract(measure, inner, reduced_vars)
+    if rhs.op is ops.add:
+        base_lhs = _make_base_lhs(rhs.arg, rhs.reduced_vars, normalized=False)
+        inner = Contract(base_lhs, rhs.arg, rhs.reduced_vars)
+        return Contract(lhs, inner, reduced_vars)
     return None
 
 
 @optimize.register(Contract, ATOMS, Finitary, frozenset)
-def contract_ground_finitary(measure, integrand, reduced_vars):
-    result = _simplify_contract(measure, integrand, reduced_vars)
+def contract_ground_finitary(lhs, rhs, reduced_vars):
+    result = _simplify_contract(lhs, rhs, reduced_vars)
     if result is not None:
         return result
 
     # exploit linearity of integration
-    if integrand.op is ops.add:
+    if rhs.op is ops.add:
         return Finitary(
             ops.add,
-            tuple(Contract(measure, operand, reduced_vars) for operand in integrand.operands)
+            tuple(Contract(lhs, operand, reduced_vars) for operand in rhs.operands)
         )
 
-    # pull out constant terms that do not depend on the measure
-    if integrand.op is ops.mul:
-        constants, new_operands = _find_constants(measure, integrand.operands, reduced_vars)
+    # pull out constant terms that do not depend on the lhs
+    if rhs.op is ops.mul:
+        constants, new_operands = _find_constants(lhs, rhs.operands, reduced_vars)
         if new_operands and constants:
-            # this term should equal Finitary(mul, constants) for probability measures
+            # this term should equal Finitary(mul, constants) for probability lhss
             outer = Finitary(ops.mul, constants)
-            inner = Contract(measure, Finitary(integrand.op, new_operands), reduced_vars)
+            inner = Contract(lhs, Finitary(rhs.op, new_operands), reduced_vars)
             return outer * inner
         elif not new_operands and constants:
             return Finitary(ops.mul, constants)
@@ -156,21 +156,21 @@ def contract_ground_finitary(measure, integrand, reduced_vars):
 
 
 @optimize.register(Contract, Finitary, (Finitary,) + ATOMS, frozenset)
-def contract_finitary_ground(measure, integrand, reduced_vars):
-    result = _simplify_contract(measure, integrand, reduced_vars)
+def contract_finitary_ground(lhs, rhs, reduced_vars):
+    result = _simplify_contract(lhs, rhs, reduced_vars)
     if result is not None:
         return result
 
     # recursively apply law of iterated expectation
-    assert len(measure.operands) > 1, "Finitary with one operand should have been passed through"
-    if measure.op is ops.mul:
-        # TODO topologically order the measure terms according to their variables
-        root_measure, remaining_measure = _order_measures(measure, reduced_vars)
-        if remaining_measure is not None:
-            inner = Contract(remaining_measure, integrand,
-                             reduced_vars & frozenset(remaining_measure.inputs))
-            return Contract(root_measure, inner,
-                            reduced_vars & frozenset(root_measure.inputs))
+    assert len(lhs.operands) > 1, "Finitary with one operand should have been passed through"
+    if lhs.op is ops.mul:
+        # TODO topologically order the lhs terms according to their variables
+        root_lhs, remaining_lhs = _order_lhss(lhs, reduced_vars)
+        if remaining_lhs is not None:
+            inner = Contract(remaining_lhs, rhs,
+                             reduced_vars & frozenset(remaining_lhs.inputs))
+            return Contract(root_lhs, inner,
+                            reduced_vars & frozenset(root_lhs.inputs))
 
     return None
 
@@ -205,14 +205,14 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
         terms = tuple(term.exp() for term in terms)
 
     with interpretation(optimize):
-        integrand = Finitary(prod_op, tuple(terms))
-        measure = _make_base_measure(integrand, reduced_vars, normalized=False)
-        assert frozenset(measure.inputs) == reduced_vars
-        # measure = Number(1.)
+        rhs = Finitary(prod_op, tuple(terms))
+        lhs = _make_base_lhs(rhs, reduced_vars, normalized=False)
+        assert frozenset(lhs.inputs) == reduced_vars
+        # lhs = Number(1.)
 
-        print("MEASURE: {}\n".format(measure))
-        print("INTEGRAND: {}\n".format(integrand))
-        result = Contract(measure, integrand, reduced_vars)
+        print("MEASURE: {}\n".format(lhs))
+        print("INTEGRAND: {}\n".format(rhs))
+        result = Contract(lhs, rhs, reduced_vars)
         print("RESULT: {}\n".format(result))
 
     if backend == 'pyro.ops.einsum.torch_log':
