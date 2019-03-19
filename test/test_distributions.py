@@ -59,7 +59,7 @@ def test_delta_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(*event_shape), reals(), reals(*event_shape), reals())
+    @funsor.torch.function(reals(*event_shape), reals(), reals(*event_shape), reals())
     def delta(v, log_density, value):
         eq = (v == value)
         for _ in range(len(event_shape)):
@@ -198,7 +198,7 @@ def test_mvn_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(3), reals(3, 3), reals(3), reals())
+    @funsor.torch.function(reals(3), reals(3, 3), reals(3), reals())
     def mvn(loc, scale_tril, value):
         return torch.distributions.MultivariateNormal(loc, scale_tril=scale_tril).log_prob(value)
 

@@ -384,7 +384,7 @@ def test_all_equal(shape):
 
 def test_function_matmul():
 
-    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    @funsor.torch.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
         return torch.matmul(x, y)
 
@@ -399,20 +399,59 @@ def test_function_matmul():
 
 def test_function_lazy_matmul():
 
-    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    @funsor.torch.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
         return torch.matmul(x, y)
 
-    x_lazy = funsor.Variable('x', reals(3, 4))
+    x_lazy = Variable('x', reals(3, 4))
     y = Tensor(torch.randn(4, 5))
     actual_lazy = matmul(x_lazy, y)
     check_funsor(actual_lazy, {'x': reals(3, 4)}, reals(3, 5))
-    assert isinstance(actual_lazy, funsor.Function)
+    assert isinstance(actual_lazy, funsor.torch.Function)
 
     x = Tensor(torch.randn(3, 4))
     actual = actual_lazy(x=x)
     expected_data = torch.matmul(x.data, y.data)
     check_funsor(actual, {}, reals(3, 5), expected_data)
+
+
+def test_function_nested_eager():
+
+    @funsor.torch.function(reals(8), (reals(), bint(8)))
+    def max_and_argmax(x):
+        return torch.max(x, dim=-1)
+
+    inputs = OrderedDict([('i', bint(2)), ('j', bint(3))])
+    x = Tensor(torch.randn(2, 3, 8), inputs)
+    m, a = x.data.max(dim=-1)
+    expected_max = Tensor(m, inputs, 'real')
+    expected_argmax = Tensor(a, inputs, 8)
+
+    actual_max, actual_argmax = max_and_argmax(x)
+    assert_close(actual_max, expected_max)
+    assert_close(actual_argmax, expected_argmax)
+
+
+def test_function_nested_lazy():
+
+    @funsor.torch.function(reals(8), (reals(), bint(8)))
+    def max_and_argmax(x):
+        return torch.max(x, dim=-1)
+
+    x_lazy = Variable('x', reals(8))
+    lazy_max, lazy_argmax = max_and_argmax(x_lazy)
+    assert isinstance(lazy_max, funsor.torch.Function)
+    assert isinstance(lazy_argmax, funsor.torch.Function)
+    check_funsor(lazy_max, {'x': reals(8)}, reals())
+    check_funsor(lazy_argmax, {'x': reals(8)}, bint(8))
+
+    inputs = OrderedDict([('i', bint(2)), ('j', bint(3))])
+    y = Tensor(torch.randn(2, 3, 8), inputs)
+    actual_max = lazy_max(x=y)
+    actual_argmax = lazy_argmax(x=y)
+    expected_max, expected_argmax = max_and_argmax(y)
+    assert_close(actual_max, expected_max)
+    assert_close(actual_argmax, expected_argmax)
 
 
 def test_align():
