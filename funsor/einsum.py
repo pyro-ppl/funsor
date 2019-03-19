@@ -6,7 +6,7 @@ import funsor.ops as ops
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
 from funsor.terms import Funsor, reflect
-from funsor.contract import sum_product
+from funsor.sum_product import sum_product
 
 
 def naive_einsum(eqn, *terms, **kwargs):
