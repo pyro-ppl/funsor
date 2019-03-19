@@ -10,7 +10,7 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Number, Stack, Variable, sequential, to_funsor
+from funsor.terms import Binary, Number, Stack, Variable, sequential, to_funsor, to_nonfunsor
 from funsor.testing import check_funsor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
@@ -22,9 +22,23 @@ def test_to_funsor():
 
 
 @pytest.mark.parametrize('x', ["foo", list(), tuple(), set(), dict()])
-def test_to_funsor_undefined(x):
+def test_to_funsor_error(x):
     with pytest.raises(ValueError):
         to_funsor(x)
+
+
+def test_to_nonfunsor():
+    actual = to_nonfunsor(Number(0.))
+    expected = 0.
+    assert type(actual) == type(expected)
+    assert actual == expected
+
+
+def test_to_nonfunsor_error():
+    with pytest.raises(ValueError):
+        to_nonfunsor(Variable('x', reals()))
+    with pytest.raises(ValueError):
+        to_nonfunsor(Variable('y', bint(12)))
 
 
 def test_cons_hash():

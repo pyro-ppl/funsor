@@ -12,7 +12,7 @@ from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import Op
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor, to_nonfunsor
 
 
 def align_tensor(new_inputs, x):
@@ -297,6 +297,14 @@ class Tensor(Funsor):
             results.append(Tensor(flat_logits.logsumexp(-1), batch_inputs))
 
         return reduce(ops.add, results)
+
+
+@to_nonfunsor.register(Tensor)
+def _to_nonfunsor_tensor(x):
+    if x.inputs:
+        raise ValueError("cannot convert Tensor to a nonfunsor due to lazy inputs: {}"
+                         .format(set(x.inputs)))
+    return x.data
 
 
 @eager.register(Binary, Op, Tensor, Number)
