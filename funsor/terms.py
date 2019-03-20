@@ -7,6 +7,7 @@ from abc import ABCMeta, abstractmethod
 from collections import Hashable, OrderedDict
 from weakref import WeakValueDictionary
 
+from multipledispatch import dispatch
 from six import add_metaclass, integer_types
 from six.moves import reduce
 
@@ -14,7 +15,7 @@ import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
-from funsor.ops import AssociativeOp, Op
+from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec, singledispatch
 
 
@@ -170,10 +171,8 @@ class Funsor(object):
             if isinstance(v, str):
                 # Allow renaming of inputs via syntax x(y="z").
                 v = Variable(v, self.inputs[k])
-            elif isinstance(v, numbers.Number):
-                v = Number(v, self.inputs[k].dtype)
             else:
-                v = to_funsor(v)
+                v = to_funsor(v, self.inputs[k].dtype)
             if v.output != self.inputs[k]:
                 raise TypeError('Expected substitution of {} to have type {}, but got {}'
                                 .format(repr(k), v.output, self.inputs[k]))
@@ -431,19 +430,53 @@ class Funsor(object):
         return Binary(ops.max, self, to_funsor(other))
 
     def __getitem__(self, other):
-        return Binary(ops.getitem, self, to_funsor(other))
+        if type(other) is not tuple:
+            other = to_funsor(other, self.output.shape[0])
+            return Binary(ops.getitem, self, other)
+
+        # Handle Ellipsis slicing.
+        if any(part is Ellipsis for part in other):
+            left = []
+            for part in other:
+                if part is Ellipsis:
+                    break
+                left.append(part)
+            right = []
+            for part in reversed(other):
+                if part is Ellipsis:
+                    break
+                right.append(part)
+            right.reverse()
+            missing = len(self.output.shape) - len(left) - len(right)
+            assert missing >= 0
+            middle = [slice(None)] * missing
+            other = tuple(left + middle + right)
+
+        # Handle each slice separately.
+        result = self
+        offset = 0
+        for part in other:
+            if isinstance(part, slice):
+                if part != slice(None):
+                    raise NotImplementedError('TODO support nontrivial slicing')
+                offset += 1
+            else:
+                part = to_funsor(part, result.output.shape[offset])
+                result = Binary(GetitemOp(offset), result, part)
+        return result
 
 
 interpreter.reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
 
 
-@singledispatch
+@dispatch(object)
 def to_funsor(x):
     """
     Convert to a :class:`Funsor`.
     Only :class:`Funsor`s and scalars are accepted.
 
     :param x: An object.
+    :param dtype: An optional datatype hint (integer or the string "real").
     :return: A Funsor equivalent to ``x``.
     :rtype: Funsor
     :raises: ValueError
@@ -451,8 +484,20 @@ def to_funsor(x):
     raise ValueError("cannot convert to Funsor: {}".format(repr(x)))
 
 
-@to_funsor.register(Funsor)
-def _to_funsor_funsor(x):
+@dispatch(object, object)
+def to_funsor(x, dtype):
+    raise ValueError("cannot convert to Funsor: {}".format(repr(x)))
+
+
+@dispatch(Funsor)
+def to_funsor(x):
+    return x
+
+
+@dispatch(Funsor, object)
+def to_funsor(x, dtype):
+    if x.dtype != dtype:
+        raise ValueError("dtype mismatch: {} vs {}".format(x.dtype, dtype))
     return x
 
 
@@ -630,7 +675,6 @@ class NumberMeta(FunsorMeta):
         return super(NumberMeta, cls).__call__(data, dtype)
 
 
-@to_funsor.register(numbers.Number)
 @add_metaclass(NumberMeta)
 class Number(Funsor):
     """
@@ -643,6 +687,7 @@ class Number(Funsor):
         assert isinstance(data, numbers.Number)
         if isinstance(dtype, integer_types):
             data = type(dtype)(data)
+            assert 0 <= data and data < dtype
         else:
             assert isinstance(dtype, str) and dtype == "real"
             data = float(data)
@@ -677,6 +722,16 @@ class Number(Funsor):
 
     def eager_unary(self, op):
         return Number(op(self.data), self.dtype)
+
+
+@dispatch(numbers.Number)
+def to_funsor(x):
+    return Number(x)
+
+
+@dispatch(numbers.Number, object)
+def to_funsor(x, dtype):
+    return Number(x, dtype)
 
 
 @to_data.register(Number)

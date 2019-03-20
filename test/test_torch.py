@@ -290,6 +290,50 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     check_funsor(actual, inputs, reals(), expected_data)
 
 
+def test_getitem_number_0_inputs():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    assert_close(x[2], Tensor(data[2]))
+    assert_close(x[:, 1], Tensor(data[:, 1]))
+    assert_close(x[2, 1], Tensor(data[2, 1]))
+    assert_close(x[2, :, 1], Tensor(data[2, :, 1]))
+    assert_close(x[3, ...], Tensor(data[3, ...]))
+    assert_close(x[3, 2, ...], Tensor(data[3, 2, ...]))
+    assert_close(x[..., 1], Tensor(data[..., 1]))
+    assert_close(x[..., 2, 1], Tensor(data[..., 2, 1]))
+    assert_close(x[3, ..., 1], Tensor(data[3, ..., 1]))
+
+
+def test_getitem_number_1_inputs():
+    data = torch.randn((3, 5, 4, 3, 2))
+    inputs = OrderedDict([('i', bint(3))])
+    x = Tensor(data, inputs)
+    assert_close(x[2], Tensor(data[:, 2], inputs))
+    assert_close(x[:, 1], Tensor(data[:, :, 1], inputs))
+    assert_close(x[2, 1], Tensor(data[:, 2, 1], inputs))
+    assert_close(x[2, :, 1], Tensor(data[:, 2, :, 1], inputs))
+    assert_close(x[3, ...], Tensor(data[:, 3, ...], inputs))
+    assert_close(x[3, 2, ...], Tensor(data[:, 3, 2, ...], inputs))
+    assert_close(x[..., 1], Tensor(data[..., 1], inputs))
+    assert_close(x[..., 2, 1], Tensor(data[..., 2, 1], inputs))
+    assert_close(x[3, ..., 1], Tensor(data[:, 3, ..., 1], inputs))
+
+
+def test_getitem_number_2_inputs():
+    data = torch.randn((3, 4, 5, 4, 3, 2))
+    inputs = OrderedDict([('i', bint(3)), ('j', bint(4))])
+    x = Tensor(data, inputs)
+    assert_close(x[2], Tensor(data[:, :, 2], inputs))
+    assert_close(x[:, 1], Tensor(data[:, :, :, 1], inputs))
+    assert_close(x[2, 1], Tensor(data[:, :, 2, 1], inputs))
+    assert_close(x[2, :, 1], Tensor(data[:, :, 2, :, 1], inputs))
+    assert_close(x[3, ...], Tensor(data[:, :, 3, ...], inputs))
+    assert_close(x[3, 2, ...], Tensor(data[:, :, 3, 2, ...], inputs))
+    assert_close(x[..., 1], Tensor(data[..., 1], inputs))
+    assert_close(x[..., 2, 1], Tensor(data[..., 2, 1], inputs))
+    assert_close(x[3, ..., 1], Tensor(data[:, :, 3, ..., 1], inputs))
+
+
 REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
 
 
