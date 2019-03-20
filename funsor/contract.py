@@ -9,6 +9,7 @@ import funsor.ops as ops
 from funsor.distributions import Gaussian, Delta
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary, optimize
+from funsor.sum_product import _partition
 from funsor.terms import Funsor, Number, Reduce, Variable, eager
 from funsor.torch import Tensor
 
@@ -43,21 +44,12 @@ def _find_constants(lhs, operands, reduced_vars):
 def _order_lhss(lhs, reduced_vars):
     assert isinstance(lhs, Finitary)
 
-    # old behavior (incorrect?)
-    root_lhs = lhs.operands[0]
-    remaining_lhs = Finitary(lhs.op, lhs.operands[1:])
-
-    # new behavior (suboptimal; linear (?) in number of rhss at each step...)
-    # terms = lhs.operands
-    # term_to_terms = {
-    #     term: set(t for t in terms if set(t.inputs) & set(term.inputs))
-    #     for term in terms
-    # }
-    # while terms:
-    #     term = terms.pop()
-    #     new_terms.append(term)
-    #     for child_term in term_to_terms[term]:
-    #         pass
+    components = _partition(lhs.operands, reduced_vars)
+    root_lhs = Finitary(ops.mul, tuple(components[0][0]))
+    if len(components) > 1:
+        remaining_lhs = Finitary(ops.mul, tuple(t for c in components[1:] for t in c[0]))
+    else:
+        remaining_lhs = None
 
     return root_lhs, remaining_lhs
 
@@ -165,7 +157,9 @@ def contract_finitary_ground(lhs, rhs, reduced_vars):
     assert len(lhs.operands) > 1, "Finitary with one operand should have been passed through"
     if lhs.op is ops.mul:
         # TODO topologically order the lhs terms according to their variables
+        # TODO don't reduce too early
         root_lhs, remaining_lhs = _order_lhss(lhs, reduced_vars)
+        print(root_lhs, remaining_lhs)
         if remaining_lhs is not None:
             inner = Contract(remaining_lhs, rhs,
                              reduced_vars & frozenset(remaining_lhs.inputs))
