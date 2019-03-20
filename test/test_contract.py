@@ -38,7 +38,7 @@ EINSUM_EXAMPLES = [
     ('torch', 1.),
     ('pyro.ops.einsum.torch_log', None)
 ])
-def test_contract_einsum_product_measure(equation, backend, fill):
+def test_contract_einsum_product_lhs(equation, backend, fill):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation, fill=fill)
 
     with interpretation(reflect):
@@ -69,13 +69,12 @@ def test_contract_naive_pair(equation1, equation2):
     assert all(sizes1[k] == sizes2[k] for k in set(sizes1.keys()) & set(sizes2.keys()))
 
     with interpretation(optimize):
-        measure = Finitary(ops.mul, tuple(funsor_operands1))
-        integrand = Finitary(ops.mul, tuple(funsor_operands2))
+        lhs = Finitary(ops.mul, tuple(funsor_operands1))
+        rhs = Finitary(ops.mul, tuple(funsor_operands2))
 
-        expected = (measure * integrand).reduce(ops.add)
+        expected = (lhs * rhs).reduce(ops.add)
 
-        actual = Contract(measure, integrand,
-                          frozenset(measure.inputs) | frozenset(integrand.inputs))
+        actual = Contract(lhs, rhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
 
     actual = reinterpret(actual)
     expected = reinterpret(expected)
