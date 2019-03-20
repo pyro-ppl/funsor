@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 from six import integer_types
 
+import opt_einsum
 import torch
 
 import funsor.ops as ops
@@ -95,14 +96,36 @@ class Contract(Funsor):
         raise NotImplementedError("TODO implement subs")
 
 
-@optimize.register(Contract, ATOMS, ATOMS, frozenset)
-@eager.register(Contract, ATOMS, ATOMS, frozenset)
+@optimize.register(Contract, ATOMS[1:], ATOMS[1:], frozenset)
+@eager.register(Contract, ATOMS[1:], ATOMS[1:], frozenset)
 def contract_ground_ground(lhs, rhs, reduced_vars):
     result = _simplify_contract(lhs, rhs, reduced_vars)
     if result is not None:
         return result
 
     return (lhs * rhs).reduce(ops.add, reduced_vars)
+
+
+@eager.register(Contract, Tensor, Tensor, frozenset)
+def eager_contract_tensor_tensor(lhs, rhs, reduced_vars):
+    result = _simplify_contract(lhs, rhs, reduced_vars)
+    if result is not None:
+        return result
+
+    if reduced_vars:
+        out_vars = (frozenset(lhs.inputs) | frozenset(rhs.inputs)) - reduced_vars
+    else:
+        out_vars = {}
+
+    out_inputs = OrderedDict([
+        (v, lhs.inputs[v] if v in lhs.inputs else rhs.inputs[v]) for v in out_vars])
+
+    return Tensor(
+        opt_einsum.contract(lhs.data, list(lhs.inputs.keys()),
+                            rhs.data, list(rhs.inputs.keys()),
+                            list(out_vars), backend="torch"),
+        out_inputs
+    )
 
 
 @optimize.register(Contract, Funsor, Reduce, frozenset)
