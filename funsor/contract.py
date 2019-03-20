@@ -93,7 +93,13 @@ class Contract(Funsor):
         self.reduced_vars = reduced_vars
 
     def eager_subs(self, subs):
-        raise NotImplementedError("TODO implement subs")
+        subs = tuple((k, v) for k, v in subs if k not in self.reduced_vars)
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        if not all(self.reduced_vars.isdisjoint(v.inputs) for k, v in subs):
+            raise NotImplementedError('TODO alpha-convert to avoid conflict')
+        return Contract(self.lhs.eager_subs(subs), self.rhs.eager_subs(subs),
+                        self.reduced_vars)
 
 
 @optimize.register(Contract, ATOMS[1:], ATOMS[1:], frozenset)
@@ -179,10 +185,7 @@ def contract_finitary_ground(lhs, rhs, reduced_vars):
     # recursively apply law of iterated expectation
     assert len(lhs.operands) > 1, "Finitary with one operand should have been passed through"
     if lhs.op is ops.mul:
-        # TODO topologically order the lhs terms according to their variables
-        # TODO don't reduce too early
         root_lhs, remaining_lhs = _order_lhss(lhs, reduced_vars)
-        print(root_lhs, remaining_lhs)
         if remaining_lhs is not None:
             inner = Contract(remaining_lhs, rhs,
                              reduced_vars & frozenset(remaining_lhs.inputs))
