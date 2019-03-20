@@ -73,34 +73,12 @@ def test_contract_naive_pair(equation1, equation2):
 
         expected = (lhs * rhs).reduce(ops.add)
 
-        actual = Contract(lhs, rhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
+        actual1 = Contract(lhs, rhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
+        actual2 = Contract(rhs, lhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
 
-    actual = reinterpret(actual)
+    actual1 = reinterpret(actual1)
+    actual2 = reinterpret(actual2)
     expected = reinterpret(expected)
 
-    assert_close(expected, actual, atol=1e-4, rtol=1e-4)
-
-
-@pytest.mark.parametrize('equation1', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('equation2', EINSUM_EXAMPLES)
-def test_contract_naive_symmetric(equation1, equation2):
-
-    # identical structure
-    case1 = make_einsum_example(equation1)
-    case2 = make_einsum_example(equation2)
-    sizes1, funsor_operands1 = case1[2], case1[-1]
-    sizes2, funsor_operands2 = case2[2], case2[-1]
-
-    assert all(sizes1[k] == sizes2[k] for k in set(sizes1.keys()) & set(sizes2.keys()))
-
-    with interpretation(optimize):
-        lhs = Finitary(ops.mul, tuple(funsor_operands1))
-        rhs = Finitary(ops.mul, tuple(funsor_operands2))
-
-        expected = Contract(lhs, rhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
-        actual = Contract(rhs, lhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
-
-    actual = reinterpret(actual)
-    expected = reinterpret(expected)
-
-    assert_close(expected, actual, atol=1e-4, rtol=1e-4)
+    assert_close(actual1, expected, atol=1e-4, rtol=1e-4)
+    assert_close(actual2, expected, atol=1e-4, rtol=1e-4)
