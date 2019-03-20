@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import argparse
+from collections import OrderedDict
 
 import torch
 import torch.utils.data
@@ -9,9 +10,9 @@ from torch.nn import functional as F
 from torchvision import datasets, transforms
 
 import funsor
-import funsor.ops as ops
 import funsor.distributions as dist
-from funsor.domains import reals
+import funsor.ops as ops
+from funsor.domains import bint, reals
 
 
 class Encoder(nn.Module):
@@ -47,18 +48,21 @@ def main(args):
     decode = funsor.function(reals(20), reals(28, 28))(decoder)
 
     @funsor.interpreter.interpretation(funsor.interpreter.monte_carlo)
-    def loss_function(data):
+    def loss_function(data, scale):
         loc, scale = encode(data)
-        i = funsor.Variable('i', 20)
+        i = funsor.Variable('i', bint(20))
         z = funsor.Variable('z', reals(20))
         q = dist.Normal(loc[i], scale[i], value=z[i])
+        q = q.reduce(ops.add, frozenset(['i']))
 
         probs = decode(z)
-        x = funsor.Variable('x', 28)
-        y = funsor.Variable('y', 28)
+        x = funsor.Variable('x', bint(28))
+        y = funsor.Variable('y', bint(28))
         p = dist.Bernoulli(probs[x][y], value=data[x][y])
+        p = p.reduce(ops.add, frozenset(['x', 'y']))
 
-        elbo = (q.exp() * (p - q)).reduce(ops.add)
+        elbo = funsor.Integrate(q, scale * (p - q), frozenset(['z']))
+        elbo = elbo.reduce(ops.add, frozenset(['batch']))
         loss = -elbo
         return loss.data
 
@@ -74,8 +78,11 @@ def main(args):
     for epoch in range(args.num_epochs):
         train_loss = 0
         for batch_idx, (data, _) in enumerate(train_loader):
+            scale = float(len(train_loader.dataset) / len(data))
+            data = funsor.Tensor(data, OrderedDict(batch=bint(len(data))))
+
             optimizer.zero_grad()
-            loss = loss_function(data)
+            loss = loss_function(data, scale)
             loss.backward()
             train_loss += loss.item()
             optimizer.step()
@@ -88,5 +95,6 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='VAE MNIST Example')
     parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--batch-size', type=int, default=8)
     args = parser.parse_args()
     main(args)
