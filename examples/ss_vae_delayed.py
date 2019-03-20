@@ -23,9 +23,9 @@ class SalientEncoder(nn.Module):
     pass  # TODO
 
 
-decoder = funsor.function((), (), ())(Decoder())
-nuisance_encoder = funsor.function((), ('loc_scale',))(NuisanceEncoder())
-salient_encoder = funsor.function((), (), ())(SalientEncoder())
+decoder = funsor.torch.function((), (), ())(Decoder())
+nuisance_encoder = funsor.torch.function((), ('loc_scale',))(NuisanceEncoder())
+salient_encoder = funsor.torch.function((), (), ())(SalientEncoder())
 
 
 def model(image=None):
