@@ -14,8 +14,8 @@ from funsor.terms import reflect
 from funsor.testing import assert_close, make_einsum_example
 from funsor.torch import Tensor  # noqa: F401
 
-from funsor.einsum import einsum
-from funsor.contract import Contract, naive_contract_einsum
+from funsor.einsum import einsum, naive_contract_einsum
+from funsor.contract import Contract
 
 
 EINSUM_EXAMPLES = [
@@ -43,7 +43,6 @@ def test_contract_einsum_product_lhs(equation, backend, fill):
 
     with interpretation(reflect):
         expected = einsum(equation, *funsor_operands, backend=backend)
-        print("TRUE GRAPH: {}".format(expected))
     expected = reinterpret(expected)
     actual = naive_contract_einsum(equation, *funsor_operands, backend=backend)
 
@@ -75,6 +74,31 @@ def test_contract_naive_pair(equation1, equation2):
         expected = (lhs * rhs).reduce(ops.add)
 
         actual = Contract(lhs, rhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
+
+    actual = reinterpret(actual)
+    expected = reinterpret(expected)
+
+    assert_close(expected, actual, atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize('equation1', EINSUM_EXAMPLES)
+@pytest.mark.parametrize('equation2', EINSUM_EXAMPLES)
+def test_contract_naive_symmetric(equation1, equation2):
+
+    # identical structure
+    case1 = make_einsum_example(equation1)
+    case2 = make_einsum_example(equation2)
+    sizes1, funsor_operands1 = case1[2], case1[-1]
+    sizes2, funsor_operands2 = case2[2], case2[-1]
+
+    assert all(sizes1[k] == sizes2[k] for k in set(sizes1.keys()) & set(sizes2.keys()))
+
+    with interpretation(optimize):
+        lhs = Finitary(ops.mul, tuple(funsor_operands1))
+        rhs = Finitary(ops.mul, tuple(funsor_operands2))
+
+        expected = Contract(lhs, rhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
+        actual = Contract(rhs, lhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
 
     actual = reinterpret(actual)
     expected = reinterpret(expected)

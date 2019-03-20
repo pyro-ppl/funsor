@@ -1,35 +1,19 @@
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
-from six import integer_types
 
 import opt_einsum
-import torch
 
 import funsor.ops as ops
 from funsor.distributions import Gaussian, Delta
-from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary, optimize
 from funsor.sum_product import _partition
-from funsor.terms import Funsor, Number, Reduce, Variable, eager
+from funsor.terms import Funsor, Number, Variable, eager
 from funsor.torch import Tensor
 
 
+# TODO handle Joint as well
 ATOMS = (Tensor, Gaussian, Delta, Number, Variable)
-
-
-def _make_base_lhs(arg, reduced_vars, normalized=False):
-    if not all(isinstance(d.dtype, integer_types) for d in arg.inputs.values()):
-        raise NotImplementedError("TODO implement continuous base lhss")
-
-    sizes = OrderedDict(set((var, dtype) for var, dtype in arg.inputs.items()))
-    terms = tuple(
-        Tensor(torch.ones((d.dtype,)) / float(d.dtype), OrderedDict([(var, d)]))
-        if normalized else
-        Tensor(torch.ones((d.dtype,)), OrderedDict([(var, d)]))
-        for var, d in sizes.items() if var in reduced_vars
-    )
-    return Finitary(ops.mul, terms) if len(terms) > 1 else terms[0]
 
 
 def _find_constants(lhs, operands, reduced_vars):
@@ -59,17 +43,17 @@ def _simplify_contract(lhs, rhs, reduced_vars):
     """
     Reduce free variables that do not appear explicitly in the lhs
     """
-    meas_vars = frozenset(lhs.inputs)
-    int_vars = frozenset(rhs.inputs)
-    assert reduced_vars <= meas_vars | int_vars
+    lhs_vars = frozenset(lhs.inputs)
+    rhs_vars = frozenset(rhs.inputs)
+    assert reduced_vars <= lhs_vars | rhs_vars
     progress = False
-    if not reduced_vars <= meas_vars:
-        rhs = rhs.reduce(ops.add, reduced_vars - meas_vars)
-        reduced_vars = reduced_vars & meas_vars
+    if not reduced_vars <= lhs_vars:
+        rhs = rhs.reduce(ops.add, reduced_vars - lhs_vars)
+        reduced_vars = reduced_vars & lhs_vars
         progress = True
-    if not reduced_vars <= int_vars:
-        lhs = lhs.reduce(ops.add, reduced_vars - int_vars)
-        reduced_vars = reduced_vars & int_vars
+    if not reduced_vars <= rhs_vars:
+        lhs = lhs.reduce(ops.add, reduced_vars - rhs_vars)
+        reduced_vars = reduced_vars & rhs_vars
         progress = True
 
     if progress:
@@ -103,8 +87,10 @@ class Contract(Funsor):
                         self.reduced_vars)
 
 
-@optimize.register(Contract, ATOMS[1:], ATOMS[1:], frozenset)
-@eager.register(Contract, ATOMS[1:], ATOMS[1:], frozenset)
+@optimize.register(Contract, ATOMS[1:], ATOMS, frozenset)
+@optimize.register(Contract, ATOMS, ATOMS[1:], frozenset)
+@eager.register(Contract, ATOMS[1:], ATOMS, frozenset)
+@eager.register(Contract, ATOMS, ATOMS[1:], frozenset)
 def contract_ground_ground(lhs, rhs, reduced_vars):
     result = _simplify_contract(lhs, rhs, reduced_vars)
     if result is not None:
@@ -119,35 +105,15 @@ def eager_contract_tensor_tensor(lhs, rhs, reduced_vars):
     if result is not None:
         return result
 
-    if reduced_vars:
-        out_vars = (frozenset(lhs.inputs) | frozenset(rhs.inputs)) - reduced_vars
-    else:
-        out_vars = {}
-
-    out_inputs = OrderedDict([
-        (v, lhs.inputs[v] if v in lhs.inputs else rhs.inputs[v]) for v in out_vars])
+    out_inputs = OrderedDict([(k, d) for t in (lhs, rhs)
+                              for k, d in t.inputs.items() if k not in reduced_vars])
 
     return Tensor(
         opt_einsum.contract(lhs.data, list(lhs.inputs.keys()),
                             rhs.data, list(rhs.inputs.keys()),
-                            list(out_vars), backend="torch"),
+                            list(out_inputs.keys()), backend="torch"),
         out_inputs
     )
-
-
-@optimize.register(Contract, Funsor, Reduce, frozenset)
-def contract_reduce(lhs, rhs, reduced_vars):
-    result = _simplify_contract(lhs, rhs, reduced_vars)
-    if result is not None:
-        return result
-
-    # XXX should we be doing this conversion at all given that Reduce
-    # is already handled by the optimizer?
-    if rhs.op is ops.add:
-        base_lhs = _make_base_lhs(rhs.arg, rhs.reduced_vars, normalized=False)
-        inner = Contract(base_lhs, rhs.arg, rhs.reduced_vars)
-        return Contract(lhs, inner, reduced_vars)
-    return None
 
 
 @optimize.register(Contract, ATOMS, Finitary, frozenset)
@@ -156,25 +122,7 @@ def contract_ground_finitary(lhs, rhs, reduced_vars):
     if result is not None:
         return result
 
-    # exploit linearity of integration
-    if rhs.op is ops.add:
-        return Finitary(
-            ops.add,
-            tuple(Contract(lhs, operand, reduced_vars) for operand in rhs.operands)
-        )
-
-    # pull out constant terms that do not depend on the lhs
-    if rhs.op is ops.mul:
-        constants, new_operands = _find_constants(lhs, rhs.operands, reduced_vars)
-        if new_operands and constants:
-            # this term should equal Finitary(mul, constants) for probability lhss
-            outer = Finitary(ops.mul, constants)
-            inner = Contract(lhs, Finitary(rhs.op, new_operands), reduced_vars)
-            return outer * inner
-        elif not new_operands and constants:
-            return Finitary(ops.mul, constants)
-
-    return None
+    return Contract(rhs, lhs, reduced_vars)
 
 
 @optimize.register(Contract, Finitary, (Finitary,) + ATOMS, frozenset)
@@ -182,6 +130,13 @@ def contract_finitary_ground(lhs, rhs, reduced_vars):
     result = _simplify_contract(lhs, rhs, reduced_vars)
     if result is not None:
         return result
+
+    # exploit linearity of contraction
+    if lhs.op is ops.add:
+        return Finitary(
+            ops.add,
+            tuple(Contract(operand, rhs, reduced_vars) for operand in lhs.operands)
+        )
 
     # recursively apply law of iterated expectation
     assert len(lhs.operands) > 1, "Finitary with one operand should have been passed through"
@@ -194,49 +149,3 @@ def contract_finitary_ground(lhs, rhs, reduced_vars):
                             reduced_vars & frozenset(root_lhs.inputs))
 
     return None
-
-
-##############################
-# utilities for testing follow
-##############################
-
-def naive_contract_einsum(eqn, *terms, **kwargs):
-    """
-    Use for testing Contract against einsum
-    """
-    assert "plates" not in kwargs
-
-    backend = kwargs.pop('backend', 'torch')
-    if backend in ('torch', 'pyro.ops.einsum.torch_log'):
-        prod_op = ops.mul
-    else:
-        raise ValueError("{} backend not implemented".format(backend))
-
-    assert isinstance(eqn, str)
-    assert all(isinstance(term, Funsor) for term in terms)
-    inputs, output = eqn.split('->')
-    inputs = inputs.split(',')
-    assert len(inputs) == len(terms)
-    assert len(output.split(',')) == 1
-    input_dims = frozenset(d for inp in inputs for d in inp)
-    output_dims = frozenset(d for d in output)
-    reduced_vars = input_dims - output_dims
-
-    if backend == 'pyro.ops.einsum.torch_log':
-        terms = tuple(term.exp() for term in terms)
-
-    with interpretation(optimize):
-        rhs = Finitary(prod_op, tuple(terms))
-        lhs = _make_base_lhs(rhs, reduced_vars, normalized=False)
-        assert frozenset(lhs.inputs) == reduced_vars
-        # lhs = Number(1.)
-
-        print("MEASURE: {}\n".format(lhs))
-        print("INTEGRAND: {}\n".format(rhs))
-        result = Contract(lhs, rhs, reduced_vars)
-        print("RESULT: {}\n".format(result))
-
-    if backend == 'pyro.ops.einsum.torch_log':
-        result = result.log()
-
-    return reinterpret(result)
