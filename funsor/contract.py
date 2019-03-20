@@ -93,6 +93,7 @@ class Contract(Funsor):
         self.reduced_vars = reduced_vars
 
     def eager_subs(self, subs):
+        # basically copied from Reduce.eager_subs
         subs = tuple((k, v) for k, v in subs if k not in self.reduced_vars)
         if not any(k in self.inputs for k, v in subs):
             return self
