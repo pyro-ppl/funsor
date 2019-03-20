@@ -23,7 +23,9 @@ class Encoder(nn.Module):
 
     def forward(self, image):
         h1 = F.relu(self.fc1(image))
-        return self.fc21(h1), self.fc22(h1)
+        loc = self.fc21(h1)
+        scale = self.fc22(h1)
+        return loc, scale
 
 
 class Decoder(nn.Module):
@@ -36,33 +38,25 @@ class Decoder(nn.Module):
         h3 = F.relu(self.fc3(z))
         return torch.sigmoid(self.fc4(h3))
 
-    def old_forward(self, x):
-        mu, logvar = self.encode(x.view(-1, 784))
-        z = self.reparameterize(mu, logvar)
-        return self.decode(z), mu, logvar
-
 
 def main(args):
     encoder = Encoder()
     decoder = Decoder()
 
-    @funsor.function(reals(28, 28), reals(2, 20))
-    def encode(image):
-        loc, scale = encoder(image)
-        return torch.stack([loc, scale], dim=-2)
-
-    @funsor.function(reals(28, 20), reals(20))
-    def decode(z):
-        return decoder(z)
+    encode = funsor.function(reals(28, 28), (reals(20), reals(20)))(encoder)
+    decode = funsor.function(reals(20), reals(28, 28))(decoder)
 
     @funsor.interpreter.interpretation(funsor.interpreter.monte_carlo)
     def loss_function(data):
         loc, scale = encode(data)
+        i = funsor.Variable('i', 20)
         z = funsor.Variable('z', reals(20))
-        q = dist.Normal(loc, scale, value=z)
+        q = dist.Normal(loc[i], scale[i], value=z[i])
 
         probs = decode(z)
-        p = dist.Bernoulli(probs, value=data)
+        x = funsor.Variable('x', 28)
+        y = funsor.Variable('y', 28)
+        p = dist.Bernoulli(probs[x][y], value=data[x][y])
 
         elbo = (q.exp() * (p - q)).reduce(ops.add)
         loss = -elbo
