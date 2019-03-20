@@ -138,12 +138,22 @@ def optimize(cls, *args):
 REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimizer
 
 
+@optimize.register(Reduce, AssociativeOp, Funsor, frozenset)
+def optimize_reduction_trivial(op, arg, reduced_vars):
+    if not reduced_vars:
+        return arg
+    return None
+
+
 @optimize.register(Reduce, AssociativeOp, Finitary, frozenset)
 def optimize_reduction(op, arg, reduced_vars):
     r"""
     Recursively convert large Reduce(Finitary) ops to many smaller versions
     by reordering execution with a modified opt_einsum optimizer
     """
+    if not reduced_vars:
+        return arg
+
     if not (op, arg.op) in DISTRIBUTIVE_OPS:
         return None
 
@@ -199,6 +209,13 @@ def optimize_reduction(op, arg, reduced_vars):
     if final_reduced_vars:
         path_end = Reduce(reduce_op, path_end, final_reduced_vars)
     return path_end
+
+
+@optimize.register(Finitary, AssociativeOp, tuple)
+def remove_single_finitary(op, operands):
+    if len(operands) == 1:
+        return operands[0]
+    return None
 
 
 @dispatched_interpretation
