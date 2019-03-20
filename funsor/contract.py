@@ -16,16 +16,6 @@ from funsor.torch import Tensor
 ATOMS = (Tensor, Gaussian, Delta, Number, Variable)
 
 
-def _find_constants(lhs, operands, reduced_vars):
-    constants, new_operands = [], []
-    for operand in operands:
-        if reduced_vars & frozenset(lhs.inputs) & frozenset(operand.inputs):
-            new_operands.append(operand)
-        else:
-            constants.append(operand)
-    return tuple(constants), tuple(new_operands)
-
-
 def _order_lhss(lhs, reduced_vars):
     assert isinstance(lhs, Finitary)
 
