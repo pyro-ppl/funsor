@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import reinterpret
-from funsor.terms import Funsor, Number, Variable, of_shape, to_funsor, to_nonfunsor
+from funsor.terms import Funsor, Number, Variable, of_shape, to_data, to_funsor
 from funsor.torch import Tensor, arange, torch_einsum
 
 from . import (adjoint, delta, distributions, domains, einsum, gaussian, handlers, interpreter, joint,
@@ -34,8 +34,8 @@ __all__ = [
     'reinterpret',
     'sum_product',
     'terms',
+    'to_data',
     'to_funsor',
-    'to_nonfunsor',
     'torch',
     'torch_einsum',
 ]

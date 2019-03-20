@@ -457,7 +457,7 @@ def _to_funsor_funsor(x):
 
 
 @singledispatch
-def to_nonfunsor(x):
+def to_data(x):
     """
     Extract a python object from a :class:`Funsor`.
 
@@ -470,8 +470,8 @@ def to_nonfunsor(x):
     return x
 
 
-@to_nonfunsor.register(Funsor)
-def _to_nonfunsor_funsor(x):
+@to_data.register(Funsor)
+def _to_data_funsor(x):
     raise ValueError("cannot convert to a non-Funsor: {}".format(repr(x)))
 
 
@@ -679,8 +679,8 @@ class Number(Funsor):
         return Number(op(self.data), self.dtype)
 
 
-@to_nonfunsor.register(Number)
-def _to_nonfunsor_number(x):
+@to_data.register(Number)
+def _to_data_number(x):
     return x.data
 
 
@@ -838,5 +838,6 @@ __all__ = [
     'of_shape',
     'reflect',
     'sequential',
+    'to_data',
     'to_funsor',
 ]

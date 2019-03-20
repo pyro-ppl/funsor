@@ -10,7 +10,7 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Number, Stack, Variable, sequential, to_funsor, to_nonfunsor
+from funsor.terms import Binary, Number, Stack, Variable, sequential, to_funsor, to_data
 from funsor.testing import check_funsor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
@@ -27,18 +27,18 @@ def test_to_funsor_error(x):
         to_funsor(x)
 
 
-def test_to_nonfunsor():
-    actual = to_nonfunsor(Number(0.))
+def test_to_data():
+    actual = to_data(Number(0.))
     expected = 0.
     assert type(actual) == type(expected)
     assert actual == expected
 
 
-def test_to_nonfunsor_error():
+def test_to_data_error():
     with pytest.raises(ValueError):
-        to_nonfunsor(Variable('x', reals()))
+        to_data(Variable('x', reals()))
     with pytest.raises(ValueError):
-        to_nonfunsor(Variable('y', bint(12)))
+        to_data(Variable('y', bint(12)))
 
 
 def test_cons_hash():

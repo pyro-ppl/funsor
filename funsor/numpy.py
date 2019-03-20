@@ -7,7 +7,7 @@ from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, to_funsor, to_nonfunsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, to_data, to_funsor
 
 
 def align_array(new_inputs, x):
@@ -191,10 +191,10 @@ class Array(Funsor):
         return Array(data, inputs, self.dtype)
 
 
-@to_nonfunsor.register(Array)
-def _to_nonfunsor_array(x):
+@to_data.register(Array)
+def _to_data_array(x):
     if x.inputs:
-        raise ValueError("cannot convert Array to a nonfunsor due to lazy inputs: {}"
+        raise ValueError("cannot convert Array to a data due to lazy inputs: {}"
                          .format(set(x.inputs)))
     return x.data
 
