@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 
 from six import add_metaclass
+from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.delta import Delta
@@ -75,31 +76,64 @@ class Joint(Funsor):
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
-            # Integrate out delayed discrete variables.
-            discrete_vars = reduced_vars.intersection(self.discrete.inputs)
-            mixture_params = frozenset(self.gaussian.inputs).union(*(x.point.inputs for x in self.deltas))
-            lazy_vars = discrete_vars & mixture_params  # Mixtures must remain lazy.
-            discrete_vars -= mixture_params
+            # Integrate out degenerate variables, i.e. drop selected delta.
+            deltas = []
+            remaining_vars = set(reduced_vars)
+            for d in self.deltas:
+                if d.name in reduced_vars:
+                    remaining_vars.remove(d.name)
+                else:
+                    deltas.append(d)
+            deltas = tuple(deltas)
+            reduced_vars = frozenset(remaining_vars)
+
+            # Integrate out delayed discrete variables, but keep mixtures lazy.
+            lazy_vars = reduced_vars.difference(self.gaussian.inputs, *(x.inputs for x in deltas))
+            discrete_vars = reduced_vars.intersection(self.discrete.inputs).difference(lazy_vars)
             discrete = self.discrete.reduce(op, discrete_vars)
+            reduced_vars = reduced_vars.difference(discrete_vars, lazy_vars)
 
             # Integrate out delayed gaussian variables.
             gaussian_vars = reduced_vars.intersection(self.gaussian.inputs)
             gaussian = self.gaussian.reduce(ops.logaddexp, gaussian_vars)
-            assert (reduced_vars - gaussian_vars).issubset(d.name for d in self.deltas)
+            reduced_vars = reduced_vars.difference(gaussian_vars)
 
-            # Integrate out delayed degenerate variables, i.e. drop them.
-            deltas = tuple(d for d in self.deltas if d.name not in reduced_vars)
+            # Account for remaining reduced vars that were inputs to dropped deltas.
+            eager_result = Joint(deltas, discrete) + gaussian
+            reduced_vars |= lazy_vars.difference(eager_result.inputs)
+            lazy_vars = lazy_vars.intersection(eager_result.inputs)
+            if reduced_vars:
+                eager_result += ops.log(reduce(ops.mul, [self.inputs[v].dtype for v in reduced_vars]))
 
-            assert not lazy_vars
-            return (Joint(deltas, discrete) + gaussian).reduce(ops.logaddexp, lazy_vars)
+            # Return a value only if progress has been made.
+            if eager_result is self:
+                return None  # defer to default implementation
+            else:
+                return eager_result.reduce(ops.logaddexp, lazy_vars)
 
         if op is ops.add:
             raise NotImplementedError('TODO product-reduce along a plate dimension')
 
         return None  # defer to default implementation
 
-    def monte_carlo_logsumexp(self, reduced_vars):
-        raise NotImplementedError('TODO sample variables')
+    def sample(self, sampled_vars, sample_inputs=None):
+        if sample_inputs is None:
+            sample_inputs = OrderedDict()
+        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        discrete_vars = sampled_vars.intersection(self.discrete.inputs)
+        gaussian_vars = frozenset(k for k in sampled_vars
+                                  if k in self.gaussian.inputs
+                                  if self.gaussian.inputs[k].dtype == 'real')
+        result = self
+        if discrete_vars:
+            discrete = result.discrete.sample(discrete_vars, sample_inputs)
+            result = Joint(result.deltas, gaussian=result.gaussian) + discrete
+        if gaussian_vars:
+            sample_inputs = OrderedDict((k, v) for k, v in sample_inputs.items()
+                                        if k not in result.gaussian.inputs)
+            gaussian = result.gaussian.sample(gaussian_vars, sample_inputs)
+            result = Joint(result.deltas, result.discrete) + gaussian
+        return result
 
 
 @eager.register(Joint, tuple, Funsor, Funsor)
@@ -154,10 +188,18 @@ def eager_add(op, joint, other):
     return Joint(joint.deltas, joint.discrete + other, joint.gaussian)
 
 
+@eager.register(Binary, Op, Joint, (Number, Tensor))
+def eager_add(op, joint, other):
+    if op is ops.sub:
+        return joint + -other
+
+    return None  # defer to default implementation
+
+
 @eager.register(Binary, AddOp, Joint, Gaussian)
 def eager_add(op, joint, other):
     # Update with a delayed gaussian random variable.
-    subs = tuple((d.name, d.point) for d in joint.deltas if d in other.inputs)
+    subs = tuple((d.name, d.point) for d in joint.deltas if d.name in other.inputs)
     if subs:
         other = other.eager_subs(subs)
     if joint.gaussian is not Number(0):

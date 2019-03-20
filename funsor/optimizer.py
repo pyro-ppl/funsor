@@ -6,9 +6,8 @@ from opt_einsum.paths import greedy
 from six.moves import reduce
 
 from funsor.domains import find_domain
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.registry import KeyedRegistry
 from funsor.terms import Binary, Funsor, Reduce, eager, reflect
 
 
@@ -47,15 +46,12 @@ def eager_finitary(op, operands):
     return reduce(op, operands)
 
 
+@dispatched_interpretation
 def associate(cls, *args):
-    result = _associate(cls, *args)
+    result = associate.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
-
-
-_associate = KeyedRegistry(default=lambda *args: None)
-associate.register = _associate.register
 
 
 @associate.register(Binary, AssociativeOp, Funsor, Funsor)
@@ -91,15 +87,12 @@ def associate_reduce(op, arg, reduced_vars):
     return None
 
 
+@dispatched_interpretation
 def distribute(cls, *args):
-    result = _distribute(cls, *args)
+    result = distribute.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
-
-
-_distribute = KeyedRegistry(default=lambda *args: None)
-distribute.register = _distribute.register
 
 
 @distribute.register(Finitary, AssociativeOp, tuple)
@@ -133,15 +126,12 @@ def distribute_finitary(op, operands):
     return None
 
 
+@dispatched_interpretation
 def optimize(cls, *args):
-    result = _optimize(cls, *args)
+    result = optimize.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
-
-
-_optimize = KeyedRegistry(default=lambda *args: None)
-optimize.register = _optimize.register
 
 
 # TODO set a better value for this
@@ -211,15 +201,12 @@ def optimize_reduction(op, arg, reduced_vars):
     return path_end
 
 
+@dispatched_interpretation
 def desugar(cls, *args):
-    result = _desugar(cls, *args)
+    result = desugar.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
-
-
-_desugar = KeyedRegistry(default=lambda *args: None)
-desugar.register = _desugar.register
 
 
 @desugar.register(Finitary, AssociativeOp, tuple)

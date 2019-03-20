@@ -1,24 +1,10 @@
-r"""
-Funsor interpretations
-----------------------
-
-Funsor provides four basic interpretations.
-
-- ``reflect`` is completely lazy, even with respect to substitution.
-- ``lazy`` substitutes eagerly but performs ops lazily.
-- ``eager`` performs all analytic computations eagerly, but does no approximation.
-- ``monte_carlo`` performs analytic computations eagerly, and falls back to
-    Monte Carlo sampling to compute intractable integrals.
-
-"""
-
 from __future__ import absolute_import, division, print_function
 
 import functools
 import itertools
 import numbers
 from abc import ABCMeta, abstractmethod
-from collections import OrderedDict, Hashable
+from collections import Hashable, OrderedDict
 from weakref import WeakValueDictionary
 
 from six import add_metaclass, integer_types
@@ -26,16 +12,16 @@ from six.moves import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Domain, bint, find_domain
-from funsor.interpreter import interpret
+from funsor.domains import Domain, bint, find_domain, reals
+from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, Op
-from funsor.registry import KeyedRegistry
 from funsor.six import getargspec, singledispatch
 
 
 def reflect(cls, *args):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
+    This is the only interpretation allowed to construct funsors.
     """
     cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
@@ -46,37 +32,47 @@ def reflect(cls, *args):
     return result
 
 
+@dispatched_interpretation
 def lazy(cls, *args):
-    result = _lazy(cls, *args)
+    """
+    Substitute eagerly but perform ops lazily.
+    """
+    result = lazy.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
 
 
-_lazy = KeyedRegistry(default=lambda *args: None)
-lazy.register = _lazy.register
-
-
+@dispatched_interpretation
 def eager(cls, *args):
-    result = _eager(cls, *args)
+    """
+    Eagerly execute ops with known implementations.
+    """
+    result = eager.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
 
 
-_eager = KeyedRegistry(default=lambda *args: None)
-eager.register = _eager.register
-
-
-def monte_carlo(cls, *args):
-    result = _monte_carlo(cls, *args)
+@dispatched_interpretation
+def sequential(cls, *args):
+    """
+    Eagerly execute ops with known implementations; additonally execute
+    vectorized ops sequentially if no known vectorized implementation exists.
+    """
+    result = sequential.dispatch(cls, *args)
     if result is None:
         result = eager(cls, *args)
     return result
 
 
-_monte_carlo = KeyedRegistry(lambda *args: None)
-monte_carlo.register = _monte_carlo.register
+@dispatched_interpretation
+def monte_carlo(cls, *args):
+    result = monte_carlo.dispatch(cls, *args)
+    if result is None:
+        result = eager(cls, *args)
+    return result
+
 
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
@@ -235,6 +231,41 @@ class Funsor(object):
         assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
 
+    def sample(self, sampled_vars, sample_inputs=None):
+        """
+        Create a Monte Carlo approximation to this funsor by replacing
+        functions of ``sampled_vars`` with :class:`~funsor.delta.Delta`s.
+
+        If ``sample_inputs`` is not provided, the result is a :class:`Funsor`
+        with the same ``.inputs`` and ``.output`` as the original funsor, so
+        that self can be replaced by the sample in expectation computations::
+
+            y = x.sample(sampled_vars)
+            assert y.inputs == x.inputs
+            assert y.output == x.output
+            exact = (x.exp() * integrand).reduce(ops.add)
+            approx = (y.exp() * integrand).reduce(ops.add)
+
+        If ``sample_inputs`` is provided, this creates a batch of samples
+        that are intended to be averaged, however this reduction is not
+        performed by the :meth:`sample` method::
+
+            y = x.sample(sampled_vars, sample_inputs)
+            total = reduce(ops.mul, d.num_elements) for d in sample_inputs.values())
+            exact = (x.exp() * integrand).reduce(ops.add)
+            approx = (y.exp() * integrand).reduce(ops.add) / total
+
+        :param frozenset sampled_vars: A set of input variables to sample.
+        :param OrderedDict sample_inputs: An optional mapping from variable
+            name to :class:`~funsor.domains.Domain` over which samples will
+            be batched.
+        """
+        assert self.output == reals()
+        assert isinstance(sampled_vars, frozenset)
+        if sampled_vars.isdisjoint(self.inputs):
+            return self
+        raise NotImplementedError
+
     def align(self, names):
         """
         Align this funsor to match given ``names``.
@@ -265,6 +296,13 @@ class Funsor(object):
         return None  # defer to default implementation
 
     def eager_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        if not reduced_vars:
+            return self
+
+        return None  # defer to default implementation
+
+    def sequential_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
         if not reduced_vars:
             return self
@@ -575,6 +613,11 @@ def eager_reduce(op, arg, reduced_vars):
     return arg.eager_reduce(op, reduced_vars)
 
 
+@sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
+def sequential_reduce(op, arg, reduced_vars):
+    return arg.sequential_reduce(op, reduced_vars)
+
+
 @monte_carlo.register(Reduce, AssociativeOp, Funsor, frozenset)
 def monte_carlo_reduce(op, arg, reduced_vars):
     if op is ops.logaddexp:
@@ -801,5 +844,6 @@ __all__ = [
     'lazy',
     'of_shape',
     'reflect',
+    'sequential',
     'to_funsor',
 ]

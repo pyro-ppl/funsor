@@ -6,7 +6,7 @@ import pytest
 from six.moves import reduce
 
 import funsor.ops as ops
-from funsor.contract import _partition, partial_sum_product, sum_product
+from funsor.sum_product import _partition, partial_sum_product, sum_product
 from funsor.domains import bint
 from funsor.testing import assert_close, random_tensor
 
