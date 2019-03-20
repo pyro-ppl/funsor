@@ -37,7 +37,7 @@ __all__ = [
     'sum_product',
     'terms',
     'to_funsor',
-    'to_nonfunsor,
+    'to_nonfunsor',
     'torch',
     'torch_einsum',
 ]

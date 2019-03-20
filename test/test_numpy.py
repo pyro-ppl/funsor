@@ -18,6 +18,19 @@ def test_to_funsor(shape, dtype):
     assert isinstance(f, Array)
 
 
+def test_to_nonfunsor():
+    data = np.zeros((3, 3))
+    x = Array(data)
+    assert funsor.to_nonfunsor(x) is data
+
+
+def test_to_nonfunsor_error():
+    data = np.zeros((3, 3))
+    x = Array(data, OrderedDict(i=bint(3)))
+    with pytest.raises(ValueError):
+        funsor.to_nonfunsor(x)
+
+
 def test_cons_hash():
     x = np.random.randn(3, 3)
     assert Array(x) is Array(x)
