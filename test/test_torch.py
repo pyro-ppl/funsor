@@ -9,10 +9,9 @@ import torch
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
-from funsor.torch import REDUCE_OP_TO_TORCH
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
-from funsor.torch import Tensor, align_tensors, torch_einsum
+from funsor.torch import REDUCE_OP_TO_TORCH, Tensor, align_tensors, torch_einsum
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
@@ -21,6 +20,19 @@ def test_to_funsor(shape, dtype):
     t = torch.randn(shape).type(dtype)
     f = funsor.to_funsor(t)
     assert isinstance(f, Tensor)
+
+
+def test_to_data():
+    data = torch.zeros(3, 3)
+    x = Tensor(data)
+    assert funsor.to_data(x) is data
+
+
+def test_to_data_error():
+    data = torch.zeros(3, 3)
+    x = Tensor(data, OrderedDict(i=bint(3)))
+    with pytest.raises(ValueError):
+        funsor.to_data(x)
 
 
 def test_cons_hash():

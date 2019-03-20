@@ -141,6 +141,9 @@ class Funsor(object):
     def __repr__(self):
         return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_values)))
 
+    def __str__(self):
+        return '{}({})'.format(type(self).__name__, ', '.join(map(str, self._ast_values)))
+
     def _pretty(self, lines, indent=0):
         lines.append((indent, type(self).__name__))
         for arg in self._ast_values:
@@ -445,12 +448,31 @@ def to_funsor(x):
     :rtype: Funsor
     :raises: ValueError
     """
-    raise ValueError("cannot convert to Funsor: {}".format(x))
+    raise ValueError("cannot convert to Funsor: {}".format(repr(x)))
 
 
 @to_funsor.register(Funsor)
 def _to_funsor_funsor(x):
     return x
+
+
+@singledispatch
+def to_data(x):
+    """
+    Extract a python object from a :class:`Funsor`.
+
+    Raises a ``ValueError`` if free variables remain or if the funsor is lazy.
+
+    :param x: An object, possibly a :class:`Funsor`.
+    :return: A non-funsor equivalent to ``x``.
+    :raises: ValueError
+    """
+    return x
+
+
+@to_data.register(Funsor)
+def _to_data_funsor(x):
+    raise ValueError("cannot convert to a non-Funsor: {}".format(repr(x)))
 
 
 class Variable(Funsor):
@@ -657,6 +679,11 @@ class Number(Funsor):
         return Number(op(self.data), self.dtype)
 
 
+@to_data.register(Number)
+def _to_data_number(x):
+    return x.data
+
+
 @eager.register(Binary, Op, Number, Number)
 def eager_binary_number_number(op, lhs, rhs):
     data = op(lhs.data, rhs.data)
@@ -811,5 +838,6 @@ __all__ = [
     'of_shape',
     'reflect',
     'sequential',
+    'to_data',
     'to_funsor',
 ]
