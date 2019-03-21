@@ -546,6 +546,11 @@ class Variable(Funsor):
         return self
 
 
+@dispatch(str, integer_types)
+def to_funsor(name, dtype):
+    return Variable(name, bint(dtype))
+
+
 _PREFIX = {
     ops.neg: '-',
     ops.invert: '~',

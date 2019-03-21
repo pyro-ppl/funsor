@@ -343,6 +343,13 @@ def test_getitem_variable():
     assert x[i, j] is Tensor(data, OrderedDict([('i', bint(5)), ('j', bint(4))]))
 
 
+def test_getitem_string():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    assert x['i'] is Tensor(data, OrderedDict([('i', bint(5))]))
+    assert x['i', 'j'] is Tensor(data, OrderedDict([('i', bint(5)), ('j', bint(4))]))
+
+
 def test_getitem_tensor():
     data = torch.randn((5, 4, 3, 2))
     x = Tensor(data)
