@@ -1,22 +1,18 @@
 from __future__ import absolute_import, division, print_function
 
-import pytest
-
 import opt_einsum
+import pytest
 import torch
 from pyro.ops.contract import einsum as pyro_einsum
 from pyro.ops.einsum.adjoint import require_backward as pyro_require_backward
 
 import funsor
-
-from funsor.domains import bint
-from funsor.terms import reflect, Variable
-from funsor.interpreter import interpretation
-from funsor.testing import make_einsum_example, make_plated_hmm_einsum
-
-from funsor.einsum import naive_einsum, naive_plated_einsum, einsum
 from funsor.adjoint import adjoint
-
+from funsor.domains import bint
+from funsor.einsum import einsum, naive_einsum, naive_plated_einsum
+from funsor.interpreter import interpretation
+from funsor.terms import Variable, reflect
+from funsor.testing import make_einsum_example, make_plated_hmm_einsum
 
 EINSUM_EXAMPLES = [
     "a->",

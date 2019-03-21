@@ -3,12 +3,12 @@ from __future__ import absolute_import, division, print_function
 import argparse
 from collections import OrderedDict
 
+import pyro.distributions as dist
 import torch
 import torch.nn as nn
 
 import funsor
 import funsor.minipyro as pyro
-import pyro.distributions as dist
 
 
 class Decoder(nn.Module):
