@@ -545,6 +545,13 @@ def eager_unary(op, arg):
     return arg.eager_unary(op)
 
 
+@eager.register(Unary, AssociativeOp, Funsor)
+def eager_unary(op, arg):
+    if not arg.output.shape:
+        return arg
+    return arg.eager_unary(op)
+
+
 _INFIX = {
     ops.add: '+',
     ops.sub: '-',
@@ -685,7 +692,8 @@ class Number(Funsor):
         return self
 
     def eager_unary(self, op):
-        return Number(op(self.data), self.dtype)
+        dtype = find_domain(op, self.output).dtype
+        return Number(op(self.data), dtype)
 
 
 @to_data.register(Number)
