@@ -3,11 +3,13 @@ from __future__ import absolute_import, division, print_function
 import functools
 from collections import OrderedDict
 
+import opt_einsum
 import torch
 from six import add_metaclass, integer_types
 from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import Op
@@ -349,6 +351,18 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         data = op(lhs_data, rhs_data)
 
+    return Tensor(data, inputs, dtype)
+
+
+@eager.register(Contract, Tensor, Tensor, frozenset)
+@contractor
+def eager_contract(lhs, rhs, reduced_vars):
+    inputs = OrderedDict((k, d) for t in (lhs, rhs)
+                         for k, d in t.inputs.items() if k not in reduced_vars)
+    data = opt_einsum.contract(lhs.data, list(lhs.inputs),
+                               rhs.data, list(rhs.inputs),
+                               list(inputs), backend="torch")
+    dtype = find_domain(ops.mul, lhs.output, rhs.output).dtype
     return Tensor(data, inputs, dtype)
 
 
