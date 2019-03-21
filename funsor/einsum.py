@@ -1,10 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
-from six import integer_types
-from six.moves import reduce
 
 import torch
+from six import integer_types
+from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.contract import Contract

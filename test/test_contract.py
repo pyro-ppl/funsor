@@ -1,22 +1,20 @@
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict  # noqa: F401
+
 import pytest
 import torch  # noqa: F401
 
 import funsor
-
 import funsor.ops as ops
+from funsor.contract import Contract
 from funsor.domains import bint  # noqa: F401
+from funsor.einsum import einsum, naive_contract_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import Finitary, optimize
 from funsor.terms import reflect
 from funsor.testing import assert_close, make_einsum_example
 from funsor.torch import Tensor  # noqa: F401
-
-from funsor.einsum import einsum, naive_contract_einsum
-from funsor.contract import Contract
-
 
 EINSUM_EXAMPLES = [
     "a,b->",
