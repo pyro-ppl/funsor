@@ -1,11 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
-from numbers import Number
 import operator
+from numbers import Number
 
 import numpy as np
 from multipledispatch import Dispatcher
-
 
 _builtin_abs = abs
 _builtin_max = max

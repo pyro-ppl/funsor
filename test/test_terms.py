@@ -10,7 +10,7 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Number, Stack, Variable, sequential, to_funsor, to_data
+from funsor.terms import Binary, Number, Stack, Variable, sequential, to_data, to_funsor
 from funsor.testing import check_funsor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
