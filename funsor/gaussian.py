@@ -11,8 +11,9 @@ from six.moves import reduce
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
+from funsor.integrate import Integrate, simplify_integrate
 from funsor.ops import AddOp
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, monte_carlo
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -322,6 +323,24 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     quadratic_term = _vmv(lhs_precision, loc - lhs_loc) + _vmv(rhs_precision, loc - rhs_loc)
     likelihood = Tensor(-0.5 * quadratic_term, int_inputs)
     return likelihood + Gaussian(loc, precision, inputs)
+
+
+@eager.register(Integrate, Gaussian, Gaussian, frozenset)
+def eager_integrate_gaussian_gaussian(log_measure, integrand, reduced_vars):
+    result = simplify_integrate(log_measure, integrand, reduced_vars)
+    if result is not None:
+        return result
+
+    raise NotImplementedError('TODO')
+
+
+@monte_carlo.register(Integrate, Gaussian, Funsor, frozenset)
+def monte_carlo_integrate_gaussian_gaussian(log_measure, integrand, reduced_vars):
+    result = simplify_integrate(log_measure, integrand, reduced_vars)
+    if result is not None:
+        return result
+
+    raise NotImplementedError('TODO')
 
 
 __all__ = [
