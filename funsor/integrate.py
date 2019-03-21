@@ -20,7 +20,7 @@ class Integrate(Funsor):
         self.integrand = integrand
         self.reduced_vars = reduced_vars
 
-    def eager_subse(self, subs):
+    def eager_subs(self, subs):
         raise NotImplementedError('TODO')
 
 
