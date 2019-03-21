@@ -10,9 +10,10 @@ from six.moves import reduce
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
+from funsor.integrate import Integrate, integrator
 from funsor.ops import Op
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, monte_carlo, to_data, to_funsor
 
 
 def align_tensor(new_inputs, x):
@@ -350,6 +351,12 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
         data = op(lhs_data, rhs_data)
 
     return Tensor(data, inputs, dtype)
+
+
+@monte_carlo.register(Integrate, Tensor, Funsor, frozenset)
+@integrator
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    return Integrate(log_measure, integrand, reduced_vars)
 
 
 def arange(name, size):

@@ -11,7 +11,7 @@ from six.moves import reduce
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.integrate import Integrate, simplify_integrate
+from funsor.integrate import Integrate, integrator
 from funsor.ops import AddOp
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, monte_carlo
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
@@ -326,21 +326,20 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
 
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
-def eager_integrate_gaussian_gaussian(log_measure, integrand, reduced_vars):
-    result = simplify_integrate(log_measure, integrand, reduced_vars)
-    if result is not None:
-        return result
-
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
     raise NotImplementedError('TODO')
 
 
 @monte_carlo.register(Integrate, Gaussian, Funsor, frozenset)
-def monte_carlo_integrate_gaussian_gaussian(log_measure, integrand, reduced_vars):
-    result = simplify_integrate(log_measure, integrand, reduced_vars)
-    if result is not None:
-        return result
+@integrator
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k] == 'real')
+    if real_vars:
+        log_measure = log_measure.sample(real_vars)
+        return Integrate(log_measure, integrand, reduced_vars)
 
-    raise NotImplementedError('TODO')
+    return None  # defer to default implementation
 
 
 __all__ = [

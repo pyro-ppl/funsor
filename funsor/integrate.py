@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import functools
 from collections import OrderedDict
 
 import funsor.ops as ops
@@ -25,10 +26,13 @@ class Integrate(Funsor):
         raise NotImplementedError('TODO')
 
 
-def simplify_integrate(log_measure, integrand, reduced_vars):
+def _simplify_integrate(fn, log_measure, integrand, reduced_vars):
     """
     Reduce free variables that do not appear in both inputs.
     """
+    if not reduced_vars:
+        return log_measure.exp() * integrand
+
     log_measure_vars = frozenset(log_measure.inputs)
     integrand_vars = frozenset(integrand.inputs)
     assert reduced_vars <= log_measure_vars | integrand_vars
@@ -41,23 +45,26 @@ def simplify_integrate(log_measure, integrand, reduced_vars):
         log_measure = log_measure.reduce(ops.add, reduced_vars - integrand_vars)
         reduced_vars = reduced_vars & integrand_vars
         progress = True
-
     if progress:
         return Integrate(log_measure, integrand, reduced_vars)
 
-    return None
+    return fn(log_measure, integrand, reduced_vars)
+
+
+def integrator(fn):
+    """
+    Decorator for integration implementations.
+    """
+    return functools.partial(_simplify_integrate, fn)
 
 
 @eager.register(Integrate, Funsor, Funsor, frozenset)
+@integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
-    result = simplify_integrate(log_measure, integrand, reduced_vars)
-    if result is not None:
-        return result
-
     return Contract(log_measure.exp(), integrand, reduced_vars)
 
 
 __all__ = [
     'Integrate',
-    'simplify_integrate',
+    'integrator',
 ]

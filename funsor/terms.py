@@ -68,6 +68,7 @@ def sequential(cls, *args):
 
 @dispatched_interpretation
 def monte_carlo(cls, *args):
+    # TODO Memoize sample statements in a context manager.
     result = monte_carlo.dispatch(cls, *args)
     if result is None:
         result = eager(cls, *args)

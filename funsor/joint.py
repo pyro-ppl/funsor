@@ -9,8 +9,9 @@ import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.gaussian import Gaussian
+from funsor.integrate import Integrate, integrator
 from funsor.ops import AddOp, Op
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, eager, to_funsor
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, eager, monte_carlo, to_funsor
 from funsor.torch import Tensor
 
 
@@ -266,6 +267,45 @@ def eager_add(op, discrete, gaussian):
 def eager_binary(op, gaussian, discrete):
     if op is ops.sub:
         return Joint(discrete=-discrete, gaussian=gaussian)
+
+
+################################################################################
+# Patterns for integration
+################################################################################
+
+
+@eager.register(Integrate, Joint, Delta, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    raise NotImplementedError('TODO')
+
+
+@eager.register(Integrate, Joint, Tensor, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    raise NotImplementedError('TODO')
+
+
+@eager.register(Integrate, Joint, Gaussian, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    raise NotImplementedError('TODO')
+
+
+@eager.register(Integrate, Joint, Joint, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    raise NotImplementedError('TODO')
+
+
+@monte_carlo.register(Integrate, Gaussian, Funsor, frozenset)
+@integrator
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    sampled_log_measure = log_measure.sample(reduced_vars)
+    if sampled_log_measure is not log_measure:
+        return Integrate(sampled_log_measure, integrand, reduced_vars)
+
+    return None  # defer to default implementation
 
 
 __all__ = [
