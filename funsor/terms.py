@@ -687,7 +687,8 @@ class Number(Funsor):
         assert isinstance(data, numbers.Number)
         if isinstance(dtype, integer_types):
             data = type(dtype)(data)
-            assert 0 <= data and data < dtype
+            if dtype != 2:  # booleans have bitwise interpretation
+                assert 0 <= data and data < dtype
         else:
             assert isinstance(dtype, str) and dtype == "real"
             data = float(data)

@@ -349,7 +349,7 @@ def test_getitem_tensor():
     i = Variable('i', bint(5))
     j = Variable('j', bint(4))
     k = Variable('k', bint(3))
-    l = Variable('l', bint(2))
+    m = Variable('m', bint(2))
 
     y = random_tensor(OrderedDict(), bint(5))
     assert_close(x[i](i=y), x[y])
@@ -361,7 +361,15 @@ def test_getitem_tensor():
     assert_close(x[:, :, k](k=y), x[:, :, y])
 
     y = random_tensor(OrderedDict(), bint(2))
-    assert_close(x[:, :, :, l](l=y), x[:, :, :, y])
+    assert_close(x[:, :, :, m](m=y), x[:, :, :, y])
+
+    y = random_tensor(OrderedDict([('i', i.output)]),
+                      bint(j.dtype))
+    assert_close(x[i, j](j=y), x[i, y])
+
+    y = random_tensor(OrderedDict([('i', i.output), ('j', j.output)]),
+                      bint(k.dtype))
+    assert_close(x[i, j, k](k=y), x[i, j, y])
 
 
 REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
