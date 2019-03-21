@@ -1,25 +1,21 @@
 from __future__ import absolute_import, division, print_function
 
-import pytest
 from collections import OrderedDict
 
 import opt_einsum
-import torch
 import pyro.ops.contract as pyro_einsum
+import pytest
+import torch
 
 import funsor
-
 from funsor.distributions import Categorical
 from funsor.domains import bint
+from funsor.einsum import einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
-from funsor.terms import reflect, Variable
+from funsor.terms import Variable, reflect
+from funsor.testing import assert_close, make_chain_einsum, make_einsum_example, make_hmm_einsum, make_plated_hmm_einsum
 from funsor.torch import Tensor
-
-from funsor.testing import assert_close, make_einsum_example, \
-    make_chain_einsum, make_hmm_einsum, make_plated_hmm_einsum
-from funsor.einsum import naive_einsum, naive_plated_einsum, einsum
-
 
 OPTIMIZED_EINSUM_EXAMPLES = [
     make_chain_einsum(t) for t in range(2, 50, 10)

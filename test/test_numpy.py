@@ -1,13 +1,12 @@
 from collections import OrderedDict
 
+import numpy as np
 import pytest
 
 import funsor
-from funsor import bint, reals, Variable, Number
+from funsor import Number, Variable, bint, reals
 from funsor.numpy import Array
-import numpy as np
-
-from funsor.testing import check_funsor, assert_equiv, random_array
+from funsor.testing import assert_equiv, check_funsor, random_array
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
