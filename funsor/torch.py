@@ -13,6 +13,7 @@ from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import Op
+from funsor.optimizer import optimize
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_data, to_funsor
 
@@ -356,13 +357,18 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
 
 @eager.register(Contract, Tensor, Tensor, frozenset)
 @contractor
-def eager_contract_tensor_tensor(lhs, rhs, reduced_vars):
+def eager_contract(lhs, rhs, reduced_vars):
     inputs = OrderedDict((k, d) for t in (lhs, rhs)
                          for k, d in t.inputs.items() if k not in reduced_vars)
     data = opt_einsum.contract(lhs.data, list(lhs.inputs),
                                rhs.data, list(rhs.inputs),
                                list(inputs), backend="torch")
     return Tensor(data, inputs, rhs.dtype)
+
+
+@optimize.register(Contract, Tensor, Tensor, frozenset)
+def optimize_contract(lhs, rhs, reduced_vars):
+    return None  # reflect
 
 
 def arange(name, size):

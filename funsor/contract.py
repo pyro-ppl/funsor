@@ -88,13 +88,13 @@ def contract_funsor_funsor(lhs, rhs, reduced_vars):
 
 @optimize.register(Contract, Funsor, Finitary, frozenset)
 @contractor
-def contract_ground_finitary(lhs, rhs, reduced_vars):
+def contract_funsor_finitary(lhs, rhs, reduced_vars):
     return Contract(rhs, lhs, reduced_vars)
 
 
 @optimize.register(Contract, Finitary, (Finitary, Funsor), frozenset)
 @contractor
-def contract_finitary_ground(lhs, rhs, reduced_vars):
+def contract_finitary_funsor(lhs, rhs, reduced_vars):
     # exploit linearity of contraction
     if lhs.op is ops.add:
         return Finitary(
