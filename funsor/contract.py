@@ -79,22 +79,27 @@ class Contract(Funsor):
                         self.reduced_vars)
 
 
-@optimize.register(Contract, Funsor, Funsor, frozenset)
 @eager.register(Contract, Funsor, Funsor, frozenset)
 @contractor
-def contract_funsor_funsor(lhs, rhs, reduced_vars):
+def eager_contract(lhs, rhs, reduced_vars):
     return (lhs * rhs).reduce(ops.add, reduced_vars)
+
+
+@optimize.register(Contract, Funsor, Funsor, frozenset)
+@contractor
+def optmize_contract(lhs, rhs, reduced_vars):
+    return None
 
 
 @optimize.register(Contract, Funsor, Finitary, frozenset)
 @contractor
-def contract_funsor_finitary(lhs, rhs, reduced_vars):
+def optimize_contract_funsor_finitary(lhs, rhs, reduced_vars):
     return Contract(rhs, lhs, reduced_vars)
 
 
 @optimize.register(Contract, Finitary, (Finitary, Funsor), frozenset)
 @contractor
-def contract_finitary_funsor(lhs, rhs, reduced_vars):
+def optimize_contract_finitary_funsor(lhs, rhs, reduced_vars):
     # exploit linearity of contraction
     if lhs.op is ops.add:
         return Finitary(

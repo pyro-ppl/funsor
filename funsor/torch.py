@@ -13,7 +13,6 @@ from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import Op
-from funsor.optimizer import optimize
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_data, to_funsor
 
@@ -365,11 +364,6 @@ def eager_contract(lhs, rhs, reduced_vars):
                                list(inputs), backend="torch")
     dtype = find_domain(ops.mul, lhs.output, rhs.output).dtype
     return Tensor(data, inputs, dtype)
-
-
-@optimize.register(Contract, Tensor, Tensor, frozenset)
-def optimize_contract(lhs, rhs, reduced_vars):
-    return None  # reflect
 
 
 def arange(name, size):
