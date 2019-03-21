@@ -363,7 +363,8 @@ def eager_contract(lhs, rhs, reduced_vars):
     data = opt_einsum.contract(lhs.data, list(lhs.inputs),
                                rhs.data, list(rhs.inputs),
                                list(inputs), backend="torch")
-    return Tensor(data, inputs, rhs.dtype)
+    dtype = find_domain(ops.mul, lhs.output, rhs.output).dtype
+    return Tensor(data, inputs, dtype)
 
 
 @optimize.register(Contract, Tensor, Tensor, frozenset)
