@@ -53,7 +53,7 @@ def _trace_mm(x, y):
     assert x.dim() >= 2
     assert y.dim() >= 2
     xy = torch.matmul(x, y)
-    return xy.reshape(xy.shape[:-2] + (-1)).sum(-1)
+    return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
 
 
 def _compute_offsets(inputs):
@@ -340,15 +340,14 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
 @monte_carlo.register(Integrate, Gaussian, Gaussian, frozenset)
 @integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
-    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k] == 'real')
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars:
-        inputs = OrderedDict((k, d) for t in (log_measure, integrand)
-                             for k, d in t.inputs.items()
-                             if k not in reduced_vars)
 
         lhs_reals = frozenset(k for k, d in log_measure.inputs.items() if d.dtype == 'real')
         rhs_reals = frozenset(k for k, d in integrand.inputs.items() if d.dtype == 'real')
         if lhs_reals == real_vars and rhs_reals <= real_vars:
+            inputs = OrderedDict((k, d) for t in (log_measure, integrand)
+                                 for k, d in t.inputs.items())
             lhs_loc, lhs_precision = align_gaussian(inputs, log_measure)
             rhs_loc, rhs_precision = align_gaussian(inputs, integrand)
             dim = lhs_loc.size(-1)
@@ -358,10 +357,12 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             # http://www.math.uwaterloo.ca/~hwolkowi//matrixcookbook.pdf
             lhs_scale_tril = torch.inverse(torch.cholesky(lhs_precision))
             lhs_covariance = torch.matmul(lhs_scale_tril, lhs_scale_tril.transpose(-1, -2))
-            delta = lhs_loc - rhs_loc
-            log_norm = _log_det_tril(lhs_scale_tril) - 0.5 * math.log(2 * math.pi) * dim
-            return 0.5 * (_vmv(delta, rhs_precision, delta) +
+            log_norm = _log_det_tril(lhs_scale_tril) + 0.5 * math.log(2 * math.pi) * dim
+            data = 0.5 * (_vmv(rhs_precision, lhs_loc - rhs_loc) +
                           _trace_mm(rhs_precision, lhs_covariance)) * log_norm.exp()
+            inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)
+            result = Tensor(data, inputs)
+            return result.reduce(ops.add, reduced_vars - real_vars)
 
         raise NotImplementedError('TODO implement partial integration')
 
@@ -370,8 +371,8 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 @monte_carlo.register(Integrate, Gaussian, Funsor, frozenset)
 @integrator
-def monte_carlo_integrate_gaussian_funsor(log_measure, integrand, reduced_vars):
-    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k] == 'real')
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars:
         log_measure = log_measure.sample(real_vars, monte_carlo.sample_inputs)
         reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
