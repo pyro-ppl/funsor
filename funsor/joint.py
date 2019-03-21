@@ -273,7 +273,6 @@ def eager_binary(op, gaussian, discrete):
 # Patterns for integration
 ################################################################################
 
-
 @eager.register(Integrate, Joint, Delta, frozenset)
 @integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
@@ -298,7 +297,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     raise NotImplementedError('TODO')
 
 
-@monte_carlo.register(Integrate, Gaussian, Funsor, frozenset)
+@monte_carlo.register(Integrate, Joint, Funsor, frozenset)
 @integrator
 def monte_carlo_integrate(log_measure, integrand, reduced_vars):
     sampled_log_measure = log_measure.sample(reduced_vars)

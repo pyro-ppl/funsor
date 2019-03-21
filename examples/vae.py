@@ -47,7 +47,7 @@ def main(args):
     encode = funsor.function(reals(28, 28), (reals(20), reals(20)))(encoder)
     decode = funsor.function(reals(20), reals(28, 28))(decoder)
 
-    @funsor.interpreter.interpretation(funsor.interpreter.monte_carlo)
+    @funsor.interpreter.interpretation(funsor.terms.monte_carlo)
     def loss_function(data, scale):
         loc, scale = encode(data)
         i = funsor.Variable('i', bint(20))
@@ -61,7 +61,7 @@ def main(args):
         p = dist.Bernoulli(probs[x, y], value=data[x, y])
         p = p.reduce(ops.add, frozenset(['x', 'y']))
 
-        elbo = funsor.Integrate(q, scale * (p - q), frozenset(['z']))
+        elbo = funsor.Integrate(q, scale * (p - q), 'z')
         elbo = elbo.reduce(ops.add, frozenset(['batch']))
         loss = -elbo
         return loss.data
