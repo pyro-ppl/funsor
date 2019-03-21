@@ -58,7 +58,7 @@ def main(args):
         probs = decode(z)
         x = funsor.Variable('x', bint(28))
         y = funsor.Variable('y', bint(28))
-        p = dist.Bernoulli(probs[x][y], value=data[x][y])
+        p = dist.Bernoulli(probs[x, y], value=data[x, y])
         p = p.reduce(ops.add, frozenset(['x', 'y']))
 
         elbo = funsor.Integrate(q, scale * (p - q), frozenset(['z']))
