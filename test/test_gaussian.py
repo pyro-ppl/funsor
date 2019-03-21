@@ -9,8 +9,10 @@ import torch
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
+from funsor.integrate import Integrate
 from funsor.joint import Joint
-from funsor.terms import Number
+from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
+from funsor.terms import Funsor, Number
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 
@@ -225,3 +227,35 @@ def test_logsumexp(int_inputs, real_inputs):
     g_xy = g.reduce(ops.logaddexp, frozenset(['x', 'y']))
     assert_close(g_xy, g.reduce(ops.logaddexp, 'x').reduce(ops.logaddexp, 'y'), atol=1e-3, rtol=None)
     assert_close(g_xy, g.reduce(ops.logaddexp, 'y').reduce(ops.logaddexp, 'x'), atol=1e-3, rtol=None)
+
+
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
+    {'i': bint(2), 'j': bint(3)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals(), 'y': reals()},
+    {'x': reals(2), 'y': reals(3)},
+    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    {'w': reals(5), 'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+], ids=id_from_inputs)
+def tests_integrate_gaussian_gaussian(int_inputs, real_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(sorted(real_inputs.items()))
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+
+    log_measure = random_gaussian(inputs)
+    integrand = random_gaussian(inputs)
+    reduced_vars = frozenset(real_inputs)
+
+    exact = Integrate(log_measure, integrand, reduced_vars)
+    with monte_carlo_interpretation(particle=bint(10000)):
+        # Force Monte Carlo approximation even though analytic formula is known.
+        approx_fn = monte_carlo.dispatch(Integrate, Gaussian, Gaussian, frozenset)
+        exact_fn = monte_carlo.dispatch(Integrate, Gaussian, Funsor, frozenset)
+        assert approx_fn is not exact_fn
+        approx = approx_fn(log_measure, integrand, reduced_vars)
+
+    assert_close(exact, approx, atol=1e-1, rtol=None)

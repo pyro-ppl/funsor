@@ -66,15 +66,6 @@ def sequential(cls, *args):
     return result
 
 
-@dispatched_interpretation
-def monte_carlo(cls, *args):
-    # TODO Memoize sample statements in a context manager.
-    result = monte_carlo.dispatch(cls, *args)
-    if result is None:
-        result = eager(cls, *args)
-    return result
-
-
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
 
@@ -852,7 +843,6 @@ __all__ = [
     'Unary',
     'Variable',
     'eager',
-    'monte_carlo',
     'lazy',
     'of_shape',
     'reflect',

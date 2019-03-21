@@ -8,12 +8,14 @@ from six import add_metaclass, integer_types
 from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.contract import Contract
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate, integrator
+from funsor.montecarlo import monte_carlo
 from funsor.ops import Op
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, monte_carlo, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_data, to_funsor
 
 
 def align_tensor(new_inputs, x):
@@ -353,9 +355,17 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, dtype)
 
 
+@monte_carlo.register(Integrate, Tensor, Tensor, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    return Contract(log_measure.exp(), integrand, reduced_vars)
+
+
 @monte_carlo.register(Integrate, Tensor, Funsor, frozenset)
 @integrator
 def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    log_measure = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
+    reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
     return Integrate(log_measure, integrand, reduced_vars)
 
 

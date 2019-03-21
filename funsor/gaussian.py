@@ -12,8 +12,9 @@ import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
+from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, monte_carlo
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -43,6 +44,16 @@ def _vmv(mat, vec):
     v = vec.unsqueeze(-1)
     result = torch.matmul(vt, torch.matmul(mat, v))
     return result.squeeze(-1).squeeze(-1)
+
+
+def _trace_mm(x, y):
+    """
+    Computes ``trace(x @ y)``.
+    """
+    assert x.dim() >= 2
+    assert y.dim() >= 2
+    xy = torch.matmul(x, y)
+    return xy.reshape(xy.shape[:-2] + (-1)).sum(-1)
 
 
 def _compute_offsets(inputs):
@@ -326,17 +337,44 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
 
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
+@monte_carlo.register(Integrate, Gaussian, Gaussian, frozenset)
 @integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
-    raise NotImplementedError('TODO')
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k] == 'real')
+    if real_vars:
+        inputs = OrderedDict((k, d) for t in (log_measure, integrand)
+                             for k, d in t.inputs.items()
+                             if k not in reduced_vars)
+
+        lhs_reals = frozenset(k for k, d in log_measure.inputs.items() if d.dtype == 'real')
+        rhs_reals = frozenset(k for k, d in integrand.inputs.items() if d.dtype == 'real')
+        if lhs_reals == real_vars and rhs_reals <= real_vars:
+            lhs_loc, lhs_precision = align_gaussian(inputs, log_measure)
+            rhs_loc, rhs_precision = align_gaussian(inputs, integrand)
+            dim = lhs_loc.size(-1)
+
+            # Compute the expectation of a non-normalized quadratic form.
+            # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
+            # http://www.math.uwaterloo.ca/~hwolkowi//matrixcookbook.pdf
+            lhs_scale_tril = torch.inverse(torch.cholesky(lhs_precision))
+            lhs_covariance = torch.matmul(lhs_scale_tril, lhs_scale_tril.transpose(-1, -2))
+            delta = lhs_loc - rhs_loc
+            log_norm = _log_det_tril(lhs_scale_tril) - 0.5 * math.log(2 * math.pi) * dim
+            return 0.5 * (_vmv(delta, rhs_precision, delta) +
+                          _trace_mm(rhs_precision, lhs_covariance)) * log_norm.exp()
+
+        raise NotImplementedError('TODO implement partial integration')
+
+    return None  # defer to default implementation
 
 
 @monte_carlo.register(Integrate, Gaussian, Funsor, frozenset)
 @integrator
-def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+def monte_carlo_integrate_gaussian_funsor(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k] == 'real')
     if real_vars:
-        log_measure = log_measure.sample(real_vars)
+        log_measure = log_measure.sample(real_vars, monte_carlo.sample_inputs)
+        reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
         return Integrate(log_measure, integrand, reduced_vars)
 
     return None  # defer to default implementation

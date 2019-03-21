@@ -10,8 +10,9 @@ from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate, integrator
+from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, Op
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, eager, monte_carlo, to_funsor
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, eager, to_funsor
 from funsor.torch import Tensor
 
 
@@ -300,8 +301,9 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 @monte_carlo.register(Integrate, Joint, Funsor, frozenset)
 @integrator
 def monte_carlo_integrate(log_measure, integrand, reduced_vars):
-    sampled_log_measure = log_measure.sample(reduced_vars)
+    sampled_log_measure = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
     if sampled_log_measure is not log_measure:
+        reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
         return Integrate(sampled_log_measure, integrand, reduced_vars)
 
     return None  # defer to default implementation
