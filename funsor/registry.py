@@ -33,6 +33,10 @@ class KeyedRegistry(object):
             return self.registry[key](*args, **kwargs)
         return self.default(*args, **kwargs)
 
+    def dispatch(self, key, *types):
+        fn = self.registry[key].dispatch(*types)
+        return self.default if fn is None else fn
+
 
 __all__ = [
     'KeyedRegistry',

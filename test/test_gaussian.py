@@ -240,7 +240,7 @@ def test_logsumexp(int_inputs, real_inputs):
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
     {'w': reals(5), 'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-def tests_integrate_gaussian_gaussian(int_inputs, real_inputs):
+def tests_monte_carlo_integrate(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
@@ -251,11 +251,15 @@ def tests_integrate_gaussian_gaussian(int_inputs, real_inputs):
     reduced_vars = frozenset(real_inputs)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
+    assert isinstance(exact, Tensor)
+
     with monte_carlo_interpretation(particle=bint(10000)):
         # Force Monte Carlo approximation even though analytic formula is known.
-        approx_fn = monte_carlo.dispatch(Integrate, Gaussian, Gaussian, frozenset)
-        exact_fn = monte_carlo.dispatch(Integrate, Gaussian, Funsor, frozenset)
+        approx_fn = monte_carlo.registry.dispatch(Integrate, Gaussian, Gaussian, frozenset)
+        exact_fn = monte_carlo.registry.dispatch(Integrate, Gaussian, Funsor, frozenset)
         assert approx_fn is not exact_fn
+
         approx = approx_fn(log_measure, integrand, reduced_vars)
+        assert isinstance(exact, Tensor)
 
     assert_close(exact, approx, atol=1e-1, rtol=None)
