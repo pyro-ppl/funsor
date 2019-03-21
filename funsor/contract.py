@@ -87,7 +87,7 @@ def eager_contract(lhs, rhs, reduced_vars):
 
 @optimize.register(Contract, Funsor, Funsor, frozenset)
 @contractor
-def optmize_contract(lhs, rhs, reduced_vars):
+def optimize_contract(lhs, rhs, reduced_vars):
     return None
 
 
