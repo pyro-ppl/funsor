@@ -334,6 +334,36 @@ def test_getitem_number_2_inputs():
     assert_close(x[3, ..., 1], Tensor(data[:, :, 3, ..., 1], inputs))
 
 
+def test_getitem_variable():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    i = Variable('i', bint(5))
+    j = Variable('j', bint(4))
+    assert x[i] is Tensor(data, OrderedDict([('i', bint(5))]))
+    assert x[i, j] is Tensor(data, OrderedDict([('i', bint(5)), ('j', bint(4))]))
+
+
+def test_getitem_tensor():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    i = Variable('i', bint(5))
+    j = Variable('j', bint(4))
+    k = Variable('k', bint(3))
+    l = Variable('l', bint(2))
+
+    y = random_tensor(OrderedDict(), bint(5))
+    assert_close(x[i](i=y), x[y])
+
+    y = random_tensor(OrderedDict(), bint(4))
+    assert_close(x[:, j](j=y), x[:, y])
+
+    y = random_tensor(OrderedDict(), bint(3))
+    assert_close(x[:, :, k](k=y), x[:, :, y])
+
+    y = random_tensor(OrderedDict(), bint(2))
+    assert_close(x[:, :, :, l](l=y), x[:, :, :, y])
+
+
 REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
 
 

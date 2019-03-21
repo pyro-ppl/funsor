@@ -366,7 +366,10 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
     target_dim = len(lhs.inputs)
     source_dim = target_dim + op.offset
     if target_dim != source_dim:
-        data = data.permute(source_dim, target_dim)
+        perm = list(range(data.dim()))
+        del perm[source_dim]
+        perm.insert(target_dim, source_dim)
+        data = data.permute(*perm)
     return Tensor(data, inputs, lhs.dtype)
 
 
@@ -376,19 +379,23 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     assert rhs.output == bint(lhs.output.shape[op.offset])
 
     # Compute inputs and outputs.
-    dtype = find_domain(op, lhs.output, rhs.output).dtype
     if lhs.inputs == rhs.inputs:
-        inputs = lhs.inputs
-        lhs_data, rhs_data = lhs.data, rhs.data
+        inputs, lhs_data, rhs_data = lhs.inputs, lhs.data, rhs.data
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
+    if len(lhs.output.shape) > 1:
+        rhs_data = rhs_data.reshape(rhs_data.shape + (1,) * (len(lhs.output.shape) - 1))
 
     # Perform advanced indexing.
-    index = [torch.arange(size).reshape((-1,) + (1,) * (lhs_data.dim() - pos - 2))
-             for pos, size in enumerate(lhs_data.shape)]
-    index[len(lhs.inputs) + op.offset] = rhs_data
+    target_dim = len(lhs.inputs) + op.offset
+    index = [None] * lhs_data.dim()
+    for i in range(target_dim):
+        index[i] = torch.arange(lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 2))
+    index[target_dim] = rhs_data
+    for i in range(1 + target_dim, lhs_data.dim()):
+        index[i] = torch.arange(lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 1))
     data = lhs_data[tuple(index)]
-    return Tensor(data, inputs, dtype)
+    return Tensor(data, inputs, lhs.dtype)
 
 
 def arange(name, size):
