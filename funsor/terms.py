@@ -327,9 +327,6 @@ class Funsor(object):
 
         return None  # defer to default implementation
 
-    def monte_carlo_logsumexp(self, reduced_vars):
-        return None  # defer to default implementation
-
     # The following methods conform to a standard array/tensor interface.
 
     def __invert__(self):
@@ -616,19 +613,6 @@ def eager_reduce(op, arg, reduced_vars):
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
     return arg.sequential_reduce(op, reduced_vars)
-
-
-@monte_carlo.register(Reduce, AssociativeOp, Funsor, frozenset)
-def monte_carlo_reduce(op, arg, reduced_vars):
-    if op is ops.logaddexp:
-        # First try to compute integrals analytically.
-        result = arg.eager_reduce(op, reduced_vars)
-        # If any variables remain, try to monte carlo sample them.
-        if isinstance(result, Reduce) and result.op is ops.logaddexp:
-            result = result.arg.monte_carlo_logsumexp(result.reduced_vars)
-            return result
-
-    return None  # defer to default implementation
 
 
 class NumberMeta(FunsorMeta):
