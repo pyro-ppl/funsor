@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import functools
 import itertools
+import math
 import numbers
 from abc import ABCMeta, abstractmethod
 from collections import Hashable, OrderedDict
@@ -254,6 +255,25 @@ class Funsor(object):
         :param OrderedDict sample_inputs: An optional mapping from variable
             name to :class:`~funsor.domains.Domain` over which samples will
             be batched.
+        """
+        assert self.output == reals()
+        assert isinstance(sampled_vars, frozenset)
+        if sampled_vars.isdisjoint(self.inputs):
+            return self
+
+        result = self.unscaled_sample(sampled_vars, sample_inputs)
+        if sample_inputs is not None:
+            log_scale = 0
+            for var, domain in sample_inputs.items():
+                if var in result.inputs and var not in self.inputs:
+                    log_scale -= math.log(domain.dtype)
+            if log_scale != 0:
+                result += log_scale
+        return result
+
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+        """
+        Internal method to draw an unscaled sample.
         """
         assert self.output == reals()
         assert isinstance(sampled_vars, frozenset)

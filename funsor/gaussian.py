@@ -277,7 +277,7 @@ class Gaussian(Funsor):
 
         return None  # defer to default implementation
 
-    def sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
@@ -354,7 +354,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
-            # http://www.math.uwaterloo.ca/~hwolkowi//matrixcookbook.pdf
+            # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
             lhs_scale_tril = torch.inverse(torch.cholesky(lhs_precision))
             lhs_covariance = torch.matmul(lhs_scale_tril, lhs_scale_tril.transpose(-1, -2))
             log_norm = _log_det_tril(lhs_scale_tril) + 0.5 * math.log(2 * math.pi) * dim

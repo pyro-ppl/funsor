@@ -152,7 +152,7 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
     p = random_tensor(be_inputs)
     p.data.requires_grad_(test_grad)
 
-    q = p.sample(sampled_vars, sample_inputs) - ops.log(num_samples)
+    q = p.sample(sampled_vars, sample_inputs)
     mq = materialize(q).reduce(ops.logaddexp, 'n')
     mq = mq.align(tuple(p.inputs))
     assert_close(mq, p, atol=0.1, rtol=None)
@@ -189,7 +189,7 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
     sampled_vars = frozenset(event_inputs)
     p = random_gaussian(be_inputs)
 
-    q = p.sample(sampled_vars, sample_inputs) - ops.log(num_samples)
+    q = p.sample(sampled_vars, sample_inputs)
     p_vars = sampled_vars
     q_vars = sampled_vars | frozenset(['n'])
     # Check zeroth moment.

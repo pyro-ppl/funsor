@@ -242,7 +242,7 @@ class Tensor(Funsor):
             return Tensor(data, inputs, self.dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
-    def sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
         assert self.output == reals()
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:

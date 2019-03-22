@@ -118,7 +118,7 @@ class Joint(Funsor):
 
         return None  # defer to default implementation
 
-    def sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
         if sample_inputs is None:
             sample_inputs = OrderedDict()
         assert frozenset(sample_inputs).isdisjoint(self.inputs)
@@ -128,12 +128,12 @@ class Joint(Funsor):
                                   if self.gaussian.inputs[k].dtype == 'real')
         result = self
         if discrete_vars:
-            discrete = result.discrete.sample(discrete_vars, sample_inputs)
+            discrete = result.discrete.unscaled_sample(discrete_vars, sample_inputs)
             result = Joint(result.deltas, gaussian=result.gaussian) + discrete
         if gaussian_vars:
             sample_inputs = OrderedDict((k, v) for k, v in sample_inputs.items()
                                         if k not in result.gaussian.inputs)
-            gaussian = result.gaussian.sample(gaussian_vars, sample_inputs)
+            gaussian = result.gaussian.unscaled_sample(gaussian_vars, sample_inputs)
             result = Joint(result.deltas, result.discrete) + gaussian
         return result
 
