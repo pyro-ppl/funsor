@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import os
 import types
 from collections import OrderedDict
 
@@ -10,12 +11,28 @@ from funsor.domains import Domain
 from funsor.ops import Op
 from funsor.registry import KeyedRegistry
 from funsor.six import singledispatch
+from funsor.util import get_stack_size
+
+_DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
+_MIN_STACK_SIZE = float('inf')
 
 _INTERPRETATION = None  # To be set later in funsor.terms
 
 
-def interpret(cls, *args):
-    return _INTERPRETATION(cls, *args)
+if _DEBUG:
+    def interpret(cls, *args):
+        global _MIN_STACK_SIZE
+        stack_size = get_stack_size()
+        _MIN_STACK_SIZE = min(_MIN_STACK_SIZE, stack_size)
+        indent = ' ' * (stack_size - _MIN_STACK_SIZE)
+        typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
+        print(indent + ' '.join(typenames))
+        result = _INTERPRETATION(cls, *args)
+        print(indent + '-> ' + type(result).__name__)
+        return result
+else:
+    def interpret(cls, *args):
+        return _INTERPRETATION(cls, *args)
 
 
 def set_interpretation(new):
