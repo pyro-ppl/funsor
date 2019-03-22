@@ -337,7 +337,6 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
 
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
-@monte_carlo.register(Integrate, Gaussian, Gaussian, frozenset)
 @integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')

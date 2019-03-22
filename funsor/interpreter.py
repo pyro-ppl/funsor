@@ -96,9 +96,9 @@ def dispatched_interpretation(fn):
     """
     Decorator to create a dispatched interpretation function.
     """
-    fn.registry = KeyedRegistry(default=lambda *args: None)
-    fn.register = fn.registry.register
-    fn.dispatch = fn.registry.__call__
+    registry = KeyedRegistry(default=lambda *args: None)
+    fn.register = registry.register
+    fn.dispatch = registry.__call__
     return fn
 
 

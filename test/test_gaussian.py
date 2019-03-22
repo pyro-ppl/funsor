@@ -254,12 +254,7 @@ def tests_monte_carlo_integrate(int_inputs, real_inputs):
     assert isinstance(exact, Tensor)
 
     with monte_carlo_interpretation(particle=bint(10000)):
-        # Force Monte Carlo approximation even though analytic formula is known.
-        approx_fn = monte_carlo.registry.dispatch(Integrate, Gaussian, Funsor, frozenset)
-        exact_fn = monte_carlo.registry.dispatch(Integrate, Gaussian, Gaussian, frozenset)
-        assert approx_fn is not exact_fn
-
-        approx = approx_fn(log_measure, integrand, reduced_vars)
+        approx = Integrate(log_measure, integrand, reduced_vars)
         assert isinstance(approx, Tensor)
 
     assert_close(exact, approx, atol=1e-1, rtol=None)

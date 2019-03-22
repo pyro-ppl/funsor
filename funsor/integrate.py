@@ -38,11 +38,11 @@ def _simplify_integrate(fn, log_measure, integrand, reduced_vars):
     assert reduced_vars <= log_measure_vars | integrand_vars
     progress = False
     if not reduced_vars <= log_measure_vars:
-        integrand = integrand.reduce(ops.logaddexp, reduced_vars - log_measure_vars)
+        integrand = integrand.reduce(ops.add, reduced_vars - log_measure_vars)
         reduced_vars = reduced_vars & log_measure_vars
         progress = True
     if not reduced_vars <= integrand_vars:
-        log_measure = log_measure.reduce(ops.add, reduced_vars - integrand_vars)
+        log_measure = log_measure.reduce(ops.logaddexp, reduced_vars - integrand_vars)
         reduced_vars = reduced_vars & integrand_vars
         progress = True
     if progress:
