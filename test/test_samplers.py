@@ -9,6 +9,7 @@ from torch.autograd import grad
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
+from funsor.integrate import Integrate
 from funsor.joint import Joint
 from funsor.terms import Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
@@ -164,11 +165,6 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
         expected = grad((p_data.exp() * probe).sum(), [p.data])[0]
         actual = grad((mq_data.exp() * probe).sum(), [p.data])[0]
         assert_close(actual, expected, atol=0.1, rtol=None)
-
-
-# This is a stub for a future PR.
-def Integrate(log_measure, integrand, reduced_vars):
-    pytest.xfail(reason='Integrate is not implemented')
 
 
 @pytest.mark.parametrize('batch_inputs', [
