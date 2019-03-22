@@ -5,6 +5,7 @@ from collections import OrderedDict
 
 import opt_einsum
 import torch
+from multipledispatch import dispatch
 from six import add_metaclass, integer_types
 from six.moves import reduce
 
@@ -14,7 +15,7 @@ from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
-from funsor.ops import Op
+from funsor.ops import GetitemOp, Op
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_data, to_funsor
 
@@ -85,7 +86,6 @@ class TensorMeta(FunsorMeta):
         return super(TensorMeta, cls).__call__(data, inputs, dtype)
 
 
-@to_funsor.register(torch.Tensor)
 @add_metaclass(TensorMeta)
 class Tensor(Funsor):
     """
@@ -304,6 +304,16 @@ class Tensor(Funsor):
         return reduce(ops.add, results)
 
 
+@dispatch(torch.Tensor)
+def to_funsor(x):
+    return Tensor(x)
+
+
+@dispatch(torch.Tensor, object)
+def to_funsor(x, dtype):
+    return Tensor(x, dtype=dtype)
+
+
 @to_data.register(Tensor)
 def _to_data_tensor(x):
     if x.inputs:
@@ -314,14 +324,7 @@ def _to_data_tensor(x):
 
 @eager.register(Binary, Op, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):
-    if op is ops.getitem:
-        # Shift by that Funsor is using for inputs.
-        index = [slice(None)] * len(lhs.inputs)
-        index.append(rhs.data)
-        index = tuple(index)
-        data = lhs.data[index]
-    else:
-        data = op(lhs.data, rhs.data)
+    data = op(lhs.data, rhs.data)
     return Tensor(data, lhs.inputs, lhs.dtype)
 
 
@@ -341,19 +344,62 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
 
-    if op is ops.getitem:
-        # getitem has special shape semantics.
-        if rhs.output.shape:
-            raise NotImplementedError('TODO support vector indexing')
-        assert lhs.output.shape == (rhs.dtype,)
-        index = [torch.arange(size).reshape((-1,) + (1,) * (lhs_data.dim() - pos - 2))
-                 for pos, size in enumerate(lhs_data.shape)]
-        index[-1] = rhs_data
-        data = lhs_data[tuple(index)]
-    else:
-        data = op(lhs_data, rhs_data)
-
+    data = op(lhs_data, rhs_data)
     return Tensor(data, inputs, dtype)
+
+
+@eager.register(Binary, GetitemOp, Tensor, Number)
+def eager_getitem_tensor_number(op, lhs, rhs):
+    index = [slice(None)] * (len(lhs.inputs) + op.offset)
+    index.append(rhs.data)
+    index = tuple(index)
+    data = lhs.data[index]
+    return Tensor(data, lhs.inputs, lhs.dtype)
+
+
+@eager.register(Binary, GetitemOp, Tensor, Variable)
+def eager_getitem_tensor_variable(op, lhs, rhs):
+    assert op.offset < len(lhs.output.shape)
+    assert rhs.output == bint(lhs.output.shape[op.offset])
+    assert rhs.name not in lhs.inputs
+
+    # Convert a positional event dimension to a named batch dimension.
+    inputs = lhs.inputs.copy()
+    inputs[rhs.name] = rhs.output
+    data = lhs.data
+    target_dim = len(lhs.inputs)
+    source_dim = target_dim + op.offset
+    if target_dim != source_dim:
+        perm = list(range(data.dim()))
+        del perm[source_dim]
+        perm.insert(target_dim, source_dim)
+        data = data.permute(*perm)
+    return Tensor(data, inputs, lhs.dtype)
+
+
+@eager.register(Binary, GetitemOp, Tensor, Tensor)
+def eager_getitem_tensor_tensor(op, lhs, rhs):
+    assert op.offset < len(lhs.output.shape)
+    assert rhs.output == bint(lhs.output.shape[op.offset])
+
+    # Compute inputs and outputs.
+    if lhs.inputs == rhs.inputs:
+        inputs, lhs_data, rhs_data = lhs.inputs, lhs.data, rhs.data
+    else:
+        inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
+    if len(lhs.output.shape) > 1:
+        rhs_data = rhs_data.reshape(rhs_data.shape + (1,) * (len(lhs.output.shape) - 1))
+
+    # Perform advanced indexing.
+    target_dim = len(lhs.inputs) + op.offset
+    index = [None] * lhs_data.dim()
+    for i in range(target_dim):
+        index[i] = torch.arange(lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 2))
+    index[target_dim] = rhs_data
+    for i in range(1 + target_dim, lhs_data.dim()):
+        index[i] = torch.arange(lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 1))
+    data = lhs_data[tuple(index)]
+    return Tensor(data, inputs, lhs.dtype)
 
 
 @eager.register(Contract, Tensor, Tensor, frozenset)

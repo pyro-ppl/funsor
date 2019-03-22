@@ -5,6 +5,7 @@ from numbers import Number
 
 import numpy as np
 from multipledispatch import Dispatcher
+from six import add_metaclass
 
 _builtin_abs = abs
 _builtin_max = max
@@ -23,6 +24,9 @@ class Op(Dispatcher):
     def __repr__(self):
         return self.__name__
 
+    def __str__(self):
+        return self.__name__
+
 
 class AssociativeOp(Op):
     pass
@@ -32,9 +36,39 @@ class AddOp(AssociativeOp):
     pass
 
 
+class GetitemMeta(type):
+    _cache = {}
+
+    def __call__(cls, offset):
+        try:
+            return GetitemMeta._cache[offset]
+        except KeyError:
+            instance = super(GetitemMeta, cls).__call__(offset)
+            GetitemMeta._cache[offset] = instance
+            return instance
+
+
+@add_metaclass(GetitemMeta)
+class GetitemOp(Op):
+    """
+    Op encoding an index into one dime, e.g. ``x[:,:,:,y]`` for offset of 3.
+    """
+    def __init__(self, offset):
+        assert isinstance(offset, int)
+        assert offset >= 0
+        self.offset = offset
+        self._prefix = (slice(None),) * offset
+        self.__name__ = 'GetitemOp({})'.format(offset)
+        super(GetitemOp, self).__init__(self._default)
+
+    def _default(self, x, y):
+        return x[self._prefix + (y,)] if self.offset else x[y]
+
+
+getitem = GetitemOp(0)
+
 eq = Op(operator.eq)
 ge = Op(operator.ge)
-getitem = Op(operator.getitem)
 gt = Op(operator.gt)
 invert = Op(operator.invert)
 le = Op(operator.le)
@@ -148,6 +182,7 @@ PRODUCT_INVERSES = {
 __all__ = [
     'AssociativeOp',
     'DISTRIBUTIVE_OPS',
+    'GetitemOp',
     'Op',
     'PRODUCT_INVERSES',
     'abs',

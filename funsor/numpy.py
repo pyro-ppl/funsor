@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 
 import numpy as np
+from multipledispatch import dispatch
 from six import add_metaclass, integer_types
 
 import funsor.ops as ops
@@ -76,7 +77,6 @@ class ArrayMeta(FunsorMeta):
         return super(ArrayMeta, cls).__call__(data, inputs, dtype)
 
 
-@to_funsor.register(np.ndarray)
 @add_metaclass(ArrayMeta)
 class Array(Funsor):
     """
@@ -189,6 +189,16 @@ class Array(Funsor):
 
         data = self.data[tuple(index)]
         return Array(data, inputs, self.dtype)
+
+
+@dispatch(np.ndarray)
+def to_funsor(x):
+    return Array(x)
+
+
+@dispatch(np.ndarray, object)
+def to_funsor(x, dtype):
+    return Array(x, dtype=dtype)
 
 
 @to_data.register(Array)

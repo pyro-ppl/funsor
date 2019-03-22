@@ -290,6 +290,95 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     check_funsor(actual, inputs, reals(), expected_data)
 
 
+def test_getitem_number_0_inputs():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    assert_close(x[2], Tensor(data[2]))
+    assert_close(x[:, 1], Tensor(data[:, 1]))
+    assert_close(x[2, 1], Tensor(data[2, 1]))
+    assert_close(x[2, :, 1], Tensor(data[2, :, 1]))
+    assert_close(x[3, ...], Tensor(data[3, ...]))
+    assert_close(x[3, 2, ...], Tensor(data[3, 2, ...]))
+    assert_close(x[..., 1], Tensor(data[..., 1]))
+    assert_close(x[..., 2, 1], Tensor(data[..., 2, 1]))
+    assert_close(x[3, ..., 1], Tensor(data[3, ..., 1]))
+
+
+def test_getitem_number_1_inputs():
+    data = torch.randn((3, 5, 4, 3, 2))
+    inputs = OrderedDict([('i', bint(3))])
+    x = Tensor(data, inputs)
+    assert_close(x[2], Tensor(data[:, 2], inputs))
+    assert_close(x[:, 1], Tensor(data[:, :, 1], inputs))
+    assert_close(x[2, 1], Tensor(data[:, 2, 1], inputs))
+    assert_close(x[2, :, 1], Tensor(data[:, 2, :, 1], inputs))
+    assert_close(x[3, ...], Tensor(data[:, 3, ...], inputs))
+    assert_close(x[3, 2, ...], Tensor(data[:, 3, 2, ...], inputs))
+    assert_close(x[..., 1], Tensor(data[..., 1], inputs))
+    assert_close(x[..., 2, 1], Tensor(data[..., 2, 1], inputs))
+    assert_close(x[3, ..., 1], Tensor(data[:, 3, ..., 1], inputs))
+
+
+def test_getitem_number_2_inputs():
+    data = torch.randn((3, 4, 5, 4, 3, 2))
+    inputs = OrderedDict([('i', bint(3)), ('j', bint(4))])
+    x = Tensor(data, inputs)
+    assert_close(x[2], Tensor(data[:, :, 2], inputs))
+    assert_close(x[:, 1], Tensor(data[:, :, :, 1], inputs))
+    assert_close(x[2, 1], Tensor(data[:, :, 2, 1], inputs))
+    assert_close(x[2, :, 1], Tensor(data[:, :, 2, :, 1], inputs))
+    assert_close(x[3, ...], Tensor(data[:, :, 3, ...], inputs))
+    assert_close(x[3, 2, ...], Tensor(data[:, :, 3, 2, ...], inputs))
+    assert_close(x[..., 1], Tensor(data[..., 1], inputs))
+    assert_close(x[..., 2, 1], Tensor(data[..., 2, 1], inputs))
+    assert_close(x[3, ..., 1], Tensor(data[:, :, 3, ..., 1], inputs))
+
+
+def test_getitem_variable():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    i = Variable('i', bint(5))
+    j = Variable('j', bint(4))
+    assert x[i] is Tensor(data, OrderedDict([('i', bint(5))]))
+    assert x[i, j] is Tensor(data, OrderedDict([('i', bint(5)), ('j', bint(4))]))
+
+
+def test_getitem_string():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    assert x['i'] is Tensor(data, OrderedDict([('i', bint(5))]))
+    assert x['i', 'j'] is Tensor(data, OrderedDict([('i', bint(5)), ('j', bint(4))]))
+
+
+def test_getitem_tensor():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    i = Variable('i', bint(5))
+    j = Variable('j', bint(4))
+    k = Variable('k', bint(3))
+    m = Variable('m', bint(2))
+
+    y = random_tensor(OrderedDict(), bint(5))
+    assert_close(x[i](i=y), x[y])
+
+    y = random_tensor(OrderedDict(), bint(4))
+    assert_close(x[:, j](j=y), x[:, y])
+
+    y = random_tensor(OrderedDict(), bint(3))
+    assert_close(x[:, :, k](k=y), x[:, :, y])
+
+    y = random_tensor(OrderedDict(), bint(2))
+    assert_close(x[:, :, :, m](m=y), x[:, :, :, y])
+
+    y = random_tensor(OrderedDict([('i', i.output)]),
+                      bint(j.dtype))
+    assert_close(x[i, j](j=y), x[i, y])
+
+    y = random_tensor(OrderedDict([('i', i.output), ('j', j.output)]),
+                      bint(k.dtype))
+    assert_close(x[i, j, k](k=y), x[i, j, y])
+
+
 REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
 
 

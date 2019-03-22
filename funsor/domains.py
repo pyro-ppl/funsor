@@ -79,9 +79,9 @@ def find_domain(op, *domains):
         return Domain(shape, dtype)
 
     lhs, rhs = domains
-    if op is ops.getitem:
+    if isinstance(op, ops.GetitemOp):
         dtype = lhs.dtype
-        shape = lhs.shape[rhs.num_elements:]
+        shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
         return Domain(shape, dtype)
 
     if lhs.dtype == 'real' or rhs.dtype == 'real':
