@@ -107,7 +107,9 @@ class Joint(Funsor):
             reduced_vars -= gaussian_vars
 
             # Scale to account for remaining reduced_vars that were inputs to dropped deltas.
-            eager_result = Joint(deltas, discrete) + gaussian
+            eager_result = Joint(deltas, discrete)
+            if gaussian is not Number(0):
+                eager_result += gaussian
             reduced_vars |= lazy_vars.difference(eager_result.inputs)
             lazy_vars = lazy_vars.intersection(eager_result.inputs)
             if reduced_vars:
