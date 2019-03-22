@@ -10,7 +10,7 @@ from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.joint import Joint
-from funsor.terms import Number
+from funsor.terms import Number, Reduce
 from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 
@@ -150,3 +150,29 @@ def test_reduce(int_inputs, real_inputs):
 
     expected = t + g(**truth)
     assert_close(actual, expected)
+
+
+def test_reduce_deltas_lazy():
+    a = Delta('a', Tensor(torch.randn(3, 2), OrderedDict(i=bint(3))))
+    b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
+    x = a + b
+    assert isinstance(x, Joint)
+    assert set(x.inputs) == {'a', 'b', 'i'}
+
+    y = x.reduce(ops.logaddexp, 'i')
+    assert isinstance(y, Reduce)
+    assert set(y.inputs) == {'a', 'b'}
+    assert_close(x.reduce(ops.logaddexp), y.reduce(ops.logaddexp))
+
+
+def test_reduce_gaussian_lazy():
+    a = random_gaussian(OrderedDict(i=bint(3), a=reals(2)))
+    b = random_tensor(OrderedDict(i=bint(3), b=bint(2)))
+    x = a + b
+    assert isinstance(x, Joint)
+    assert set(x.inputs) == {'a', 'b', 'i'}
+
+    y = x.reduce(ops.logaddexp, 'i')
+    assert isinstance(y, Reduce)
+    assert set(y.inputs) == {'a', 'b'}
+    assert_close(x.reduce(ops.logaddexp), y.reduce(ops.logaddexp))
