@@ -11,23 +11,24 @@ from funsor.domains import Domain
 from funsor.ops import Op
 from funsor.registry import KeyedRegistry
 from funsor.six import singledispatch
-from funsor.util import get_stack_size
 
 _DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
-_MIN_STACK_SIZE = float('inf')
+_STACK_SIZE = 0
 
 _INTERPRETATION = None  # To be set later in funsor.terms
 
 
 if _DEBUG:
     def interpret(cls, *args):
-        global _MIN_STACK_SIZE
-        stack_size = get_stack_size()
-        _MIN_STACK_SIZE = min(_MIN_STACK_SIZE, stack_size)
-        indent = ' ' * (stack_size - _MIN_STACK_SIZE)
+        global _STACK_SIZE
+        indent = '  ' * _STACK_SIZE
         typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
         print(indent + ' '.join(typenames))
-        result = _INTERPRETATION(cls, *args)
+        _STACK_SIZE += 1
+        try:
+            result = _INTERPRETATION(cls, *args)
+        finally:
+            _STACK_SIZE -= 1
         print(indent + '-> ' + type(result).__name__)
         return result
 else:
