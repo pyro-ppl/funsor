@@ -14,7 +14,7 @@ from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -207,7 +207,7 @@ class Gaussian(Funsor):
                        Tensor(self.precision, int_inputs)]
             tensors.extend(subs.values())
             inputs, tensors = align_tensors(*tensors)
-            batch_dim = self.loc.dim() - 1
+            batch_dim = tensors[0].dim() - 1
             batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
             (loc, precision), values = tensors[:2], tensors[2:]
 
@@ -286,7 +286,9 @@ class Gaussian(Funsor):
         # Partition inputs into sample_inputs + int_inputs + real_inputs.
         if sample_inputs is None:
             sample_inputs = OrderedDict()
-        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        else:
+            sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
+                                        if k not in self.inputs)
         sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
         int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
         real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
@@ -334,6 +336,22 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     quadratic_term = _vmv(lhs_precision, loc - lhs_loc) + _vmv(rhs_precision, loc - rhs_loc)
     likelihood = Tensor(-0.5 * quadratic_term, int_inputs)
     return likelihood + Gaussian(loc, precision, inputs)
+
+
+@eager.register(Integrate, Gaussian, Variable, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
+    if real_vars:
+        assert real_vars == frozenset([integrand.name])
+        dim = log_measure.loc.size(-1)
+        prec_tril = torch.cholesky(log_measure.precision)
+        log_norm = -_log_det_tril(prec_tril) + 0.5 * math.log(2 * math.pi) * dim
+        data = log_measure.loc * log_norm.exp().unsqueeze(-1)
+        inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
+        return Tensor(data, inputs)
+
+    return None  # defer to default implementation
 
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)

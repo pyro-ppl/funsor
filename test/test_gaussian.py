@@ -11,8 +11,8 @@ from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.joint import Joint
-from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
-from funsor.terms import Funsor, Number
+from funsor.montecarlo import monte_carlo_interpretation
+from funsor.terms import Number
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 

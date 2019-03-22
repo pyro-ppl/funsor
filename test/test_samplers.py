@@ -178,7 +178,7 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
 ], ids=id_from_inputs)
 def test_gaussian_distribution(event_inputs, batch_inputs):
     num_samples = 10000
-    sample_inputs = OrderedDict(n=bint(num_samples))
+    sample_inputs = OrderedDict(particle=bint(num_samples))
     be_inputs = OrderedDict(batch_inputs + event_inputs)
     batch_inputs = OrderedDict(batch_inputs)
     event_inputs = OrderedDict(event_inputs)
@@ -187,7 +187,7 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
 
     q = p.sample(sampled_vars, sample_inputs)
     p_vars = sampled_vars
-    q_vars = sampled_vars | frozenset(['n'])
+    q_vars = sampled_vars | frozenset(['particle'])
     # Check zeroth moment.
     assert_close(q.reduce(ops.logaddexp, q_vars),
                  p.reduce(ops.logaddexp, p_vars), atol=1e-6, rtol=None)

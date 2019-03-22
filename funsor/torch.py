@@ -251,7 +251,9 @@ class Tensor(Funsor):
         # Partition inputs into sample_inputs + batch_inputs + event_inputs.
         if sample_inputs is None:
             sample_inputs = OrderedDict()
-        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        else:
+            sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
+                                        if k not in self.inputs)
         sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
         batch_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in sampled_vars)
         event_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k in sampled_vars)
