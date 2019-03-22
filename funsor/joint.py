@@ -76,6 +76,12 @@ class Joint(Funsor):
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
+            # Keep mixture parameters lazy.
+            mixture_vars = frozenset(k for k, d in self.gaussian.inputs.items() if d.dtype != 'real')
+            mixture_vars = mixture_vars.union(*(x.point.inputs for x in self.deltas))
+            lazy_vars = reduced_vars & mixture_vars
+            reduced_vars -= lazy_vars
+
             # Integrate out degenerate variables, i.e. drop selected delta.
             deltas = []
             remaining_vars = set(reduced_vars)
@@ -87,18 +93,17 @@ class Joint(Funsor):
             deltas = tuple(deltas)
             reduced_vars = frozenset(remaining_vars)
 
-            # Integrate out delayed discrete variables, but keep mixtures lazy.
-            lazy_vars = reduced_vars.difference(self.gaussian.inputs, *(x.inputs for x in deltas))
-            discrete_vars = reduced_vars.intersection(self.discrete.inputs).difference(lazy_vars)
+            # Integrate out delayed discrete variables.
+            discrete_vars = reduced_vars.intersection(self.discrete.inputs)
             discrete = self.discrete.reduce(op, discrete_vars)
-            reduced_vars = reduced_vars.difference(discrete_vars, lazy_vars)
+            reduced_vars -= discrete_vars
 
             # Integrate out delayed gaussian variables.
             gaussian_vars = reduced_vars.intersection(self.gaussian.inputs)
             gaussian = self.gaussian.reduce(ops.logaddexp, gaussian_vars)
-            reduced_vars = reduced_vars.difference(gaussian_vars)
+            reduced_vars -= gaussian_vars
 
-            # Account for remaining reduced vars that were inputs to dropped deltas.
+            # Scale to account for remaining reduced_vars that were inputs to dropped deltas.
             eager_result = Joint(deltas, discrete) + gaussian
             reduced_vars |= lazy_vars.difference(eager_result.inputs)
             lazy_vars = lazy_vars.intersection(eager_result.inputs)
