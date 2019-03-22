@@ -149,6 +149,10 @@ class Funsor(object):
         for arg in self._ast_values:
             if isinstance(arg, Funsor):
                 arg._pretty(lines, indent + 1)
+            elif type(arg) is tuple and all(isinstance(x, Funsor) for x in arg):
+                lines.append((indent + 1, 'tuple'))
+                for x in arg:
+                    x._pretty(lines, indent + 2)
             else:
                 lines.append((indent + 1, str(arg)))
 
