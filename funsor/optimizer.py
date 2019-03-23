@@ -5,10 +5,25 @@ import collections
 from opt_einsum.paths import greedy
 from six.moves import reduce
 
+import funsor.ops as ops
 from funsor.domains import find_domain
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
+from funsor.sum_product import _partition
 from funsor.terms import Binary, Funsor, Reduce, eager, reflect
+
+
+def _order_lhss(lhs, rhs, reduced_vars):
+    assert isinstance(lhs, Finitary)
+
+    components = _partition(lhs.operands, reduced_vars)
+    root_lhs = Finitary(ops.mul, tuple(components[0][0]))
+    if len(components) > 1:
+        remaining_lhs = Finitary(ops.mul, tuple(t for c in components[1:] for t in c[0]))
+    else:
+        remaining_lhs = None
+
+    return root_lhs, remaining_lhs
 
 
 class Finitary(Funsor):
@@ -157,14 +172,18 @@ def optimize_reduction(op, arg, reduced_vars):
     if not (op, arg.op) in DISTRIBUTIVE_OPS:
         return None
 
+    return Contract(to_funsor(1.), arg, reduced_vars)
+
+
+@optimize.register(Contract, Finitary, (Finitary, Funsor), frozenset)
+@contractor
+def optimize_contract_finitary_funsor(lhs, rhs, reduced_vars):
+
     # build opt_einsum optimizer IR
-    inputs = []
-    size_dict = {}
-    for operand in arg.operands:
-        inputs.append(frozenset(d for d in operand.inputs.keys()))
-        size_dict.update({k: ((REAL_SIZE * v.num_elements) if v.dtype == 'real' else v.dtype)
-                          for k, v in operand.inputs.items()})
-    outputs = frozenset().union(*inputs) - reduced_vars
+    inputs = frozenset(lhs.inputs)
+    size_dict = {k: ((REAL_SIZE * v.num_elements) if v.dtype == 'real' else v.dtype)
+                 for k, v in lhs.inputs.items()})
+    outputs = inputs - reduced_vars
 
     # optimize path with greedy opt_einsum optimizer
     # TODO switch to new 'auto' strategy when it's released
@@ -197,11 +216,9 @@ def optimize_reduction(op, arg, reduced_vars):
         # count new appearance of variables that aren't reduced
         reduce_dim_counter.update({d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)})
 
-        path_end = Binary(finitary_op, ta, tb)
-        if path_end_reduced_vars:
-            path_end = Reduce(reduce_op, path_end, path_end_reduced_vars)
-
-        operands.append(path_end)
+        with interpretation(reflect):
+            path_end = Contract(ta, tb, path_end_reduced_vars)
+            operands.append(path_end)
 
     # reduce any remaining dims, if necessary
     final_reduced_vars = frozenset(d for (d, count) in reduce_dim_counter.items()
@@ -216,6 +233,18 @@ def remove_single_finitary(op, operands):
     if len(operands) == 1:
         return operands[0]
     return None
+
+
+@optimize.register(Contract, Funsor, Funsor, frozenset)
+@contractor
+def optimize_contract(lhs, rhs, reduced_vars):
+    return None
+
+
+@optimize.register(Contract, Funsor, Finitary, frozenset)
+@contractor
+def optimize_contract_funsor_finitary(lhs, rhs, reduced_vars):
+    return Contract(rhs, lhs, reduced_vars)
 
 
 @dispatched_interpretation

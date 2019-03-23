@@ -4,22 +4,7 @@ import functools
 from collections import OrderedDict
 
 import funsor.ops as ops
-from funsor.optimizer import Finitary, optimize
-from funsor.sum_product import _partition
 from funsor.terms import Funsor, eager
-
-
-def _order_lhss(lhs, reduced_vars):
-    assert isinstance(lhs, Finitary)
-
-    components = _partition(lhs.operands, reduced_vars)
-    root_lhs = Finitary(ops.mul, tuple(components[0][0]))
-    if len(components) > 1:
-        remaining_lhs = Finitary(ops.mul, tuple(t for c in components[1:] for t in c[0]))
-    else:
-        remaining_lhs = None
-
-    return root_lhs, remaining_lhs
 
 
 def _simplify_contract(fn, lhs, rhs, reduced_vars):
@@ -83,41 +68,6 @@ class Contract(Funsor):
 @contractor
 def eager_contract(lhs, rhs, reduced_vars):
     return (lhs * rhs).reduce(ops.add, reduced_vars)
-
-
-@optimize.register(Contract, Funsor, Funsor, frozenset)
-@contractor
-def optimize_contract(lhs, rhs, reduced_vars):
-    return None
-
-
-@optimize.register(Contract, Funsor, Finitary, frozenset)
-@contractor
-def optimize_contract_funsor_finitary(lhs, rhs, reduced_vars):
-    return Contract(rhs, lhs, reduced_vars)
-
-
-@optimize.register(Contract, Finitary, (Finitary, Funsor), frozenset)
-@contractor
-def optimize_contract_finitary_funsor(lhs, rhs, reduced_vars):
-    # exploit linearity of contraction
-    if lhs.op is ops.add:
-        return Finitary(
-            ops.add,
-            tuple(Contract(operand, rhs, reduced_vars) for operand in lhs.operands)
-        )
-
-    # recursively apply law of iterated expectation
-    assert len(lhs.operands) > 1, "Finitary with one operand should have been passed through"
-    if lhs.op is ops.mul:
-        root_lhs, remaining_lhs = _order_lhss(lhs, reduced_vars)
-        if remaining_lhs is not None:
-            inner = Contract(remaining_lhs, rhs,
-                             reduced_vars & frozenset(remaining_lhs.inputs))
-            return Contract(root_lhs, inner,
-                            reduced_vars & frozenset(root_lhs.inputs))
-
-    return None
 
 
 __all__ = [
