@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import os
+import re
 import types
 from collections import OrderedDict
 
@@ -24,12 +25,18 @@ if _DEBUG:
         indent = '  ' * _STACK_SIZE
         typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
         print(indent + ' '.join(typenames))
+
         _STACK_SIZE += 1
         try:
             result = _INTERPRETATION(cls, *args)
         finally:
             _STACK_SIZE -= 1
-        print(indent + '-> ' + type(result).__name__)
+
+        if _DEBUG > 1:
+            result_str = re.sub('\n', '\n          ' + indent, str(result))
+        else:
+            result_str = type(result).__name__
+        print(indent + '-> ' + result_str)
         return result
 else:
     def interpret(cls, *args):

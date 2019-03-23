@@ -196,9 +196,9 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
         # Check first moments.
         assert_close(Integrate(q, x, q_vars),
                      Integrate(p, x, p_vars), atol=1.0, rtol=0.2)
-        # TODO
-        # for k2, d2 in event_inputs.items():
-        #     y = Variable(k2, d2)
-        #     # Check second moments.
-        #     assert_close(Integrate(q, x * y, q_vars),
-        #                  Integrate(p, x * y, p_vars), atol=1e-2, rtol=None)
+        for k2, d2 in event_inputs.items():
+            y = Variable(k2, d2)
+            # Check second moments.
+            continue  # FIXME: Quadratic integration is not supported:
+            assert_close(Integrate(q, x * y, q_vars),
+                         Integrate(p, x * y, p_vars), atol=1e-2, rtol=None)

@@ -218,7 +218,7 @@ class Tensor(Funsor):
             assert isinstance(reduced_vars, frozenset)
             self_vars = frozenset(self.inputs)
             reduced_vars = reduced_vars & self_vars
-            if reduced_vars == self_vars:
+            if reduced_vars == self_vars and not self.output.shape:
                 # Reduce all dims at once.
                 if op is ops.logaddexp:
                     # work around missing torch.Tensor.logsumexp()
