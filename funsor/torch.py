@@ -346,6 +346,21 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
 
+    # Reshape to support broadcasting of output shape.
+    if inputs:
+        lhs_dim = len(lhs.output.shape)
+        rhs_dim = len(rhs.output.shape)
+        if lhs_dim < rhs_dim:
+            cut = lhs_data.dim() - lhs_dim
+            shape = lhs_data.shape
+            shape = shape[:cut] + (1,) * (rhs_dim - lhs_dim) + shape[cut:]
+            lhs_data = lhs_data.reshape(shape)
+        elif rhs_dim < lhs_dim:
+            cut = rhs_data.dim() - rhs_dim
+            shape = rhs_data.shape
+            shape = shape[:cut] + (1,) * (lhs_dim - rhs_dim) + shape[cut:]
+            rhs_data = rhs_data.reshape(shape)
+
     data = op(lhs_data, rhs_data)
     return Tensor(data, inputs, dtype)
 
