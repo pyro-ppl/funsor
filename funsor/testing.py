@@ -78,16 +78,16 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
                 actual = actual[~eq]
                 expected = expected[~eq]
             diff = (actual.detach() - expected.detach()).abs()
-            if atol is not None:
-                assert diff.max() < atol, msg
             if rtol is not None:
                 assert (diff / (atol + expected.detach().abs())).max() < rtol, msg
+            elif atol is not None:
+                assert diff.max() < atol, msg
     elif isinstance(actual, numbers.Number):
         diff = abs(actual - expected)
-        if atol is not None:
-            assert diff < atol, msg
         if rtol is not None:
             assert diff < (atol + expected) * rtol, msg
+        elif atol is not None:
+            assert diff < atol, msg
     else:
         raise ValueError('cannot compare objects of type {}'.format(type(actual)))
 
@@ -186,7 +186,7 @@ def random_gaussian(inputs):
     loc = torch.randn(batch_shape + event_shape)
     prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
     precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
-    precision = precision + 0.01 * torch.eye(event_shape[0])
+    precision = precision + 0.05 * torch.eye(event_shape[0])
     return Gaussian(loc, precision, inputs)
 
 

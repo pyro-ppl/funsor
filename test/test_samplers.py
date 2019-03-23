@@ -190,15 +190,15 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
     q_vars = sampled_vars | frozenset(['particle'])
     # Check zeroth moment.
     assert_close(q.reduce(ops.logaddexp, q_vars),
-                 p.reduce(ops.logaddexp, p_vars), atol=1e-6, rtol=None)
+                 p.reduce(ops.logaddexp, p_vars), atol=1e-6)
     for k1, d1 in event_inputs.items():
         x = Variable(k1, d1)
         # Check first moments.
         assert_close(Integrate(q, x, q_vars),
-                     Integrate(p, x, p_vars), atol=1.0, rtol=0.2)
+                     Integrate(p, x, p_vars), atol=0.1, rtol=0.1)
         for k2, d2 in event_inputs.items():
             y = Variable(k2, d2)
             # Check second moments.
             continue  # FIXME: Quadratic integration is not supported:
             assert_close(Integrate(q, x * y, q_vars),
-                         Integrate(p, x * y, p_vars), atol=1e-2, rtol=None)
+                         Integrate(p, x * y, p_vars), atol=1e-2)
