@@ -240,7 +240,7 @@ def test_logsumexp(int_inputs, real_inputs):
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
     {'w': reals(5), 'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-def tests_monte_carlo_integrate(int_inputs, real_inputs):
+def test_monte_carlo_integrate(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()

@@ -186,6 +186,7 @@ def random_gaussian(inputs):
     loc = torch.randn(batch_shape + event_shape)
     prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
     precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
+    precision = precision + 0.01 * torch.eye(event_shape[0])
     return Gaussian(loc, precision, inputs)
 
 

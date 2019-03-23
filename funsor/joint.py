@@ -277,7 +277,6 @@ def eager_binary(op, gaussian, discrete):
 # Patterns for integration
 ################################################################################
 
-
 def _simplify_integrate(fn, joint, integrand, reduced_vars):
     if any(d.name in reduced_vars for d in joint.deltas):
         subs = tuple((d.name, d.point) for d in joint.deltas if d.name in reduced_vars)
@@ -340,7 +339,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     else:
         assert name in log_measure.gaussian.inputs
         gaussian = Integrate(log_measure.gaussian, integrand, reduced_vars)
-        return Integrate(log_measure.deltas, log_measure.discrete).exp() + gaussian
+        return Joint(log_measure.deltas, log_measure.discrete).exp() * gaussian
 
 
 @monte_carlo.register(Integrate, Joint, Funsor, frozenset)

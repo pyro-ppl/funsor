@@ -232,7 +232,7 @@ class Gaussian(Funsor):
     def _log_normalizer(self):
         dim = self.loc.size(-1)
         log_det_term = _log_det_tril(torch.cholesky(self.precision))
-        data = log_det_term - 0.5 * math.log(2 * math.pi) * dim
+        data = -log_det_term + 0.5 * math.log(2 * math.pi) * dim
         inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
         return Tensor(data, inputs)
 
@@ -266,8 +266,8 @@ class Gaussian(Funsor):
                 inv_scale_tril = torch.inverse(scale_tril)
                 precision = torch.matmul(inv_scale_tril, inv_scale_tril.transpose(-1, -2))
                 reduced_dim = sum(self.inputs[k].num_elements for k in reduced_reals)
-                log_det_term = _log_det_tril(scale_tril) - _log_det_tril(self_scale_tril)
-                log_prob = Tensor(log_det_term - 0.5 * math.log(2 * math.pi) * reduced_dim, int_inputs)
+                log_det_term = _log_det_tril(self_scale_tril) - _log_det_tril(scale_tril)
+                log_prob = Tensor(log_det_term + 0.5 * math.log(2 * math.pi) * reduced_dim, int_inputs)
                 result = log_prob + Gaussian(loc, precision, inputs)
 
             return result.reduce(ops.logaddexp, reduced_ints)
@@ -345,9 +345,8 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     if real_vars:
         assert real_vars == frozenset([integrand.name])
         dim = log_measure.loc.size(-1)
-        prec_tril = torch.cholesky(log_measure.precision)
-        log_norm = -_log_det_tril(prec_tril) + 0.5 * math.log(2 * math.pi) * dim
-        data = log_measure.loc * log_norm.exp().unsqueeze(-1)
+        data = log_measure.loc * log_measure._log_normalizer.data.exp().unsqueeze(-1)
+        data = data.reshape(log_measure.loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
         return Tensor(data, inputs)
 

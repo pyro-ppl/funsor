@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 import funsor.ops as ops
 from funsor.contract import Contract
-from funsor.terms import Funsor, eager
+from funsor.terms import Funsor, Reduce, eager
 
 
 class Integrate(Funsor):
@@ -62,6 +62,18 @@ def integrator(fn):
 @integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     return Contract(log_measure.exp(), integrand, reduced_vars)
+
+
+@eager.register(Integrate, Reduce, Funsor, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    if log_measure.op is ops.logaddexp:
+        if not log_measure.reduced_vars.isdisjoint(reduced_vars):
+            raise NotImplementedError('TODO alpha convert')
+        arg = Integrate(log_measure.arg, integrand, reduced_vars)
+        return arg.reduce(ops.add, log_measure.reduced_vars)
+
+    return None  # defer to default implementation
 
 
 __all__ = [
