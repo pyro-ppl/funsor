@@ -10,7 +10,8 @@ from funsor.domains import find_domain
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.sum_product import _partition
-from funsor.terms import Binary, Funsor, Reduce, eager, reflect
+from funsor.terms import Binary, Funsor, Number, Reduce, eager, reflect
+from funsor.contract import Contract, contractor
 
 
 def _order_lhss(lhs, rhs, reduced_vars):
@@ -172,7 +173,7 @@ def optimize_reduction(op, arg, reduced_vars):
     if not (op, arg.op) in DISTRIBUTIVE_OPS:
         return None
 
-    return Contract(to_funsor(1.), arg, reduced_vars)
+    return Contract(Number(1.), arg, reduced_vars)
 
 
 @optimize.register(Contract, Finitary, (Finitary, Funsor), frozenset)
@@ -182,7 +183,7 @@ def optimize_contract_finitary_funsor(lhs, rhs, reduced_vars):
     # build opt_einsum optimizer IR
     inputs = frozenset(lhs.inputs)
     size_dict = {k: ((REAL_SIZE * v.num_elements) if v.dtype == 'real' else v.dtype)
-                 for k, v in lhs.inputs.items()})
+                 for k, v in lhs.inputs.items()}
     outputs = inputs - reduced_vars
 
     # optimize path with greedy opt_einsum optimizer
@@ -196,8 +197,8 @@ def optimize_contract_finitary_funsor(lhs, rhs, reduced_vars):
     for input in inputs:
         reduce_dim_counter.update({d: 1 for d in input})
 
-    reduce_op, finitary_op = op, arg.op
-    operands = list(arg.operands)
+    # reduce_op, finitary_op = op, arg.op
+    operands = list(lhs.operands)
     for (a, b) in path:
         b, a = tuple(sorted((a, b), reverse=True))
         tb = operands.pop(b)
@@ -224,7 +225,8 @@ def optimize_contract_finitary_funsor(lhs, rhs, reduced_vars):
     final_reduced_vars = frozenset(d for (d, count) in reduce_dim_counter.items()
                                    if count > 0) & reduced_vars
     if final_reduced_vars:
-        path_end = Reduce(reduce_op, path_end, final_reduced_vars)
+        with interpretation(reflect):
+            path_end = Contract(Number(1.), path_end, final_reduced_vars)
     return path_end
 
 
