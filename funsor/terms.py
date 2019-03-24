@@ -235,9 +235,10 @@ class Funsor(object):
         Create a Monte Carlo approximation to this funsor by replacing
         functions of ``sampled_vars`` with :class:`~funsor.delta.Delta`s.
 
-        If ``sample_inputs`` is not provided, the result is a :class:`Funsor`
-        with the same ``.inputs`` and ``.output`` as the original funsor, so
-        that self can be replaced by the sample in expectation computations::
+        The result is a :class:`Funsor` with the same ``.inputs`` and
+        ``.output`` as the original funsor (plus ``sample_inputs`` if
+        provided), so that self can be replaced by the sample in expectation
+        computations::
 
             y = x.sample(sampled_vars)
             assert y.inputs == x.inputs
@@ -246,13 +247,7 @@ class Funsor(object):
             approx = (y.exp() * integrand).reduce(ops.add)
 
         If ``sample_inputs`` is provided, this creates a batch of samples
-        that are intended to be averaged, however this reduction is not
-        performed by the :meth:`sample` method::
-
-            y = x.sample(sampled_vars, sample_inputs)
-            total = reduce(ops.mul, d.num_elements) for d in sample_inputs.values())
-            exact = (x.exp() * integrand).reduce(ops.add)
-            approx = (y.exp() * integrand).reduce(ops.add) / total
+        scaled samples.
 
         :param frozenset sampled_vars: A set of input variables to sample.
         :param OrderedDict sample_inputs: An optional mapping from variable

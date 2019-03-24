@@ -9,6 +9,9 @@ from funsor.terms import Funsor, Reduce, eager
 
 
 class Integrate(Funsor):
+    """
+    Funsor representing an integral wrt a log density funsor.
+    """
     def __init__(self, log_measure, integrand, reduced_vars):
         assert isinstance(log_measure, Funsor)
         assert isinstance(integrand, Funsor)
