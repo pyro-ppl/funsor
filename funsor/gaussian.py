@@ -56,7 +56,7 @@ def _trace_mm(x, y):
     """
     assert x.dim() >= 2
     assert y.dim() >= 2
-    xy = torch.matmul(x, y)
+    xy = x * y
     return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
 
 

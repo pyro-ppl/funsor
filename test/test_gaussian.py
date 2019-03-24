@@ -258,7 +258,6 @@ def test_integrate_variable(int_inputs, real_inputs):
     assert_close(approx, exact, atol=0.1, rtol=0.1)
 
 
-@pytest.mark.xfail(reason='likely bug in Integrate(Gaussian, Gaussian)')
 @pytest.mark.parametrize('int_inputs', [
     {},
     {'i': bint(2)},
@@ -281,14 +280,10 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     integrand = random_gaussian(inputs)
     reduced_vars = frozenset(real_inputs)
 
-    # log_measure.precision += integrand.precision  # DEBUG
-    # integrand.precision[...] = 100 * log_measure.precision  # DEBUG
-    # integrand.loc[...] = log_measure.loc  # DEBUG
-
     with monte_carlo_interpretation(particle=bint(10000)):
         approx = Integrate(log_measure, integrand, reduced_vars)
         assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
     assert isinstance(exact, Tensor)
-    assert_close(approx, exact, atol=0.2, rtol=0.2)
+    assert_close(approx, exact, atol=0.1, rtol=0.1)
