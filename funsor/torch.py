@@ -571,7 +571,10 @@ class _Memoized(object):
 
 
 def _function(inputs, output, fn):
-    names = getargspec(fn)[0]
+    if isinstance(fn, torch.nn.Module):
+        names = getargspec(fn.forward)[0][1:]
+    else:
+        names = getargspec(fn)[0]
     args = tuple(Variable(name, domain) for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
     if not isinstance(output, Domain):

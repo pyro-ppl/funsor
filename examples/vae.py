@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import argparse
+import os
 from collections import OrderedDict
 
 import torch
@@ -14,6 +15,9 @@ import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.domains import bint, reals
 
+REPO_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_PATH = os.path.join(REPO_PATH, 'data')
+
 
 class Encoder(nn.Module):
     def __init__(self):
@@ -23,6 +27,7 @@ class Encoder(nn.Module):
         self.fc22 = nn.Linear(400, 20)
 
     def forward(self, image):
+        image = image.reshape(image.shape[:-2] + (-1,))
         h1 = F.relu(self.fc1(image))
         loc = self.fc21(h1)
         scale = self.fc22(h1)
@@ -31,7 +36,7 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(self):
-        super(Encoder, self).__init__()
+        super(Decoder, self).__init__()
         self.fc3 = nn.Linear(20, 400)
         self.fc4 = nn.Linear(400, 784)
 
@@ -44,15 +49,16 @@ def main(args):
     encoder = Encoder()
     decoder = Decoder()
 
-    encode = funsor.function(reals(28, 28), (reals(20), reals(20)))(encoder)
-    decode = funsor.function(reals(20), reals(28, 28))(decoder)
+    encode = funsor.torch.function(reals(28, 28), (reals(20), reals(20)))(encoder)
+    decode = funsor.torch.function(reals(20), reals(28, 28))(decoder)
 
-    @funsor.interpreter.interpretation(funsor.terms.monte_carlo)
+    @funsor.interpreter.interpretation(funsor.montecarlo.monte_carlo)
     def loss_function(data, scale):
         loc, scale = encode(data)
         i = funsor.Variable('i', bint(20))
         z = funsor.Variable('z', reals(20))
         q = dist.Normal(loc[i], scale[i], value=z[i])
+        assert isinstance(q, funsor.gaussian.Gaussian), q
         q = q.reduce(ops.add, frozenset(['i']))
 
         probs = decode(z)
@@ -67,18 +73,19 @@ def main(args):
         return loss.data
 
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST('../data', train=True, download=True,
+        datasets.MNIST(DATA_PATH, train=True, download=True,
                        transform=transforms.ToTensor()),
         batch_size=args.batch_size, shuffle=True)
 
     encoder.train()
     decoder.train()
-    optimizer = optim.Adam(encoder.parameters() +
-                           decoder.parameters(), lr=1e-3)
+    optimizer = optim.Adam(list(encoder.parameters()) +
+                           list(decoder.parameters()), lr=1e-3)
     for epoch in range(args.num_epochs):
         train_loss = 0
         for batch_idx, (data, _) in enumerate(train_loader):
             scale = float(len(train_loader.dataset) / len(data))
+            data = data[:, 0, :, :]
             data = funsor.Tensor(data, OrderedDict(batch=bint(len(data))))
 
             optimizer.zero_grad()
@@ -94,7 +101,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='VAE MNIST Example')
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('-n', '--num-epochs', type=int, default=10)
     parser.add_argument('--batch-size', type=int, default=8)
     args = parser.parse_args()
     main(args)
