@@ -28,8 +28,12 @@ def _issubshape(subshape, supershape):
     return True
 
 
-def _log_det_tril(x):
+def _log_det_tri(x):
     return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+
+
+def _det_tri(x):
+    return x.diagonal(dim1=-1, dim2=-2).prod(-1)
 
 
 def _mv(mat, vec):
@@ -231,7 +235,7 @@ class Gaussian(Funsor):
     @lazy_property
     def _log_normalizer(self):
         dim = self.loc.size(-1)
-        log_det_term = _log_det_tril(torch.cholesky(self.precision))
+        log_det_term = _log_det_tri(torch.cholesky(self.precision))
         data = -log_det_term + 0.5 * math.log(2 * math.pi) * dim
         inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
         return Tensor(data, inputs)
@@ -259,14 +263,14 @@ class Gaussian(Funsor):
                 index = torch.tensor(index)
 
                 loc = self.loc[..., index]
-                self_scale_tril = torch.inverse(torch.cholesky(self.precision))
-                self_covariance = torch.matmul(self_scale_tril, self_scale_tril.transpose(-1, -2))
+                self_scale_tri = torch.inverse(torch.cholesky(self.precision)).transpose(-1, -2)
+                self_covariance = torch.matmul(self_scale_tri, self_scale_tri.transpose(-1, -2))
                 covariance = self_covariance[..., index.unsqueeze(-1), index]
-                scale_tril = torch.cholesky(covariance)
-                inv_scale_tril = torch.inverse(scale_tril)
-                precision = torch.matmul(inv_scale_tril, inv_scale_tril.transpose(-1, -2))
+                scale_tri = torch.cholesky(covariance)
+                inv_scale_tri = torch.inverse(scale_tri)
+                precision = torch.matmul(inv_scale_tri.transpose(-1, -2), inv_scale_tri)
                 reduced_dim = sum(self.inputs[k].num_elements for k in reduced_reals)
-                log_det_term = _log_det_tril(self_scale_tril) - _log_det_tril(scale_tril)
+                log_det_term = _log_det_tri(self_scale_tri) - _log_det_tri(scale_tri)
                 log_prob = Tensor(log_det_term + 0.5 * math.log(2 * math.pi) * reduced_dim, int_inputs)
                 result = log_prob + Gaussian(loc, precision, inputs)
 
@@ -296,11 +300,11 @@ class Gaussian(Funsor):
         inputs.update(int_inputs)
 
         if sampled_vars == frozenset(real_inputs):
-            scale_tril = torch.inverse(torch.cholesky(self.precision))
-            assert self.loc.shape == scale_tril.shape[:-1]
+            scale_tri = torch.inverse(torch.cholesky(self.precision)).transpose(-1, -2)
+            assert self.loc.shape == scale_tri.shape[:-1]
             shape = sample_shape + self.loc.shape
             white_noise = torch.randn(shape)
-            sample = self.loc + _mv(scale_tril, white_noise)
+            sample = self.loc + _mv(scale_tri, white_noise)
             offsets, _ = _compute_offsets(real_inputs)
             results = []
             for key, domain in real_inputs.items():
@@ -331,8 +335,8 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     # Fuse aligned Gaussians.
     precision_loc = _mv(lhs_precision, lhs_loc) + _mv(rhs_precision, rhs_loc)
     precision = lhs_precision + rhs_precision
-    scale_tril = torch.inverse(torch.cholesky(precision))
-    loc = _mv(scale_tril.transpose(-1, -2), _mv(scale_tril, precision_loc))
+    scale_tri = torch.inverse(torch.cholesky(precision)).transpose(-1, -2)
+    loc = _mv(scale_tri, _mv(scale_tri.transpose(-1, -2), precision_loc))
     quadratic_term = _vmv(lhs_precision, loc - lhs_loc) + _vmv(rhs_precision, loc - rhs_loc)
     likelihood = Tensor(-0.5 * quadratic_term, int_inputs)
     return likelihood + Gaussian(loc, precision, inputs)
@@ -365,16 +369,16 @@ def eager_integrate(log_measure, integrand, reduced_vars):
                                  for k, d in t.inputs.items())
             lhs_loc, lhs_precision = align_gaussian(inputs, log_measure)
             rhs_loc, rhs_precision = align_gaussian(inputs, integrand)
-            dim = lhs_loc.size(-1)
 
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
-            lhs_scale_tril = torch.inverse(torch.cholesky(lhs_precision))
-            lhs_covariance = torch.matmul(lhs_scale_tril, lhs_scale_tril.transpose(-1, -2))
-            log_norm = _log_det_tril(lhs_scale_tril) + 0.5 * math.log(2 * math.pi) * dim
-            data = 0.5 * (_vmv(rhs_precision, lhs_loc - rhs_loc) +
-                          _trace_mm(rhs_precision, lhs_covariance)) * log_norm.exp()
+            lhs_scale_tri = torch.inverse(torch.cholesky(lhs_precision)).transpose(-1, -2)
+            lhs_covariance = torch.matmul(lhs_scale_tri, lhs_scale_tri.transpose(-1, -2))
+            dim = lhs_loc.size(-1)
+            norm = _det_tri(lhs_scale_tri) * (2 * math.pi) ** (0.5 * dim)
+            data = -0.5 * norm * (_vmv(rhs_precision, lhs_loc - rhs_loc) +
+                                  _trace_mm(rhs_precision, lhs_covariance))
             inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)
             result = Tensor(data, inputs)
             return result.reduce(ops.add, reduced_vars - real_vars)

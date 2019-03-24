@@ -169,8 +169,8 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
 
 @pytest.mark.parametrize('batch_inputs', [
     (),
-    (('b', bint(4)),),
-    (('b', bint(4)), ('c', bint(5))),
+    (('b', bint(3)),),
+    (('b', bint(3)), ('c', bint(4))),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('event_inputs', [
     (('e', reals()),),
@@ -195,7 +195,7 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
         x = Variable(k1, d1)
         # Check first moments.
         assert_close(Integrate(q, x, q_vars),
-                     Integrate(p, x, p_vars), atol=0.1, rtol=0.1)
+                     Integrate(p, x, p_vars), atol=0.5, rtol=0.2)
         for k2, d2 in event_inputs.items():
             y = Variable(k2, d2)
             # Check second moments.

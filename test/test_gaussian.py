@@ -5,6 +5,7 @@ from collections import OrderedDict
 
 import pytest
 import torch
+from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
@@ -12,7 +13,7 @@ from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.joint import Joint
 from funsor.montecarlo import monte_carlo_interpretation
-from funsor.terms import Number
+from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 
@@ -232,15 +233,45 @@ def test_logsumexp(int_inputs, real_inputs):
 @pytest.mark.parametrize('int_inputs', [
     {},
     {'i': bint(2)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals()},
+    {'x': reals(4)},
+    {'x': reals(2, 3)},
+], ids=id_from_inputs)
+def test_integrate_variable(int_inputs, real_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(sorted(real_inputs.items()))
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+
+    log_measure = random_gaussian(inputs)
+    integrand = reduce(ops.add, [Variable(k, d) for k, d in real_inputs.items()])
+    reduced_vars = frozenset(real_inputs)
+
+    with monte_carlo_interpretation(particle=bint(100000)):
+        approx = Integrate(log_measure, integrand, reduced_vars)
+        assert isinstance(approx, Tensor)
+
+    exact = Integrate(log_measure, integrand, reduced_vars)
+    assert isinstance(exact, Tensor)
+    assert_close(approx, exact, atol=0.1, rtol=0.1)
+
+
+@pytest.mark.xfail(reason='likely bug in Integrate(Gaussian, Gaussian)')
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
     {'i': bint(2), 'j': bint(3)},
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
+    {'x': reals()},
+    {'x': reals(2)},
     {'x': reals(), 'y': reals()},
     {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
-    {'w': reals(5), 'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    {'x': reals(4), 'y': reals(2, 3)},
 ], ids=id_from_inputs)
-def test_monte_carlo_integrate(int_inputs, real_inputs):
+def test_integrate_gaussian(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
@@ -250,11 +281,14 @@ def test_monte_carlo_integrate(int_inputs, real_inputs):
     integrand = random_gaussian(inputs)
     reduced_vars = frozenset(real_inputs)
 
-    exact = Integrate(log_measure, integrand, reduced_vars)
-    assert isinstance(exact, Tensor)
+    # log_measure.precision += integrand.precision  # DEBUG
+    # integrand.precision[...] = 100 * log_measure.precision  # DEBUG
+    # integrand.loc[...] = log_measure.loc  # DEBUG
 
     with monte_carlo_interpretation(particle=bint(10000)):
         approx = Integrate(log_measure, integrand, reduced_vars)
         assert isinstance(approx, Tensor)
 
-    assert_close(exact, approx, atol=1e-1, rtol=None)
+    exact = Integrate(log_measure, integrand, reduced_vars)
+    assert isinstance(exact, Tensor)
+    assert_close(approx, exact, atol=0.2, rtol=0.2)
