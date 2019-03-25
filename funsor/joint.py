@@ -13,7 +13,7 @@ from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, Op
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager, to_funsor
 from funsor.torch import Tensor, arange
 
 
@@ -61,13 +61,13 @@ class Joint(Funsor):
         self.gaussian = gaussian
 
     def eager_subs(self, subs):
-        gaussian = self.gaussian.eager_subs(subs)
+        gaussian = Subs(self.gaussian, subs)
         assert isinstance(gaussian, (Number, Tensor, Gaussian))
-        discrete = self.discrete.eager_subs(subs)
-        gaussian = self.gaussian.eager_subs(subs)
+        discrete = Subs(self.discrete, subs)
+        gaussian = Subs(self.gaussian, subs)
         deltas = []
         for x in self.deltas:
-            x = x.eager_subs(subs)
+            x = Subs(x, subs)
             if isinstance(x, Delta):
                 deltas.append(x)
             elif isinstance(x, (Number, Tensor)):
@@ -174,12 +174,12 @@ def eager_add(op, joint, other):
 def eager_add(op, joint, delta):
     # Update with a degenerate distribution, typically a monte carlo sample.
     if delta.name in joint.inputs:
-        joint = joint.eager_subs(((delta.name, delta.point),))
+        joint = Subs(joint, ((delta.name, delta.point),))
         if not isinstance(joint, Joint):
             return joint + delta
     for d in joint.deltas:
         if d.name in delta.inputs:
-            delta = delta.eager_subs(((d.name, d.point),))
+            delta = Subs(delta, ((d.name, d.point),))
     deltas = joint.deltas + (delta,)
     return Joint(deltas, joint.discrete, joint.gaussian)
 
@@ -189,7 +189,7 @@ def eager_add(op, joint, other):
     # Update with a delayed discrete random variable.
     subs = tuple((d.name, d.point) for d in joint.deltas if d in other.inputs)
     if subs:
-        return joint + other.eager_subs(subs)
+        return joint + Subs(other, subs)
     return Joint(joint.deltas, joint.discrete + other, joint.gaussian)
 
 
@@ -206,7 +206,7 @@ def eager_add(op, joint, other):
     # Update with a delayed gaussian random variable.
     subs = tuple((d.name, d.point) for d in joint.deltas if d.name in other.inputs)
     if subs:
-        other = other.eager_subs(subs)
+        other = Subs(other, subs)
     if joint.gaussian is not Number(0):
         other = joint.gaussian + other
     if not isinstance(other, Gaussian):
@@ -238,7 +238,7 @@ def eager_add(op, lhs, rhs):
 @eager.register(Binary, AddOp, Delta, (Number, Tensor, Gaussian))
 def eager_add(op, delta, other):
     if delta.name in other.inputs:
-        other = other.eager_subs(((delta.name, delta.point),))
+        other = Subs(other, ((delta.name, delta.point),))
         assert isinstance(other, (Number, Tensor, Gaussian))
     if isinstance(other, (Number, Tensor)):
         return Joint((delta,), discrete=other)
@@ -282,7 +282,7 @@ def _simplify_integrate(fn, joint, integrand, reduced_vars):
         subs = tuple((d.name, d.point) for d in joint.deltas if d.name in reduced_vars)
         deltas = tuple(d for d in joint.deltas if d.name not in reduced_vars)
         log_measure = Joint(deltas, joint.discrete, joint.gaussian)
-        integrand = integrand.eager_subs(subs)
+        integrand = Subs(integrand, subs)
         reduced_vars = reduced_vars - frozenset(name for name, point in subs)
         return Integrate(log_measure, integrand, reduced_vars)
 

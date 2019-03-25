@@ -37,7 +37,7 @@ def reflect(cls, *args):
 @dispatched_interpretation
 def lazy(cls, *args):
     """
-    Substitute eagerly but perform ops lazily.
+    Substitue eagerly but perform ops lazily.
     """
     result = lazy.dispatch(cls, *args)
     if result is None:
@@ -182,7 +182,7 @@ class Funsor(object):
                 raise TypeError('Expected substitution of {} to have type {}, but got {}'
                                 .format(repr(k), v.output, self.inputs[k]))
             subs[k] = v
-        return self.eager_subs(tuple(subs.items()))
+        return Subs(self, tuple(subs.items()))
 
     def __bool__(self):
         if self.inputs or self.output.shape:
@@ -579,6 +579,46 @@ def to_funsor(name, dtype):
     return Variable(name, bint(dtype))
 
 
+class Subs(Funsor):
+    """
+    Lazy substitution of the form ``x(u=y, v=z)``.
+    """
+    def __init__(self, arg, subs):
+        assert isinstance(arg, Funsor)
+        assert isinstance(subs, tuple)
+        for key, value in subs:
+            assert isinstance(key, str)
+            assert key in arg.inputs
+            assert isinstance(value, Funsor)
+        inputs = arg.inputs.copy()
+        for key, value in subs:
+            del inputs[key]
+        for key, value in subs:
+            inputs.update(value.inputs)
+        super(Subs, self).__init__(inputs, arg.output)
+        self.arg = arg
+        self.subs = OrderedDict(subs)
+
+    def __repr__(self):
+        return 'Subs({}, {})'.format(self.arg, self.subs)
+
+    def eager_subs(self, subs):
+        assert isinstance(subs, tuple)
+        old_subs = tuple((k, Subs(v, subs)) for k, v in self.subs.items())
+        new_subs = tuple((k, v) for k, v in subs if k not in self.subs)
+        subs = old_subs + new_subs
+        return Subs(self.arg, subs) if subs else self.arg
+
+
+@lazy.register(Subs, Funsor, object)
+@eager.register(Subs, Funsor, object)
+def eager_subs(arg, subs):
+    assert isinstance(subs, tuple)
+    if not any(k in arg.inputs for k, v in subs):
+        return arg
+    return arg.eager_subs(subs)
+
+
 _PREFIX = {
     ops.neg: '-',
     ops.invert: '~',
@@ -603,9 +643,7 @@ class Unary(Funsor):
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
 
     def eager_subs(self, subs):
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        arg = self.arg.eager_subs(subs)
+        arg = Subs(self.arg, subs)
         return Unary(self.op, arg)
 
 
@@ -652,10 +690,8 @@ class Binary(Funsor):
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
     def eager_subs(self, subs):
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        lhs = self.lhs.eager_subs(subs)
-        rhs = self.rhs.eager_subs(subs)
+        lhs = Subs(self.lhs, subs)
+        rhs = Subs(self.rhs, subs)
         return Binary(self.op, lhs, rhs)
 
 
@@ -680,11 +716,10 @@ class Reduce(Funsor):
 
     def eager_subs(self, subs):
         subs = tuple((k, v) for k, v in subs if k not in self.reduced_vars)
-        if not any(k in self.inputs for k, v in subs):
-            return self
         if not all(self.reduced_vars.isdisjoint(v.inputs) for k, v in subs):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        return self.arg.eager_subs(subs).reduce(self.op, self.reduced_vars)
+        arg = Subs(self.arg, subs)
+        return arg.reduce(self.op, self.reduced_vars)
 
     def eager_reduce(self, op, reduced_vars):
         if op is self.op:
@@ -808,14 +843,13 @@ class Align(Funsor):
         return self.arg.align(names)
 
     def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        return self.arg.eager_subs(subs)
+        return Subs(self.arg, subs)
 
     def eager_unary(self, op):
-        return self.arg.eager_unary(op)
+        return Unary(op, self.arg)
 
     def eager_reduce(self, op, reduced_vars):
-        return self.arg.eager_reduce(op, reduced_vars)
+        return self.arg.reduce(op, reduced_vars)
 
 
 @eager.register(Binary, Op, Align, Funsor)
@@ -867,7 +901,7 @@ class Stack(Funsor):
         if pos is None:
             # Eagerly recurse into components.
             assert not any(self.name in v.inputs for k, v in subs)
-            components = tuple(x.eager_subs(subs) for x in self.components)
+            components = tuple(Subs(x, subs) for x in self.components)
             return Stack(components, self.name)
 
         # Try to eagerly select an index.
@@ -877,22 +911,22 @@ class Stack(Funsor):
         if isinstance(index, Number):
             # Select a single component.
             result = self.components[index.data]
-            return result.eager_subs(subs)
+            return Subs(result, subs)
 
         if isinstance(index, Variable):
             # Rename the stacking dimension.
             components = self.components
             if subs:
-                components = tuple(x.eager_subs(subs) for x in components)
+                components = tuple(Subs(x, subs) for x in components)
             return Stack(components, index.name)
 
         if not subs:
             raise NotImplementedError('TODO support advanced indexing in Stack')
 
         # Eagerly recurse into components but lazily substitute.
-        components = tuple(x.eager_subs(subs) for x in self.components)
+        components = tuple(Subs(x, subs) for x in self.components)
         result = Stack(components, self.name)
-        return result.eager_subs(((self.name, index),))
+        return Subs(result, ((self.name, index),))
 
     def eager_reduce(self, op, reduced_vars):
         components = self.components
@@ -928,6 +962,7 @@ __all__ = [
     'Number',
     'Reduce',
     'Stack',
+    'Subs',
     'Unary',
     'Variable',
     'eager',
