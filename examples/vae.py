@@ -53,22 +53,22 @@ def main(args):
     decode = funsor.torch.function(reals(20), reals(28, 28))(decoder)
 
     @funsor.interpreter.interpretation(funsor.montecarlo.monte_carlo)
-    def loss_function(data, scale):
+    def loss_function(data, subsample_scale):
         loc, scale = encode(data)
         i = funsor.Variable('i', bint(20))
-        z = funsor.Variable('z', reals(20))
-        q = dist.Normal(loc[i], scale[i], value=z[i])
+        z = funsor.Variable('z', reals())
+        q = dist.Normal(loc[i], scale[i], value=z)
         assert isinstance(q, funsor.gaussian.Gaussian), q
-        q = q.reduce(ops.add, frozenset(['i']))
+        q = q.reduce(ops.add, 'i')
 
-        probs = decode(z)
+        probs = decode(funsor.Lambda(i, z))
         x = funsor.Variable('x', bint(28))
         y = funsor.Variable('y', bint(28))
         p = dist.Bernoulli(probs[x, y], value=data[x, y])
         p = p.reduce(ops.add, frozenset(['x', 'y']))
 
-        elbo = funsor.Integrate(q, scale * (p - q), 'z')
-        elbo = elbo.reduce(ops.add, frozenset(['batch']))
+        elbo = funsor.Integrate(q, p - q, 'z')
+        elbo = elbo.reduce(ops.add, 'batch') * subsample_scale
         loss = -elbo
         return loss.data
 
@@ -84,12 +84,12 @@ def main(args):
     for epoch in range(args.num_epochs):
         train_loss = 0
         for batch_idx, (data, _) in enumerate(train_loader):
-            scale = float(len(train_loader.dataset) / len(data))
+            subsample_scale = float(len(train_loader.dataset) / len(data))
             data = data[:, 0, :, :]
             data = funsor.Tensor(data, OrderedDict(batch=bint(len(data))))
 
             optimizer.zero_grad()
-            loss = loss_function(data, scale)
+            loss = loss_function(data, subsample_scale)
             loss.backward()
             train_loss += loss.item()
             optimizer.step()
