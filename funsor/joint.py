@@ -321,7 +321,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Integrate, Joint, Variable, frozenset)
-@_joint_integrator
+@integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     name = integrand.name
     assert reduced_vars == frozenset([name])
@@ -343,7 +343,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 
 @monte_carlo.register(Integrate, Joint, Funsor, frozenset)
-@_joint_integrator
+@integrator
 def monte_carlo_integrate(log_measure, integrand, reduced_vars):
     sampled_log_measure = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
     if sampled_log_measure is not log_measure:
