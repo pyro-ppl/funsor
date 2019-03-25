@@ -881,6 +881,45 @@ class Stack(Funsor):
         return Stack(components, self.name)
 
 
+class Lambda(Funsor):
+    """
+    Lazy inverse to ``ops.getitem``.
+
+    This is useful to simulate higher-order functions of integers
+    by representing those functions as arrays.
+    """
+    def __init__(self, var, expr):
+        assert isinstance(var, Variable)
+        assert isinstance(var.dtype, integer_types)
+        assert isinstance(expr, Funsor)
+        inputs = expr.inputs.copy()
+        inputs.pop(var.name, None)
+        shape = (var.dtype,) + expr.output.shape
+        output = Domain(shape, expr.dtype)
+        super(Lambda, self).__init__(inputs, output)
+        self.var = var
+        self.expr = expr
+
+    def eager_subs(self, subs):
+        subs = tuple((k, v) for k, v in subs if k != self.var.name)
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        if any(self.var.name in v.inputs for k, v in subs):
+            raise NotImplementedError('TODO alpha-convert to avoid conflict')
+        expr = self.expr.eager_subs(subs)
+        return Lambda(self.var, expr)
+
+
+@eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
+def eager_getitem_lambda(op, lhs, rhs):
+    if op.offset == 0:
+        return lhs.expr.eager_subs(((lhs.var.name, rhs),))
+    if lhs.var.name in rhs.inputs:
+        raise NotImplementedError('TODO alpha-convert to avoid conflict')
+    expr = GetitemOp(op.offset - 1)(lhs.expr, rhs)
+    return Lambda(lhs.var, expr)
+
+
 def _of_shape(fn, shape):
     args, vargs, kwargs, defaults = getargspec(fn)
     assert not vargs
@@ -901,6 +940,7 @@ def of_shape(*shape):
 __all__ = [
     'Binary',
     'Funsor',
+    'Lambda',
     'Number',
     'Reduce',
     'Stack',

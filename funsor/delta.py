@@ -6,7 +6,7 @@ from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import reals
-from funsor.ops import Op
+from funsor.ops import AddOp, Op
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
 
@@ -97,12 +97,11 @@ def eager_binary(op, lhs, rhs):
     return None  # defer to default implementation
 
 
-@eager.register(Binary, Op, (Funsor, Align), Delta)
+@eager.register(Binary, AddOp, (Funsor, Align), Delta)
 def eager_binary(op, lhs, rhs):
-    if op is ops.add:
-        if rhs.name in lhs.inputs:
-            lhs = lhs(**{rhs.name: rhs.point})
-            return op(lhs, rhs)
+    if rhs.name in lhs.inputs:
+        lhs = lhs(**{rhs.name: rhs.point})
+        return op(lhs, rhs)
 
     return None  # defer to default implementation
 
