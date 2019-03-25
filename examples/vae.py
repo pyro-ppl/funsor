@@ -56,12 +56,11 @@ def main(args):
     def loss_function(data, subsample_scale):
         loc, scale = encode(data)
         i = funsor.Variable('i', bint(20))
-        z = funsor.Variable('z', reals())
-        q = dist.Normal(loc[i], scale[i], value=z)
-        assert isinstance(q, funsor.gaussian.Gaussian), q
+        z = funsor.Variable('z', reals(20))
+        q = dist.Normal(loc[i], scale[i], value=z[i])
         q = q.reduce(ops.add, 'i')
 
-        probs = decode(funsor.Lambda(i, z))
+        probs = decode(z)
         x = funsor.Variable('x', bint(28))
         y = funsor.Variable('y', bint(28))
         p = dist.Bernoulli(probs[x, y], value=data[x, y])
