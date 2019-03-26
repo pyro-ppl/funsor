@@ -8,7 +8,7 @@ import torch
 
 import funsor
 import funsor.ops as ops
-from funsor.domains import Domain, bint, reals
+from funsor.domains import Domain, bint, find_domain, reals
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH, Tensor, align_tensors, torch_einsum
@@ -258,6 +258,26 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
 
     actual = binary_eval(symbol, x1, x2)
     check_funsor(actual, inputs, Domain((), dtype), expected_data)
+
+
+@pytest.mark.parametrize('output_shape2', [(), (2,), (3, 2)], ids=str)
+@pytest.mark.parametrize('output_shape1', [(), (2,), (3, 2)], ids=str)
+@pytest.mark.parametrize('inputs2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')], ids=str)
+@pytest.mark.parametrize('inputs1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')], ids=str)
+def test_binary_broadcast(inputs1, inputs2, output_shape1, output_shape2):
+    sizes = {'a': 4, 'b': 5, 'c': 6}
+    inputs1 = OrderedDict((k, bint(sizes[k])) for k in inputs1)
+    inputs2 = OrderedDict((k, bint(sizes[k])) for k in inputs2)
+    x1 = random_tensor(inputs1, reals(*output_shape1))
+    x2 = random_tensor(inputs1, reals(*output_shape2))
+
+    actual = x1 + x2
+    assert actual.output == find_domain(ops.add, x1.output, x2.output)
+
+    block = {'a': 1, 'b': 2, 'c': 3}
+    actual_block = actual(**block)
+    expected_block = Tensor(x1(**block).data + x2(**block).data)
+    assert_close(actual_block, expected_block)
 
 
 @pytest.mark.parametrize('scalar', [0.5])

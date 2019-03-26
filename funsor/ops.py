@@ -58,8 +58,8 @@ class GetitemOp(Op):
         assert offset >= 0
         self.offset = offset
         self._prefix = (slice(None),) * offset
-        self.__name__ = 'GetitemOp({})'.format(offset)
         super(GetitemOp, self).__init__(self._default)
+        self.__name__ = 'GetitemOp({})'.format(offset)
 
     def _default(self, x, y):
         return x[self._prefix + (y,)] if self.offset else x[y]

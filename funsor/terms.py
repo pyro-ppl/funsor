@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import functools
 import itertools
+import math
 import numbers
 from abc import ABCMeta, abstractmethod
 from collections import Hashable, OrderedDict
@@ -192,6 +193,15 @@ class Funsor(object):
     def __nonzero__(self):
         return self.__bool__()
 
+    def __len__(self):
+        if not self.output.shape:
+            raise ValueError('Funsor with empty shape has no len()')
+        return self.output.shape[0]
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
     def item(self):
         if self.inputs or self.output.shape:
             raise ValueError(
@@ -225,9 +235,10 @@ class Funsor(object):
         Create a Monte Carlo approximation to this funsor by replacing
         functions of ``sampled_vars`` with :class:`~funsor.delta.Delta`s.
 
-        If ``sample_inputs`` is not provided, the result is a :class:`Funsor`
-        with the same ``.inputs`` and ``.output`` as the original funsor, so
-        that self can be replaced by the sample in expectation computations::
+        The result is a :class:`Funsor` with the same ``.inputs`` and
+        ``.output`` as the original funsor (plus ``sample_inputs`` if
+        provided), so that self can be replaced by the sample in expectation
+        computations::
 
             y = x.sample(sampled_vars)
             assert y.inputs == x.inputs
@@ -236,18 +247,31 @@ class Funsor(object):
             approx = (y.exp() * integrand).reduce(ops.add)
 
         If ``sample_inputs`` is provided, this creates a batch of samples
-        that are intended to be averaged, however this reduction is not
-        performed by the :meth:`sample` method::
-
-            y = x.sample(sampled_vars, sample_inputs)
-            total = reduce(ops.mul, d.num_elements) for d in sample_inputs.values())
-            exact = (x.exp() * integrand).reduce(ops.add)
-            approx = (y.exp() * integrand).reduce(ops.add) / total
+        scaled samples.
 
         :param frozenset sampled_vars: A set of input variables to sample.
         :param OrderedDict sample_inputs: An optional mapping from variable
             name to :class:`~funsor.domains.Domain` over which samples will
             be batched.
+        """
+        assert self.output == reals()
+        assert isinstance(sampled_vars, frozenset)
+        if sampled_vars.isdisjoint(self.inputs):
+            return self
+
+        result = self.unscaled_sample(sampled_vars, sample_inputs)
+        if sample_inputs is not None:
+            log_scale = 0
+            for var, domain in sample_inputs.items():
+                if var in result.inputs and var not in self.inputs:
+                    log_scale -= math.log(domain.dtype)
+            if log_scale != 0:
+                result += log_scale
+        return result
+
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+        """
+        Internal method to draw an unscaled sample.
         """
         assert self.output == reals()
         assert isinstance(sampled_vars, frozenset)

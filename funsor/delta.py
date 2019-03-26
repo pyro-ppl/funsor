@@ -6,6 +6,7 @@ from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import reals
+from funsor.integrate import Integrate, integrator
 from funsor.ops import Op
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 
@@ -105,6 +106,16 @@ def eager_binary(op, lhs, rhs):
             return op(lhs, rhs)
 
     return None  # defer to default implementation
+
+
+@eager.register(Integrate, Delta, Funsor, frozenset)
+@integrator
+def eager_integrate(delta, integrand, reduced_vars):
+    assert delta.name in reduced_vars
+    integrand = integrand.eager_subs(((delta.name, delta.point),))
+    log_measure = delta.log_density
+    reduced_vars -= frozenset([delta.name])
+    return Integrate(log_measure, integrand, reduced_vars)
 
 
 __all__ = [
