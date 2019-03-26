@@ -6,6 +6,7 @@ from collections import OrderedDict
 from six import add_metaclass
 from six.moves import reduce
 
+import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
@@ -293,6 +294,7 @@ def _joint_integrator(fn):
     """
     Decorator for Integrate(Joint(...), ...) patterns.
     """
+    fn = interpreter.debug_logged(fn)
     return integrator(functools.partial(_simplify_integrate, fn))
 
 

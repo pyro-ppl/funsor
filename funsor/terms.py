@@ -258,7 +258,7 @@ class Funsor(object):
         if sampled_vars.isdisjoint(self.inputs):
             return self
 
-        result = self.unscaled_sample(sampled_vars, sample_inputs)
+        result = interpreter.debug_logged(self.unscaled_sample)(sampled_vars, sample_inputs)
         if sample_inputs is not None:
             log_scale = 0
             for var, domain in sample_inputs.items():
@@ -735,7 +735,7 @@ def eager_reduce(op, arg, reduced_vars):
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
-    return arg.sequential_reduce(op, reduced_vars)
+    return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
 
 
 class NumberMeta(FunsorMeta):
