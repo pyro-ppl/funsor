@@ -10,7 +10,7 @@ from funsor.domains import find_domain
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.sum_product import _partition
-from funsor.terms import Binary, Funsor, Number, Reduce, eager, reflect
+from funsor.terms import Binary, Funsor, Number, Reduce, eager, lazy
 from funsor.contract import Contract, contractor
 
 
@@ -53,7 +53,7 @@ class Finitary(Funsor):
     def eager_subs(self, subs):
         if not any(k in self.inputs for k, v in subs):
             return self
-        operands = tuple(operand.eager_subs(subs) for operand in self.operands)
+        operands = tuple(Subs(operand, subs) for operand in self.operands)
         return Finitary(self.op, operands)
 
 
@@ -66,7 +66,7 @@ def eager_finitary(op, operands):
 def associate(cls, *args):
     result = associate.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
@@ -86,7 +86,7 @@ def associate_finitary(op, operands):
         else:
             new_operands.append(term)
 
-    with interpretation(reflect):
+    with interpretation(lazy):
         return Finitary(op, tuple(new_operands))
 
 
@@ -107,7 +107,7 @@ def associate_reduce(op, arg, reduced_vars):
 def distribute(cls, *args):
     result = distribute.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
@@ -146,7 +146,7 @@ def distribute_finitary(op, operands):
 def optimize(cls, *args):
     result = optimize.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
@@ -252,7 +252,7 @@ def optimize_contract_funsor_finitary(lhs, rhs, reduced_vars):
 def desugar(cls, *args):
     result = desugar.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 

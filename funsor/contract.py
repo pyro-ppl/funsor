@@ -3,8 +3,11 @@ from __future__ import absolute_import, division, print_function
 import functools
 from collections import OrderedDict
 
+import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.terms import Funsor, eager
+from funsor.optimizer import Finitary, optimize
+from funsor.sum_product import _partition
+from funsor.terms import Funsor, Subs, eager
 
 
 def _simplify_contract(fn, lhs, rhs, reduced_vars):
@@ -36,6 +39,7 @@ def contractor(fn):
     """
     Decorator for contract implementations to simplify inputs.
     """
+    fn = interpreter.debug_logged(fn)
     return functools.partial(_simplify_contract, fn)
 
 
@@ -60,8 +64,9 @@ class Contract(Funsor):
             return self
         if not all(self.reduced_vars.isdisjoint(v.inputs) for k, v in subs):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        return Contract(self.lhs.eager_subs(subs), self.rhs.eager_subs(subs),
-                        self.reduced_vars)
+        lhs = Subs(self.lhs, subs)
+        rhs = Subs(self.rhs, subs)
+        return Contract(lhs, rhs, self.reduced_vars)
 
 
 @eager.register(Contract, Funsor, Funsor, frozenset)
