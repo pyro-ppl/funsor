@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function
 import functools
 from collections import OrderedDict
 
+import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.optimizer import Finitary, optimize
 from funsor.sum_product import _partition
@@ -51,6 +52,7 @@ def contractor(fn):
     """
     Decorator for contract implementations to simplify inputs.
     """
+    fn = interpreter.debug_logged(fn)
     return functools.partial(_simplify_contract, fn)
 
 

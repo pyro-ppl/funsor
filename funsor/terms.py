@@ -258,7 +258,7 @@ class Funsor(object):
         if sampled_vars.isdisjoint(self.inputs):
             return self
 
-        result = self.unscaled_sample(sampled_vars, sample_inputs)
+        result = interpreter.debug_logged(self.unscaled_sample)(sampled_vars, sample_inputs)
         if sample_inputs is not None:
             log_scale = 0
             for var, domain in sample_inputs.items():
@@ -614,7 +614,7 @@ def eager_subs(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
-    return arg.eager_subs(subs)
+    return interpreter.debug_logged(arg.eager_subs)(subs)
 
 
 _PREFIX = {
@@ -647,14 +647,14 @@ class Unary(Funsor):
 
 @eager.register(Unary, Op, Funsor)
 def eager_unary(op, arg):
-    return arg.eager_unary(op)
+    return interpreter.debug_logged(arg.eager_unary)(op)
 
 
 @eager.register(Unary, AssociativeOp, Funsor)
 def eager_unary(op, arg):
     if not arg.output.shape:
         return arg
-    return arg.eager_unary(op)
+    return interpreter.debug_logged(arg.eager_unary)(op)
 
 
 _INFIX = {
@@ -730,12 +730,12 @@ class Reduce(Funsor):
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
-    return arg.eager_reduce(op, reduced_vars)
+    return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
 
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
-    return arg.sequential_reduce(op, reduced_vars)
+    return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
 
 
 class NumberMeta(FunsorMeta):

@@ -1,5 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
+import functools
+import inspect
 import os
 import re
 import types
@@ -13,6 +15,7 @@ from funsor.ops import Op
 from funsor.registry import KeyedRegistry
 from funsor.six import singledispatch
 
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
 _STACK_SIZE = 0
 
@@ -117,12 +120,38 @@ def _reinterpret_ordereddict(x):
     return OrderedDict((key, reinterpret(value)) for key, value in x.items())
 
 
+if _DEBUG:
+    class DebugLogged(object):
+        def __init__(self, fn):
+            self.fn = fn
+            while isinstance(fn, functools.partial):
+                fn = fn.func
+            path = inspect.getabsfile(fn)
+            lineno = inspect.getsourcelines(fn)[1]
+            self._message = "{} file://{} {}".format(fn.__name__, path, lineno)
+
+        def __call__(self, *args, **kwargs):
+            print('  ' * _STACK_SIZE + self._message)
+            return self.fn(*args, **kwargs)
+
+    def debug_logged(fn):
+        if isinstance(fn, DebugLogged):
+            return fn
+        return DebugLogged(fn)
+else:
+    def debug_logged(fn):
+        return fn
+
+
 def dispatched_interpretation(fn):
     """
     Decorator to create a dispatched interpretation function.
     """
     registry = KeyedRegistry(default=lambda *args: None)
-    fn.register = registry.register
+    if _DEBUG:
+        fn.register = lambda *args: lambda fn: registry.register(*args)(debug_logged(fn))
+    else:
+        fn.register = registry.register
     fn.dispatch = registry.__call__
     return fn
 
