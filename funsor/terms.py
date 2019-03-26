@@ -37,7 +37,7 @@ def reflect(cls, *args):
 @dispatched_interpretation
 def lazy(cls, *args):
     """
-    Substitue eagerly but perform ops lazily.
+    Substitute eagerly but perform ops lazily.
     """
     result = lazy.dispatch(cls, *args)
     if result is None:
