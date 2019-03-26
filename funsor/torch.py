@@ -13,8 +13,6 @@ import funsor.ops as ops
 from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.integrate import Integrate, integrator
-from funsor.montecarlo import monte_carlo
 from funsor.ops import GetitemOp, Op
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager, to_data, to_funsor
@@ -431,20 +429,6 @@ def eager_contract(lhs, rhs, reduced_vars):
     return Tensor(data, inputs, dtype)
 
 
-@monte_carlo.register(Integrate, Tensor, Tensor, frozenset)
-@integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
-    return Contract(log_measure.exp(), integrand, reduced_vars)
-
-
-@monte_carlo.register(Integrate, Tensor, Funsor, frozenset)
-@integrator
-def monte_carlo_integrate(log_measure, integrand, reduced_vars):
-    log_measure = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
-    reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
-    return Integrate(log_measure, integrand, reduced_vars)
-
-
 def arange(name, size):
     """
     Helper to create a named :func:`torch.arange` funsor.
@@ -468,11 +452,8 @@ def materialize(x):
         return x
     subs = []
     for name, domain in x.inputs.items():
-        if not isinstance(domain.dtype, integer_types):
-            raise ValueError('materialize() requires integer free variables but found '
-                             '"{}" of domain {}'.format(name, domain))
-        assert not domain.shape
-        subs.append((name, arange(name, domain.dtype)))
+        if isinstance(domain.dtype, integer_types):
+            subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
     return Subs(x, subs)
 
@@ -507,11 +488,13 @@ class Function(Funsor):
         self.args = args
 
     def __repr__(self):
-        return '{}({}, {}, {})'.format(type(self).__name__, self.fn.__name__,
+        name = getattr(self.fn, '__name__', type(self.fn).__name__)
+        return '{}({}, {}, {})'.format(type(self).__name__, name,
                                        repr(self.output), repr(self.args))
 
     def __str__(self):
-        return '{}({}, {}, {})'.format(type(self).__name__, self.fn.__name__,
+        name = getattr(self.fn, '__name__', type(self.fn).__name__)
+        return '{}({}, {}, {})'.format(type(self).__name__, name,
                                        str(self.output), str(self.args))
 
     def eager_subs(self, subs):

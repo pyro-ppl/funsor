@@ -75,7 +75,7 @@ class Distribution(Funsor):
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
             return Number(0.)  # distributions are normalized
-        return super(Distribution, self).reduce(op, reduced_vars)
+        return super(Distribution, self).eager_reduce(op, reduced_vars)
 
     @classmethod
     def eager_log_prob(cls, **params):
@@ -89,6 +89,27 @@ class Distribution(Funsor):
 ################################################################################
 # Distribution Wrappers
 ################################################################################
+
+class Bernoulli(Distribution):
+    dist_class = dist.Bernoulli
+
+    @staticmethod
+    def _fill_defaults(probs, value=None):
+        probs = to_funsor(probs)
+        if value is None:
+            value = Variable('value', bint(2))
+        else:
+            value = to_funsor(value)
+        return probs, value
+
+    def __init__(self, probs, value=None):
+        super(Bernoulli, self).__init__(probs, value)
+
+
+@eager.register(Bernoulli, Tensor, Tensor)
+def eager_categorical(probs, value):
+    return Bernoulli.eager_log_prob(probs=probs, value=value)
+
 
 class Categorical(Distribution):
     dist_class = dist.Categorical
@@ -189,9 +210,9 @@ def eager_normal(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
-# Create a Gaussian from a ground observation.
-@eager.register(Normal, Variable, Tensor, Tensor)
+# Create a Gaussian from a ground prior or ground likelihood.
 @eager.register(Normal, Tensor, Tensor, Variable)
+@eager.register(Normal, Variable, Tensor, Tensor)
 def eager_normal(loc, scale, value):
     if isinstance(loc, Variable):
         loc, value = value, loc
@@ -204,6 +225,15 @@ def eager_normal(loc, scale, value):
     loc = loc.unsqueeze(-1)
     precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
     return Tensor(log_prob, int_inputs) + Gaussian(loc, precision, inputs)
+
+
+# Create a transformed Gaussian from a ground prior or ground likelihood.
+@eager.register(Normal, Tensor, Tensor, Funsor)
+@eager.register(Normal, Funsor, Tensor, Tensor)
+def eager_normal(loc, scale, value):
+    if not isinstance(loc, Tensor):
+        loc, value = value, loc
+    return Normal(loc, scale)(value=value)
 
 
 # Create a Gaussian from a noisy identity transform.

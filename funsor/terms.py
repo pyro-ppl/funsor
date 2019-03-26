@@ -4,6 +4,7 @@ import functools
 import itertools
 import math
 import numbers
+import re
 from collections import Hashable, OrderedDict
 from weakref import WeakValueDictionary
 
@@ -155,7 +156,7 @@ class Funsor(object):
                 for x in arg:
                     x._pretty(lines, indent + 2)
             else:
-                lines.append((indent + 1, str(arg)))
+                lines.append((indent + 1, re.sub('\n\\s*', ' ', str(arg))))
 
     def pretty(self):
         lines = []
@@ -272,11 +273,7 @@ class Funsor(object):
         """
         Internal method to draw an unscaled sample.
         """
-        assert self.output == reals()
-        assert isinstance(sampled_vars, frozenset)
-        if sampled_vars.isdisjoint(self.inputs):
-            return self
-        raise NotImplementedError
+        return self
 
     def align(self, names):
         """
@@ -607,6 +604,10 @@ class Subs(Funsor):
         subs = old_subs + new_subs
         return Subs(self.arg, subs) if subs else self.arg
 
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+        # TODO sample from transformed distribution
+        return self
+
 
 @lazy.register(Subs, Funsor, object)
 @eager.register(Subs, Funsor, object)
@@ -692,6 +693,20 @@ class Binary(Funsor):
         rhs = Subs(self.rhs, subs)
         return Binary(self.op, lhs, rhs)
 
+    def eager_reduce(self, op, reduced_vars):
+        if op is self.op and isinstance(op, AssociativeOp):
+            lhs = self.lhs.reduce(op, reduced_vars)
+            rhs = self.rhs.reduce(op, reduced_vars)
+            return op(lhs, rhs)
+        return interpreter.debug_logged(super(Binary, self).eager_reduce)(op, reduced_vars)
+
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+        if self.op is ops.add:
+            lhs = self.lhs.unscaled_sample(sampled_vars, sample_inputs)
+            rhs = self.rhs.unscaled_sample(sampled_vars, sample_inputs)
+            return lhs + rhs
+        return self
+
 
 class Reduce(Funsor):
     """
@@ -726,6 +741,19 @@ class Reduce(Funsor):
             reduced_vars = reduced_vars.intersection(self.inputs) | self.reduced_vars
             return Reduce(op, self.arg, reduced_vars)
         return super(Reduce, self).reduce(op, reduced_vars)
+
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+        #                 i,x |- f(x,i) -> delta(x=p)
+        # -----------------------------------------------------
+        # y |- \prod_i f(x,i) [x:=y[i]] -> delta(y=\lambda i.p)
+        if self.op is ops.add and isinstance(self.arg, Subs):
+            for k, v in self.arg.subs.items():
+                if (isinstance(v, Binary) and isinstance(v.op, ops.GetitemOp) and
+                        isinstance(v.lhs, Variable) and v.lhs.name in sampled_vars and
+                        isinstance(v.rhs, Variable) and v.rhs.name in self.reduced_vars):
+                    raise NotImplementedError('TODO')
+
+        return self
 
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
