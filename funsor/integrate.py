@@ -76,7 +76,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
         arg = Integrate(log_measure.arg, integrand, reduced_vars)
         return arg.reduce(ops.add, log_measure.reduced_vars)
 
-    return None  # defer to default implementation
+    return Contract(log_measure.exp(), integrand, reduced_vars)
 
 
 __all__ = [
