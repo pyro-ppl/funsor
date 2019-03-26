@@ -614,7 +614,7 @@ def eager_subs(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
-    return arg.eager_subs(subs)
+    return interpreter.debug_logged(arg.eager_subs)(subs)
 
 
 _PREFIX = {
@@ -647,14 +647,14 @@ class Unary(Funsor):
 
 @eager.register(Unary, Op, Funsor)
 def eager_unary(op, arg):
-    return arg.eager_unary(op)
+    return interpreter.debug_logged(arg.eager_unary)(op)
 
 
 @eager.register(Unary, AssociativeOp, Funsor)
 def eager_unary(op, arg):
     if not arg.output.shape:
         return arg
-    return arg.eager_unary(op)
+    return interpreter.debug_logged(arg.eager_unary)(op)
 
 
 _INFIX = {
@@ -730,7 +730,7 @@ class Reduce(Funsor):
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
-    return arg.eager_reduce(op, reduced_vars)
+    return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
 
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
