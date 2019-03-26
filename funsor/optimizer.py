@@ -224,9 +224,8 @@ def optimize_contract_finitary_funsor(lhs, rhs, reduced_vars):
     # reduce any remaining dims, if necessary
     final_reduced_vars = frozenset(d for (d, count) in reduce_dim_counter.items()
                                    if count > 0) & reduced_vars
-    if final_reduced_vars:
-        with interpretation(reflect):
-            path_end = Contract(Number(1.), path_end, final_reduced_vars)
+    with interpretation(reflect):
+        path_end = Contract(path_end, rhs, final_reduced_vars)
     return path_end
 
 
