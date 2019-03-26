@@ -67,7 +67,7 @@ def main(args):
         p = dist.Bernoulli(probs[x, y], value=data[x, y])
         p = p.reduce(ops.add, frozenset(['x', 'y']))
 
-        elbo = funsor.Integrate(q, p - q, 'z')
+        elbo = funsor.Integrate(q, p - q, frozenset(['z']))
         elbo = elbo.reduce(ops.add, 'batch') * subsample_scale
         loss = -elbo
         return loss.data
@@ -111,7 +111,7 @@ if __name__ == '__main__':
             main(args)
         except Exception as e:
             print(repr(e))
-            torch.set_printoptions(threshold=10, edgeitems=2)
+            torch.set_printoptions(threshold=10, edgeitems=1)
             pdb.post_mortem()
     else:
         main(args)
