@@ -4,7 +4,6 @@ import functools
 import itertools
 import math
 import numbers
-from abc import ABCMeta, abstractmethod
 from collections import Hashable, OrderedDict
 from weakref import WeakValueDictionary
 
@@ -71,7 +70,7 @@ def sequential(cls, *args):
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
 
-class FunsorMeta(ABCMeta):
+class FunsorMeta(type):
     """
     Metaclass for Funsors to perform three independent tasks:
 
@@ -116,7 +115,7 @@ class Funsor(object):
 
     Concrete derived classes must implement ``__init__()`` methods taking
     hashable ``*args`` and no optional ``**kwargs`` so as to support cons
-    hashing. Derived classes must implement an :meth:`eager_subs` method.
+    hashing.
 
     :param OrderedDict inputs: A mapping from input name to domain.
         This can be viewed as a typed context or a mapping from
@@ -295,15 +294,14 @@ class Funsor(object):
             return self
         return Align(self, names)
 
-    @abstractmethod
     def eager_subs(self, subs):
         """
         Internal substitution function. This relies on the user-facing
         :meth:`__call__` method to coerce non-Funsors to Funsors. Once all
         inputs are Funsors, :meth:`eager_subs` implementations can recurse to
-        call other :meth:`eager_subs` methods.
+        call :class:`Subs`.
         """
-        raise NotImplementedError
+        return None  # defer to default implementation
 
     def eager_unary(self, op):
         return None  # defer to default implementation
