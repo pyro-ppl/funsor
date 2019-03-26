@@ -17,7 +17,7 @@ from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import GetitemOp, Op
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager, to_data, to_funsor
 
 
 def align_tensor(new_inputs, x):
@@ -474,7 +474,7 @@ def materialize(x):
         assert not domain.shape
         subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
-    return x.eager_subs(subs)
+    return Subs(x, subs)
 
 
 class LazyTuple(tuple):
@@ -517,7 +517,7 @@ class Function(Funsor):
     def eager_subs(self, subs):
         if not any(k in self.inputs for k, v in subs):
             return self
-        args = tuple(arg.eager_subs(subs) for arg in self.args)
+        args = tuple(Subs(arg, subs) for arg in self.args)
         return Function(self.fn, self.output, args)
 
 

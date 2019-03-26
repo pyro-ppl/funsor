@@ -6,7 +6,7 @@ from collections import OrderedDict
 import funsor.ops as ops
 from funsor.optimizer import Finitary, optimize
 from funsor.sum_product import _partition
-from funsor.terms import Funsor, eager
+from funsor.terms import Funsor, Subs, eager
 
 
 def _order_lhss(lhs, reduced_vars):
@@ -75,8 +75,9 @@ class Contract(Funsor):
             return self
         if not all(self.reduced_vars.isdisjoint(v.inputs) for k, v in subs):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        return Contract(self.lhs.eager_subs(subs), self.rhs.eager_subs(subs),
-                        self.reduced_vars)
+        lhs = Subs(self.lhs, subs)
+        rhs = Subs(self.rhs, subs)
+        return Contract(lhs, rhs, self.reduced_vars)
 
 
 @eager.register(Contract, Funsor, Funsor, frozenset)
