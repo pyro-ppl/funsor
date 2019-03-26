@@ -14,7 +14,7 @@ from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -196,11 +196,11 @@ class Gaussian(Funsor):
             int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
             real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
             tensors = [self.loc, self.precision]
-            funsors = [Tensor(x, int_inputs).eager_subs(int_subs) for x in tensors]
+            funsors = [Subs(Tensor(x, int_inputs), int_subs) for x in tensors]
             inputs = funsors[0].inputs.copy()
             inputs.update(real_inputs)
             int_result = Gaussian(funsors[0].data, funsors[1].data, inputs)
-            return int_result.eager_subs(real_subs)
+            return Subs(int_result, real_subs)
 
         # Try to perform a complete substitution of all real variables, resulting in a Tensor.
         assert real_subs and not int_subs
