@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import argparse
 import os
+import pdb
 from collections import OrderedDict
 
 import torch
@@ -102,5 +103,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='VAE MNIST Example')
     parser.add_argument('-n', '--num-epochs', type=int, default=10)
     parser.add_argument('--batch-size', type=int, default=8)
+    parser.add_argument('--pdb', action='store_true')
     args = parser.parse_args()
-    main(args)
+
+    if args.pdb:
+        try:
+            main(args)
+        except Exception as e:
+            print(repr(e))
+            torch.set_printoptions(threshold=10, edgeitems=2)
+            pdb.post_mortem()
+    else:
+        main(args)
