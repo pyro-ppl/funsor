@@ -1,13 +1,12 @@
 from collections import OrderedDict
 
+import numpy as np
 import pytest
 
 import funsor
-from funsor import bint, reals, Variable, Number
+from funsor import Number, Variable, bint, reals
 from funsor.numpy import Array
-import numpy as np
-
-from funsor.testing import check_funsor, assert_equiv, random_array
+from funsor.testing import assert_equiv, check_funsor, random_array
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
@@ -16,6 +15,19 @@ def test_to_funsor(shape, dtype):
     t = np.random.normal(size=shape).astype(dtype)
     f = funsor.to_funsor(t)
     assert isinstance(f, Array)
+
+
+def test_to_data():
+    data = np.zeros((3, 3))
+    x = Array(data)
+    assert funsor.to_data(x) is data
+
+
+def test_to_data_error():
+    data = np.zeros((3, 3))
+    x = Array(data, OrderedDict(i=bint(3)))
+    with pytest.raises(ValueError):
+        funsor.to_data(x)
 
 
 def test_cons_hash():

@@ -1,24 +1,21 @@
 from __future__ import absolute_import, division, print_function
 
-import pytest
 from collections import OrderedDict
 
 import opt_einsum
+import pytest
 import torch
 from pyro.ops.contract import naive_ubersum
 
 import funsor
-
 from funsor.distributions import Categorical
 from funsor.domains import bint
-from funsor.terms import reflect, Variable
-from funsor.torch import Tensor
+from funsor.einsum import naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
+from funsor.terms import Variable, reflect
 from funsor.testing import assert_close, make_einsum_example
-
-from funsor.einsum import naive_einsum, naive_plated_einsum
-
+from funsor.torch import Tensor
 
 EINSUM_EXAMPLES = [
     "a,b->",

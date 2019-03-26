@@ -6,8 +6,9 @@ from six import add_metaclass
 
 import funsor.ops as ops
 from funsor.domains import reals
+from funsor.integrate import Integrate, integrator
 from funsor.ops import Op
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager, to_funsor
 
 
 class DeltaMeta(FunsorMeta):
@@ -60,8 +61,8 @@ class Delta(Funsor):
             return self
 
         name = self.name
-        point = self.point.eager_subs(index_part)
-        log_density = self.log_density.eager_subs(index_part)
+        point = Subs(self.point, index_part)
+        log_density = Subs(self.log_density, index_part)
         if value is not None:
             if isinstance(value, Variable):
                 name = value.name
@@ -105,6 +106,16 @@ def eager_binary(op, lhs, rhs):
             return op(lhs, rhs)
 
     return None  # defer to default implementation
+
+
+@eager.register(Integrate, Delta, Funsor, frozenset)
+@integrator
+def eager_integrate(delta, integrand, reduced_vars):
+    assert delta.name in reduced_vars
+    integrand = Subs(integrand, ((delta.name, delta.point),))
+    log_measure = delta.log_density
+    reduced_vars -= frozenset([delta.name])
+    return Integrate(log_measure, integrand, reduced_vars)
 
 
 __all__ = [

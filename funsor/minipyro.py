@@ -236,7 +236,7 @@ class log_joint(Handler):
             factors = list(self.log_probs.values())
             plates = frozenset().union(*self.log_probs)
             samples = frozenset().union(*(f.inputs for f in factors)) - plates
-            log_prob = funsor.contract.sum_product(
+            log_prob = funsor.sum_product.sum_product(
                 sum_op=ops.logaddexp,
                 prod_op=ops.add,
                 factors=factors,
@@ -278,7 +278,7 @@ class log_joint(Handler):
         # Eliminate samples and plates via tensor variable elimination.
         # This is analagous to pyro 0.3's contract_tensor_tree().
         with funsor.trace_monte_carlo_approximations() as subs:
-            factors = funsor.contract.partial_sum_product(
+            factors = funsor.sum_product.partial_sum_product(
                 sum_op=ops.logaddexp,
                 prod_op=ops.add,
                 factors=self.log_probs.values(),

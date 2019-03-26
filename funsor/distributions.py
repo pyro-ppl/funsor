@@ -11,7 +11,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
-from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Number, Subs, Variable, eager, to_funsor
 from funsor.torch import Tensor, align_tensors, materialize
 
 
@@ -69,7 +69,7 @@ class Distribution(Funsor):
         assert isinstance(subs, tuple)
         if not any(k in self.inputs for k, v in subs):
             return self
-        params = OrderedDict((k, v.eager_subs(subs)) for k, v in self.params)
+        params = OrderedDict((k, Subs(v, subs)) for k, v in self.params)
         return type(self)(**params)
 
     def eager_reduce(self, op, reduced_vars):

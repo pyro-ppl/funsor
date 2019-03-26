@@ -11,8 +11,10 @@ from six.moves import reduce
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
+from funsor.integrate import Integrate, integrator
+from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -26,8 +28,12 @@ def _issubshape(subshape, supershape):
     return True
 
 
-def _log_det_tril(x):
+def _log_det_tri(x):
     return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+
+
+def _det_tri(x):
+    return x.diagonal(dim1=-1, dim2=-2).prod(-1)
 
 
 def _mv(mat, vec):
@@ -42,6 +48,16 @@ def _vmv(mat, vec):
     v = vec.unsqueeze(-1)
     result = torch.matmul(vt, torch.matmul(mat, v))
     return result.squeeze(-1).squeeze(-1)
+
+
+def _trace_mm(x, y):
+    """
+    Computes ``trace(x @ y)``.
+    """
+    assert x.dim() >= 2
+    assert y.dim() >= 2
+    xy = x * y
+    return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
 
 
 def _compute_offsets(inputs):
@@ -180,11 +196,11 @@ class Gaussian(Funsor):
             int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
             real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
             tensors = [self.loc, self.precision]
-            funsors = [Tensor(x, int_inputs).eager_subs(int_subs) for x in tensors]
+            funsors = [Subs(Tensor(x, int_inputs), int_subs) for x in tensors]
             inputs = funsors[0].inputs.copy()
             inputs.update(real_inputs)
             int_result = Gaussian(funsors[0].data, funsors[1].data, inputs)
-            return int_result.eager_subs(real_subs)
+            return Subs(int_result, real_subs)
 
         # Try to perform a complete substitution of all real variables, resulting in a Tensor.
         assert real_subs and not int_subs
@@ -195,7 +211,7 @@ class Gaussian(Funsor):
                        Tensor(self.precision, int_inputs)]
             tensors.extend(subs.values())
             inputs, tensors = align_tensors(*tensors)
-            batch_dim = self.loc.dim() - 1
+            batch_dim = tensors[0].dim() - 1
             batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
             (loc, precision), values = tensors[:2], tensors[2:]
 
@@ -219,8 +235,8 @@ class Gaussian(Funsor):
     @lazy_property
     def _log_normalizer(self):
         dim = self.loc.size(-1)
-        log_det_term = _log_det_tril(torch.cholesky(self.precision))
-        data = log_det_term - 0.5 * math.log(2 * math.pi) * dim
+        log_det_term = _log_det_tri(torch.cholesky(self.precision))
+        data = -log_det_term + 0.5 * math.log(2 * math.pi) * dim
         inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
         return Tensor(data, inputs)
 
@@ -247,15 +263,15 @@ class Gaussian(Funsor):
                 index = torch.tensor(index)
 
                 loc = self.loc[..., index]
-                self_scale_tril = torch.inverse(torch.cholesky(self.precision))
-                self_covariance = torch.matmul(self_scale_tril, self_scale_tril.transpose(-1, -2))
+                self_scale_tri = torch.inverse(torch.cholesky(self.precision)).transpose(-1, -2)
+                self_covariance = torch.matmul(self_scale_tri, self_scale_tri.transpose(-1, -2))
                 covariance = self_covariance[..., index.unsqueeze(-1), index]
-                scale_tril = torch.cholesky(covariance)
-                inv_scale_tril = torch.inverse(scale_tril)
-                precision = torch.matmul(inv_scale_tril, inv_scale_tril.transpose(-1, -2))
+                scale_tri = torch.cholesky(covariance)
+                inv_scale_tri = torch.inverse(scale_tri)
+                precision = torch.matmul(inv_scale_tri.transpose(-1, -2), inv_scale_tri)
                 reduced_dim = sum(self.inputs[k].num_elements for k in reduced_reals)
-                log_det_term = _log_det_tril(scale_tril) - _log_det_tril(self_scale_tril)
-                log_prob = Tensor(log_det_term - 0.5 * math.log(2 * math.pi) * reduced_dim, int_inputs)
+                log_det_term = _log_det_tri(self_scale_tri) - _log_det_tri(scale_tri)
+                log_prob = Tensor(log_det_term + 0.5 * math.log(2 * math.pi) * reduced_dim, int_inputs)
                 result = log_prob + Gaussian(loc, precision, inputs)
 
             return result.reduce(ops.logaddexp, reduced_ints)
@@ -265,7 +281,7 @@ class Gaussian(Funsor):
 
         return None  # defer to default implementation
 
-    def sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
@@ -274,7 +290,9 @@ class Gaussian(Funsor):
         # Partition inputs into sample_inputs + int_inputs + real_inputs.
         if sample_inputs is None:
             sample_inputs = OrderedDict()
-        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        else:
+            sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
+                                        if k not in self.inputs)
         sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
         int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
         real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
@@ -282,11 +300,11 @@ class Gaussian(Funsor):
         inputs.update(int_inputs)
 
         if sampled_vars == frozenset(real_inputs):
-            scale_tril = torch.inverse(torch.cholesky(self.precision))
-            assert self.loc.shape == scale_tril.shape[:-1]
+            scale_tri = torch.inverse(torch.cholesky(self.precision)).transpose(-1, -2)
+            assert self.loc.shape == scale_tri.shape[:-1]
             shape = sample_shape + self.loc.shape
             white_noise = torch.randn(shape)
-            sample = self.loc + _mv(scale_tril, white_noise)
+            sample = self.loc + _mv(scale_tri, white_noise)
             offsets, _ = _compute_offsets(real_inputs)
             results = []
             for key, domain in real_inputs.items():
@@ -317,11 +335,69 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     # Fuse aligned Gaussians.
     precision_loc = _mv(lhs_precision, lhs_loc) + _mv(rhs_precision, rhs_loc)
     precision = lhs_precision + rhs_precision
-    scale_tril = torch.inverse(torch.cholesky(precision))
-    loc = _mv(scale_tril.transpose(-1, -2), _mv(scale_tril, precision_loc))
+    scale_tri = torch.inverse(torch.cholesky(precision)).transpose(-1, -2)
+    loc = _mv(scale_tri, _mv(scale_tri.transpose(-1, -2), precision_loc))
     quadratic_term = _vmv(lhs_precision, loc - lhs_loc) + _vmv(rhs_precision, loc - rhs_loc)
     likelihood = Tensor(-0.5 * quadratic_term, int_inputs)
     return likelihood + Gaussian(loc, precision, inputs)
+
+
+@eager.register(Integrate, Gaussian, Variable, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
+    if real_vars:
+        assert real_vars == frozenset([integrand.name])
+        data = log_measure.loc * log_measure._log_normalizer.data.exp().unsqueeze(-1)
+        data = data.reshape(log_measure.loc.shape[:-1] + integrand.output.shape)
+        inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
+        return Tensor(data, inputs)
+
+    return None  # defer to default implementation
+
+
+@eager.register(Integrate, Gaussian, Gaussian, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
+    if real_vars:
+
+        lhs_reals = frozenset(k for k, d in log_measure.inputs.items() if d.dtype == 'real')
+        rhs_reals = frozenset(k for k, d in integrand.inputs.items() if d.dtype == 'real')
+        if lhs_reals == real_vars and rhs_reals <= real_vars:
+            inputs = OrderedDict((k, d) for t in (log_measure, integrand)
+                                 for k, d in t.inputs.items())
+            lhs_loc, lhs_precision = align_gaussian(inputs, log_measure)
+            rhs_loc, rhs_precision = align_gaussian(inputs, integrand)
+
+            # Compute the expectation of a non-normalized quadratic form.
+            # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
+            # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
+            lhs_scale_tri = torch.inverse(torch.cholesky(lhs_precision)).transpose(-1, -2)
+            lhs_covariance = torch.matmul(lhs_scale_tri, lhs_scale_tri.transpose(-1, -2))
+            dim = lhs_loc.size(-1)
+            norm = _det_tri(lhs_scale_tri) * (2 * math.pi) ** (0.5 * dim)
+            data = -0.5 * norm * (_vmv(rhs_precision, lhs_loc - rhs_loc) +
+                                  _trace_mm(rhs_precision, lhs_covariance))
+            inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)
+            result = Tensor(data, inputs)
+            return result.reduce(ops.add, reduced_vars - real_vars)
+
+        raise NotImplementedError('TODO implement partial integration')
+
+    return None  # defer to default implementation
+
+
+@monte_carlo.register(Integrate, Gaussian, Funsor, frozenset)
+@integrator
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
+    if real_vars:
+        log_measure = log_measure.sample(real_vars, monte_carlo.sample_inputs)
+        reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
+        return Integrate(log_measure, integrand, reduced_vars)
+
+    return None  # defer to default implementation
 
 
 __all__ = [

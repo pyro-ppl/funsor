@@ -3,16 +3,21 @@ from __future__ import absolute_import, division, print_function
 import functools
 from collections import OrderedDict
 
+import opt_einsum
 import torch
+from multipledispatch import dispatch
 from six import add_metaclass, integer_types
 from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.ops import Op
+from funsor.integrate import Integrate, integrator
+from funsor.montecarlo import monte_carlo
+from funsor.ops import GetitemOp, Op
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager, to_data, to_funsor
 
 
 def align_tensor(new_inputs, x):
@@ -81,7 +86,6 @@ class TensorMeta(FunsorMeta):
         return super(TensorMeta, cls).__call__(data, inputs, dtype)
 
 
-@to_funsor.register(torch.Tensor)
 @add_metaclass(TensorMeta)
 class Tensor(Funsor):
     """
@@ -93,8 +97,9 @@ class Tensor(Funsor):
     def __init__(self, data, inputs=None, dtype="real"):
         assert isinstance(data, torch.Tensor)
         assert isinstance(inputs, tuple)
-        assert all(isinstance(d.dtype, integer_types) for k, d in inputs)
         assert len(inputs) <= data.dim()
+        for (k, d), size in zip(inputs, data.shape):
+            assert d.dtype == size
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
         super(Tensor, self).__init__(inputs, output)
@@ -213,7 +218,7 @@ class Tensor(Funsor):
             assert isinstance(reduced_vars, frozenset)
             self_vars = frozenset(self.inputs)
             reduced_vars = reduced_vars & self_vars
-            if reduced_vars == self_vars:
+            if reduced_vars == self_vars and not self.output.shape:
                 # Reduce all dims at once.
                 if op is ops.logaddexp:
                     # work around missing torch.Tensor.logsumexp()
@@ -237,7 +242,7 @@ class Tensor(Funsor):
             return Tensor(data, inputs, self.dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
-    def sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
         assert self.output == reals()
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
@@ -246,7 +251,9 @@ class Tensor(Funsor):
         # Partition inputs into sample_inputs + batch_inputs + event_inputs.
         if sample_inputs is None:
             sample_inputs = OrderedDict()
-        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        else:
+            sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
+                                        if k not in self.inputs)
         sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
         batch_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in sampled_vars)
         event_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k in sampled_vars)
@@ -299,16 +306,27 @@ class Tensor(Funsor):
         return reduce(ops.add, results)
 
 
+@dispatch(torch.Tensor)
+def to_funsor(x):
+    return Tensor(x)
+
+
+@dispatch(torch.Tensor, object)
+def to_funsor(x, dtype):
+    return Tensor(x, dtype=dtype)
+
+
+@to_data.register(Tensor)
+def _to_data_tensor(x):
+    if x.inputs:
+        raise ValueError("cannot convert Tensor to a data due to lazy inputs: {}"
+                         .format(set(x.inputs)))
+    return x.data
+
+
 @eager.register(Binary, Op, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):
-    if op is ops.getitem:
-        # Shift by that Funsor is using for inputs.
-        index = [slice(None)] * len(lhs.inputs)
-        index.append(rhs.data)
-        index = tuple(index)
-        data = lhs.data[index]
-    else:
-        data = op(lhs.data, rhs.data)
+    data = op(lhs.data, rhs.data)
     return Tensor(data, lhs.inputs, lhs.dtype)
 
 
@@ -328,19 +346,103 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
 
-    if op is ops.getitem:
-        # getitem has special shape semantics.
-        if rhs.output.shape:
-            raise NotImplementedError('TODO support vector indexing')
-        assert lhs.output.shape == (rhs.dtype,)
-        index = [torch.arange(size).reshape((-1,) + (1,) * (lhs_data.dim() - pos - 2))
-                 for pos, size in enumerate(lhs_data.shape)]
-        index[-1] = rhs_data
-        data = lhs_data[tuple(index)]
-    else:
-        data = op(lhs_data, rhs_data)
+    # Reshape to support broadcasting of output shape.
+    if inputs:
+        lhs_dim = len(lhs.output.shape)
+        rhs_dim = len(rhs.output.shape)
+        if lhs_dim < rhs_dim:
+            cut = lhs_data.dim() - lhs_dim
+            shape = lhs_data.shape
+            shape = shape[:cut] + (1,) * (rhs_dim - lhs_dim) + shape[cut:]
+            lhs_data = lhs_data.reshape(shape)
+        elif rhs_dim < lhs_dim:
+            cut = rhs_data.dim() - rhs_dim
+            shape = rhs_data.shape
+            shape = shape[:cut] + (1,) * (lhs_dim - rhs_dim) + shape[cut:]
+            rhs_data = rhs_data.reshape(shape)
 
+    data = op(lhs_data, rhs_data)
     return Tensor(data, inputs, dtype)
+
+
+@eager.register(Binary, GetitemOp, Tensor, Number)
+def eager_getitem_tensor_number(op, lhs, rhs):
+    index = [slice(None)] * (len(lhs.inputs) + op.offset)
+    index.append(rhs.data)
+    index = tuple(index)
+    data = lhs.data[index]
+    return Tensor(data, lhs.inputs, lhs.dtype)
+
+
+@eager.register(Binary, GetitemOp, Tensor, Variable)
+def eager_getitem_tensor_variable(op, lhs, rhs):
+    assert op.offset < len(lhs.output.shape)
+    assert rhs.output == bint(lhs.output.shape[op.offset])
+    assert rhs.name not in lhs.inputs
+
+    # Convert a positional event dimension to a named batch dimension.
+    inputs = lhs.inputs.copy()
+    inputs[rhs.name] = rhs.output
+    data = lhs.data
+    target_dim = len(lhs.inputs)
+    source_dim = target_dim + op.offset
+    if target_dim != source_dim:
+        perm = list(range(data.dim()))
+        del perm[source_dim]
+        perm.insert(target_dim, source_dim)
+        data = data.permute(*perm)
+    return Tensor(data, inputs, lhs.dtype)
+
+
+@eager.register(Binary, GetitemOp, Tensor, Tensor)
+def eager_getitem_tensor_tensor(op, lhs, rhs):
+    assert op.offset < len(lhs.output.shape)
+    assert rhs.output == bint(lhs.output.shape[op.offset])
+
+    # Compute inputs and outputs.
+    if lhs.inputs == rhs.inputs:
+        inputs, lhs_data, rhs_data = lhs.inputs, lhs.data, rhs.data
+    else:
+        inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
+    if len(lhs.output.shape) > 1:
+        rhs_data = rhs_data.reshape(rhs_data.shape + (1,) * (len(lhs.output.shape) - 1))
+
+    # Perform advanced indexing.
+    target_dim = len(lhs.inputs) + op.offset
+    index = [None] * lhs_data.dim()
+    for i in range(target_dim):
+        index[i] = torch.arange(lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 2))
+    index[target_dim] = rhs_data
+    for i in range(1 + target_dim, lhs_data.dim()):
+        index[i] = torch.arange(lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 1))
+    data = lhs_data[tuple(index)]
+    return Tensor(data, inputs, lhs.dtype)
+
+
+@eager.register(Contract, Tensor, Tensor, frozenset)
+@contractor
+def eager_contract(lhs, rhs, reduced_vars):
+    inputs = OrderedDict((k, d) for t in (lhs, rhs)
+                         for k, d in t.inputs.items() if k not in reduced_vars)
+    data = opt_einsum.contract(lhs.data, list(lhs.inputs),
+                               rhs.data, list(rhs.inputs),
+                               list(inputs), backend="torch")
+    dtype = find_domain(ops.mul, lhs.output, rhs.output).dtype
+    return Tensor(data, inputs, dtype)
+
+
+@monte_carlo.register(Integrate, Tensor, Tensor, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    return Contract(log_measure.exp(), integrand, reduced_vars)
+
+
+@monte_carlo.register(Integrate, Tensor, Funsor, frozenset)
+@integrator
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    log_measure = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
+    reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
+    return Integrate(log_measure, integrand, reduced_vars)
 
 
 def arange(name, size):
@@ -372,21 +474,26 @@ def materialize(x):
         assert not domain.shape
         subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
-    return x.eager_subs(subs)
+    return Subs(x, subs)
+
+
+class LazyTuple(tuple):
+    def __call__(self, *args, **kwargs):
+        return LazyTuple(x(*args, **kwargs) for x in self)
 
 
 class Function(Funsor):
     r"""
     Funsor wrapped by a PyTorch function.
 
-    Functions are support broadcasting and can be eagerly evaluated on funsors
-    with free variables of int type (i.e. batch dimensions).
+    Functions are assumed to support broadcasting and can be eagerly evaluated
+    on funsors with free variables of int type (i.e. batch dimensions).
 
-    :class:`Function`s are often created via the :func:`function` decorator.
+    :class:`Function`s are usually created via the :func:`function` decorator.
 
     :param callable fn: A PyTorch function to wrap.
     :param funsor.domains.Domain output: An output domain.
-    :param Funsor \*args: Funsor arguments.
+    :param Funsor args: Funsor arguments.
     """
     def __init__(self, fn, output, args):
         assert callable(fn)
@@ -400,17 +507,17 @@ class Function(Funsor):
         self.args = args
 
     def __repr__(self):
-        return 'Function({})'.format(', '.join(
-            [type(self).__name__, repr(self.output)] + list(map(repr, self.args))))
+        return '{}({}, {}, {})'.format(type(self).__name__, self.fn.__name__,
+                                       repr(self.output), repr(self.args))
 
     def __str__(self):
-        return 'Function({})'.format(', '.join(
-            [type(self).__name__, str(self.output)] + list(map(str, self.args))))
+        return '{}({}, {}, {})'.format(type(self).__name__, self.fn.__name__,
+                                       str(self.output), str(self.args))
 
     def eager_subs(self, subs):
         if not any(k in self.inputs for k, v in subs):
             return self
-        args = tuple(arg.eager_subs(subs) for arg in self.args)
+        args = tuple(Subs(arg, subs) for arg in self.args)
         return Function(self.fn, self.output, args)
 
 
@@ -425,11 +532,57 @@ def eager_function(fn, output, args):
     return result
 
 
+def _select(fn, i, *args):
+    result = fn(*args)
+    assert isinstance(result, tuple)
+    return result[i]
+
+
+def _nested_function(fn, args, output):
+    if isinstance(output, Domain):
+        return Function(fn, output, args)
+    elif isinstance(output, tuple):
+        result = []
+        for i, output_i in enumerate(output):
+            fn_i = functools.partial(_select, fn, i)
+            fn_i.__name__ = "{}_{}".format(fn_i, i)
+            result.append(_nested_function(fn_i, args, output_i))
+        return LazyTuple(result)
+    raise TypeError("Invalid output: {}".format(output))
+
+
+class _Memoized(object):
+    def __init__(self, fn):
+        self.fn = fn
+        self._cache = None
+
+    def __call__(self, *args):
+        if self._cache is not None:
+            old_args, old_result = self._cache
+            if all(x is y for x, y in zip(args, old_args)):
+                return old_result
+        result = self.fn(*args)
+        self._cache = args, result
+        return result
+
+    @property
+    def __name__(self):
+        return self.fn.__name__
+
+
 def _function(inputs, output, fn):
-    names = getargspec(fn)[0]
+    if isinstance(fn, torch.nn.Module):
+        names = getargspec(fn.forward)[0][1:]
+    else:
+        names = getargspec(fn)[0]
     args = tuple(Variable(name, domain) for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
-    return Function(fn, output, args)
+    if not isinstance(output, Domain):
+        assert isinstance(output, tuple)
+        # Memoize multiple-output functions so that invocations can be shared among
+        # all outputs. This is not foolproof, but does work in simple situations.
+        fn = _Memoized(fn)
+    return _nested_function(fn, args, output)
 
 
 def function(*signature):
@@ -438,21 +591,29 @@ def function(*signature):
 
     Example::
 
-        @funsor.function(reals(3,4), reals(4,5), reals(3,5))
+        @funsor.torch.function(reals(3,4), reals(4,5), reals(3,5))
         def matmul(x, y):
             return torch.matmul(x, y)
 
-        @funsor.function(reals(10), reals(10, 10), reals())
+        @funsor.torch.function(reals(10), reals(10, 10), reals())
         def mvn_log_prob(loc, scale_tril, x):
             d = torch.distributions.MultivariateNormal(loc, scale_tril)
             return d.log_prob(x)
+
+    To support functions that output nested tuples of tensors, specify a nested
+    tuple of output types, for example:
+
+        @funsor.torch.function(reals(8), (reals(), bint(8)))
+        def max_and_argmax(x):
+            return torch.max(x, dim=-1)
 
     :param \*signature: A sequence if input domains followed by a final output
         domain.
     """
     assert signature
-    assert all(isinstance(d, Domain) for d in signature)
     inputs, output = signature[:-1], signature[-1]
+    assert all(isinstance(d, Domain) for d in inputs)
+    assert isinstance(output, (Domain, tuple))
     return functools.partial(_function, inputs, output)
 
 
@@ -479,7 +640,9 @@ def torch_einsum(equation, *operands):
     return Function(fn, output, operands)
 
 
+################################################################################
 # Register Ops
+################################################################################
 
 @ops.abs.register(torch.Tensor)
 def _abs(x):
@@ -585,13 +748,13 @@ REDUCE_OP_TO_TORCH = {
 
 
 __all__ = [
-    'REDUCE_OP_TO_TORCH',
     'Function',
+    'REDUCE_OP_TO_TORCH',
     'Tensor',
     'align_tensor',
     'align_tensors',
     'arange',
-    'torch_einsum',
     'function',
     'materialize',
+    'torch_einsum',
 ]

@@ -1,99 +1,129 @@
 from __future__ import absolute_import, division, print_function
 
-from collections import defaultdict, OrderedDict
-from six.moves import reduce
+import functools
+from collections import OrderedDict
 
-from funsor.terms import Funsor
-
-
-def _partition(terms, sum_vars):
-    # Construct a bipartite graph between terms and the vars
-    neighbors = OrderedDict([(t, []) for t in terms])
-    for term in terms:
-        for dim in term.inputs.keys():
-            if dim in sum_vars:
-                neighbors[term].append(dim)
-                neighbors.setdefault(dim, []).append(term)
-
-    # Partition the bipartite graph into connected components for contraction.
-    components = []
-    while neighbors:
-        v, pending = neighbors.popitem()
-        component = OrderedDict([(v, None)])  # used as an OrderedSet
-        for v in pending:
-            component[v] = None
-        while pending:
-            v = pending.pop()
-            for v in neighbors.pop(v):
-                if v not in component:
-                    component[v] = None
-                    pending.append(v)
-
-        # Split this connected component into tensors and dims.
-        component_terms = tuple(v for v in component if isinstance(v, Funsor))
-        if component_terms:
-            component_dims = frozenset(v for v in component if not isinstance(v, Funsor))
-            components.append((component_terms, component_dims))
-    return components
+import funsor.interpreter as interpreter
+import funsor.ops as ops
+from funsor.optimizer import Finitary, optimize
+from funsor.sum_product import _partition
+from funsor.terms import Funsor, Subs, eager
 
 
-def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
+def _order_lhss(lhs, reduced_vars):
+    assert isinstance(lhs, Finitary)
+
+    components = _partition(lhs.operands, reduced_vars)
+    root_lhs = Finitary(ops.mul, tuple(components[0][0]))
+    if len(components) > 1:
+        remaining_lhs = Finitary(ops.mul, tuple(t for c in components[1:] for t in c[0]))
+    else:
+        remaining_lhs = None
+
+    return root_lhs, remaining_lhs
+
+
+def _simplify_contract(fn, lhs, rhs, reduced_vars):
     """
-    Performs partial sum-product contraction of a collection of factors.
-
-    :return: a list of partially contracted Funsors.
-    :rtype: list
+    Reduce free variables that do not appear explicitly in the lhs
     """
-    assert callable(sum_op)
-    assert callable(prod_op)
-    assert isinstance(factors, (tuple, list))
-    assert all(isinstance(f, Funsor) for f in factors)
-    assert isinstance(eliminate, frozenset)
-    assert isinstance(plates, frozenset)
-    sum_vars = eliminate - plates
+    if not reduced_vars:
+        return lhs * rhs
 
-    var_to_ordinal = {}
-    ordinal_to_factors = defaultdict(list)
-    for f in factors:
-        ordinal = plates.intersection(f.inputs)
-        ordinal_to_factors[ordinal].append(f)
-        for var in sum_vars.intersection(f.inputs):
-            var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+    lhs_vars = frozenset(lhs.inputs)
+    rhs_vars = frozenset(rhs.inputs)
+    assert reduced_vars <= lhs_vars | rhs_vars
+    progress = False
+    if not reduced_vars <= lhs_vars:
+        rhs = rhs.reduce(ops.add, reduced_vars - lhs_vars)
+        reduced_vars = reduced_vars & lhs_vars
+        progress = True
+    if not reduced_vars <= rhs_vars:
+        lhs = lhs.reduce(ops.add, reduced_vars - rhs_vars)
+        reduced_vars = reduced_vars & rhs_vars
+        progress = True
+    if progress:
+        return Contract(lhs, rhs, reduced_vars)
 
-    ordinal_to_vars = defaultdict(set)
-    for var, ordinal in var_to_ordinal.items():
-        ordinal_to_vars[ordinal].add(var)
-
-    results = []
-    while ordinal_to_factors:
-        leaf = max(ordinal_to_factors, key=len)
-        leaf_factors = ordinal_to_factors.pop(leaf)
-        leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
-            remaining_sum_vars = sum_vars.intersection(f.inputs)
-            if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf & eliminate))
-            else:
-                new_plates = frozenset().union(
-                    *(var_to_ordinal[v] for v in remaining_sum_vars))
-                if new_plates == leaf:
-                    raise ValueError("intractable!")
-                if not (leaf - new_plates).issubset(eliminate):
-                    raise ValueError("cannot reduce {} before {}".format(
-                        remaining_sum_vars, (leaf - new_plates) - eliminate))
-                f = f.reduce(prod_op, leaf - new_plates)
-                ordinal_to_factors[new_plates].append(f)
-
-    return results
+    return fn(lhs, rhs, reduced_vars)
 
 
-def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
+def contractor(fn):
     """
-    Performs sum-product contraction of a collection of factors.
-
-    :return: a single contracted Funsor.
-    :rtype: :class:`~funsor.terms.Funsor`
+    Decorator for contract implementations to simplify inputs.
     """
-    factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates)
-    return reduce(prod_op, factors)
+    fn = interpreter.debug_logged(fn)
+    return functools.partial(_simplify_contract, fn)
+
+
+class Contract(Funsor):
+
+    def __init__(self, lhs, rhs, reduced_vars):
+        assert isinstance(lhs, Funsor)
+        assert isinstance(rhs, Funsor)
+        assert isinstance(reduced_vars, frozenset)
+        inputs = OrderedDict([(k, d) for t in (lhs, rhs)
+                              for k, d in t.inputs.items() if k not in reduced_vars])
+        output = rhs.output
+        super(Contract, self).__init__(inputs, output)
+        self.lhs = lhs
+        self.rhs = rhs
+        self.reduced_vars = reduced_vars
+
+    def eager_subs(self, subs):
+        # basically copied from Reduce.eager_subs
+        subs = tuple((k, v) for k, v in subs if k not in self.reduced_vars)
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        if not all(self.reduced_vars.isdisjoint(v.inputs) for k, v in subs):
+            raise NotImplementedError('TODO alpha-convert to avoid conflict')
+        lhs = Subs(self.lhs, subs)
+        rhs = Subs(self.rhs, subs)
+        return Contract(lhs, rhs, self.reduced_vars)
+
+
+@eager.register(Contract, Funsor, Funsor, frozenset)
+@contractor
+def eager_contract(lhs, rhs, reduced_vars):
+    return (lhs * rhs).reduce(ops.add, reduced_vars)
+
+
+@optimize.register(Contract, Funsor, Funsor, frozenset)
+@contractor
+def optimize_contract(lhs, rhs, reduced_vars):
+    return None
+
+
+@optimize.register(Contract, Funsor, Finitary, frozenset)
+@contractor
+def optimize_contract_funsor_finitary(lhs, rhs, reduced_vars):
+    return Contract(rhs, lhs, reduced_vars)
+
+
+@optimize.register(Contract, Finitary, (Finitary, Funsor), frozenset)
+@contractor
+def optimize_contract_finitary_funsor(lhs, rhs, reduced_vars):
+    # exploit linearity of contraction
+    if lhs.op is ops.add:
+        return Finitary(
+            ops.add,
+            tuple(Contract(operand, rhs, reduced_vars) for operand in lhs.operands)
+        )
+
+    # recursively apply law of iterated expectation
+    assert len(lhs.operands) > 1, "Finitary with one operand should have been passed through"
+    if lhs.op is ops.mul:
+        root_lhs, remaining_lhs = _order_lhss(lhs, reduced_vars)
+        if remaining_lhs is not None:
+            inner = Contract(remaining_lhs, rhs,
+                             reduced_vars & frozenset(remaining_lhs.inputs))
+            return Contract(root_lhs, inner,
+                            reduced_vars & frozenset(root_lhs.inputs))
+
+    return None
+
+
+__all__ = [
+    'Contract',
+    'contractor',
+]

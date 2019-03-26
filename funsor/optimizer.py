@@ -8,7 +8,7 @@ from six.moves import reduce
 from funsor.domains import find_domain
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Binary, Funsor, Reduce, eager, reflect
+from funsor.terms import Binary, Funsor, Reduce, Subs, eager, lazy
 
 
 class Finitary(Funsor):
@@ -37,7 +37,7 @@ class Finitary(Funsor):
     def eager_subs(self, subs):
         if not any(k in self.inputs for k, v in subs):
             return self
-        operands = tuple(operand.eager_subs(subs) for operand in self.operands)
+        operands = tuple(Subs(operand, subs) for operand in self.operands)
         return Finitary(self.op, operands)
 
 
@@ -50,7 +50,7 @@ def eager_finitary(op, operands):
 def associate(cls, *args):
     result = associate.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
@@ -70,7 +70,7 @@ def associate_finitary(op, operands):
         else:
             new_operands.append(term)
 
-    with interpretation(reflect):
+    with interpretation(lazy):
         return Finitary(op, tuple(new_operands))
 
 
@@ -91,7 +91,7 @@ def associate_reduce(op, arg, reduced_vars):
 def distribute(cls, *args):
     result = distribute.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
@@ -130,12 +130,19 @@ def distribute_finitary(op, operands):
 def optimize(cls, *args):
     result = optimize.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
 # TODO set a better value for this
 REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimizer
+
+
+@optimize.register(Reduce, AssociativeOp, Funsor, frozenset)
+def optimize_reduction_trivial(op, arg, reduced_vars):
+    if not reduced_vars:
+        return arg
+    return None
 
 
 @optimize.register(Reduce, AssociativeOp, Finitary, frozenset)
@@ -144,6 +151,9 @@ def optimize_reduction(op, arg, reduced_vars):
     Recursively convert large Reduce(Finitary) ops to many smaller versions
     by reordering execution with a modified opt_einsum optimizer
     """
+    if not reduced_vars:
+        return arg
+
     if not (op, arg.op) in DISTRIBUTIVE_OPS:
         return None
 
@@ -201,11 +211,18 @@ def optimize_reduction(op, arg, reduced_vars):
     return path_end
 
 
+@optimize.register(Finitary, AssociativeOp, tuple)
+def remove_single_finitary(op, operands):
+    if len(operands) == 1:
+        return operands[0]
+    return None
+
+
 @dispatched_interpretation
 def desugar(cls, *args):
     result = desugar.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 

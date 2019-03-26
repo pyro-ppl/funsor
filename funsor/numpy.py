@@ -3,11 +3,12 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 
 import numpy as np
+from multipledispatch import dispatch
 from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, eager, to_data, to_funsor
 
 
 def align_array(new_inputs, x):
@@ -76,7 +77,6 @@ class ArrayMeta(FunsorMeta):
         return super(ArrayMeta, cls).__call__(data, inputs, dtype)
 
 
-@to_funsor.register(np.ndarray)
 @add_metaclass(ArrayMeta)
 class Array(Funsor):
     """
@@ -191,6 +191,24 @@ class Array(Funsor):
         return Array(data, inputs, self.dtype)
 
 
+@dispatch(np.ndarray)
+def to_funsor(x):
+    return Array(x)
+
+
+@dispatch(np.ndarray, object)
+def to_funsor(x, dtype):
+    return Array(x, dtype=dtype)
+
+
+@to_data.register(Array)
+def _to_data_array(x):
+    if x.inputs:
+        raise ValueError("cannot convert Array to a data due to lazy inputs: {}"
+                         .format(set(x.inputs)))
+    return x.data
+
+
 @eager.register(Binary, object, Array, Number)
 def eager_binary_array_number(op, lhs, rhs):
     if op is ops.getitem:
@@ -264,4 +282,4 @@ def materialize(x):
         assert not domain.shape
         subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
-    return x.eager_subs(subs)
+    return Subs(x, subs)
