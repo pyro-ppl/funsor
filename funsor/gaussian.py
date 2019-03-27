@@ -184,17 +184,32 @@ class Gaussian(Funsor):
         if not subs:
             return self
 
-        # Constants are eagerly substituted, everything else is lazily substituted.
-        constant = (Number, Tensor)
-        lazy_subs = tuple((k, v) for k, v in subs if not isinstance(v, constant))
-        int_subs = tuple((k, v) for k, v in subs if isinstance(v, constant)
+        # Constants and Variables are eagerly substituted;
+        # everything else is lazily substituted.
+        lazy_subs = tuple((k, v) for k, v in subs
+                          if not isinstance(v, (Number, Tensor, Variable)))
+        var_subs = tuple((k, v) for k, v in subs if isinstance(v, Variable))
+        int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
                          if v.dtype != 'real')
-        real_subs = tuple((k, v) for k, v in subs if isinstance(v, constant)
+        real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
                           if v.dtype == 'real')
-        if not (int_subs or real_subs):
+        if not (var_subs or int_subs or real_subs):
             return None  # entirely lazy
 
-        # First perform any integer substitution, i.e. slicing into a batch.
+        # First perform any variable substitutions.
+        if var_subs:
+            rename = {k: v.name for k, v in var_subs}
+            targets = frozenset(rename.values())
+            for k, v in int_subs + real_subs + lazy_subs:
+                if not targets.isdisjoint(v.inputs):
+                    raise NotImplementedError('TODO alpha-convert')
+            inputs = OrderedDict((rename.get(k, k), d) for k, d in self.inputs.items())
+            if len(inputs) != len(self.inputs):
+                raise ValueError("Variable substitution name conflict")
+            var_result = Gaussian(self.loc, self.precision, inputs)
+            return Subs(var_result, int_subs + real_subs + lazy_subs)
+
+        # Next perform any integer substitution, i.e. slicing into a batch.
         if int_subs:
             int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
             real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')

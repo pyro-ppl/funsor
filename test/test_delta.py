@@ -7,7 +7,7 @@ import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.terms import Number, Variable
-from funsor.testing import check_funsor
+from funsor.testing import assert_close, check_funsor
 from funsor.torch import Tensor
 
 
@@ -49,3 +49,21 @@ def test_reduce_density(log_density):
     d = Delta('foo', point, log_density)
     # Note that log_density affects ground substitution but does not affect reduction.
     assert d.reduce(ops.logaddexp, frozenset(['foo'])) is Number(0)
+
+
+@pytest.mark.parametrize('shape', [(), (4,), (2, 3)], ids=str)
+def test_transform_exp(shape):
+    point = Tensor(torch.randn(shape).abs())
+    x = Variable('x', reals(*shape))
+    actual = Delta('y', point)(y=ops.exp(x))
+    expected = Delta('x', point.log(), point.log().sum())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('shape', [(), (4,), (2, 3)], ids=str)
+def test_transform_log(shape):
+    point = Tensor(torch.randn(shape))
+    x = Variable('x', reals(*shape))
+    actual = Delta('y', point)(y=ops.log(x))
+    expected = Delta('x', point.exp(), -point.sum())
+    assert_close(actual, expected)

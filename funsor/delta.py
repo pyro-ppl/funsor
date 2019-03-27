@@ -5,10 +5,12 @@ from collections import OrderedDict
 from six import add_metaclass
 
 import funsor.ops as ops
-from funsor.domains import reals
+from funsor.domains import Domain, reals
 from funsor.integrate import Integrate, integrator
-from funsor.ops import Op
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager, to_funsor
+from funsor.interpreter import debug_logged
+from funsor.ops import Op, TransformOp
+from funsor.registry import KeyedRegistry
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, to_funsor
 
 
 class DeltaMeta(FunsorMeta):
@@ -57,21 +59,31 @@ class Delta(Funsor):
                     assert self.name not in v.inputs
                     index_part.append((k, v))
         index_part = tuple(index_part)
-        if value is None and not index_part:
+
+        if index_part:
+            point = Subs(self.point, index_part)
+            log_density = Subs(self.log_density, index_part)
+            result = Delta(self.name, point, log_density)
+            if value is not None:
+                result = Subs(result, ((self.name, value),))
+            return result
+
+        if value is None:
             return self
 
-        name = self.name
-        point = Subs(self.point, index_part)
-        log_density = Subs(self.log_density, index_part)
-        if value is not None:
-            if isinstance(value, Variable):
-                name = value.name
-            elif not any(d.dtype == 'real' for side in (value, point) for d in side.inputs.values()):
-                return (value == point).all().log() + log_density
-            else:
-                # TODO Compute a jacobian, update log_prob, and emit another Delta.
-                raise ValueError('Cannot substitute a {} into a Delta'
-                                 .format(type(value).__name__))
+        if isinstance(value, Variable):
+            return Delta(value.name, self.point, self.log_density)
+
+        if not any(d.dtype == 'real' for side in (value, self.point)
+                   for d in side.inputs.values()):
+            return (value == self.point).all().log() + self.log_density
+
+        # Try to invert the substitution.
+        soln = solve(value, self.point)
+        if soln is None:
+            return None  # lazily substitute
+        name, point, log_density = soln
+        log_density += self.log_density
         return Delta(name, point, log_density)
 
     def eager_reduce(self, op, reduced_vars):
@@ -82,10 +94,6 @@ class Delta(Funsor):
         # TODO Implement ops.add to simulate .to_event().
 
         return None  # defer to default implementation
-
-    def sample(self, sampled_vars):
-        assert all(k == self.name for k in sampled_vars if k in self.inputs)
-        return self
 
 
 @eager.register(Binary, Op, Delta, (Funsor, Delta, Align))
@@ -118,6 +126,49 @@ def eager_integrate(delta, integrand, reduced_vars):
     return Integrate(log_measure, integrand, reduced_vars)
 
 
+def solve(expr, value):
+    """
+    Tries to solve for free inputs of an ``expr`` such that ``expr == value``,
+    and computes the log-abs-det-Jacobian of the resulting substitution.
+
+    :param Funsor expr: An expression with a free variable.
+    :param Funsor value: A target value.
+    :return: A tuple ``(name, point, log_abs_det_jacobian)``
+    :rtype: tuple
+    :raises: ValueError
+    """
+    assert isinstance(expr, Funsor)
+    assert isinstance(value, Funsor)
+    result = solve.dispatch(type(expr), *(expr._ast_values + (value,)))
+    if result is None:
+        raise ValueError("Cannot substitute into a Delta: {}".format(value))
+    return result
+
+
+_solve = KeyedRegistry(lambda *args: None)
+solve.dispatch = _solve.__call__
+solve.register = _solve.register
+
+
+@solve.register(Variable, str, Domain, Funsor)
+@debug_logged
+def solve_variable(name, output, y):
+    assert y.output == output
+    point = y
+    log_density = Number(0)
+    return name, point, log_density
+
+
+@solve.register(Unary, TransformOp, Funsor, Funsor)
+@debug_logged
+def solve_unary(op, arg, y):
+    x = op.inv(y)
+    name, point, log_density = solve(arg, x)
+    log_density += op.log_abs_det_jacobian(x, y)
+    return name, point, log_density
+
+
 __all__ = [
     'Delta',
+    'solve',
 ]
