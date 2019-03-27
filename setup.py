@@ -17,6 +17,7 @@ setup(
         'pyro-ppl>=0.3',
         'six>=1.10.0',
         'torch>=1.0.0',
+        'unification',
     ],
     extras_require={
         'test': ['flake8', 'pytest>=4.1'],

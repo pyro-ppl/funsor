@@ -28,6 +28,34 @@ class Op(Dispatcher):
         return self.__name__
 
 
+class TransformOp(Op):
+    def set_inv(self, fn):
+        """
+        :param callable fn: A function that inputs an arg ``y`` and outputs a
+            value ``x`` such that ``y=self(x)``.
+        """
+        assert callable(fn)
+        self.inv = fn
+        return fn
+
+    def set_log_abs_det_jacobian(self, fn):
+        """
+        :param callable fn: A function that inputs two args ``x, y``, where
+            ``y=self(x)``, and returns ``log(abs(det(dy/dx)))``.
+        """
+        assert callable(fn)
+        self.log_abs_det_jacobian = fn
+        return fn
+
+    @staticmethod
+    def inv(x):
+        raise NotImplementedError
+
+    @staticmethod
+    def log_abs_det_jacobian(x, y):
+        raise NotImplementedError
+
+
 class AssociativeOp(Op):
     pass
 
@@ -85,6 +113,11 @@ or_ = AssociativeOp(operator.or_)
 xor = AssociativeOp(operator.xor)
 
 
+@add.register(object)
+def _unary_add(x):
+    return x.sum()
+
+
 @Op
 def abs(x):
     return x.abs()
@@ -100,14 +133,28 @@ def sqrt(x):
     return np.sqrt(x)
 
 
-@Op
+@TransformOp
 def exp(x):
     return np.exp(x)
 
 
-@Op
+@exp.set_log_abs_det_jacobian
+def log_abs_det_jacobian(x, y):
+    return add(x)
+
+
+@TransformOp
 def log(x):
     return np.log(x)
+
+
+@log.set_log_abs_det_jacobian
+def log_abs_det_jacobian(x, y):
+    return -add(y)
+
+
+exp.set_inv(log)
+log.set_inv(exp)
 
 
 @Op
