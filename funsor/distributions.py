@@ -164,6 +164,14 @@ def eager_delta(v, log_density, value):
     return funsor.delta.Delta(v.name, value, log_density)
 
 
+def LogNormal(loc, scale, value=None):
+    loc, scale, y = Normal._fill_defaults(loc, scale, value)
+    t = ops.exp
+    x = t.inv(y)
+    log_abs_det_jacobian = t.log_abs_det_jacobian(x, y)
+    return Normal(loc, scale, x) - log_abs_det_jacobian
+
+
 class Normal(Distribution):
     dist_class = dist.Normal
 
@@ -284,6 +292,7 @@ __all__ = [
     'Categorical',
     'Delta',
     'Distribution',
+    'LogNormal',
     'MultivariateNormal',
     'Normal',
 ]
