@@ -5,11 +5,10 @@ import collections
 from opt_einsum.paths import greedy
 from six.moves import reduce
 
-import funsor.ops as ops
 from funsor.domains import find_domain
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, UNITS, AssociativeOp, Op
-from funsor.terms import Binary, Funsor, Number, Reduce, Subs, eager, lazy, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Subs, eager, lazy, to_funsor
 from funsor.contract import Contract, contractor
 
 
