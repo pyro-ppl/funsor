@@ -228,13 +228,6 @@ def optimize_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
     return None
 
 
-@optimize.register(Binary, AssociativeOp, Number, Funsor)
-def optimize_raise_binary_error(op, lhs, rhs):
-    if op is ops.add:
-        assert lhs.data != 1.
-    return None
-
-
 @optimize.register(Contract, Op, Op, Funsor, Finitary, frozenset)
 def optimize_contract_funsor_finitary(sum_op, prod_op, lhs, rhs, reduced_vars):
     return Contract(sum_op, prod_op, rhs, lhs, reduced_vars)
