@@ -241,9 +241,9 @@ def desugar(cls, *args):
     return result
 
 
-# @desugar.register(Finitary, AssociativeOp, tuple)
-# def desugar_finitary(op, operands):
-#     return reduce(op, operands)
+@desugar.register(Finitary, AssociativeOp, tuple)
+def desugar_finitary(op, operands):
+    return reduce(op, operands)
 
 
 def apply_optimizer(x):
