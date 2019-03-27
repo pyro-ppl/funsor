@@ -75,7 +75,7 @@ class Distribution(Funsor):
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
             return Number(0.)  # distributions are normalized
-        return super(Distribution, self).reduce(op, reduced_vars)
+        return super(Distribution, self).eager_reduce(op, reduced_vars)
 
     @classmethod
     def eager_log_prob(cls, **params):
@@ -189,9 +189,9 @@ def eager_normal(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
-# Create a Gaussian from a ground observation.
-@eager.register(Normal, Variable, Tensor, Tensor)
+# Create a Gaussian from a ground prior or ground likelihood.
 @eager.register(Normal, Tensor, Tensor, Variable)
+@eager.register(Normal, Variable, Tensor, Tensor)
 def eager_normal(loc, scale, value):
     if isinstance(loc, Variable):
         loc, value = value, loc
@@ -204,6 +204,15 @@ def eager_normal(loc, scale, value):
     loc = loc.unsqueeze(-1)
     precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
     return Tensor(log_prob, int_inputs) + Gaussian(loc, precision, inputs)
+
+
+# Create a transformed Gaussian from a ground prior or ground likelihood.
+@eager.register(Normal, Tensor, Tensor, Funsor)
+@eager.register(Normal, Funsor, Tensor, Tensor)
+def eager_normal(loc, scale, value):
+    if not isinstance(loc, Tensor):
+        loc, value = value, loc
+    return Normal(loc, scale)(value=value)
 
 
 # Create a Gaussian from a noisy identity transform.

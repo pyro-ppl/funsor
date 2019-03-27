@@ -181,17 +181,21 @@ class Gaussian(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = OrderedDict((k, materialize(v)) for k, v in subs if k in self.inputs)
+        subs = tuple((k, materialize(v)) for k, v in subs if k in self.inputs)
         if not subs:
             return self
 
-        # This currently handles only substitution of constants.
-        if not all(isinstance(v, (Number, Tensor)) for v in subs.values()):
-            raise NotImplementedError('TODO handle substitution of affine functions of variables')
+        # Constants are eagerly substituted, everything else is lazily substituted.
+        constant = (Number, Tensor)
+        lazy_subs = tuple((k, v) for k, v in subs if not isinstance(v, constant))
+        int_subs = tuple((k, v) for k, v in subs if isinstance(v, constant)
+                         if v.dtype != 'real')
+        real_subs = tuple((k, v) for k, v in subs if isinstance(v, constant)
+                          if v.dtype == 'real')
+        if not (int_subs or real_subs):
+            return None  # entirely lazy
 
         # First perform any integer substitution, i.e. slicing into a batch.
-        int_subs = tuple((k, v) for k, v in subs.items() if v.dtype != 'real')
-        real_subs = tuple((k, v) for k, v in subs.items() if v.dtype == 'real')
         if int_subs:
             int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
             real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
@@ -200,16 +204,17 @@ class Gaussian(Funsor):
             inputs = funsors[0].inputs.copy()
             inputs.update(real_inputs)
             int_result = Gaussian(funsors[0].data, funsors[1].data, inputs)
-            return Subs(int_result, real_subs)
+            return Subs(int_result, real_subs + lazy_subs)
 
         # Try to perform a complete substitution of all real variables, resulting in a Tensor.
+        real_subs = OrderedDict(subs)
         assert real_subs and not int_subs
-        if all(k in subs for k, d in self.inputs.items() if d.dtype == 'real'):
+        if all(k in real_subs for k, d in self.inputs.items() if d.dtype == 'real'):
             # Broadcast all component tensors.
             int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
             tensors = [Tensor(self.loc, int_inputs),
                        Tensor(self.precision, int_inputs)]
-            tensors.extend(subs.values())
+            tensors.extend(real_subs.values())
             inputs, tensors = align_tensors(*tensors)
             batch_dim = tensors[0].dim() - 1
             batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
@@ -218,7 +223,7 @@ class Gaussian(Funsor):
             # Form the concatenated value.
             offsets, event_size = _compute_offsets(self.inputs)
             value = loc.new_empty(batch_shape + (event_size,))
-            for k, value_k in zip(subs, values):
+            for k, value_k in zip(real_subs, values):
                 offset = offsets[k]
                 value_k = value_k.reshape(value_k.shape[:batch_dim] + (-1,))
                 assert value_k.size(-1) == self.inputs[k].num_elements
@@ -228,7 +233,7 @@ class Gaussian(Funsor):
             result = -0.5 * _vmv(precision, value - loc)
             result = Tensor(result, inputs)
             assert result.output == reals()
-            return result
+            return Subs(result, lazy_subs)
 
         raise NotImplementedError('TODO implement partial substitution of real variables')
 
@@ -282,10 +287,11 @@ class Gaussian(Funsor):
         return None  # defer to default implementation
 
     def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        sampled_vars = sampled_vars.intersection(self.inputs)
+        # Sample only the real variables.
+        sampled_vars = frozenset(k for k, v in self.inputs.items()
+                                 if k in sampled_vars if v.dtype == 'real')
         if not sampled_vars:
             return self
-        assert all(self.inputs[k].dtype == 'real' for k in sampled_vars)
 
         # Partition inputs into sample_inputs + int_inputs + real_inputs.
         if sample_inputs is None:
