@@ -5,34 +5,32 @@ from collections import OrderedDict
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.optimizer import Finitary, optimize
-from funsor.sum_product import _partition
 from funsor.terms import Funsor, Subs, eager
 
 
-def _simplify_contract(fn, lhs, rhs, reduced_vars):
+def _simplify_contract(fn, sum_op, prod_op, lhs, rhs, reduced_vars):
     """
     Reduce free variables that do not appear explicitly in the lhs
     """
     if not reduced_vars:
-        return lhs * rhs
+        return prod_op(lhs, rhs)
 
     lhs_vars = frozenset(lhs.inputs)
     rhs_vars = frozenset(rhs.inputs)
     assert reduced_vars <= lhs_vars | rhs_vars
     progress = False
     if not reduced_vars <= lhs_vars:
-        rhs = rhs.reduce(ops.add, reduced_vars - lhs_vars)
+        rhs = rhs.reduce(sum_op, reduced_vars - lhs_vars)
         reduced_vars = reduced_vars & lhs_vars
         progress = True
     if not reduced_vars <= rhs_vars:
-        lhs = lhs.reduce(ops.add, reduced_vars - rhs_vars)
+        lhs = lhs.reduce(sum_op, reduced_vars - rhs_vars)
         reduced_vars = reduced_vars & rhs_vars
         progress = True
     if progress:
-        return Contract(lhs, rhs, reduced_vars)
+        return Contract(sum_op, prod_op, lhs, rhs, reduced_vars)
 
-    return fn(lhs, rhs, reduced_vars)
+    return fn(sum_op, prod_op, lhs, rhs, reduced_vars)
 
 
 def contractor(fn):
@@ -45,7 +43,9 @@ def contractor(fn):
 
 class Contract(Funsor):
 
-    def __init__(self, lhs, rhs, reduced_vars):
+    def __init__(self, sum_op, prod_op, lhs, rhs, reduced_vars):
+        assert isinstance(sum_op, ops.Op)
+        assert isinstance(prod_op, ops.Op)
         assert isinstance(lhs, Funsor)
         assert isinstance(rhs, Funsor)
         assert isinstance(reduced_vars, frozenset)
@@ -53,6 +53,8 @@ class Contract(Funsor):
                               for k, d in t.inputs.items() if k not in reduced_vars])
         output = rhs.output
         super(Contract, self).__init__(inputs, output)
+        self.sum_op = sum_op
+        self.prod_op = prod_op
         self.lhs = lhs
         self.rhs = rhs
         self.reduced_vars = reduced_vars
@@ -66,13 +68,13 @@ class Contract(Funsor):
             raise NotImplementedError('TODO alpha-convert to avoid conflict')
         lhs = Subs(self.lhs, subs)
         rhs = Subs(self.rhs, subs)
-        return Contract(lhs, rhs, self.reduced_vars)
+        return Contract(self.sum_op, self.prod_op, lhs, rhs, self.reduced_vars)
 
 
-@eager.register(Contract, Funsor, Funsor, frozenset)
+@eager.register(Contract, ops.Op, ops.Op, Funsor, Funsor, frozenset)
 @contractor
-def eager_contract(lhs, rhs, reduced_vars):
-    return (lhs * rhs).reduce(ops.add, reduced_vars)
+def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
+    return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)
 
 
 __all__ = [

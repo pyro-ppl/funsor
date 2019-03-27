@@ -5,8 +5,9 @@ from collections import defaultdict
 import torch
 
 import funsor.ops as ops
+from funsor.contract import Contract
 from funsor.interpreter import interpretation, reinterpret
-from funsor.ops import AssociativeOp
+from funsor.ops import AssociativeOp, Op
 from funsor.registry import KeyedRegistry
 from funsor.terms import Binary, Funsor, Number, Reduce, Variable, eager
 from funsor.torch import Tensor
@@ -19,7 +20,7 @@ class AdjointTape(object):
 
     def __call__(self, cls, *args):
         result = eager(cls, *args)
-        if cls in (Reduce, Binary, Tensor):
+        if cls in (Reduce, Contract, Binary, Tensor):
             self.tape.append((result, cls, args))
         return result
 
@@ -87,3 +88,15 @@ def adjoint_reduce(out_adj, out, op, arg, reduced_vars):
         return {arg: out_adj + (arg * 0.)}  # XXX hack to simulate "expand"
     elif op is ops.add:  # plate!
         return {arg: out_adj + Binary(ops.safesub, out, arg)}
+
+
+@adjoint_ops.register(Contract, Funsor, Funsor, Op, Op, Funsor, Funsor, frozenset)
+def adjoint_contract(out_adj, out, sum_op, prod_op, lhs, rhs, reduced_vars):
+
+    lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
+    lhs_adj = Contract(sum_op, prod_op, out_adj, rhs, lhs_reduced_vars)
+
+    rhs_reduced_vars = frozenset(lhs.inputs) - frozenset(rhs.inputs)
+    rhs_adj = Contract(sum_op, prod_op, out_adj, lhs, rhs_reduced_vars)
+
+    return {lhs: lhs_adj, rhs: rhs_adj}

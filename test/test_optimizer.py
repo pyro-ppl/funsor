@@ -10,10 +10,10 @@ import torch
 import funsor
 from funsor.distributions import Categorical
 from funsor.domains import bint
-from funsor.einsum import einsum, naive_einsum, naive_plated_einsum
+from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
-from funsor.terms import Variable, reflect
+from funsor.terms import Variable, lazy
 from funsor.testing import assert_close, make_chain_einsum, make_einsum_example, make_hmm_einsum, make_plated_hmm_einsum
 from funsor.torch import Tensor
 
@@ -26,11 +26,15 @@ OPTIMIZED_EINSUM_EXAMPLES = [
 
 @pytest.mark.parametrize('equation', OPTIMIZED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_log'])
-def test_optimized_einsum(equation, backend):
+@pytest.mark.parametrize("einsum_impl", [
+    naive_einsum,
+    # naive_contract_einsum,  # XXX not working, probably issue with canonicalization
+])
+def test_optimized_einsum(equation, backend, einsum_impl):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
-    with interpretation(reflect):
-        naive_ast = naive_einsum(equation, *funsor_operands, backend=backend)
+    with interpretation(lazy):
+        naive_ast = einsum_impl(equation, *funsor_operands, backend=backend)
         optimized_ast = apply_optimizer(naive_ast)
     actual = reinterpret(optimized_ast)  # eager by default
 
@@ -48,12 +52,14 @@ def test_optimized_einsum(equation, backend):
 
 @pytest.mark.parametrize("eqn1,eqn2", [
     ("ab,bc,cd->d", "de,ef,fg->"),
+    ("bc,ab,cd->d", "fg,de,ef->"),
 ])
 @pytest.mark.parametrize("optimize1", [False, True])
 @pytest.mark.parametrize("optimize2", [False, True])
 @pytest.mark.parametrize("backend1", ['torch'])
 @pytest.mark.parametrize("backend2", ['torch', 'pyro.ops.einsum.torch_log'])
-def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
+@pytest.mark.parametrize("einsum_impl", [naive_einsum, naive_contract_einsum])
+def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, einsum_impl):
     inputs1, outputs1, sizes1, operands1, _ = make_einsum_example(eqn1, sizes=(3,))
     inputs2, outputs2, sizes2, operands2, funsor_operands2 = make_einsum_example(eqn2, sizes=(3,))
 
@@ -64,7 +70,7 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
     expected1 = opt_einsum.contract(eqn1, *operands1, backend=backend1)
     expected2 = opt_einsum.contract(outputs1[0] + "," + eqn2, *([expected1] + operands2), backend=backend2)
 
-    with interpretation(reflect):
+    with interpretation(lazy):
         funsor_operands1 = [
             Categorical(probs=Tensor(
                 operand,
@@ -73,10 +79,10 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2):
             for inp, operand in zip(inputs1, operands1)
         ]
 
-        output1 = naive_einsum(eqn1, *funsor_operands1, backend=backend1)
-        output1 = apply_optimizer(output1) if optimize1 else output1
-        output2 = naive_einsum(outputs1[0] + "," + eqn2, *([output1] + funsor_operands2), backend=backend2)
-        output2 = apply_optimizer(output2) if optimize2 else output2
+        output1_naive = einsum_impl(eqn1, *funsor_operands1, backend=backend1)
+        output1 = apply_optimizer(output1_naive) if optimize1 else output1_naive
+        output2_naive = einsum_impl(outputs1[0] + "," + eqn2, *([output1] + funsor_operands2), backend=backend2)
+        output2 = apply_optimizer(output2_naive) if optimize2 else output2_naive
 
     actual1 = reinterpret(output1)
     actual2 = reinterpret(output2)

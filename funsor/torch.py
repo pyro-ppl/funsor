@@ -419,15 +419,23 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
-@eager.register(Contract, Tensor, Tensor, frozenset)
+@eager.register(Contract, ops.Op, ops.Op, Tensor, Tensor, frozenset)
 @contractor
-def eager_contract(lhs, rhs, reduced_vars):
+def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
+    if (sum_op, prod_op) == (ops.add, ops.mul):
+        backend = "torch"
+    elif (sum_op, prod_op) == (ops.logaddexp, ops.add):
+        backend = "pyro.ops.einsum.torch_log"
+    else:
+        return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)
+
     inputs = OrderedDict((k, d) for t in (lhs, rhs)
                          for k, d in t.inputs.items() if k not in reduced_vars)
+
     data = opt_einsum.contract(lhs.data, list(lhs.inputs),
                                rhs.data, list(rhs.inputs),
-                               list(inputs), backend="torch")
-    dtype = find_domain(ops.mul, lhs.output, rhs.output).dtype
+                               list(inputs), backend=backend)
+    dtype = find_domain(prod_op, lhs.output, rhs.output).dtype
     return Tensor(data, inputs, dtype)
 
 
