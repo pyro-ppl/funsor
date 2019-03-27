@@ -62,8 +62,6 @@ class Joint(Funsor):
         self.gaussian = gaussian
 
     def eager_subs(self, subs):
-        gaussian = Subs(self.gaussian, subs)
-        assert isinstance(gaussian, (Number, Tensor, Gaussian))
         discrete = Subs(self.discrete, subs)
         gaussian = Subs(self.gaussian, subs)
         deltas = []
@@ -129,9 +127,8 @@ class Joint(Funsor):
 
     def unscaled_sample(self, sampled_vars, sample_inputs=None):
         discrete_vars = sampled_vars.intersection(self.discrete.inputs)
-        gaussian_vars = frozenset(k for k in sampled_vars
-                                  if k in self.gaussian.inputs
-                                  if self.gaussian.inputs[k].dtype == 'real')
+        gaussian_vars = frozenset(k for k, v in self.gaussian.inputs.items()
+                                  if k in sampled_vars if v.dtype == 'real')
         result = self
         if discrete_vars:
             discrete = result.discrete.unscaled_sample(discrete_vars, sample_inputs)

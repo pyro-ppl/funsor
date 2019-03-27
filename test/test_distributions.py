@@ -89,6 +89,28 @@ def test_delta_delta():
     assert d is Delta('v', point, log_density)
 
 
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_lognormal_density(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.torch.function(reals(), reals(), reals(), reals())
+    def log_normal(loc, scale, value):
+        return torch.distributions.LogNormal(loc, scale).log_prob(value)
+
+    check_funsor(log_normal, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
+
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.randn(batch_shape).exp(), inputs)
+    value = Tensor(torch.randn(batch_shape).exp(), inputs)
+    expected = log_normal(loc, scale, value)
+    check_funsor(expected, inputs, reals())
+
+    actual = dist.LogNormal(loc, scale, value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
 def test_normal_defaults():
     loc = Variable('loc', reals())
     scale = Variable('scale', reals())

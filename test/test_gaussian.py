@@ -119,6 +119,18 @@ def test_eager_subs(int_inputs, real_inputs):
         assert_close(actual, expected, atol=1e-4)
 
 
+def test_eager_subs_variable():
+    inputs = OrderedDict([('i', bint(2)), ('x', reals()), ('y', reals(2))])
+    g1 = random_gaussian(inputs)
+
+    g2 = g1(x='z')
+    assert set(g2.inputs) == {'i', 'y', 'z'}
+
+    g2 = g1(x='y', y='x')
+    assert set(g2.inputs) == {'i', 'x', 'y'}
+    assert g2.inputs['x'] == reals(2)
+
+
 @pytest.mark.parametrize('int_inputs', [
     {},
     {'i': bint(2)},
