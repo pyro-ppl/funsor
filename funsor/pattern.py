@@ -2,9 +2,9 @@ from __future__ import absolute_import, division, print_function
 
 import functools
 
+import unification.match
 from unification import unify
 from unification.variable import isvar
-from unification.match import match, Dispatcher
 
 import funsor.ops as ops
 from funsor.interpreter import dispatched_interpretation, interpretation
@@ -26,9 +26,9 @@ def unify_eq(op, lhs, rhs):
     return None
 
 
-class EqDispatcher(Dispatcher):
+class EqDispatcher(unification.match.Dispatcher):
 
-    resolve = interpretation(unify_interpreter)(Dispatcher.resolve)
+    resolve = interpretation(unify_interpreter)(unification.match.Dispatcher.resolve)
 
 
 class EqVarDispatcher(EqDispatcher):
@@ -59,8 +59,8 @@ def unify_patternvar(pattern, expr, subs):
     return subs
 
 
-match_vars = functools.partial(match, Dispatcher=EqVarDispatcher)
-match = functools.partial(match, Dispatcher=EqDispatcher)
+match_vars = functools.partial(unification.match.match, Dispatcher=EqVarDispatcher)
+match = functools.partial(unification.match.match, Dispatcher=EqDispatcher)
 
 
 __all__ = [
