@@ -51,17 +51,19 @@ def test_reduce_density(log_density):
     assert d.reduce(ops.logaddexp, frozenset(['foo'])) is Number(0)
 
 
-def test_transform_exp():
-    point = Tensor(torch.randn(10).abs())
-    x = Variable('x', reals(10))
+@pytest.mark.parametrize('shape', [(), (4,), (2, 3)], ids=str)
+def test_transform_exp(shape):
+    point = Tensor(torch.randn(shape).abs())
+    x = Variable('x', reals(*shape))
     actual = Delta('y', point)(y=ops.exp(x))
     expected = Delta('x', point.log(), point.log().sum())
     assert_close(actual, expected)
 
 
-def test_transform_log():
-    point = Tensor(torch.randn(10))
-    x = Variable('x', reals(10))
+@pytest.mark.parametrize('shape', [(), (4,), (2, 3)], ids=str)
+def test_transform_log(shape):
+    point = Tensor(torch.randn(shape))
+    x = Variable('x', reals(*shape))
     actual = Delta('y', point)(y=ops.log(x))
     expected = Delta('x', point.exp(), -point.sum())
     assert_close(actual, expected)

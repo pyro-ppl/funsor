@@ -8,6 +8,7 @@ import torch
 from torch.autograd import grad
 
 import funsor.ops as ops
+from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.integrate import Integrate
 from funsor.joint import Joint
@@ -43,6 +44,8 @@ def test_tensor_shape(sample_inputs, batch_inputs, event_inputs):
             sampled_vars = frozenset(sampled_vars)
             print('sampled_vars: {}'.format(', '.join(sampled_vars)))
             y = x.sample(sampled_vars, sample_inputs)
+            if num_sampled == len(event_inputs):
+                assert isinstance(y, (Delta, Joint))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:
@@ -82,6 +85,55 @@ def test_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
             except NotImplementedError:
                 xfail = True
                 continue
+            if num_sampled == len(event_inputs):
+                assert isinstance(y, (Delta, Joint))
+            if sampled_vars:
+                assert dict(y.inputs) == dict(expected_inputs), sampled_vars
+            else:
+                assert y is x
+    if xfail:
+        pytest.xfail(reason='Not implemented')
+
+
+@pytest.mark.parametrize('sample_inputs', [
+    (),
+    (('s', bint(3)),),
+    (('s', bint(3)), ('t', bint(4))),
+], ids=id_from_inputs)
+@pytest.mark.parametrize('batch_inputs', [
+    (),
+    (('b', bint(2)),),
+    (('c', reals()),),
+    (('b', bint(2)), ('c', reals())),
+], ids=id_from_inputs)
+@pytest.mark.parametrize('event_inputs', [
+    (('e', reals()),),
+    (('e', reals()), ('f', reals(2))),
+], ids=id_from_inputs)
+def test_transformed_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
+    be_inputs = OrderedDict(batch_inputs + event_inputs)
+    expected_inputs = OrderedDict(sample_inputs + batch_inputs + event_inputs)
+    sample_inputs = OrderedDict(sample_inputs)
+    batch_inputs = OrderedDict(batch_inputs)
+    event_inputs = OrderedDict(event_inputs)
+
+    x = random_gaussian(be_inputs)
+    x = x(**{name: name + '_' for name, domain in event_inputs.items()})
+    x = x(**{name + '_': Variable(name, domain).log()
+             for name, domain in event_inputs.items()})
+
+    xfail = False
+    for num_sampled in range(len(event_inputs) + 1):
+        for sampled_vars in itertools.combinations(list(event_inputs), num_sampled):
+            sampled_vars = frozenset(sampled_vars)
+            print('sampled_vars: {}'.format(', '.join(sampled_vars)))
+            try:
+                y = x.sample(sampled_vars, sample_inputs)
+            except NotImplementedError:
+                xfail = True
+                continue
+            if num_sampled == len(event_inputs):
+                assert isinstance(y, (Delta, Joint))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:

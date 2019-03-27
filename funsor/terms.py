@@ -613,8 +613,19 @@ class Subs(Funsor):
         if sample_inputs is not None:
             if any(k in sample_inputs for k, v in self.subs):
                 raise NotImplementedError('TODO alpha-convert')
-        arg = self.arg.unscaled_sample(sampled_vars, sample_inputs)
-        return Subs(arg, self.subs)
+        subs_sampled_vars = set()
+        for name in sampled_vars:
+            if name in self.arg.inputs:
+                if any(name in v.inputs for k, v in self.subs.items()):
+                    raise ValueError("Cannot sample")
+                subs_sampled_vars.add(name)
+            else:
+                for k, v in self.subs.items():
+                    if name in v.inputs:
+                        subs_sampled_vars.add(k)
+        subs_sampled_vars = frozenset(subs_sampled_vars)
+        arg = self.arg.unscaled_sample(subs_sampled_vars, sample_inputs)
+        return Subs(arg, tuple(self.subs.items()))
 
 
 @lazy.register(Subs, Funsor, object)
