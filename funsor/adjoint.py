@@ -7,7 +7,7 @@ import torch
 import funsor.ops as ops
 from funsor.contract import Contract
 from funsor.interpreter import interpretation, reinterpret
-from funsor.ops import AssociativeOp, Op
+from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import Binary, Funsor, Number, Reduce, Variable, eager
 from funsor.torch import Tensor
@@ -90,7 +90,7 @@ def adjoint_reduce(out_adj, out, op, arg, reduced_vars):
         return {arg: out_adj + Binary(ops.safesub, out, arg)}
 
 
-@adjoint_ops.register(Contract, Funsor, Funsor, Op, Op, Funsor, Funsor, frozenset)
+@adjoint_ops.register(Contract, Funsor, Funsor, AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
 def adjoint_contract(out_adj, out, sum_op, prod_op, lhs, rhs, reduced_vars):
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)

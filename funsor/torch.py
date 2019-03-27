@@ -15,7 +15,7 @@ from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
-from funsor.ops import GetitemOp, Op
+from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager, to_data, to_funsor
 
@@ -419,7 +419,7 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
-@eager.register(Contract, ops.Op, ops.Op, Tensor, Tensor, frozenset)
+@eager.register(Contract, AssociativeOp, AssociativeOp, Tensor, Tensor, frozenset)
 @contractor
 def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
     if (sum_op, prod_op) == (ops.add, ops.mul):

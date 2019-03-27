@@ -52,11 +52,10 @@ def test_optimized_einsum(equation, backend, einsum_impl):
 
 @pytest.mark.parametrize("eqn1,eqn2", [
     ("ab,bc,cd->d", "de,ef,fg->"),
-    ("bc,ab,cd->d", "fg,de,ef->"),
 ])
 @pytest.mark.parametrize("optimize1", [False, True])
 @pytest.mark.parametrize("optimize2", [False, True])
-@pytest.mark.parametrize("backend1", ['torch'])
+@pytest.mark.parametrize("backend1", ['torch', 'pyro.ops.einsum.torch_log'])
 @pytest.mark.parametrize("backend2", ['torch', 'pyro.ops.einsum.torch_log'])
 @pytest.mark.parametrize("einsum_impl", [naive_einsum, naive_contract_einsum])
 def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, einsum_impl):

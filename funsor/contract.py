@@ -44,8 +44,8 @@ def contractor(fn):
 class Contract(Funsor):
 
     def __init__(self, sum_op, prod_op, lhs, rhs, reduced_vars):
-        assert isinstance(sum_op, ops.Op)
-        assert isinstance(prod_op, ops.Op)
+        assert isinstance(sum_op, ops.AssociativeOp)
+        assert isinstance(prod_op, ops.AssociativeOp)
         assert isinstance(lhs, Funsor)
         assert isinstance(rhs, Funsor)
         assert isinstance(reduced_vars, frozenset)
@@ -71,7 +71,7 @@ class Contract(Funsor):
         return Contract(self.sum_op, self.prod_op, lhs, rhs, self.reduced_vars)
 
 
-@eager.register(Contract, ops.Op, ops.Op, Funsor, Funsor, frozenset)
+@eager.register(Contract, ops.AssociativeOp, ops.AssociativeOp, Funsor, Funsor, frozenset)
 @contractor
 def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
     return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)

@@ -7,7 +7,7 @@ from six.moves import reduce
 
 from funsor.domains import find_domain
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
-from funsor.ops import DISTRIBUTIVE_OPS, UNITS, AssociativeOp, Op
+from funsor.ops import DISTRIBUTIVE_OPS, UNITS, AssociativeOp
 from funsor.terms import Binary, Funsor, Reduce, Subs, eager, lazy, to_funsor
 from funsor.contract import Contract, contractor
 
@@ -161,7 +161,7 @@ def optimize_reduction(op, arg, reduced_vars):
     return Contract(op, arg.op, arg, to_funsor(UNITS[arg.op]), reduced_vars)
 
 
-@optimize.register(Contract, Op, Op, Finitary, (Finitary, Funsor), frozenset)
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Finitary, (Finitary, Funsor), frozenset)
 def optimize_contract_finitary_funsor(sum_op, prod_op, lhs, rhs, reduced_vars):
 
     if prod_op is not lhs.op:
@@ -221,13 +221,13 @@ def remove_single_finitary(op, operands):
     return None
 
 
-@optimize.register(Contract, Op, Op, Funsor, Funsor, frozenset)
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
 @contractor
 def optimize_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
     return None
 
 
-@optimize.register(Contract, Op, Op, Funsor, Finitary, frozenset)
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Funsor, Finitary, frozenset)
 def optimize_contract_funsor_finitary(sum_op, prod_op, lhs, rhs, reduced_vars):
     return Contract(sum_op, prod_op, rhs, lhs, reduced_vars)
 
