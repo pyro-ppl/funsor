@@ -75,7 +75,7 @@ class Distribution(Funsor):
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
             return Number(0.)  # distributions are normalized
-        return super(Distribution, self).reduce(op, reduced_vars)
+        return super(Distribution, self).eager_reduce(op, reduced_vars)
 
     @classmethod
     def eager_log_prob(cls, **params):
@@ -164,6 +164,14 @@ def eager_delta(v, log_density, value):
     return funsor.delta.Delta(v.name, value, log_density)
 
 
+def LogNormal(loc, scale, value=None):
+    loc, scale, y = Normal._fill_defaults(loc, scale, value)
+    t = ops.exp
+    x = t.inv(y)
+    log_abs_det_jacobian = t.log_abs_det_jacobian(x, y)
+    return Normal(loc, scale, x) - log_abs_det_jacobian
+
+
 class Normal(Distribution):
     dist_class = dist.Normal
 
@@ -189,9 +197,9 @@ def eager_normal(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
-# Create a Gaussian from a ground observation.
-@eager.register(Normal, Variable, Tensor, Tensor)
+# Create a Gaussian from a ground prior or ground likelihood.
 @eager.register(Normal, Tensor, Tensor, Variable)
+@eager.register(Normal, Variable, Tensor, Tensor)
 def eager_normal(loc, scale, value):
     if isinstance(loc, Variable):
         loc, value = value, loc
@@ -204,6 +212,15 @@ def eager_normal(loc, scale, value):
     loc = loc.unsqueeze(-1)
     precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
     return Tensor(log_prob, int_inputs) + Gaussian(loc, precision, inputs)
+
+
+# Create a transformed Gaussian from a ground prior or ground likelihood.
+@eager.register(Normal, Tensor, Tensor, Funsor)
+@eager.register(Normal, Funsor, Tensor, Tensor)
+def eager_normal(loc, scale, value):
+    if not isinstance(loc, Tensor):
+        loc, value = value, loc
+    return Normal(loc, scale)(value=value)
 
 
 # Create a Gaussian from a noisy identity transform.
@@ -275,6 +292,7 @@ __all__ = [
     'Categorical',
     'Delta',
     'Distribution',
+    'LogNormal',
     'MultivariateNormal',
     'Normal',
 ]

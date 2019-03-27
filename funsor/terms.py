@@ -4,6 +4,7 @@ import functools
 import itertools
 import math
 import numbers
+import re
 from collections import Hashable, OrderedDict
 from weakref import WeakValueDictionary
 
@@ -155,7 +156,7 @@ class Funsor(object):
                 for x in arg:
                     x._pretty(lines, indent + 2)
             else:
-                lines.append((indent + 1, str(arg)))
+                lines.append((indent + 1, re.sub('\n\\s*', ' ', str(arg))))
 
     def pretty(self):
         lines = []
@@ -271,12 +272,13 @@ class Funsor(object):
     def unscaled_sample(self, sampled_vars, sample_inputs=None):
         """
         Internal method to draw an unscaled sample.
+        This should be overridden by subclasses.
         """
         assert self.output == reals()
         assert isinstance(sampled_vars, frozenset)
         if sampled_vars.isdisjoint(self.inputs):
             return self
-        raise NotImplementedError
+        raise TypeError("Cannot sample from a {}".format(type(self).__name__))
 
     def align(self, names):
         """
@@ -606,6 +608,24 @@ class Subs(Funsor):
         new_subs = tuple((k, v) for k, v in subs if k not in self.subs)
         subs = old_subs + new_subs
         return Subs(self.arg, subs) if subs else self.arg
+
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+        if sample_inputs is not None:
+            if any(k in sample_inputs for k, v in self.subs):
+                raise NotImplementedError('TODO alpha-convert')
+        subs_sampled_vars = set()
+        for name in sampled_vars:
+            if name in self.arg.inputs:
+                if any(name in v.inputs for k, v in self.subs.items()):
+                    raise ValueError("Cannot sample")
+                subs_sampled_vars.add(name)
+            else:
+                for k, v in self.subs.items():
+                    if name in v.inputs:
+                        subs_sampled_vars.add(k)
+        subs_sampled_vars = frozenset(subs_sampled_vars)
+        arg = self.arg.unscaled_sample(subs_sampled_vars, sample_inputs)
+        return Subs(arg, tuple(self.subs.items()))
 
 
 @lazy.register(Subs, Funsor, object)
@@ -952,6 +972,35 @@ def of_shape(*shape):
     per function arg.
     """
     return functools.partial(_of_shape, shape=shape)
+
+
+################################################################################
+# Register Ops
+################################################################################
+
+@ops.abs.register(Funsor)
+def _abs(x):
+    return Unary(ops.abs, x)
+
+
+@ops.sqrt.register(Funsor)
+def _sqrt(x):
+    return Unary(ops.sqrt, x)
+
+
+@ops.exp.register(Funsor)
+def _exp(x):
+    return Unary(ops.exp, x)
+
+
+@ops.log.register(Funsor)
+def _log(x):
+    return Unary(ops.log, x)
+
+
+@ops.log1p.register(Funsor)
+def _log1p(x):
+    return Unary(ops.log1p, x)
 
 
 __all__ = [

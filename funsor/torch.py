@@ -468,11 +468,8 @@ def materialize(x):
         return x
     subs = []
     for name, domain in x.inputs.items():
-        if not isinstance(domain.dtype, integer_types):
-            raise ValueError('materialize() requires integer free variables but found '
-                             '"{}" of domain {}'.format(name, domain))
-        assert not domain.shape
-        subs.append((name, arange(name, domain.dtype)))
+        if isinstance(domain.dtype, integer_types):
+            subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
     return Subs(x, subs)
 
