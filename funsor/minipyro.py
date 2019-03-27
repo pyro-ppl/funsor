@@ -13,9 +13,10 @@ found at examples/minipyro.py.
 """
 from __future__ import absolute_import, division, print_function
 
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import torch
+from six.moves import reduce
 
 import funsor
 
@@ -146,7 +147,7 @@ class PlateMessenger(Messenger):
                     data = value
                     for dim, size in enumerate(batch_shape):
                         if size == 1:
-                            data = data.squeeze(dim)
+                            data = data.squeeze(dim - value.dim())
                         else:
                             name = msg["cond_indep_stack"][dim - len(batch_shape)]
                             inputs[name] = funsor.bint(size)
@@ -285,9 +286,10 @@ class SVI(object):
         with trace() as param_capture:
             # We use block here to allow tracing to record parameters only.
             with block(hide_fn=lambda msg: msg["type"] == "sample"):
-                loss = self.loss(self.model, self.guide, *args, **kwargs)
+                with funsor.montecarlo.monte_carlo_interpretation():
+                    loss = self.loss(self.model, self.guide, *args, **kwargs)
         # Differentiate the loss.
-        loss.backward()
+        loss.data.backward()
         # Grab all the parameters from the trace.
         params = [site["value"] for site in param_capture.values()]
         # Take a step w.r.t. each parameter in params.
@@ -301,32 +303,50 @@ class SVI(object):
 # This is a basic implementation of the Evidence Lower Bound, which is the
 # fundamental objective in Variational Inference.
 # See http://pyro.ai/examples/svi_part_i.html for details.
-# This implementation has various limitations (for example it only supports
-# random variablbes with reparameterized samplers), but all the ELBO
-# implementations in Pyro share the same basic logic.
+# This implementation is closest to TraceEnum_ELBO insofar as it uses
+# a Dice estimator with coarse plate-based dependency structure.
 def elbo(model, guide, *args, **kwargs):
     with log_joint() as guide_log_joint:
         guide(*args, **kwargs)
     with log_joint() as model_log_joint:
         model(*args, **kwargs)
     plates = frozenset(guide_log_joint.plates | model_log_joint.plates)
-    eliminate = frozenset().update(guide_log_joint.log_factors(),
-                                   model_log_joint.log_factors())
-    factors = []
+
+    # Accumulate costs from model and guide and log_probs from guide.
+    # Cf. pyro.infer.traceenum_elbo._compute_dice_elbo()
+    # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/traceenum_elbo.py#L119
+    costs = defaultdict(list)
+    log_probs = defaultdict(list)
     for p in model_log_joint.log_factors.values():
-        factors.append(p)
+        ordinal = plates.intersection(p.inputs)
+        costs[ordinal].append(p)
     for q in guide_log_joint.log_factors.values():
-        factors.append(-q)
-        factors.append(q.sample(eliminate)).exp()
+        ordinal = plates.intersection(p.inputs)
+        costs[ordinal].append(-q)
+        log_probs[ordinal].append(q)
 
-    elbo = funsor.sum_product.sum_product(
-            sum_op=funsor.ops.logaddexp,
-            prod_op=funsor.ops.add,
-            factors=factors,
-            plates=plates,
-            eliminate=eliminate)
+    # Compute expected cost.
+    # Cf. pyro.infer.util.Dice.compute_expectation()
+    # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/util.py#L212
+    elbo = 0.
+    for ordinal, cost_terms in costs.items():
+        # Compute upstream Dice probability.
+        # Cf. pyro.infer.util.Dice._get_log_factors()
+        log_factors = []
+        for other_ordinal, terms in log_probs.items():
+            if other_ordinal <= ordinal:  # upstream
+                log_factors.extend(terms)
+        log_prob = reduce(funsor.ops.add, log_factors)
 
-    return -elbo
+        # Aggregate prob * cost terms.
+        # This simplified form does not perform variable elimination.
+        cost = reduce(funsor.ops.add, cost_terms)
+        reduced_vars = frozenset(log_prob.inputs).union(cost.inputs)
+        elbo += funsor.Integrate(log_prob, cost, reduced_vars)
+
+    loss = -elbo
+    assert isinstance(loss, funsor.torch.Tensor), loss.pretty()
+    return loss
 
 
 def Trace_ELBO(*args, **kwargs):
