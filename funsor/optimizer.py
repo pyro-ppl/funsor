@@ -5,11 +5,13 @@ import collections
 from opt_einsum.paths import greedy
 from six.moves import reduce
 
+import funsor.ops as ops
 from funsor.domains import find_domain
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, UNITS, AssociativeOp
-from funsor.terms import Binary, Funsor, Reduce, Subs, eager, lazy, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Subs, Unary, eager, lazy, to_funsor
 from funsor.contract import Contract, contractor
+from funsor.integrate import Integrate
 
 
 class Finitary(Funsor):
@@ -221,10 +223,23 @@ def remove_single_finitary(op, operands):
     return None
 
 
+@optimize.register(Unary, ops.Op, Finitary)
+def optimize_exp_finitary(op, arg):
+    # useful for handling Integrate...
+    if op is not ops.exp or arg.op is not ops.add:
+        return None
+    return Finitary(ops.mul, tuple(operand.exp() for operand in arg.operands))
+
+
 @optimize.register(Contract, AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
 @contractor
 def optimize_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
     return None
+
+
+@optimize.register(Integrate, Funsor, Funsor, frozenset)
+def optimize_integrate(log_measure, integrand, reduced_vars):
+    return Contract(ops.add, ops.mul, log_measure.exp(), integrand, reduced_vars)
 
 
 @optimize.register(Contract, AssociativeOp, AssociativeOp, Funsor, Finitary, frozenset)
