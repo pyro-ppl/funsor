@@ -300,6 +300,20 @@ class SVI(object):
         return loss.item()
 
 
+# TODO(eb8680) Replace this with funsor.Expectation.
+def Expectation(log_probs, costs, sum_vars, prod_vars):
+    probs = [p.exp() for p in log_probs]
+    result = 0
+    for cost in costs:
+        result += funsor.sum_product.sum_product(
+                sum_op=funsor.ops.add,
+                prod_op=funsor.ops.mul,
+                factors=probs + [cost],
+                plates=prod_vars,
+                eliminate=prod_vars | sum_vars)
+    return result
+
+
 # This is a basic implementation of the Evidence Lower Bound, which is the
 # fundamental objective in Variational Inference.
 # See http://pyro.ai/examples/svi_part_i.html for details.
@@ -318,32 +332,20 @@ def elbo(model, guide, *args, **kwargs):
     # Cf. pyro.infer.traceenum_elbo._compute_dice_elbo()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/traceenum_elbo.py#L119
     costs = []
-    probs = []
     log_probs = []
     for p in model_log_joint.log_factors.values():
         costs.append(p)
     for q in guide_log_joint.log_factors.values():
         costs.append(-q)
-        probs.append(q.exp())
         log_probs.append(q)
 
     # Compute expected cost.
     # Cf. pyro.infer.util.Dice.compute_expectation()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/util.py#L212
-    elbo = 0.
-    for cost in costs:
-        elbo += funsor.sum_product.sum_product(
-                sum_op=funsor.ops.add,
-                prod_op=funsor.ops.mul,
-                factors=probs + [cost],
-                plates=plates,
-                eliminate=plates | sum_vars)
-
-    # TODO(eb8680)
-    # elbo = funsor.Expectation(tuple(log_probs),
-    #                           tuple(costs),
-    #                           sum_vars=sum_vars,
-    #                           prod_vars=plates)
+    elbo = Expectation(tuple(log_probs),
+                       tuple(costs),
+                       sum_vars=sum_vars,
+                       prod_vars=plates)
 
     loss = -elbo
     assert isinstance(loss, funsor.torch.Tensor), loss.pretty()
