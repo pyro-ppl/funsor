@@ -8,7 +8,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, reals
 from funsor.integrate import Integrate, integrator
 from funsor.interpreter import debug_logged
-from funsor.ops import Op, TransformOp
+from funsor.ops import AddOp, SubOp, TransformOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, to_funsor
 
@@ -96,22 +96,29 @@ class Delta(Funsor):
         return None  # defer to default implementation
 
 
-@eager.register(Binary, Op, Delta, (Funsor, Delta, Align))
-def eager_binary(op, lhs, rhs):
-    if op is ops.add or op is ops.sub:
-        if lhs.name in rhs.inputs:
-            rhs = rhs(**{lhs.name: lhs.point})
-            return op(lhs, rhs)
+@eager.register(Binary, AddOp, Delta, (Funsor, Align))
+def eager_add(op, lhs, rhs):
+    if lhs.name in rhs.inputs:
+        rhs = rhs(**{lhs.name: lhs.point})
+        return op(lhs, rhs)
 
     return None  # defer to default implementation
 
 
-@eager.register(Binary, Op, (Funsor, Align), Delta)
-def eager_binary(op, lhs, rhs):
-    if op is ops.add:
-        if rhs.name in lhs.inputs:
-            lhs = lhs(**{rhs.name: rhs.point})
-            return op(lhs, rhs)
+@eager.register(Binary, SubOp, Delta, (Funsor, Align))
+def eager_sub(op, lhs, rhs):
+    if lhs.name in rhs.inputs:
+        rhs = rhs(**{lhs.name: lhs.point})
+        return op(lhs, rhs)
+
+    return None  # defer to default implementation
+
+
+@eager.register(Binary, AddOp, (Funsor, Align), Delta)
+def eager_add(op, lhs, rhs):
+    if rhs.name in lhs.inputs:
+        lhs = lhs(**{rhs.name: rhs.point})
+        return op(lhs, rhs)
 
     return None  # defer to default implementation
 
