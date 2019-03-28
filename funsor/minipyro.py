@@ -13,10 +13,9 @@ found at examples/minipyro.py.
 """
 from __future__ import absolute_import, division, print_function
 
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 
 import torch
-from six.moves import reduce
 
 import funsor
 
@@ -312,38 +311,31 @@ def elbo(model, guide, *args, **kwargs):
     with log_joint() as model_log_joint:
         model(*args, **kwargs)
     plates = frozenset(guide_log_joint.plates | model_log_joint.plates)
+    eliminate = plates.union(guide_log_joint.log_factors,
+                             model_log_joint.log_factors)
 
     # Accumulate costs from model and guide and log_probs from guide.
     # Cf. pyro.infer.traceenum_elbo._compute_dice_elbo()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/traceenum_elbo.py#L119
-    costs = defaultdict(list)
-    log_probs = defaultdict(list)
+    costs = []
+    probs = []
     for p in model_log_joint.log_factors.values():
-        ordinal = plates.intersection(p.inputs)
-        costs[ordinal].append(p)
+        costs.append(p)
     for q in guide_log_joint.log_factors.values():
-        ordinal = plates.intersection(p.inputs)
-        costs[ordinal].append(-q)
-        log_probs[ordinal].append(q)
+        costs.append(-q)
+        probs.append(q.exp())
 
     # Compute expected cost.
     # Cf. pyro.infer.util.Dice.compute_expectation()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/util.py#L212
     elbo = 0.
-    for ordinal, cost_terms in costs.items():
-        # Compute upstream Dice probability.
-        # Cf. pyro.infer.util.Dice._get_log_factors()
-        log_factors = []
-        for other_ordinal, terms in log_probs.items():
-            if other_ordinal <= ordinal:  # upstream
-                log_factors.extend(terms)
-        log_prob = reduce(funsor.ops.add, log_factors)
-
-        # Aggregate prob * cost terms.
-        # This simplified form does not perform variable elimination.
-        cost = reduce(funsor.ops.add, cost_terms)
-        reduced_vars = frozenset(log_prob.inputs).union(cost.inputs)
-        elbo += funsor.Integrate(log_prob, cost, reduced_vars)
+    for cost in costs:
+        elbo += funsor.sum_product.sum_product(
+                sum_op=funsor.ops.add,
+                prod_op=funsor.ops.mul,
+                factors=probs + [cost],
+                plates=plates,
+                eliminate=eliminate)
 
     loss = -elbo
     assert isinstance(loss, funsor.torch.Tensor), loss.pretty()
