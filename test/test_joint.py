@@ -4,6 +4,7 @@ from collections import OrderedDict
 
 import pytest
 import torch
+from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.delta import Delta
@@ -132,7 +133,7 @@ def test_smoke(expr, expected_type):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-def test_reduce(int_inputs, real_inputs):
+def test_reduce_logaddexp(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
@@ -154,7 +155,7 @@ def test_reduce(int_inputs, real_inputs):
     assert_close(actual, expected)
 
 
-def test_reduce_deltas_lazy():
+def test_reduce_logaddexp_deltas_lazy():
     a = Delta('a', Tensor(torch.randn(3, 2), OrderedDict(i=bint(3))))
     b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
     x = a + b
@@ -167,7 +168,7 @@ def test_reduce_deltas_lazy():
     assert_close(x.reduce(ops.logaddexp), y.reduce(ops.logaddexp))
 
 
-def test_reduce_deltas_discrete_lazy():
+def test_reduce_logaddexp_deltas_discrete_lazy():
     a = Delta('a', Tensor(torch.randn(3, 2), OrderedDict(i=bint(3))))
     b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
     c = Tensor(torch.randn(3), OrderedDict(i=bint(3)))
@@ -181,7 +182,7 @@ def test_reduce_deltas_discrete_lazy():
     assert_close(x.reduce(ops.logaddexp), y.reduce(ops.logaddexp))
 
 
-def test_reduce_gaussian_lazy():
+def test_reduce_logaddexp_gaussian_lazy():
     a = random_gaussian(OrderedDict(i=bint(3), a=reals(2)))
     b = random_tensor(OrderedDict(i=bint(3), b=bint(2)))
     x = a + b
@@ -192,3 +193,22 @@ def test_reduce_gaussian_lazy():
     assert isinstance(y, Reduce)
     assert set(y.inputs) == {'a', 'b'}
     assert_close(x.reduce(ops.logaddexp), y.reduce(ops.logaddexp))
+
+
+@pytest.mark.parametrize('inputs', [
+    OrderedDict([('i', bint(2)), ('x', reals())]),
+    OrderedDict([('i', bint(3)), ('x', reals())]),
+    OrderedDict([('i', bint(2)), ('x', reals(2))]),
+    OrderedDict([('i', bint(2)), ('x', reals()), ('y', reals())]),
+    OrderedDict([('i', bint(3)), ('j', bint(4)), ('x', reals(2))]),
+    OrderedDict([('j', bint(2)), ('i', bint(3)), ('k', bint(2)), ('x', reals(2))]),
+], ids=id_from_inputs)
+def test_reduce_add(inputs):
+    int_inputs = OrderedDict((k, d) for k, d in inputs.items() if d.dtype != 'real')
+    x = random_gaussian(inputs) + random_tensor(int_inputs)
+    assert isinstance(x, Joint)
+    actual = x.reduce(ops.add, 'i')
+
+    xs = [x(i=i) for i in range(x.inputs['i'].dtype)]
+    expected = reduce(ops.add, xs)
+    assert_close(actual, expected, atol=1e-3, rtol=1e-4)
