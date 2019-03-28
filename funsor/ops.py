@@ -228,6 +228,12 @@ DISTRIBUTIVE_OPS = frozenset([
 ])
 
 
+UNITS = {
+    mul: 1.,
+    add: 0.,
+}
+
+
 PRODUCT_INVERSES = {
     mul: safediv,
     add: safesub,
@@ -242,6 +248,7 @@ __all__ = [
     'NegOp',
     'Op',
     'PRODUCT_INVERSES',
+    'UNITS',
     'SubOp',
     'abs',
     'add',
