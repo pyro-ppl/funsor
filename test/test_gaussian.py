@@ -19,13 +19,16 @@ from funsor.torch import Tensor
 
 
 @pytest.mark.parametrize('expr,expected_type', [
+    ('-g1', Gaussian),
     ('g1 + 1', Joint),
     ('g1 - 1', Joint),
     ('1 + g1', Joint),
     ('g1 + shift', Joint),
-    ('g1 - shift', Joint),
+    ('g1 + shift', Joint),
     ('shift + g1', Joint),
+    ('shift - g1', Joint),
     ('g1 + g1', Joint),
+    ('(g1 + g2 + g2) - g2', Joint),
     ('g1(i=i0)', Gaussian),
     ('g2(i=i0)', Gaussian),
     ('g1(i=i0) + g2(i=i0)', Joint),

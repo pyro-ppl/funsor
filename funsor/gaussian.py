@@ -1,8 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
 import math
+import sys
 from collections import OrderedDict
 
+import six
 import torch
 from pyro.distributions.util import broadcast_shape
 from six import add_metaclass, integer_types
@@ -13,8 +15,8 @@ from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
-from funsor.ops import AddOp
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager
+from funsor.ops import AddOp, NegOp, SubOp
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -58,6 +60,24 @@ def _trace_mm(x, y):
     assert y.dim() >= 2
     xy = x * y
     return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
+
+
+def _sym_solve_mv(mat, vec):
+    r"""
+    Computes ``mat \ vec`` assuming mat is symmetric and usually positive definite,
+    but falling back to general pseudoinverse if positive definiteness fails.
+    """
+    try:
+        # Attempt to use stable positive definite math.
+        tri = torch.inverse(torch.cholesky(mat))
+        return _mv(tri.transpose(-1, -2), _mv(tri, vec))
+    except RuntimeError as e:
+        if 'not positive definite' not in e.message:
+            _, exc_value, traceback = sys.exc_info()
+            six.reraise(RuntimeError, e, traceback)
+
+    # Fall back to pseudoinverse.
+    return _mv(torch.pinverse(mat), vec)
 
 
 def _compute_offsets(inputs):
@@ -356,11 +376,22 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     # Fuse aligned Gaussians.
     precision_loc = _mv(lhs_precision, lhs_loc) + _mv(rhs_precision, rhs_loc)
     precision = lhs_precision + rhs_precision
-    scale_tri = torch.inverse(torch.cholesky(precision)).transpose(-1, -2)
-    loc = _mv(scale_tri, _mv(scale_tri.transpose(-1, -2), precision_loc))
+    loc = _sym_solve_mv(precision, precision_loc)
     quadratic_term = _vmv(lhs_precision, loc - lhs_loc) + _vmv(rhs_precision, loc - rhs_loc)
     likelihood = Tensor(-0.5 * quadratic_term, int_inputs)
     return likelihood + Gaussian(loc, precision, inputs)
+
+
+@eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
+@eager.register(Binary, SubOp, (Funsor, Align), Gaussian)
+def eager_sub(op, lhs, rhs):
+    return lhs + -rhs
+
+
+@eager.register(Unary, NegOp, Gaussian)
+def eager_neg(op, arg):
+    precision = -arg.precision
+    return Gaussian(arg.loc, precision, arg.inputs)
 
 
 @eager.register(Integrate, Gaussian, Variable, frozenset)
