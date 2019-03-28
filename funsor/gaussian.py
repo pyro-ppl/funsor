@@ -1,10 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
 import math
-import sys
+import warnings
 from collections import OrderedDict
 
-import six
 import torch
 from pyro.distributions.util import broadcast_shape
 from six import add_metaclass, integer_types
@@ -72,11 +71,15 @@ def _sym_solve_mv(mat, vec):
         tri = torch.inverse(torch.cholesky(mat))
         return _mv(tri.transpose(-1, -2), _mv(tri, vec))
     except RuntimeError as e:
-        if 'not positive definite' not in e.message:
-            _, exc_value, traceback = sys.exc_info()
-            six.reraise(RuntimeError, e, traceback)
+        warnings.warn(e.message, RuntimeWarning)
 
     # Fall back to pseudoinverse.
+    if mat.size(-1) == 1:
+        mat = mat.squeeze(-1)
+        mat, vec = torch.broadcast_tensors(mat, vec)
+        result = vec / mat
+        result[(mat != 0) == 0] = 0
+        return result
     return _mv(torch.pinverse(mat), vec)
 
 
@@ -270,6 +273,9 @@ class Gaussian(Funsor):
             assert result.output == reals()
             return Subs(result, lazy_subs)
 
+        # Perform a partial substution of a subset of real variables, resulting in a Joint.
+        # See "The Matrix Cookbook" (November 15, 2012) ss. 8.1.3 eq. 353.
+        # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
         raise NotImplementedError('TODO implement partial substitution of real variables')
 
     @lazy_property
@@ -322,7 +328,7 @@ class Gaussian(Funsor):
                     raise ValueError("Cannot sum along a real dimension: {}".format(repr(v)))
 
             # Fuse Gaussians along a plate. Compare to eager_add_gaussian_gaussian().
-            old_ints = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
+            old_ints = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
             new_ints = OrderedDict((k, v) for k, v in old_ints.items() if k not in reduced_vars)
             inputs = OrderedDict((k, v) for k, v in self.inputs.items() if k not in reduced_vars)
 
@@ -333,7 +339,7 @@ class Gaussian(Funsor):
             expanded_loc = align_tensor(old_ints, loc)
             quadratic_term = Tensor(_vmv(self.precision, expanded_loc - self.loc),
                                     old_ints).reduce(ops.add, reduced_vars)
-            likelihood = Tensor(-0.5 * quadratic_term, new_ints)
+            likelihood = -0.5 * quadratic_term
             return likelihood + Gaussian(loc.data, precision.data, inputs)
 
         return None  # defer to default implementation
