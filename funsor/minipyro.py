@@ -337,7 +337,7 @@ def elbo(model, guide, *args, **kwargs):
                 prod_op=funsor.ops.mul,
                 factors=probs + [cost],
                 plates=plates,
-                eliminate=plate + sum_vars)
+                eliminate=plates | sum_vars)
 
     # TODO(eb8680)
     # elbo = funsor.Expectation(tuple(log_probs),
