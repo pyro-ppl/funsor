@@ -311,19 +311,21 @@ def elbo(model, guide, *args, **kwargs):
     with log_joint() as model_log_joint:
         model(*args, **kwargs)
     plates = frozenset(guide_log_joint.plates | model_log_joint.plates)
-    eliminate = plates.union(guide_log_joint.log_factors,
-                             model_log_joint.log_factors)
+    sum_vars = frozenset().union(guide_log_joint.log_factors,
+                                 model_log_joint.log_factors)
 
     # Accumulate costs from model and guide and log_probs from guide.
     # Cf. pyro.infer.traceenum_elbo._compute_dice_elbo()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/traceenum_elbo.py#L119
     costs = []
     probs = []
+    log_probs = []
     for p in model_log_joint.log_factors.values():
         costs.append(p)
     for q in guide_log_joint.log_factors.values():
         costs.append(-q)
         probs.append(q.exp())
+        log_probs.append(q)
 
     # Compute expected cost.
     # Cf. pyro.infer.util.Dice.compute_expectation()
@@ -335,7 +337,13 @@ def elbo(model, guide, *args, **kwargs):
                 prod_op=funsor.ops.mul,
                 factors=probs + [cost],
                 plates=plates,
-                eliminate=eliminate)
+                eliminate=plate + sum_vars)
+
+    # TODO(eb8680)
+    # elbo = funsor.Expectation(tuple(log_probs),
+    #                           tuple(costs),
+    #                           sum_vars=sum_vars,
+    #                           prod_vars=plates)
 
     loss = -elbo
     assert isinstance(loss, funsor.torch.Tensor), loss.pretty()
