@@ -90,7 +90,8 @@ class log_joint(Messenger):
     def process_message(self, msg):
         if msg["type"] != "sample":
             return None
-        msg["value"] = funsor.Variable(msg["name"], msg["fn"].inputs["value"])
+        if msg["value"] is None:
+            msg["value"] = funsor.Variable(msg["name"], msg["fn"].inputs["value"])
 
     def postprocess_message(self, msg):
         if msg["type"] != "sample":
