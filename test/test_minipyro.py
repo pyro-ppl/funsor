@@ -50,7 +50,7 @@ def assert_warning(model, guide, elbo):
             print(warning)
 
 
-@pytest.mark.parametrize('backend', ["pyro", "minipyro", "funsor"])
+@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_nonempty_model_empty_guide_ok(backend):
 
     def model(data):
@@ -66,17 +66,20 @@ def test_nonempty_model_empty_guide_ok(backend):
         assert_ok(model, guide, elbo, data)
 
 
-@pytest.mark.parametrize('backend', ["pyro", "minipyro", "funsor"])
+@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_plate_ok(backend):
+    data = torch.randn(10)
 
     def model():
+        locs = pyro.param("locs", torch.tensor([0.2, 0.3, 0.5]))
         p = torch.tensor([0.2, 0.3, 0.5])
-        with pyro.plate("plate", 10, dim=-1):
-            pyro.sample("x", dist.Categorical(p))
+        with pyro.plate("plate", len(data), dim=-1):
+            x = pyro.sample("x", dist.Categorical(p))
+            pyro.sample("obs", dist.Normal(locs[x], 1.), obs=data)
 
     def guide():
         p = pyro.param("p", torch.tensor([0.5, 0.3, 0.2]))
-        with pyro.plate("plate", 10, dim=-1):
+        with pyro.plate("plate", len(data), dim=-1):
             pyro.sample("x", dist.Categorical(p))
 
     with pyro_backend(backend):
@@ -84,7 +87,7 @@ def test_plate_ok(backend):
         assert_ok(model, guide, elbo)
 
 
-@pytest.mark.parametrize('backend', [
+@pytest.mark.parametrize("backend", [
     "pyro",
     xfail_param("funsor", reason="missing patterns"),
 ])
@@ -104,7 +107,7 @@ def test_mean_field_ok(backend):
         assert_ok(model, guide, elbo)
 
 
-@pytest.mark.parametrize('backend', [
+@pytest.mark.parametrize("backend", [
     "pyro",
     xfail_param("funsor", reason="missing patterns"),
 ])

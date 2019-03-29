@@ -230,7 +230,7 @@ def param(name, init_value=None):
 
     # ...and use apply_stack to send it to the Messengers
     msg = apply_stack(initial_msg)
-    return msg["value"]
+    return funsor.to_funsor(msg["value"])
 
 
 # boilerplate to match the syntax of actual pyro.plate:
