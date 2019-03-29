@@ -359,3 +359,9 @@ def elbo(model, guide, *args, **kwargs):
 # This is a wrapper for compatibility with full Pyro.
 def Trace_ELBO(*args, **kwargs):
     return elbo
+
+
+# This is a wrapper for compatibility with full Pyro.
+def TraceMeanField_ELBO(*args, **kwargs):
+    # TODO Use exact KLs where possible.
+    return elbo
