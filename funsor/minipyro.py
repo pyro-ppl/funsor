@@ -13,7 +13,7 @@ found at examples/minipyro.py.
 """
 from __future__ import absolute_import, division, print_function
 
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 
 import torch
 
@@ -32,10 +32,6 @@ PARAM_STORE = {}
 
 def get_param_store():
     return PARAM_STORE
-
-
-def clear_param_store():
-    PARAM_STORE.clear()
 
 
 # The base effect handler class (called Messenger here for consistency with Pyro).
@@ -83,36 +79,6 @@ class trace(Messenger):
         return self.trace
 
 
-class log_joint(Messenger):
-    def __enter__(self):
-        super(log_joint, self).__enter__()
-        self.log_factors = OrderedDict()
-        self.plates = set()
-        return self
-
-    def process_message(self, msg):
-        if msg["type"] != "sample":
-            return None
-        if msg["value"] is None:
-            msg["value"] = funsor.Variable(msg["name"], msg["fn"].inputs["value"])
-
-    def postprocess_message(self, msg):
-        if msg["type"] != "sample":
-            return None
-        assert msg["name"] not in self.log_factors, "all sites must have unique names"
-        log_prob = msg["fn"](value=msg["value"])
-        self.log_factors[msg["name"]] = log_prob
-        self.plates.update(msg["cond_indep_stack"].values())  # maps dim to name
-
-    def contract(self):
-        return funsor.sum_product.sum_product(
-            sum_op=funsor.ops.logaddexp,
-            prod_op=funsor.ops.add,
-            factors=list(self.log_factors.values()),
-            plates=frozenset(self.plates),
-            eliminate=frozenset(self.log_factors.keys()))
-
-
 # block allows the selective application of effect handlers to different parts of a model.
 # Sites hidden by block will only have the handlers below block on the PYRO_STACK applied,
 # allowing inference or other effectful computations to be nested inside models.
@@ -126,48 +92,74 @@ class block(Messenger):
             msg["stop"] = True
 
 
-# This limited implementation of PlateMessenger only implements broadcasting.
+# Conditional independence is recorded as a plate context at each site.
+CondIndepStackFrame = namedtuple("CondIndepStackFrame", ["name", "size", "dim"])
+
+
+# This implementation of vectorized PlateMessenger records a cond_indep_stack
+# which is later used to convert torch.Tensors to funsor.torch.Tensors.
 class PlateMessenger(Messenger):
-    def __init__(self, fn, size, dim, name):
+    def __init__(self, fn, name, size, dim):
         assert dim < 0
-        self.size = size
-        self.dim = dim
-        self.name = name
+        self.frame = CondIndepStackFrame(name, size, dim)
         super(PlateMessenger, self).__init__(fn)
 
     def process_message(self, msg):
         if msg["type"] == "sample":
-            assert self.dim not in msg["cond_indep_stack"]
-            msg["cond_indep_stack"][self.dim] = self.name
+            assert self.frame.dim not in msg["cond_indep_stack"]
+            msg["cond_indep_stack"][self.frame.dim] = self.frame
 
-            if msg["value"] is not None:
-                value = msg["value"]
-                if not isinstance(value, funsor.Funsor):
-                    assert isinstance(value, torch.Tensor)
-                    output = msg["fn"].inputs["value"]
-                    event_shape = output.shape
-                    batch_shape = value.shape[:value.dim() - len(event_shape)]
-                    inputs = OrderedDict()
-                    data = value
-                    for dim, size in enumerate(batch_shape):
-                        if size == 1:
-                            data = data.squeeze(dim - value.dim())
-                        else:
-                            name = msg["cond_indep_stack"][dim - len(batch_shape)]
-                            inputs[name] = funsor.bint(size)
-                    value = funsor.torch.Tensor(data, inputs, output.dtype)
-                    assert value.output == output
-                    msg["value"] = value
 
-            # TODO expand function
-            # batch_shape = msg["fn"].batch_shape
-            # if len(batch_shape) < -self.dim or batch_shape[self.dim] != self.size:
-            #     batch_shape = [1] * (-self.dim - len(batch_shape)) + list(batch_shape)
-            #     batch_shape[self.dim] = self.size
-            #     msg["fn"] = msg["fn"].expand(torch.Size(batch_shape))
+# This converts raw torch.Tensors to funsor.Funsors with .inputs and .output
+# based on information in msg["cond_indep_stack"] and msg["fn"].
+def tensor_to_funsor(value, cond_indep_stack, output):
+    assert isinstance(value, torch.Tensor)
+    event_shape = output.shape
+    batch_shape = value.shape[:value.dim() - len(event_shape)]
+    inputs = OrderedDict()
+    data = value
+    for dim, size in enumerate(batch_shape):
+        if size == 1:
+            data = data.squeeze(dim - value.dim())
+        else:
+            frame = cond_indep_stack[dim - len(batch_shape)]
+            assert size == frame.size, (size, frame)
+            inputs[frame.name] = funsor.bint(size)
+    value = funsor.torch.Tensor(data, inputs, output.dtype)
+    assert value.output == output
+    return value
 
-    def __iter__(self):
-        return range(self.size)
+
+# The log_joint messenger is the main way of recording log probabilities.
+# This is roughly the Funsor equivlant to pyro.poutine.trace.
+class log_joint(Messenger):
+    def __enter__(self):
+        super(log_joint, self).__enter__()
+        self.log_factors = OrderedDict()  # maps site name to log_prob factor
+        self.plates = set()
+        return self
+
+    def process_message(self, msg):
+        if msg["type"] == "sample":
+            if msg["value"] is None:
+                # Create a delayed sample.
+                msg["value"] = funsor.Variable(msg["name"], msg["fn"].inputs["value"])
+            elif not isinstance(msg["value"], funsor.Funsor):
+                # Convert Tensors to Funsors.
+                output = msg["fn"].inputs["value"]
+                msg["value"] = tensor_to_funsor(msg["value"], msg["cond_indep_stack"], output)
+
+    def postprocess_message(self, msg):
+        if msg["type"] == "sample":
+            assert msg["name"] not in self.log_factors, "all sites must have unique names"
+            log_prob = msg["fn"](value=msg["value"])
+            # Broadcast, similar to torch.distributions.Distribution.expand().
+            for frame in msg["cond_indep_stack"].values():
+                if frame.name not in log_prob.inputs:
+                    inputs = OrderedDict([(frame.name, funsor.bint(frame.size))])
+                    log_prob += funsor.torch.Tensor(torch.zeros(frame.size), inputs)
+            self.log_factors[msg["name"]] = log_prob
+            self.plates.update(f.name for f in msg["cond_indep_stack"].values())
 
 
 # apply_stack is called by pyro.sample and pyro.param.
@@ -243,7 +235,7 @@ def param(name, init_value=None):
 
 # boilerplate to match the syntax of actual pyro.plate:
 def plate(name, size, dim):
-    return PlateMessenger(fn=None, size=size, dim=dim, name=name)
+    return PlateMessenger(fn=None, name=name, size=size, dim=dim)
 
 
 # This is a thin wrapper around the `torch.optim.Adam` class that
@@ -321,16 +313,12 @@ def Expectation(log_probs, costs, sum_vars, prod_vars):
 # This is a basic implementation of the Evidence Lower Bound, which is the
 # fundamental objective in Variational Inference.
 # See http://pyro.ai/examples/svi_part_i.html for details.
-# This implementation is closest to TraceEnum_ELBO insofar as it uses
-# a Dice estimator with coarse plate-based dependency structure.
+# This implementation uses a Dice estimator similar to TraceEnum_ELBO.
 def elbo(model, guide, *args, **kwargs):
     with log_joint() as guide_log_joint:
         guide(*args, **kwargs)
     with log_joint() as model_log_joint:
         model(*args, **kwargs)
-    plates = frozenset(guide_log_joint.plates | model_log_joint.plates)
-    sum_vars = frozenset().union(guide_log_joint.log_factors,
-                                 model_log_joint.log_factors)
 
     # Accumulate costs from model and guide and log_probs from guide.
     # Cf. pyro.infer.traceenum_elbo._compute_dice_elbo()
@@ -346,12 +334,16 @@ def elbo(model, guide, *args, **kwargs):
     # Compute expected cost.
     # Cf. pyro.infer.util.Dice.compute_expectation()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/util.py#L212
+    plates = frozenset(guide_log_joint.plates | model_log_joint.plates)
+    sum_vars = frozenset().union(guide_log_joint.log_factors,
+                                 model_log_joint.log_factors)
     elbo = Expectation(tuple(log_probs),
                        tuple(costs),
                        sum_vars=sum_vars,
                        prod_vars=plates)
 
     loss = -elbo
+    assert not loss.inputs
     assert isinstance(loss, funsor.torch.Tensor), loss.pretty()
     return loss
 
@@ -361,7 +353,6 @@ def Trace_ELBO(*args, **kwargs):
     return elbo
 
 
-# This is a wrapper for compatibility with full Pyro.
 def TraceMeanField_ELBO(*args, **kwargs):
     # TODO Use exact KLs where possible.
     return elbo

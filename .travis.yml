@@ -19,7 +19,7 @@ install:
       fi
 
     # Remove after public release of https://github.com/pyro-ppl/pyro/pull/1794
-    - pip install https://github.com/pyro-ppl/pyro/archive/minipyro-compat.zip
+    - pip install https://github.com/pyro-ppl/pyro/archive/dev.zip
 
     - pip install .[test]
     - pip freeze
