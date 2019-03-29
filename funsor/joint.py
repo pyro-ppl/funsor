@@ -129,6 +129,9 @@ class Joint(Funsor):
         return None  # defer to default implementation
 
     def unscaled_sample(self, sampled_vars, sample_inputs=None):
+        if sample_inputs is None:
+            sample_inputs = OrderedDict()
+
         discrete_vars = sampled_vars.intersection(self.discrete.inputs)
         gaussian_vars = frozenset(k for k, v in self.gaussian.inputs.items()
                                   if k in sampled_vars if v.dtype == 'real')
@@ -137,7 +140,12 @@ class Joint(Funsor):
             discrete = result.discrete.unscaled_sample(discrete_vars, sample_inputs)
             result = Joint(result.deltas, gaussian=result.gaussian) + discrete
         if gaussian_vars:
-            gaussian = result.gaussian.unscaled_sample(gaussian_vars, sample_inputs)
+            # Draw an expanded sample.
+            gaussian_sample_inputs = sample_inputs.copy()
+            for k, d in self.inputs.items():
+                if k not in result.gaussian.inputs and d.dtype != 'real':
+                    gaussian_sample_inputs[k] = d
+            gaussian = result.gaussian.unscaled_sample(gaussian_vars, gaussian_sample_inputs)
             result = Joint(result.deltas, result.discrete) + gaussian
         return result
 

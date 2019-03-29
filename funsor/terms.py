@@ -759,7 +759,7 @@ class Reduce(Funsor):
             assert isinstance(reduced_vars, frozenset)
             reduced_vars = reduced_vars.intersection(self.inputs) | self.reduced_vars
             return Reduce(op, self.arg, reduced_vars)
-        return super(Reduce, self).reduce(op, reduced_vars)
+        return super(Reduce, self).eager_reduce(op, reduced_vars)
 
     def unscaled_sample(self, sampled_vars, sample_inputs=None):
         #                 i,x |- f(x,i) -> delta(x=p)
