@@ -89,6 +89,32 @@ def test_plate_ok(backend):
 
 @pytest.mark.parametrize("backend", [
     "pyro",
+    "minipyro",
+    xfail_param("funsor", reason="missing patterns"),
+])
+def test_nested_plate_plate_ok(backend):
+    data = torch.randn(2, 3)
+
+    def model():
+        loc = torch.tensor(3.0)
+        with pyro.plate("plate_outer", data.size(-1), dim=-1):
+            x = pyro.sample("x", dist.Normal(loc, 1.))
+            with pyro.plate("plate_inner", data.size(-2), dim=-2):
+                pyro.sample("y", dist.Normal(x, 1.), obs=data)
+
+    def guide():
+        loc = pyro.param("loc", torch.tensor(0.))
+        scale = pyro.param("scale", torch.tensor(1.))
+        with pyro.plate("plate_outer", data.size(-1), dim=-1):
+            pyro.sample("x", dist.Normal(loc, scale))
+
+    with pyro_backend(backend):
+        elbo = infer.Trace_ELBO()
+        assert_ok(model, guide, elbo)
+
+
+@pytest.mark.parametrize("backend", [
+    "pyro",
     xfail_param("funsor", reason="missing patterns"),
 ])
 def test_mean_field_ok(backend):
