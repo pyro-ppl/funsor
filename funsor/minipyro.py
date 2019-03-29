@@ -34,6 +34,10 @@ def get_param_store():
     return PARAM_STORE
 
 
+def clear_param_store():
+    PARAM_STORE.clear()
+
+
 # The base effect handler class (called Messenger here for consistency with Pyro).
 class Messenger(object):
     def __init__(self, fn=None):
@@ -285,7 +289,7 @@ class SVI(object):
         # further tracing occurs inside of `loss`.
         with trace() as param_capture:
             # We use block here to allow tracing to record parameters only.
-            with block(hide_fn=lambda msg: msg["type"] == "sample"):
+            with block(hide_fn=lambda msg: msg["type"] != "param"):
                 with funsor.montecarlo.monte_carlo_interpretation():
                     loss = self.loss(self.model, self.guide, *args, **kwargs)
         # Differentiate the loss.
@@ -352,5 +356,6 @@ def elbo(model, guide, *args, **kwargs):
     return loss
 
 
+# This is a wrapper for compatibility with full Pyro.
 def Trace_ELBO(*args, **kwargs):
     return elbo
