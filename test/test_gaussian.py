@@ -19,13 +19,16 @@ from funsor.torch import Tensor
 
 
 @pytest.mark.parametrize('expr,expected_type', [
+    ('-g1', Gaussian),
     ('g1 + 1', Joint),
     ('g1 - 1', Joint),
     ('1 + g1', Joint),
     ('g1 + shift', Joint),
-    ('g1 - shift', Joint),
+    ('g1 + shift', Joint),
     ('shift + g1', Joint),
+    ('shift - g1', Joint),
     ('g1 + g1', Joint),
+    ('(g1 + g2 + g2) - g2', Joint),
     ('g1(i=i0)', Gaussian),
     ('g2(i=i0)', Gaussian),
     ('g1(i=i0) + g2(i=i0)', Joint),
@@ -219,6 +222,22 @@ def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs):
     assert_close((g1 + g2)(**values), g1(**values) + g2(**values), atol=1e-4, rtol=None)
 
 
+@pytest.mark.parametrize('inputs', [
+    OrderedDict([('i', bint(2)), ('x', reals())]),
+    OrderedDict([('i', bint(3)), ('x', reals())]),
+    OrderedDict([('i', bint(2)), ('x', reals(2))]),
+    OrderedDict([('i', bint(2)), ('x', reals()), ('y', reals())]),
+    OrderedDict([('i', bint(3)), ('j', bint(4)), ('x', reals(2))]),
+], ids=id_from_inputs)
+def test_reduce_add(inputs):
+    g = random_gaussian(inputs)
+    actual = g.reduce(ops.add, 'i')
+
+    gs = [g(i=i) for i in range(g.inputs['i'].dtype)]
+    expected = reduce(ops.add, gs)
+    assert_close(actual, expected)
+
+
 @pytest.mark.parametrize('int_inputs', [
     {},
     {'i': bint(2)},
@@ -230,7 +249,7 @@ def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs):
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
     {'w': reals(5), 'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-def test_logsumexp(int_inputs, real_inputs):
+def test_reduce_logsumexp(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()

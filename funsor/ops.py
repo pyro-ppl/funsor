@@ -64,6 +64,14 @@ class AddOp(AssociativeOp):
     pass
 
 
+class SubOp(Op):
+    pass
+
+
+class NegOp(Op):
+    pass
+
+
 class GetitemMeta(type):
     _cache = {}
 
@@ -102,8 +110,8 @@ invert = Op(operator.invert)
 le = Op(operator.le)
 lt = Op(operator.lt)
 ne = Op(operator.ne)
-neg = Op(operator.neg)
-sub = Op(operator.sub)
+neg = NegOp(operator.neg)
+sub = SubOp(operator.sub)
 truediv = Op(operator.truediv)
 
 add = AddOp(operator.add)
@@ -220,6 +228,12 @@ DISTRIBUTIVE_OPS = frozenset([
 ])
 
 
+UNITS = {
+    mul: 1.,
+    add: 0.,
+}
+
+
 PRODUCT_INVERSES = {
     mul: safediv,
     add: safesub,
@@ -227,11 +241,15 @@ PRODUCT_INVERSES = {
 
 
 __all__ = [
+    'AddOp',
     'AssociativeOp',
     'DISTRIBUTIVE_OPS',
     'GetitemOp',
+    'NegOp',
     'Op',
     'PRODUCT_INVERSES',
+    'UNITS',
+    'SubOp',
     'abs',
     'add',
     'and_',

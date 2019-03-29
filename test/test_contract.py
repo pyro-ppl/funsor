@@ -34,7 +34,8 @@ EINSUM_EXAMPLES = [
 @pytest.mark.parametrize('backend,fill', [
     ('torch', None),
     ('torch', 1.),
-    ('pyro.ops.einsum.torch_log', None)
+    ('pyro.ops.einsum.torch_log', None),
+    ('pyro.ops.einsum.torch_marginal', None)
 ])
 def test_contract_einsum_product_lhs(equation, backend, fill):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation, fill=fill)
@@ -71,8 +72,8 @@ def test_contract_naive_pair(equation1, equation2):
 
         expected = (lhs * rhs).reduce(ops.add)
 
-        actual1 = Contract(lhs, rhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
-        actual2 = Contract(rhs, lhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
+        actual1 = Contract(ops.add, ops.mul, lhs, rhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
+        actual2 = Contract(ops.add, ops.mul, rhs, lhs, frozenset(lhs.inputs) | frozenset(rhs.inputs))
 
     actual1 = reinterpret(actual1)
     actual2 = reinterpret(actual2)
