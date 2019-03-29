@@ -335,10 +335,13 @@ class Gaussian(Funsor):
             precision = Tensor(self.precision, old_ints).reduce(ops.add, reduced_vars)
             precision_loc = Tensor(_mv(self.precision, self.loc),
                                    old_ints).reduce(ops.add, reduced_vars)
+            assert precision.inputs == new_ints
+            assert precision_loc.inputs == new_ints
             loc = Tensor(_sym_solve_mv(precision.data, precision_loc.data), new_ints)
             expanded_loc = align_tensor(old_ints, loc)
             quadratic_term = Tensor(_vmv(self.precision, expanded_loc - self.loc),
                                     old_ints).reduce(ops.add, reduced_vars)
+            assert quadratic_term.inputs == new_ints
             likelihood = -0.5 * quadratic_term
             return likelihood + Gaussian(loc.data, precision.data, inputs)
 

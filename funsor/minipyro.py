@@ -131,7 +131,7 @@ def tensor_to_funsor(value, cond_indep_stack, output):
 
 
 # The log_joint messenger is the main way of recording log probabilities.
-# This is roughly the Funsor equivlant to pyro.poutine.trace.
+# This is roughly the Funsor equivalent to pyro.poutine.trace.
 class log_joint(Messenger):
     def __enter__(self):
         super(log_joint, self).__enter__()
@@ -198,7 +198,7 @@ def sample(name, fn, obs=None):
         "fn": fn,
         "args": (),
         "value": obs,
-        "cond_indep_stack": {},  # maps dim to name
+        "cond_indep_stack": {},  # maps dim to CondIndepStackFrame
     }
 
     # ...and use apply_stack to send it to the Messengers
