@@ -121,7 +121,10 @@ class Joint(Funsor):
                 return eager_result.reduce(ops.logaddexp, lazy_vars)
 
         if op is ops.add:
-            raise NotImplementedError('TODO product-reduce along a plate dimension')
+            terms = list(self.deltas) + [self.discrete, self.gaussian]
+            for i, term in enumerate(terms):
+                terms[i] = term.reduce(ops.add, reduced_vars.intersection(term.inputs))
+            return reduce(ops.add, terms)
 
         return None  # defer to default implementation
 
