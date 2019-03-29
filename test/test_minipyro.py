@@ -51,6 +51,38 @@ def assert_warning(model, guide, elbo):
 
 
 @pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
+def test_generate_data(backend):
+
+    def model(data=None):
+        loc = pyro.param("loc", torch.tensor(2.0))
+        scale = pyro.param("scale", torch.tensor(1.0))
+        x = pyro.sample("x", dist.Normal(loc, scale), obs=data)
+        return x
+
+    with pyro_backend(backend):
+        data = model().data
+        assert data.shape == ()
+
+
+@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
+def test_generate_data_plate(backend):
+    num_points = 1000
+
+    def model(data=None):
+        loc = pyro.param("loc", torch.tensor(2.0))
+        scale = pyro.param("scale", torch.tensor(1.0))
+        with pyro.plate("data", 1000, dim=-1):
+            x = pyro.sample("x", dist.Normal(loc, scale), obs=data)
+        return x
+
+    with pyro_backend(backend):
+        data = model().data
+        assert data.shape == (num_points,)
+        mean = data.sum().item() / num_points
+        assert 1.9 <= mean <= 2.1
+
+
+@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_nonempty_model_empty_guide_ok(backend):
 
     def model(data):

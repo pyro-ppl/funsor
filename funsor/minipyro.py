@@ -19,6 +19,39 @@ import torch
 
 import funsor
 
+
+# Funsor repreresents distributions in a fundamentally different way from
+# torch.Distributions and Pyro: funsor distributions are densities whereas
+# torch Distributions are samplers. This class is a compatibility wrapper
+# between the two. It is used only internally in the sample() function.
+class Distribution(object):
+    def __init__(self, funsor_dist):
+        assert isinstance(funsor_dist, funsor.Funsor)
+        self.funsor_dist = funsor_dist
+        self.output = self.funsor_dist.inputs["value"]
+
+    def log_prob(self, value):
+        return self.funsor_dist(value=value)
+
+    # Draw a sample.
+    def __call__(self):
+        with funsor.interpreter.interpretation(funsor.terms.eager):
+            dist = self.funsor_dist(value='value')
+            delta = dist.sample(frozenset(['value']))
+        if isinstance(delta, funsor.joint.Joint):
+            delta, = delta.deltas
+        return delta.point
+
+    # Similar to torch.distributions.Distribution.expand().
+    def expand_inputs(self, name, size):
+        if name in self.funsor_dist.inputs:
+            assert self.funsor_dist.inputs[name] == funsor.bint(size)
+            return self
+        inputs = OrderedDict([(name, funsor.bint(size))])
+        funsor_dist = self.funsor_dist + funsor.torch.Tensor(torch.zeros(size), inputs)
+        return Distribution(funsor_dist)
+
+
 # Pyro keeps track of two kinds of global state:
 # i)  The effect handler stack, which enables non-standard interpretations of
 #     Pyro primitives like sample();
@@ -96,8 +129,9 @@ class block(Messenger):
 CondIndepStackFrame = namedtuple("CondIndepStackFrame", ["name", "size", "dim"])
 
 
-# This implementation of vectorized PlateMessenger records a cond_indep_stack
-# which is later used to convert torch.Tensors to funsor.torch.Tensors.
+# This implementation of vectorized PlateMessenger broadcasts and
+# records a cond_indep_stack which is later used to convert
+# torch.Tensors to funsor.torch.Tensors.
 class PlateMessenger(Messenger):
     def __init__(self, fn, name, size, dim):
         assert dim < 0
@@ -107,6 +141,7 @@ class PlateMessenger(Messenger):
     def process_message(self, msg):
         if msg["type"] == "sample":
             assert self.frame.dim not in msg["cond_indep_stack"]
+            msg["fn"] = msg["fn"].expand_inputs(self.frame.name, self.frame.size)
             msg["cond_indep_stack"][self.frame.dim] = self.frame
 
 
@@ -143,21 +178,16 @@ class log_joint(Messenger):
         if msg["type"] == "sample":
             if msg["value"] is None:
                 # Create a delayed sample.
-                msg["value"] = funsor.Variable(msg["name"], msg["fn"].inputs["value"])
+                msg["value"] = funsor.Variable(msg["name"], msg["fn"].output)
             elif not isinstance(msg["value"], funsor.Funsor):
                 # Convert Tensors to Funsors.
-                output = msg["fn"].inputs["value"]
+                output = msg["fn"].output
                 msg["value"] = tensor_to_funsor(msg["value"], msg["cond_indep_stack"], output)
 
     def postprocess_message(self, msg):
         if msg["type"] == "sample":
             assert msg["name"] not in self.log_factors, "all sites must have unique names"
-            log_prob = msg["fn"](value=msg["value"])
-            # Broadcast, similar to torch.distributions.Distribution.expand().
-            for frame in msg["cond_indep_stack"].values():
-                if frame.name not in log_prob.inputs:
-                    inputs = OrderedDict([(frame.name, funsor.bint(frame.size))])
-                    log_prob += funsor.torch.Tensor(torch.zeros(frame.size), inputs)
+            log_prob = msg["fn"].log_prob(msg["value"])
             self.log_factors[msg["name"]] = log_prob
             self.plates.update(f.name for f in msg["cond_indep_stack"].values())
 
@@ -185,11 +215,12 @@ def apply_stack(msg):
 # sample is an effectful version of Distribution.sample(...)
 # When any effect handlers are active, it constructs an initial message and calls apply_stack.
 def sample(name, fn, obs=None):
+    # Wrap the funsor distribution in a Pyro-compatible way.
+    fn = Distribution(fn)
 
     # if there are no active Messengers, we just draw a sample and return it as expected:
     if not PYRO_STACK:
-        raise NotImplementedError('Funsor cannot sample')
-        # return fn()
+        return fn()
 
     # Otherwise, we initialize a message...
     initial_msg = {
