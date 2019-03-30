@@ -762,7 +762,7 @@ class Reduce(Funsor):
         return super(Reduce, self).eager_reduce(op, reduced_vars)
 
     def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        #                 i,x |- f(x,i) -> delta(x=p)
+        #   i,x |- f(x,i) -> delta(x=p)                i |- p
         # -----------------------------------------------------
         # y |- \prod_i f(x,i) [x:=y[i]] -> delta(y=\lambda i.p)
         if self.op is ops.add and isinstance(self.arg, Subs):
