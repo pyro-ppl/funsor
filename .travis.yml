@@ -18,8 +18,8 @@ install:
           pip install https://download.pytorch.org/whl/cpu/torch-1.0.1.post2-cp36-cp36m-linux_x86_64.whl;
       fi
 
-    # Remove after public release of https://github.com/pyro-ppl/pyro/pull/1796
-    - pip install https://github.com/pyro-ppl/pyro/archive/local-param.zip
+    # Remove after public release of https://github.com/pyro-ppl/pyro/pull/1794
+    - pip install https://github.com/pyro-ppl/pyro/archive/dev.zip
 
     - pip install .[test]
     - pip freeze
