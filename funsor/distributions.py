@@ -125,16 +125,12 @@ class Categorical(Distribution):
     dist_class = dist.Categorical
 
     @staticmethod
-    def _fill_defaults(probs, value=None):
+    def _fill_defaults(probs, value='value'):
         probs = to_funsor(probs)
-        if value is None:
-            size = probs.output.shape[0]
-            value = Variable('value', bint(size))
-        else:
-            value = to_funsor(value)
+        value = to_funsor(value, bint(probs.output.shape[0]))
         return probs, value
 
-    def __init__(self, probs, value=None):
+    def __init__(self, probs, value='value'):
         super(Categorical, self).__init__(probs, value)
 
 
@@ -158,16 +154,13 @@ class Delta(Distribution):
     dist_class = dist.Delta
 
     @staticmethod
-    def _fill_defaults(v, log_density=0, value=None):
+    def _fill_defaults(v, log_density=0, value='value'):
         v = to_funsor(v)
         log_density = to_funsor(log_density)
-        if value is None:
-            value = Variable('value', reals())
-        else:
-            value = to_funsor(value, v.dtype)
+        value = to_funsor(value, v.output)
         return v, log_density, value
 
-    def __init__(self, v, log_density=0, value=None):
+    def __init__(self, v, log_density=0, value='value'):
         return super(Delta, self).__init__(v, log_density, value)
 
 
@@ -195,7 +188,7 @@ def eager_delta(v, log_density, value):
     return funsor.delta.Delta(v.name, value, log_density)
 
 
-def LogNormal(loc, scale, value=None):
+def LogNormal(loc, scale, value='value'):
     loc, scale, y = Normal._fill_defaults(loc, scale, value)
     t = ops.exp
     x = t.inv(y)
@@ -207,19 +200,15 @@ class Normal(Distribution):
     dist_class = dist.Normal
 
     @staticmethod
-    def _fill_defaults(loc, scale, value=None):
+    def _fill_defaults(loc, scale, value='value'):
         loc = to_funsor(loc)
         scale = to_funsor(scale)
         assert loc.output == reals()
         assert scale.output == reals()
-        if value is None:
-            value = Variable('value', reals())
-        else:
-            value = to_funsor(value)
-        assert value.output == loc.output
+        value = to_funsor(value, loc.output)
         return loc, scale, value
 
-    def __init__(self, loc, scale, value=None):
+    def __init__(self, loc, scale, value='value'):
         super(Normal, self).__init__(loc, scale, value)
 
 
@@ -252,7 +241,7 @@ def eager_normal(loc, scale, value):
 def eager_normal(loc, scale, value):
     if not isinstance(loc, Tensor):
         loc, value = value, loc
-    return Normal(loc, scale, None)(value=value)
+    return Normal(loc, scale, 'value')(value=value)
 
 
 # Create a Gaussian from a noisy identity transform.
@@ -278,7 +267,7 @@ class MultivariateNormal(Distribution):
     dist_class = dist.MultivariateNormal
 
     @staticmethod
-    def _fill_defaults(loc, scale_tril, value=None):
+    def _fill_defaults(loc, scale_tril, value='value'):
         loc = to_funsor(loc)
         scale_tril = to_funsor(scale_tril)
         assert loc.dtype == 'real'
@@ -286,14 +275,10 @@ class MultivariateNormal(Distribution):
         assert len(loc.output.shape) == 1
         dim = loc.output.shape[0]
         assert scale_tril.output.shape == (dim, dim)
-        if value is None:
-            value = Variable('value', reals(dim))
-        else:
-            value = to_funsor(value)
-        assert value.output == loc.output
+        value = to_funsor(value, loc.output)
         return loc, scale_tril, value
 
-    def __init__(self, loc, scale_tril, value=None):
+    def __init__(self, loc, scale_tril, value='value'):
         super(MultivariateNormal, self).__init__(loc, scale_tril, value)
 
 

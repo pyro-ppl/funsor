@@ -346,7 +346,7 @@ class Gaussian(Funsor):
 
         return None  # defer to default implementation
 
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs):
         # Sample only the real variables.
         sampled_vars = frozenset(k for k, v in self.inputs.items()
                                  if k in sampled_vars if v.dtype == 'real')
@@ -354,11 +354,8 @@ class Gaussian(Funsor):
             return self
 
         # Partition inputs into sample_inputs + int_inputs + real_inputs.
-        if sample_inputs is None:
-            sample_inputs = OrderedDict()
-        else:
-            sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
-                                        if k not in self.inputs)
+        sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
+                                    if k not in self.inputs)
         sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
         int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
         real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')

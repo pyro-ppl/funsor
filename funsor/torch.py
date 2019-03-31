@@ -240,18 +240,15 @@ class Tensor(Funsor):
             return Tensor(data, inputs, self.dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs):
         assert self.output == reals()
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
 
         # Partition inputs into sample_inputs + batch_inputs + event_inputs.
-        if sample_inputs is None:
-            sample_inputs = OrderedDict()
-        else:
-            sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
-                                        if k not in self.inputs)
+        sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
+                                    if k not in self.inputs)
         sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
         batch_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in sampled_vars)
         event_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k in sampled_vars)
@@ -309,9 +306,13 @@ def to_funsor(x):
     return Tensor(x)
 
 
-@dispatch(torch.Tensor, object)
-def to_funsor(x, dtype):
-    return Tensor(x, dtype=dtype)
+@dispatch(torch.Tensor, Domain)
+def to_funsor(x, output):
+    result = Tensor(x, dtype=output.dtype)
+    if result.output != output:
+        raise ValueError("Invalid shape: expected {}, actual {}"
+                         .format(output.shape, result.output.shape))
+    return result
 
 
 @to_data.register(Tensor)
@@ -539,7 +540,7 @@ def _nested_function(fn, args, output):
             fn_i.__name__ = "{}_{}".format(fn_i, i)
             result.append(_nested_function(fn_i, args, output_i))
         return LazyTuple(result)
-    raise TypeError("Invalid output: {}".format(output))
+    raise ValueError("Invalid output: {}".format(output))
 
 
 class _Memoized(object):
