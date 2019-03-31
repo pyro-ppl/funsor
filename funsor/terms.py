@@ -163,6 +163,10 @@ class Funsor(object):
         self._pretty(lines)
         return '\n'.join('|   ' * indent + text for indent, text in lines)
 
+    def __contains__(self, name):
+        assert isinstance(name, str)
+        return name in self.inputs
+
     def __call__(self, *args, **kwargs):
         """
         Partially evaluates this funsor by substituting dimensions.

@@ -172,13 +172,13 @@ def eager_uncurry(joint, reals_var, bint_var):
             delta = Uncurry(delta, reals_var, bint_var)
             deltas = joint.deltas[:1] + (delta,) + joint.deltas[1+i:]
             discrete = joint.discrete
-            if bint_var in discrete:
+            if bint_var in discrete.inputs:
                 discrete = discrete.reduce(ops.add, bint_var)
             gaussian = joint.gaussian
-            if bint_var in gaussian:
+            if bint_var in gaussian.inputs:
                 gaussian = gaussian.reduce(ops.add, bint_var)
             return Joint(deltas, discrete, gaussian)
-    if reals_var in joint.gaussian:
+    if reals_var in joint.gaussian.inputs:
         raise NotImplementedError('TODO support diagonal gaussians')
 
     return None  # defer to default implementation
