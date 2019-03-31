@@ -196,9 +196,13 @@ def to_funsor(x):
     return Array(x)
 
 
-@dispatch(np.ndarray, object)
-def to_funsor(x, dtype):
-    return Array(x, dtype=dtype)
+@dispatch(np.ndarray, Domain)
+def to_funsor(x, output):
+    result = Array(x, dtype=output.dtype)
+    if result.output != output:
+        raise ValueError("Invalid shape: expected {}, actual {}"
+                         .format(output.shape, result.output.shape))
+    return result
 
 
 @to_data.register(Array)

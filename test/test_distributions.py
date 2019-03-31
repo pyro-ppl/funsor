@@ -51,7 +51,7 @@ def test_delta_defaults():
     log_density = Variable('log_density', reals())
     assert isinstance(dist.Delta(v, log_density), dist.Delta)
     value = Variable('value', reals())
-    assert dist.Delta(v, log_density, None) is dist.Delta(v, log_density, value)
+    assert dist.Delta(v, log_density, 'value') is dist.Delta(v, log_density, value)
 
 
 @pytest.mark.parametrize('event_shape', [(), (4,), (3, 2)], ids=str)
@@ -154,7 +154,7 @@ def test_normal_gaussian_1(batch_shape):
     assert isinstance(expected, Tensor)
     check_funsor(expected, inputs, reals())
 
-    g = dist.Normal(loc, scale, None)
+    g = dist.Normal(loc, scale, 'value')
     assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
@@ -196,7 +196,7 @@ def test_normal_gaussian_3(batch_shape):
     assert isinstance(expected, Tensor)
     check_funsor(expected, inputs, reals())
 
-    g = dist.Normal(Variable('loc', reals()), scale, None)
+    g = dist.Normal(Variable('loc', reals()), scale, 'value')
     assert isinstance(g, Joint)
     actual = g(loc=loc, value=value)
     check_funsor(actual, inputs, reals())
@@ -251,7 +251,7 @@ def test_mvn_gaussian(batch_shape):
     assert isinstance(expected, Tensor)
     check_funsor(expected, inputs, reals())
 
-    g = dist.MultivariateNormal(loc, scale_tril, None)
+    g = dist.MultivariateNormal(loc, scale_tril, 'value')
     assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
