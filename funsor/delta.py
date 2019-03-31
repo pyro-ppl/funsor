@@ -15,11 +15,11 @@ from funsor.terms import (
     Binary,
     Funsor,
     FunsorMeta,
+    Independent,
     Lambda,
     Number,
     Subs,
     Unary,
-    Uncurry,
     Variable,
     eager,
     to_funsor
@@ -136,8 +136,8 @@ def eager_add(op, lhs, rhs):
     return None  # defer to default implementation
 
 
-@eager.register(Uncurry, Delta, str, str)
-def eager_uncurry(delta, reals_var, bint_var):
+@eager.register(Independent, Delta, str, str)
+def eager_independent(delta, reals_var, bint_var):
     if delta.name == reals_var:
         i = Variable(bint_var, delta.inputs[bint_var])
         point = Lambda(i, delta.point)

@@ -163,9 +163,8 @@ class Funsor(object):
         self._pretty(lines)
         return '\n'.join('|   ' * indent + text for indent, text in lines)
 
-    def __contains__(self, name):
-        assert isinstance(name, str)
-        return name in self.inputs
+    def __contains__(self, item):
+        raise TypeError
 
     def __call__(self, *args, **kwargs):
         """
@@ -928,7 +927,7 @@ class Stack(Funsor):
 
         if pos is None:
             # Eagerly recurse into components.
-            assert not any(self.name in v.inputs for k, v in subs)
+            assert not any(self.name in v.inputs and self.name != k for k, v in subs)
             components = tuple(Subs(x, subs) for x in self.components)
             return Stack(components, self.name)
 
@@ -1006,23 +1005,22 @@ def eager_getitem_lambda(op, lhs, rhs):
     return Lambda(lhs.var, expr)
 
 
-class Uncurry(Funsor):
+class Independent(Funsor):
     """
-    Converts a named funsor dimension (i.e. an input variable)
-    to a positional tensor dimension of another input variable.
+    Creates an independent diagonal distribution.
 
-    The inverse operation "currying" can be achieved via substitution::
+    This is equivalent to substitution followed by reduction::
 
         f = ...
         assert f.inputs['x'] == reals(4, 5)
         assert f.inputs['i'] == bint(3)
 
-        g = Uncurry(f, 'x', 'i')
+        g = Independent(f, 'x', 'i')
         assert g.inputs['x'] == reals(3, 4, 5)
         assert 'i' not in g.inputs
 
         x = Variable('x', reals(3, 4, 5))
-        assert g(x=x['i']) is f
+        g == f(x=x['i']).reduce(ops.logaddexp, 'i')
     """
     def __init__(self, fn, reals_var, bint_var):
         assert isinstance(fn, Funsor)
@@ -1033,10 +1031,9 @@ class Uncurry(Funsor):
         assert bint_var in fn.inputs
         assert isinstance(fn.inputs[bint_var].dtype, int)
         inputs = fn.inputs.copy()
-        shape = inputs[reals_var].shape
-        shape += (fn.inputs.pop(bint_var).dtype,)
+        shape = (inputs.pop(bint_var).dtype,) + inputs[reals_var].shape
         inputs[reals_var] = reals(*shape)
-        super(Uncurry, self).__init__(inputs, fn.output)
+        super(Independent, self).__init__(inputs, fn.output)
         self.fn = fn
         self.reals_var = reals_var
         self.bint_var = bint_var
@@ -1053,7 +1050,7 @@ class Uncurry(Funsor):
                 fn_subs.append((k, v))
         fn = Subs(self.fn, tuple(fn_subs))
         if reals_value is None:
-            return Uncurry(fn, self.reals_var, self.bint_var)
+            return Independent(fn, self.reals_var, self.bint_var)
         factors = fn(**{self.reals_var: reals_value[self.bint_var]})
         return factors.reduce(ops.add, self.bint_var)
 
@@ -1061,7 +1058,7 @@ class Uncurry(Funsor):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
             raise NotImplementedError('TODO alpha-convert')
         fn = self.fn.unscaled_sample(sampled_vars, sample_inputs)
-        return Uncurry(fn, self.reals_var, self.bint_var)
+        return Independent(fn, self.reals_var, self.bint_var)
 
 
 def _of_shape(fn, shape):
@@ -1113,13 +1110,13 @@ def _log1p(x):
 __all__ = [
     'Binary',
     'Funsor',
+    'Independent',
     'Lambda',
     'Number',
     'Reduce',
     'Stack',
     'Subs',
     'Unary',
-    'Uncurry',
     'Variable',
     'eager',
     'lazy',
