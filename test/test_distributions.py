@@ -211,6 +211,9 @@ def test_normal_uncurry():
     assert fn.inputs['z'] == reals()
     d = Uncurry(fn, 'z', 'i')
     assert d.inputs['z'] == reals(2)
+    sample = d.sample(frozenset(['z']))
+    assert isinstance(sample, Joint)
+    assert sample.inputs['z'] == reals(2)
 
 
 def test_mvn_defaults():

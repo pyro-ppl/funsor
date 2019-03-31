@@ -141,7 +141,10 @@ def eager_uncurry(delta, reals_var, bint_var):
     if delta.name == reals_var:
         i = Variable(bint_var, delta.inputs[bint_var])
         point = Lambda(i, delta.point)
-        log_density = delta.log_density.reduce(ops.add, bint_var)
+        if bint_var in delta.log_density.inputs:
+            log_density = delta.log_density.reduce(ops.add, bint_var)
+        else:
+            log_density = delta.log_density * delta.inputs[bint_var].dtype
         return Delta(delta.name, point, log_density)
 
     return None  # defer to default implementation
