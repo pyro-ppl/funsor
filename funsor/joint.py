@@ -219,18 +219,7 @@ def eager_add(op, joint, other):
     return Joint(joint.deltas, joint.discrete, other)
 
 
-@eager.register(Binary, AddOp, Joint, Reduce)
-def eager_add(op, joint, other):
-    if other.op is ops.add:
-        ordinal = other.reduced_vars
-        plates = joint.plates.copy()
-        plates[ordinal] = plates.get(ordinal, ()) + (other,)
-        return Joint(plates)
-
-    return None  # defer to default implementation
-
-
-@eager.register(Binary, AddOp, (Funsor, Align, Delta, Reduce), Joint)
+@eager.register(Binary, AddOp, (Funsor, Align, Delta), Joint)
 def eager_add(op, other, joint):
     return joint + other
 
@@ -275,14 +264,6 @@ def eager_add(op, gaussian, discrete):
 @eager.register(Binary, AddOp, (Number, Tensor), Gaussian)
 def eager_add(op, discrete, gaussian):
     return Joint(discrete=discrete, gaussian=gaussian)
-
-
-@eager.register(Reduce, AddOp, Joint, frozenset)
-def eager_reduce(op, joint, reduced_vars):
-    if any(joint.inputs[k].dtype == 'real' for k in reduced_vars):
-        raise ValueError('Cannot sum over a real dim')
-    plates = {p + reduced_vars for p, terms in joint.plates.items()}
-    return Joint(plates)
 
 
 ################################################################################

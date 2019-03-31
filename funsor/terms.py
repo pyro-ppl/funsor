@@ -724,14 +724,6 @@ class Binary(Funsor):
             return op(lhs, rhs)
         return interpreter.debug_logged(super(Binary, self).eager_reduce)(op, reduced_vars)
 
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        if self.op is ops.logaddexp:
-            # Sample mixture components independently.
-            lhs = self.lhs.unscaled_sample(sampled_vars, sample_inputs)
-            rhs = self.rhs.unscaled_sample(sampled_vars, sample_inputs)
-            return Binary(ops.logaddexp, lhs, rhs)
-        raise TypeError("Cannot sample from Binary({}, ...)".format(self.op))
-
 
 class Reduce(Funsor):
     """
@@ -766,12 +758,6 @@ class Reduce(Funsor):
             reduced_vars = reduced_vars.intersection(self.inputs) | self.reduced_vars
             return Reduce(op, self.arg, reduced_vars)
         return super(Reduce, self).eager_reduce(op, reduced_vars)
-
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        if self.op is ops.logaddexp:
-            arg = self.arg.unscaled_sample(sampled_vars, sample_inputs)
-            return Reduce(ops.logaddexp, arg, self.reduced_vars)
-        raise TypeError("Cannot sample from Reduce({}, ...)".format(self.op))
 
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)

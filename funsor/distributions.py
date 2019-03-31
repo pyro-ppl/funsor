@@ -104,12 +104,9 @@ class Bernoulli(Distribution):
     dist_class = dist.Bernoulli
 
     @staticmethod
-    def _fill_defaults(probs, value=None):
+    def _fill_defaults(probs, value='value'):
         probs = to_funsor(probs)
-        if value is None:
-            value = Variable('value', bint(2))
-        else:
-            value = to_funsor(value)
+        value = to_funsor(value, reals())
         return probs, value
 
     def __init__(self, probs, value=None):
