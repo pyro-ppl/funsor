@@ -55,18 +55,15 @@ def main(args):
 
     @funsor.interpreter.interpretation(funsor.montecarlo.monte_carlo)
     def loss_function(data, subsample_scale):
+        # Lazily sample from the guide.
         loc, scale = encode(data)
-        i = funsor.Variable('i', bint(20))
-        z = funsor.Variable('z', reals(20))
-        q = dist.Normal(loc[i], scale[i], value=z[i])
-        q = q.reduce(ops.add, 'i')
+        q = dist.Normal(loc, scale, value='z')
 
-        probs = decode(z)
-        x = funsor.Variable('x', bint(28))
-        y = funsor.Variable('y', bint(28))
-        p = dist.Bernoulli(probs[x, y], value=data[x, y])
-        p = p.reduce(ops.add, frozenset(['x', 'y']))
+        # Evaluate the model likelihood at the lazy sample.
+        probs = decode('z')
+        p = dist.Bernoulli(probs, value=data)
 
+        # Construct an elbo. This is where sampling happens.
         elbo = funsor.Integrate(q, p - q, frozenset(['z']))
         elbo = elbo.reduce(ops.add, 'batch') * subsample_scale
         loss = -elbo
