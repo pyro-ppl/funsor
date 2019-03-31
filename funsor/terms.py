@@ -1069,6 +1069,7 @@ __all__ = [
     'Stack',
     'Subs',
     'Unary',
+    'Uncurry',
     'Variable',
     'eager',
     'lazy',
