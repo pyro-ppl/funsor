@@ -9,7 +9,7 @@ import torch
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.terms import Number, Variable
+from funsor.terms import Lambda, Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH, Tensor, align_tensors, torch_einsum
 
@@ -400,6 +400,15 @@ def test_getitem_tensor():
     y = random_tensor(OrderedDict([('i', i.output), ('j', j.output)]),
                       bint(k.dtype))
     assert_close(x[i, j, k](k=y), x[i, j, y])
+
+
+def test_lambda_getitem():
+    data = torch.randn(2)
+    x = Tensor(data)
+    y = Tensor(data, OrderedDict(i=bint(2)))
+    i = Variable('i', bint(2))
+    assert x[i] is y
+    assert Lambda(i, y) is x
 
 
 REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
