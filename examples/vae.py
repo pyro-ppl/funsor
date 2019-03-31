@@ -57,11 +57,13 @@ def main(args):
     def loss_function(data, subsample_scale):
         # Lazily sample from the guide.
         loc, scale = encode(data)
-        q = dist.Normal(loc, scale, value='z')
+        q = dist.Normal(loc['i'], scale['i'], value='z')
+        q = funsor.Uncurry(q, 'z', 'i')
 
-        # Evaluate the model likelihood at the lazy sample.
+        # Evaluate the model likelihood at the lazy value z.
         probs = decode('z')
-        p = dist.Bernoulli(probs, value=data)
+        p = dist.Bernoulli(probs['x', 'y'], value=data['x', 'y'])
+        p = p.reduce(ops.add, frozenset(['x', 'y']))
 
         # Construct an elbo. This is where sampling happens.
         elbo = funsor.Integrate(q, p - q, frozenset(['z']))
