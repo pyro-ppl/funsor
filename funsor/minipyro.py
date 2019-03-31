@@ -139,10 +139,11 @@ class PlateMessenger(Messenger):
         super(PlateMessenger, self).__init__(fn)
 
     def process_message(self, msg):
-        if msg["type"] == "sample":
+        if msg["type"] in ("sample", "param"):
             assert self.frame.dim not in msg["cond_indep_stack"]
-            msg["fn"] = msg["fn"].expand_inputs(self.frame.name, self.frame.size)
             msg["cond_indep_stack"][self.frame.dim] = self.frame
+        if msg["type"] == "sample":
+            msg["fn"] = msg["fn"].expand_inputs(self.frame.name, self.frame.size)
 
 
 # This converts raw torch.Tensors to funsor.Funsors with .inputs and .output
@@ -179,10 +180,6 @@ class log_joint(Messenger):
             if msg["value"] is None:
                 # Create a delayed sample.
                 msg["value"] = funsor.Variable(msg["name"], msg["fn"].output)
-            elif not isinstance(msg["value"], funsor.Funsor):
-                # Convert Tensors to Funsors.
-                output = msg["fn"].output
-                msg["value"] = tensor_to_funsor(msg["value"], msg["cond_indep_stack"], output)
 
     def postprocess_message(self, msg):
         if msg["type"] == "sample":
@@ -203,6 +200,8 @@ def apply_stack(msg):
             break
     if msg["value"] is None:
         msg["value"] = msg["fn"](*msg["args"])
+    if isinstance(msg["value"], torch.Tensor):
+        msg["value"] = tensor_to_funsor(msg["value"], msg["cond_indep_stack"], msg["output"])
 
     # A Messenger that sets msg["stop"] == True also prevents application
     # of postprocess_message by Messengers above it on the stack
@@ -230,21 +229,35 @@ def sample(name, fn, obs=None):
         "args": (),
         "value": obs,
         "cond_indep_stack": {},  # maps dim to CondIndepStackFrame
+        "output": fn.output,
     }
 
     # ...and use apply_stack to send it to the Messengers
     msg = apply_stack(initial_msg)
+    assert isinstance(msg["value"], funsor.Funsor)
     return msg["value"]
 
 
 # param is an effectful version of PARAM_STORE.setdefault
 # When any effect handlers are active, it constructs an initial message and calls apply_stack.
-def param(name, init_value=None):
+def param(name, init_value=None, event_dim=None):
+    cond_indep_stack = {}
+    output = None
+    if init_value is not None:
+        if event_dim is None:
+            event_dim = init_value.dim()
+        output = funsor.reals(*init_value.shape[init_value.dim() - event_dim:])
 
     def fn(init_value):
-        value = PARAM_STORE.setdefault(name, init_value)
-        value.requires_grad_()
-        return value
+        if name in PARAM_STORE:
+            value = PARAM_STORE[name]
+        else:
+            assert isinstance(init_value, torch.Tensor)
+            value = init_value.requires_grad_()
+            PARAM_STORE[name] = value
+            value._funsor_cond_indep_stack = cond_indep_stack
+            value._funsor_output = output
+        return tensor_to_funsor(value, value._funsor_cond_indep_stack, value._funsor_output)
 
     # if there are no active Messengers, we just draw a sample and return it as expected:
     if not PYRO_STACK:
@@ -257,11 +270,14 @@ def param(name, init_value=None):
         "fn": fn,
         "args": (init_value,),
         "value": None,
+        "cond_indep_stack": cond_indep_stack,  # maps dim to CondIndepStackFrame
+        "output": output,
     }
 
     # ...and use apply_stack to send it to the Messengers
     msg = apply_stack(initial_msg)
-    return funsor.to_funsor(msg["value"])
+    assert isinstance(msg["value"], funsor.Funsor)
+    return msg["value"]
 
 
 # boilerplate to match the syntax of actual pyro.plate:
@@ -318,7 +334,7 @@ class SVI(object):
         # Differentiate the loss.
         loss.data.backward()
         # Grab all the parameters from the trace.
-        params = [site["value"] for site in param_capture.values()]
+        params = [site["value"].data for site in param_capture.values()]
         # Take a step w.r.t. each parameter in params.
         self.optim(params)
         # Zero out the gradients so that they don't accumulate.

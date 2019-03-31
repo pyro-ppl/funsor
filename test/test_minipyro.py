@@ -7,7 +7,7 @@ import torch
 from pyro.generic import distributions as dist
 from pyro.generic import infer, optim, pyro, pyro_backend
 
-from funsor.testing import xfail_param
+from funsor.testing import assert_close, xfail_param
 
 # This file tests a variety of model,guide pairs with valid and invalid structure.
 # See https://github.com/pyro-ppl/pyro/blob/0.3.1/tests/infer/test_valid_models.py
@@ -143,6 +143,32 @@ def test_nested_plate_plate_ok(backend):
     with pyro_backend(backend):
         elbo = infer.Trace_ELBO()
         assert_ok(model, guide, elbo)
+
+
+@pytest.mark.parametrize("backend", ["pyro", "funsor"])
+def test_local_param_ok(backend):
+    data = torch.randn(10)
+
+    def model():
+        locs = pyro.param("locs", torch.tensor([-1., 0., 1.]))
+        with pyro.plate("plate", len(data), dim=-1):
+            x = pyro.sample("x", dist.Categorical(torch.ones(3) / 3))
+            pyro.sample("obs", dist.Normal(locs[x], 1.), obs=data)
+
+    def guide():
+        with pyro.plate("plate", len(data), dim=-1):
+            p = pyro.param("p", torch.ones(len(data), 3) / 3, event_dim=1)
+            pyro.sample("x", dist.Categorical(p))
+        return p
+
+    with pyro_backend(backend):
+        elbo = infer.Trace_ELBO()
+        assert_ok(model, guide, elbo)
+
+        # Check that pyro.param() can be called without init_value.
+        expected = guide()
+        actual = pyro.param("p")
+        assert_close(actual, expected)
 
 
 @pytest.mark.parametrize("backend", [
