@@ -249,7 +249,7 @@ def test_independent():
     assert actual.output == expected.output
 
     data = random_tensor(OrderedDict(), x.output)
-    assert_close(actual(data), expected(data))
+    assert_close(actual(data), expected(data), atol=1e-5, rtol=1e-5)
 
 
 def test_stack_simple():
