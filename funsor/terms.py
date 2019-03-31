@@ -252,6 +252,9 @@ class Funsor(object):
         """
         assert self.output == reals()
         assert isinstance(sampled_vars, frozenset)
+        if sample_inputs is None:
+            sample_inputs = OrderedDict()
+        assert isinstance(sample_inputs, OrderedDict)
         if sampled_vars.isdisjoint(self.inputs):
             return self
 
@@ -265,13 +268,14 @@ class Funsor(object):
                 result += log_scale
         return result
 
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs):
         """
         Internal method to draw an unscaled sample.
         This should be overridden by subclasses.
         """
         assert self.output == reals()
         assert isinstance(sampled_vars, frozenset)
+        assert isinstance(sample_inputs, OrderedDict)
         if sampled_vars.isdisjoint(self.inputs):
             return self
         raise ValueError("Cannot sample from a {}".format(type(self).__name__))
@@ -610,10 +614,9 @@ class Subs(Funsor):
         subs = old_subs + new_subs
         return Subs(self.arg, subs) if subs else self.arg
 
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        if sample_inputs is not None:
-            if any(k in sample_inputs for k, v in self.subs):
-                raise NotImplementedError('TODO alpha-convert')
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        if any(k in sample_inputs for k, v in self.subs):
+            raise NotImplementedError('TODO alpha-convert')
         subs_sampled_vars = set()
         for name in sampled_vars:
             if name in self.arg.inputs:
