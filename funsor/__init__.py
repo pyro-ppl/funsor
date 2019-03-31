@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 from funsor.domains import Domain, bint, find_domain, reals
+from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
 from funsor.terms import Funsor, Lambda, Number, Variable, of_shape, to_data, to_funsor
 from funsor.torch import Tensor, arange, torch_einsum
@@ -13,11 +14,13 @@ from . import (
     domains,
     einsum,
     gaussian,
-    handlers,
+    integrate,
     interpreter,
     joint,
     minipyro,
+    montecarlo,
     ops,
+    pattern,
     sum_product,
     terms,
     torch
@@ -26,6 +29,7 @@ from . import (
 __all__ = [
     'Domain',
     'Funsor',
+    'Integrate',
     'Lambda',
     'Number',
     'Tensor',
@@ -33,20 +37,22 @@ __all__ = [
     'adjoint',
     'arange',
     'backward',
-    'contract',
     'bint',
+    'contract',
     'delta',
     'distributions',
     'domains',
     'einsum',
     'find_domain',
     'gaussian',
-    'handlers',
+    'integrate',
     'interpreter',
     'joint',
     'minipyro',
+    'montecarlo',
     'of_shape',
     'ops',
+    'pattern',
     'reals',
     'reinterpret',
     'sum_product',

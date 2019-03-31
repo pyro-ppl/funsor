@@ -15,18 +15,23 @@ from funsor.terms import Funsor, reflect
 from funsor.torch import Tensor
 
 
-def _make_base_lhs(arg, reduced_vars, normalized=False):
+def _make_base_lhs(prod_op, arg, reduced_vars, normalized=False):
     if not all(isinstance(d.dtype, integer_types) for d in arg.inputs.values()):
         raise NotImplementedError("TODO implement continuous base lhss")
 
+    if prod_op not in (ops.add, ops.mul):
+        raise NotImplementedError("{} not supported product op".format(prod_op))
+
+    make_unit = torch.ones if prod_op is ops.mul else torch.zeros
+
     sizes = OrderedDict(set((var, dtype) for var, dtype in arg.inputs.items()))
     terms = tuple(
-        Tensor(torch.ones((d.dtype,)) / float(d.dtype), OrderedDict([(var, d)]))
+        Tensor(make_unit((d.dtype,)) / float(d.dtype), OrderedDict([(var, d)]))
         if normalized else
-        Tensor(torch.ones((d.dtype,)), OrderedDict([(var, d)]))
+        Tensor(make_unit((d.dtype,)), OrderedDict([(var, d)]))
         for var, d in sizes.items() if var in reduced_vars
     )
-    return Finitary(ops.mul, terms) if len(terms) > 1 else terms[0]
+    return Finitary(prod_op, terms) if len(terms) > 1 else terms[0]
 
 
 def naive_contract_einsum(eqn, *terms, **kwargs):
@@ -36,8 +41,10 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     assert "plates" not in kwargs
 
     backend = kwargs.pop('backend', 'torch')
-    if backend in ('torch', 'pyro.ops.einsum.torch_log'):
-        prod_op = ops.mul
+    if backend == 'torch':
+        sum_op, prod_op = ops.add, ops.mul
+    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
+        sum_op, prod_op = ops.logaddexp, ops.add
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
@@ -51,17 +58,11 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     output_dims = frozenset(d for d in output)
     reduced_vars = input_dims - output_dims
 
-    if backend == 'pyro.ops.einsum.torch_log':
-        terms = tuple(term.exp() for term in terms)
-
     with interpretation(optimize):
         rhs = Finitary(prod_op, tuple(terms))
-        lhs = _make_base_lhs(rhs, reduced_vars, normalized=False)
+        lhs = _make_base_lhs(prod_op, rhs, reduced_vars, normalized=False)
         assert frozenset(lhs.inputs) == reduced_vars
-        result = Contract(lhs, rhs, reduced_vars)
-
-    if backend == 'pyro.ops.einsum.torch_log':
-        result = result.log()
+        result = Contract(sum_op, prod_op, lhs, rhs, reduced_vars)
 
     return reinterpret(result)
 

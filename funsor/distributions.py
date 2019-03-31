@@ -11,7 +11,8 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
-from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.interpreter import interpretation
+from funsor.terms import Funsor, FunsorMeta, Number, Subs, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor, align_tensors, materialize
 
 
@@ -36,9 +37,18 @@ class DistributionMeta(FunsorMeta):
     Wrapper to fill in default values and convert Numbers to Tensors.
     """
     def __call__(cls, *args, **kwargs):
-        args = cls._fill_defaults(*args, **kwargs)
+        kwargs.update(zip(cls._ast_fields, args))
+        args = cls._fill_defaults(**kwargs)
         args = numbers_to_tensors(*args)
-        return super(DistributionMeta, cls).__call__(*args)
+
+        # If value was explicitly specified, evaluate under current interpretation.
+        if 'value' in kwargs:
+            return super(DistributionMeta, cls).__call__(*args)
+
+        # Otherwise lazily construct a distribution instance.
+        # This makes it cheaper to construct observations in minipyro.
+        with interpretation(lazy):
+            return super(DistributionMeta, cls).__call__(*args)
 
 
 @add_metaclass(DistributionMeta)
@@ -69,13 +79,13 @@ class Distribution(Funsor):
         assert isinstance(subs, tuple)
         if not any(k in self.inputs for k, v in subs):
             return self
-        params = OrderedDict((k, v.eager_subs(subs)) for k, v in self.params)
+        params = OrderedDict((k, Subs(v, subs)) for k, v in self.params)
         return type(self)(**params)
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
             return Number(0.)  # distributions are normalized
-        return super(Distribution, self).reduce(op, reduced_vars)
+        return super(Distribution, self).eager_reduce(op, reduced_vars)
 
     @classmethod
     def eager_log_prob(cls, **params):
@@ -133,7 +143,7 @@ class Delta(Distribution):
         if value is None:
             value = Variable('value', reals())
         else:
-            value = to_funsor(value)
+            value = to_funsor(value, v.dtype)
         return v, log_density, value
 
     def __init__(self, v, log_density=0, value=None):
@@ -164,6 +174,14 @@ def eager_delta(v, log_density, value):
     return funsor.delta.Delta(v.name, value, log_density)
 
 
+def LogNormal(loc, scale, value=None):
+    loc, scale, y = Normal._fill_defaults(loc, scale, value)
+    t = ops.exp
+    x = t.inv(y)
+    log_abs_det_jacobian = t.log_abs_det_jacobian(x, y)
+    return Normal(loc, scale, x) - log_abs_det_jacobian
+
+
 class Normal(Distribution):
     dist_class = dist.Normal
 
@@ -189,14 +207,15 @@ def eager_normal(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
-# Create a Gaussian from a ground observation.
-@eager.register(Normal, Variable, Tensor, Tensor)
+# Create a Gaussian from a ground prior or ground likelihood.
 @eager.register(Normal, Tensor, Tensor, Variable)
+@eager.register(Normal, Variable, Tensor, Tensor)
 def eager_normal(loc, scale, value):
     if isinstance(loc, Variable):
         loc, value = value, loc
 
     inputs, (loc, scale) = align_tensors(loc, scale)
+    loc, scale = torch.broadcast_tensors(loc, scale)
     inputs.update(value.inputs)
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
@@ -204,6 +223,15 @@ def eager_normal(loc, scale, value):
     loc = loc.unsqueeze(-1)
     precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
     return Tensor(log_prob, int_inputs) + Gaussian(loc, precision, inputs)
+
+
+# Create a transformed Gaussian from a ground prior or ground likelihood.
+@eager.register(Normal, Tensor, Tensor, Funsor)
+@eager.register(Normal, Funsor, Tensor, Tensor)
+def eager_normal(loc, scale, value):
+    if not isinstance(loc, Tensor):
+        loc, value = value, loc
+    return Normal(loc, scale, None)(value=value)
 
 
 # Create a Gaussian from a noisy identity transform.
@@ -275,6 +303,7 @@ __all__ = [
     'Categorical',
     'Delta',
     'Distribution',
+    'LogNormal',
     'MultivariateNormal',
     'Normal',
 ]

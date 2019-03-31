@@ -8,7 +8,7 @@ from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, eager, to_data, to_funsor
 
 
 def align_array(new_inputs, x):
@@ -282,4 +282,4 @@ def materialize(x):
         assert not domain.shape
         subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
-    return x.eager_subs(subs)
+    return Subs(x, subs)

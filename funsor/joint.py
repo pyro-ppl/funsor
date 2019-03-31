@@ -1,17 +1,21 @@
 from __future__ import absolute_import, division, print_function
 
+import functools
 from collections import OrderedDict
 
 from six import add_metaclass
 from six.moves import reduce
 
+import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.gaussian import Gaussian
-from funsor.ops import AddOp, Op
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, eager, to_funsor
-from funsor.torch import Tensor
+from funsor.integrate import Integrate, integrator
+from funsor.montecarlo import monte_carlo
+from funsor.ops import AddOp, NegOp, SubOp
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, to_funsor
+from funsor.torch import Tensor, arange
 
 
 class JointMeta(FunsorMeta):
@@ -58,13 +62,11 @@ class Joint(Funsor):
         self.gaussian = gaussian
 
     def eager_subs(self, subs):
-        gaussian = self.gaussian.eager_subs(subs)
-        assert isinstance(gaussian, (Number, Tensor, Gaussian))
-        discrete = self.discrete.eager_subs(subs)
-        gaussian = self.gaussian.eager_subs(subs)
+        discrete = Subs(self.discrete, subs)
+        gaussian = Subs(self.gaussian, subs)
         deltas = []
         for x in self.deltas:
-            x = x.eager_subs(subs)
+            x = Subs(x, subs)
             if isinstance(x, Delta):
                 deltas.append(x)
             elif isinstance(x, (Number, Tensor)):
@@ -119,26 +121,31 @@ class Joint(Funsor):
                 return eager_result.reduce(ops.logaddexp, lazy_vars)
 
         if op is ops.add:
-            raise NotImplementedError('TODO product-reduce along a plate dimension')
+            terms = list(self.deltas) + [self.discrete, self.gaussian]
+            for i, term in enumerate(terms):
+                terms[i] = term.reduce(ops.add, reduced_vars.intersection(term.inputs))
+            return reduce(ops.add, terms)
 
         return None  # defer to default implementation
 
-    def sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
         if sample_inputs is None:
             sample_inputs = OrderedDict()
-        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+
         discrete_vars = sampled_vars.intersection(self.discrete.inputs)
-        gaussian_vars = frozenset(k for k in sampled_vars
-                                  if k in self.gaussian.inputs
-                                  if self.gaussian.inputs[k].dtype == 'real')
+        gaussian_vars = frozenset(k for k, v in self.gaussian.inputs.items()
+                                  if k in sampled_vars if v.dtype == 'real')
         result = self
         if discrete_vars:
-            discrete = result.discrete.sample(discrete_vars, sample_inputs)
+            discrete = result.discrete.unscaled_sample(discrete_vars, sample_inputs)
             result = Joint(result.deltas, gaussian=result.gaussian) + discrete
         if gaussian_vars:
-            sample_inputs = OrderedDict((k, v) for k, v in sample_inputs.items()
-                                        if k not in result.gaussian.inputs)
-            gaussian = result.gaussian.sample(gaussian_vars, sample_inputs)
+            # Draw an expanded sample.
+            gaussian_sample_inputs = sample_inputs.copy()
+            for k, d in self.inputs.items():
+                if k not in result.gaussian.inputs and d.dtype != 'real':
+                    gaussian_sample_inputs[k] = d
+            gaussian = result.gaussian.unscaled_sample(gaussian_vars, gaussian_sample_inputs)
             result = Joint(result.deltas, result.discrete) + gaussian
         return result
 
@@ -176,12 +183,12 @@ def eager_add(op, joint, other):
 def eager_add(op, joint, delta):
     # Update with a degenerate distribution, typically a monte carlo sample.
     if delta.name in joint.inputs:
-        joint = joint.eager_subs(((delta.name, delta.point),))
+        joint = Subs(joint, ((delta.name, delta.point),))
         if not isinstance(joint, Joint):
             return joint + delta
     for d in joint.deltas:
         if d.name in delta.inputs:
-            delta = delta.eager_subs(((d.name, d.point),))
+            delta = Subs(delta, ((d.name, d.point),))
     deltas = joint.deltas + (delta,)
     return Joint(deltas, joint.discrete, joint.gaussian)
 
@@ -191,16 +198,8 @@ def eager_add(op, joint, other):
     # Update with a delayed discrete random variable.
     subs = tuple((d.name, d.point) for d in joint.deltas if d in other.inputs)
     if subs:
-        return joint + other.eager_subs(subs)
+        return joint + Subs(other, subs)
     return Joint(joint.deltas, joint.discrete + other, joint.gaussian)
-
-
-@eager.register(Binary, Op, Joint, (Number, Tensor))
-def eager_add(op, joint, other):
-    if op is ops.sub:
-        return joint + -other
-
-    return None  # defer to default implementation
 
 
 @eager.register(Binary, AddOp, Joint, Gaussian)
@@ -208,7 +207,7 @@ def eager_add(op, joint, other):
     # Update with a delayed gaussian random variable.
     subs = tuple((d.name, d.point) for d in joint.deltas if d.name in other.inputs)
     if subs:
-        other = other.eager_subs(subs)
+        other = Subs(other, subs)
     if joint.gaussian is not Number(0):
         other = joint.gaussian + other
     if not isinstance(other, Gaussian):
@@ -240,18 +239,12 @@ def eager_add(op, lhs, rhs):
 @eager.register(Binary, AddOp, Delta, (Number, Tensor, Gaussian))
 def eager_add(op, delta, other):
     if delta.name in other.inputs:
-        other = other.eager_subs(((delta.name, delta.point),))
+        other = Subs(other, ((delta.name, delta.point),))
         assert isinstance(other, (Number, Tensor, Gaussian))
     if isinstance(other, (Number, Tensor)):
         return Joint((delta,), discrete=other)
     else:
         return Joint((delta,), gaussian=other)
-
-
-@eager.register(Binary, Op, Delta, (Number, Tensor))
-def eager_binary(op, delta, other):
-    if op is ops.sub:
-        return delta + -other
 
 
 @eager.register(Binary, AddOp, (Number, Tensor, Gaussian), Delta)
@@ -269,10 +262,115 @@ def eager_add(op, discrete, gaussian):
     return Joint(discrete=discrete, gaussian=gaussian)
 
 
-@eager.register(Binary, Op, Gaussian, (Number, Tensor))
-def eager_binary(op, gaussian, discrete):
-    if op is ops.sub:
-        return Joint(discrete=-discrete, gaussian=gaussian)
+################################################################################
+# Patterns to compute Radon-Nikodym derivatives
+################################################################################
+
+@eager.register(Binary, SubOp, Joint, (Funsor, Align, Gaussian, Joint))
+def eager_sub(op, joint, other):
+    return joint + -other
+
+
+@eager.register(Binary, SubOp, (Funsor, Align), Joint)
+def eager_sub(op, other, joint):
+    return -joint + other
+
+
+@eager.register(Binary, SubOp, Delta, (Number, Tensor, Gaussian, Joint))
+@eager.register(Binary, SubOp, (Number, Tensor), Gaussian)
+@eager.register(Binary, SubOp, Gaussian, (Number, Tensor, Joint))
+def eager_sub(op, lhs, rhs):
+    return lhs + -rhs
+
+
+@eager.register(Unary, NegOp, Joint)
+def eager_neg(op, joint):
+    if joint.deltas:
+        raise ValueError("Cannot negate deltas")
+    discrete = -joint.discrete
+    gaussian = -joint.gaussian
+    return Joint(discrete=discrete, gaussian=gaussian)
+
+
+################################################################################
+# Patterns for integration
+################################################################################
+
+def _simplify_integrate(fn, joint, integrand, reduced_vars):
+    if any(d.name in reduced_vars for d in joint.deltas):
+        subs = tuple((d.name, d.point) for d in joint.deltas if d.name in reduced_vars)
+        deltas = tuple(d for d in joint.deltas if d.name not in reduced_vars)
+        log_measure = Joint(deltas, joint.discrete, joint.gaussian)
+        integrand = Subs(integrand, subs)
+        reduced_vars = reduced_vars - frozenset(name for name, point in subs)
+        return Integrate(log_measure, integrand, reduced_vars)
+
+    return fn(log_measure, integrand, reduced_vars)
+
+
+def _joint_integrator(fn):
+    """
+    Decorator for Integrate(Joint(...), ...) patterns.
+    """
+    fn = interpreter.debug_logged(fn)
+    return integrator(functools.partial(_simplify_integrate, fn))
+
+
+@eager.register(Integrate, Joint, Delta, frozenset)
+@_joint_integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    raise NotImplementedError('TODO')
+
+
+@eager.register(Integrate, Joint, Tensor, frozenset)
+@_joint_integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    raise NotImplementedError('TODO')
+
+
+@eager.register(Integrate, Joint, Gaussian, frozenset)
+@_joint_integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    raise NotImplementedError('TODO')
+
+
+@eager.register(Integrate, Joint, Joint, frozenset)
+@_joint_integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    raise NotImplementedError('TODO')
+
+
+@eager.register(Integrate, Joint, Variable, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    name = integrand.name
+    assert reduced_vars == frozenset([name])
+    if any(d.name == name for d in log_measure.deltas):
+        deltas = tuple(d for d in log_measure.deltas if d.name != name)
+        log_norm = Joint(deltas, log_measure.discrete, log_measure.gaussian)
+        for d in log_measure.deltas:
+            if d.name == name:
+                mean = d.point
+                break
+        return mean * log_norm.exp()
+    elif name in log_measure.discrete.inputs:
+        integrand = arange(name, integrand.inputs[name].dtype)
+        return Integrate(log_measure, integrand, reduced_vars)
+    else:
+        assert name in log_measure.gaussian.inputs
+        gaussian = Integrate(log_measure.gaussian, integrand, reduced_vars)
+        return Joint(log_measure.deltas, log_measure.discrete).exp() * gaussian
+
+
+@monte_carlo.register(Integrate, Joint, Funsor, frozenset)
+@integrator
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    sampled_log_measure = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
+    if sampled_log_measure is not log_measure:
+        reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
+        return Integrate(sampled_log_measure, integrand, reduced_vars)
+
+    return None  # defer to default implementation
 
 
 __all__ = [

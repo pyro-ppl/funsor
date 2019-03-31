@@ -5,24 +5,30 @@ from collections import OrderedDict
 
 import pytest
 import torch
+from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
+from funsor.integrate import Integrate
 from funsor.joint import Joint
-from funsor.terms import Number
+from funsor.montecarlo import monte_carlo_interpretation
+from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 
 
 @pytest.mark.parametrize('expr,expected_type', [
+    ('-g1', Gaussian),
     ('g1 + 1', Joint),
     ('g1 - 1', Joint),
     ('1 + g1', Joint),
     ('g1 + shift', Joint),
-    ('g1 - shift', Joint),
+    ('g1 + shift', Joint),
     ('shift + g1', Joint),
+    ('shift - g1', Joint),
     ('g1 + g1', Joint),
+    ('(g1 + g2 + g2) - g2', Joint),
     ('g1(i=i0)', Gaussian),
     ('g2(i=i0)', Gaussian),
     ('g1(i=i0) + g2(i=i0)', Joint),
@@ -116,6 +122,18 @@ def test_eager_subs(int_inputs, real_inputs):
         assert_close(actual, expected, atol=1e-4)
 
 
+def test_eager_subs_variable():
+    inputs = OrderedDict([('i', bint(2)), ('x', reals()), ('y', reals(2))])
+    g1 = random_gaussian(inputs)
+
+    g2 = g1(x='z')
+    assert set(g2.inputs) == {'i', 'y', 'z'}
+
+    g2 = g1(x='y', y='x')
+    assert set(g2.inputs) == {'i', 'x', 'y'}
+    assert g2.inputs['x'] == reals(2)
+
+
 @pytest.mark.parametrize('int_inputs', [
     {},
     {'i': bint(2)},
@@ -204,6 +222,22 @@ def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs):
     assert_close((g1 + g2)(**values), g1(**values) + g2(**values), atol=1e-4, rtol=None)
 
 
+@pytest.mark.parametrize('inputs', [
+    OrderedDict([('i', bint(2)), ('x', reals())]),
+    OrderedDict([('i', bint(3)), ('x', reals())]),
+    OrderedDict([('i', bint(2)), ('x', reals(2))]),
+    OrderedDict([('i', bint(2)), ('x', reals()), ('y', reals())]),
+    OrderedDict([('i', bint(3)), ('j', bint(4)), ('x', reals(2))]),
+], ids=id_from_inputs)
+def test_reduce_add(inputs):
+    g = random_gaussian(inputs)
+    actual = g.reduce(ops.add, 'i')
+
+    gs = [g(i=i) for i in range(g.inputs['i'].dtype)]
+    expected = reduce(ops.add, gs)
+    assert_close(actual, expected)
+
+
 @pytest.mark.parametrize('int_inputs', [
     {},
     {'i': bint(2)},
@@ -215,7 +249,7 @@ def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs):
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
     {'w': reals(5), 'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-def test_logsumexp(int_inputs, real_inputs):
+def test_reduce_logsumexp(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
@@ -225,3 +259,62 @@ def test_logsumexp(int_inputs, real_inputs):
     g_xy = g.reduce(ops.logaddexp, frozenset(['x', 'y']))
     assert_close(g_xy, g.reduce(ops.logaddexp, 'x').reduce(ops.logaddexp, 'y'), atol=1e-3, rtol=None)
     assert_close(g_xy, g.reduce(ops.logaddexp, 'y').reduce(ops.logaddexp, 'x'), atol=1e-3, rtol=None)
+
+
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals()},
+    {'x': reals(4)},
+    {'x': reals(2, 3)},
+], ids=id_from_inputs)
+def test_integrate_variable(int_inputs, real_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(sorted(real_inputs.items()))
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+
+    log_measure = random_gaussian(inputs)
+    integrand = reduce(ops.add, [Variable(k, d) for k, d in real_inputs.items()])
+    reduced_vars = frozenset(real_inputs)
+
+    with monte_carlo_interpretation(particle=bint(100000)):
+        approx = Integrate(log_measure, integrand, reduced_vars)
+        assert isinstance(approx, Tensor)
+
+    exact = Integrate(log_measure, integrand, reduced_vars)
+    assert isinstance(exact, Tensor)
+    assert_close(approx, exact, atol=0.1, rtol=0.1)
+
+
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
+    {'i': bint(2), 'j': bint(3)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals()},
+    {'x': reals(2)},
+    {'x': reals(), 'y': reals()},
+    {'x': reals(2), 'y': reals(3)},
+    {'x': reals(4), 'y': reals(2, 3)},
+], ids=id_from_inputs)
+def test_integrate_gaussian(int_inputs, real_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(sorted(real_inputs.items()))
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+
+    log_measure = random_gaussian(inputs)
+    integrand = random_gaussian(inputs)
+    reduced_vars = frozenset(real_inputs)
+
+    with monte_carlo_interpretation(particle=bint(10000)):
+        approx = Integrate(log_measure, integrand, reduced_vars)
+        assert isinstance(approx, Tensor)
+
+    exact = Integrate(log_measure, integrand, reduced_vars)
+    assert isinstance(exact, Tensor)
+    assert_close(approx, exact, atol=0.1, rtol=0.1)

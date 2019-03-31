@@ -8,7 +8,7 @@ import torch
 
 import funsor
 import funsor.ops as ops
-from funsor.domains import Domain, bint, reals
+from funsor.domains import Domain, bint, find_domain, reals
 from funsor.terms import Lambda, Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH, Tensor, align_tensors, torch_einsum
@@ -260,6 +260,26 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
     check_funsor(actual, inputs, Domain((), dtype), expected_data)
 
 
+@pytest.mark.parametrize('output_shape2', [(), (2,), (3, 2)], ids=str)
+@pytest.mark.parametrize('output_shape1', [(), (2,), (3, 2)], ids=str)
+@pytest.mark.parametrize('inputs2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')], ids=str)
+@pytest.mark.parametrize('inputs1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')], ids=str)
+def test_binary_broadcast(inputs1, inputs2, output_shape1, output_shape2):
+    sizes = {'a': 4, 'b': 5, 'c': 6}
+    inputs1 = OrderedDict((k, bint(sizes[k])) for k in inputs1)
+    inputs2 = OrderedDict((k, bint(sizes[k])) for k in inputs2)
+    x1 = random_tensor(inputs1, reals(*output_shape1))
+    x2 = random_tensor(inputs1, reals(*output_shape2))
+
+    actual = x1 + x2
+    assert actual.output == find_domain(ops.add, x1.output, x2.output)
+
+    block = {'a': 1, 'b': 2, 'c': 3}
+    actual_block = actual(**block)
+    expected_block = Tensor(x1(**block).data + x2(**block).data)
+    assert_close(actual_block, expected_block)
+
+
 @pytest.mark.parametrize('scalar', [0.5])
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
 @pytest.mark.parametrize('symbol', BINARY_OPS)
@@ -386,17 +406,6 @@ def test_lambda_getitem():
     i = Variable('i', bint(2))
     assert x[i] is y
     assert Lambda(i, y) is x
-
-
-def test_lambda_subs():
-    x = Tensor(torch.randn(2))
-    y = Tensor(torch.randn(2))
-    z = Variable('z', reals())
-    i = Variable('i', bint(2))
-
-    actual = (x + Lambda(i, z))(z=y[i])  # FIXME this doesn't work
-    expected = x + y
-    assert_close(actual, expected)
 
 
 REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]

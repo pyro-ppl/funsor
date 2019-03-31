@@ -49,8 +49,9 @@ def test_categorical_density(size, batch_shape):
 def test_delta_defaults():
     v = Variable('v', reals())
     log_density = Variable('log_density', reals())
+    assert isinstance(dist.Delta(v, log_density), dist.Delta)
     value = Variable('value', reals())
-    assert dist.Delta(v, log_density) is dist.Delta(v, log_density, value)
+    assert dist.Delta(v, log_density, None) is dist.Delta(v, log_density, value)
 
 
 @pytest.mark.parametrize('event_shape', [(), (4,), (3, 2)], ids=str)
@@ -87,6 +88,28 @@ def test_delta_delta():
     log_density = Tensor(torch.tensor(0.5))
     d = dist.Delta(point, log_density, v)
     assert d is Delta('v', point, log_density)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_lognormal_density(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.torch.function(reals(), reals(), reals(), reals())
+    def log_normal(loc, scale, value):
+        return torch.distributions.LogNormal(loc, scale).log_prob(value)
+
+    check_funsor(log_normal, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
+
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.randn(batch_shape).exp(), inputs)
+    value = Tensor(torch.randn(batch_shape).exp(), inputs)
+    expected = log_normal(loc, scale, value)
+    check_funsor(expected, inputs, reals())
+
+    actual = dist.LogNormal(loc, scale, value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
 
 
 def test_normal_defaults():
@@ -131,7 +154,7 @@ def test_normal_gaussian_1(batch_shape):
     assert isinstance(expected, Tensor)
     check_funsor(expected, inputs, reals())
 
-    g = dist.Normal(loc, scale)
+    g = dist.Normal(loc, scale, None)
     assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
@@ -173,7 +196,7 @@ def test_normal_gaussian_3(batch_shape):
     assert isinstance(expected, Tensor)
     check_funsor(expected, inputs, reals())
 
-    g = dist.Normal(Variable('loc', reals()), scale)
+    g = dist.Normal(Variable('loc', reals()), scale, None)
     assert isinstance(g, Joint)
     actual = g(loc=loc, value=value)
     check_funsor(actual, inputs, reals())
@@ -228,7 +251,7 @@ def test_mvn_gaussian(batch_shape):
     assert isinstance(expected, Tensor)
     check_funsor(expected, inputs, reals())
 
-    g = dist.MultivariateNormal(loc, scale_tril)
+    g = dist.MultivariateNormal(loc, scale_tril, None)
     assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())

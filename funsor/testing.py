@@ -12,6 +12,7 @@ import pytest
 import torch
 from six.moves import reduce
 
+from funsor.delta import Delta
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.joint import Joint
@@ -55,15 +56,19 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
 
     if isinstance(actual, (Number, Tensor)):
         assert_close(actual.data, expected.data, atol=atol, rtol=rtol)
+    elif isinstance(actual, Delta):
+        assert actual.name == expected.name
+        assert_close(actual.point, expected.point, atol=atol, rtol=rtol)
+        assert_close(actual.log_density, expected.log_density, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
         assert_close(actual.loc, expected.loc, atol=atol, rtol=rtol)
         assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)
     elif isinstance(actual, Joint):
-        actual_deltas = {d.name: d.point for d in actual.deltas}
-        expected_deltas = {d.name: d.point for d in expected.deltas}
+        actual_deltas = {d.name: d for d in actual.deltas}
+        expected_deltas = {d.name: d for d in expected.deltas}
         assert set(actual_deltas) == set(expected_deltas)
-        for name, actual_point in actual_deltas.items():
-            assert_close(actual_point, expected_deltas[name])
+        for name, actual_delta in actual_deltas.items():
+            assert_close(actual_delta, expected_deltas[name])
         assert_close(actual.discrete, expected.discrete, atol=atol, rtol=rtol)
         assert_close(actual.gaussian, expected.gaussian, atol=atol, rtol=rtol)
     elif isinstance(actual, torch.Tensor):
@@ -78,16 +83,16 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
                 actual = actual[~eq]
                 expected = expected[~eq]
             diff = (actual.detach() - expected.detach()).abs()
-            if atol is not None:
-                assert diff.max() < atol, msg
             if rtol is not None:
                 assert (diff / (atol + expected.detach().abs())).max() < rtol, msg
+            elif atol is not None:
+                assert diff.max() < atol, msg
     elif isinstance(actual, numbers.Number):
         diff = abs(actual - expected)
-        if atol is not None:
-            assert diff < atol, msg
         if rtol is not None:
             assert diff < (atol + expected) * rtol, msg
+        elif atol is not None:
+            assert diff < atol, msg
     else:
         raise ValueError('cannot compare objects of type {}'.format(type(actual)))
 
@@ -186,6 +191,7 @@ def random_gaussian(inputs):
     loc = torch.randn(batch_shape + event_shape)
     prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
     precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
+    precision = precision + 0.05 * torch.eye(event_shape[0])
     return Gaussian(loc, precision, inputs)
 
 

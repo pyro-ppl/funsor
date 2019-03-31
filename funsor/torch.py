@@ -13,9 +13,11 @@ import funsor.ops as ops
 from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.ops import GetitemOp, Op
+from funsor.integrate import Integrate, integrator
+from funsor.montecarlo import monte_carlo
+from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Subs, Variable, eager, to_data, to_funsor
 
 
 def align_tensor(new_inputs, x):
@@ -216,7 +218,7 @@ class Tensor(Funsor):
             assert isinstance(reduced_vars, frozenset)
             self_vars = frozenset(self.inputs)
             reduced_vars = reduced_vars & self_vars
-            if reduced_vars == self_vars:
+            if reduced_vars == self_vars and not self.output.shape:
                 # Reduce all dims at once.
                 if op is ops.logaddexp:
                     # work around missing torch.Tensor.logsumexp()
@@ -240,7 +242,7 @@ class Tensor(Funsor):
             return Tensor(data, inputs, self.dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
-    def sample(self, sampled_vars, sample_inputs=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
         assert self.output == reals()
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
@@ -249,7 +251,9 @@ class Tensor(Funsor):
         # Partition inputs into sample_inputs + batch_inputs + event_inputs.
         if sample_inputs is None:
             sample_inputs = OrderedDict()
-        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        else:
+            sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
+                                        if k not in self.inputs)
         sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
         batch_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in sampled_vars)
         event_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k in sampled_vars)
@@ -342,6 +346,21 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
 
+    # Reshape to support broadcasting of output shape.
+    if inputs:
+        lhs_dim = len(lhs.output.shape)
+        rhs_dim = len(rhs.output.shape)
+        if lhs_dim < rhs_dim:
+            cut = lhs_data.dim() - lhs_dim
+            shape = lhs_data.shape
+            shape = shape[:cut] + (1,) * (rhs_dim - lhs_dim) + shape[cut:]
+            lhs_data = lhs_data.reshape(shape)
+        elif rhs_dim < lhs_dim:
+            cut = rhs_data.dim() - rhs_dim
+            shape = rhs_data.shape
+            shape = shape[:cut] + (1,) * (lhs_dim - rhs_dim) + shape[cut:]
+            rhs_data = rhs_data.reshape(shape)
+
     data = op(lhs_data, rhs_data)
     return Tensor(data, inputs, dtype)
 
@@ -417,16 +436,38 @@ def eager_lambda(var, expr):
     return Tensor(data, inputs, expr.dtype)
 
 
-@eager.register(Contract, Tensor, Tensor, frozenset)
+@eager.register(Contract, AssociativeOp, AssociativeOp, Tensor, Tensor, frozenset)
 @contractor
-def eager_contract(lhs, rhs, reduced_vars):
+def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
+    if (sum_op, prod_op) == (ops.add, ops.mul):
+        backend = "torch"
+    elif (sum_op, prod_op) == (ops.logaddexp, ops.add):
+        backend = "pyro.ops.einsum.torch_log"
+    else:
+        return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)
+
     inputs = OrderedDict((k, d) for t in (lhs, rhs)
                          for k, d in t.inputs.items() if k not in reduced_vars)
+
     data = opt_einsum.contract(lhs.data, list(lhs.inputs),
                                rhs.data, list(rhs.inputs),
-                               list(inputs), backend="torch")
-    dtype = find_domain(ops.mul, lhs.output, rhs.output).dtype
+                               list(inputs), backend=backend)
+    dtype = find_domain(prod_op, lhs.output, rhs.output).dtype
     return Tensor(data, inputs, dtype)
+
+
+@monte_carlo.register(Integrate, Tensor, Tensor, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    return Contract(log_measure.exp(), integrand, reduced_vars)
+
+
+@monte_carlo.register(Integrate, Tensor, Funsor, frozenset)
+@integrator
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    log_measure = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
+    reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
+    return Integrate(log_measure, integrand, reduced_vars)
 
 
 def arange(name, size):
@@ -452,13 +493,10 @@ def materialize(x):
         return x
     subs = []
     for name, domain in x.inputs.items():
-        if not isinstance(domain.dtype, integer_types):
-            raise ValueError('materialize() requires integer free variables but found '
-                             '"{}" of domain {}'.format(name, domain))
-        assert not domain.shape
-        subs.append((name, arange(name, domain.dtype)))
+        if isinstance(domain.dtype, integer_types):
+            subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
-    return x.eager_subs(subs)
+    return Subs(x, subs)
 
 
 class LazyTuple(tuple):
@@ -501,7 +539,7 @@ class Function(Funsor):
     def eager_subs(self, subs):
         if not any(k in self.inputs for k, v in subs):
             return self
-        args = tuple(arg.eager_subs(subs) for arg in self.args)
+        args = tuple(Subs(arg, subs) for arg in self.args)
         return Function(self.fn, self.output, args)
 
 
@@ -555,7 +593,10 @@ class _Memoized(object):
 
 
 def _function(inputs, output, fn):
-    names = getargspec(fn)[0]
+    if isinstance(fn, torch.nn.Module):
+        names = getargspec(fn.forward)[0][1:]
+    else:
+        names = getargspec(fn)[0]
     args = tuple(Variable(name, domain) for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
     if not isinstance(output, Domain):

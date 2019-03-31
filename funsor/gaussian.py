@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import math
+import warnings
 from collections import OrderedDict
 
 import torch
@@ -11,8 +12,10 @@ from six.moves import reduce
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.ops import AddOp
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager
+from funsor.integrate import Integrate, integrator
+from funsor.montecarlo import monte_carlo
+from funsor.ops import AddOp, NegOp, SubOp
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -26,8 +29,12 @@ def _issubshape(subshape, supershape):
     return True
 
 
-def _log_det_tril(x):
+def _log_det_tri(x):
     return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+
+
+def _det_tri(x):
+    return x.diagonal(dim1=-1, dim2=-2).prod(-1)
 
 
 def _mv(mat, vec):
@@ -42,6 +49,38 @@ def _vmv(mat, vec):
     v = vec.unsqueeze(-1)
     result = torch.matmul(vt, torch.matmul(mat, v))
     return result.squeeze(-1).squeeze(-1)
+
+
+def _trace_mm(x, y):
+    """
+    Computes ``trace(x @ y)``.
+    """
+    assert x.dim() >= 2
+    assert y.dim() >= 2
+    xy = x * y
+    return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
+
+
+def _sym_solve_mv(mat, vec):
+    r"""
+    Computes ``mat \ vec`` assuming mat is symmetric and usually positive definite,
+    but falling back to general pseudoinverse if positive definiteness fails.
+    """
+    try:
+        # Attempt to use stable positive definite math.
+        tri = torch.inverse(torch.cholesky(mat))
+        return _mv(tri.transpose(-1, -2), _mv(tri, vec))
+    except RuntimeError as e:
+        warnings.warn(e.message, RuntimeWarning)
+
+    # Fall back to pseudoinverse.
+    if mat.size(-1) == 1:
+        mat = mat.squeeze(-1)
+        mat, vec = torch.broadcast_tensors(mat, vec)
+        result = vec / mat
+        result[(mat != 0) == 0] = 0
+        return result
+    return _mv(torch.pinverse(mat), vec)
 
 
 def _compute_offsets(inputs):
@@ -165,44 +204,64 @@ class Gaussian(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = OrderedDict((k, materialize(v)) for k, v in subs if k in self.inputs)
+        subs = tuple((k, materialize(v)) for k, v in subs if k in self.inputs)
         if not subs:
             return self
 
-        # This currently handles only substitution of constants.
-        if not all(isinstance(v, (Number, Tensor)) for v in subs.values()):
-            raise NotImplementedError('TODO handle substitution of affine functions of variables')
+        # Constants and Variables are eagerly substituted;
+        # everything else is lazily substituted.
+        lazy_subs = tuple((k, v) for k, v in subs
+                          if not isinstance(v, (Number, Tensor, Variable)))
+        var_subs = tuple((k, v) for k, v in subs if isinstance(v, Variable))
+        int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
+                         if v.dtype != 'real')
+        real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
+                          if v.dtype == 'real')
+        if not (var_subs or int_subs or real_subs):
+            return None  # entirely lazy
 
-        # First perform any integer substitution, i.e. slicing into a batch.
-        int_subs = tuple((k, v) for k, v in subs.items() if v.dtype != 'real')
-        real_subs = tuple((k, v) for k, v in subs.items() if v.dtype == 'real')
+        # First perform any variable substitutions.
+        if var_subs:
+            rename = {k: v.name for k, v in var_subs}
+            targets = frozenset(rename.values())
+            for k, v in int_subs + real_subs + lazy_subs:
+                if not targets.isdisjoint(v.inputs):
+                    raise NotImplementedError('TODO alpha-convert')
+            inputs = OrderedDict((rename.get(k, k), d) for k, d in self.inputs.items())
+            if len(inputs) != len(self.inputs):
+                raise ValueError("Variable substitution name conflict")
+            var_result = Gaussian(self.loc, self.precision, inputs)
+            return Subs(var_result, int_subs + real_subs + lazy_subs)
+
+        # Next perform any integer substitution, i.e. slicing into a batch.
         if int_subs:
             int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
             real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
             tensors = [self.loc, self.precision]
-            funsors = [Tensor(x, int_inputs).eager_subs(int_subs) for x in tensors]
+            funsors = [Subs(Tensor(x, int_inputs), int_subs) for x in tensors]
             inputs = funsors[0].inputs.copy()
             inputs.update(real_inputs)
             int_result = Gaussian(funsors[0].data, funsors[1].data, inputs)
-            return int_result.eager_subs(real_subs)
+            return Subs(int_result, real_subs + lazy_subs)
 
         # Try to perform a complete substitution of all real variables, resulting in a Tensor.
+        real_subs = OrderedDict(subs)
         assert real_subs and not int_subs
-        if all(k in subs for k, d in self.inputs.items() if d.dtype == 'real'):
+        if all(k in real_subs for k, d in self.inputs.items() if d.dtype == 'real'):
             # Broadcast all component tensors.
             int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
             tensors = [Tensor(self.loc, int_inputs),
                        Tensor(self.precision, int_inputs)]
-            tensors.extend(subs.values())
+            tensors.extend(real_subs.values())
             inputs, tensors = align_tensors(*tensors)
-            batch_dim = self.loc.dim() - 1
+            batch_dim = tensors[0].dim() - 1
             batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
             (loc, precision), values = tensors[:2], tensors[2:]
 
             # Form the concatenated value.
             offsets, event_size = _compute_offsets(self.inputs)
             value = loc.new_empty(batch_shape + (event_size,))
-            for k, value_k in zip(subs, values):
+            for k, value_k in zip(real_subs, values):
                 offset = offsets[k]
                 value_k = value_k.reshape(value_k.shape[:batch_dim] + (-1,))
                 assert value_k.size(-1) == self.inputs[k].num_elements
@@ -212,15 +271,18 @@ class Gaussian(Funsor):
             result = -0.5 * _vmv(precision, value - loc)
             result = Tensor(result, inputs)
             assert result.output == reals()
-            return result
+            return Subs(result, lazy_subs)
 
+        # Perform a partial substution of a subset of real variables, resulting in a Joint.
+        # See "The Matrix Cookbook" (November 15, 2012) ss. 8.1.3 eq. 353.
+        # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
         raise NotImplementedError('TODO implement partial substitution of real variables')
 
     @lazy_property
     def _log_normalizer(self):
         dim = self.loc.size(-1)
-        log_det_term = _log_det_tril(torch.cholesky(self.precision))
-        data = log_det_term - 0.5 * math.log(2 * math.pi) * dim
+        log_det_term = _log_det_tri(torch.cholesky(self.precision))
+        data = -log_det_term + 0.5 * math.log(2 * math.pi) * dim
         inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
         return Tensor(data, inputs)
 
@@ -247,34 +309,57 @@ class Gaussian(Funsor):
                 index = torch.tensor(index)
 
                 loc = self.loc[..., index]
-                self_scale_tril = torch.inverse(torch.cholesky(self.precision))
-                self_covariance = torch.matmul(self_scale_tril, self_scale_tril.transpose(-1, -2))
+                self_scale_tri = torch.inverse(torch.cholesky(self.precision)).transpose(-1, -2)
+                self_covariance = torch.matmul(self_scale_tri, self_scale_tri.transpose(-1, -2))
                 covariance = self_covariance[..., index.unsqueeze(-1), index]
-                scale_tril = torch.cholesky(covariance)
-                inv_scale_tril = torch.inverse(scale_tril)
-                precision = torch.matmul(inv_scale_tril, inv_scale_tril.transpose(-1, -2))
+                scale_tri = torch.cholesky(covariance)
+                inv_scale_tri = torch.inverse(scale_tri)
+                precision = torch.matmul(inv_scale_tri.transpose(-1, -2), inv_scale_tri)
                 reduced_dim = sum(self.inputs[k].num_elements for k in reduced_reals)
-                log_det_term = _log_det_tril(scale_tril) - _log_det_tril(self_scale_tril)
-                log_prob = Tensor(log_det_term - 0.5 * math.log(2 * math.pi) * reduced_dim, int_inputs)
+                log_det_term = _log_det_tri(self_scale_tri) - _log_det_tri(scale_tri)
+                log_prob = Tensor(log_det_term + 0.5 * math.log(2 * math.pi) * reduced_dim, int_inputs)
                 result = log_prob + Gaussian(loc, precision, inputs)
 
             return result.reduce(ops.logaddexp, reduced_ints)
 
         elif op is ops.add:
-            raise NotImplementedError('TODO product-reduce along a plate dimension')
+            for v in reduced_vars:
+                if self.inputs[v].dtype == 'real':
+                    raise ValueError("Cannot sum along a real dimension: {}".format(repr(v)))
+
+            # Fuse Gaussians along a plate. Compare to eager_add_gaussian_gaussian().
+            old_ints = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
+            new_ints = OrderedDict((k, v) for k, v in old_ints.items() if k not in reduced_vars)
+            inputs = OrderedDict((k, v) for k, v in self.inputs.items() if k not in reduced_vars)
+
+            precision = Tensor(self.precision, old_ints).reduce(ops.add, reduced_vars)
+            precision_loc = Tensor(_mv(self.precision, self.loc),
+                                   old_ints).reduce(ops.add, reduced_vars)
+            assert precision.inputs == new_ints
+            assert precision_loc.inputs == new_ints
+            loc = Tensor(_sym_solve_mv(precision.data, precision_loc.data), new_ints)
+            expanded_loc = align_tensor(old_ints, loc)
+            quadratic_term = Tensor(_vmv(self.precision, expanded_loc - self.loc),
+                                    old_ints).reduce(ops.add, reduced_vars)
+            assert quadratic_term.inputs == new_ints
+            likelihood = -0.5 * quadratic_term
+            return likelihood + Gaussian(loc.data, precision.data, inputs)
 
         return None  # defer to default implementation
 
-    def sample(self, sampled_vars, sample_inputs=None):
-        sampled_vars = sampled_vars.intersection(self.inputs)
+    def unscaled_sample(self, sampled_vars, sample_inputs=None):
+        # Sample only the real variables.
+        sampled_vars = frozenset(k for k, v in self.inputs.items()
+                                 if k in sampled_vars if v.dtype == 'real')
         if not sampled_vars:
             return self
-        assert all(self.inputs[k].dtype == 'real' for k in sampled_vars)
 
         # Partition inputs into sample_inputs + int_inputs + real_inputs.
         if sample_inputs is None:
             sample_inputs = OrderedDict()
-        assert frozenset(sample_inputs).isdisjoint(self.inputs)
+        else:
+            sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
+                                        if k not in self.inputs)
         sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
         int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
         real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
@@ -282,11 +367,11 @@ class Gaussian(Funsor):
         inputs.update(int_inputs)
 
         if sampled_vars == frozenset(real_inputs):
-            scale_tril = torch.inverse(torch.cholesky(self.precision))
-            assert self.loc.shape == scale_tril.shape[:-1]
+            scale_tri = torch.inverse(torch.cholesky(self.precision)).transpose(-1, -2)
+            assert self.loc.shape == scale_tri.shape[:-1]
             shape = sample_shape + self.loc.shape
             white_noise = torch.randn(shape)
-            sample = self.loc + _mv(scale_tril, white_noise)
+            sample = self.loc + _mv(scale_tri, white_noise)
             offsets, _ = _compute_offsets(real_inputs)
             results = []
             for key, domain in real_inputs.items():
@@ -317,11 +402,80 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     # Fuse aligned Gaussians.
     precision_loc = _mv(lhs_precision, lhs_loc) + _mv(rhs_precision, rhs_loc)
     precision = lhs_precision + rhs_precision
-    scale_tril = torch.inverse(torch.cholesky(precision))
-    loc = _mv(scale_tril.transpose(-1, -2), _mv(scale_tril, precision_loc))
+    loc = _sym_solve_mv(precision, precision_loc)
     quadratic_term = _vmv(lhs_precision, loc - lhs_loc) + _vmv(rhs_precision, loc - rhs_loc)
     likelihood = Tensor(-0.5 * quadratic_term, int_inputs)
     return likelihood + Gaussian(loc, precision, inputs)
+
+
+@eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
+@eager.register(Binary, SubOp, (Funsor, Align), Gaussian)
+def eager_sub(op, lhs, rhs):
+    return lhs + -rhs
+
+
+@eager.register(Unary, NegOp, Gaussian)
+def eager_neg(op, arg):
+    precision = -arg.precision
+    return Gaussian(arg.loc, precision, arg.inputs)
+
+
+@eager.register(Integrate, Gaussian, Variable, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
+    if real_vars:
+        assert real_vars == frozenset([integrand.name])
+        data = log_measure.loc * log_measure._log_normalizer.data.exp().unsqueeze(-1)
+        data = data.reshape(log_measure.loc.shape[:-1] + integrand.output.shape)
+        inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
+        return Tensor(data, inputs)
+
+    return None  # defer to default implementation
+
+
+@eager.register(Integrate, Gaussian, Gaussian, frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
+    if real_vars:
+
+        lhs_reals = frozenset(k for k, d in log_measure.inputs.items() if d.dtype == 'real')
+        rhs_reals = frozenset(k for k, d in integrand.inputs.items() if d.dtype == 'real')
+        if lhs_reals == real_vars and rhs_reals <= real_vars:
+            inputs = OrderedDict((k, d) for t in (log_measure, integrand)
+                                 for k, d in t.inputs.items())
+            lhs_loc, lhs_precision = align_gaussian(inputs, log_measure)
+            rhs_loc, rhs_precision = align_gaussian(inputs, integrand)
+
+            # Compute the expectation of a non-normalized quadratic form.
+            # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
+            # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
+            lhs_scale_tri = torch.inverse(torch.cholesky(lhs_precision)).transpose(-1, -2)
+            lhs_covariance = torch.matmul(lhs_scale_tri, lhs_scale_tri.transpose(-1, -2))
+            dim = lhs_loc.size(-1)
+            norm = _det_tri(lhs_scale_tri) * (2 * math.pi) ** (0.5 * dim)
+            data = -0.5 * norm * (_vmv(rhs_precision, lhs_loc - rhs_loc) +
+                                  _trace_mm(rhs_precision, lhs_covariance))
+            inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)
+            result = Tensor(data, inputs)
+            return result.reduce(ops.add, reduced_vars - real_vars)
+
+        raise NotImplementedError('TODO implement partial integration')
+
+    return None  # defer to default implementation
+
+
+@monte_carlo.register(Integrate, Gaussian, Funsor, frozenset)
+@integrator
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
+    if real_vars:
+        log_measure = log_measure.sample(real_vars, monte_carlo.sample_inputs)
+        reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
+        return Integrate(log_measure, integrand, reduced_vars)
+
+    return None  # defer to default implementation
 
 
 __all__ = [

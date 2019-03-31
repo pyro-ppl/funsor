@@ -28,11 +28,47 @@ class Op(Dispatcher):
         return self.__name__
 
 
+class TransformOp(Op):
+    def set_inv(self, fn):
+        """
+        :param callable fn: A function that inputs an arg ``y`` and outputs a
+            value ``x`` such that ``y=self(x)``.
+        """
+        assert callable(fn)
+        self.inv = fn
+        return fn
+
+    def set_log_abs_det_jacobian(self, fn):
+        """
+        :param callable fn: A function that inputs two args ``x, y``, where
+            ``y=self(x)``, and returns ``log(abs(det(dy/dx)))``.
+        """
+        assert callable(fn)
+        self.log_abs_det_jacobian = fn
+        return fn
+
+    @staticmethod
+    def inv(x):
+        raise NotImplementedError
+
+    @staticmethod
+    def log_abs_det_jacobian(x, y):
+        raise NotImplementedError
+
+
 class AssociativeOp(Op):
     pass
 
 
 class AddOp(AssociativeOp):
+    pass
+
+
+class SubOp(Op):
+    pass
+
+
+class NegOp(Op):
     pass
 
 
@@ -58,8 +94,8 @@ class GetitemOp(Op):
         assert offset >= 0
         self.offset = offset
         self._prefix = (slice(None),) * offset
-        self.__name__ = 'GetitemOp({})'.format(offset)
         super(GetitemOp, self).__init__(self._default)
+        self.__name__ = 'GetitemOp({})'.format(offset)
 
     def _default(self, x, y):
         return x[self._prefix + (y,)] if self.offset else x[y]
@@ -74,8 +110,8 @@ invert = Op(operator.invert)
 le = Op(operator.le)
 lt = Op(operator.lt)
 ne = Op(operator.ne)
-neg = Op(operator.neg)
-sub = Op(operator.sub)
+neg = NegOp(operator.neg)
+sub = SubOp(operator.sub)
 truediv = Op(operator.truediv)
 
 add = AddOp(operator.add)
@@ -83,6 +119,11 @@ and_ = AssociativeOp(operator.and_)
 mul = AssociativeOp(operator.mul)
 or_ = AssociativeOp(operator.or_)
 xor = AssociativeOp(operator.xor)
+
+
+@add.register(object)
+def _unary_add(x):
+    return x.sum()
 
 
 @Op
@@ -100,14 +141,28 @@ def sqrt(x):
     return np.sqrt(x)
 
 
-@Op
+@TransformOp
 def exp(x):
     return np.exp(x)
 
 
-@Op
+@exp.set_log_abs_det_jacobian
+def log_abs_det_jacobian(x, y):
+    return add(x)
+
+
+@TransformOp
 def log(x):
     return np.log(x)
+
+
+@log.set_log_abs_det_jacobian
+def log_abs_det_jacobian(x, y):
+    return -add(y)
+
+
+exp.set_inv(log)
+log.set_inv(exp)
 
 
 @Op
@@ -173,6 +228,12 @@ DISTRIBUTIVE_OPS = frozenset([
 ])
 
 
+UNITS = {
+    mul: 1.,
+    add: 0.,
+}
+
+
 PRODUCT_INVERSES = {
     mul: safediv,
     add: safesub,
@@ -180,11 +241,15 @@ PRODUCT_INVERSES = {
 
 
 __all__ = [
+    'AddOp',
     'AssociativeOp',
     'DISTRIBUTIVE_OPS',
     'GetitemOp',
+    'NegOp',
     'Op',
     'PRODUCT_INVERSES',
+    'UNITS',
+    'SubOp',
     'abs',
     'add',
     'and_',

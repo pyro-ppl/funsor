@@ -5,10 +5,13 @@ import collections
 from opt_einsum.paths import greedy
 from six.moves import reduce
 
+import funsor.ops as ops
+from funsor.contract import Contract, contractor
 from funsor.domains import find_domain
+from funsor.integrate import Integrate
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
-from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Binary, Funsor, Reduce, eager, reflect
+from funsor.ops import DISTRIBUTIVE_OPS, UNITS, AssociativeOp
+from funsor.terms import Binary, Funsor, Reduce, Subs, Unary, eager, lazy, to_funsor
 
 
 class Finitary(Funsor):
@@ -37,7 +40,7 @@ class Finitary(Funsor):
     def eager_subs(self, subs):
         if not any(k in self.inputs for k, v in subs):
             return self
-        operands = tuple(operand.eager_subs(subs) for operand in self.operands)
+        operands = tuple(Subs(operand, subs) for operand in self.operands)
         return Finitary(self.op, operands)
 
 
@@ -50,7 +53,7 @@ def eager_finitary(op, operands):
 def associate(cls, *args):
     result = associate.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
@@ -70,7 +73,7 @@ def associate_finitary(op, operands):
         else:
             new_operands.append(term)
 
-    with interpretation(reflect):
+    with interpretation(lazy):
         return Finitary(op, tuple(new_operands))
 
 
@@ -91,7 +94,7 @@ def associate_reduce(op, arg, reduced_vars):
 def distribute(cls, *args):
     result = distribute.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
@@ -130,7 +133,7 @@ def distribute_finitary(op, operands):
 def optimize(cls, *args):
     result = optimize.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
@@ -157,13 +160,19 @@ def optimize_reduction(op, arg, reduced_vars):
     if not (op, arg.op) in DISTRIBUTIVE_OPS:
         return None
 
+    return Contract(op, arg.op, arg, to_funsor(UNITS[arg.op]), reduced_vars)
+
+
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Finitary, (Finitary, Funsor), frozenset)
+def optimize_contract_finitary_funsor(sum_op, prod_op, lhs, rhs, reduced_vars):
+
+    if prod_op is not lhs.op:
+        return None
+
     # build opt_einsum optimizer IR
-    inputs = []
-    size_dict = {}
-    for operand in arg.operands:
-        inputs.append(frozenset(d for d in operand.inputs.keys()))
-        size_dict.update({k: ((REAL_SIZE * v.num_elements) if v.dtype == 'real' else v.dtype)
-                          for k, v in operand.inputs.items()})
+    inputs = [frozenset(t.inputs) for t in lhs.operands] + [frozenset(rhs.inputs)]
+    size_dict = {k: ((REAL_SIZE * v.num_elements) if v.dtype == 'real' else v.dtype)
+                 for arg in (lhs, rhs) for k, v in arg.inputs.items()}
     outputs = frozenset().union(*inputs) - reduced_vars
 
     # optimize path with greedy opt_einsum optimizer
@@ -177,8 +186,7 @@ def optimize_reduction(op, arg, reduced_vars):
     for input in inputs:
         reduce_dim_counter.update({d: 1 for d in input})
 
-    reduce_op, finitary_op = op, arg.op
-    operands = list(arg.operands)
+    operands = list(lhs.operands) + [rhs]
     for (a, b) in path:
         b, a = tuple(sorted((a, b), reverse=True))
         tb = operands.pop(b)
@@ -197,17 +205,14 @@ def optimize_reduction(op, arg, reduced_vars):
         # count new appearance of variables that aren't reduced
         reduce_dim_counter.update({d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)})
 
-        path_end = Binary(finitary_op, ta, tb)
-        if path_end_reduced_vars:
-            path_end = Reduce(reduce_op, path_end, path_end_reduced_vars)
-
+        path_end = Contract(sum_op, prod_op, ta, tb, path_end_reduced_vars)
         operands.append(path_end)
 
     # reduce any remaining dims, if necessary
     final_reduced_vars = frozenset(d for (d, count) in reduce_dim_counter.items()
                                    if count > 0) & reduced_vars
     if final_reduced_vars:
-        path_end = Reduce(reduce_op, path_end, final_reduced_vars)
+        path_end = Reduce(sum_op, path_end, final_reduced_vars)
     return path_end
 
 
@@ -218,11 +223,35 @@ def remove_single_finitary(op, operands):
     return None
 
 
+@optimize.register(Unary, ops.Op, Finitary)
+def optimize_exp_finitary(op, arg):
+    # useful for handling Integrate...
+    if op is not ops.exp or arg.op is not ops.add:
+        return None
+    return Finitary(ops.mul, tuple(operand.exp() for operand in arg.operands))
+
+
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
+@contractor
+def optimize_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
+    return None
+
+
+@optimize.register(Integrate, Funsor, Funsor, frozenset)
+def optimize_integrate(log_measure, integrand, reduced_vars):
+    return Contract(ops.add, ops.mul, log_measure.exp(), integrand, reduced_vars)
+
+
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Funsor, Finitary, frozenset)
+def optimize_contract_funsor_finitary(sum_op, prod_op, lhs, rhs, reduced_vars):
+    return Contract(sum_op, prod_op, rhs, lhs, reduced_vars)
+
+
 @dispatched_interpretation
 def desugar(cls, *args):
     result = desugar.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = lazy(cls, *args)
     return result
 
 
