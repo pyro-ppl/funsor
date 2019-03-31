@@ -217,6 +217,7 @@ class Funsor(object):
             If unspecified, all inputs will be reduced.
         :type reduced_vars: str or frozenset
         """
+        assert isinstance(op, AssociativeOp)
         # Eagerly convert reduced_vars to appropriate things.
         if reduced_vars is None:
             # Empty reduced_vars means "reduce over everything".
@@ -713,18 +714,19 @@ class Binary(Funsor):
         return Binary(self.op, lhs, rhs)
 
     def eager_reduce(self, op, reduced_vars):
-        if op is self.op and isinstance(op, AssociativeOp):
+        if op is self.op:
             lhs = self.lhs.reduce(op, reduced_vars)
             rhs = self.rhs.reduce(op, reduced_vars)
             return op(lhs, rhs)
         return interpreter.debug_logged(super(Binary, self).eager_reduce)(op, reduced_vars)
 
     def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        if self.op is ops.add:
+        if self.op is ops.logaddexp:
+            # Sample mixture components independently.
             lhs = self.lhs.unscaled_sample(sampled_vars, sample_inputs)
             rhs = self.rhs.unscaled_sample(sampled_vars, sample_inputs)
-            return lhs + rhs
-        return self
+            return Binary(ops.logaddexp, lhs, rhs)
+        raise TypeError("Cannot sample from Binary({}, ...)".format(self.op))
 
 
 class Reduce(Funsor):
@@ -762,17 +764,10 @@ class Reduce(Funsor):
         return super(Reduce, self).eager_reduce(op, reduced_vars)
 
     def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        #   i,x |- f(x,i) -> delta(x=p)                i |- p
-        # -----------------------------------------------------
-        # y |- \prod_i f(x,i) [x:=y[i]] -> delta(y=\lambda i.p)
-        if self.op is ops.add and isinstance(self.arg, Subs):
-            for k, v in self.arg.subs.items():
-                if (isinstance(v, Binary) and isinstance(v.op, ops.GetitemOp) and
-                        isinstance(v.lhs, Variable) and v.lhs.name in sampled_vars and
-                        isinstance(v.rhs, Variable) and v.rhs.name in self.reduced_vars):
-                    raise NotImplementedError('TODO')
-
-        return self
+        if self.op is ops.logaddexp:
+            arg = self.arg.unscaled_sample(sampled_vars, sample_inputs)
+            return Reduce(ops.logaddexp, arg, self.reduced_vars)
+        raise TypeError("Cannot sample from Reduce({}, ...)".format(self.op))
 
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
