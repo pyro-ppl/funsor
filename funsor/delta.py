@@ -144,6 +144,8 @@ def eager_uncurry(delta, reals_var, bint_var):
         log_density = delta.log_density.reduce(ops.add, bint_var)
         return Delta(delta.name, point, log_density)
 
+    return None  # defer to default implementation
+
 
 @eager.register(Integrate, Delta, Funsor, frozenset)
 @integrator
