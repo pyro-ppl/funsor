@@ -14,7 +14,7 @@ from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, to_funsor
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Reduce, Subs, Unary, Variable, eager, to_funsor
 from funsor.torch import Tensor, arange
 
 
@@ -32,6 +32,13 @@ class JointMeta(FunsorMeta):
 class Joint(Funsor):
     """
     Normal form for a joint log probability density funsor.
+
+    The primary purpose of Joint is to handle substitution of
+    :class:`~funsor.delta.Delta` funsors into other funsors.
+
+    Joint is closed under Bayesian fusion, i.e. under ``ops.add`` operations.
+    Joint is not closed under mixtures, i.e. ``ops.logaddexp`` operations,
+    hence mixtures will be represented as lazy ``ops.logaddexp`` of Joints.
 
     :param tuple deltas: A possibly-empty tuple of degenerate distributions
         represented as :class:`~funsor.delta.Delta` funsors.
@@ -215,7 +222,18 @@ def eager_add(op, joint, other):
     return Joint(joint.deltas, joint.discrete, other)
 
 
-@eager.register(Binary, AddOp, (Funsor, Align, Delta), Joint)
+@eager.register(Binary, AddOp, Joint, Reduce)
+def eager_add(op, joint, other):
+    if other.op is ops.add:
+        ordinal = other.reduced_vars
+        plates = joint.plates.copy()
+        plates[ordinal] = plates.get(ordinal, ()) + (other,)
+        return Joint(plates)
+
+    return None  # defer to default implementation
+
+
+@eager.register(Binary, AddOp, (Funsor, Align, Delta, Reduce), Joint)
 def eager_add(op, other, joint):
     return joint + other
 
@@ -260,6 +278,14 @@ def eager_add(op, gaussian, discrete):
 @eager.register(Binary, AddOp, (Number, Tensor), Gaussian)
 def eager_add(op, discrete, gaussian):
     return Joint(discrete=discrete, gaussian=gaussian)
+
+
+@eager.register(Reduce, AddOp, Joint, frozenset)
+def eager_reduce(op, joint, reduced_vars):
+    if any(joint.inputs[k].dtype == 'real' for k in reduced_vars):
+        raise ValueError('Cannot sum over a real dim')
+    plates = {p + reduced_vars for p, terms in joint.plates.items()}
+    return Joint(plates)
 
 
 ################################################################################
