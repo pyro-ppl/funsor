@@ -311,9 +311,13 @@ def to_funsor(x):
     return Tensor(x)
 
 
-@dispatch(torch.Tensor, object)
-def to_funsor(x, dtype):
-    return Tensor(x, dtype=dtype)
+@dispatch(torch.Tensor, Domain)
+def to_funsor(x, output):
+    result = Tensor(x, dtype=output.dtype)
+    if result.output != output:
+        raise ValueError("Invalid shape: expected {}, actual {}"
+                         .format(output.shape, result.output.shape))
+    return result
 
 
 @to_data.register(Tensor)
@@ -553,7 +557,7 @@ def _nested_function(fn, args, output):
             fn_i.__name__ = "{}_{}".format(fn_i, i)
             result.append(_nested_function(fn_i, args, output_i))
         return LazyTuple(result)
-    raise TypeError("Invalid output: {}".format(output))
+    raise ValueError("Invalid output: {}".format(output))
 
 
 class _Memoized(object):
