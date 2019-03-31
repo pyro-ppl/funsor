@@ -996,6 +996,64 @@ def eager_getitem_lambda(op, lhs, rhs):
     return Lambda(lhs.var, expr)
 
 
+class Uncurry(Funsor):
+    """
+    Converts a named funsor dimension (i.e. an input variable)
+    to a positional tensor dimension of another input variable.
+
+    The inverse operation "currying" can be achieved via substitution::
+
+        f = ...
+        assert f.inputs['x'] == reals(4, 5)
+        assert f.inputs['i'] == bint(3)
+
+        g = Uncurry(f, 'x', 'i')
+        assert g.inputs['x'] == reals(3, 4, 5)
+        assert 'i' not in g.inputs
+
+        x = Variable('x', reals(3, 4, 5))
+        assert g(x=x['i']) is f
+    """
+    def __init__(self, fn, reals_var, bint_var):
+        assert isinstance(fn, Funsor)
+        assert isinstance(reals_var, str)
+        assert reals_var in fn.inputs
+        assert fn.inputs[reals_var].dtype == 'real'
+        assert isinstance(bint_var, str)
+        assert bint_var in fn.inputs
+        assert isinstance(fn.inputs[bint_var].dtype, int)
+        inputs = fn.inputs.copy()
+        shape = inputs[reals_var].shape
+        shape += (fn.inputs.pop(bint_var).dtype,)
+        inputs[reals_var] = reals(*shape)
+        super(Uncurry, self).__init__(inputs, fn.output)
+        self.fn = fn
+        self.reals_var = reals_var
+        self.bint_var = bint_var
+
+    def eager_subs(self, subs):
+        fn_subs = []
+        reals_value = None
+        for k, v in subs:
+            if self.bint_var in v.inputs:
+                raise NotImplementedError('TODO alpha-convert')
+            if k == self.reals_var:
+                reals_value = v
+            else:
+                fn_subs.append((k, v))
+        fn = Subs(self.fn, tuple(fn_subs))
+        if reals_value is None:
+            return Uncurry(fn, self.reals_var, self.bint_var)
+        factors = fn(**{self.reals_var: reals_value[self.bint_var]})
+        return factors.reduce(ops.add, self.bint_var)
+
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
+            raise NotImplementedError('TODO alpha-convert')
+        fn = self.fn.unscaled_sample(sampled_vars, sample_inputs)
+        return Uncurry(fn, self.reals_var, self.bint_var)
+
+
 def _of_shape(fn, shape):
     args, vargs, kwargs, defaults = getargspec(fn)
     assert not vargs
@@ -1051,6 +1109,7 @@ __all__ = [
     'Stack',
     'Subs',
     'Unary',
+    'Uncurry',
     'Variable',
     'eager',
     'lazy',

@@ -10,7 +10,20 @@ from funsor.integrate import Integrate, integrator
 from funsor.interpreter import debug_logged
 from funsor.ops import AddOp, SubOp, TransformOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, to_funsor
+from funsor.terms import (
+    Align,
+    Binary,
+    Funsor,
+    FunsorMeta,
+    Lambda,
+    Number,
+    Subs,
+    Unary,
+    Uncurry,
+    Variable,
+    eager,
+    to_funsor
+)
 
 
 class DeltaMeta(FunsorMeta):
@@ -121,6 +134,15 @@ def eager_add(op, lhs, rhs):
         return op(lhs, rhs)
 
     return None  # defer to default implementation
+
+
+@eager.register(Uncurry, Delta, str, str)
+def eager_uncurry(delta, reals_var, bint_var):
+    if delta.name == reals_var:
+        i = Variable(bint_var, delta.inputs[bint_var])
+        point = Lambda(i, delta.point)
+        log_density = delta.log_density.reduce(ops.add, bint_var)
+        return Delta(delta.name, point, log_density)
 
 
 @eager.register(Integrate, Delta, Funsor, frozenset)

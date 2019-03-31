@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
-from funsor.terms import Funsor, Lambda, Number, Variable, of_shape, to_data, to_funsor
+from funsor.terms import Funsor, Lambda, Number, Uncurry, Variable, of_shape, to_data, to_funsor
 from funsor.torch import Tensor, arange, torch_einsum
 
 from . import (
@@ -33,6 +33,7 @@ __all__ = [
     'Lambda',
     'Number',
     'Tensor',
+    'Uncurry',
     'Variable',
     'adjoint',
     'arange',
