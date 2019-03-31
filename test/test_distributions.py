@@ -11,7 +11,7 @@ import funsor.distributions as dist
 from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.joint import Joint
-from funsor.terms import Variable
+from funsor.terms import Uncurry, Variable
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import Tensor
 
@@ -202,6 +202,15 @@ def test_normal_gaussian_3(batch_shape):
     check_funsor(actual, inputs, reals())
 
     assert_close(actual, expected, atol=1e-4)
+
+
+def test_normal_uncurry():
+    loc = random_tensor(OrderedDict(), reals(2))
+    scale = random_tensor(OrderedDict(), reals(2)).exp()
+    fn = dist.Normal(loc['i'], scale['i'], value='z')
+    assert fn.inputs['z'] == reals()
+    d = Uncurry(fn, 'z', 'i')
+    assert d.inputs['z'] == reals(2)
 
 
 def test_mvn_defaults():
