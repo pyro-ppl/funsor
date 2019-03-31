@@ -173,14 +173,10 @@ class Funsor(object):
             if k in kwargs:
                 subs[k] = kwargs[k]
         for k, v in subs.items():
-            if isinstance(v, str):
-                # Allow renaming of inputs via syntax x(y="z").
-                v = Variable(v, self.inputs[k])
-            else:
-                v = to_funsor(v, self.inputs[k].dtype)
+            v = to_funsor(v, self.inputs[k])
             if v.output != self.inputs[k]:
-                raise TypeError('Expected substitution of {} to have type {}, but got {}'
-                                .format(repr(k), v.output, self.inputs[k]))
+                raise ValueError("Expected substitution of {} to have type {}, but got {}"
+                                 .format(repr(k), v.output, self.inputs[k]))
             subs[k] = v
         return Subs(self, tuple(subs.items()))
 
@@ -278,7 +274,7 @@ class Funsor(object):
         assert isinstance(sampled_vars, frozenset)
         if sampled_vars.isdisjoint(self.inputs):
             return self
-        raise TypeError("Cannot sample from a {}".format(type(self).__name__))
+        raise ValueError("Cannot sample from a {}".format(type(self).__name__))
 
     def align(self, names):
         """
@@ -459,7 +455,7 @@ class Funsor(object):
 
     def __getitem__(self, other):
         if type(other) is not tuple:
-            other = to_funsor(other, self.output.shape[0])
+            other = to_funsor(other, bint(self.output.shape[0]))
             return Binary(ops.getitem, self, other)
 
         # Handle Ellipsis slicing.
@@ -489,7 +485,7 @@ class Funsor(object):
                     raise NotImplementedError('TODO support nontrivial slicing')
                 offset += 1
             else:
-                part = to_funsor(part, result.output.shape[offset])
+                part = to_funsor(part, bint(result.output.shape[offset]))
                 result = Binary(GetitemOp(offset), result, part)
         return result
 
@@ -504,17 +500,22 @@ def to_funsor(x):
     Only :class:`Funsor`s and scalars are accepted.
 
     :param x: An object.
-    :param dtype: An optional datatype hint (integer or the string "real").
+    :param funsor.domains.Domain output: An optional output hint.
     :return: A Funsor equivalent to ``x``.
     :rtype: Funsor
     :raises: ValueError
     """
-    raise ValueError("cannot convert to Funsor: {}".format(repr(x)))
+    raise ValueError("Cannot convert to Funsor: {}".format(repr(x)))
+
+
+@dispatch(object, Domain)
+def to_funsor(x, output):
+    raise ValueError("Cannot convert to Funsor: {}".format(repr(x)))
 
 
 @dispatch(object, object)
-def to_funsor(x, dtype):
-    raise ValueError("cannot convert to Funsor: {}".format(repr(x)))
+def to_funsor(x, output):
+    raise TypeError("Invalid Domain: {}".format(repr(output)))
 
 
 @dispatch(Funsor)
@@ -522,10 +523,10 @@ def to_funsor(x):
     return x
 
 
-@dispatch(Funsor, object)
-def to_funsor(x, dtype):
-    if x.dtype != dtype:
-        raise ValueError("dtype mismatch: {} vs {}".format(x.dtype, dtype))
+@dispatch(Funsor, Domain)
+def to_funsor(x, output):
+    if x.output != output:
+        raise ValueError("Output mismatch: {} vs {}".format(x.output, output))
     return x
 
 
@@ -574,9 +575,9 @@ class Variable(Funsor):
         return self
 
 
-@dispatch(str, integer_types)
-def to_funsor(name, dtype):
-    return Variable(name, bint(dtype))
+@dispatch(str, Domain)
+def to_funsor(name, output):
+    return Variable(name, output)
 
 
 class Subs(Funsor):
@@ -824,9 +825,11 @@ def to_funsor(x):
     return Number(x)
 
 
-@dispatch(numbers.Number, object)
-def to_funsor(x, dtype):
-    return Number(x, dtype)
+@dispatch(numbers.Number, Domain)
+def to_funsor(x, output):
+    if output.shape:
+        raise ValueError("Cannot create Number with shape {}".format(output.shape))
+    return Number(x, output.dtype)
 
 
 @to_data.register(Number)

@@ -20,6 +20,9 @@ def test_to_funsor(shape, dtype):
     t = torch.randn(shape).type(dtype)
     f = funsor.to_funsor(t)
     assert isinstance(f, Tensor)
+    assert funsor.to_funsor(t, reals(*shape)) is f
+    with pytest.raises(ValueError):
+        funsor.to_funsor(t, reals(5, *shape))
 
 
 def test_to_data():
