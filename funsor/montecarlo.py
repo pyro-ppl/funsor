@@ -4,8 +4,9 @@ from collections import OrderedDict
 
 from contextlib2 import contextmanager
 
+from funsor.integrate import Integrate, integrator
 from funsor.interpreter import dispatched_interpretation, interpretation
-from funsor.terms import eager
+from funsor.terms import eager, Funsor
 
 
 @dispatched_interpretation
@@ -39,6 +40,16 @@ def monte_carlo_interpretation(**sample_inputs):
             yield
     finally:
         monte_carlo.sample_inputs = old
+
+
+@monte_carlo.register(Integrate, Funsor, Funsor, frozenset)
+@integrator
+def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    sample = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
+    if sample is log_measure:
+        return None  # cannot progress
+    reduced_vars |= frozenset(monte_carlo.sample_inputs).intersection(sample.inputs)
+    return Integrate(sample, integrand, reduced_vars)
 
 
 __all__ = [

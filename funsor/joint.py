@@ -33,6 +33,13 @@ class Joint(Funsor):
     """
     Normal form for a joint log probability density funsor.
 
+    The primary purpose of Joint is to handle substitution of
+    :class:`~funsor.delta.Delta` funsors into other funsors.
+
+    Joint is closed under Bayesian fusion, i.e. under ``ops.add`` operations.
+    Joint is not closed under mixtures, i.e. ``ops.logaddexp`` operations,
+    hence mixtures will be represented as lazy ``ops.logaddexp`` of Joints.
+
     :param tuple deltas: A possibly-empty tuple of degenerate distributions
         represented as :class:`~funsor.delta.Delta` funsors.
     :param Funsor discrete: A joint discrete log mass function represented as
@@ -328,6 +335,12 @@ def _joint_integrator(fn):
     """
     fn = interpreter.debug_logged(fn)
     return integrator(functools.partial(_simplify_integrate, fn))
+
+
+@eager.register(Integrate, Joint, Funsor, frozenset)
+@_joint_integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    return None  # defer to default implementation
 
 
 @eager.register(Integrate, Joint, Delta, frozenset)

@@ -13,7 +13,6 @@ import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
-from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, NegOp, SubOp
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
@@ -459,18 +458,6 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             return result.reduce(ops.add, reduced_vars - real_vars)
 
         raise NotImplementedError('TODO implement partial integration')
-
-    return None  # defer to default implementation
-
-
-@monte_carlo.register(Integrate, Gaussian, Funsor, frozenset)
-@integrator
-def monte_carlo_integrate(log_measure, integrand, reduced_vars):
-    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
-    if real_vars:
-        log_measure = log_measure.sample(real_vars, monte_carlo.sample_inputs)
-        reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
-        return Integrate(log_measure, integrand, reduced_vars)
 
     return None  # defer to default implementation
 

@@ -100,6 +100,24 @@ class Distribution(Funsor):
 # Distribution Wrappers
 ################################################################################
 
+class Bernoulli(Distribution):
+    dist_class = dist.Bernoulli
+
+    @staticmethod
+    def _fill_defaults(probs, value='value'):
+        probs = to_funsor(probs)
+        value = to_funsor(value, reals())
+        return probs, value
+
+    def __init__(self, probs, value=None):
+        super(Bernoulli, self).__init__(probs, value)
+
+
+@eager.register(Bernoulli, Tensor, Tensor)
+def eager_categorical(probs, value):
+    return Bernoulli.eager_log_prob(probs=probs, value=value)
+
+
 class Categorical(Distribution):
     dist_class = dist.Categorical
 
