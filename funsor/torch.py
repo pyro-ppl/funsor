@@ -17,7 +17,7 @@ from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, Variable, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Subs, Variable, eager, to_data, to_funsor
 
 
 def align_tensor(new_inputs, x):
@@ -418,6 +418,23 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
         index[i] = torch.arange(lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 1))
     data = lhs_data[tuple(index)]
     return Tensor(data, inputs, lhs.dtype)
+
+
+@eager.register(Lambda, Variable, Tensor)
+def eager_lambda(var, expr):
+    inputs = expr.inputs.copy()
+    if var.name in inputs:
+        inputs.pop(var.name)
+        inputs[var.name] = var.output
+        data = align_tensor(inputs, expr)
+        inputs.pop(var.name)
+    else:
+        data = expr.data
+        shape = data.shape
+        dim = len(shape) - len(expr.output.shape)
+        data = data.reshape(shape[:dim] + (1,) + shape[dim:])
+        data = data.expand(shape[:dim] + (var.dtype,) + shape[dim:])
+    return Tensor(data, inputs, expr.dtype)
 
 
 @eager.register(Contract, AssociativeOp, AssociativeOp, Tensor, Tensor, frozenset)

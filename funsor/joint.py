@@ -14,7 +14,7 @@ from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, to_funsor
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Independent, Number, Subs, Unary, Variable, eager, to_funsor
 from funsor.torch import Tensor, arange
 
 
@@ -158,6 +158,23 @@ def eager_joint(deltas, discrete, gaussian):
     elif len(deltas) == 1:
         if discrete is Number(0) and gaussian is Number(0):
             return deltas[0]
+
+    return None  # defer to default implementation
+
+
+@eager.register(Independent, Joint, str, str)
+def eager_independent(joint, reals_var, bint_var):
+    for i, delta in enumerate(joint.deltas):
+        if delta.name == reals_var:
+            delta = Independent(delta, reals_var, bint_var)
+            deltas = joint.deltas[:i] + (delta,) + joint.deltas[1+i:]
+            discrete = joint.discrete
+            if bint_var in discrete.inputs:
+                discrete = discrete.reduce(ops.add, bint_var)
+            gaussian = joint.gaussian
+            if bint_var in gaussian.inputs:
+                gaussian = gaussian.reduce(ops.add, bint_var)
+            return Joint(deltas, discrete, gaussian)
 
     return None  # defer to default implementation
 

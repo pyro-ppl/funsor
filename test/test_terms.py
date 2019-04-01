@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import itertools
+from collections import OrderedDict
 
 import numpy as np
 import pytest
@@ -10,8 +11,8 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Number, Stack, Variable, sequential, to_data, to_funsor
-from funsor.testing import check_funsor
+from funsor.terms import Binary, Independent, Lambda, Number, Stack, Variable, sequential, to_data, to_funsor
+from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
 np.seterr(all='ignore')
@@ -210,6 +211,45 @@ def test_reduce_subset(op, reduced_vars):
     # TODO check data
     if not reduced_vars:
         assert actual is f
+
+
+@pytest.mark.parametrize('base_shape', [(), (4,), (3, 2)], ids=str)
+def test_lambda(base_shape):
+    z = Variable('z', reals(*base_shape))
+    i = Variable('i', bint(5))
+    j = Variable('j', bint(7))
+
+    zi = Lambda(i, z)
+    assert zi.output.shape == (5,) + base_shape
+    assert zi[i] is z
+
+    zj = Lambda(j, z)
+    assert zj.output.shape == (7,) + base_shape
+    assert zj[j] is z
+
+    zij = Lambda(j, zi)
+    assert zij.output.shape == (7, 5) + base_shape
+    assert zij[j] is zi
+    assert zij[:, i] is zj
+    assert zij[j, i] is z
+
+
+def test_independent():
+    f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    assert f.inputs['x'] == reals(4, 5)
+    assert f.inputs['i'] == bint(3)
+
+    actual = Independent(f, 'x', 'i')
+    assert actual.inputs['x'] == reals(3, 4, 5)
+    assert 'i' not in actual.inputs
+
+    x = Variable('x', reals(3, 4, 5))
+    expected = f(x=x['i']).reduce(ops.add, 'i')
+    assert actual.inputs == expected.inputs
+    assert actual.output == expected.output
+
+    data = random_tensor(OrderedDict(), x.output)
+    assert_close(actual(data), expected(data))
 
 
 def test_stack_simple():
