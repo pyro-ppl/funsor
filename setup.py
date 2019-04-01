@@ -20,7 +20,7 @@ setup(
         'unification',
     ],
     extras_require={
-        'test': ['flake8', 'pytest>=4.1'],
+        'test': ['flake8', 'pytest>=4.1', 'torchvision==0.2.1'],
         'dev': ['flake8', 'pytest>=4.1', 'isort'],
     },
     tests_require=['flake8', 'pytest>=4.1'],
