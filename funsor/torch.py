@@ -96,7 +96,6 @@ class Tensor(Funsor):
         assert isinstance(data, torch.Tensor)
         assert isinstance(inputs, tuple)
         assert len(inputs) <= data.dim()
-        assert not torch.isnan(data).any()
         for (k, d), size in zip(inputs, data.shape):
             assert d.dtype == size
         inputs = OrderedDict(inputs)
