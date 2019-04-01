@@ -57,8 +57,9 @@ def main(args):
     def loss_function(data, subsample_scale):
         # Lazily sample from the guide.
         loc, scale = encode(data)
-        q = dist.Normal(loc['i'], scale['i'], value='z')
-        q = funsor.Uncurry(q, 'z', 'i')
+        q = funsor.Independent(
+            dist.Normal(loc['i'], scale['i'], value='z'),
+            'z', 'i')
 
         # Evaluate the model likelihood at the lazy value z.
         probs = decode('z')
@@ -69,7 +70,7 @@ def main(args):
         elbo = funsor.Integrate(q, p - q, frozenset(['z']))
         elbo = elbo.reduce(ops.add, 'batch') * subsample_scale
         loss = -elbo
-        return loss.data
+        return loss
 
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST(DATA_PATH, train=True, download=True,
@@ -89,7 +90,8 @@ def main(args):
 
             optimizer.zero_grad()
             loss = loss_function(data, subsample_scale)
-            loss.backward()
+            assert isinstance(loss, funsor.torch.Tensor), loss.pretty()
+            loss.data.backward()
             train_loss += loss.item()
             optimizer.step()
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
