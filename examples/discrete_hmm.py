@@ -50,7 +50,6 @@ def main(args):
         return log_prob
 
     # Train model parameters.
-    print('---- training ----')
     data = torch.ones(args.time_steps, dtype=torch.long)
     optim = torch.optim.Adam(params, lr=args.learning_rate)
     for step in range(args.train_steps):

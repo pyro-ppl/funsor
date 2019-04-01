@@ -337,6 +337,12 @@ def _joint_integrator(fn):
     return integrator(functools.partial(_simplify_integrate, fn))
 
 
+@eager.register(Integrate, Joint, Funsor, frozenset)
+@_joint_integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    return None  # defer to default implementation
+
+
 @eager.register(Integrate, Joint, Delta, frozenset)
 @_joint_integrator
 def eager_integrate(log_measure, integrand, reduced_vars):

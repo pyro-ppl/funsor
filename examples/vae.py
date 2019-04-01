@@ -31,7 +31,7 @@ class Encoder(nn.Module):
         image = image.reshape(image.shape[:-2] + (-1,))
         h1 = F.relu(self.fc1(image))
         loc = self.fc21(h1)
-        scale = self.fc22(h1)
+        scale = self.fc22(h1).exp()
         return loc, scale
 
 
@@ -43,7 +43,8 @@ class Decoder(nn.Module):
 
     def forward(self, z):
         h3 = F.relu(self.fc3(z))
-        return torch.sigmoid(self.fc4(h3))
+        out = torch.sigmoid(self.fc4(h3))
+        return out.reshape(out.shape[:-1] + (28, 28))
 
 
 def main(args):
@@ -94,25 +95,17 @@ def main(args):
             loss.data.backward()
             train_loss += loss.item()
             optimizer.step()
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader),
-                loss.item() / len(data)))
+            if batch_idx % 50 == 0:
+                print('  loss = {}'.format(loss.item()))
+                if batch_idx and args.smoke_test:
+                    return
+        print('epoch {} train_loss = {}'.format(epoch, train_loss))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='VAE MNIST Example')
     parser.add_argument('-n', '--num-epochs', type=int, default=10)
     parser.add_argument('--batch-size', type=int, default=8)
-    parser.add_argument('--pdb', action='store_true')
+    parser.add_argument('--smoke-test', action='store_true')
     args = parser.parse_args()
-
-    if args.pdb:
-        try:
-            main(args)
-        except Exception as e:
-            print(repr(e))
-            torch.set_printoptions(threshold=10, edgeitems=1)
-            pdb.post_mortem()
-    else:
-        main(args)
+    main(args)

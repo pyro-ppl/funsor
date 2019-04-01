@@ -46,7 +46,6 @@ def main(args):
               if node["type"] == "param"]
 
     # training loop
-    print('---- training ----')
     optim = torch.optim.Adam(params, lr=args.learning_rate)
     for step in range(args.train_steps):
         optim.zero_grad()
