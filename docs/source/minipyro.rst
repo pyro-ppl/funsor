@@ -4,3 +4,4 @@ Mini-Pyro Interface
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource

@@ -7,6 +7,7 @@ Interpreter
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource
 
 Monte Carlo
 -----------
@@ -14,3 +15,4 @@ Monte Carlo
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource

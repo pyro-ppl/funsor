@@ -73,7 +73,7 @@ def reinterpret(x):
     ``ValueError`` in unhandled cases.
 
     :param x: An input, typically involving deferred
-        :class:`~funsor.terms.Funsor`s.
+        :class:`~funsor.terms.Funsor` s.
     :type x: A funsor or data structure holding funsors.
     :return: A reinterpreted version of the input.
     :raises: ValueError

@@ -7,6 +7,7 @@ Basic Funsors
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource
 
 Delta
 -----
@@ -14,6 +15,7 @@ Delta
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource
 
 PyTorch
 -------
@@ -21,6 +23,7 @@ PyTorch
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource
 
 NumPy
 -----
@@ -28,6 +31,7 @@ NumPy
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource
 
 Gaussian
 --------
@@ -35,6 +39,7 @@ Gaussian
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource
 
 Contract
 --------
@@ -42,6 +47,7 @@ Contract
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource
 
 Integrate
 ---------
@@ -49,3 +55,4 @@ Integrate
     :members:
     :undoc-members:
     :show-inheritance:
+    :member-order: bysource
