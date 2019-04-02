@@ -11,7 +11,7 @@ Basic Funsors
 
 Delta
 -----
-.. automodule:: funsor.terms
+.. automodule:: funsor.delta
     :members:
     :undoc-members:
     :show-inheritance:
