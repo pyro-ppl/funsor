@@ -1,7 +1,12 @@
-all: test
+.PHONY: all install docs lint format test clean FORCE
+
+all: docs test
 
 install:
 	pip install -e .[dev]
+
+docs: FORCE
+	$(MAKE) -C docs html
 
 lint: FORCE
 	flake8
@@ -23,6 +28,6 @@ test: lint FORCE
 	@echo PASS
 
 clean: FORCE
-	git clean -dfx -e pyro-egg.info
+	git clean -dfx -e funsor-egg.info
 
 FORCE:

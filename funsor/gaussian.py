@@ -165,9 +165,9 @@ class Gaussian(Funsor):
     Funsor representing a batched joint Gaussian distribution as a log-density
     function.
 
-    Note that :class:`Gaussian`s are not normalized, rather they are
+    Note that :class:`Gaussian` s are not normalized, rather they are
     canonicalized to evaluate to zero at their maximum value (at ``loc``). This
-    canonical form is useful because it allows :class:`Gaussian`s with
+    canonical form is useful because it allows :class:`Gaussian` s with
     incomplete information, i.e. zero eigenvalues in the precision matrix.
     These incomplete distributions arise when making low-dimensional
     observations on higher dimensional hidden state.

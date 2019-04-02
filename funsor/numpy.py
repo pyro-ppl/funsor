@@ -16,9 +16,9 @@ def align_array(new_inputs, x):
     Permute and expand an array to match desired ``new_inputs``.
 
     :param OrderedDict new_inputs: A target set of inputs.
-    :param funsor.terms.Funsor x: A :class:`Array`s or
-        :class:`~funsor.terms.Number`.
-    :return: a number or :class:`np.ndarray` that can be broadcast to other
+    :param funsor.terms.Funsor x: A :class:`Array` s or
+        or :class:`~funsor.terms.Number` .
+    :return: a number or :class:`numpy.ndarray` that can be broadcast to other
         array with inputs ``new_inputs``.
     :rtype: tuple
     """
@@ -51,10 +51,10 @@ def align_arrays(*args):
 
     This is mainly useful for implementing eager funsor operations.
 
-    :param funsor.terms.Funsor \*args: Multiple :class:`Array`s and
+    :param funsor.terms.Funsor \*args: Multiple :class:`Array` s and
         :class:`~funsor.terms.Number`s.
     :return: a pair ``(inputs, arrays)`` where arrayss are all
-        :class:`np.ndarray`s that can be broadcast together to a single data
+        :class:`numpy.ndarray` s that can be broadcast together to a single data
         with given ``inputs``.
     :rtype: tuple
     """
@@ -259,7 +259,7 @@ def eager_binary_array_array(op, lhs, rhs):
 
 def arange(name, size):
     """
-    Helper to create a named :func:`np.arange` funsor.
+    Helper to create a named :func:`numpy.arange` funsor.
 
     :param str name: A variable name.
     :param int size: A size.
@@ -273,7 +273,7 @@ def arange(name, size):
 def materialize(x):
     """
     Attempt to convert a Funsor to a :class:`~funsor.terms.Number` or
-    :class:`np.ndarray` by substituting :func:`arange`s into its free variables.
+    :class:`numpy.ndarray` by substituting :func:`arange` s into its free variables.
     """
     assert isinstance(x, Funsor)
     if isinstance(x, (Number, Array)):

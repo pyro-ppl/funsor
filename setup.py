@@ -13,6 +13,7 @@ setup(
     install_requires=[
         'contextlib2',
         'multipledispatch',
+        'numpy>=1.7',
         'opt_einsum>=2.3.2',
         'pyro-ppl>=0.3',
         'six>=1.10.0',
@@ -21,7 +22,14 @@ setup(
     ],
     extras_require={
         'test': ['flake8', 'pytest>=4.1', 'torchvision==0.2.1'],
-        'dev': ['flake8', 'pytest>=4.1', 'isort'],
+        'dev': [
+            'flake8',
+            'isort',
+            'pytest>=4.1',
+            'sphinx',
+            'sphinx_rtd_theme',
+            'torchvision==0.2.1',
+        ],
     },
     tests_require=['flake8', 'pytest>=4.1'],
     keywords='probabilistic machine learning bayesian statistics pytorch',
