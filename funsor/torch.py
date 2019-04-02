@@ -23,8 +23,8 @@ def align_tensor(new_inputs, x):
     Permute and expand a tensor to match desired ``new_inputs``.
 
     :param OrderedDict new_inputs: A target set of inputs.
-    :param funsor.terms.Funsor x: A :class:`Tensor`s or
-        :class:`~funsor.terms.Number`.
+    :param funsor.terms.Funsor x: A :class:`Tensor` or
+        :class:`~funsor.terms.Number` .
     :return: a number or :class:`torch.Tensor` that can be broadcast to other
         tensors with inputs ``new_inputs``.
     :rtype: tuple
@@ -58,10 +58,10 @@ def align_tensors(*args):
 
     This is mainly useful for implementing eager funsor operations.
 
-    :param funsor.terms.Funsor \*args: Multiple :class:`Tensor`s and
+    :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
         :class:`~funsor.terms.Number`s.
     :return: a pair ``(inputs, tensors)`` where tensors are all
-        :class:`torch.Tensor`s that can be broadcast together to a single data
+        :class:`torch.Tensor` s that can be broadcast together to a single data
         with given ``inputs``.
     :rtype: tuple
     """
@@ -471,7 +471,7 @@ def arange(name, size):
 def materialize(x):
     """
     Attempt to convert a Funsor to a :class:`~funsor.terms.Number` or
-    :class:`Tensor` by substituting :func:`arange`s into its free variables.
+    :class:`Tensor` by substituting :func:`arange` s into its free variables.
     """
     assert isinstance(x, Funsor)
     if isinstance(x, (Number, Tensor)):
@@ -496,7 +496,7 @@ class Function(Funsor):
     Functions are assumed to support broadcasting and can be eagerly evaluated
     on funsors with free variables of int type (i.e. batch dimensions).
 
-    :class:`Function`s are usually created via the :func:`function` decorator.
+    :class:`Function` s are usually created via the :func:`function` decorator.
 
     :param callable fn: A PyTorch function to wrap.
     :param funsor.domains.Domain output: An output domain.
@@ -610,7 +610,7 @@ def function(*signature):
             return d.log_prob(x)
 
     To support functions that output nested tuples of tensors, specify a nested
-    tuple of output types, for example:
+    tuple of output types, for example::
 
         @funsor.torch.function(reals(8), (reals(), bint(8)))
         def max_and_argmax(x):

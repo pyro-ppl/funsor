@@ -233,7 +233,7 @@ class Funsor(object):
     def sample(self, sampled_vars, sample_inputs=None):
         """
         Create a Monte Carlo approximation to this funsor by replacing
-        functions of ``sampled_vars`` with :class:`~funsor.delta.Delta`s.
+        functions of ``sampled_vars`` with :class:`~funsor.delta.Delta` s.
 
         The result is a :class:`Funsor` with the same ``.inputs`` and
         ``.output`` as the original funsor (plus ``sample_inputs`` if
