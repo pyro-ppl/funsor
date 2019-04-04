@@ -8,13 +8,27 @@ from six.moves import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
+import funsor.terms
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Independent, Number, Subs, Unary, Variable, eager, to_funsor
+from funsor.terms import (
+    Align,
+    Binary,
+    Funsor,
+    FunsorMeta,
+    Independent,
+    Number,
+    Reduce,
+    Subs,
+    Unary,
+    Variable,
+    eager,
+    to_funsor
+)
 from funsor.torch import Tensor, arange
 
 
@@ -234,6 +248,10 @@ def eager_add(op, joint, other):
     if not isinstance(other, Gaussian):
         return Joint(joint.deltas, joint.discrete) + other
     return Joint(joint.deltas, joint.discrete, other)
+
+
+eager.register(Binary, AddOp, Reduce, Joint)(
+    funsor.terms.eager_distribute_reduce_other)
 
 
 @eager.register(Binary, AddOp, (Funsor, Align, Delta), Joint)
