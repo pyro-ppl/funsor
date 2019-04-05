@@ -15,7 +15,8 @@ def main(args):
                                               [0.1, 0.9]], requires_grad=True))
     trans_noise = funsor.Tensor(torch.tensor([
         0.1,  # low noise component
-        1.0,  # high noisy component
+        0.1,  # low noise component
+        # 1.0,  # high noisy component
     ], requires_grad=True))
     emit_noise = funsor.Tensor(torch.tensor(0.5, requires_grad=True))
     params = [trans_probs.data,
@@ -52,23 +53,11 @@ def main(args):
             # An observe statement.
             log_prob += dist.Normal(x_curr, emit_noise, value=y)
 
-            print('t = {}'.format(t))
-            print(['log_prob.inputs:'] +
-                  ['  {}: {}'.format(k, d) for k, d in log_prob.inputs.items()])
-            if isinstance(log_prob, funsor.joint.Joint):
-                print('log_prob.gaussian.precision.shape = {}'
-                      .format(log_prob.gaussian.precision.shape))
-            elif (isinstance(log_prob, funsor.terms.Reduce) and
-                  isinstance(log_prob.arg, funsor.joint.Joint)):
-                print('log_prob.arg.gaussian.precision.shape = {}'
-                      .format(log_prob.arg.gaussian.precision.shape))
-            else:
-                print(log_prob.pretty())
-
         log_prob = log_prob.reduce(ops.logaddexp)
         return log_prob
 
     # Train model parameters.
+    torch.manual_seed(0)
     data = torch.randn(args.time_steps)
     optim = torch.optim.Adam(params, lr=args.learning_rate)
     for step in range(args.train_steps):
@@ -81,7 +70,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Kalman filter example")
+    parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-t", "--time-steps", default=10, type=int)
     parser.add_argument("-n", "--train-steps", default=101, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)
