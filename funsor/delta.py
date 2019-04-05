@@ -5,6 +5,7 @@ from collections import OrderedDict
 from six import add_metaclass
 
 import funsor.ops as ops
+import funsor.terms
 from funsor.domains import Domain, reals
 from funsor.integrate import Integrate, integrator
 from funsor.interpreter import debug_logged
@@ -18,6 +19,7 @@ from funsor.terms import (
     Independent,
     Lambda,
     Number,
+    Reduce,
     Subs,
     Unary,
     Variable,
@@ -134,6 +136,12 @@ def eager_add(op, lhs, rhs):
         return op(lhs, rhs)
 
     return None  # defer to default implementation
+
+
+eager.register(Binary, AddOp, Delta, Reduce)(
+    funsor.terms.eager_distribute_other_reduce)
+eager.register(Binary, AddOp, Reduce, Delta)(
+    funsor.terms.eager_distribute_reduce_other)
 
 
 @eager.register(Independent, Delta, str, str)
