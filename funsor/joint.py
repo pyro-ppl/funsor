@@ -11,7 +11,7 @@ import funsor.ops as ops
 import funsor.terms
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.gaussian import Gaussian
+from funsor.gaussian import Gaussian, sym_inverse
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, NegOp, SubOp
@@ -146,6 +146,47 @@ class Joint(Funsor):
             for i, term in enumerate(terms):
                 terms[i] = term.reduce(ops.add, reduced_vars.intersection(term.inputs))
             return reduce(ops.add, terms)
+
+        return None  # defer to default implementation
+
+    def moment_matching_reduce(self, op, reduced_vars):
+        if not reduced_vars:
+            return self
+        if op is ops.logaddexp:
+            if not all(reduced_vars.isdisjoint(d.inputs) for d in self.deltas):
+                raise NotImplementedError('TODO handle moment_matching with Deltas')
+            # FIXME fix partitioning of variables.
+            approx_vars = frozenset(k for k in reduced_vars if self.inputs[k].dtype != 'real')
+            exact_vars = frozenset(k for k in reduced_vars if self.inputs[k].dtype == 'real')
+            if exact_vars:
+                return self.reduce(op, exact_vars).reduce(op, approx_vars)
+
+            # Moment-matching approximation.
+            assert approx_vars and not exact_vars
+            discrete = self.discrete
+            gaussian = self.gaussian
+            if not approx_vars.issubset(discrete.inputs):
+                raise NotImplementedError('TODO')
+            if not approx_vars.issubset(gaussian.inputs):
+                raise NotImplementedError('TODO')
+            int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items()
+                                     if d.dtype != 'real')
+            if discrete.inputs != int_inputs:
+                raise NotImplementedError('TODO')
+            old_loc = Tensor(gaussian.loc, int_inputs)
+            new_discrete = discrete.reduce(ops.logaddexp, approx_vars)
+            probs = (discrete - new_discrete).exp()
+            new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
+            old_cov = Tensor(sym_inverse(gaussian.precision), int_inputs)
+            diffs = (old_loc - new_loc).data
+            outers = Tensor(diffs.unsqueeze(-1) * diffs.unsqueeze(-2), int_inputs)
+            new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
+                       (probs * outers).reduce(ops.add, approx_vars)).data
+            new_precision = sym_inverse(new_cov)
+            new_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items()
+                                     if k not in approx_vars)
+            new_gaussian = Gaussian(new_loc.data, new_precision, new_inputs)
+            return Joint(self.deltas, new_discrete, new_gaussian)
 
         return None  # defer to default implementation
 

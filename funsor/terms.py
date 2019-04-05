@@ -68,6 +68,18 @@ def sequential(cls, *args):
     return result
 
 
+@dispatched_interpretation
+def moment_matching(cls, *args):
+    """
+    A moment matching interpretation of :class:`Reduce` expressions. This falls
+    back to :class:`eager` in other cases.
+    """
+    result = moment_matching.dispatch(cls, *args)
+    if result is None:
+        result = eager(cls, *args)
+    return result
+
+
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
 
@@ -341,6 +353,13 @@ class Funsor(object):
             if lazy_vars:
                 result = Reduce(op, result, frozenset(lazy_vars))
             return result
+
+        return None  # defer to default implementation
+
+    def moment_matching_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        if not reduced_vars:
+            return self
 
         return None  # defer to default implementation
 
@@ -811,6 +830,11 @@ def sequential_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
 
 
+@moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
+def moment_matching_reduce(op, arg, reduced_vars):
+    return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+
+
 class NumberMeta(FunsorMeta):
     """
     Wrapper to fill in default ``dtype``.
@@ -1170,6 +1194,7 @@ __all__ = [
     'Variable',
     'eager',
     'lazy',
+    'moment_matching',
     'of_shape',
     'reflect',
     'sequential',

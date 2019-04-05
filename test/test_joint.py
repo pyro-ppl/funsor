@@ -10,8 +10,9 @@ import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
+from funsor.interpreter import interpretation
 from funsor.joint import Joint
-from funsor.terms import Number, Reduce
+from funsor.terms import Number, Reduce, moment_matching
 from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 
@@ -212,3 +213,32 @@ def test_reduce_add(inputs):
     xs = [x(i=i) for i in range(x.inputs['i'].dtype)]
     expected = reduce(ops.add, xs)
     assert_close(actual, expected, atol=1e-3, rtol=1e-4)
+
+
+def test_reduce_moment_matching_simple():
+    int_inputs = [('i', bint(2))]
+    real_inputs = [('x', reals())]
+    inputs = OrderedDict(int_inputs + real_inputs)
+    int_inputs = OrderedDict(int_inputs)
+    real_inputs = OrderedDict(real_inputs)
+
+    p = 0.8
+    s1, s2, s3 = 2.0, 3.0, 4.0
+    loc = torch.tensor([[-s1], [s1]])
+    precision = torch.tensor([[[s2 ** -2]], [[s3 ** -2]]])
+    discrete = Tensor(torch.tensor([1 - p, p]).log(), int_inputs)
+    gaussian = Gaussian(loc, precision, inputs)
+    joint = discrete + gaussian
+    with interpretation(moment_matching):
+        actual = joint.reduce(ops.logaddexp, 'i')
+
+    expected_loc = torch.tensor([(2 * p - 1) * s1])
+    expected_variance = (4 * p * (1 - p) * s1 ** 2
+                         + (1 - p) * s2 ** 2
+                         + p * s3 ** 2)
+    expected_precision = torch.tensor([[1 / expected_variance]])
+    expected_gaussian = Gaussian(expected_loc,
+                                 expected_precision, real_inputs)
+    expected_discrete = Tensor(torch.tensor(0.))
+    expected = expected_discrete + expected_gaussian
+    assert_close(actual, expected, atol=1e-5, rtol=None)

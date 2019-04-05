@@ -60,6 +60,29 @@ def _trace_mm(x, y):
     return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
 
 
+def sym_inverse(mat):
+    r"""
+    Computes ``inverse(mat)`` assuming mat is symmetric and usually positive
+    definite, but falling back to general pseudoinverse if positive
+    definiteness fails.
+    """
+    try:
+        # Attempt to use stable positive definite math.
+        tri = torch.inverse(torch.cholesky(mat))
+        return torch.matmul(tri.transpose(-1, -2), tri)
+    except RuntimeError as e:
+        warnings.warn(e.message, RuntimeWarning)
+
+    # Try masked reciprocal.
+    if mat.size(-1) == 1:
+        result = mat.reciprocal()
+        result[(mat != 0) == 0] = 0
+        return result
+
+    # Fall back to pseudoinverse.
+    return torch.pinverse(mat)
+
+
 def _sym_solve_mv(mat, vec):
     r"""
     Computes ``mat \ vec`` assuming mat is symmetric and usually positive definite,
