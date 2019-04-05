@@ -403,3 +403,50 @@ def Trace_ELBO(*args, **kwargs):
 def TraceMeanField_ELBO(*args, **kwargs):
     # TODO Use exact KLs where possible.
     return elbo
+
+
+def ground():
+    if not PYRO_STACK:
+        return None
+
+    ctx = locals()
+
+    # Otherwise, we initialize a message...
+    initial_msg = {
+        "type": "ground",
+        "fn": lambda: None,
+        "args": (),
+        "cond_indep_stack": {},  # maps dim to CondIndepStackFrame
+        "context": ctx,
+    }
+
+    # ...and use apply_stack to send it to the Messengers
+    msg = apply_stack(initial_msg)
+    assert isinstance(msg["value"], funsor.Funsor)
+    return msg["value"]
+
+
+class Filter(log_joint):
+    """
+    Filtering interpretation: defer evaluation until a new observation is reached
+    Incorporate all evidence upon reaching a ground statement
+    """
+    def process_message(self, msg):
+        if msg["type"] == "sample":
+            return super(Filter, self).process_message(msg)
+        elif msg["type"] == "ground":
+
+            sum_vars = frozenset(self.log_factors.keys())
+            prod_vars = frozenset(self.plates)
+
+            with interpretation(lazy):
+                logp = funsor.sum_product.sum_product(
+                    sum_op=funsor.ops.logaddexp,
+                    prod_op=funsor.ops.add,
+                    factors=list(self.log_factors.values()),
+                    plates=prod_vars,
+                    eliminate=prod_vars | sum_vars)
+            targets = [funsor.Variable(name, dtype) for name, dtype in logp.inputs.items()]
+            subs = funsor.adjoint.adjoint(logp, targets)
+            for k, v in msg["context"].items():
+                msg["context"][k] = v(**subs)
