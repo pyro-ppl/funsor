@@ -23,8 +23,7 @@ def main(args):
               emit_noise.data]
 
     # A Gaussian HMM model.
-    # TODO
-    # @funsor.interpreter.interpretation(funsor.momentmatching.moment_matching)
+    @funsor.interpreter.interpretation(funsor.terms.moment_matching)
     def model(data):
         log_prob = funsor.Number(0.)
 

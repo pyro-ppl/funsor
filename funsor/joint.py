@@ -159,7 +159,7 @@ class Joint(Funsor):
             approx_vars = frozenset(k for k in reduced_vars if self.inputs[k].dtype != 'real')
             exact_vars = frozenset(k for k in reduced_vars if self.inputs[k].dtype == 'real')
             if exact_vars:
-                return self.reduce(op, exact_vars).reduce(op, approx_vars)
+                return self.eager_reduce(op, exact_vars).reduce(op, approx_vars)
 
             # Moment-matching approximation.
             assert approx_vars and not exact_vars
