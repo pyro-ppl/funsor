@@ -669,6 +669,27 @@ def torch_tensordot(x, y, dims):
     return Function(fn, output, (x, y))
 
 
+def _torch_stack(dim, *parts):
+    return torch.stack(parts, dim=dim)
+
+
+def torch_stack(parts, dim=0):
+    """
+    Wrapper around :func:`torch.stack` to operate on real-valued Funsors.
+
+    Note this operates only on the ``output`` tensor. To stack funsors in a
+    new named dim, instead use :class:`~funsor.terms.Stack`.
+    """
+    assert isinstance(dim, int)
+    assert isinstance(parts, tuple)
+    assert len(set(x.output for x in parts)) == 1
+    shape = parts[0].shape
+    shape = shape[:dim] + (len(parts),) + shape[dim:]
+    output = Domain(shape, parts[0].dtype)
+    fn = functools.partial(_torch_stack, dim)
+    return Function(fn, output, parts)
+
+
 ################################################################################
 # Register Ops
 ################################################################################

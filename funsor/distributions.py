@@ -13,7 +13,7 @@ from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
 from funsor.terms import Funsor, FunsorMeta, Number, Subs, Variable, eager, lazy, to_funsor
-from funsor.torch import Tensor, align_tensors, materialize
+from funsor.torch import Tensor, align_tensors, materialize, torch_stack
 
 
 def numbers_to_tensors(*args):
@@ -118,6 +118,62 @@ def eager_categorical(probs, value):
     return Bernoulli.eager_log_prob(probs=probs, value=value)
 
 
+class Beta(Distribution):
+    dist_class = dist.Beta
+
+    @staticmethod
+    def _fill_defaults(concentration1, concentration0, value='value'):
+        concentration1 = to_funsor(concentration1)
+        concentration0 = to_funsor(concentration0)
+        assert concentration1.output == reals()
+        assert concentration0.output == reals()
+        value = to_funsor(value, reals())
+        return concentration1, concentration0, value
+
+    def __init__(self, concentration1, concentration0, value=None):
+        super(Beta, self).__init__(concentration1, concentration0, value)
+
+
+@eager.register(Beta, Tensor, Tensor, Tensor)
+def eager_beta(concentration1, concentration0, value):
+    return Beta.eager_log_prob(concentration1=concentration1,
+                               concentration0=concentration0,
+                               value=value)
+
+
+@eager.register(Beta, Funsor, Funsor, Funsor)
+def eager_beta(concentration1, concentration0, value):
+    concentration = torch_stack((concentration0, concentration1))
+    value = torch_stack((1 - value, value))
+    return Dirichlet(concentration, value=value)
+
+
+class Binomial(Distribution):
+    dist_class = dist.Binomial
+
+    @staticmethod
+    def _fill_defaults(total_count, probs, value='value'):
+        total_count = to_funsor(total_count)
+        probs = to_funsor(probs)
+        value = to_funsor(value, reals())
+        return total_count, probs, value
+
+    def __init__(self, total_count, probs, value=None):
+        super(Binomial, self).__init__(total_count, probs, value)
+
+
+@eager.register(Binomial, Tensor, Tensor, Tensor)
+def eager_categorical(total_count, probs, value):
+    return Binomial.eager_log_prob(total_count=total_count, probs=probs, value=value)
+
+
+@eager.register(Binomial, Funsor, Funsor, Funsor)
+def eager_beta(total_count, probs, value):
+    probs = torch_stack((1 - probs, probs))
+    value = torch_stack((total_count - value, value))
+    return Multinomial(probs, value=value)
+
+
 class Categorical(Distribution):
     dist_class = dist.Categorical
 
@@ -185,12 +241,73 @@ def eager_delta(v, log_density, value):
     return funsor.delta.Delta(v.name, value, log_density)
 
 
+class Dirichlet(Distribution):
+    dist_class = dist.Dirichlet
+
+    @staticmethod
+    def _fill_defaults(concentration, value='value'):
+        concentration = to_funsor(concentration)
+        assert len(concentration.output.shape) == 1
+        dim = concentration.output.shape[0]
+        value = to_funsor(value, reals(dim))
+        return concentration, value
+
+    def __init__(self, concentration, value='value'):
+        super(Dirichlet, self).__init__(concentration, value)
+
+
+@eager.register(Dirichlet, Tensor, Tensor)
+def eager_beta(concentration, value):
+    return Dirichlet.eager_log_prob(concentration=concentration, value=value)
+
+
+class DirichletMultinomial(Distribution):
+    dist_class = dist.DirichletMultinomial
+
+    @staticmethod
+    def _fill_defaults(concentration, value='value'):
+        concentration = to_funsor(concentration)
+        assert len(concentration.output.shape) == 1
+        dim = concentration.output.shape[0]
+        value = to_funsor(value, reals(dim))  # Should this be bint(total_count)?
+        return concentration, value
+
+    def __init__(self, concentration, value='value'):
+        super(DirichletMultinomial, self).__init__(concentration, value)
+
+
+@eager.register(DirichletMultinomial, Tensor, Tensor)
+def eager_beta(concentration, value):
+    return DirichletMultinomial.eager_log_prob(concentration=concentration, value=value)
+
+
 def LogNormal(loc, scale, value='value'):
     loc, scale, y = Normal._fill_defaults(loc, scale, value)
     t = ops.exp
     x = t.inv(y)
     log_abs_det_jacobian = t.log_abs_det_jacobian(x, y)
     return Normal(loc, scale, x) - log_abs_det_jacobian
+
+
+class Multinomial(Distribution):
+    dist_class = dist.Multinomial
+
+    @staticmethod
+    def _fill_defaults(total_count, probs, value='value'):
+        total_count = to_funsor(total_count)
+        probs = to_funsor(probs)
+        assert len(probs.output.shape) == 1
+        dim = probs.output.shape[0]
+        value = to_funsor(value, reals(dim))
+        return total_count, probs, value
+
+    def __init__(self, total_count, probs, value=None):
+        super(Multinomial, self).__init__(total_count, probs, value)
+
+
+@eager.register(Multinomial, Tensor, Tensor, Tensor)
+def eager_categorical(total_count, probs, value):
+    return Multinomial.eager_log_prob(total_count=total_count, probs=probs, value=value)
 
 
 class Normal(Distribution):
@@ -303,10 +420,16 @@ def eager_mvn(loc, scale_tril, value):
 
 
 __all__ = [
+    'Bernoulli',
+    'Beta',
+    'Binomial',
     'Categorical',
     'Delta',
+    'Dirichlet',
+    'DirichletMultinomial',
     'Distribution',
     'LogNormal',
+    'Multinomial',
     'MultivariateNormal',
     'Normal',
 ]
