@@ -33,7 +33,7 @@ class Affine(Funsor):
             inputs[name] = coeff.output
 
         # output = const.output
-        output = reduce(lambda lhs, rhs: find_domain(ops.mul, lhs, rhs),
+        output = reduce(lambda lhs, rhs: find_domain(ops.add, lhs, rhs),
                         [coeff.output for name, coeff in coeffs], const.output)
 
         super(Affine, self).__init__(inputs, output)
@@ -115,9 +115,9 @@ def eager_binary_affine_variable(op, affine, other):
         const = affine.const
         coeffs = affine.coeffs.copy()
         if other.name in affine.inputs:
-            coeffs[other.name] += 1.
+            coeffs[other.name] += 1  # Number(1, other.dtype)
         else:
-            coeffs[other.name] = Number(1.)
+            coeffs[other.name] = Number(1, other.dtype)
         return Affine(const, tuple(coeffs.items()))
 
     if op is ops.sub:
@@ -154,10 +154,10 @@ def eager_negate_affine(op, affine):
 def eager_binary(op, var, other):
     if op is ops.add:
         const = other
-        coeffs = ((var.name, Number(1.)),)
+        coeffs = ((var.name, Number(1, var.dtype)),)
         return Affine(const, coeffs)
     elif op is ops.mul:
-        const = Number(0.)
+        const = Number(0, var.dtype)
         coeffs = ((var.name, other),)
         return Affine(const, coeffs)
     elif op is ops.sub:
@@ -170,8 +170,8 @@ def eager_binary(op, var, other):
 @eager.register(Binary, Op, Variable, Variable)
 def eager_binary(op, lhs, rhs):
     if op is ops.add:
-        const = Number(0.)
-        coeffs = ((lhs.name, Number(1.)), (rhs.name, Number(1.)))
+        const = Number(0)
+        coeffs = ((lhs.name, Number(1)), (rhs.name, Number(1)))
         return Affine(const, coeffs)
     elif op is ops.sub:
         return lhs + -rhs
@@ -189,6 +189,6 @@ def eager_binary(op, other, var):
 
 @eager.register(Unary, NegOp, Variable)
 def eager_negate_variable(op, var):
-    const = Number(0.)
-    coeffs = ((var.name, Number(-1.)),)
+    const = Number(0, var.dtype)
+    coeffs = ((var.name, Number(-1)),)
     return Affine(const, coeffs)
