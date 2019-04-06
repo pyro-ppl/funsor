@@ -8,6 +8,7 @@ from funsor.torch import Tensor, arange, torch_einsum
 
 from . import (
     adjoint,
+    affine,
     contract,
     delta,
     distributions,
@@ -36,6 +37,7 @@ __all__ = [
     'Tensor',
     'Variable',
     'adjoint',
+    'affine',
     'arange',
     'backward',
     'bint',
