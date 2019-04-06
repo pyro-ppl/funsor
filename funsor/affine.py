@@ -1,7 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.domains import find_domain
@@ -24,17 +23,21 @@ class Affine(Funsor):
     """
     def __init__(self, const, coeffs):
         assert isinstance(const, (Number, Tensor))
+        assert not any(d.dtype == "real" for d in const.inputs.values())
         assert isinstance(coeffs, tuple)
         inputs = const.inputs.copy()
-        for name, coeff in coeffs:
-            assert isinstance(name, str)
+        output = const.output
+        assert output.dtype == "real"
+        for var, coeff in coeffs:
+            assert isinstance(var, Variable)
             assert isinstance(coeff, (Number, Tensor))
+            assert not any(d.dtype == "real" for d in coeff.inputs.values())
             inputs.update(coeff.inputs)
-            inputs[name] = coeff.output
-
-        # output = const.output
-        output = reduce(lambda lhs, rhs: find_domain(ops.add, lhs, rhs),
-                        [coeff.output for name, coeff in coeffs], const.output)
+            inputs.update(var.inputs)
+            output = find_domain(ops.add, output, find_domain(ops.mul, var.output, coeff.output))
+            assert var.dtype == "real"
+            assert coeff.dtype == "real"
+            assert output.dtype == "real"
 
         super(Affine, self).__init__(inputs, output)
         self.coeffs = OrderedDict(coeffs)
@@ -43,13 +46,13 @@ class Affine(Funsor):
     def eager_subs(self, subs):
         const = Subs(self.const, subs)
         subs_dict = OrderedDict(subs)
-        coeffs = tuple((name, Subs(coeff, subs))
-                       for name, coeff in self.coeffs.items()
-                       if name not in subs_dict)
+        coeffs = tuple((var, Subs(coeff, subs))
+                       for var, coeff in self.coeffs.items()
+                       if var.name not in subs_dict)
         result = Affine(const, coeffs)
-        for name, coeff in self.coeffs.items():
-            if name in subs_dict:
-                new_coeff = Subs(coeff, subs) * subs_dict[name]
+        for var, coeff in self.coeffs.items():
+            if var.name in subs_dict:
+                new_coeff = Subs(coeff, subs) * subs_dict[var.name]
                 result += new_coeff
         return result
 
@@ -70,9 +73,9 @@ def eager_binary_affine(op, lhs, rhs):
     if op is ops.add or op is ops.sub:
         const = op(lhs.const, rhs)
         return Affine(const, tuple(lhs.coeffs.items()))
-    if op is ops.mul or op is ops.div:
+    if op is ops.mul or op is ops.truediv:
         const = op(lhs.const, rhs)
-        coeffs = tuple((name, op(coeff, rhs)) for name, coeff in lhs.coeffs.items())
+        coeffs = tuple((var, op(coeff, rhs)) for var, coeff in lhs.coeffs.items())
         return Affine(const, coeffs)
     return None
 
@@ -86,7 +89,7 @@ def eager_binary_affine(op, lhs, rhs):
         return lhs + -rhs
     if op is ops.mul:
         const = lhs * rhs.const
-        coeffs = tuple((name, lhs * coeff) for name, coeff in rhs.coeffs.items())
+        coeffs = tuple((var, lhs * coeff) for var, coeff in rhs.coeffs.items())
         return Affine(const, coeffs)
     return None
 
@@ -96,11 +99,11 @@ def eager_binary_affine_affine(op, lhs, rhs):
     if op is ops.add:
         const = lhs.const + rhs.const
         coeffs = lhs.coeffs.copy()
-        for name, coeff in rhs.coeffs.items():
-            if name in coeffs:
-                coeffs[name] += coeff
+        for var, coeff in rhs.coeffs.items():
+            if var in coeffs:
+                coeffs[var] += coeff
             else:
-                coeffs[name] = coeff
+                coeffs[var] = coeff
         return Affine(const, tuple(coeffs.items()))
 
     if op is ops.sub:
@@ -114,10 +117,10 @@ def eager_binary_affine_variable(op, affine, other):
     if op is ops.add:
         const = affine.const
         coeffs = affine.coeffs.copy()
-        if other.name in affine.inputs:
-            coeffs[other.name] += 1  # Number(1, other.dtype)
+        if other in affine.inputs:
+            coeffs[other] += 1
         else:
-            coeffs[other.name] = Number(1, other.dtype)
+            coeffs[other] = Number(1.)
         return Affine(const, tuple(coeffs.items()))
 
     if op is ops.sub:
@@ -141,8 +144,8 @@ def eager_binary_variable_affine(op, other, affine):
 def eager_negate_affine(op, affine):
     const = -affine.const
     coeffs = affine.coeffs.copy()
-    for name, coeff in coeffs.items():
-        coeffs[name] = -coeff
+    for var, coeff in coeffs.items():
+        coeffs[var] = -coeff
     return Affine(const, tuple(coeffs.items()))
 
 
@@ -152,26 +155,32 @@ def eager_negate_affine(op, affine):
 
 @eager.register(Binary, Op, Variable, (Number, Tensor))
 def eager_binary(op, var, other):
+    if var.dtype != "real" or other.dtype != "real":
+        return None
+
     if op is ops.add:
         const = other
-        coeffs = ((var.name, Number(1, var.dtype)),)
+        coeffs = ((var, Number(1.)),)
         return Affine(const, coeffs)
     elif op is ops.mul:
-        const = Number(0, var.dtype)
-        coeffs = ((var.name, other),)
+        const = Number(0.)
+        coeffs = ((var, other),)
         return Affine(const, coeffs)
     elif op is ops.sub:
         return var + -other
-    elif op is ops.div:
+    elif op is ops.truediv:
         return var * ops.invert(other)
     return None
 
 
 @eager.register(Binary, Op, Variable, Variable)
 def eager_binary(op, lhs, rhs):
+    if lhs.dtype != "real" or rhs.dtype != "real":
+        return None
+
     if op is ops.add:
-        const = Number(0)
-        coeffs = ((lhs.name, Number(1)), (rhs.name, Number(1)))
+        const = Number(0.)
+        coeffs = ((lhs, Number(1.)), (rhs, Number(1.)))
         return Affine(const, coeffs)
     elif op is ops.sub:
         return lhs + -rhs
@@ -180,6 +189,9 @@ def eager_binary(op, lhs, rhs):
 
 @eager.register(Binary, Op, (Number, Tensor), Variable)
 def eager_binary(op, other, var):
+    if other.dtype != "real" or var.dtype != "real":
+        return None
+
     if op is ops.add or op is ops.mul:
         return op(var, other)
     elif op is ops.sub:
@@ -189,6 +201,9 @@ def eager_binary(op, other, var):
 
 @eager.register(Unary, NegOp, Variable)
 def eager_negate_variable(op, var):
-    const = Number(0, var.dtype)
-    coeffs = ((var.name, Number(-1)),)
+    if var.dtype != "real":
+        return None
+
+    const = Number(0.)
+    coeffs = ((var, Number(-1, "real")),)
     return Affine(const, coeffs)
