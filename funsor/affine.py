@@ -8,6 +8,7 @@ from funsor.terms import (
     Binary,
     Funsor,
     Number,
+    Subs,
     Unary,
     Variable,
     eager,
@@ -33,7 +34,11 @@ class Affine(Funsor):
         self.const = const
 
     def eager_subs(self, subs):
-        raise NotImplementedError("TODO")
+        if any(name in self.coeffs for name, sub in subs):
+            raise NotImplementedError("TODO handle coefficient substitution")
+        const = Subs(self.const, subs)
+        coeffs = tuple((name, Subs(coeff, subs)) for name, coeff in self.coeffs.items())
+        return Affine(const, coeffs)
 
 
 @eager.register(Affine, (Number, Tensor), tuple)

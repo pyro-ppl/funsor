@@ -11,12 +11,6 @@ from funsor.terms import Number, Variable
 from funsor.torch import Tensor
 
 
-def id_from_inputs(inputs):
-    if not inputs:
-        return '()'
-    return ','.join(k + ''.join(map(str, d.shape)) for k, d in inputs.items())
-
-
 SMOKE_TESTS = [
     ('t+x', Affine),
     ('x+t', Affine),
