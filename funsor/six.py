@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import inspect
+import re
 
 import six
 
@@ -44,11 +45,30 @@ except ImportError:
 
 
 def getargspec(fn):
-    """wrapper to remove annoying DeprecationWarning for inspect.getargspec in Py3"""
-    if six.PY3:
-        args, vargs, kwargs, defaults, _, _, _ = inspect.getfullargspec(fn)
-    else:
-        args, vargs, kwargs, defaults = inspect.getargspec(fn)
+    """
+    Similar to Python 2's :py:func:`inspect.getargspec` but:
+    - In Python 3 uses ``getfullargspec`` to avoid ``DeprecationWarning``.
+    - For builtin functions like ``torch.matmul``, falls back to attmpting
+      to parse the function docstring, assuming torch-style.
+    """
+    assert callable(fn)
+    try:
+        if six.PY3:
+            args, vargs, kwargs, defaults, _, _, _ = inspect.getfullargspec(fn)
+        else:
+            args, vargs, kwargs, defaults = inspect.getargspec(fn)
+    except TypeError:
+        # Fall back to attmpting to parse a PyTorch-style docstring.
+        match = re.match(r"\s{}\(([^)]*)\)".format(fn.__name__), fn.__doc__)
+        if match is None:
+            raise
+        parts = match.group(1).split(", ")
+        args = [a.split("=")[0] for a in parts]
+        if not all(re.match(r"^[^\d\W]\w*\Z", arg) for arg in args):
+            raise
+        vargs = None
+        kwargs = None
+        defaults = ()  # Ignore defaults.
     return args, vargs, kwargs, defaults
 
 

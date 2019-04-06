@@ -587,6 +587,15 @@ def test_function_nested_lazy():
     assert_close(actual_argmax, expected_argmax)
 
 
+def test_function_of_torch_tensor():
+    x = torch.randn(4, 3)
+    y = torch.randn(3, 2)
+    f = funsor.torch.function(reals(4, 3), reals(3, 2), reals(4, 2))(torch.matmul)
+    actual = f(x, y)
+    expected = f(Tensor(x), Tensor(y))
+    assert_close(actual, expected)
+
+
 def test_align():
     x = Tensor(torch.randn(2, 3, 4), OrderedDict([
         ('i', bint(2)),
