@@ -11,6 +11,7 @@ import funsor.interpreter as interpreter
 import funsor.ops as ops
 import funsor.terms
 from funsor.delta import Delta
+from funsor.distributions import DirichletMultinomial
 from funsor.domains import reals
 from funsor.gaussian import Gaussian, sym_inverse
 from funsor.integrate import Integrate, integrator
@@ -126,6 +127,22 @@ class Joint(Funsor):
             gaussian_vars = reduced_vars.intersection(self.gaussian.inputs)
             gaussian = self.gaussian.reduce(ops.logaddexp, gaussian_vars)
             reduced_vars -= gaussian_vars
+
+            # Integrate out dirichlet-multinomial conjugate pairs.
+            dirichlets = []
+            dirichlet_multinomials = list(self.dirichlet_multinomials)
+            for d in self.dirichlets:
+                probs = d.params['value']
+                if isinstance(probs, Variable) and probs.name in reduced_vars:
+                    log_like = Number(0)
+                    c = d.concentration
+                    for m in self.multinomials:
+                        if m.probs is probs:
+                            log_like += DirichletMultinomial(c, m.value)
+                            c += m.value
+                    dirichlet_multinomials.append(log_like)
+                else:
+                    dirichlets.append(d)
 
             # Scale to account for remaining reduced_vars that were inputs to dropped deltas.
             eager_result = Joint(deltas, discrete)
