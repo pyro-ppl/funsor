@@ -214,7 +214,7 @@ class Joint(Funsor):
 
 @eager.register(Joint, tuple, Funsor, Funsor)
 def eager_joint(deltas, discrete, gaussian):
-    # Demote a Joint to a simpler elementart funsor.
+    # Demote a Joint to a simpler elementary funsor.
     if not deltas:
         if gaussian is Number(0):
             return discrete
