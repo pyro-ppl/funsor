@@ -59,7 +59,7 @@ def align_tensors(*args):
     This is mainly useful for implementing eager funsor operations.
 
     :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
-        :class:`~funsor.terms.Number`s.
+        :class:`~funsor.terms.Number` s.
     :return: a pair ``(inputs, tensors)`` where tensors are all
         :class:`torch.Tensor` s that can be broadcast together to a single data
         with given ``inputs``.
