@@ -52,7 +52,7 @@ def align_arrays(*args):
     This is mainly useful for implementing eager funsor operations.
 
     :param funsor.terms.Funsor \*args: Multiple :class:`Array` s and
-        :class:`~funsor.terms.Number`s.
+        :class:`~funsor.terms.Number` s.
     :return: a pair ``(inputs, arrays)`` where arrayss are all
         :class:`numpy.ndarray` s that can be broadcast together to a single data
         with given ``inputs``.
