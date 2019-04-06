@@ -1,8 +1,10 @@
 from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict
+from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.domains import find_domain
 from funsor.ops import NegOp, Op
 from funsor.terms import (
     Binary,
@@ -17,7 +19,9 @@ from funsor.torch import Tensor
 
 
 class Affine(Funsor):
-
+    """
+    Pattern representing multilinear function of input variables
+    """
     def __init__(self, const, coeffs):
         assert isinstance(const, (Number, Tensor))
         assert isinstance(coeffs, tuple)
@@ -28,18 +32,31 @@ class Affine(Funsor):
             inputs.update(coeff.inputs)
             inputs[name] = coeff.output
 
-        output = const.output
+        # output = const.output
+        output = reduce(lambda lhs, rhs: find_domain(ops.mul, lhs, rhs),
+                        [coeff.output for name, coeff in coeffs], const.output)
+
         super(Affine, self).__init__(inputs, output)
         self.coeffs = OrderedDict(coeffs)
         self.const = const
 
     def eager_subs(self, subs):
-        if any(name in self.coeffs for name, sub in subs):
-            raise NotImplementedError("TODO handle coefficient substitution")
         const = Subs(self.const, subs)
-        coeffs = tuple((name, Subs(coeff, subs)) for name, coeff in self.coeffs.items())
-        return Affine(const, coeffs)
+        subs_dict = OrderedDict(subs)
+        coeffs = tuple((name, Subs(coeff, subs))
+                       for name, coeff in self.coeffs.items()
+                       if name not in subs_dict)
+        result = Affine(const, coeffs)
+        for name, coeff in self.coeffs.items():
+            if name in subs_dict:
+                new_coeff = Subs(coeff, subs) * subs_dict[name]
+                result += new_coeff
+        return result
 
+
+###############################################
+# patterns for merging Affine with other terms
+###############################################
 
 @eager.register(Affine, (Number, Tensor), tuple)
 def eager_affine(const, coeffs):
