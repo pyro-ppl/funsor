@@ -5,15 +5,7 @@ from collections import OrderedDict
 import funsor.ops as ops
 from funsor.domains import find_domain
 from funsor.ops import NegOp, Op
-from funsor.terms import (
-    Binary,
-    Funsor,
-    Number,
-    Subs,
-    Unary,
-    Variable,
-    eager,
-)
+from funsor.terms import Binary, Funsor, Number, Subs, Unary, Variable, eager
 from funsor.torch import Tensor
 
 
@@ -135,7 +127,7 @@ def eager_binary_variable_affine(op, other, affine):
         return affine + other
 
     if op is ops.sub:
-        return other + -affine
+        return -affine + other
 
     return None
 
@@ -195,7 +187,7 @@ def eager_binary(op, other, var):
     if op is ops.add or op is ops.mul:
         return op(var, other)
     elif op is ops.sub:
-        return other + -var
+        return -var + other
     return None
 
 

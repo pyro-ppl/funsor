@@ -11,7 +11,6 @@ from funsor.terms import Number, Variable
 from funsor.testing import check_funsor
 from funsor.torch import Tensor
 
-
 SMOKE_TESTS = [
     ('t+x', Affine),
     ('x+t', Affine),
@@ -44,17 +43,19 @@ def test_smoke(expr, expected_type):
 
 
 SUBS_TESTS = [
-    ("(t * x)(i=1)", Affine, {"j": bint(3), "x": reals()}, reals()),
-    ("(t * x)(i=1, x=y)", Affine, {"j": bint(3), "y": reals()}, reals()),
-    ("(t * x + n)(x=y)", Affine, {"y": reals(), "i": bint(2), "j": bint(3)}, reals()),
-    ("(x + y)(y=z)", Affine, {"x": reals(), "z": reals()}, reals()),
-    ("(-x)(x=y+z)", Affine, {"y": reals(), "z": reals()}, reals()),
-    ("(t * x + t * y)(x=z)", Affine, {"y": reals(), "z": reals(), "i": bint(2), "j": bint(3)}, reals()),
+    ("(t * x)(i=1)", Affine, {"j": bint(3), "x": reals()}),
+    ("(t * x)(i=1, x=y)", Affine, {"j": bint(3), "y": reals()}),
+    ("(t * x + n)(x=y)", Affine, {"y": reals(), "i": bint(2), "j": bint(3)}),
+    ("(x + y)(y=z)", Affine, {"x": reals(), "z": reals()}),
+    ("(-x)(x=y+z)", Affine, {"y": reals(), "z": reals()}),
+    ("(t * x + t * y)(x=z)", Affine, {"y": reals(), "z": reals(), "i": bint(2), "j": bint(3)}),
 ]
 
 
-@pytest.mark.parametrize("expr,expected_type,expected_inputs,expected_output", SUBS_TESTS)
-def test_affine_subs(expr, expected_type, expected_inputs, expected_output):
+@pytest.mark.parametrize("expr,expected_type,expected_inputs", SUBS_TESTS)
+def test_affine_subs(expr, expected_type, expected_inputs):
+
+    expected_output = reals()
 
     t = Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
     assert isinstance(t, Tensor)
