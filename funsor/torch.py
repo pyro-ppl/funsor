@@ -684,8 +684,11 @@ def torch_stack(parts, dim=0):
     assert isinstance(parts, tuple)
     assert len(set(x.output for x in parts)) == 1
     shape = parts[0].output.shape
-    dim = len(shape) + dim + 1 if dim < 0 else dim
-    shape = shape[:dim] + (len(parts),) + shape[dim:]
+    if dim >= 0:
+        dim = dim - len(shape) - 1
+    assert dim < 0
+    split = dim + len(shape) + 1
+    shape = shape[:split] + (len(parts),) + shape[split:]
     output = Domain(shape, parts[0].dtype)
     fn = functools.partial(_torch_stack, dim)
     return Function(fn, output, parts)

@@ -48,15 +48,17 @@ def test_binomial_density(batch_shape, eager):
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.torch.function(bint(10), reals(), bint(10), reals())
+    @funsor.torch.function(reals(), reals(), reals(), reals())
     def binomial(total_count, probs, value):
         return torch.distributions.Binomial(total_count, probs).log_prob(value)
 
-    check_funsor(binomial, {'total_count': bint(max_count), 'probs': reals(), 'value': bint(max_count)}, reals())
+    check_funsor(binomial, {'total_count': reals(), 'probs': reals(), 'value': reals()}, reals())
 
-    total_count = random_tensor(inputs, bint(max_count))
+    value_data = random_tensor(inputs, bint(max_count)).data.float()
+    total_count_data = value_data + random_tensor(inputs, bint(max_count)).data.float()
+    value = Tensor(value_data, inputs)
+    total_count = Tensor(total_count_data, inputs)
     probs = Tensor(torch.rand(batch_shape), inputs)
-    value = min(random_tensor(inputs, bint(max_count)), total_count)
     expected = binomial(total_count, probs, value)
     check_funsor(expected, inputs, reals())
 

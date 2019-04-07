@@ -654,12 +654,16 @@ def test_tensordot(x_shape, xy_shape, y_shape):
     ((), 0),
     ((), -1),
     ((1,), 0),
+    ((1,), 1),
     ((1,), -1),
+    ((1,), -2),
     ((2, 3), 0),
     ((2, 3), 1),
+    ((2, 3), 2),
     ((2, 3), -1),
     ((2, 3), -2),
-])
+    ((2, 3), -3),
+], ids=str)
 def test_stack(n, shape, dim):
     tensors = [torch.randn(shape) for _ in range(n)]
     actual = torch_stack(tuple(Tensor(t) for t in tensors), dim=dim)
