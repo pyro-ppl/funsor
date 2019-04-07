@@ -4,6 +4,7 @@ import math
 from collections import OrderedDict
 
 import pytest
+import pyro
 import torch
 
 import funsor
@@ -144,6 +145,57 @@ def test_delta_delta():
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
+def test_dirichlet_density(batch_shape, event_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.torch.function(reals(*event_shape), reals(*event_shape), reals())
+    def dirichlet(concentration, value):
+        return torch.distributions.Dirichlet(concentration).log_prob(value)
+
+    check_funsor(dirichlet, {'concentration': reals(*event_shape), 'value': reals(*event_shape)}, reals())
+
+    concentration = Tensor(torch.randn(batch_shape + event_shape).exp(), inputs)
+    value_data = torch.rand(batch_shape + event_shape)
+    value_data = value_data / value_data.sum(-1, keepdim=True)
+    value = Tensor(value_data, inputs)
+    expected = dirichlet(concentration, value)
+    check_funsor(expected, inputs, reals())
+    actual = dist.Dirichlet(concentration, value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
+def test_dirichlet_multinomial_density(batch_shape, event_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    max_count = 10
+
+    @funsor.torch.function(reals(*event_shape), reals(), reals(*event_shape), reals())
+    def dirichlet_multinomial(concentration, total_count, value):
+        return pyro.distributions.DirichletMultinomial(concentration, total_count).log_prob(value)
+
+    check_funsor(dirichlet_multinomial, {'concentration': reals(*event_shape),
+                                         'total_count': reals(),
+                                         'value': reals(*event_shape)},
+                 reals())
+
+    concentration = Tensor(torch.randn(batch_shape + event_shape).exp(), inputs)
+    value_data = torch.randint(0, max_count, size=batch_shape + event_shape).float()
+    total_count_data = value_data.sum(-1) + torch.randint(0, max_count, size=batch_shape).float()
+    value = Tensor(value_data, inputs)
+    total_count = Tensor(total_count_data, inputs)
+    expected = dirichlet_multinomial(concentration, total_count, value)
+    check_funsor(expected, inputs, reals())
+    actual = dist.DirichletMultinomial(concentration, total_count, value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_lognormal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -161,6 +213,35 @@ def test_lognormal_density(batch_shape):
     check_funsor(expected, inputs, reals())
 
     actual = dist.LogNormal(loc, scale, value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
+def test_multinomial_density(batch_shape, event_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    max_count = 10
+
+    @funsor.torch.function(reals(), reals(*event_shape), reals(*event_shape), reals())
+    def multinomial(total_count, probs, value):
+        total_count = total_count.max().item()
+        return torch.distributions.Multinomial(total_count, probs).log_prob(value)
+
+    check_funsor(multinomial, {'total_count': reals(), 'probs': reals(*event_shape), 'value': reals(*event_shape)},
+                 reals())
+
+    probs_data = torch.rand(batch_shape + event_shape)
+    probs_data = probs_data / probs_data.sum(-1, keepdim=True)
+    probs = Tensor(probs_data, inputs)
+    value_data = torch.randint(0, max_count, size=batch_shape + event_shape).float()
+    total_count_data = value_data.sum(-1) + torch.randint(0, max_count, size=batch_shape).float()
+    value = Tensor(value_data, inputs)
+    total_count = Tensor(total_count_data, inputs)
+    expected = multinomial(total_count, probs, value)
+    check_funsor(expected, inputs, reals())
+    actual = dist.Multinomial(total_count, probs, value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 

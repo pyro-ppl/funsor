@@ -260,7 +260,7 @@ class Dirichlet(Distribution):
 
 
 @eager.register(Dirichlet, Tensor, Tensor)
-def eager_beta(concentration, value):
+def eager_dirichlet(concentration, value):
     return Dirichlet.eager_log_prob(concentration=concentration, value=value)
 
 
@@ -275,7 +275,7 @@ class DirichletMultinomial(Distribution):
         total_count = to_funsor(total_count, reals())
         dim = concentration.output.shape[0]
         value = to_funsor(value, reals(dim))  # Should this be bint(total_count)?
-        return concentration, value
+        return concentration, total_count, value
 
     def __init__(self, concentration, total_count, value='value'):
         super(DirichletMultinomial, self).__init__(concentration, total_count, value)
