@@ -52,7 +52,51 @@ def monte_carlo_integrate(log_measure, integrand, reduced_vars):
     return Integrate(sample, integrand, reduced_vars)
 
 
+def resample(log_measure, log_weights, resampled_vars):
+    probs = (log_weights - log_weights.reduce(ops.logaddexp, resampled_vars)).exp()
+    indices_dist = dist.Categorical(probs=probs)
+    fresh_name_subs = get_fresh_names(resampled_vars)
+    indices_dist = indices_dist(**fresh_name_subs)
+    sample_inputs = OrderedDict((k, log_measure.inputs[k]) for k in resampled_vars)
+    indices = indices_dist.unscaled_sample(frozenset(fresh_name_subs), sample_inputs=sample_inputs)
+
+
+@dispatched_interpretation
+def sequential_monte_carlo(cls, *args):
+    """
+    A moment matching interpretation of :class:`Reduce` expressions. This falls
+    back to :class:`eager` in other cases.
+    """
+    result = sequential_monte_carlo.dispatch(cls, *args)
+    if result is None:
+        result = eager(cls, *args)
+    return result
+
+sequential_monte_carlo.sample_inputs = OrderedDict()
+
+
+@sequential_monte_carlo.register(Integrate, Funsor, Funsor, frozenset)
+@integrator
+def sequential_monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    resampled_vars = frozenset(sequential_monte_carlo.sample_inputs).intersection(integrand.inputs)
+    log_weights = Integrate(log_measure, integrand, frozenset(log_measure.inputs) - resampled_vars)
+    # TODO don't double-count weights
+    if isinstance(log_weights, Tensor):
+        log_measure = resample(log_measure, log_weights, resampled_vars)
+    else:
+        warnings.warn("Could not resample vars {} with log_weights of type {}".format(resampled_vars, type(log_weights).__name__))
+
+    sample = log_measure.sample(reduced_vars, sequential_monte_carlo.sample_inputs)
+    if sample is log_measure:
+        return None  # cannot progress
+
+    reduced_vars |= frozenset(sequential_monte_carlo.sample_inputs).intersection(sample.inputs)
+    return Integrate(sample, integrand, reduced_vars)
+
+
 __all__ = [
     'monte_carlo',
-    'monte_carlo_interpretation'
+    'monte_carlo_interpretation',
+    'sequential_monte_carlo',
+    'sequential_monte_carlo_interpretation',
 ]
