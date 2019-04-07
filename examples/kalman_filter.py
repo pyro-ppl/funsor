@@ -28,12 +28,12 @@ def main(args):
 
             # A delayed sample statement.
             x_curr = funsor.Variable('x_{}'.format(t), funsor.reals())
-            log_prob += dist.Normal(x_prev, trans_noise, value=x_curr)
+            log_prob += dist.Normal(1 + x_prev / 2., trans_noise, value=x_curr)
 
             if not args.lazy and isinstance(x_prev, funsor.Variable):
                 log_prob = log_prob.reduce(ops.logaddexp, x_prev.name)
 
-            log_prob += dist.Normal(x_curr, emit_noise, value=y)
+            log_prob += dist.Normal(0.5 + 3 * x_curr, emit_noise, value=y)
 
         log_prob = log_prob.reduce(ops.logaddexp)
         return log_prob

@@ -204,6 +204,35 @@ def test_normal_gaussian_3(batch_shape):
     assert_close(actual, expected, atol=1e-4)
 
 
+NORMAL_AFFINE_TESTS = [
+    'dist.Normal(x+2, scale, y+2)',
+    'dist.Normal(y, scale, x)',
+    'dist.Normal(x - y, scale, 0)',
+    'dist.Normal(0, scale, y - x)',
+    'dist.Normal(2 * x - y, scale, x)',
+    # TODO should we expect these to work without correction terms?
+    'dist.Normal(0, 1, (x - y) / scale) - scale.log()',
+    'dist.Normal(2 * y, 2 * scale, 2 * x) + math.log(2)',
+]
+
+
+@pytest.mark.parametrize('expr', NORMAL_AFFINE_TESTS)
+def test_normal_affine(expr):
+
+    scale = Tensor(torch.tensor(0.3), OrderedDict())
+    x = Variable('x', reals())
+    y = Variable('y', reals())
+
+    expected = dist.Normal(x, scale, y)
+    actual = eval(expr)
+
+    assert isinstance(actual, Joint)
+    assert dict(actual.inputs) == dict(expected.inputs), (actual.inputs, expected.inputs)
+
+    assert_close(actual.gaussian.align(tuple(expected.gaussian.inputs)), expected.gaussian)
+    assert_close(actual.discrete.align(tuple(expected.discrete.inputs)), expected.discrete)
+
+
 def test_normal_independent():
     loc = random_tensor(OrderedDict(), reals(2))
     scale = random_tensor(OrderedDict(), reals(2)).exp()

@@ -161,7 +161,7 @@ def eager_binary(op, var, other):
     elif op is ops.sub:
         return var + -other
     elif op is ops.truediv:
-        return var * ops.invert(other)
+        return var * (1. / other)
     return None
 
 
