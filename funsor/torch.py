@@ -59,7 +59,7 @@ def align_tensors(*args):
     This is mainly useful for implementing eager funsor operations.
 
     :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
-        :class:`~funsor.terms.Number`s.
+        :class:`~funsor.terms.Number` s.
     :return: a pair ``(inputs, tensors)`` where tensors are all
         :class:`torch.Tensor` s that can be broadcast together to a single data
         with given ``inputs``.
@@ -136,11 +136,9 @@ class Tensor(Funsor):
         assert all(name in self.inputs for name in names)
         if not names or names == tuple(self.inputs):
             return self
+
         inputs = OrderedDict((name, self.inputs[name]) for name in names)
         inputs.update(self.inputs)
-
-        if any(d.shape for d in self.inputs.values()):
-            raise NotImplementedError("TODO: Implement align with vector indices.")
         old_dims = tuple(self.inputs)
         new_dims = tuple(inputs)
         data = self.data.permute(tuple(old_dims.index(d) for d in new_dims))
@@ -649,6 +647,26 @@ def torch_einsum(equation, *operands):
     return Function(fn, output, operands)
 
 
+def torch_tensordot(x, y, dims):
+    """
+    Wrapper around :func:`torch.tensordot` to operate on real-valued Funsors.
+
+    Note this operates only on the ``output`` tensor. To perform sum-product
+    contractions on named dimensions, instead use ``+`` and
+    :class:`~funsor.terms.Reduce`.
+    """
+    assert isinstance(x, Funsor) and x.dtype == 'real'
+    assert isinstance(y, Funsor) and y.dtype == 'real'
+    assert isinstance(dims, int) and dims >= 0
+    x_shape = x.output.shape
+    y_shape = y.output.shape
+    assert x_shape[len(x_shape) - dims:] == y_shape[:dims]
+    shape = x_shape[:len(x_shape) - dims] + y_shape[dims:]
+    output = reals(*shape)
+    fn = functools.partial(torch.tensordot, dims=dims)
+    return Function(fn, output, (x, y))
+
+
 ################################################################################
 # Register Ops
 ################################################################################
@@ -766,4 +784,5 @@ __all__ = [
     'function',
     'materialize',
     'torch_einsum',
+    'torch_tensordot',
 ]

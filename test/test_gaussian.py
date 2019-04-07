@@ -97,6 +97,30 @@ def test_smoke(expr, expected_type):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
+def test_align(int_inputs, real_inputs):
+    inputs1 = OrderedDict(list(sorted(int_inputs.items())) +
+                          list(sorted(real_inputs.items())))
+    inputs2 = OrderedDict(reversed(inputs1.items()))
+    g1 = random_gaussian(inputs1)
+    g2 = g1.align(tuple(inputs2))
+    assert g2.inputs == inputs2
+    g3 = g2.align(tuple(inputs1))
+    assert_close(g3, g1)
+
+
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
+    {'i': bint(2), 'j': bint(3)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals()},
+    {'x': reals(4)},
+    {'x': reals(2, 3)},
+    {'x': reals(), 'y': reals()},
+    {'x': reals(2), 'y': reals(3)},
+    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+], ids=id_from_inputs)
 def test_eager_subs(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))

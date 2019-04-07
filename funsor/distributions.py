@@ -7,8 +7,11 @@ import pyro.distributions as dist
 import torch
 from six import add_metaclass
 
+from pyro.distributions.util import broadcast_shape
+
 import funsor.delta
 import funsor.ops as ops
+from funsor.affine import Affine
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
@@ -241,23 +244,30 @@ def eager_normal(loc, scale, value):
     return Normal(loc, scale, 'value')(value=value)
 
 
-# Create a Gaussian from a noisy identity transform.
-# This is extremely limited but suffices for examples/kalman_filter.py
-@eager.register(Normal, Variable, Tensor, Variable)
+@eager.register(Normal, (Variable, Affine), Tensor, (Variable, Affine))
+@eager.register(Normal, (Variable, Affine), Tensor, Tensor)
+@eager.register(Normal, Tensor, Tensor, (Variable, Affine))
 def eager_normal(loc, scale, value):
-    assert loc.output == reals()
-    assert value.output == reals()
-    assert loc.name != value.name
-    inputs = loc.inputs.copy()
-    inputs.update(scale.inputs)
-    inputs.update(value.inputs)
-    int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
+    affine = (loc - value) / scale
+    assert isinstance(affine, Affine)
+    real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
+    assert not any(v.shape for v in real_inputs.values())
 
-    log_prob = -0.5 * math.log(2 * math.pi) - scale.data.log()
-    loc = scale.data.new_zeros(scale.data.shape + (2,))
-    p = scale.data.pow(-2)
-    precision = torch.stack([p, -p, -p, p], -1).reshape(p.shape + (2, 2))
-    return Tensor(log_prob, int_inputs) + Gaussian(loc, precision, inputs)
+    tensors = [affine.const] + [c for v, c in affine.coeffs.items()]
+    inputs, tensors = align_tensors(*tensors)
+    shape = broadcast_shape(*(t.shape for t in tensors))
+    const, coeffs = tensors[0], tensors[1:]
+
+    dim = sum(d.num_elements for d in real_inputs.values())
+    loc = const.new_zeros(shape + (dim,))
+    loc[..., 0] = -const / coeffs[0]
+    precision = const.new_empty(shape + (dim, dim))
+    for i, (v1, c1) in enumerate(zip(real_inputs, coeffs)):
+        for j, (v2, c2) in enumerate(zip(real_inputs, coeffs)):
+            precision[..., i, j] = c1 * c2
+
+    log_prob = -0.5 * math.log(2 * math.pi) - scale.log()
+    return log_prob + Gaussian(loc, precision, affine.inputs)
 
 
 class MultivariateNormal(Distribution):

@@ -11,7 +11,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.terms import Lambda, Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
-from funsor.torch import REDUCE_OP_TO_TORCH, Tensor, align_tensors, torch_einsum
+from funsor.torch import REDUCE_OP_TO_TORCH, Tensor, align_tensors, torch_einsum, torch_tensordot
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
@@ -587,6 +587,15 @@ def test_function_nested_lazy():
     assert_close(actual_argmax, expected_argmax)
 
 
+def test_function_of_torch_tensor():
+    x = torch.randn(4, 3)
+    y = torch.randn(3, 2)
+    f = funsor.torch.function(reals(4, 3), reals(3, 2), reals(4, 2))(torch.matmul)
+    actual = f(x, y)
+    expected = f(Tensor(x), Tensor(y))
+    assert_close(actual, expected)
+
+
 def test_align():
     x = Tensor(torch.randn(2, 3, 4), OrderedDict([
         ('i', bint(2)),
@@ -625,4 +634,16 @@ def test_einsum(equation):
     funsors = [Tensor(x) for x in tensors]
     expected = Tensor(torch.einsum(equation, *tensors))
     actual = torch_einsum(equation, *funsors)
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('y_shape', [(), (4,), (4, 5)], ids=str)
+@pytest.mark.parametrize('xy_shape', [(), (6,), (6, 7)], ids=str)
+@pytest.mark.parametrize('x_shape', [(), (2,), (2, 3)], ids=str)
+def test_tensordot(x_shape, xy_shape, y_shape):
+    x = torch.randn(x_shape + xy_shape)
+    y = torch.randn(xy_shape + y_shape)
+    dim = len(xy_shape)
+    actual = torch_tensordot(Tensor(x), Tensor(y), dim)
+    expected = Tensor(torch.tensordot(x, y, dim))
     assert_close(actual, expected)

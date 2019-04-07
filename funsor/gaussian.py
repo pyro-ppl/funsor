@@ -60,7 +60,30 @@ def _trace_mm(x, y):
     return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
 
 
-def _sym_solve_mv(mat, vec):
+def sym_inverse(mat):
+    r"""
+    Computes ``inverse(mat)`` assuming mat is symmetric and usually positive
+    definite, but falling back to general pseudoinverse if positive
+    definiteness fails.
+    """
+    try:
+        # Attempt to use stable positive definite math.
+        tri = torch.inverse(torch.cholesky(mat))
+        return torch.matmul(tri.transpose(-1, -2), tri)
+    except RuntimeError as e:
+        warnings.warn(e.message, RuntimeWarning)
+
+    # Try masked reciprocal.
+    if mat.size(-1) == 1:
+        result = mat.reciprocal()
+        result[(mat != 0) == 0] = 0
+        return result
+
+    # Fall back to pseudoinverse.
+    return torch.pinverse(mat)
+
+
+def sym_solve_mv(mat, vec):
     r"""
     Computes ``mat \ vec`` assuming mat is symmetric and usually positive definite,
     but falling back to general pseudoinverse if positive definiteness fails.
@@ -201,6 +224,17 @@ class Gaussian(Funsor):
         return 'Gaussian(..., ({}))'.format(' '.join(
             '({}, {}),'.format(*kv) for kv in self.inputs.items()))
 
+    def align(self, names):
+        assert isinstance(names, tuple)
+        assert all(name in self.inputs for name in names)
+        if not names or names == tuple(self.inputs):
+            return self
+
+        inputs = OrderedDict((name, self.inputs[name]) for name in names)
+        inputs.update(self.inputs)
+        loc, precision = align_gaussian(inputs, self)
+        return Gaussian(loc, precision, inputs)
+
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
         subs = tuple((k, materialize(v)) for k, v in subs if k in self.inputs)
@@ -336,7 +370,7 @@ class Gaussian(Funsor):
                                    old_ints).reduce(ops.add, reduced_vars)
             assert precision.inputs == new_ints
             assert precision_loc.inputs == new_ints
-            loc = Tensor(_sym_solve_mv(precision.data, precision_loc.data), new_ints)
+            loc = Tensor(sym_solve_mv(precision.data, precision_loc.data), new_ints)
             expanded_loc = align_tensor(old_ints, loc)
             quadratic_term = Tensor(_vmv(self.precision, expanded_loc - self.loc),
                                     old_ints).reduce(ops.add, reduced_vars)
@@ -398,7 +432,7 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     # Fuse aligned Gaussians.
     precision_loc = _mv(lhs_precision, lhs_loc) + _mv(rhs_precision, rhs_loc)
     precision = lhs_precision + rhs_precision
-    loc = _sym_solve_mv(precision, precision_loc)
+    loc = sym_solve_mv(precision, precision_loc)
     quadratic_term = _vmv(lhs_precision, loc - lhs_loc) + _vmv(rhs_precision, loc - rhs_loc)
     likelihood = Tensor(-0.5 * quadratic_term, int_inputs)
     return likelihood + Gaussian(loc, precision, inputs)
