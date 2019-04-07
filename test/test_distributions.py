@@ -10,6 +10,7 @@ import funsor
 import funsor.distributions as dist
 from funsor.delta import Delta
 from funsor.domains import bint, reals
+from funsor.gaussian import Gaussian
 from funsor.joint import Joint
 from funsor.terms import Independent, Variable
 from funsor.testing import assert_close, check_funsor, random_tensor
@@ -202,6 +203,61 @@ def test_normal_gaussian_3(batch_shape):
     check_funsor(actual, inputs, reals())
 
     assert_close(actual, expected, atol=1e-4)
+
+
+NORMAL_AFFINE_TESTS = [
+    'dist.Normal(x+2, scale, y+2)',
+    'dist.Normal(y, scale, x)',
+    'dist.Normal(2 * y, 2 * scale, 2 * x)',
+    'dist.Normal(x - y, scale, 0)',
+    'dist.Normal(0, scale, y - x)',
+    'dist.Normal(0, 1, (x - y) / scale)',
+    'dist.Normal(2 * x - y, scale, x)',
+]
+
+
+@pytest.mark.parametrize('expr', NORMAL_AFFINE_TESTS)
+def test_normal_affine(expr):
+
+    scale = Tensor(torch.tensor(0.3), OrderedDict())
+    x = Variable('x', reals())
+    y = Variable('y', reals())
+
+    expected = dist.Normal(x, scale, y)
+    actual = eval(expr)
+
+    assert isinstance(actual, Gaussian)
+    assert dict(actual.inputs) == dict(expected.inputs), (actual.inputs, expected.inputs)
+    actual = actual.align(tuple(expected.inputs))
+    if isinstance(actual, Gaussian):
+        assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('expr', NORMAL_AFFINE_TESTS)
+def test_normal_affine_mvn(expr):
+
+    scale = Tensor(torch.tensor(1.), OrderedDict())
+    assert isinstance(scale, Tensor)
+    loc = Tensor(torch.tensor([0., 0.]), OrderedDict())
+
+    scale_tril = Tensor(torch.tensor([[1., 0.], [0., 1.]]), OrderedDict())
+
+    x = Variable('x', reals())
+    assert isinstance(x, Variable)
+    y = Variable('y', reals())
+    assert isinstance(y, Variable)
+
+    data = torch.randn(2)
+
+    expected = dist.MultivariateNormal(loc, scale_tril, 'value')
+    actual = eval(expr)
+
+    assert isinstance(actual, Joint)
+    assert isinstance(expected, Joint)
+
+    assert_close(actual.gaussian.loc, expected.gaussian.loc)
+    assert_close(actual.gaussian.precision, expected.gaussian.precision)
+    assert_close(actual(x=data[0], y=data[1]), expected(value=data))
 
 
 def test_normal_independent():
