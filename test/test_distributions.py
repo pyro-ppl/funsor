@@ -16,6 +16,57 @@ from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import Tensor
 
 
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('eager', [False, True])
+def test_beta_density(batch_shape, eager):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.torch.function(reals(), reals(), reals(), reals())
+    def beta(concentration1, concentration0, value):
+        return torch.distributions.Beta(concentration1, concentration0).log_prob(value)
+
+    check_funsor(beta, {'concentration1': reals(), 'concentration0': reals(), 'value': reals()}, reals())
+
+    concentration1 = Tensor(torch.randn(batch_shape).exp(), inputs)
+    concentration0 = Tensor(torch.randn(batch_shape).exp(), inputs)
+    value = Tensor(torch.rand(batch_shape), inputs)
+    expected = beta(concentration1, concentration0, value)
+    check_funsor(expected, inputs, reals())
+
+    d = Variable('value', reals())
+    actual = dist.Beta(concentration1, concentration0, value) if eager else \
+        dist.Beta(concentration1, concentration0, d)(value=value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('eager', [False, True])
+def test_binomial_density(batch_shape, eager):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    max_count = 10
+
+    @funsor.torch.function(bint(10), reals(), bint(10), reals())
+    def binomial(total_count, probs, value):
+        return torch.distributions.Binomial(total_count, probs).log_prob(value)
+
+    check_funsor(binomial, {'total_count': bint(max_count), 'probs': reals(), 'value': bint(max_count)}, reals())
+
+    total_count = random_tensor(inputs, bint(max_count))
+    probs = Tensor(torch.rand(batch_shape), inputs)
+    value = min(random_tensor(inputs, bint(max_count)), total_count)
+    expected = binomial(total_count, probs, value)
+    check_funsor(expected, inputs, reals())
+
+    m = Variable('value', reals())
+    actual = dist.Binomial(total_count, probs, value) if eager else \
+        dist.Binomial(total_count, probs, m)(value=value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
 def test_categorical_defaults():
     probs = Variable('probs', reals(3))
     value = Variable('value', bint(3))

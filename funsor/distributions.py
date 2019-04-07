@@ -163,12 +163,12 @@ class Binomial(Distribution):
 
 
 @eager.register(Binomial, Tensor, Tensor, Tensor)
-def eager_categorical(total_count, probs, value):
+def eager_binomial(total_count, probs, value):
     return Binomial.eager_log_prob(total_count=total_count, probs=probs, value=value)
 
 
 @eager.register(Binomial, Funsor, Funsor, Funsor)
-def eager_beta(total_count, probs, value):
+def eager_binomial(total_count, probs, value):
     probs = torch_stack((1 - probs, probs))
     value = torch_stack((total_count - value, value))
     return Multinomial(probs, value=value)

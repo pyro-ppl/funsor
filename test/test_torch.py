@@ -11,7 +11,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.terms import Lambda, Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
-from funsor.torch import REDUCE_OP_TO_TORCH, Tensor, align_tensors, torch_einsum, torch_tensordot
+from funsor.torch import REDUCE_OP_TO_TORCH, Tensor, align_tensors, torch_einsum, torch_tensordot, torch_stack
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
@@ -646,4 +646,22 @@ def test_tensordot(x_shape, xy_shape, y_shape):
     dim = len(xy_shape)
     actual = torch_tensordot(Tensor(x), Tensor(y), dim)
     expected = Tensor(torch.tensordot(x, y, dim))
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('n', [1, 2, 5])
+@pytest.mark.parametrize('shape,dim', [
+    ((), 0),
+    ((), -1),
+    ((1,), 0),
+    ((1,), -1),
+    ((2, 3), 0),
+    ((2, 3), 1),
+    ((2, 3), -1),
+    ((2, 3), -2),
+])
+def test_stack(n, shape, dim):
+    tensors = [torch.randn(shape) for _ in range(n)]
+    actual = torch_stack(tuple(Tensor(t) for t in tensors), dim=dim)
+    expected = Tensor(torch.stack(tensors, dim=dim))
     assert_close(actual, expected)
