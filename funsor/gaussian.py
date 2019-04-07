@@ -224,6 +224,17 @@ class Gaussian(Funsor):
         return 'Gaussian(..., ({}))'.format(' '.join(
             '({}, {}),'.format(*kv) for kv in self.inputs.items()))
 
+    def align(self, names):
+        assert isinstance(names, tuple)
+        assert all(name in self.inputs for name in names)
+        if not names or names == tuple(self.inputs):
+            return self
+
+        inputs = OrderedDict((name, self.inputs[name]) for name in names)
+        inputs.update(self.inputs)
+        loc, precision = align_gaussian(inputs, self)
+        return Gaussian(loc, precision, inputs)
+
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
         subs = tuple((k, materialize(v)) for k, v in subs if k in self.inputs)
