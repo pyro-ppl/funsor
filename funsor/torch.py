@@ -136,11 +136,9 @@ class Tensor(Funsor):
         assert all(name in self.inputs for name in names)
         if not names or names == tuple(self.inputs):
             return self
+
         inputs = OrderedDict((name, self.inputs[name]) for name in names)
         inputs.update(self.inputs)
-
-        if any(d.shape for d in self.inputs.values()):
-            raise NotImplementedError("TODO: Implement align with vector indices.")
         old_dims = tuple(self.inputs)
         new_dims = tuple(inputs)
         data = self.data.permute(tuple(old_dims.index(d) for d in new_dims))
@@ -683,8 +681,12 @@ def torch_stack(parts, dim=0):
     assert isinstance(dim, int)
     assert isinstance(parts, tuple)
     assert len(set(x.output for x in parts)) == 1
-    shape = parts[0].shape
-    shape = shape[:dim] + (len(parts),) + shape[dim:]
+    shape = parts[0].output.shape
+    if dim >= 0:
+        dim = dim - len(shape) - 1
+    assert dim < 0
+    split = dim + len(shape) + 1
+    shape = shape[:split] + (len(parts),) + shape[split:]
     output = Domain(shape, parts[0].dtype)
     fn = functools.partial(_torch_stack, dim)
     return Function(fn, output, parts)
