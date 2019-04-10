@@ -345,15 +345,18 @@ class SVI(object):
 
 # TODO(eb8680) Replace this with funsor.Expectation.
 def Expectation(log_probs, costs, sum_vars, prod_vars):
-    probs = [p.exp() for p in log_probs]
     result = 0
     for cost in costs:
-        result += funsor.sum_product.sum_product(
-                sum_op=funsor.ops.add,
-                prod_op=funsor.ops.mul,
-                factors=probs + [cost],
-                plates=prod_vars,
-                eliminate=prod_vars | sum_vars)
+        log_prob = funsor.sum_product.sum_product(
+            sum_op=funsor.ops.logaddexp,
+            prod_op=funsor.ops.add,
+            factors=log_probs,
+            plates=prod_vars,
+            eliminate=(prod_vars | sum_vars) - frozenset(cost.inputs)
+        )
+        term = funsor.Integrate(log_prob, cost, sum_vars & frozenset(cost.inputs))
+        term = term.reduce(funsor.ops.add, prod_vars & frozenset(cost.inputs))
+        result += term
     return result
 
 

@@ -388,7 +388,7 @@ def _simplify_integrate(fn, joint, integrand, reduced_vars):
         reduced_vars = reduced_vars - frozenset(name for name, point in subs)
         return Integrate(log_measure, integrand, reduced_vars)
 
-    return fn(log_measure, integrand, reduced_vars)
+    return fn(joint, integrand, reduced_vars)
 
 
 def _joint_integrator(fn):
