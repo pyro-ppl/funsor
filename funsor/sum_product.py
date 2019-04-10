@@ -4,7 +4,8 @@ from collections import OrderedDict, defaultdict
 
 from six.moves import reduce
 
-from funsor.terms import Funsor
+from funsor.ops import UNITS
+from funsor.terms import Funsor, Number
 
 
 def _partition(terms, sum_vars):
@@ -97,4 +98,4 @@ def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozense
     :rtype: :class:`~funsor.terms.Funsor`
     """
     factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates)
-    return reduce(prod_op, factors)
+    return reduce(prod_op, factors, Number(UNITS[prod_op]))
