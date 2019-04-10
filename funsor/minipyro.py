@@ -370,23 +370,50 @@ def elbo(model, guide, *args, **kwargs):
     with log_joint() as model_log_joint:
         model(*args, **kwargs)
 
+    # contract out auxiliary variables in the guide
+    guide_aux_vars = frozenset(guide_log_joint.log_factors) - \
+        frozenset(guide_log_joint.plates) - \
+        frozenset(model_log_joint.log_factors)
+
+    guide_log_probs = funsor.sum_product.partial_sum_product(
+        funsor.ops.logaddexp, funsor.ops.add,
+        list(guide_log_joint.log_factors.values()),
+        plates=frozenset(guide_log_joint.plates), eliminate=guide_aux_vars
+    )
+
+    # contract out auxiliary variables in the model
+    model_aux_vars = frozenset(model_log_joint.log_factors) - \
+        frozenset(model_log_joint.plates) - \
+        frozenset(guide_log_joint.log_factors)
+
+    model_log_probs = funsor.sum_product.partial_sum_product(
+        funsor.ops.logaddexp, funsor.ops.add,
+        list(model_log_joint.log_factors.values()),
+        plates=frozenset(model_log_joint.plates), eliminate=model_aux_vars
+    )
+
+    # compute remaining plates and sum_dims
+    plates = frozenset().union(
+        *(model_log_joint.plates.intersection(model_log_prob.inputs) for model_log_prob in model_log_probs))
+    plates = plates | frozenset().union(
+        *(guide_log_joint.plates.intersection(guide_log_prob.inputs) for guide_log_prob in guide_log_probs))
+    sum_vars = frozenset().union(model_log_joint.log_factors, guide_log_joint.log_factors) - \
+        frozenset(model_aux_vars | guide_aux_vars)
+
     # Accumulate costs from model and guide and log_probs from guide.
     # Cf. pyro.infer.traceenum_elbo._compute_dice_elbo()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/traceenum_elbo.py#L119
     costs = []
     log_probs = []
-    for p in model_log_joint.log_factors.values():
+    for p in model_log_probs:
         costs.append(p)
-    for q in guide_log_joint.log_factors.values():
+    for q in guide_log_probs:
         costs.append(-q)
         log_probs.append(q)
 
     # Compute expected cost.
     # Cf. pyro.infer.util.Dice.compute_expectation()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/util.py#L212
-    plates = frozenset(guide_log_joint.plates | model_log_joint.plates)
-    sum_vars = frozenset().union(guide_log_joint.log_factors,
-                                 model_log_joint.log_factors)
     elbo = Expectation(tuple(log_probs),
                        tuple(costs),
                        sum_vars=sum_vars,
@@ -405,4 +432,8 @@ def Trace_ELBO(*args, **kwargs):
 
 def TraceMeanField_ELBO(*args, **kwargs):
     # TODO Use exact KLs where possible.
+    return elbo
+
+
+def TraceEnum_ELBO(*args, **kwargs):
     return elbo
