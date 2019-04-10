@@ -354,7 +354,9 @@ def Expectation(log_probs, costs, sum_vars, prod_vars):
             plates=prod_vars,
             eliminate=(prod_vars | sum_vars) - frozenset(cost.inputs)
         )
-        result += funsor.Integrate(log_prob, cost, frozenset(cost.inputs))
+        term = funsor.Integrate(log_prob, cost, sum_vars & frozenset(cost.inputs))
+        term = term.reduce(funsor.ops.mul, prod_vars & frozenset(cost.inputs))
+        result += term
     return result
 
 
