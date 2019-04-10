@@ -371,26 +371,32 @@ def elbo(model, guide, *args, **kwargs):
         model(*args, **kwargs)
 
     # contract out auxiliary variables in the guide
-    guide_aux_vars = frozenset(guide_log_joint.log_factors) - \
+    guide_aux_vars = frozenset().union(*(f.inputs for f in guide_log_joint.log_factors.values())) - \
         frozenset(guide_log_joint.plates) - \
         frozenset(model_log_joint.log_factors)
 
-    guide_log_probs = funsor.sum_product.partial_sum_product(
-        funsor.ops.logaddexp, funsor.ops.add,
-        list(guide_log_joint.log_factors.values()),
-        plates=frozenset(guide_log_joint.plates), eliminate=guide_aux_vars
-    )
+    if guide_aux_vars:
+        guide_log_probs = funsor.sum_product.partial_sum_product(
+            funsor.ops.logaddexp, funsor.ops.add,
+            list(guide_log_joint.log_factors.values()),
+            plates=frozenset(guide_log_joint.plates), eliminate=guide_aux_vars
+        )
+    else:
+        guide_log_probs = list(guide_log_joint.log_factors.values())
 
     # contract out auxiliary variables in the model
-    model_aux_vars = frozenset(model_log_joint.log_factors) - \
+    model_aux_vars = frozenset().union(*(f.inputs for f in model_log_joint.log_factors.values())) - \
         frozenset(model_log_joint.plates) - \
         frozenset(guide_log_joint.log_factors)
 
-    model_log_probs = funsor.sum_product.partial_sum_product(
-        funsor.ops.logaddexp, funsor.ops.add,
-        list(model_log_joint.log_factors.values()),
-        plates=frozenset(model_log_joint.plates), eliminate=model_aux_vars
-    )
+    if model_aux_vars:
+        model_log_probs = funsor.sum_product.partial_sum_product(
+            funsor.ops.logaddexp, funsor.ops.add,
+            list(model_log_joint.log_factors.values()),
+            plates=frozenset(model_log_joint.plates), eliminate=model_aux_vars
+        )
+    else:
+        model_log_probs = list(model_log_joint.log_factors.values())
 
     # compute remaining plates and sum_dims
     plates = frozenset().union(
