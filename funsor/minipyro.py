@@ -16,6 +16,7 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict, namedtuple
 
 import torch
+from pyro.params.param_store import ParamStoreDict
 
 import funsor
 
@@ -60,7 +61,7 @@ class Distribution(object):
 #     See http://docs.pyro.ai/en/0.3.1/parameters.html
 
 PYRO_STACK = []
-PARAM_STORE = {}
+PARAM_STORE = ParamStoreDict()  # A dict-like object that also supports constraints.
 
 
 def get_param_store():
@@ -240,35 +241,34 @@ def sample(name, fn, obs=None):
 
 # param is an effectful version of PARAM_STORE.setdefault
 # When any effect handlers are active, it constructs an initial message and calls apply_stack.
-def param(name, init_value=None, event_dim=None):
+def param(name, init_value=None, constraint=None, event_dim=None):
     cond_indep_stack = {}
     output = None
     if init_value is not None:
         if event_dim is None:
             event_dim = init_value.dim()
         output = funsor.reals(*init_value.shape[init_value.dim() - event_dim:])
+    if constraint is None:
+        constraint = torch.distributions.constraints.real
 
-    def fn(init_value):
-        if name in PARAM_STORE:
+    def fn(init_value, constraint):
+        if init_value is None:
             value = PARAM_STORE[name]
         else:
-            assert isinstance(init_value, torch.Tensor)
-            value = init_value.requires_grad_()
-            PARAM_STORE[name] = value
-            value._funsor_cond_indep_stack = cond_indep_stack
-            value._funsor_output = output
-        return tensor_to_funsor(value, value._funsor_cond_indep_stack, value._funsor_output)
+            value = PARAM_STORE.setdefault(name, init_value, constraint)
+            value.unconstrained()._funsor_metadata = (cond_indep_stack, output)
+        return tensor_to_funsor(value, *value.unconstrained()._funsor_metadata)
 
     # if there are no active Messengers, we just draw a sample and return it as expected:
     if not PYRO_STACK:
-        return fn(init_value)
+        return fn(init_value, constraint)
 
     # Otherwise, we initialize a message...
     initial_msg = {
         "type": "param",
         "name": name,
         "fn": fn,
-        "args": (init_value,),
+        "args": (init_value, constraint),
         "value": None,
         "cond_indep_stack": cond_indep_stack,  # maps dim to CondIndepStackFrame
         "output": output,
@@ -334,7 +334,8 @@ class SVI(object):
         # Differentiate the loss.
         loss.data.backward()
         # Grab all the parameters from the trace.
-        params = [site["value"].data for site in param_capture.values()]
+        params = [site["value"].data.unconstrained()
+                  for site in param_capture.values()]
         # Take a step w.r.t. each parameter in params.
         self.optim(params)
         # Zero out the gradients so that they don't accumulate.

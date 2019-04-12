@@ -4,6 +4,7 @@ import warnings
 
 import pytest
 import torch
+from torch.distributions import constraints
 from pyro.generic import distributions as dist
 from pyro.generic import infer, optim, pyro, pyro_backend
 
@@ -20,7 +21,8 @@ def assert_ok(model, guide, elbo, *args, **kwargs):
     pyro.get_param_store().clear()
     adam = optim.Adam({"lr": 1e-6})
     inference = infer.SVI(model, guide, adam, elbo)
-    inference.step(*args, **kwargs)
+    for i in range(2):
+        inference.step(*args, **kwargs)
 
 
 def assert_error(model, guide, elbo, match=None):
@@ -119,11 +121,7 @@ def test_plate_ok(backend):
         assert_ok(model, guide, elbo)
 
 
-@pytest.mark.parametrize("backend", [
-    "pyro",
-    "minipyro",
-    xfail_param("funsor", reason="missing patterns"),
-])
+@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_nested_plate_plate_ok(backend):
     data = torch.randn(2, 3)
 
@@ -169,6 +167,26 @@ def test_local_param_ok(backend):
         expected = guide()
         actual = pyro.param("p")
         assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("backend", ["pyro", "funsor"])
+def test_constraints(backend):
+    data = torch.tensor(0.5)
+
+    def model():
+        locs = pyro.param("locs", torch.randn(3), constraint=constraints.real)
+        scales = pyro.param("scales", torch.randn(3).exp(), constraint=constraints.positive)
+        p = torch.tensor([0.5, 0.3, 0.2])
+        x = pyro.sample("x", dist.Categorical(p))
+        pyro.sample("obs", dist.Normal(locs[x], scales[x]), obs=data)
+
+    def guide():
+        q = pyro.param("q", torch.randn(3).exp(), constraint=constraints.simplex)
+        pyro.sample("x", dist.Categorical(q))
+
+    with pyro_backend(backend):
+        elbo = infer.Trace_ELBO()
+        assert_ok(model, guide, elbo)
 
 
 @pytest.mark.parametrize("backend", [
