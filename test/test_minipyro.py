@@ -169,7 +169,7 @@ def test_local_param_ok(backend):
         assert_close(actual, expected)
 
 
-@pytest.mark.parametrize("backend", ["pyro", "funsor"])
+@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_constraints(backend):
     data = torch.tensor(0.5)
 
