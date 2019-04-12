@@ -11,8 +11,9 @@ import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
+from funsor.interpreter import interpretation
 from funsor.joint import Joint
-from funsor.montecarlo import monte_carlo_interpretation
+from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
@@ -342,3 +343,15 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     exact = Integrate(log_measure, integrand, reduced_vars)
     assert isinstance(exact, Tensor)
     assert_close(approx, exact, atol=0.1, rtol=0.1)
+
+
+@pytest.mark.xfail(reason="numerically unstable")
+def test_mc_plate_gaussian():
+    log_measure = Gaussian(torch.tensor([0.]), torch.tensor([[1.]]),
+                           (('loc', reals()),)) + torch.tensor(-0.9189)
+    integrand = Gaussian(torch.randn((100, 1)) + 3., torch.ones((100, 1, 1)),
+                         (('data', bint(100)), ('loc', reals())))
+    with interpretation(monte_carlo):
+        res = Integrate(log_measure, integrand, frozenset({'loc'}))
+        res = res.reduce(ops.mul, frozenset({'data'}))
+        assert not torch.isinf(res).any()
