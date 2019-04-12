@@ -21,7 +21,8 @@ def assert_ok(model, guide, elbo, *args, **kwargs):
     pyro.get_param_store().clear()
     adam = optim.Adam({"lr": 1e-6})
     inference = infer.SVI(model, guide, adam, elbo)
-    inference.step(*args, **kwargs)
+    for i in range(2):
+        inference.step(*args, **kwargs)
 
 
 def assert_error(model, guide, elbo, match=None):
