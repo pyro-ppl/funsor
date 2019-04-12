@@ -256,9 +256,8 @@ def param(name, init_value=None, constraint=None, event_dim=None):
             value = PARAM_STORE[name]
         else:
             value = PARAM_STORE.setdefault(name, init_value, constraint)
-            value._funsor_cond_indep_stack = cond_indep_stack
-            value._funsor_output = output
-        return tensor_to_funsor(value, value._funsor_cond_indep_stack, value._funsor_output)
+            value.unconstrained()._funsor_metadata = (cond_indep_stack, output)
+        return tensor_to_funsor(value, *value.unconstrained()._funsor_metadata)
 
     # if there are no active Messengers, we just draw a sample and return it as expected:
     if not PYRO_STACK:
