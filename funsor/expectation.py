@@ -8,7 +8,7 @@ import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.integrate import Integrate
 from funsor.product import Product
-from funsor.rvs import RandomVariable
+from funsor.rvs import DeltaRV, RandomVariable
 from funsor.terms import Funsor, FunsorMeta, Subs, eager
 
 
