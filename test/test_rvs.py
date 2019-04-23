@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import math
 import pytest
 import torch
 from collections import OrderedDict
@@ -54,7 +55,6 @@ def test_subs_omega_fail_rv_smoke(expr, expected_type):
         assert isinstance(z, Funsor)
 
 
-@pytest.mark.xfail(reason="affine transform of NormalRV not implemented")
 def test_transform_normalrv_simple():
     x = NormalRV(loc=0., scale=1.)
     y_actual = 2 * x + 1.
@@ -79,13 +79,12 @@ def test_reduce_normalrv_simple():
     assert_close(actual, expected)
 
 
-@pytest.mark.xfail(reason="add not implemented")
 def test_add_normalrv_simple():
     x = NormalRV(loc=0., scale=1.)(omega='omegax')
     y = NormalRV(loc=1., scale=0.5)(omega='omegay')
     actual = x + y
 
-    expected = NormalRV(loc=0. + 1., scale=1. * 0.5)  # XXX is this right?
+    expected = NormalRV(loc=0. + 1., scale=math.sqrt(1.25))
 
     actual_mean = actual.reduce(ops.add)
     expected_mean = expected.reduce(ops.add)
@@ -93,7 +92,6 @@ def test_add_normalrv_simple():
     assert_close(actual_mean, expected_mean)
 
 
-@pytest.mark.xfail(reason="add not implemented")
 def test_add_normalrv_name_collision():
     x = NormalRV(loc=0., scale=1.)(omega='omega2')
     y = NormalRV(loc=1., scale=0.5)(omega='omega2')

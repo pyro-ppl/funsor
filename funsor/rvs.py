@@ -12,10 +12,9 @@ import funsor.ops as ops
 from funsor.contract import Contract
 from funsor.distributions import Normal, numbers_to_tensors
 from funsor.domains import Domain, find_domain, reals
-from funsor.ops import AssociativeOp, TransformOp
+from funsor.ops import AssociativeOp, Op, TransformOp
 from funsor.optimizer import optimize
-from funsor.product import Product
-from funsor.terms import Binary, Funsor, FunsorMeta, Reduce, Subs, Unary, Variable, \
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Reduce, Subs, Unary, Variable, \
     eager, to_funsor
 from funsor.torch import Tensor, align_tensors
 
@@ -160,6 +159,14 @@ class NormalRV(RandomVariable):
     def __init__(self, loc, scale, omega='omega'):
         return super(NormalRV, self).__init__(loc, scale, omega)
 
+    @property
+    def loc(self):
+        return self.params['loc']
+
+    @property
+    def scale(self):
+        return self.params['scale']
+
 
 class DeltaRV(RandomVariable):
     dist_class = dist.Delta
@@ -182,3 +189,50 @@ class DeltaRV(RandomVariable):
 @eager.register(Unary, TransformOp, RandomVariable)
 def eager_unary_rv(op, arg):
     raise NotImplementedError("TODO implement invertible transforms of RandomVariables")
+
+
+#####################################################################
+# Handling linear/affine transformations of single RandomVariables
+#####################################################################
+
+@eager.register(Binary, AssociativeOp, NormalRV, (Number, Tensor))
+def eager_binary_normalrv_const(op, rv, const):
+    if op is ops.add:
+        return NormalRV(rv.loc + const, rv.scale, omega=rv.omega)
+    if op is ops.sub:
+        return rv + -const
+    if op is ops.mul:  # TODO handle negatives
+        return NormalRV(rv.loc * const, rv.scale * ops.abs(const), omega=rv.omega)
+    if op is ops.truediv:
+        return rv * (1./const)
+    return None  # TODO implement any missing binary operations (matmul?)
+
+
+@eager.register(Binary, AssociativeOp, (Number, Tensor), NormalRV)
+def eager_binary_const_normalrv(op, const, rv):
+    if op is ops.add or op is ops.mul:
+        return op(rv, const)
+    return None  # TODO implement any missing ops (ops.sub? ops.getitem?)
+
+
+@eager.register(Unary, AssociativeOp, NormalRV)
+def eager_unary_neg(op, rv):
+    if op is ops.sub:
+        return NormalRV(-rv.loc, rv.scale, omega=rv.omega)
+    return None  # TODO implement any missing unary operations
+
+
+#######################################################
+# Handling combinations of RandomVariables
+#######################################################
+
+@eager.register(Binary, AssociativeOp, NormalRV, NormalRV)
+def eager_binary_normal_normal(op, lhs, rhs):
+    if lhs.omega.name == rhs.omega.name:
+        raise NotImplementedError("TODO alpha-convert")
+    if op is ops.add:
+        new_scale = ops.sqrt(lhs.scale ** 2 + rhs.scale ** 2)
+        return NormalRV(lhs.loc + rhs.loc, new_scale, omega=lhs.omega)
+    if op is ops.sub:
+        return lhs + -rhs
+    return None
