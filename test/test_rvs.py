@@ -67,14 +67,13 @@ def test_transform_normalrv_simple():
     assert_close(actual, expected)
 
 
-@pytest.mark.xfail(reason="integrate with RVs not implemented")
 def test_reduce_normalrv_simple():
     # check that reducing substitution is the same as reducing joint densities
     x = NormalRV(loc=0., scale=1., omega="omega_x")
     y = dist.Normal(loc=x, scale=1., value=0.5)
-    actual = y.reduce(ops.add)
+    actual = y.reduce(ops.logaddexp, "omega_x")
 
-    expected = (dist.Normal(loc=0., scale=1., value="x") + dist.Normal(loc="x", scale=1., value=0.5)).reduce(ops.logaddexp).exp()
+    expected = (dist.Normal(loc=0., scale=1., value="x") + dist.Normal(loc="x", scale=1., value=0.5)).reduce(ops.logaddexp)
 
     assert_close(actual, expected)
 

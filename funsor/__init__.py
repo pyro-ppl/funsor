@@ -22,6 +22,7 @@ from . import (
     montecarlo,
     ops,
     pattern,
+    rvs,
     sum_product,
     terms,
     torch
@@ -58,6 +59,7 @@ __all__ = [
     'pattern',
     'reals',
     'reinterpret',
+    'rvs',
     'sum_product',
     'terms',
     'to_data',

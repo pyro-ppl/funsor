@@ -15,7 +15,7 @@ from funsor.domains import Domain, find_domain, reals
 from funsor.ops import AssociativeOp, Op, TransformOp
 from funsor.optimizer import optimize
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Reduce, Subs, Unary, Variable, \
-    eager, to_funsor
+    eager, reflect, to_funsor
 from funsor.torch import Tensor, align_tensors
 
 
@@ -180,6 +180,33 @@ class DeltaRV(RandomVariable):
 
     def __init__(self, v, log_density, omega='omega'):
         return super(DeltaRV, self).__init__(v, log_density, omega)
+
+
+##########################################################
+# Handling reductions of expressions with RandomVariables
+##########################################################
+
+@optimize.register(Normal, RandomVariable, (Funsor, Tensor), (Funsor, Tensor))
+@eager.register(Normal, RandomVariable, (Funsor, Tensor), (Funsor, Tensor))
+def eager_normaldist_rv(loc, scale, value):
+    return reflect(Subs, Normal('locvar', scale, value), (('locvar', loc),))
+
+
+@optimize.register(Reduce, AssociativeOp, Subs, frozenset)
+@eager.register(Reduce, AssociativeOp, Subs, frozenset)
+def eager_reduce_subs_rv(op, arg, reduced_vars):
+    subs = tuple(arg.subs.items())
+    assert not any(k in reduced_vars for (k, v) in subs)
+    if op is not ops.logaddexp:
+        raise NotImplementedError("other reductions with RV exprs not implemented")
+
+    if all(isinstance(v, RandomVariable) for (k, v) in subs):  # TODO handle partial
+        log_density = sum(v.log_prob(k) for (k, v) in subs if v.omega.name in reduced_vars)
+        other_subs = tuple((k, v) for (k, v) in subs if v.omega.name not in reduced_vars)
+        new_reduced_vars = reduced_vars - {v.omega.name for (k, v) in subs if v.omega.name in reduced_vars}
+        new_reduced_vars |= {k for (k, v) in subs if v.omega.name in reduced_vars}
+        return (log_density + Subs(arg.arg, other_subs)).reduce(op, new_reduced_vars)
+    return None
 
 
 #####################################################################

@@ -9,13 +9,15 @@ import funsor.distributions as dist
 import funsor.minipyro as pyro
 import funsor.ops as ops
 import funsor.rvs as rvs
+from funsor.interpreter import interpretation, reinterpret
+from funsor.optimizer import optimize
 
 
 # a linear-Gaussian HMM
 def model(data):
 
-    trans_noise = pyro.param(name="trans_noise")
-    emit_noise = pyro.param(name="emit_noise")
+    trans_noise = pyro.param("trans_noise")
+    emit_noise = pyro.param("emit_noise")
 
     log_prob = 0.
     x_curr = 0.
@@ -26,7 +28,7 @@ def model(data):
         x_curr = rvs.NormalRV(loc=x_prev, scale=trans_noise)(omega="omega_{}".format(t))
 
         # an observe statement: accumulate conditional densities
-        log_prob += dist.Normal(loc=x_curr, scale=emit_noise)(value=y)
+        log_prob += dist.Normal(loc=x_curr, scale=emit_noise, value=y)
 
     return log_prob
 
@@ -36,11 +38,11 @@ def main(args):
     RandomVariable version of Gaussian HMM example
     """
 
-    trans_noise = pyro.param(torch.tensor(0.1, requires_grad=True), name="trans_noise")  # noqa: F841
-    emit_noise = pyro.param(torch.tensor(0.5, requires_grad=True), name="emit_noise")  # noqa: F841
+    trans_noise = pyro.param("trans_noise", torch.tensor(0.1, requires_grad=True))  # noqa: F841
+    emit_noise = pyro.param("emit_noise", torch.tensor(0.5, requires_grad=True))  # noqa: F841
     data = torch.randn(args.time_steps)
 
-    params = [node["value"] for node in pyro.trace(model).get_trace(data).values()
+    params = [node["value"].data for node in pyro.trace(model).get_trace(data).values()
               if node["type"] == "param"]
 
     # training loop
@@ -48,12 +50,13 @@ def main(args):
     for step in range(args.train_steps):
         optim.zero_grad()
 
-        log_prob = model(data)
+        with interpretation(optimize):
+            log_prob = model(data)
 
-        # integrate out deferred variables
-        log_prob = log_prob.reduce(ops.logaddexp)
+            # integrate out deferred variables
+            log_prob = log_prob.reduce(ops.logaddexp)
 
-        loss = -funsor.eval(log_prob)  # does all the work
+        loss = -reinterpret(log_prob)  # does all the work
 
         if step % 10 == 0:
             print('step {} loss = {}'.format(step, loss.item()))
@@ -67,8 +70,6 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--time-steps", default=10, type=int)
     parser.add_argument("-n", "--train-steps", default=101, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)
-    parser.add_argument("--eager", action='store_true')
-    parser.add_argument("--filter", action='store_true')
     parser.add_argument("--xfail-if-not-implemented", action='store_true')
     args = parser.parse_args()
 
