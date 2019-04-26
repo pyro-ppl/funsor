@@ -9,8 +9,7 @@ import funsor.distributions as dist
 import funsor.minipyro as pyro
 import funsor.ops as ops
 import funsor.rvs as rvs
-from funsor.interpreter import interpretation, reinterpret
-from funsor.optimizer import optimize
+from funsor.optimizer import apply_optimizer
 
 
 # a linear-Gaussian HMM
@@ -50,13 +49,9 @@ def main(args):
     for step in range(args.train_steps):
         optim.zero_grad()
 
-        with interpretation(optimize):
-            log_prob = model(data)
+        log_prob = model(data).reduce(ops.logaddexp)
 
-            # integrate out deferred variables
-            log_prob = log_prob.reduce(ops.logaddexp)
-
-        loss = -reinterpret(log_prob)  # does all the work
+        loss = -apply_optimizer(log_prob)  # does all the work
 
         if step % 10 == 0:
             print('step {} loss = {}'.format(step, loss.item()))
