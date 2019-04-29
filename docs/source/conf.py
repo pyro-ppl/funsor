@@ -61,7 +61,7 @@ autodoc_default_options = {
     'show-inheritance': True,
     'special-members': True,
     'undoc-members': True,
-    'exclude-members': '__dict__',
+    'exclude-members': '__dict__,__module__,__weakref__',
 }
 
 # Add any paths that contain templates here, relative to this directory.
