@@ -22,6 +22,7 @@ test: lint FORCE
 	python examples/kalman_filter.py -n 2
 	python examples/kalman_filter.py -n 2 -t 50 --lazy
 	python examples/minipyro.py
+	python examples/minipyro.py --jit
 	python examples/slds.py -n 2 -t 50
 	python examples/pcfg.py --size 3
 	python examples/vae.py --smoke-test
