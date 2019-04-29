@@ -152,7 +152,7 @@ def _parse_slices(index, value):
 class BlockVector(object):
     """
     Jit-compatible helper to build blockwise vectors.
-    Syntax is similar to :func:`torch.zeros`::
+    Syntax is similar to :func:`torch.zeros` ::
 
         x = BlockVector((100, 20))
         x[..., 0:4] = x1
@@ -185,9 +185,9 @@ class BlockVector(object):
 class BlockMatrix(object):
     """
     Jit-compatible helper to build blockwise matrices.
-    Syntax is similar to :func:`torch.zeros`::
+    Syntax is similar to :func:`torch.zeros` ::
 
-        x = BlockVector((100, 20, 20))
+        x = BlockMatrix((100, 20, 20))
         x[..., 0:4, 0:4] = x11
         x[..., 0:4, 6:10] = x12
         x[..., 6:10, 0:4] = x12.transpose(-1, -2)
