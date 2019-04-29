@@ -12,7 +12,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import Affine
 from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.interpreter import interpretation
 from funsor.terms import Funsor, FunsorMeta, Number, Subs, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
@@ -382,16 +382,18 @@ def eager_normal(loc, scale, value):
 
     tensors = [affine.const] + [c for v, c in affine.coeffs.items()]
     inputs, tensors = align_tensors(*tensors)
-    shape = broadcast_shape(*(t.shape for t in tensors))
+    tensors = torch.broadcast_tensors(*tensors)
     const, coeffs = tensors[0], tensors[1:]
 
     dim = sum(d.num_elements for d in real_inputs.values())
-    loc = const.new_zeros(shape + (dim,))
+    loc = BlockVector(const.shape + (dim,))
     loc[..., 0] = -const / coeffs[0]
-    precision = const.new_empty(shape + (dim, dim))
+    precision = BlockMatrix(const.shape + (dim, dim))
     for i, (v1, c1) in enumerate(zip(real_inputs, coeffs)):
         for j, (v2, c2) in enumerate(zip(real_inputs, coeffs)):
             precision[..., i, j] = c1 * c2
+    loc = loc.as_tensor()
+    precision = precision.as_tensor()
 
     log_prob = -0.5 * math.log(2 * math.pi) - scale.log()
     return log_prob + Gaussian(loc, precision, affine.inputs)
