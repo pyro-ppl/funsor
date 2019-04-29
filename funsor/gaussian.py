@@ -137,18 +137,28 @@ def _parse_slices(index, value):
     if index[0] is Ellipsis:
         index = index[1:]
     start_stops = []
-    for i in index:
+    for pos, i in reversed(list(enumerate(index))):
         if isinstance(i, slice):
             start_stops.append((i.start, i.stop))
-        else:
+        elif isinstance(i, integer_types):
             start_stops.append((i, i + 1))
-            value = value.unsqueeze(-1)
+            value = value.unsqueeze(pos - len(index))
+        else:
+            raise ValueError("invalid index: {}".format(i))
+    start_stops.reverse()
     return start_stops, value
 
 
 class BlockVector(object):
     """
     Jit-compatible helper to build blockwise vectors.
+    Syntax is similar to :func:`torch.zeros`::
+
+        x = BlockVector((100, 20))
+        x[..., 0:4] = x1
+        x[..., 6:10] = x2
+        x = x.as_tensor()
+        assert x.shape == (100, 20)
     """
     def __init__(self, shape):
         self.shape = shape
@@ -175,6 +185,15 @@ class BlockVector(object):
 class BlockMatrix(object):
     """
     Jit-compatible helper to build blockwise matrices.
+    Syntax is similar to :func:`torch.zeros`::
+
+        x = BlockVector((100, 20, 20))
+        x[..., 0:4, 0:4] = x11
+        x[..., 0:4, 6:10] = x12
+        x[..., 6:10, 0:4] = x12.transpose(-1, -2)
+        x[..., 6:10, 6:10] = x22
+        x = x.as_tensor()
+        assert x.shape == (100, 20, 20)
     """
     def __init__(self, shape):
         self.shape = shape
