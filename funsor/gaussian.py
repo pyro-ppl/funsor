@@ -203,15 +203,17 @@ class Gaussian(Funsor):
 
         # Compute total dimension of all real inputs.
         dim = sum(d.num_elements for d in inputs.values() if d.dtype == 'real')
-        assert dim
-        assert loc.dim() >= 1 and loc.size(-1) == dim
-        assert precision.dim() >= 2 and precision.shape[-2:] == (dim, dim)
+        if not torch._C._get_tracing_state():
+            assert dim
+            assert loc.dim() >= 1 and loc.size(-1) == dim
+            assert precision.dim() >= 2 and precision.shape[-2:] == (dim, dim)
 
         # Compute total shape of all bint inputs.
         batch_shape = tuple(d.dtype for d in inputs.values()
                             if isinstance(d.dtype, integer_types))
-        assert _issubshape(loc.shape, batch_shape + (dim,))
-        assert _issubshape(precision.shape, batch_shape + (dim, dim))
+        if not torch._C._get_tracing_state():
+            assert _issubshape(loc.shape, batch_shape + (dim,))
+            assert _issubshape(precision.shape, batch_shape + (dim, dim))
 
         output = reals()
         super(Gaussian, self).__init__(inputs, output)
@@ -297,7 +299,8 @@ class Gaussian(Funsor):
             for k, value_k in zip(real_subs, values):
                 offset = offsets[k]
                 value_k = value_k.reshape(value_k.shape[:batch_dim] + (-1,))
-                assert value_k.size(-1) == self.inputs[k].num_elements
+                if not torch._C._get_tracing_state():
+                    assert value_k.size(-1) == self.inputs[k].num_elements
                 value[..., offset: offset + self.inputs[k].num_elements] = value_k
 
             # Evaluate the non-normalized log density.
@@ -398,7 +401,8 @@ class Gaussian(Funsor):
 
         if sampled_vars == frozenset(real_inputs):
             scale_tri = torch.inverse(torch.cholesky(self.precision)).transpose(-1, -2)
-            assert self.loc.shape == scale_tri.shape[:-1]
+            if not torch._C._get_tracing_state():
+                assert self.loc.shape == scale_tri.shape[:-1]
             shape = sample_shape + self.loc.shape
             white_noise = torch.randn(shape)
             sample = self.loc + _mv(scale_tri, white_noise)

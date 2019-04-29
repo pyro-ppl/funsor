@@ -8,8 +8,6 @@ import torch
 from pyro.distributions.util import broadcast_shape
 from six import add_metaclass
 
-from pyro.distributions.util import broadcast_shape
-
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import Affine
@@ -17,7 +15,7 @@ from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
 from funsor.terms import Funsor, FunsorMeta, Number, Subs, Variable, eager, lazy, to_funsor
-from funsor.torch import Tensor, align_tensors, materialize, torch_stack
+from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
 
 
 def numbers_to_tensors(*args):
@@ -31,8 +29,9 @@ def numbers_to_tensors(*args):
             if isinstance(x, Tensor):
                 new_tensor = x.data.new_tensor
                 break
-        args = tuple(Tensor(new_tensor(x.data), dtype=x.dtype) if isinstance(x, Number) else x
-                     for x in args)
+        with ignore_jit_warnings():
+            args = tuple(Tensor(new_tensor(x.data), dtype=x.dtype) if isinstance(x, Number) else x
+                         for x in args)
     return args
 
 
