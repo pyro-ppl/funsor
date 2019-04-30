@@ -24,13 +24,14 @@ def numbers_to_tensors(*args):
     using any provided tensor as a prototype, if available.
     """
     if any(isinstance(x, Number) for x in args):
-        new_tensor = torch.tensor
+        options = dict(dtype=torch.get_default_dtype())
         for x in args:
             if isinstance(x, Tensor):
-                new_tensor = x.data.new_tensor
+                options = dict(dtype=x.data.dtype, device=x.data.device)
                 break
         with ignore_jit_warnings():
-            args = tuple(Tensor(new_tensor(x.data), dtype=x.dtype) if isinstance(x, Number) else x
+            args = tuple(Tensor(torch.tensor(x.data, **options), dtype=x.dtype)
+                         if isinstance(x, Number) else x
                          for x in args)
     return args
 

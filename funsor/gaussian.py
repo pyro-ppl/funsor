@@ -170,9 +170,10 @@ class BlockVector(object):
 
     def as_tensor(self):
         # Fill gaps with zeros.
-        new_zeros = next(iter(self.parts.values())).new_zeros
+        prototype = next(iter(self.parts.values()))
+        options = dict(dtype=prototype.dtype, device=prototype.device)
         for i in _find_gaps(self.parts.keys(), self.shape[-1]):
-            self.parts[i] = new_zeros(self.shape[:-1] + (i[1] - i[0],))
+            self.parts[i] = torch.zeros(self.shape[:-1] + (i[1] - i[0],), **options)
 
         # Concatenate parts.
         parts = [v for k, v in sorted(self.parts.items())]
@@ -206,7 +207,8 @@ class BlockMatrix(object):
     def as_tensor(self):
         # Fill gaps with zeros.
         arbitrary_row = next(iter(self.parts.values()))
-        new_zeros = next(iter(arbitrary_row.values())).new_zeros
+        prototype = next(iter(arbitrary_row.values()))
+        options = dict(dtype=prototype.dtype, device=prototype.device)
         i_gaps = _find_gaps(self.parts.keys(), self.shape[-2])
         j_gaps = _find_gaps(arbitrary_row.keys(), self.shape[-1])
         rows = set().union(i_gaps, self.parts)
@@ -214,7 +216,8 @@ class BlockMatrix(object):
         for i in rows:
             for j in cols:
                 if j not in self.parts[i]:
-                    self.parts[i][j] = new_zeros(self.shape[:-2] + (i[1] - i[0], j[1] - j[0]))
+                    shape = self.shape[:-2] + (i[1] - i[0], j[1] - j[0])
+                    self.parts[i][j] = torch.zeros(shape, **options)
 
         # Concatenate parts.
         columns = {i: torch.cat([v for j, v in sorted(part.items())], dim=-1)
