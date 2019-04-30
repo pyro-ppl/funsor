@@ -4,7 +4,6 @@ import argparse
 
 import torch
 
-import funsor
 import funsor.distributions as dist
 import funsor.minipyro as pyro
 import funsor.ops as ops

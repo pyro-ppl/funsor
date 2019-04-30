@@ -3,12 +3,12 @@ from __future__ import absolute_import, division, print_function
 import math
 import pytest
 import torch
-from collections import OrderedDict
+from collections import OrderedDict  # noqa: F401
 
 import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.domains import reals
-from funsor.rvs import RandomVariable, BernoulliRV, NormalRV, CategoricalRV, DeltaRV
+from funsor.rvs import BernoulliRV, NormalRV, CategoricalRV, DeltaRV
 from funsor.terms import Funsor, Number, Variable
 from funsor.testing import assert_close
 from funsor.torch import Tensor
@@ -56,7 +56,7 @@ def test_subs_omega_fail_rv_smoke(expr, expected_type):
 
 
 def test_transform_normalrv_simple():
-    x = NormalRV(loc=0., scale=1.)
+    x = NormalRV(loc=torch.tensor(0.), scale=1.)
     y_actual = 2 * x + 1.
 
     y_expected = NormalRV(loc=1., scale=2.)
@@ -73,7 +73,9 @@ def test_reduce_normalrv_simple():
     y = dist.Normal(loc=x, scale=1., value=0.5)
     actual = y.reduce(ops.logaddexp, "omega_x")
 
-    expected = (dist.Normal(loc=0., scale=1., value="x") + dist.Normal(loc="x", scale=1., value=0.5)).reduce(ops.logaddexp)
+    expected = (
+        dist.Normal(loc=0., scale=1., value="x") + dist.Normal(loc="x", scale=1., value=0.5)
+    ).reduce(ops.logaddexp)
 
     assert_close(actual, expected)
 

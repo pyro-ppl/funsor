@@ -1,18 +1,14 @@
 from __future__ import absolute_import, division, print_function
 
-import functools
 import pyro.distributions as dist
 from collections import OrderedDict
 from six import add_metaclass
-from six.moves import reduce
 
 import funsor.distributions
-import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.contract import Contract
 from funsor.distributions import Normal, numbers_to_tensors
-from funsor.domains import Domain, find_domain, reals
-from funsor.ops import AssociativeOp, Op, TransformOp
+from funsor.domains import reals
+from funsor.ops import AssociativeOp, TransformOp
 from funsor.optimizer import optimize
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, Reduce, Subs, Unary, Variable, \
     eager, reflect, to_funsor
