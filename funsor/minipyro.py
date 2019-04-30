@@ -369,7 +369,7 @@ class SVI(object):
         self.optim(params)
         # Zero out the gradients so that they don't accumulate.
         for p in params:
-            p.grad = p.new_zeros(p.shape)
+            p.grad = torch.zeros_like(p.grad)
         return loss.item()
 
 
