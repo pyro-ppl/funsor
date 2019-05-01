@@ -13,6 +13,7 @@ found at examples/minipyro.py.
 """
 from __future__ import absolute_import, division, print_function
 
+import functools
 import warnings
 import weakref
 from collections import OrderedDict, namedtuple
@@ -429,8 +430,8 @@ def elbo(model, guide, *args, **kwargs):
 
 # Base class for elbo implementations.
 class ELBO(object):
-    def __init__(self, **options):
-        self.__dict__.update(options)
+    def __init__(self, **kwargs):
+        self.options = kwargs
 
     def __call__(self, model, guide, *args, **kwargs):
         return elbo(model, guide, *args, **kwargs)
@@ -458,7 +459,7 @@ class Jit(object):
         self._compiled = None
         self._param_trace = None
 
-    def __call__(self, model, guide, *args):
+    def __call__(self, *args):
         # On first call, initialize params and save their names.
         if self._param_trace is None:
             with block(), trace() as tr, block(hide_fn=lambda m: m["type"] != "param"):
@@ -494,9 +495,23 @@ class Jit(object):
         return funsor.torch.Tensor(data)
 
 
+# This is a jit wrapper for ELBO implementations.
+class Jit_ELBO(ELBO):
+    def __init__(self, elbo, **kwargs):
+        super(Jit_ELBO, self).__init__(**kwargs)
+        self._elbo = elbo(**kwargs)
+        self._compiled = {}  # maps (model,guide) -> Jit instances
+
+    def __call__(self, model, guide, *args):
+        if (model, guide) not in self._compiled:
+            elbo = functools.partial(self._elbo, model, guide)
+            self._compiled[model, guide] = Jit(elbo, **self.options)
+        return self._compiled[model, guide](*args)
+
+
 def JitTrace_ELBO(**kwargs):
-    return Jit(Trace_ELBO(**kwargs), **kwargs)
+    return Jit_ELBO(Trace_ELBO, **kwargs)
 
 
 def JitTraceMeanField_ELBO(**kwargs):
-    return Jit(TraceMeanField_ELBO(**kwargs), **kwargs)
+    return Jit_ELBO(TraceMeanField_ELBO, **kwargs)
