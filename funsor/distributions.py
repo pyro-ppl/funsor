@@ -119,8 +119,27 @@ class Bernoulli(Distribution):
 
 
 @eager.register(Bernoulli, Tensor, Tensor)
-def eager_categorical(probs, value):
+def eager_bernoulli(probs, value):
     return Bernoulli.eager_log_prob(probs=probs, value=value)
+
+
+class BernoulliLogits(Distribution):
+    dist_class = dist.Bernoulli
+
+    @staticmethod
+    def _fill_defaults(logits, value='value'):
+        logits = to_funsor(logits)
+        assert logits.dtype == "real"
+        value = to_funsor(value, reals())
+        return logits, value
+
+    def __init__(self, logits, value=None):
+        super(BernoulliLogits, self).__init__(logits, value)
+
+
+@eager.register(BernoulliLogits, Tensor, Tensor)
+def eager_bernoulli_logits(logits, value):
+    return BernoulliLogits.eager_log_prob(logits=logits, value=value)
 
 
 class Beta(Distribution):
@@ -444,6 +463,7 @@ def eager_mvn(loc, scale_tril, value):
 
 __all__ = [
     'Bernoulli',
+    'BernoulliLogits',
     'Beta',
     'Binomial',
     'Categorical',
