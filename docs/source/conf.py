@@ -3,7 +3,6 @@ import sys
 
 import sphinx_rtd_theme
 
-
 # import pkg_resources
 
 # -*- coding: utf-8 -*-
@@ -56,6 +55,14 @@ extensions = [
 # is a PyTorch class.
 
 autodoc_inherit_docstrings = False
+
+autodoc_default_options = {
+    'member-order': 'bysource',
+    'show-inheritance': True,
+    'special-members': True,
+    'undoc-members': True,
+    'exclude-members': '__dict__,__module__,__weakref__',
+}
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

@@ -7,37 +7,51 @@ import torch
 import funsor
 import funsor.distributions as dist
 import funsor.ops as ops
-from funsor.interpreter import interpretation, reinterpret
-from funsor.optimizer import apply_optimizer
-from funsor.terms import lazy
 
 
 def main(args):
     # Declare parameters.
-    trans_noise = torch.tensor(0.1, requires_grad=True)
-    emit_noise = torch.tensor(0.5, requires_grad=True)
-    params = [trans_noise, emit_noise]
+    trans_probs = funsor.Tensor(torch.tensor([[0.9, 0.1],
+                                              [0.1, 0.9]], requires_grad=True))
+    trans_noise = funsor.Tensor(torch.tensor([
+        0.1,  # low noise component
+        1.0,  # high noisy component
+    ], requires_grad=True))
+    emit_noise = funsor.Tensor(torch.tensor(0.5, requires_grad=True))
+    params = [trans_probs.data,
+              trans_noise.data,
+              emit_noise.data]
 
     # A Gaussian HMM model.
+    @funsor.interpreter.interpretation(funsor.terms.moment_matching)
     def model(data):
-        log_prob = funsor.to_funsor(0.)
+        log_prob = funsor.Number(0.)
 
+        # s is the discrete latent state,
+        # x is the continuous latent state,
+        # y is the observed state.
+        s_curr = funsor.Tensor(torch.tensor(0), dtype=2)
         x_curr = funsor.Tensor(torch.tensor(0.))
         for t, y in enumerate(data):
+            s_prev = s_curr
             x_prev = x_curr
 
             # A delayed sample statement.
-            x_curr = funsor.Variable('x_{}'.format(t), funsor.reals())
-            log_prob += dist.Normal(1 + x_prev / 2., trans_noise, value=x_curr)
+            s_curr = funsor.Variable('s_{}'.format(t), funsor.bint(2))
+            log_prob += dist.Categorical(trans_probs[s_prev], value=s_curr)
 
-            # Optionally marginalize out the previous state.
-            if t > 0 and not args.lazy:
-                log_prob = log_prob.reduce(ops.logaddexp, x_prev.name)
+            # A delayed sample statement.
+            x_curr = funsor.Variable('x_{}'.format(t), funsor.reals())
+            log_prob += dist.Normal(x_prev, trans_noise[s_curr], value=x_curr)
+
+            # Marginalize out previous delayed sample statements.
+            if t > 0:
+                log_prob = log_prob.reduce(
+                    ops.logaddexp, frozenset([s_prev.name, x_prev.name]))
 
             # An observe statement.
-            log_prob += dist.Normal(0.5 + 3 * x_curr, emit_noise, value=y)
+            log_prob += dist.Normal(x_curr, emit_noise, value=y)
 
-        # Marginalize out all remaining delayed variables.
         log_prob = log_prob.reduce(ops.logaddexp)
         return log_prob
 
@@ -47,12 +61,7 @@ def main(args):
     optim = torch.optim.Adam(params, lr=args.learning_rate)
     for step in range(args.train_steps):
         optim.zero_grad()
-        if args.lazy:
-            with interpretation(lazy):
-                log_prob = apply_optimizer(model(data))
-            log_prob = reinterpret(log_prob)
-        else:
-            log_prob = model(data)
+        log_prob = model(data)
         assert not log_prob.inputs, 'free variables remain'
         loss = -log_prob.data
         loss.backward()
@@ -62,11 +71,10 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Kalman filter example")
+    parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-t", "--time-steps", default=10, type=int)
     parser.add_argument("-n", "--train-steps", default=101, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)
-    parser.add_argument("--lazy", action='store_true')
     parser.add_argument("--filter", action='store_true')
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()

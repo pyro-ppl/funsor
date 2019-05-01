@@ -9,6 +9,7 @@ from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.util import lazy_property
+import torch
 
 
 class Domain(namedtuple('Domain', ['shape', 'dtype'])):
@@ -18,7 +19,9 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     """
     def __new__(cls, shape, dtype):
         assert isinstance(shape, tuple)
-        assert all(isinstance(size, integer_types) for size in shape)
+        if torch._C._get_tracing_state():
+            shape = tuple(map(int, shape))
+        assert all(isinstance(size, integer_types) for size in shape), shape
         if isinstance(dtype, integer_types):
             assert not shape
         elif isinstance(dtype, str):
@@ -59,6 +62,8 @@ def bint(size):
     """
     Construct a bounded integer domain of scalar shape.
     """
+    if torch._C._get_tracing_state():
+        size = int(size)
     assert isinstance(size, integer_types) and size >= 0
     return Domain((), size)
 

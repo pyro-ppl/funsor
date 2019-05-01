@@ -68,6 +68,18 @@ def sequential(cls, *args):
     return result
 
 
+@dispatched_interpretation
+def moment_matching(cls, *args):
+    """
+    A moment matching interpretation of :class:`Reduce` expressions. This falls
+    back to :class:`eager` in other cases.
+    """
+    result = moment_matching.dispatch(cls, *args)
+    if result is None:
+        result = eager(cls, *args)
+    return result
+
+
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
 
@@ -341,6 +353,13 @@ class Funsor(object):
             if lazy_vars:
                 result = Reduce(op, result, frozenset(lazy_vars))
             return result
+
+        return None  # defer to default implementation
+
+    def moment_matching_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        if not reduced_vars:
+            return self
 
         return None  # defer to default implementation
 
@@ -782,9 +801,38 @@ def eager_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
 
 
+@eager.register(Binary, AssociativeOp, Reduce, (Funsor, Reduce))
+def eager_distribute_reduce_other(op, red, other):
+    if (red.op, op) in ops.DISTRIBUTIVE_OPS:
+        # Use distributive law.
+        if not red.reduced_vars.isdisjoint(other.inputs):
+            raise NotImplementedError('TODO alpha-convert')
+        arg = red.arg + other
+        return arg.reduce(red.op, red.reduced_vars)
+
+    return None  # defer to default implementation
+
+
+@eager.register(Binary, AssociativeOp, Funsor, Reduce)
+def eager_distribute_other_reduce(op, other, red):
+    if (red.op, op) in ops.DISTRIBUTIVE_OPS:
+        # Use distributive law.
+        if not red.reduced_vars.isdisjoint(other.inputs):
+            raise NotImplementedError('TODO alpha-convert')
+        arg = other + red.arg
+        return arg.reduce(red.op, red.reduced_vars)
+
+    return None  # defer to default implementation
+
+
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
+
+
+@moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
+def moment_matching_reduce(op, arg, reduced_vars):
+    return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
 
 
 class NumberMeta(FunsorMeta):
@@ -914,6 +962,10 @@ def eager_binary_funsor_align(op, lhs, rhs):
 @eager.register(Binary, Op, Align, Align)
 def eager_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
+
+
+eager.register(Binary, AssociativeOp, Reduce, Align)(eager_distribute_reduce_other)
+eager.register(Binary, AssociativeOp, Align, Reduce)(eager_distribute_other_reduce)
 
 
 class Stack(Funsor):
@@ -1142,6 +1194,7 @@ __all__ = [
     'Variable',
     'eager',
     'lazy',
+    'moment_matching',
     'of_shape',
     'reflect',
     'sequential',

@@ -9,13 +9,84 @@ from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
+from funsor.interpreter import interpretation
 from funsor.joint import Joint
-from funsor.montecarlo import monte_carlo_interpretation
+from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
+
+
+def test_block_vector():
+    shape = (10,)
+    expected = torch.zeros(shape)
+    actual = BlockVector(shape)
+
+    expected[1] = torch.randn(())
+    actual[1] = expected[1]
+
+    expected[3:5] = torch.randn(2)
+    actual[3:5] = expected[3:5]
+
+    assert_close(actual.as_tensor(), expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (4,), (3, 2)])
+def test_block_vector_batched(batch_shape):
+    shape = batch_shape + (10,)
+    expected = torch.zeros(shape)
+    actual = BlockVector(shape)
+
+    expected[..., 1] = torch.randn(batch_shape)
+    actual[..., 1] = expected[..., 1]
+
+    expected[..., 3:5] = torch.randn(batch_shape + (2,))
+    actual[..., 3:5] = expected[..., 3:5]
+
+    assert_close(actual.as_tensor(), expected)
+
+
+def test_block_matrix():
+    shape = (10, 10)
+    expected = torch.zeros(shape)
+    actual = BlockMatrix(shape)
+
+    expected[1, 1] = torch.randn(())
+    actual[1, 1] = expected[1, 1]
+
+    expected[1, 3:5] = torch.randn(2)
+    actual[1, 3:5] = expected[1, 3:5]
+
+    expected[3:5, 1] = torch.randn(2)
+    actual[3:5, 1] = expected[3:5, 1]
+
+    expected[3:5, 3:5] = torch.randn(2, 2)
+    actual[3:5, 3:5] = expected[3:5, 3:5]
+
+    assert_close(actual.as_tensor(), expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (4,), (3, 2)])
+def test_block_matrix_batched(batch_shape):
+    shape = batch_shape + (10, 10)
+    expected = torch.zeros(shape)
+    actual = BlockMatrix(shape)
+
+    expected[..., 1, 1] = torch.randn(batch_shape)
+    actual[..., 1, 1] = expected[..., 1, 1]
+
+    expected[..., 1, 3:5] = torch.randn(batch_shape + (2,))
+    actual[..., 1, 3:5] = expected[..., 1, 3:5]
+
+    expected[..., 3:5, 1] = torch.randn(batch_shape + (2,))
+    actual[..., 3:5, 1] = expected[..., 3:5, 1]
+
+    expected[..., 3:5, 3:5] = torch.randn(batch_shape + (2, 2))
+    actual[..., 3:5, 3:5] = expected[..., 3:5, 3:5]
+
+    assert_close(actual.as_tensor(), expected)
 
 
 @pytest.mark.parametrize('expr,expected_type', [
@@ -82,6 +153,30 @@ def test_smoke(expr, expected_type):
 
     result = eval(expr)
     assert isinstance(result, expected_type)
+
+
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
+    {'i': bint(2), 'j': bint(3)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals()},
+    {'x': reals(4)},
+    {'x': reals(2, 3)},
+    {'x': reals(), 'y': reals()},
+    {'x': reals(2), 'y': reals(3)},
+    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+], ids=id_from_inputs)
+def test_align(int_inputs, real_inputs):
+    inputs1 = OrderedDict(list(sorted(int_inputs.items())) +
+                          list(sorted(real_inputs.items())))
+    inputs2 = OrderedDict(reversed(inputs1.items()))
+    g1 = random_gaussian(inputs1)
+    g2 = g1.align(tuple(inputs2))
+    assert g2.inputs == inputs2
+    g3 = g2.align(tuple(inputs1))
+    assert_close(g3, g1)
 
 
 @pytest.mark.parametrize('int_inputs', [
@@ -318,3 +413,15 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     exact = Integrate(log_measure, integrand, reduced_vars)
     assert isinstance(exact, Tensor)
     assert_close(approx, exact, atol=0.1, rtol=0.1)
+
+
+@pytest.mark.xfail(reason="numerically unstable")
+def test_mc_plate_gaussian():
+    log_measure = Gaussian(torch.tensor([0.]), torch.tensor([[1.]]),
+                           (('loc', reals()),)) + torch.tensor(-0.9189)
+    integrand = Gaussian(torch.randn((100, 1)) + 3., torch.ones((100, 1, 1)),
+                         (('data', bint(100)), ('loc', reals())))
+    with interpretation(monte_carlo):
+        res = Integrate(log_measure, integrand, frozenset({'loc'}))
+        res = res.reduce(ops.mul, frozenset({'data'}))
+        assert not torch.isinf(res).any()

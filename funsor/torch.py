@@ -1,10 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
 import functools
+import warnings
 from collections import OrderedDict
 
 import opt_einsum
 import torch
+from contextlib2 import contextmanager
 from multipledispatch import dispatch
 from six import add_metaclass, integer_types
 from six.moves import reduce
@@ -16,6 +18,13 @@ from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Subs, Variable, eager, to_data, to_funsor
+
+
+@contextmanager
+def ignore_jit_warnings():
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+        yield
 
 
 def align_tensor(new_inputs, x):
@@ -59,7 +68,7 @@ def align_tensors(*args):
     This is mainly useful for implementing eager funsor operations.
 
     :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
-        :class:`~funsor.terms.Number`s.
+        :class:`~funsor.terms.Number` s.
     :return: a pair ``(inputs, tensors)`` where tensors are all
         :class:`torch.Tensor` s that can be broadcast together to a single data
         with given ``inputs``.
@@ -95,9 +104,10 @@ class Tensor(Funsor):
     def __init__(self, data, inputs=None, dtype="real"):
         assert isinstance(data, torch.Tensor)
         assert isinstance(inputs, tuple)
-        assert len(inputs) <= data.dim()
-        for (k, d), size in zip(inputs, data.shape):
-            assert d.dtype == size
+        if not torch._C._get_tracing_state():
+            assert len(inputs) <= data.dim()
+            for (k, d), size in zip(inputs, data.shape):
+                assert d.dtype == size
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
         super(Tensor, self).__init__(inputs, output)
@@ -136,11 +146,9 @@ class Tensor(Funsor):
         assert all(name in self.inputs for name in names)
         if not names or names == tuple(self.inputs):
             return self
+
         inputs = OrderedDict((name, self.inputs[name]) for name in names)
         inputs.update(self.inputs)
-
-        if any(d.shape for d in self.inputs.values()):
-            raise NotImplementedError("TODO: Implement align with vector indices.")
         old_dims = tuple(self.inputs)
         new_dims = tuple(inputs)
         data = self.data.permute(tuple(old_dims.index(d) for d in new_dims))
@@ -649,6 +657,51 @@ def torch_einsum(equation, *operands):
     return Function(fn, output, operands)
 
 
+def torch_tensordot(x, y, dims):
+    """
+    Wrapper around :func:`torch.tensordot` to operate on real-valued Funsors.
+
+    Note this operates only on the ``output`` tensor. To perform sum-product
+    contractions on named dimensions, instead use ``+`` and
+    :class:`~funsor.terms.Reduce`.
+    """
+    assert isinstance(x, Funsor) and x.dtype == 'real'
+    assert isinstance(y, Funsor) and y.dtype == 'real'
+    assert isinstance(dims, int) and dims >= 0
+    x_shape = x.output.shape
+    y_shape = y.output.shape
+    assert x_shape[len(x_shape) - dims:] == y_shape[:dims]
+    shape = x_shape[:len(x_shape) - dims] + y_shape[dims:]
+    output = reals(*shape)
+    fn = functools.partial(torch.tensordot, dims=dims)
+    return Function(fn, output, (x, y))
+
+
+def _torch_stack(dim, *parts):
+    return torch.stack(parts, dim=dim)
+
+
+def torch_stack(parts, dim=0):
+    """
+    Wrapper around :func:`torch.stack` to operate on real-valued Funsors.
+
+    Note this operates only on the ``output`` tensor. To stack funsors in a
+    new named dim, instead use :class:`~funsor.terms.Stack`.
+    """
+    assert isinstance(dim, int)
+    assert isinstance(parts, tuple)
+    assert len(set(x.output for x in parts)) == 1
+    shape = parts[0].output.shape
+    if dim >= 0:
+        dim = dim - len(shape) - 1
+    assert dim < 0
+    split = dim + len(shape) + 1
+    shape = shape[:split] + (len(parts),) + shape[split:]
+    output = Domain(shape, parts[0].dtype)
+    fn = functools.partial(_torch_stack, dim)
+    return Function(fn, output, parts)
+
+
 ################################################################################
 # Register Ops
 ################################################################################
@@ -764,6 +817,8 @@ __all__ = [
     'align_tensors',
     'arange',
     'function',
+    'ignore_jit_warnings',
     'materialize',
     'torch_einsum',
+    'torch_tensordot',
 ]
