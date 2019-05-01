@@ -476,3 +476,55 @@ def test_elbo_enumerate_plate_7(backend):
         elbo = elbo.differentiable_loss if backend == "pyro" else elbo
         hand_loss = elbo(hand_model, hand_guide, data)
         _check_loss_and_grads(hand_loss, auto_loss)
+
+
+@pytest.mark.xfail(reason="sum-product error: reduce sum_var before plate_var")
+@pytest.mark.parametrize("jit", [False, True], ids=["py", "jit"])
+def test_gaussian_probit_hmm_smoke(jit):
+
+    def model(data):
+        T, N, D = data.shape  # time steps, individuals, features
+
+        # Gaussian initial distribution.
+        init_loc = pyro.param("init_loc", torch.zeros(D))
+        init_scale = pyro.param("init_scale", 1e-2 * torch.eye(D),
+                                constraint=constraints.lower_cholesky)
+
+        # Linear dynamics with Gaussian noise.
+        trans_const = pyro.param("trans_const", torch.zeros(D))
+        trans_coeff = pyro.param("trans_coeff", torch.eye(D))
+        noise = pyro.param("noise", 1e-2 * torch.eye(D),
+                           constraint=constraints.lower_cholesky)
+
+        obs_plate = pyro.plate("channel", D, dim=-1)
+        with pyro.plate("data", N, dim=-2):
+            state = None
+            for t in range(T):
+                # Transition.
+                if t == 0:
+                    loc = init_loc
+                    scale_tril = init_scale
+                else:
+                    loc = trans_const + funsor.torch.torch_tensordot(trans_coeff, state, 1)
+                    scale_tril = noise
+                state = pyro.sample("state_{}".format(t),
+                                    dist.MultivariateNormal(loc, scale_tril),
+                                    infer={"enumerate": "parallel"})
+
+                # Factorial probit likelihood model.
+                with obs_plate:
+                    pyro.sample("obs_{}".format(t),
+                                dist.Bernoulli(logits=state["channel"]),
+                                obs=data[t])
+
+    def guide(data):
+        pass
+
+    data = torch.distributions.Bernoulli(0.5).sample((10, 8, 4))
+
+    with pyro_backend("funsor"):
+        Elbo = infer.JitTraceEnum_ELBO if jit else infer.TraceEnum_ELBO
+        elbo = Elbo()
+        adam = optim.Adam({"lr": 1e-3})
+        svi = infer.SVI(model, guide, adam, elbo)
+        svi.step(data)
