@@ -55,14 +55,6 @@ class Distribution(object):
         funsor_dist = self.funsor_dist + funsor.torch.Tensor(torch.zeros(size), inputs)
         return Distribution(funsor_dist)
 
-    @property
-    def has_enumerate_support(self):
-        return isinstance(self.funsor_dist,
-                          (funsor.torch.Tensor,
-                           funsor.distributions.Categorical,
-                           funsor.distributions.BernoulliProbs,
-                           funsor.distributions.BernoulliLogits))
-
 
 # Pyro keeps track of two kinds of global state:
 # i)  The effect handler stack, which enables non-standard interpretations of
@@ -77,12 +69,6 @@ PARAM_STORE = {}  # maps name -> (unconstrained_value, constraint)
 
 def get_param_store():
     return PARAM_STORE
-
-
-def clear_param_store():
-    keys = list(PARAM_STORE.keys())
-    for key in keys:
-        PARAM_STORE.pop(key)
 
 
 # The base effect handler class (called Messenger here for consistency with Pyro).
@@ -236,43 +222,6 @@ class EnumerateMessenger(Messenger):
                 msg["value"] = msg["fn"](*msg["args"])  # default to eager
             else:
                 raise ValueError("{} not a supported enumeration type".format(msg["infer"]["enumerate"]))
-
-
-class infer_config(Messenger):
-
-    def __init__(self, fn, config_fn):
-        self.config_fn = config_fn
-        super(infer_config, self).__init__(fn)
-
-    def process_message(self, msg):
-        msg["infer"].update(self.config_fn(msg))
-
-
-def _config_enumerate(default, num_samples=None):
-
-    def config_fn(site):
-        if site["type"] != "sample" or site["value"] is not None:
-            return {}
-        if num_samples is not None:
-            return {"enumerate": site["infer"].get("enumerate", default),
-                    "num_samples": site["infer"].get("num_samples", num_samples)}
-        if getattr(site["fn"], "has_enumerate_support", False):
-            return {"enumerate": site["infer"].get("enumerate", default)}
-        return {}
-
-    return config_fn
-
-
-def config_enumerate(model=None, default="parallel", num_samples=None):
-    """
-    Configures enumeration for all relevant sites in a model. This is mainly
-    used in conjunction with :class:`~TraceEnum_ELBO`.
-    """
-    # Support usage as a decorator:
-    if model is None:
-        return lambda model: config_enumerate(model, default, num_samples)
-
-    return infer_config(model, config_fn=_config_enumerate(default, num_samples))
 
 
 # apply_stack is called by pyro.sample and pyro.param.
@@ -484,7 +433,8 @@ def elbo(model, guide, *args, **kwargs):
         frozenset(guide_log_joint.log_factors)
     if model_aux_vars:
         model_log_probs = funsor.sum_product.partial_sum_product(
-            funsor.ops.logaddexp, funsor.ops.add,
+            funsor.ops.logaddexp,
+            funsor.ops.add,
             model_log_probs,
             plates=frozenset(model_log_joint.plates),
             eliminate=model_aux_vars)

@@ -267,16 +267,12 @@ def test_mean_field_warn(backend):
 
 
 @pytest.mark.parametrize("backend", ["pyro", "funsor"])
-@pytest.mark.parametrize("enumerate4", ["parallel"])
-@pytest.mark.parametrize("enumerate3", ["parallel"])
-@pytest.mark.parametrize("enumerate2", ["parallel"])
-@pytest.mark.parametrize("enumerate1", ["parallel"])
 @pytest.mark.parametrize("inner_dim", [2])
 @pytest.mark.parametrize("outer_dim", [2])
-def test_elbo_plate_plate(backend, outer_dim, inner_dim, enumerate1, enumerate2, enumerate3, enumerate4):
+def test_elbo_plate_plate(backend, outer_dim, inner_dim):
     with pyro_backend(backend):
-        pyro.clear_param_store()
-        num_particles = 1 if all([enumerate1, enumerate2, enumerate3, enumerate4]) else 100000
+        pyro.get_param_store().clear()
+        num_particles = 1
         q = pyro.param("q", torch.tensor([0.75, 0.25], requires_grad=True))
         p = 0.2693204236205713  # for which kl(Categorical(q), Categorical(p)) = 0.5
         p = torch.tensor([p, 1-p])
@@ -297,13 +293,13 @@ def test_elbo_plate_plate(backend, outer_dim, inner_dim, enumerate1, enumerate2,
             d = dist.Categorical(pyro.param("q"))
             context1 = pyro.plate("outer", outer_dim, dim=-1)
             context2 = pyro.plate("inner", inner_dim, dim=-2)
-            pyro.sample("w", d, infer={"enumerate": enumerate1})
+            pyro.sample("w", d, infer={"enumerate": "parallel"})
             with context1:
-                pyro.sample("x", d, infer={"enumerate": enumerate2})
+                pyro.sample("x", d, infer={"enumerate": "parallel"})
             with context2:
-                pyro.sample("y", d, infer={"enumerate": enumerate3})
+                pyro.sample("y", d, infer={"enumerate": "parallel"})
             with context1, context2:
-                pyro.sample("z", d, infer={"enumerate": enumerate4})
+                pyro.sample("z", d, infer={"enumerate": "parallel"})
 
         kl_node = kl_divergence(torch.distributions.Categorical(funsor.to_data(q)),
                                 torch.distributions.Categorical(funsor.to_data(p)))
@@ -313,7 +309,7 @@ def test_elbo_plate_plate(backend, outer_dim, inner_dim, enumerate1, enumerate2,
 
         elbo = infer.TraceEnum_ELBO(num_particles=num_particles,
                                     vectorize_particles=True,
-                                    strict_enumeration_warning=any([enumerate1, enumerate2, enumerate3]))
+                                    strict_enumeration_warning=True)
         elbo = elbo.differentiable_loss if backend == "pyro" else elbo
         actual_loss = funsor.to_data(elbo(model, guide))
         actual_loss.backward()
