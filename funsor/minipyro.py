@@ -401,38 +401,35 @@ def elbo(model, guide, *args, **kwargs):
         model(*args, **kwargs)
 
     # contract out auxiliary variables in the guide
-    guide_aux_vars = frozenset().union(*(f.inputs for f in guide_log_joint.log_factors.values())) - \
+    guide_log_probs = list(guide_log_joint.log_factors.values())
+    guide_aux_vars = frozenset().union(*(f.inputs for f in guide_log_probs)) - \
         frozenset(guide_log_joint.plates) - \
         frozenset(model_log_joint.log_factors)
-
     if guide_aux_vars:
         guide_log_probs = funsor.sum_product.partial_sum_product(
-            funsor.ops.logaddexp, funsor.ops.add,
-            list(guide_log_joint.log_factors.values()),
-            plates=frozenset(guide_log_joint.plates), eliminate=guide_aux_vars
-        )
-    else:
-        guide_log_probs = list(guide_log_joint.log_factors.values())
+            funsor.ops.logaddexp,
+            funsor.ops.add,
+            guide_log_probs,
+            plates=frozenset(guide_log_joint.plates),
+            eliminate=guide_aux_vars)
 
     # contract out auxiliary variables in the model
-    model_aux_vars = frozenset().union(*(f.inputs for f in model_log_joint.log_factors.values())) - \
+    model_log_probs = list(model_log_joint.log_factors.values())
+    model_aux_vars = frozenset().union(*(f.inputs for f in model_log_probs)) - \
         frozenset(model_log_joint.plates) - \
         frozenset(guide_log_joint.log_factors)
-
     if model_aux_vars:
         model_log_probs = funsor.sum_product.partial_sum_product(
             funsor.ops.logaddexp, funsor.ops.add,
-            list(model_log_joint.log_factors.values()),
-            plates=frozenset(model_log_joint.plates), eliminate=model_aux_vars
-        )
-    else:
-        model_log_probs = list(model_log_joint.log_factors.values())
+            model_log_probs,
+            plates=frozenset(model_log_joint.plates),
+            eliminate=model_aux_vars)
 
     # compute remaining plates and sum_dims
     plates = frozenset().union(
-        *(model_log_joint.plates.intersection(model_log_prob.inputs) for model_log_prob in model_log_probs))
+        *(model_log_joint.plates.intersection(f.inputs) for f in model_log_probs))
     plates = plates | frozenset().union(
-        *(guide_log_joint.plates.intersection(guide_log_prob.inputs) for guide_log_prob in guide_log_probs))
+        *(guide_log_joint.plates.intersection(f.inputs) for f in guide_log_probs))
     sum_vars = frozenset().union(model_log_joint.log_factors, guide_log_joint.log_factors) - \
         frozenset(model_aux_vars | guide_aux_vars)
 
