@@ -358,8 +358,7 @@ class SVI(object):
         with trace() as param_capture:
             # We use block here to allow tracing to record parameters only.
             with block(hide_fn=lambda msg: msg["type"] != "param"):
-                with funsor.montecarlo.monte_carlo_interpretation():
-                    loss = self.loss(self.model, self.guide, *args, **kwargs)
+                loss = self.loss(self.model, self.guide, *args, **kwargs)
         # Differentiate the loss.
         loss.data.backward()
         # Grab all the parameters from the trace.
@@ -428,22 +427,34 @@ def elbo(model, guide, *args, **kwargs):
     return loss
 
 
+# Base class for elbo implementations.
+class ELBO(object):
+    def __init__(self, **options):
+        self.__dict__.update(options)
+
+    def __call__(self, model, guide, *args, **kwargs):
+        return elbo(model, guide, *args, **kwargs)
+
+
 # This is a wrapper for compatibility with full Pyro.
-def Trace_ELBO(**kwargs):
-    return elbo
+class Trace_ELBO(ELBO):
+    def __call__(self, model, guide, *args, **kwargs):
+        with funsor.montecarlo.monte_carlo_interpretation():
+            return elbo(model, guide, *args, **kwargs)
 
 
-def TraceMeanField_ELBO(**kwargs):
-    # TODO Use exact KLs where possible.
-    return elbo
+class TraceMeanField_ELBO(ELBO):
+    # TODO Use exact KLs where**kwargs possible.
+    pass
 
 
-# This is a Jit wrapper around elbo() that (1) delays tracing until the first
+# This is a PyTorch jit wrapper around that (1) delays tracing until the first
 # invocation, and (2) registers pyro.param() statements with torch.jit.trace.
 # This version does not support variable number of args or non-tensor kwargs.
-class JitTrace_ELBO(object):
-    def __init__(self, **kwargs):
-        self.ignore_jit_warnings = kwargs.pop("ignore_jit_warnings", False)
+class Jit(object):
+    def __init__(self, fn, **kwargs):
+        self.fn = fn
+        self.ignore_jit_warnings = kwargs.get("ignore_jit_warnings", False)
         self._compiled = None
         self._param_trace = None
 
@@ -451,7 +462,7 @@ class JitTrace_ELBO(object):
         # On first call, initialize params and save their names.
         if self._param_trace is None:
             with block(), trace() as tr, block(hide_fn=lambda m: m["type"] != "param"):
-                elbo(model, guide, *args)
+                self.fn(*args)
             self._param_trace = tr
 
         # Augment args with reads from the global param store.
@@ -469,7 +480,7 @@ class JitTrace_ELBO(object):
                     constrained_param = param(name)  # assume param has been initialized
                     assert constrained_param.data.unconstrained() is unconstrained_param
                     self._param_trace[name]["value"] = constrained_param
-                result = replay(elbo, guide_trace=self._param_trace)(model, guide, *args)
+                result = replay(self.fn, guide_trace=self._param_trace)(*args)
                 assert not result.inputs
                 assert result.output == funsor.reals()
                 return result.data
@@ -481,3 +492,11 @@ class JitTrace_ELBO(object):
 
         data = self._compiled(*params_and_args)
         return funsor.torch.Tensor(data)
+
+
+def JitTrace_ELBO(**kwargs):
+    return Jit(Trace_ELBO(**kwargs), **kwargs)
+
+
+def JitTraceMeanField_ELBO(**kwargs):
+    return Jit(TraceMeanField_ELBO(**kwargs), **kwargs)
