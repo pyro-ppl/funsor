@@ -385,10 +385,7 @@ def test_elbo_enumerate_plates_1(backend):
         _check_loss_and_grads(hand_loss, auto_loss)
 
 
-@pytest.mark.parametrize('backend', [
-    "pyro",
-    xfail_param("funsor", reason="sum-product is failing somehow???"),
-])
+@pytest.mark.parametrize('backend', ["pyro", "funsor"])
 def test_elbo_enumerate_plate_7(backend):
     #  Guide    Model
     #    a -----> b
@@ -478,7 +475,7 @@ def test_elbo_enumerate_plate_7(backend):
         _check_loss_and_grads(hand_loss, auto_loss)
 
 
-@pytest.mark.xfail(reason="sum-product error: reduce sum_var before plate_var")
+@pytest.mark.xfail(reason="missing patterns")
 @pytest.mark.parametrize("jit", [False, True], ids=["py", "jit"])
 def test_gaussian_probit_hmm_smoke(jit):
 
