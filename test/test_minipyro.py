@@ -4,10 +4,14 @@ import warnings
 
 import pytest
 import torch
-from torch.distributions import constraints
+
+from torch.autograd import grad
+from torch.distributions import constraints, kl_divergence
+
 from pyro.generic import distributions as dist
 from pyro.generic import infer, optim, pyro, pyro_backend
 
+import funsor
 from funsor.testing import assert_close, xfail_param
 
 # This file tests a variety of model,guide pairs with valid and invalid structure.
@@ -237,3 +241,60 @@ def test_mean_field_warn(backend):
     with pyro_backend(backend):
         elbo = infer.TraceMeanField_ELBO()
         assert_warning(model, guide, elbo)
+
+
+@pytest.mark.parametrize("backend", ["pyro", "funsor"])
+@pytest.mark.parametrize("enumerate4", ["parallel"])
+@pytest.mark.parametrize("enumerate3", ["parallel"])
+@pytest.mark.parametrize("enumerate2", ["parallel"])
+@pytest.mark.parametrize("enumerate1", ["parallel"])
+@pytest.mark.parametrize("inner_dim", [2])
+@pytest.mark.parametrize("outer_dim", [2])
+def test_elbo_plate_plate(backend, outer_dim, inner_dim, enumerate1, enumerate2, enumerate3, enumerate4):
+    with pyro_backend(backend):
+        pyro.clear_param_store()
+        num_particles = 1 if all([enumerate1, enumerate2, enumerate3, enumerate4]) else 100000
+        q = pyro.param("q", torch.tensor([0.75, 0.25], requires_grad=True))
+        p = 0.2693204236205713  # for which kl(Categorical(q), Categorical(p)) = 0.5
+        p = torch.tensor([p, 1-p])
+
+        def model():
+            d = dist.Categorical(p)
+            context1 = pyro.plate("outer", outer_dim, dim=-1)
+            context2 = pyro.plate("inner", inner_dim, dim=-2)
+            pyro.sample("w", d)
+            with context1:
+                pyro.sample("x", d)
+            with context2:
+                pyro.sample("y", d)
+            with context1, context2:
+                pyro.sample("z", d)
+
+        def guide():
+            d = dist.Categorical(pyro.param("q"))
+            context1 = pyro.plate("outer", outer_dim, dim=-1)
+            context2 = pyro.plate("inner", inner_dim, dim=-2)
+            pyro.sample("w", d, infer={"enumerate": enumerate1})
+            with context1:
+                pyro.sample("x", d, infer={"enumerate": enumerate2})
+            with context2:
+                pyro.sample("y", d, infer={"enumerate": enumerate3})
+            with context1, context2:
+                pyro.sample("z", d, infer={"enumerate": enumerate4})
+
+        kl_node = kl_divergence(torch.distributions.Categorical(funsor.to_data(q)),
+                                torch.distributions.Categorical(funsor.to_data(p)))
+        kl = (1 + outer_dim + inner_dim + outer_dim * inner_dim) * kl_node
+        expected_loss = kl
+        expected_grad = grad(kl, [funsor.to_data(q)])[0]
+
+        elbo = infer.TraceEnum_ELBO(num_particles=num_particles,
+                                    vectorize_particles=True,
+                                    strict_enumeration_warning=any([enumerate1, enumerate2, enumerate3]))
+        elbo = elbo.differentiable_loss if backend == "pyro" else elbo
+        actual_loss = funsor.to_data(elbo(model, guide))
+        actual_loss.backward()
+        actual_grad = funsor.to_data(pyro.param('q')).grad
+
+        assert_close(actual_loss, expected_loss, atol=1e-5)
+        assert_close(actual_grad, expected_grad, atol=1e-5)

@@ -55,6 +55,14 @@ class Distribution(object):
         funsor_dist = self.funsor_dist + funsor.torch.Tensor(torch.zeros(size), inputs)
         return Distribution(funsor_dist)
 
+    @property
+    def has_enumerate_support(self):
+        return isinstance(self.funsor_dist,
+                          (funsor.torch.Tensor,
+                           funsor.distributions.Categorical,
+                           funsor.distributions.BernoulliProbs,
+                           funsor.distributions.BernoulliLogits))
+
 
 # Pyro keeps track of two kinds of global state:
 # i)  The effect handler stack, which enables non-standard interpretations of
@@ -69,6 +77,12 @@ PARAM_STORE = {}  # maps name -> (unconstrained_value, constraint)
 
 def get_param_store():
     return PARAM_STORE
+
+
+def clear_param_store():
+    keys = list(PARAM_STORE.keys())
+    for key in keys:
+        PARAM_STORE.pop(key)
 
 
 # The base effect handler class (called Messenger here for consistency with Pyro).
@@ -212,6 +226,55 @@ class log_joint(Messenger):
             self.plates.update(f.name for f in msg["cond_indep_stack"].values())
 
 
+class EnumerateMessenger(Messenger):
+
+    def process_message(self, msg):
+        if msg["type"] == "sample" and msg["value"] is None:
+            if msg["infer"].get("enumerate", None) == "parallel":
+                msg["value"] = funsor.Variable(msg["name"], msg["fn"].output)
+            elif msg["infer"].get("enumerate", None) is None:
+                msg["value"] = msg["fn"](*msg["args"])  # default to eager
+            else:
+                raise ValueError("{} not a supported enumeration type".format(msg["infer"]["enumerate"]))
+
+
+class infer_config(Messenger):
+
+    def __init__(self, fn, config_fn):
+        self.config_fn = config_fn
+        super(infer_config, self).__init__(fn)
+
+    def process_message(self, msg):
+        msg["infer"].update(self.config_fn(msg))
+
+
+def _config_enumerate(default, num_samples=None):
+
+    def config_fn(site):
+        if site["type"] != "sample" or site["value"] is not None:
+            return {}
+        if num_samples is not None:
+            return {"enumerate": site["infer"].get("enumerate", default),
+                    "num_samples": site["infer"].get("num_samples", num_samples)}
+        if getattr(site["fn"], "has_enumerate_support", False):
+            return {"enumerate": site["infer"].get("enumerate", default)}
+        return {}
+
+    return config_fn
+
+
+def config_enumerate(model=None, default="parallel", num_samples=None):
+    """
+    Configures enumeration for all relevant sites in a model. This is mainly
+    used in conjunction with :class:`~TraceEnum_ELBO`.
+    """
+    # Support usage as a decorator:
+    if model is None:
+        return lambda model: config_enumerate(model, default, num_samples)
+
+    return infer_config(model, config_fn=_config_enumerate(default, num_samples))
+
+
 # apply_stack is called by pyro.sample and pyro.param.
 # It is responsible for applying each Messenger to each effectful operation.
 def apply_stack(msg):
@@ -236,7 +299,7 @@ def apply_stack(msg):
 
 # sample is an effectful version of Distribution.sample(...)
 # When any effect handlers are active, it constructs an initial message and calls apply_stack.
-def sample(name, fn, obs=None):
+def sample(name, fn, obs=None, infer=None):
     # Wrap the funsor distribution in a Pyro-compatible way.
     fn = Distribution(fn)
 
@@ -253,6 +316,7 @@ def sample(name, fn, obs=None):
         "value": obs,
         "cond_indep_stack": {},  # maps dim to CondIndepStackFrame
         "output": fn.output,
+        "infer": {} if infer is None else infer,
     }
 
     # ...and use apply_stack to send it to the Messengers
@@ -481,8 +545,7 @@ class TraceMeanField_ELBO(ELBO):
 
 class TraceEnum_ELBO(ELBO):
     def __call__(self, model, guide, *args, **kwargs):
-        with funsor.montecarlo.monte_carlo_interpretation():
-            return elbo(model, guide, *args, **kwargs)
+        return elbo(model, guide, *args, **kwargs)
 
 
 # This is a PyTorch jit wrapper that (1) delays tracing until the first
