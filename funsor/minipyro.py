@@ -212,17 +212,6 @@ class log_joint(Messenger):
             self.plates.update(f.name for f in msg["cond_indep_stack"].values())
 
 
-class EnumerateMessenger(Messenger):
-
-    def process_message(self, msg):
-        if msg["type"] == "sample" and msg["value"] is None:
-            if (msg["infer"].get("exact", None) or
-                    msg["infer"].get("enumerate", None) == "parallel"):
-                msg["value"] = funsor.Variable(msg["name"], msg["fn"].output)
-            else:
-                msg["value"] = msg["fn"](*msg["args"])  # default to eager
-
-
 # apply_stack is called by pyro.sample and pyro.param.
 # It is responsible for applying each Messenger to each effectful operation.
 def apply_stack(msg):
@@ -493,10 +482,8 @@ class TraceMeanField_ELBO(ELBO):
 
 
 class TraceEnum_ELBO(ELBO):
-    def __call__(self, model, guide, *args, **kwargs):
-        model = EnumerateMessenger(model)
-        guide = EnumerateMessenger(guide)
-        return elbo(model, guide, *args, **kwargs)
+    # TODO allow mixing of sampling and exact integration
+    pass
 
 
 # This is a PyTorch jit wrapper that (1) delays tracing until the first
