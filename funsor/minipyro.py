@@ -216,12 +216,11 @@ class EnumerateMessenger(Messenger):
 
     def process_message(self, msg):
         if msg["type"] == "sample" and msg["value"] is None:
-            if msg["infer"].get("enumerate", None) == "parallel":
+            if (msg["infer"].get("exact", None) or
+                    msg["infer"].get("enumerate", None) == "parallel"):
                 msg["value"] = funsor.Variable(msg["name"], msg["fn"].output)
-            elif msg["infer"].get("enumerate", None) is None:
-                msg["value"] = msg["fn"](*msg["args"])  # default to eager
             else:
-                raise ValueError("{} not a supported enumeration type".format(msg["infer"]["enumerate"]))
+                msg["value"] = msg["fn"](*msg["args"])  # default to eager
 
 
 # apply_stack is called by pyro.sample and pyro.param.
@@ -495,6 +494,8 @@ class TraceMeanField_ELBO(ELBO):
 
 class TraceEnum_ELBO(ELBO):
     def __call__(self, model, guide, *args, **kwargs):
+        model = EnumerateMessenger(model)
+        guide = EnumerateMessenger(guide)
         return elbo(model, guide, *args, **kwargs)
 
 

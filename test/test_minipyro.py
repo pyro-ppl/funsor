@@ -477,7 +477,8 @@ def test_elbo_enumerate_plate_7(backend):
 
 @pytest.mark.xfail(reason="missing patterns")
 @pytest.mark.parametrize("jit", [False, True], ids=["py", "jit"])
-def test_gaussian_probit_hmm_smoke(jit):
+@pytest.mark.parametrize("exact", [False, True], ids=["exact", "monte-carlo"])
+def test_gaussian_probit_hmm_smoke(exact, jit):
 
     def model(data):
         T, N, D = data.shape  # time steps, individuals, features
@@ -506,7 +507,7 @@ def test_gaussian_probit_hmm_smoke(jit):
                     scale_tril = noise
                 state = pyro.sample("state_{}".format(t),
                                     dist.MultivariateNormal(loc, scale_tril),
-                                    infer={"enumerate": "parallel"})
+                                    infer={"exact": exact})
 
                 # Factorial probit likelihood model.
                 with obs_plate:
@@ -517,7 +518,7 @@ def test_gaussian_probit_hmm_smoke(jit):
     def guide(data):
         pass
 
-    data = torch.distributions.Bernoulli(0.5).sample((10, 8, 4))
+    data = torch.distributions.Bernoulli(0.5).sample((3, 4, 2))
 
     with pyro_backend("funsor"):
         Elbo = infer.JitTraceEnum_ELBO if jit else infer.TraceEnum_ELBO
