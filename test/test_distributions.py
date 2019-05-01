@@ -44,6 +44,54 @@ def test_beta_density(batch_shape, eager):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('eager', [False, True])
+def test_bernoulli_density(batch_shape, eager):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.torch.function(reals(), reals(), reals())
+    def bernoulli(probs, value):
+        return torch.distributions.Bernoulli(probs).log_prob(value)
+
+    check_funsor(bernoulli, {'probs': reals(), 'value': reals()}, reals())
+
+    probs = Tensor(torch.rand(batch_shape), inputs)
+    value = Tensor(torch.rand(batch_shape).round(), inputs)
+    expected = bernoulli(probs, value)
+    check_funsor(expected, inputs, reals())
+
+    d = Variable('value', reals())
+    actual = dist.Bernoulli(probs, value) if eager else \
+        dist.Bernoulli(probs, d)(value=value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('eager', [False, True])
+def test_bernoulli_logits_density(batch_shape, eager):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.torch.function(reals(), reals(), reals())
+    def bernoulli(logits, value):
+        return torch.distributions.Bernoulli(logits=logits).log_prob(value)
+
+    check_funsor(bernoulli, {'logits': reals(), 'value': reals()}, reals())
+
+    logits = Tensor(torch.rand(batch_shape), inputs)
+    value = Tensor(torch.rand(batch_shape).round(), inputs)
+    expected = bernoulli(logits, value)
+    check_funsor(expected, inputs, reals())
+
+    d = Variable('value', reals())
+    actual = dist.BernoulliLogits(logits, value) if eager else \
+        dist.BernoulliLogits(logits, d)(value=value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('eager', [False, True])
 def test_binomial_density(batch_shape, eager):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))

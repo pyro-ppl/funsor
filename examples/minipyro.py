@@ -5,6 +5,7 @@ import argparse
 import torch
 from pyro.generic import distributions as dist
 from pyro.generic import infer, optim, pyro, pyro_backend
+from torch.distributions import constraints
 
 from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo
@@ -22,7 +23,8 @@ def main(args):
     # distribution over the latent random variable `loc`.
     def guide(data):
         guide_loc = pyro.param("guide_loc", torch.tensor(0.))
-        guide_scale = pyro.param("guide_scale_log", torch.tensor(0.)).exp()
+        guide_scale = pyro.param("guide_scale", torch.tensor(1.),
+                                 constraint=constraints.positive)
         pyro.sample("loc", dist.Normal(guide_loc, guide_scale))
 
     # Generate some data.
@@ -34,7 +36,8 @@ def main(args):
     with pyro_backend(args.backend), interpretation(monte_carlo):
         # Construct an SVI object so we can do variational inference on our
         # model/guide pair.
-        elbo = infer.Trace_ELBO()
+        Elbo = infer.JitTrace_ELBO if args.jit else infer.Trace_ELBO
+        elbo = Elbo()
         adam = optim.Adam({"lr": args.learning_rate})
         svi = infer.SVI(model, guide, adam, elbo)
 
@@ -48,7 +51,8 @@ def main(args):
         # Report the final values of the variational parameters
         # in the guide after training.
         if args.verbose:
-            for name, value in pyro.get_param_store().items():
+            for name in pyro.get_param_store():
+                value = pyro.param(name).data
                 print("{} = {}".format(name, value.detach().cpu().numpy()))
 
         # For this simple (conjugate) model we know the exact posterior. In
@@ -62,6 +66,7 @@ if __name__ == "__main__":
     parser.add_argument("-b", "--backend", default="funsor")
     parser.add_argument("-n", "--num-steps", default=1001, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.02, type=float)
+    parser.add_argument("--jit", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     main(args)

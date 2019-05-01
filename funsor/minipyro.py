@@ -13,9 +13,12 @@ found at examples/minipyro.py.
 """
 from __future__ import absolute_import, division, print_function
 
+import warnings
+import weakref
 from collections import OrderedDict, namedtuple
 
 import torch
+from pyro.distributions import validation_enabled
 
 import funsor
 
@@ -45,9 +48,9 @@ class Distribution(object):
     # Similar to torch.distributions.Distribution.expand().
     def expand_inputs(self, name, size):
         if name in self.funsor_dist.inputs:
-            assert self.funsor_dist.inputs[name] == funsor.bint(size)
+            assert self.funsor_dist.inputs[name] == funsor.bint(int(size))
             return self
-        inputs = OrderedDict([(name, funsor.bint(size))])
+        inputs = OrderedDict([(name, funsor.bint(int(size)))])
         funsor_dist = self.funsor_dist + funsor.torch.Tensor(torch.zeros(size), inputs)
         return Distribution(funsor_dist)
 
@@ -60,7 +63,7 @@ class Distribution(object):
 #     See http://docs.pyro.ai/en/0.3.1/parameters.html
 
 PYRO_STACK = []
-PARAM_STORE = {}
+PARAM_STORE = {}  # maps name -> (unconstrained_value, constraint)
 
 
 def get_param_store():
@@ -104,12 +107,28 @@ class trace(Messenger):
     # trace illustrates why we need postprocess_message in addition to process_message:
     # We only want to record a value after all other effects have been applied
     def postprocess_message(self, msg):
-        assert msg["name"] not in self.trace, "all sites must have unique names"
+        assert msg["type"] != "sample" or msg["name"] not in self.trace, \
+            "sample sites must have unique names"
         self.trace[msg["name"]] = msg.copy()
 
     def get_trace(self, *args, **kwargs):
         self(*args, **kwargs)
         return self.trace
+
+
+# A second example of an effect handler for setting the value at a sample site.
+# This illustrates why effect handlers are a useful PPL implementation technique:
+# We can compose trace and replay to replace values but preserve distributions,
+# allowing us to compute the joint probability density of samples under a model.
+# See the definition of elbo(...) below for an example of this pattern.
+class replay(Messenger):
+    def __init__(self, fn, guide_trace):
+        self.guide_trace = guide_trace
+        super(replay, self).__init__(fn)
+
+    def process_message(self, msg):
+        if msg["name"] in self.guide_trace:
+            msg["value"] = self.guide_trace[msg["name"]]["value"]
 
 
 # block allows the selective application of effect handlers to different parts of a model.
@@ -152,6 +171,9 @@ def tensor_to_funsor(value, cond_indep_stack, output):
     assert isinstance(value, torch.Tensor)
     event_shape = output.shape
     batch_shape = value.shape[:value.dim() - len(event_shape)]
+    if torch._C._get_tracing_state():
+        with funsor.torch.ignore_jit_warnings():
+            batch_shape = tuple(map(int, batch_shape))
     inputs = OrderedDict()
     data = value
     for dim, size in enumerate(batch_shape):
@@ -160,7 +182,7 @@ def tensor_to_funsor(value, cond_indep_stack, output):
         else:
             frame = cond_indep_stack[dim - len(batch_shape)]
             assert size == frame.size, (size, frame)
-            inputs[frame.name] = funsor.bint(size)
+            inputs[frame.name] = funsor.bint(int(size))
     value = funsor.torch.Tensor(data, inputs, output.dtype)
     assert value.output == output
     return value
@@ -238,9 +260,9 @@ def sample(name, fn, obs=None):
     return msg["value"]
 
 
-# param is an effectful version of PARAM_STORE.setdefault
+# param is an effectful version of PARAM_STORE.setdefault that also handles constraints.
 # When any effect handlers are active, it constructs an initial message and calls apply_stack.
-def param(name, init_value=None, event_dim=None):
+def param(name, init_value=None, constraint=torch.distributions.constraints.real, event_dim=None):
     cond_indep_stack = {}
     output = None
     if init_value is not None:
@@ -248,27 +270,34 @@ def param(name, init_value=None, event_dim=None):
             event_dim = init_value.dim()
         output = funsor.reals(*init_value.shape[init_value.dim() - event_dim:])
 
-    def fn(init_value):
+    def fn(init_value, constraint):
         if name in PARAM_STORE:
-            value = PARAM_STORE[name]
+            unconstrained_value, constraint = PARAM_STORE[name]
         else:
-            assert isinstance(init_value, torch.Tensor)
-            value = init_value.requires_grad_()
-            PARAM_STORE[name] = value
-            value._funsor_cond_indep_stack = cond_indep_stack
-            value._funsor_output = output
-        return tensor_to_funsor(value, value._funsor_cond_indep_stack, value._funsor_output)
+            # Initialize with a constrained value.
+            assert init_value is not None
+            with torch.no_grad():
+                constrained_value = init_value.detach()
+                unconstrained_value = torch.distributions.transform_to(constraint).inv(constrained_value)
+            unconstrained_value.requires_grad_()
+            unconstrained_value._funsor_metadata = (cond_indep_stack, output)
+            PARAM_STORE[name] = unconstrained_value, constraint
+
+        # Transform from unconstrained space to constrained space.
+        constrained_value = torch.distributions.transform_to(constraint)(unconstrained_value)
+        constrained_value.unconstrained = weakref.ref(unconstrained_value)
+        return tensor_to_funsor(constrained_value, *unconstrained_value._funsor_metadata)
 
     # if there are no active Messengers, we just draw a sample and return it as expected:
     if not PYRO_STACK:
-        return fn(init_value)
+        return fn(init_value, constraint)
 
     # Otherwise, we initialize a message...
     initial_msg = {
         "type": "param",
         "name": name,
         "fn": fn,
-        "args": (init_value,),
+        "args": (init_value, constraint),
         "value": None,
         "cond_indep_stack": cond_indep_stack,  # maps dim to CondIndepStackFrame
         "output": output,
@@ -334,12 +363,13 @@ class SVI(object):
         # Differentiate the loss.
         loss.data.backward()
         # Grab all the parameters from the trace.
-        params = [site["value"].data for site in param_capture.values()]
+        params = [site["value"].data.unconstrained()
+                  for site in param_capture.values()]
         # Take a step w.r.t. each parameter in params.
         self.optim(params)
         # Zero out the gradients so that they don't accumulate.
         for p in params:
-            p.grad = p.new_zeros(p.shape)
+            p.grad = torch.zeros_like(p.grad)
         return loss.item()
 
 
@@ -432,14 +462,59 @@ def elbo(model, guide, *args, **kwargs):
 
 
 # This is a wrapper for compatibility with full Pyro.
-def Trace_ELBO(*args, **kwargs):
+def Trace_ELBO(**kwargs):
     return elbo
 
 
-def TraceMeanField_ELBO(*args, **kwargs):
+def TraceMeanField_ELBO(**kwargs):
     # TODO Use exact KLs where possible.
     return elbo
 
 
-def TraceEnum_ELBO(*args, **kwargs):
+def TraceEnum_ELBO(**kwargs):
     return elbo
+
+
+# This is a Jit wrapper around elbo() that (1) delays tracing until the first
+# invocation, and (2) registers pyro.param() statements with torch.jit.trace.
+# This version does not support variable number of args or non-tensor kwargs.
+class JitTrace_ELBO(object):
+    def __init__(self, **kwargs):
+        self.ignore_jit_warnings = kwargs.pop("ignore_jit_warnings", False)
+        self._compiled = None
+        self._param_trace = None
+
+    def __call__(self, model, guide, *args):
+        # On first call, initialize params and save their names.
+        if self._param_trace is None:
+            with block(), trace() as tr, block(hide_fn=lambda m: m["type"] != "param"):
+                elbo(model, guide, *args)
+            self._param_trace = tr
+
+        # Augment args with reads from the global param store.
+        unconstrained_params = tuple(param(name).data.unconstrained()
+                                     for name in self._param_trace)
+        params_and_args = unconstrained_params + args
+
+        # On first call, create a compiled elbo.
+        if self._compiled is None:
+
+            def compiled(*params_and_args):
+                unconstrained_params = params_and_args[:len(self._param_trace)]
+                args = params_and_args[len(self._param_trace):]
+                for name, unconstrained_param in zip(self._param_trace, unconstrained_params):
+                    constrained_param = param(name)  # assume param has been initialized
+                    assert constrained_param.data.unconstrained() is unconstrained_param
+                    self._param_trace[name]["value"] = constrained_param
+                result = replay(elbo, guide_trace=self._param_trace)(model, guide, *args)
+                assert not result.inputs
+                assert result.output == funsor.reals()
+                return result.data
+
+            with validation_enabled(False), warnings.catch_warnings():
+                if self.ignore_jit_warnings:
+                    warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+                self._compiled = torch.jit.trace(compiled, params_and_args, check_trace=False)
+
+        data = self._compiled(*params_and_args)
+        return funsor.torch.Tensor(data)

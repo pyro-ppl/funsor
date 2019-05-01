@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import math
 import warnings
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 
 import torch
 from pyro.distributions.util import broadcast_shape
@@ -124,6 +124,110 @@ def _compute_offsets(inputs):
     return offsets, total
 
 
+def _find_gaps(intervals, end):
+    intervals = list(sorted(intervals))
+    stops = [0] + [stop for start, stop in intervals]
+    starts = [start for start, stop in intervals] + [end]
+    return [(stop, start) for stop, start in zip(stops, starts) if stop != start]
+
+
+def _parse_slices(index, value):
+    if not isinstance(index, tuple):
+        index = (index,)
+    if index[0] is Ellipsis:
+        index = index[1:]
+    start_stops = []
+    for pos, i in reversed(list(enumerate(index))):
+        if isinstance(i, slice):
+            start_stops.append((i.start, i.stop))
+        elif isinstance(i, integer_types):
+            start_stops.append((i, i + 1))
+            value = value.unsqueeze(pos - len(index))
+        else:
+            raise ValueError("invalid index: {}".format(i))
+    start_stops.reverse()
+    return start_stops, value
+
+
+class BlockVector(object):
+    """
+    Jit-compatible helper to build blockwise vectors.
+    Syntax is similar to :func:`torch.zeros` ::
+
+        x = BlockVector((100, 20))
+        x[..., 0:4] = x1
+        x[..., 6:10] = x2
+        x = x.as_tensor()
+        assert x.shape == (100, 20)
+    """
+    def __init__(self, shape):
+        self.shape = shape
+        self.parts = {}
+
+    def __setitem__(self, index, value):
+        (i,), value = _parse_slices(index, value)
+        self.parts[i] = value
+
+    def as_tensor(self):
+        # Fill gaps with zeros.
+        prototype = next(iter(self.parts.values()))
+        options = dict(dtype=prototype.dtype, device=prototype.device)
+        for i in _find_gaps(self.parts.keys(), self.shape[-1]):
+            self.parts[i] = torch.zeros(self.shape[:-1] + (i[1] - i[0],), **options)
+
+        # Concatenate parts.
+        parts = [v for k, v in sorted(self.parts.items())]
+        result = torch.cat(parts, dim=-1)
+        if not torch._C._get_tracing_state():
+            assert result.shape == self.shape
+        return result
+
+
+class BlockMatrix(object):
+    """
+    Jit-compatible helper to build blockwise matrices.
+    Syntax is similar to :func:`torch.zeros` ::
+
+        x = BlockMatrix((100, 20, 20))
+        x[..., 0:4, 0:4] = x11
+        x[..., 0:4, 6:10] = x12
+        x[..., 6:10, 0:4] = x12.transpose(-1, -2)
+        x[..., 6:10, 6:10] = x22
+        x = x.as_tensor()
+        assert x.shape == (100, 20, 20)
+    """
+    def __init__(self, shape):
+        self.shape = shape
+        self.parts = defaultdict(dict)
+
+    def __setitem__(self, index, value):
+        (i, j), value = _parse_slices(index, value)
+        self.parts[i][j] = value
+
+    def as_tensor(self):
+        # Fill gaps with zeros.
+        arbitrary_row = next(iter(self.parts.values()))
+        prototype = next(iter(arbitrary_row.values()))
+        options = dict(dtype=prototype.dtype, device=prototype.device)
+        i_gaps = _find_gaps(self.parts.keys(), self.shape[-2])
+        j_gaps = _find_gaps(arbitrary_row.keys(), self.shape[-1])
+        rows = set().union(i_gaps, self.parts)
+        cols = set().union(j_gaps, arbitrary_row)
+        for i in rows:
+            for j in cols:
+                if j not in self.parts[i]:
+                    shape = self.shape[:-2] + (i[1] - i[0], j[1] - j[0])
+                    self.parts[i][j] = torch.zeros(shape, **options)
+
+        # Concatenate parts.
+        columns = {i: torch.cat([v for j, v in sorted(part.items())], dim=-1)
+                   for i, part in self.parts.items()}
+        result = torch.cat([v for i, v in sorted(columns.items())], dim=-2)
+        if not torch._C._get_tracing_state():
+            assert result.shape == self.shape
+        return result
+
+
 def align_gaussian(new_inputs, old):
     """
     Align data of a Gaussian distribution to a new ``inputs`` shape.
@@ -149,8 +253,8 @@ def align_gaussian(new_inputs, old):
     if new_offsets != old_offsets:
         old_loc = loc
         old_precision = precision
-        loc = old_loc.new_zeros(old_loc.shape[:-1] + (new_dim,))
-        precision = old_loc.new_zeros(old_loc.shape[:-1] + (new_dim, new_dim))
+        loc = BlockVector(old_loc.shape[:-1] + (new_dim,))
+        precision = BlockMatrix(old_loc.shape[:-1] + (new_dim, new_dim))
         for k1, new_offset1 in new_offsets.items():
             if k1 not in old_offsets:
                 continue
@@ -167,6 +271,8 @@ def align_gaussian(new_inputs, old):
                 old_slice2 = slice(offset2, offset2 + num_elements2)
                 new_slice2 = slice(new_offset2, new_offset2 + num_elements2)
                 precision[..., new_slice1, new_slice2] = old_precision[..., old_slice1, old_slice2]
+        loc = loc.as_tensor()
+        precision = precision.as_tensor()
 
     return loc, precision
 
@@ -203,15 +309,17 @@ class Gaussian(Funsor):
 
         # Compute total dimension of all real inputs.
         dim = sum(d.num_elements for d in inputs.values() if d.dtype == 'real')
-        assert dim
-        assert loc.dim() >= 1 and loc.size(-1) == dim
-        assert precision.dim() >= 2 and precision.shape[-2:] == (dim, dim)
+        if not torch._C._get_tracing_state():
+            assert dim
+            assert loc.dim() >= 1 and loc.size(-1) == dim
+            assert precision.dim() >= 2 and precision.shape[-2:] == (dim, dim)
 
         # Compute total shape of all bint inputs.
         batch_shape = tuple(d.dtype for d in inputs.values()
                             if isinstance(d.dtype, integer_types))
-        assert _issubshape(loc.shape, batch_shape + (dim,))
-        assert _issubshape(precision.shape, batch_shape + (dim, dim))
+        if not torch._C._get_tracing_state():
+            assert _issubshape(loc.shape, batch_shape + (dim,))
+            assert _issubshape(precision.shape, batch_shape + (dim, dim))
 
         output = reals()
         super(Gaussian, self).__init__(inputs, output)
@@ -293,12 +401,15 @@ class Gaussian(Funsor):
 
             # Form the concatenated value.
             offsets, event_size = _compute_offsets(self.inputs)
-            value = loc.new_empty(batch_shape + (event_size,))
+            value = BlockVector(batch_shape + (event_size,))
             for k, value_k in zip(real_subs, values):
                 offset = offsets[k]
                 value_k = value_k.reshape(value_k.shape[:batch_dim] + (-1,))
-                assert value_k.size(-1) == self.inputs[k].num_elements
+                if not torch._C._get_tracing_state():
+                    assert value_k.size(-1) == self.inputs[k].num_elements
+                value_k = value_k.expand(batch_shape + value_k.shape[-1:])
                 value[..., offset: offset + self.inputs[k].num_elements] = value_k
+            value = value.as_tensor()
 
             # Evaluate the non-normalized log density.
             result = -0.5 * _vmv(precision, value - loc)
@@ -398,7 +509,8 @@ class Gaussian(Funsor):
 
         if sampled_vars == frozenset(real_inputs):
             scale_tri = torch.inverse(torch.cholesky(self.precision)).transpose(-1, -2)
-            assert self.loc.shape == scale_tri.shape[:-1]
+            if not torch._C._get_tracing_state():
+                assert self.loc.shape == scale_tri.shape[:-1]
             shape = sample_shape + self.loc.shape
             white_noise = torch.randn(shape)
             sample = self.loc + _mv(scale_tri, white_noise)
@@ -497,6 +609,8 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 
 __all__ = [
+    'BlockMatrix',
+    'BlockVector',
     'Gaussian',
     'align_gaussian',
 ]

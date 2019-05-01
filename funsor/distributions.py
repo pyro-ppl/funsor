@@ -8,16 +8,14 @@ import torch
 from pyro.distributions.util import broadcast_shape
 from six import add_metaclass
 
-from pyro.distributions.util import broadcast_shape
-
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import Affine
 from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.interpreter import interpretation
 from funsor.terms import Funsor, FunsorMeta, Number, Subs, Variable, eager, lazy, to_funsor
-from funsor.torch import Tensor, align_tensors, materialize, torch_stack
+from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
 
 
 def numbers_to_tensors(*args):
@@ -26,13 +24,15 @@ def numbers_to_tensors(*args):
     using any provided tensor as a prototype, if available.
     """
     if any(isinstance(x, Number) for x in args):
-        new_tensor = torch.tensor
+        options = dict(dtype=torch.get_default_dtype())
         for x in args:
             if isinstance(x, Tensor):
-                new_tensor = x.data.new_tensor
+                options = dict(dtype=x.data.dtype, device=x.data.device)
                 break
-        args = tuple(Tensor(new_tensor(x.data), dtype=x.dtype) if isinstance(x, Number) else x
-                     for x in args)
+        with ignore_jit_warnings():
+            args = tuple(Tensor(torch.tensor(x.data, **options), dtype=x.dtype)
+                         if isinstance(x, Number) else x
+                         for x in args)
     return args
 
 
@@ -119,8 +119,27 @@ class Bernoulli(Distribution):
 
 
 @eager.register(Bernoulli, Tensor, Tensor)
-def eager_categorical(probs, value):
+def eager_bernoulli(probs, value):
     return Bernoulli.eager_log_prob(probs=probs, value=value)
+
+
+class BernoulliLogits(Distribution):
+    dist_class = dist.Bernoulli
+
+    @staticmethod
+    def _fill_defaults(logits, value='value'):
+        logits = to_funsor(logits)
+        assert logits.dtype == "real"
+        value = to_funsor(value, reals())
+        return logits, value
+
+    def __init__(self, logits, value=None):
+        super(BernoulliLogits, self).__init__(logits, value)
+
+
+@eager.register(BernoulliLogits, Tensor, Tensor)
+def eager_bernoulli_logits(logits, value):
+    return BernoulliLogits.eager_log_prob(logits=logits, value=value)
 
 
 class Beta(Distribution):
@@ -383,16 +402,18 @@ def eager_normal(loc, scale, value):
 
     tensors = [affine.const] + [c for v, c in affine.coeffs.items()]
     inputs, tensors = align_tensors(*tensors)
-    shape = broadcast_shape(*(t.shape for t in tensors))
+    tensors = torch.broadcast_tensors(*tensors)
     const, coeffs = tensors[0], tensors[1:]
 
     dim = sum(d.num_elements for d in real_inputs.values())
-    loc = const.new_zeros(shape + (dim,))
+    loc = BlockVector(const.shape + (dim,))
     loc[..., 0] = -const / coeffs[0]
-    precision = const.new_empty(shape + (dim, dim))
+    precision = BlockMatrix(const.shape + (dim, dim))
     for i, (v1, c1) in enumerate(zip(real_inputs, coeffs)):
         for j, (v2, c2) in enumerate(zip(real_inputs, coeffs)):
             precision[..., i, j] = c1 * c2
+    loc = loc.as_tensor()
+    precision = precision.as_tensor()
 
     log_prob = -0.5 * math.log(2 * math.pi) - scale.log()
     return log_prob + Gaussian(loc, precision, affine.inputs)
@@ -442,6 +463,7 @@ def eager_mvn(loc, scale_tril, value):
 
 __all__ = [
     'Bernoulli',
+    'BernoulliLogits',
     'Beta',
     'Binomial',
     'Categorical',

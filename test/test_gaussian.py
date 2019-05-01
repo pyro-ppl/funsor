@@ -9,7 +9,7 @@ from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.joint import Joint
@@ -17,6 +17,76 @@ from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
+
+
+def test_block_vector():
+    shape = (10,)
+    expected = torch.zeros(shape)
+    actual = BlockVector(shape)
+
+    expected[1] = torch.randn(())
+    actual[1] = expected[1]
+
+    expected[3:5] = torch.randn(2)
+    actual[3:5] = expected[3:5]
+
+    assert_close(actual.as_tensor(), expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (4,), (3, 2)])
+def test_block_vector_batched(batch_shape):
+    shape = batch_shape + (10,)
+    expected = torch.zeros(shape)
+    actual = BlockVector(shape)
+
+    expected[..., 1] = torch.randn(batch_shape)
+    actual[..., 1] = expected[..., 1]
+
+    expected[..., 3:5] = torch.randn(batch_shape + (2,))
+    actual[..., 3:5] = expected[..., 3:5]
+
+    assert_close(actual.as_tensor(), expected)
+
+
+def test_block_matrix():
+    shape = (10, 10)
+    expected = torch.zeros(shape)
+    actual = BlockMatrix(shape)
+
+    expected[1, 1] = torch.randn(())
+    actual[1, 1] = expected[1, 1]
+
+    expected[1, 3:5] = torch.randn(2)
+    actual[1, 3:5] = expected[1, 3:5]
+
+    expected[3:5, 1] = torch.randn(2)
+    actual[3:5, 1] = expected[3:5, 1]
+
+    expected[3:5, 3:5] = torch.randn(2, 2)
+    actual[3:5, 3:5] = expected[3:5, 3:5]
+
+    assert_close(actual.as_tensor(), expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (4,), (3, 2)])
+def test_block_matrix_batched(batch_shape):
+    shape = batch_shape + (10, 10)
+    expected = torch.zeros(shape)
+    actual = BlockMatrix(shape)
+
+    expected[..., 1, 1] = torch.randn(batch_shape)
+    actual[..., 1, 1] = expected[..., 1, 1]
+
+    expected[..., 1, 3:5] = torch.randn(batch_shape + (2,))
+    actual[..., 1, 3:5] = expected[..., 1, 3:5]
+
+    expected[..., 3:5, 1] = torch.randn(batch_shape + (2,))
+    actual[..., 3:5, 1] = expected[..., 3:5, 1]
+
+    expected[..., 3:5, 3:5] = torch.randn(batch_shape + (2, 2))
+    actual[..., 3:5, 3:5] = expected[..., 3:5, 3:5]
+
+    assert_close(actual.as_tensor(), expected)
 
 
 @pytest.mark.parametrize('expr,expected_type', [

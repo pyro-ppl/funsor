@@ -1,10 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
 import functools
+import warnings
 from collections import OrderedDict
 
 import opt_einsum
 import torch
+from contextlib2 import contextmanager
 from multipledispatch import dispatch
 from six import add_metaclass, integer_types
 from six.moves import reduce
@@ -16,6 +18,13 @@ from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Subs, Variable, eager, to_data, to_funsor
+
+
+@contextmanager
+def ignore_jit_warnings():
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+        yield
 
 
 def align_tensor(new_inputs, x):
@@ -95,9 +104,10 @@ class Tensor(Funsor):
     def __init__(self, data, inputs=None, dtype="real"):
         assert isinstance(data, torch.Tensor)
         assert isinstance(inputs, tuple)
-        assert len(inputs) <= data.dim()
-        for (k, d), size in zip(inputs, data.shape):
-            assert d.dtype == size
+        if not torch._C._get_tracing_state():
+            assert len(inputs) <= data.dim()
+            for (k, d), size in zip(inputs, data.shape):
+                assert d.dtype == size
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
         super(Tensor, self).__init__(inputs, output)
@@ -807,6 +817,7 @@ __all__ = [
     'align_tensors',
     'arange',
     'function',
+    'ignore_jit_warnings',
     'materialize',
     'torch_einsum',
     'torch_tensordot',
