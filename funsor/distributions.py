@@ -104,7 +104,7 @@ class Distribution(Funsor):
 # Distribution Wrappers
 ################################################################################
 
-class Bernoulli(Distribution):
+class BernoulliProbs(Distribution):
     dist_class = dist.Bernoulli
 
     @staticmethod
@@ -115,12 +115,12 @@ class Bernoulli(Distribution):
         return probs, value
 
     def __init__(self, probs, value=None):
-        super(Bernoulli, self).__init__(probs, value)
+        super(BernoulliProbs, self).__init__(probs, value)
 
 
-@eager.register(Bernoulli, Tensor, Tensor)
+@eager.register(BernoulliProbs, Tensor, Tensor)
 def eager_bernoulli(probs, value):
-    return Bernoulli.eager_log_prob(probs=probs, value=value)
+    return BernoulliProbs.eager_log_prob(probs=probs, value=value)
 
 
 class BernoulliLogits(Distribution):
@@ -140,6 +140,14 @@ class BernoulliLogits(Distribution):
 @eager.register(BernoulliLogits, Tensor, Tensor)
 def eager_bernoulli_logits(logits, value):
     return BernoulliLogits.eager_log_prob(logits=logits, value=value)
+
+
+def Bernoulli(probs=None, logits=None, value='value'):
+    if probs is not None:
+        return BernoulliProbs(probs, value)
+    if logits is not None:
+        return BernoulliLogits(logits, value)
+    raise ValueError('Either probs or logits must be specified')
 
 
 class Beta(Distribution):

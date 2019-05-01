@@ -43,8 +43,8 @@ def test_beta_density(batch_shape, eager):
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('eager', [False, True])
-def test_bernoulli_density(batch_shape, eager):
+@pytest.mark.parametrize('syntax', ['eager', 'lazy', 'generic'])
+def test_bernoulli_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -60,15 +60,19 @@ def test_bernoulli_density(batch_shape, eager):
     check_funsor(expected, inputs, reals())
 
     d = Variable('value', reals())
-    actual = dist.Bernoulli(probs, value) if eager else \
-        dist.Bernoulli(probs, d)(value=value)
+    if syntax == 'eager':
+        actual = dist.BernoulliProbs(probs, value)
+    elif syntax == 'lazy':
+        actual = dist.BernoulliProbs(probs, d)(value=value)
+    elif syntax == 'generic':
+        actual = dist.Bernoulli(probs=probs)(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('eager', [False, True])
-def test_bernoulli_logits_density(batch_shape, eager):
+@pytest.mark.parametrize('syntax', ['eager', 'lazy', 'generic'])
+def test_bernoulli_logits_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -84,8 +88,12 @@ def test_bernoulli_logits_density(batch_shape, eager):
     check_funsor(expected, inputs, reals())
 
     d = Variable('value', reals())
-    actual = dist.BernoulliLogits(logits, value) if eager else \
-        dist.BernoulliLogits(logits, d)(value=value)
+    if syntax == 'eager':
+        actual = dist.BernoulliLogits(logits, value)
+    elif syntax == 'lazy':
+        actual = dist.BernoulliLogits(logits, d)(value=value)
+    elif syntax == 'generic':
+        actual = dist.Bernoulli(logits=logits)(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
