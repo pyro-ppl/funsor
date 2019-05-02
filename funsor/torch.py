@@ -634,27 +634,61 @@ def function(*signature):
     return functools.partial(_function, inputs, output)
 
 
-def torch_einsum(equation, *operands):
+class Einsum(Funsor):
     """
     Wrapper around :func:`torch.einsum` to operate on real-valued Funsors.
 
     Note this operates only on the ``output`` tensor. To perform sum-product
     contractions on named dimensions, instead use ``+`` and
     :class:`~funsor.terms.Reduce`.
+
+    :param str equation: An einsum equation.
+    :param tuple operands: A tuple of input funsors.
     """
-    assert isinstance(equation, str)
-    assert isinstance(operands, tuple)
-    for x in operands:
-        assert isinstance(x, Funsor)
-        assert x.dtype == 'real'
-    inputs, output = equation.split('->')
-    inputs = inputs.split(',')
-    sizes = {dim: size
-             for input_, operand in zip(inputs, operands)
-             for dim, size in zip(input_, operand.output.shape)}
-    output = reals(*(sizes[dim] for dim in output))
-    fn = functools.partial(torch.einsum, equation)
-    return Function(fn, output, operands)
+    def __init__(self, equation, operands):
+        assert isinstance(equation, str)
+        assert isinstance(operands, tuple)
+        assert all(isinstance(x, Funsor) for x in operands)
+        ein_inputs, ein_output = equation.split('->')
+        ein_inputs = ein_inputs.split(',')
+        size_dict = {}
+        inputs = OrderedDict()
+        assert len(ein_inputs) == len(operands)
+        for ein_input, x in zip(ein_inputs, operands):
+            assert x.dtype == 'real'
+            inputs.update(x.inputs)
+            assert len(ein_inputs) == len(x.output.shape)
+            for name, size in zip(ein_inputs, x.output.shape):
+                other_size = size_dict.setdefault(name, size)
+                if other_size != size:
+                    raise ValueError("Size mismatch at {}: {} vs {}"
+                                     .format(name, size, other_size))
+        output = reals(*(size_dict[d] for d in ein_output))
+        super(Einsum, self).__init__(inputs, output)
+        self.equation = equation
+        self.operands = operands
+
+    def __repr__(self):
+        return 'Einsum({}, {})'.format(repr(self.equation), repr(self.operands))
+
+    def __str__(self):
+        return 'Einsum({}, {})'.format(repr(self.equation), str(self.operands))
+
+    def eager_subs(self, subs):
+        if not any(k in self.inputs for k, v in subs):
+            return self
+        operands = tuple(Subs(x, subs) for x in self.operands)
+        return Einsum(self.equation, operands)
+
+
+@eager.register(Einsum, str, tuple)
+def eager_einsum(equation, operands):
+    if all(isinstance(x, Tensor) for x in operands):
+        inputs, tensors = align_tensors(*operands)
+        data = torch.einsum(equation, tensors)
+        return Tensor(data, inputs)
+
+    return None  # defer to default implementation
 
 
 def torch_tensordot(x, y, dims):
@@ -665,16 +699,14 @@ def torch_tensordot(x, y, dims):
     contractions on named dimensions, instead use ``+`` and
     :class:`~funsor.terms.Reduce`.
     """
-    assert isinstance(x, Funsor) and x.dtype == 'real'
-    assert isinstance(y, Funsor) and y.dtype == 'real'
-    assert isinstance(dims, int) and dims >= 0
-    x_shape = x.output.shape
-    y_shape = y.output.shape
-    assert x_shape[len(x_shape) - dims:] == y_shape[:dims]
-    shape = x_shape[:len(x_shape) - dims] + y_shape[dims:]
-    output = reals(*shape)
-    fn = functools.partial(torch.tensordot, dims=dims)
-    return Function(fn, output, (x, y))
+    x_start, x_end = 0, len(x.output.shape)
+    y_start = x_end - dims
+    y_end = y_start + len(y.output.shape)
+    symbols = 'abcdefghijklmnopqrstuvwxyz'
+    equation = '{},{}->{}'.format(symbols[x_start:x_end],
+                                  symbols[y_start:y_end],
+                                  symbols[x_start:y_start] + symbols[x_end:y_end])
+    return Einsum(equation, (x, y))
 
 
 def _torch_stack(dim, *parts):
@@ -810,6 +842,7 @@ REDUCE_OP_TO_TORCH = {
 
 
 __all__ = [
+    'Einsum',
     'Function',
     'REDUCE_OP_TO_TORCH',
     'Tensor',
@@ -819,6 +852,5 @@ __all__ = [
     'function',
     'ignore_jit_warnings',
     'materialize',
-    'torch_einsum',
     'torch_tensordot',
 ]
