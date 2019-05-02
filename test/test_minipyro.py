@@ -477,7 +477,10 @@ def test_elbo_enumerate_plate_7(backend):
 
 @pytest.mark.xfail(reason="missing patterns")
 @pytest.mark.parametrize("jit", [False, True], ids=["py", "jit"])
-@pytest.mark.parametrize("exact", [False, True], ids=["exact", "monte-carlo"])
+@pytest.mark.parametrize("exact", [
+    True,
+    xfail_param(False, reason="mixed sampling and exact not implemented yet")
+], ids=["exact", "monte-carlo"])
 def test_gaussian_probit_hmm_smoke(exact, jit):
 
     def model(data):

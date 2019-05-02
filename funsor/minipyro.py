@@ -456,7 +456,6 @@ def elbo(model, guide, *args, **kwargs):
 
     loss = -elbo
     assert not loss.inputs
-    assert isinstance(loss, funsor.torch.Tensor), loss.pretty()
     return loss
 
 
@@ -483,7 +482,12 @@ class TraceMeanField_ELBO(ELBO):
 
 class TraceEnum_ELBO(ELBO):
     # TODO allow mixing of sampling and exact integration
-    pass
+    def __call__(self, model, guide, *args, **kwargs):
+        if self.options.get("optimize", None):
+            with funsor.interpreter.interpretation(funsor.optimizer.optimize):
+                elbo_expr = elbo(model, guide, *args, **kwargs)
+            return funsor.reinterpret(elbo_expr)
+        return elbo(model, guide, *args, **kwargs)
 
 
 # This is a PyTorch jit wrapper that (1) delays tracing until the first
