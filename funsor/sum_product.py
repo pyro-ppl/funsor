@@ -81,9 +81,6 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
-                if not (leaf - new_plates).issubset(eliminate):
-                    raise ValueError("cannot reduce {} before {}".format(
-                        remaining_sum_vars, (leaf - new_plates) - eliminate))
                 f = f.reduce(prod_op, leaf - new_plates)
                 ordinal_to_factors[new_plates].append(f)
 

@@ -236,7 +236,7 @@ def apply_stack(msg):
 
 # sample is an effectful version of Distribution.sample(...)
 # When any effect handlers are active, it constructs an initial message and calls apply_stack.
-def sample(name, fn, obs=None):
+def sample(name, fn, obs=None, infer=None):
     # Wrap the funsor distribution in a Pyro-compatible way.
     fn = Distribution(fn)
 
@@ -253,6 +253,7 @@ def sample(name, fn, obs=None):
         "value": obs,
         "cond_indep_stack": {},  # maps dim to CondIndepStackFrame
         "output": fn.output,
+        "infer": {} if infer is None else infer,
     }
 
     # ...and use apply_stack to send it to the Messengers
@@ -400,23 +401,54 @@ def elbo(model, guide, *args, **kwargs):
     with log_joint() as model_log_joint:
         model(*args, **kwargs)
 
+    # contract out auxiliary variables in the guide
+    guide_log_probs = list(guide_log_joint.log_factors.values())
+    guide_aux_vars = frozenset().union(*(f.inputs for f in guide_log_probs)) - \
+        frozenset(guide_log_joint.plates) - \
+        frozenset(model_log_joint.log_factors)
+    if guide_aux_vars:
+        guide_log_probs = funsor.sum_product.partial_sum_product(
+            funsor.ops.logaddexp,
+            funsor.ops.add,
+            guide_log_probs,
+            plates=frozenset(guide_log_joint.plates),
+            eliminate=guide_aux_vars)
+
+    # contract out auxiliary variables in the model
+    model_log_probs = list(model_log_joint.log_factors.values())
+    model_aux_vars = frozenset().union(*(f.inputs for f in model_log_probs)) - \
+        frozenset(model_log_joint.plates) - \
+        frozenset(guide_log_joint.log_factors)
+    if model_aux_vars:
+        model_log_probs = funsor.sum_product.partial_sum_product(
+            funsor.ops.logaddexp,
+            funsor.ops.add,
+            model_log_probs,
+            plates=frozenset(model_log_joint.plates),
+            eliminate=model_aux_vars)
+
+    # compute remaining plates and sum_dims
+    plates = frozenset().union(
+        *(model_log_joint.plates.intersection(f.inputs) for f in model_log_probs))
+    plates = plates | frozenset().union(
+        *(guide_log_joint.plates.intersection(f.inputs) for f in guide_log_probs))
+    sum_vars = frozenset().union(model_log_joint.log_factors, guide_log_joint.log_factors) - \
+        frozenset(model_aux_vars | guide_aux_vars)
+
     # Accumulate costs from model and guide and log_probs from guide.
     # Cf. pyro.infer.traceenum_elbo._compute_dice_elbo()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/traceenum_elbo.py#L119
     costs = []
     log_probs = []
-    for p in model_log_joint.log_factors.values():
+    for p in model_log_probs:
         costs.append(p)
-    for q in guide_log_joint.log_factors.values():
+    for q in guide_log_probs:
         costs.append(-q)
         log_probs.append(q)
 
     # Compute expected cost.
     # Cf. pyro.infer.util.Dice.compute_expectation()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/util.py#L212
-    plates = frozenset(guide_log_joint.plates | model_log_joint.plates)
-    sum_vars = frozenset().union(guide_log_joint.log_factors,
-                                 model_log_joint.log_factors)
     elbo = Expectation(tuple(log_probs),
                        tuple(costs),
                        sum_vars=sum_vars,
@@ -424,7 +456,6 @@ def elbo(model, guide, *args, **kwargs):
 
     loss = -elbo
     assert not loss.inputs
-    assert isinstance(loss, funsor.torch.Tensor), loss.pretty()
     return loss
 
 
@@ -445,11 +476,21 @@ class Trace_ELBO(ELBO):
 
 
 class TraceMeanField_ELBO(ELBO):
-    # TODO Use exact KLs where**kwargs possible.
+    # TODO Use exact KLs where possible.
     pass
 
 
-# This is a PyTorch jit wrapper around that (1) delays tracing until the first
+class TraceEnum_ELBO(ELBO):
+    # TODO allow mixing of sampling and exact integration
+    def __call__(self, model, guide, *args, **kwargs):
+        if self.options.get("optimize", None):
+            with funsor.interpreter.interpretation(funsor.optimizer.optimize):
+                elbo_expr = elbo(model, guide, *args, **kwargs)
+            return funsor.reinterpret(elbo_expr)
+        return elbo(model, guide, *args, **kwargs)
+
+
+# This is a PyTorch jit wrapper that (1) delays tracing until the first
 # invocation, and (2) registers pyro.param() statements with torch.jit.trace.
 # This version does not support variable number of args or non-tensor kwargs.
 class Jit(object):
@@ -515,3 +556,7 @@ def JitTrace_ELBO(**kwargs):
 
 def JitTraceMeanField_ELBO(**kwargs):
     return Jit_ELBO(TraceMeanField_ELBO, **kwargs)
+
+
+def JitTraceEnum_ELBO(**kwargs):
+    return Jit_ELBO(TraceEnum_ELBO, **kwargs)
