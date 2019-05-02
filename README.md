@@ -1,6 +1,6 @@
 ![unstable](https://img.shields.io/badge/status-unstable-red.svg)
 [![Build Status](https://travis-ci.org/pyro-ppl/funsor.svg?branch=master)](https://travis-ci.org/pyro-ppl/funsor)
-[![Documentation Status](https://readthedocs.org/projects/funsor/badge/?version=latest)](http://funsor.readthedocs.io/en/stable/?badge=latest)
+[![Documentation Status](https://readthedocs.org/projects/funsor/badge)](http://funsor.readthedocs.io)
 
 # Funsor
 
