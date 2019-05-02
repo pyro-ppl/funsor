@@ -13,12 +13,12 @@ cache:
 install:
     - pip install -U pip
     - if [[ $TRAVIS_PYTHON_VERSION == 2.7 ]]; then
-          pip install https://download.pytorch.org/whl/cpu/torch-1.0.1.post2-cp27-cp27mu-linux_x86_64.whl;
+          pip install https://download.pytorch.org/whl/cpu/torch-1.1.0-cp27-cp27mu-linux_x86_64.whl;
       else
-          pip install https://download.pytorch.org/whl/cpu/torch-1.0.1.post2-cp36-cp36m-linux_x86_64.whl;
+          pip install https://download.pytorch.org/whl/cpu/torch-1.1.0-cp36-cp36m-linux_x86_64.whl;
       fi
 
-    # Remove after public release of https://github.com/pyro-ppl/pyro/pull/1794
+    # Keep track of Pyro dev branch
     - pip install https://github.com/pyro-ppl/pyro/archive/dev.zip
 
     - pip install .[test]

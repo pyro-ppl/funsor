@@ -552,7 +552,7 @@ def test_function_nested_eager():
 
     @funsor.torch.function(reals(8), (reals(), bint(8)))
     def max_and_argmax(x):
-        return torch.max(x, dim=-1)
+        return tuple(torch.max(x, dim=-1))
 
     inputs = OrderedDict([('i', bint(2)), ('j', bint(3))])
     x = Tensor(torch.randn(2, 3, 8), inputs)
@@ -569,7 +569,7 @@ def test_function_nested_lazy():
 
     @funsor.torch.function(reals(8), (reals(), bint(8)))
     def max_and_argmax(x):
-        return torch.max(x, dim=-1)
+        return tuple(torch.max(x, dim=-1))
 
     x_lazy = Variable('x', reals(8))
     lazy_max, lazy_argmax = max_and_argmax(x_lazy)
