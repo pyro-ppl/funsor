@@ -21,6 +21,7 @@ _DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
 _STACK_SIZE = 0
 
 _INTERPRETATION = None  # To be set later in funsor.terms
+_USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
 
 
 if _DEBUG:
@@ -66,10 +67,58 @@ def interpretation(new):
 
 
 @singledispatch
+def recursion_reinterpret(x):
+    r"""
+    Overloaded reinterpretation of a deferred expression.
+    This interpreter uses the Python stack and is subject to the recursion limit.
+
+    This handles a limited class of expressions, raising
+    ``ValueError`` in unhandled cases.
+
+    :param x: An input, typically involving deferred
+        :class:`~funsor.terms.Funsor` s.
+    :type x: A funsor or data structure holding funsors.
+    :return: A reinterpreted version of the input.
+    :raises: ValueError
+    """
+    raise ValueError(type(x))
+
+
+# We need to register this later in terms.py after declaring Funsor.
+# reinterpret.register(Funsor)
+def reinterpret_funsor(x):
+    return _INTERPRETATION(type(x), *map(reinterpret, x._ast_values))
+
+
+@recursion_reinterpret.register(str)
+@recursion_reinterpret.register(int)
+@recursion_reinterpret.register(float)
+@recursion_reinterpret.register(type)
+@recursion_reinterpret.register(types.FunctionType)
+@recursion_reinterpret.register(types.BuiltinFunctionType)
+@recursion_reinterpret.register(torch.Tensor)
+@recursion_reinterpret.register(Domain)
+@recursion_reinterpret.register(Op)
+def recursion_reinterpret_ground(x):
+    return x
+
+
+@recursion_reinterpret.register(tuple)
+def recursion_reinterpret_tuple(x):
+    return tuple(map(reinterpret, x))
+
+
+@recursion_reinterpret.register(frozenset)
+def recursion_reinterpret_frozenset(x):
+    return frozenset(map(reinterpret, x))
+
+
+@singledispatch
 def children(x):
     raise ValueError(type(x))
 
 
+# has to be registered in terms.py
 def children_funsor(h):
     return h._ast_values
 
@@ -78,6 +127,12 @@ def children_funsor(h):
 @children.register(frozenset)
 def _children_tuple(h):
     return h
+
+
+@children.register(dict)
+@children.register(OrderedDict)
+def _children_tuple(h):
+    return h.values()
 
 
 @children.register(str)
@@ -113,9 +168,10 @@ def gensym():
     return "V" + str(uuid.uuid4().hex)
 
 
-def reinterpret(x):
+def stack_reinterpret(x):
     r"""
     Overloaded reinterpretation of a deferred expression.
+    This interpreter uses an explicit stack and no recursion but is much slower.
 
     This handles a limited class of expressions, raising
     ``ValueError`` in unhandled cases.
@@ -163,6 +219,25 @@ def reinterpret(x):
                 type(h), *(env[c_name] for c_name in parent_to_children[h_name]))
 
     return env[x_name]
+
+
+def reinterpret(x):
+    r"""
+    Overloaded reinterpretation of a deferred expression.
+
+    This handles a limited class of expressions, raising
+    ``ValueError`` in unhandled cases.
+
+    :param x: An input, typically involving deferred
+        :class:`~funsor.terms.Funsor` s.
+    :type x: A funsor or data structure holding funsors.
+    :return: A reinterpreted version of the input.
+    :raises: ValueError
+    """
+    if _USE_TCO:
+        return stack_reinterpret(x)
+    else:
+        return recursion_reinterpret(x)
 
 
 if _DEBUG:

@@ -517,6 +517,7 @@ class Funsor(object):
         return result
 
 
+interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
 interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
