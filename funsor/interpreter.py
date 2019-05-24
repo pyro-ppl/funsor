@@ -87,7 +87,7 @@ def recursion_reinterpret(x):
 # We need to register this later in terms.py after declaring Funsor.
 # reinterpret.register(Funsor)
 def reinterpret_funsor(x):
-    return _INTERPRETATION(type(x), *map(reinterpret, x._ast_values))
+    return _INTERPRETATION(type(x), *map(recursion_reinterpret, x._ast_values))
 
 
 @recursion_reinterpret.register(str)
@@ -105,22 +105,22 @@ def recursion_reinterpret_ground(x):
 
 @recursion_reinterpret.register(tuple)
 def recursion_reinterpret_tuple(x):
-    return tuple(map(reinterpret, x))
+    return tuple(map(recursion_reinterpret, x))
 
 
 @recursion_reinterpret.register(frozenset)
 def recursion_reinterpret_frozenset(x):
-    return frozenset(map(reinterpret, x))
+    return frozenset(map(recursion_reinterpret, x))
 
 
 @recursion_reinterpret.register(dict)
 def recursion_reinterpret_dict(x):
-    return {key: reinterpret(value) for key, value in x.items()}
+    return {key: recursion_reinterpret(value) for key, value in x.items()}
 
 
 @recursion_reinterpret.register(OrderedDict)
 def recursion_reinterpret_ordereddict(x):
-    return OrderedDict((key, reinterpret(value)) for key, value in x.items())
+    return OrderedDict((key, recursion_reinterpret(value)) for key, value in x.items())
 
 
 @singledispatch
@@ -176,7 +176,7 @@ def is_atom(x):
 
 def gensym(x=None):
     if x is not None:
-        return hash(x)
+        return id(x)
     return "V" + str(uuid.uuid4().hex)
 
 
@@ -194,7 +194,6 @@ def stack_reinterpret(x):
     :return: A reinterpreted version of the input.
     :raises: ValueError
     """
-
     x_name = gensym(x)
     node_vars = {x_name: x}
     node_names = {x: x_name}
