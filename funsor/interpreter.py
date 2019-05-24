@@ -93,9 +93,9 @@ def _children_ground(x):
     return ()
 
 
-def is_ground(x):
+def is_atom(x):
     if isinstance(x, (tuple, frozenset)) and not isinstance(x, Domain):
-        return len(x) == 0 or all(is_ground(c) for c in x)
+        return len(x) == 0 or all(is_atom(c) for c in x)
     return isinstance(x, (
         int,
         str,
@@ -153,7 +153,7 @@ def reinterpret(x):
                 leaves.append(parent)
 
         h = node_vars[h_name]
-        if is_ground(h):
+        if is_atom(h):
             env[h_name] = h
         elif isinstance(h, (tuple, frozenset)):
             env[h_name] = type(h)(
