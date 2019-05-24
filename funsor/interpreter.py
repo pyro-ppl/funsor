@@ -209,7 +209,7 @@ def stack_reinterpret(x):
             child_to_parent[c_name] = h_name
 
     children_counts = OrderedDict((k, len(v)) for k, v in parent_to_children.items())
-    leaves = [h_name for h_name, count in children_counts.items() if count == 0]
+    leaves = [name for name, count in children_counts.items() if count == 0]
     while leaves:
         h_name = leaves.pop(0)
         if h_name in child_to_parent:
