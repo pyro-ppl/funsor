@@ -517,7 +517,7 @@ class Funsor(object):
         return result
 
 
-interpreter.reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
+interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
 @dispatch(object)

@@ -5,7 +5,7 @@ import inspect
 import os
 import re
 import types
-from collections import OrderedDict
+import uuid
 
 import torch
 from contextlib2 import contextmanager
@@ -65,6 +65,53 @@ def interpretation(new):
 
 
 @singledispatch
+def children(x):
+    raise ValueError(type(x))
+
+
+def children_funsor(h):
+    return h._ast_values
+
+
+@children.register(tuple)
+@children.register(frozenset)
+def _children_tuple(h):
+    return h
+
+
+@children.register(str)
+@children.register(int)
+@children.register(float)
+@children.register(type)
+@children.register(types.FunctionType)
+@children.register(types.BuiltinFunctionType)
+@children.register(torch.Tensor)
+@children.register(Domain)
+@children.register(Op)
+def _children_ground(x):
+    return ()
+
+
+def is_ground(x):
+    if isinstance(x, (tuple, frozenset)) and not isinstance(x, Domain):
+        return len(x) == 0 or all(is_ground(c) for c in x)
+    return isinstance(x, (
+        int,
+        str,
+        float,
+        type,
+        types.FunctionType,
+        types.BuiltinFunctionType,
+        torch.Tensor,
+        Domain,
+        Op
+    ))
+
+
+def gensym():
+    return "V" + str(uuid.uuid4().hex)
+
+
 def reinterpret(x):
     r"""
     Overloaded reinterpretation of a deferred expression.
@@ -78,46 +125,43 @@ def reinterpret(x):
     :return: A reinterpreted version of the input.
     :raises: ValueError
     """
-    raise ValueError(type(x))
+    node_vars = {}
+    env = {}
+    x_name = gensym()
+    stack = [(x_name, x)]
+    parent_to_children = {}
+    child_to_parent = {}
+    while stack:
+        h_name, h = stack.pop(0)
+        node_vars[h_name] = h
+        parent_to_children[h_name] = []
+        for c in children(h):
+            c_name = gensym()
+            stack.append((c_name, c))
+            parent_to_children[h_name].append(c_name)
+            child_to_parent[c_name] = h_name
 
+    children_counts = {k: len(v) for k, v in parent_to_children.items()}
+    leaves = [h_name for h_name, count in children_counts.items() if count == 0]
+    while leaves:
+        h_name = leaves.pop()
+        if h_name in child_to_parent:
+            parent = child_to_parent[h_name]
+            children_counts[parent] -= 1
+            if children_counts[parent] == 0:
+                leaves.append(parent)
 
-# We need to register this later in terms.py after declaring Funsor.
-# reinterpret.register(Funsor)
-def reinterpret_funsor(x):
-    return _INTERPRETATION(type(x), *map(reinterpret, x._ast_values))
+        h = node_vars[h_name]
+        if is_ground(h):
+            env[h_name] = h
+        elif isinstance(h, (tuple, frozenset)):
+            env[h_name] = type(h)(
+                env[c_name] for c_name in parent_to_children[h_name])
+        else:
+            env[h_name] = _INTERPRETATION(
+                type(h), *(env[c_name] for c_name in parent_to_children[h_name]))
 
-
-@reinterpret.register(str)
-@reinterpret.register(int)
-@reinterpret.register(float)
-@reinterpret.register(type)
-@reinterpret.register(types.FunctionType)
-@reinterpret.register(types.BuiltinFunctionType)
-@reinterpret.register(torch.Tensor)
-@reinterpret.register(Domain)
-@reinterpret.register(Op)
-def _reinterpret_ground(x):
-    return x
-
-
-@reinterpret.register(tuple)
-def _reinterpret_tuple(x):
-    return tuple(map(reinterpret, x))
-
-
-@reinterpret.register(frozenset)
-def _reinterpret_frozenset(x):
-    return frozenset(map(reinterpret, x))
-
-
-@reinterpret.register(dict)
-def _reinterpret_dict(x):
-    return {key: reinterpret(value) for key, value in x.items()}
-
-
-@reinterpret.register(OrderedDict)
-def _reinterpret_ordereddict(x):
-    return OrderedDict((key, reinterpret(value)) for key, value in x.items())
+    return env[x_name]
 
 
 if _DEBUG:
@@ -157,6 +201,7 @@ def dispatched_interpretation(fn):
 
 
 __all__ = [
+    'children',
     'dispatched_interpretation',
     'interpret',
     'interpretation',
