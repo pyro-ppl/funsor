@@ -174,7 +174,9 @@ def is_atom(x):
     ))
 
 
-def gensym():
+def gensym(x=None):
+    if x is not None:
+        return hash(x)
     return "V" + str(uuid.uuid4().hex)
 
 
@@ -192,31 +194,37 @@ def stack_reinterpret(x):
     :return: A reinterpreted version of the input.
     :raises: ValueError
     """
-    node_vars = {}
+
+    x_name = gensym(x)
+    node_vars = {x_name: x}
+    node_names = {x: x_name}
     env = {}
-    x_name = gensym()
     stack = [(x_name, x)]
     parent_to_children = OrderedDict()
-    child_to_parent = OrderedDict()
+    child_to_parents = OrderedDict()
     while stack:
         h_name, h = stack.pop(0)
-        node_vars[h_name] = h
         parent_to_children[h_name] = []
         for c in children(h):
-            c_name = gensym()
-            stack.append((c_name, c))
-            parent_to_children[h_name].append(c_name)
-            child_to_parent[c_name] = h_name
+            if c in node_names:
+                c_name = node_names[c]
+            else:
+                c_name = gensym(c)
+                node_names[c] = c_name
+                node_vars[c_name] = c
+                stack.append((c_name, c))
+            parent_to_children.setdefault(h_name, []).append(c_name)
+            child_to_parents.setdefault(c_name, []).append(h_name)
 
     children_counts = OrderedDict((k, len(v)) for k, v in parent_to_children.items())
     leaves = [name for name, count in children_counts.items() if count == 0]
     while leaves:
         h_name = leaves.pop(0)
-        if h_name in child_to_parent:
-            parent = child_to_parent[h_name]
-            children_counts[parent] -= 1
-            if children_counts[parent] == 0:
-                leaves.append(parent)
+        if h_name in child_to_parents:
+            for parent in child_to_parents[h_name]:
+                children_counts[parent] -= 1
+                if children_counts[parent] == 0:
+                    leaves.append(parent)
 
         h = node_vars[h_name]
         if is_atom(h):
