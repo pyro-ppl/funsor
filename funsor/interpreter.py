@@ -6,9 +6,9 @@ import os
 import re
 import types
 import uuid
+from collections import OrderedDict
 
 import torch
-from collections import OrderedDict
 from contextlib2 import contextmanager
 
 from funsor.domains import Domain
@@ -113,26 +113,36 @@ def recursion_reinterpret_frozenset(x):
     return frozenset(map(reinterpret, x))
 
 
+@recursion_reinterpret.register(dict)
+def recursion_reinterpret_dict(x):
+    return {key: reinterpret(value) for key, value in x.items()}
+
+
+@recursion_reinterpret.register(OrderedDict)
+def recursion_reinterpret_ordereddict(x):
+    return OrderedDict((key, reinterpret(value)) for key, value in x.items())
+
+
 @singledispatch
 def children(x):
     raise ValueError(type(x))
 
 
 # has to be registered in terms.py
-def children_funsor(h):
-    return h._ast_values
+def children_funsor(x):
+    return x._ast_values
 
 
 @children.register(tuple)
 @children.register(frozenset)
-def _children_tuple(h):
-    return h
+def _children_tuple(x):
+    return x
 
 
 @children.register(dict)
 @children.register(OrderedDict)
-def _children_tuple(h):
-    return h.values()
+def _children_tuple(x):
+    return x.values()
 
 
 @children.register(str)
@@ -277,7 +287,6 @@ def dispatched_interpretation(fn):
 
 
 __all__ = [
-    'children',
     'dispatched_interpretation',
     'interpret',
     'interpretation',
