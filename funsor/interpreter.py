@@ -8,6 +8,7 @@ import types
 import uuid
 
 import torch
+from collections import OrderedDict
 from contextlib2 import contextmanager
 
 from funsor.domains import Domain
@@ -129,8 +130,8 @@ def reinterpret(x):
     env = {}
     x_name = gensym()
     stack = [(x_name, x)]
-    parent_to_children = {}
-    child_to_parent = {}
+    parent_to_children = OrderedDict()
+    child_to_parent = OrderedDict()
     while stack:
         h_name, h = stack.pop(0)
         node_vars[h_name] = h
@@ -141,10 +142,10 @@ def reinterpret(x):
             parent_to_children[h_name].append(c_name)
             child_to_parent[c_name] = h_name
 
-    children_counts = {k: len(v) for k, v in parent_to_children.items()}
+    children_counts = OrderedDict((k, len(v)) for k, v in parent_to_children.items())
     leaves = [h_name for h_name, count in children_counts.items() if count == 0]
     while leaves:
-        h_name = leaves.pop()
+        h_name = leaves.pop(0)
         if h_name in child_to_parent:
             parent = child_to_parent[h_name]
             children_counts[parent] -= 1
