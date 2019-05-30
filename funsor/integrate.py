@@ -21,7 +21,9 @@ class Integrate(Funsor):
                              for (k, d) in term.inputs.items()
                              if k not in reduced_vars)
         output = integrand.output
-        super(Integrate, self).__init__(inputs, output)
+        fresh = frozenset()
+        bound = reduced_vars
+        super(Integrate, self).__init__(inputs, output, fresh, bound)
         self.log_measure = log_measure
         self.integrand = integrand
         self.reduced_vars = reduced_vars

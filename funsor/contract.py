@@ -52,7 +52,9 @@ class Contract(Funsor):
         inputs = OrderedDict([(k, d) for t in (lhs, rhs)
                               for k, d in t.inputs.items() if k not in reduced_vars])
         output = rhs.output
-        super(Contract, self).__init__(inputs, output)
+        fresh = frozenset()
+        bound = reduced_vars
+        super(Contract, self).__init__(inputs, output, fresh, bound)
         self.sum_op = sum_op
         self.prod_op = prod_op
         self.lhs = lhs

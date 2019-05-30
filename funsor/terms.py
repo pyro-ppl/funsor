@@ -20,6 +20,63 @@ from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec, singledispatch
 
 
+@dispatch(object, object)
+def substitute(expr, subs):
+    return expr  # default: do nothing
+
+
+@substitute.register(object, tuple)
+def substitute_with_tuple(expr, subs):
+    return substitute(expr, dict(subs))
+
+
+@substitute.register(tuple, dict)
+def substitute_tuple(expr, subs):
+    return tuple(substitute(v, subs) for v in expr)
+
+
+@substitute.register(Domain, dict)
+def substitute_domain(expr, subs):
+    return expr
+
+
+@substitute.register(frozenset, dict)
+def substitute_frozenset(expr, subs):
+    return frozenset(substitute(v, subs) for v in expr)
+
+
+@substitute.register(OrderedDict, dict)
+def substitute_ordereddict(expr, subs):
+    return OrderedDict([(k, substitute(v, subs)) for k, v in expr.items()])
+
+
+def alpha_convert(expr):
+    if not expr.bound or all("BOUND" in name for name in expr.bound):
+        return expr
+
+    alpha_subs = {name: interpreter.gensym(name + "_BOUND")
+                  for name in expr.bound if "BOUND" not in name}
+
+    new_values = []
+    for v in expr._ast_values:
+        v = substitute(v, alpha_subs)
+        if isinstance(v, str):
+            v = alpha_subs[v] if v in alpha_subs else v
+        elif isinstance(v, frozenset):
+            swapped = v & frozenset(alpha_subs.keys())
+            v |= frozenset(alpha_subs[k] for k in swapped)
+            v -= swapped
+        elif isinstance(v, tuple) and isinstance(v[0], tuple) and len(v[0]) == 2 and \
+                isinstance(v[0][0], str) and isinstance(v[0][1], Funsor):
+            v = tuple((alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v)
+        elif isinstance(v, OrderedDict):  # XXX is this case ever actually triggered?
+            v = OrderedDict([(alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v.items()])
+        new_values.append(v)
+
+    # TODO should this call reflect explicitly?
+    return type(expr)(*new_values)
+
+
 def reflect(cls, *args):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
@@ -30,6 +87,12 @@ def reflect(cls, *args):
         return cls._cons_cache[cache_key]
     result = super(FunsorMeta, cls).__call__(*args)
     result._ast_values = args
+
+    # alpha-convert eagerly upon binding any variable
+    # TODO verify that this doesn't break cons-hashing
+    if result.bound:
+        result = alpha_convert(result)
+
     cls._cons_cache[cache_key] = result
     return result
 
@@ -135,15 +198,27 @@ class Funsor(object):
         free variables to domains.
     :param Domain output: An output domain.
     """
-    def __init__(self, inputs, output):
+    def __init__(self, inputs, output, fresh=None, bound=None):
+        fresh = frozenset() if fresh is None else fresh
+        bound = frozenset() if bound is None else bound
         assert isinstance(inputs, OrderedDict)
         for name, input_ in inputs.items():
             assert isinstance(name, str)
             assert isinstance(input_, Domain)
         assert isinstance(output, Domain)
+        assert isinstance(fresh, frozenset)
+        assert isinstance(bound, frozenset)
         super(Funsor, self).__init__()
         self.inputs = inputs
         self.output = output
+        self.fresh = fresh
+        self.bound = bound
+
+    def alpha_convert(self):
+        if self.bound:
+            raise NotImplementedError(
+                "{} has bound variables {} but does not implement alpha-conversion".format(self, self.bound))
+        raise ValueError("{} does not have bound variables, should not be here".format(self))
 
     @property
     def dtype(self):
@@ -521,6 +596,15 @@ interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funso
 interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
+@substitute.register(Funsor, dict)
+def substitute_funsor(expr, subs):
+    subs = {name: sub for name, sub in subs.items() if name in expr.inputs}
+    if not subs:
+        return expr
+    return type(expr)(
+        *(substitute(v, subs) for v in expr._ast_values))
+
+
 @dispatch(object)
 def to_funsor(x):
     """
@@ -586,7 +670,8 @@ class Variable(Funsor):
     """
     def __init__(self, name, output):
         inputs = OrderedDict([(name, output)])
-        super(Variable, self).__init__(inputs, output)
+        fresh = frozenset({name})
+        super(Variable, self).__init__(inputs, output, fresh)
         self.name = name
 
     def __repr__(self):
@@ -608,6 +693,13 @@ def to_funsor(name, output):
     return Variable(name, output)
 
 
+@substitute.register(Variable, dict)
+def substitute_variable(expr, subs):
+    if expr.name in subs:
+        return to_funsor(subs[expr.name], expr.output)
+    return expr
+
+
 class Subs(Funsor):
     """
     Lazy substitution of the form ``x(u=y, v=z)``.
@@ -624,7 +716,9 @@ class Subs(Funsor):
             del inputs[key]
         for key, value in subs:
             inputs.update(value.inputs)
-        super(Subs, self).__init__(inputs, arg.output)
+        fresh = frozenset()
+        bound = frozenset(key for key, value in subs if key not in inputs)
+        super(Subs, self).__init__(inputs, arg.output, fresh, bound)
         self.arg = arg
         self.subs = OrderedDict(subs)
 
@@ -632,6 +726,7 @@ class Subs(Funsor):
         return 'Subs({}, {})'.format(self.arg, self.subs)
 
     def eager_subs(self, subs):
+        # eagerly fuses substitutions...
         assert isinstance(subs, tuple)
         old_subs = tuple((k, Subs(v, subs)) for k, v in self.subs.items())
         new_subs = tuple((k, v) for k, v in subs if k not in self.subs)
@@ -662,7 +757,23 @@ def eager_subs(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
-    return interpreter.debug_logged(arg.eager_subs)(subs)
+    # return interpreter.debug_logged(arg.eager_subs)(subs)
+    return interpreter.debug_logged(substitute)(arg, subs)
+
+
+class FunsorOp(Funsor):
+
+    def __init__(self, op, args):
+        assert callable(op)
+        assert isinstance(args, tuple)
+        assert all(isinstance(arg, Funsor) for arg in args)
+        inputs = OrderedDict()
+        for arg in args:
+            inputs.update(arg.inputs)
+        output = find_domain(op, *(arg.output for arg in args))
+        super(FunsorOp, self).__init__(inputs, output)
+        self.op = op
+        self.args = args
 
 
 _PREFIX = {
@@ -671,16 +782,14 @@ _PREFIX = {
 }
 
 
-class Unary(Funsor):
+class Unary(FunsorOp):
     """
     Lazy unary operation.
     """
     def __init__(self, op, arg):
         assert callable(op)
         assert isinstance(arg, Funsor)
-        output = find_domain(op, arg.output)
-        super(Unary, self).__init__(arg.inputs, output)
-        self.op = op
+        super(Unary, self).__init__(op, (arg,))
         self.arg = arg
 
     def __repr__(self):
@@ -714,7 +823,7 @@ _INFIX = {
 }
 
 
-class Binary(Funsor):
+class Binary(FunsorOp):
     """
     Lazy binary operation.
     """
@@ -722,10 +831,7 @@ class Binary(Funsor):
         assert callable(op)
         assert isinstance(lhs, Funsor)
         assert isinstance(rhs, Funsor)
-        inputs = lhs.inputs.copy()
-        inputs.update(rhs.inputs)
-        output = find_domain(op, lhs.output, rhs.output)
-        super(Binary, self).__init__(inputs, output)
+        super(Binary, self).__init__(op, (lhs, rhs))
         self.op = op
         self.lhs = lhs
         self.rhs = rhs
@@ -766,7 +872,9 @@ class Reduce(Funsor):
         assert isinstance(reduced_vars, frozenset)
         inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if k not in reduced_vars)
         output = arg.output
-        super(Reduce, self).__init__(inputs, output)
+        fresh = frozenset()
+        bound = reduced_vars
+        super(Reduce, self).__init__(inputs, output, fresh, bound)
         self.op = op
         self.arg = arg
         self.reduced_vars = reduced_vars
@@ -934,7 +1042,9 @@ class Align(Funsor):
         inputs = OrderedDict((name, arg.inputs[name]) for name in names)
         inputs.update(arg.inputs)
         output = arg.output
-        super(Align, self).__init__(inputs, output)
+        fresh = frozenset()  # TODO get this right
+        bound = frozenset()
+        super(Align, self).__init__(inputs, output, fresh, bound)
         self.arg = arg
 
     def align(self, names):
@@ -986,7 +1096,8 @@ class Stack(Funsor):
         inputs = OrderedDict([(name, domain)])
         for x in components:
             inputs.update(x.inputs)
-        super(Stack, self).__init__(inputs, output)
+        fresh = frozenset({name})
+        super(Stack, self).__init__(inputs, output, fresh)
         self.components = components
         self.name = name
 
@@ -1056,7 +1167,9 @@ class Lambda(Funsor):
         inputs.pop(var.name, None)
         shape = (var.dtype,) + expr.output.shape
         output = Domain(shape, expr.dtype)
-        super(Lambda, self).__init__(inputs, output)
+        fresh = frozenset()
+        bound = frozenset({var.name})  # TODO make sure this is correct
+        super(Lambda, self).__init__(inputs, output, fresh, bound)
         self.var = var
         self.expr = expr
 
@@ -1108,7 +1221,9 @@ class Independent(Funsor):
         inputs = fn.inputs.copy()
         shape = (inputs.pop(bint_var).dtype,) + inputs[reals_var].shape
         inputs[reals_var] = reals(*shape)
-        super(Independent, self).__init__(inputs, fn.output)
+        fresh = frozenset()
+        bound = frozenset({bint_var})
+        super(Independent, self).__init__(inputs, fn.output, fresh, bound)
         self.fn = fn
         self.reals_var = reals_var
         self.bint_var = bint_var

@@ -91,7 +91,9 @@ class Array(Funsor):
         assert all(isinstance(d.dtype, integer_types) for k, d in inputs)
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
-        super(Array, self).__init__(inputs, output)
+        fresh = frozenset(inputs.keys())
+        bound = frozenset()
+        super(Array, self).__init__(inputs, output, fresh, bound)
         self.data = data
 
     def __repr__(self):

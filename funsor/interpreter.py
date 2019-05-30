@@ -176,6 +176,8 @@ def is_atom(x):
 
 def gensym(x=None):
     if x is not None:
+        if isinstance(x, str):
+            return x + "_" + str(uuid.uuid4().hex)
         return id(x)
     return "V" + str(uuid.uuid4().hex)
 
