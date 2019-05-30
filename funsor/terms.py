@@ -214,12 +214,6 @@ class Funsor(object):
         self.fresh = fresh
         self.bound = bound
 
-    def alpha_convert(self):
-        if self.bound:
-            raise NotImplementedError(
-                "{} has bound variables {} but does not implement alpha-conversion".format(self, self.bound))
-        raise ValueError("{} does not have bound variables, should not be here".format(self))
-
     @property
     def dtype(self):
         return self.output.dtype
