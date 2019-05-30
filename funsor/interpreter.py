@@ -24,7 +24,7 @@ _INTERPRETATION = None  # To be set later in funsor.terms
 _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
 
 # TODO remove this, used temporarily for testing
-_GENERIC_SUBS = int(os.environ.get("FUNSOR_GENERIC_SUBS", 1))
+_GENERIC_SUBS = int(os.environ.get("FUNSOR_GENERIC_SUBS", 0))
 
 
 if _DEBUG:

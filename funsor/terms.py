@@ -90,7 +90,7 @@ def reflect(cls, *args):
 
     # alpha-convert eagerly upon binding any variable
     # TODO verify that this doesn't break cons-hashing
-    if result.bound:
+    if interpreter._GENERIC_SUBS:
         result = alpha_convert(result)
 
     cls._cons_cache[cache_key] = result
