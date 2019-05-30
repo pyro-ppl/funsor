@@ -59,7 +59,9 @@ class Delta(Funsor):
         inputs.update(point.inputs)
         inputs.update(log_density.inputs)
         output = reals()
-        super(Delta, self).__init__(inputs, output)
+        fresh = frozenset({name})
+        bound = frozenset()
+        super(Delta, self).__init__(inputs, output, fresh, bound)
         self.name = name
         self.point = point
         self.log_density = log_density

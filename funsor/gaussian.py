@@ -322,7 +322,9 @@ class Gaussian(Funsor):
             assert _issubshape(precision.shape, batch_shape + (dim, dim))
 
         output = reals()
-        super(Gaussian, self).__init__(inputs, output)
+        fresh = frozenset(inputs.keys())
+        bound = frozenset()
+        super(Gaussian, self).__init__(inputs, output, fresh, bound)
         self.loc = loc
         self.precision = precision
         self.batch_shape = batch_shape

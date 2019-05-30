@@ -601,6 +601,7 @@ def substitute_funsor(expr, subs):
     subs = {name: sub for name, sub in subs.items() if name in expr.inputs}
     if not subs:
         return expr
+    assert not expr.fresh & frozenset(subs), "cannot generically substitute into a fresh variable"
     return type(expr)(
         *(substitute(v, subs) for v in expr._ast_values))
 

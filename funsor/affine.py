@@ -57,11 +57,6 @@ class Affine(Funsor):
 def eager_affine(const, coeffs):
     if not coeffs:
         return const
-    if any(not isinstance(v, Variable) for v, c in coeffs):
-        new_const = const + sum(
-            v * c for v, c in coeffs if not isinstance(v, Variable))
-        new_coeffs = tuple((v, c) for v, c in coeffs if isinstance(v, Variable))
-        return Affine(new_const, new_coeffs)
     return None
 
 
