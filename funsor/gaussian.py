@@ -14,7 +14,7 @@ from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, substitute, to_funsor
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -526,6 +526,11 @@ class Gaussian(Funsor):
             return reduce(ops.add, results)
 
         raise NotImplementedError('TODO implement partial sampling of real variables')
+
+
+@substitute.register(Gaussian, dict)
+def subs_gaussian(expr, subs):
+    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs.items()))
 
 
 @eager.register(Binary, AddOp, Gaussian, Gaussian)

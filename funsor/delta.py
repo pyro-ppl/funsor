@@ -24,6 +24,7 @@ from funsor.terms import (
     Unary,
     Variable,
     eager,
+    substitute,
     to_funsor
 )
 
@@ -109,6 +110,11 @@ class Delta(Funsor):
         # TODO Implement ops.add to simulate .to_event().
 
         return None  # defer to default implementation
+
+
+@substitute.register(Delta, dict)
+def subs_gaussian(expr, subs):
+    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs.items()))
 
 
 @eager.register(Binary, AddOp, Delta, (Funsor, Align))

@@ -734,7 +734,7 @@ class Subs(Funsor):
         return Subs(self.arg, subs) if subs else self.arg
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        if any(k in sample_inputs for k, v in self.subs):
+        if any(k in sample_inputs for k, v in self.subs.items()):
             raise NotImplementedError('TODO alpha-convert')
         subs_sampled_vars = set()
         for name in sampled_vars:
@@ -757,23 +757,9 @@ def eager_subs(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
-    # return interpreter.debug_logged(arg.eager_subs)(subs)
-    return interpreter.debug_logged(substitute)(arg, subs)
-
-
-class FunsorOp(Funsor):
-
-    def __init__(self, op, args):
-        assert callable(op)
-        assert isinstance(args, tuple)
-        assert all(isinstance(arg, Funsor) for arg in args)
-        inputs = OrderedDict()
-        for arg in args:
-            inputs.update(arg.inputs)
-        output = find_domain(op, *(arg.output for arg in args))
-        super(FunsorOp, self).__init__(inputs, output)
-        self.op = op
-        self.args = args
+    if interpreter._GENERIC_SUBS:
+        return substitute(arg, subs)  # TODO make this compatible with FUNSOR_DEBUG=1
+    return interpreter.debug_logged(arg.eager_subs)(subs)
 
 
 _PREFIX = {
@@ -782,14 +768,16 @@ _PREFIX = {
 }
 
 
-class Unary(FunsorOp):
+class Unary(Funsor):
     """
     Lazy unary operation.
     """
     def __init__(self, op, arg):
         assert callable(op)
         assert isinstance(arg, Funsor)
-        super(Unary, self).__init__(op, (arg,))
+        output = find_domain(op, arg.output)
+        super(Unary, self).__init__(arg.inputs, output)
+        self.op = op
         self.arg = arg
 
     def __repr__(self):
@@ -823,7 +811,7 @@ _INFIX = {
 }
 
 
-class Binary(FunsorOp):
+class Binary(Funsor):
     """
     Lazy binary operation.
     """
@@ -831,7 +819,10 @@ class Binary(FunsorOp):
         assert callable(op)
         assert isinstance(lhs, Funsor)
         assert isinstance(rhs, Funsor)
-        super(Binary, self).__init__(op, (lhs, rhs))
+        inputs = lhs.inputs.copy()
+        inputs.update(rhs.inputs)
+        output = find_domain(op, lhs.output, rhs.output)
+        super(Binary, self).__init__(inputs, output)
         self.op = op
         self.lhs = lhs
         self.rhs = rhs
@@ -1058,6 +1049,14 @@ class Align(Funsor):
 
     def eager_reduce(self, op, reduced_vars):
         return self.arg.reduce(op, reduced_vars)
+
+
+@eager.register(Align, Funsor, tuple)
+def eager_align(arg, names):
+    if not frozenset(names) == frozenset(arg.inputs.keys()):
+        # assume there's been a substitution and this align is no longer valid
+        return arg
+    return None
 
 
 @eager.register(Binary, Op, Align, Funsor)

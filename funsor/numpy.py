@@ -8,7 +8,7 @@ from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, eager, substitute, to_data, to_funsor
 
 
 def align_array(new_inputs, x):
@@ -213,6 +213,11 @@ def _to_data_array(x):
         raise ValueError("cannot convert Array to a data due to lazy inputs: {}"
                          .format(set(x.inputs)))
     return x.data
+
+
+@substitute.register(Array, dict)
+def subs_gaussian(expr, subs):
+    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs.items()))
 
 
 @eager.register(Binary, object, Array, Number)
