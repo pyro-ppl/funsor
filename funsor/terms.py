@@ -902,7 +902,7 @@ def eager_distribute_reduce_other(op, red, other):
         # Use distributive law.
         if not red.reduced_vars.isdisjoint(other.inputs):
             raise NotImplementedError('TODO alpha-convert')
-        arg = red.arg + other
+        arg = op(red.arg, other)
         return arg.reduce(red.op, red.reduced_vars)
 
     return None  # defer to default implementation
@@ -914,7 +914,7 @@ def eager_distribute_other_reduce(op, other, red):
         # Use distributive law.
         if not red.reduced_vars.isdisjoint(other.inputs):
             raise NotImplementedError('TODO alpha-convert')
-        arg = other + red.arg
+        arg = op(other, red.arg)
         return arg.reduce(red.op, red.reduced_vars)
 
     return None  # defer to default implementation
