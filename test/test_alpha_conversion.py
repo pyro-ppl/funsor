@@ -10,7 +10,7 @@ from six.moves import reduce
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpreter import gensym, interpretation, reinterpret
 from funsor.terms import Binary, Independent, Lambda, Number, Stack, Variable, reflect, sequential, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
@@ -31,7 +31,6 @@ def test_subs_reduce():
     assert_close(actual, expected)
 
 
-@pytest.mark.xfail(reason="vars wrong")
 @pytest.mark.parametrize('lhs_vars', [(), ('i',), ('j',), ('i', 'j')])
 @pytest.mark.parametrize('rhs_vars', [(), ('i',), ('j',), ('i', 'j')])
 def test_distribute_reduce(lhs_vars, rhs_vars):
@@ -41,10 +40,16 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
     rhs = random_tensor(OrderedDict([('i', bint(3)), ('j', bint(2))]), reals())
 
     with interpretation(reflect):
-        actual = lhs.reduce(ops.add, lhs_vars) * rhs.reduce(ops.add, rhs_vars)
+        actual_lhs = lhs.reduce(ops.add, lhs_vars) if lhs_vars else lhs
+        actual_rhs = rhs.reduce(ops.add, rhs_vars) if rhs_vars else rhs
+    
+    actual = actual_lhs * actual_rhs
 
-    actual = reinterpret(actual)
-    expected = (lhs * rhs).reduce(ops.add, lhs_vars | rhs_vars)
+    lhs_subs = {v: gensym(v) for v in lhs_vars}
+    rhs_subs = {v: gensym(v) for v in rhs_vars}
+    expected = (lhs(**lhs_subs) * rhs(**rhs_subs)).reduce(
+        ops.add, frozenset(lhs_subs.values()) | frozenset(rhs_subs.values()))
+
     assert_close(actual, expected)
 
 
