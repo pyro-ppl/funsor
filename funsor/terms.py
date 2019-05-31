@@ -1146,6 +1146,13 @@ class Stack(Funsor):
         return Stack(components, self.name)
 
 
+@substitute.register(Stack, dict)
+def substitute_stack(expr, subs):
+    if not any(fresh_var in subs for fresh_var in expr.fresh):
+        return substitute_funsor(expr, subs)
+    return expr.eager_subs(tuple(subs.items()))
+
+
 class Lambda(Funsor):
     """
     Lazy inverse to ``ops.getitem``.
