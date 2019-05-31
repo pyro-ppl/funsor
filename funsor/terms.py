@@ -691,7 +691,9 @@ def to_funsor(name, output):
 @substitute.register(Variable, dict)
 def substitute_variable(expr, subs):
     if expr.name in subs:
-        return to_funsor(subs[expr.name], expr.output)
+        if not isinstance(subs[expr.name], Funsor):
+            return to_funsor(subs[expr.name], expr.output)
+        return subs[expr.name]
     return expr
 
 
@@ -1250,6 +1252,22 @@ class Independent(Funsor):
             raise NotImplementedError('TODO alpha-convert')
         fn = self.fn.unscaled_sample(sampled_vars, sample_inputs)
         return Independent(fn, self.reals_var, self.bint_var)
+
+
+@eager.register(Independent, Funsor, str, str)
+def eager_independent_trivial(fn, reals_var, bint_var):
+    # compare to Independent.eager_subs
+    if reals_var not in fn.inputs:
+        return fn.reduce(ops.add, bint_var)
+    return None
+
+
+@substitute.register(Independent, dict)
+def substitute_independent(expr, subs):
+    if expr.reals_var in subs:
+        subs = subs.copy()  # don't interfere with other subs
+        subs[expr.reals_var] = subs[expr.reals_var][expr.bint_var]
+    return substitute_funsor(expr, subs)
 
 
 def _of_shape(fn, shape):
