@@ -51,11 +51,11 @@ def substitute_ordereddict(expr, subs):
 
 
 def alpha_convert(expr):
-    if not expr.bound or all("BOUND" in name for name in expr.bound):
+    if not expr.bound or all("__BOUND" in name for name in expr.bound):
         return expr
 
-    alpha_subs = {name: interpreter.gensym(name + "_BOUND")
-                  for name in expr.bound if "BOUND" not in name}
+    alpha_subs = {name: interpreter.gensym(name + "__BOUND")
+                  for name in expr.bound if "__BOUND" not in name}
 
     new_values = []
     for v in expr._ast_values:
@@ -85,6 +85,7 @@ def reflect(cls, *args):
     cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
+
     result = super(FunsorMeta, cls).__call__(*args)
     result._ast_values = args
 
