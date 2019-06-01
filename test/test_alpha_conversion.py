@@ -1,19 +1,14 @@
 from __future__ import absolute_import, division, print_function
 
-import itertools
 from collections import OrderedDict
 
-import numpy as np
 import pytest
-from six.moves import reduce
 
-import funsor
 import funsor.ops as ops
-from funsor.domains import Domain, bint, reals
-from funsor.interpreter import gensym, interpretation, reinterpret
-from funsor.terms import Binary, Independent, Lambda, Number, Stack, Variable, reflect, sequential, to_data, to_funsor
+from funsor.domains import bint, reals
+from funsor.interpreter import gensym, interpretation
+from funsor.terms import Independent, Lambda, Variable, reflect
 from funsor.testing import assert_close, check_funsor, random_tensor
-from funsor.torch import REDUCE_OP_TO_TORCH
 
 
 def test_sample_subs_smoke():
@@ -26,7 +21,7 @@ def test_sample_subs_smoke():
 
 def test_subs_reduce():
     x = random_tensor(OrderedDict([('i', bint(3)), ('j', bint(2))]), reals())
-    ix = random_tensor(OrderedDict([('i', bint(3)),]), bint(2))
+    ix = random_tensor(OrderedDict([('i', bint(3))]), bint(2))
     ix2 = ix(i='i2')
     with interpretation(reflect):
         actual = x.reduce(ops.add, frozenset({"i"}))
@@ -46,7 +41,7 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
     with interpretation(reflect):
         actual_lhs = lhs.reduce(ops.add, lhs_vars) if lhs_vars else lhs
         actual_rhs = rhs.reduce(ops.add, rhs_vars) if rhs_vars else rhs
-    
+
     actual = actual_lhs * actual_rhs
 
     lhs_subs = {v: gensym(v) for v in lhs_vars}
@@ -60,7 +55,7 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
 def test_subs_lambda():
     z = Variable('z', reals())
     i = Variable('i', bint(5))
-    ix = random_tensor(OrderedDict([('i', bint(5)),]), reals())
+    ix = random_tensor(OrderedDict([('i', bint(5))]), reals())
     actual = Lambda(i, z)(z=ix)
     expected = Lambda(i(i='j'), z(z=ix))
     assert_close(actual, expected)
@@ -70,7 +65,7 @@ def test_subs_lambda():
 def test_getitem_lambda():
     z = Variable('z', reals())
     i = Variable('i', bint(5))
-    ix = random_tensor(OrderedDict([('i', bint(5)),]), reals())
+    ix = random_tensor(OrderedDict([('i', bint(5))]), reals())
     actual = Lambda(i, z)[:, ix]
     expected = Lambda(i(i='j'), z(z=ix))
     assert_close(actual, expected)
