@@ -25,7 +25,7 @@ class AdjointTape(object):
         return result
 
 
-def adjoint(expr, targets, start=Number(0.)):
+def adjoint(expr, targets, start=0.):
 
     adjoint_values = defaultdict(lambda: Number(0.))  # 1 in logspace
     multiplicities = defaultdict(lambda: 0)
