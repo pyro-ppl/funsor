@@ -16,8 +16,12 @@ from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
 
-def test_sample_subs():
-    pass
+def test_sample_subs_smoke():
+    x = random_tensor(OrderedDict([('i', bint(3)), ('j', bint(2))]), reals())
+    with interpretation(reflect):
+        z = x(i=1)
+    actual = z.sample(frozenset({"j"}), OrderedDict({"i": bint(4)}))
+    check_funsor(actual, {"j": bint(2), "i": bint(4)}, reals())
 
 
 def test_subs_reduce():
@@ -54,28 +58,38 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
 
 
 def test_subs_lambda():
-    pass
+    z = Variable('z', reals())
+    i = Variable('i', bint(5))
+    ix = random_tensor(OrderedDict([('i', bint(5)),]), reals())
+    actual = Lambda(i, z)(z=ix)
+    expected = Lambda(i(i='j'), z(z=ix))
+    assert_close(actual, expected)
 
 
+@pytest.mark.xfail(reason="GetItem handling not finished")
 def test_getitem_lambda():
-    pass
+    z = Variable('z', reals())
+    i = Variable('i', bint(5))
+    ix = random_tensor(OrderedDict([('i', bint(5)),]), reals())
+    actual = Lambda(i, z)[:, ix]
+    expected = Lambda(i(i='j'), z(z=ix))
+    assert_close(actual, expected)
 
 
+@pytest.mark.xfail(reason="Independent has both fresh and bound vars")
 def test_subs_independent():
-    pass
+    f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    actual = Independent(f, 'x', 'i')(x=Variable('y', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3))))
+
+    y = Variable('y', reals(3, 4, 5))
+    expected = f(y=y['i']).reduce(ops.add, 'i')
+
+    assert_close(actual, expected)
 
 
+@pytest.mark.xfail(reason="Independent not quite working")
 def test_sample_independent():
-    pass
-
-
-def test_subs_gaussian():
-    pass
-
-
-def test_subs_contract():
-    pass
-
-
-def test_subs_integrate():
-    pass
+    f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    actual = Independent(f, 'x', 'i')
+    assert actual.sample('i')
+    assert actual.sample('j', {'i': 2})
