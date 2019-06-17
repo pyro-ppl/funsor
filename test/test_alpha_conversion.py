@@ -90,7 +90,7 @@ def test_subs_independent():
     assert_close(actual(y=data), expected(y=data))
 
 
-@pytest.mark.xfail(reason="Independent not quite working")
+@pytest.mark.xfail(reason="Independent not quite compatible with sample")
 def test_sample_independent():
     f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
     actual = Independent(f, 'x', 'i')
