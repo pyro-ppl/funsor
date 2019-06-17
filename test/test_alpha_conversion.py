@@ -73,15 +73,21 @@ def test_slice_lambda():
     check_funsor(zj2, zj.inputs, zj.output)
 
 
-@pytest.mark.xfail(reason="Independent has both fresh and bound vars")
 def test_subs_independent():
     f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
-    actual = Independent(f, 'x', 'i')(x=Variable('y', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3))))
+
+    actual = Independent(f, 'x', 'i')
+    assert 'i' not in actual.inputs
 
     y = Variable('y', reals(3, 4, 5))
-    expected = f(y=y['i']).reduce(ops.add, 'i')
+    fsub = y + (0. * random_tensor(OrderedDict(i=bint(7))))
+    actual = actual(x=fsub)
+    assert actual.inputs['i'] == bint(7)
 
-    assert_close(actual, expected)
+    expected = f(x=y['i']).reduce(ops.add, 'i')
+
+    data = random_tensor(OrderedDict(i=bint(7)), y.output)
+    assert_close(actual(y=data), expected(y=data))
 
 
 @pytest.mark.xfail(reason="Independent not quite working")
