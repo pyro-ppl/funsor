@@ -1190,7 +1190,7 @@ class Lambda(Funsor):
 @eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
 def eager_getitem_lambda(op, lhs, rhs):
     if op.offset == 0:
-        return lhs.expr.eager_subs(((lhs.var.name, rhs),))
+        return Subs(lhs.expr, ((lhs.var.name, rhs),))
     if lhs.var.name in rhs.inputs:
         raise NotImplementedError('TODO alpha-convert to avoid conflict')
     expr = GetitemOp(op.offset - 1)(lhs.expr, rhs)

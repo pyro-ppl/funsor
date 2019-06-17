@@ -58,17 +58,19 @@ def test_subs_lambda():
     ix = random_tensor(OrderedDict([('i', bint(5))]), reals())
     actual = Lambda(i, z)(z=ix)
     expected = Lambda(i(i='j'), z(z=ix))
+    check_funsor(actual, expected.inputs, expected.output)
     assert_close(actual, expected)
 
 
-@pytest.mark.xfail(reason="GetItem handling not finished")
-def test_getitem_lambda():
+def test_slice_lambda():
     z = Variable('z', reals())
     i = Variable('i', bint(5))
-    ix = random_tensor(OrderedDict([('i', bint(5))]), reals())
-    actual = Lambda(i, z)[:, ix]
-    expected = Lambda(i(i='j'), z(z=ix))
-    assert_close(actual, expected)
+    j = Variable('j', bint(7))
+    zi = Lambda(i, z)
+    zj = Lambda(j, z)
+    zij = Lambda(j, zi)
+    zj2 = zij[:, i]
+    check_funsor(zj2, zj.inputs, zj.output)
 
 
 @pytest.mark.xfail(reason="Independent has both fresh and bound vars")

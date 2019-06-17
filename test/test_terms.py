@@ -230,8 +230,9 @@ def test_lambda(base_shape):
     zij = Lambda(j, zi)
     assert zij.output.shape == (7, 5) + base_shape
     assert zij[j] is zi
-    assert zij[:, i] is zj
     assert zij[j, i] is z
+    # assert zij[:, i] is zj  # XXX this was disabled by alpha-renaming
+    check_funsor(zij[:, i], zj.inputs, zj.output)
 
 
 def test_independent():
