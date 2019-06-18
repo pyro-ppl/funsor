@@ -6,11 +6,16 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
-from funsor.interpreter import gensym, interpretation
+from funsor.interpreter import gensym, interpretation, _GENERIC_SUBS
 from funsor.terms import Independent, Lambda, Variable, reflect
 from funsor.testing import assert_close, check_funsor, random_tensor
 
 
+# TODO remove this when removing eager_subs methods
+xfail_if_old_subs = pytest.mark.xfail(not _GENERIC_SUBS, reason="fails w/ old subs")
+
+
+@xfail_if_old_subs
 def test_sample_subs_smoke():
     x = random_tensor(OrderedDict([('i', bint(3)), ('j', bint(2))]), reals())
     with interpretation(reflect):
@@ -19,6 +24,7 @@ def test_sample_subs_smoke():
     check_funsor(actual, {"j": bint(2), "i": bint(4)}, reals())
 
 
+@xfail_if_old_subs
 def test_subs_reduce():
     x = random_tensor(OrderedDict([('i', bint(3)), ('j', bint(2))]), reals())
     ix = random_tensor(OrderedDict([('i', bint(3))]), bint(2))
@@ -30,6 +36,7 @@ def test_subs_reduce():
     assert_close(actual, expected)
 
 
+@xfail_if_old_subs
 @pytest.mark.parametrize('lhs_vars', [(), ('i',), ('j',), ('i', 'j')])
 @pytest.mark.parametrize('rhs_vars', [(), ('i',), ('j',), ('i', 'j')])
 def test_distribute_reduce(lhs_vars, rhs_vars):
@@ -52,6 +59,7 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
     assert_close(actual, expected)
 
 
+@xfail_if_old_subs
 def test_subs_lambda():
     z = Variable('z', reals())
     i = Variable('i', bint(5))
@@ -62,6 +70,7 @@ def test_subs_lambda():
     assert_close(actual, expected)
 
 
+@xfail_if_old_subs
 def test_slice_lambda():
     z = Variable('z', reals())
     i = Variable('i', bint(5))
@@ -73,6 +82,7 @@ def test_slice_lambda():
     check_funsor(zj2, zj.inputs, zj.output)
 
 
+@xfail_if_old_subs
 def test_subs_independent():
     f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
 
@@ -90,6 +100,7 @@ def test_subs_independent():
     assert_close(actual(y=data), expected(y=data))
 
 
+# @xfail_if_old_subs
 @pytest.mark.xfail(reason="Independent not quite compatible with sample")
 def test_sample_independent():
     f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
