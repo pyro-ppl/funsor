@@ -530,9 +530,9 @@ class Gaussian(Funsor):
         raise NotImplementedError('TODO implement partial sampling of real variables')
 
 
-@substitute.register(Gaussian, dict)
+@substitute.register(Gaussian, tuple)
 def subs_gaussian(expr, subs):
-    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs.items()))
+    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs))
 
 
 @eager.register(Binary, AddOp, Gaussian, Gaussian)

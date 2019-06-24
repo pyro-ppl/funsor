@@ -215,9 +215,9 @@ def _to_data_array(x):
     return x.data
 
 
-@substitute.register(Array, dict)
+@substitute.register(Array, tuple)
 def subs_gaussian(expr, subs):
-    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs.items()))
+    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs))
 
 
 @eager.register(Binary, object, Array, Number)

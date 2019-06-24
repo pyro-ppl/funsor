@@ -317,9 +317,9 @@ def to_funsor(x):
     return Tensor(x)
 
 
-@substitute.register(Tensor, dict)
+@substitute.register(Tensor, tuple)
 def subs_tensor(expr, subs):
-    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs.items()))
+    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs))
 
 
 @dispatch(torch.Tensor, Domain)

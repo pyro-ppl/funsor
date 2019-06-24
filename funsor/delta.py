@@ -114,9 +114,9 @@ class Delta(Funsor):
         return None  # defer to default implementation
 
 
-@substitute.register(Delta, dict)
+@substitute.register(Delta, tuple)
 def subs_gaussian(expr, subs):
-    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs.items()))
+    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs))
 
 
 @eager.register(Binary, AddOp, Delta, (Funsor, Align))

@@ -245,9 +245,9 @@ def eager_independent(joint, reals_var, bint_var):
     return None  # defer to default implementation
 
 
-@substitute.register(Joint, dict)
+@substitute.register(Joint, tuple)
 def substitute_joint(expr, subs):
-    return expr.eager_subs(tuple(subs.items()))
+    return expr.eager_subs(subs)
 
 
 ################################################################################

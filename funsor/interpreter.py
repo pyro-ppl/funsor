@@ -5,7 +5,6 @@ import inspect
 import os
 import re
 import types
-import uuid
 from collections import OrderedDict
 
 import torch
@@ -25,6 +24,8 @@ _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
 
 # TODO remove this, used temporarily for testing
 _GENERIC_SUBS = int(os.environ.get("FUNSOR_GENERIC_SUBS", 0))
+
+_GENSYM_COUNTER = 0
 
 
 if _DEBUG:
@@ -178,11 +179,14 @@ def is_atom(x):
 
 
 def gensym(x=None):
+    global _GENSYM_COUNTER
+    _GENSYM_COUNTER += 1
+    sym = _GENSYM_COUNTER
     if x is not None:
         if isinstance(x, str):
-            return x + "_" + str(uuid.uuid4().hex)
+            return x + "_" + str(sym)
         return id(x)
-    return "V" + str(uuid.uuid4().hex)
+    return "V" + str(sym)
 
 
 def stack_reinterpret(x):

@@ -25,43 +25,42 @@ def substitute(expr, subs):
     return expr  # default: do nothing
 
 
-@substitute.register(object, tuple)
+@substitute.register(object, (OrderedDict, dict))
 def substitute_with_tuple(expr, subs):
-    return substitute(expr, dict(subs))
+    return substitute(expr, tuple(subs.items()))
 
 
-@substitute.register(tuple, dict)
+@substitute.register(tuple, tuple)
 def substitute_tuple(expr, subs):
     return tuple(substitute(v, subs) for v in expr)
 
 
-@substitute.register(Domain, dict)
+@substitute.register(Domain, tuple)
 def substitute_domain(expr, subs):
     return expr
 
 
-@substitute.register(frozenset, dict)
+@substitute.register(frozenset, tuple)
 def substitute_frozenset(expr, subs):
     return frozenset(substitute(v, subs) for v in expr)
 
 
-@substitute.register(OrderedDict, dict)
+@substitute.register(OrderedDict, tuple)
 def substitute_ordereddict(expr, subs):
     return OrderedDict([(k, substitute(v, subs)) for k, v in expr.items()])
 
 
 def alpha_convert(expr):
-    if not expr.bound or all("__BOUND" in name for name in expr.bound):
-        return expr
-
     alpha_subs = {name: interpreter.gensym(name + "__BOUND")
                   for name in expr.bound if "__BOUND" not in name}
+    if not alpha_subs:
+        return expr
 
     new_values = []
     for v in expr._ast_values:
         v = substitute(v, alpha_subs)
         if isinstance(v, str):
-            v = alpha_subs[v] if v in alpha_subs else v
+            v = alpha_subs.get(v, v)
         elif isinstance(v, frozenset):
             swapped = v & frozenset(alpha_subs.keys())
             v |= frozenset(alpha_subs[k] for k in swapped)
@@ -73,8 +72,7 @@ def alpha_convert(expr):
             v = OrderedDict([(alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v.items()])
         new_values.append(v)
 
-    # TODO should this call reflect explicitly?
-    return type(expr)(*new_values)
+    return reflect(type(expr), *new_values)
 
 
 def reflect(cls, *args):
@@ -90,7 +88,6 @@ def reflect(cls, *args):
     result._ast_values = args
 
     # alpha-convert eagerly upon binding any variable
-    # TODO verify that this doesn't break cons-hashing
     if interpreter._GENERIC_SUBS:
         result = alpha_convert(result)
 
@@ -591,12 +588,12 @@ interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funso
 interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
-@substitute.register(Funsor, dict)
+@substitute.register(Funsor, tuple)
 def substitute_funsor(expr, subs):
-    subs = {name: sub for name, sub in subs.items() if name in expr.inputs}
+    subs = tuple((name, sub) for name, sub in subs if name in expr.inputs)
     if not subs:
         return expr
-    assert not expr.fresh & frozenset(subs), "cannot generically substitute into a fresh variable"
+    assert expr.fresh.isdisjoint(k for k, v in subs), "cannot generically substitute into a fresh variable"
     return type(expr)(
         *(substitute(v, subs) for v in expr._ast_values))
 
@@ -689,12 +686,11 @@ def to_funsor(name, output):
     return Variable(name, output)
 
 
-@substitute.register(Variable, dict)
+@substitute.register(Variable, tuple)
 def substitute_variable(expr, subs):
-    if expr.name in subs:
-        if not isinstance(subs[expr.name], Funsor):
-            return to_funsor(subs[expr.name], expr.output)
-        return subs[expr.name]
+    for k, v in subs:
+        if k == expr.name:
+            return v if isinstance(v, Funsor) else to_funsor(v, expr.output)
     return expr
 
 
@@ -1149,11 +1145,11 @@ class Stack(Funsor):
         return Stack(components, self.name)
 
 
-@substitute.register(Stack, dict)
+@substitute.register(Stack, tuple)
 def substitute_stack(expr, subs):
-    if not any(fresh_var in subs for fresh_var in expr.fresh):
+    if not any(k in expr.fresh for k, v in subs):
         return substitute_funsor(expr, subs)
-    return expr.eager_subs(tuple(subs.items()))
+    return expr.eager_subs(subs)
 
 
 class Lambda(Funsor):
@@ -1263,11 +1259,9 @@ def eager_independent_trivial(fn, reals_var, bint_var):
     return None
 
 
-@substitute.register(Independent, dict)
+@substitute.register(Independent, tuple)
 def substitute_independent(expr, subs):
-    if expr.reals_var in subs:
-        subs = subs.copy()  # don't interfere with other subs
-        subs[expr.reals_var] = subs[expr.reals_var][expr.bint_var]
+    subs = tuple((k, v[expr.bint_var] if k == expr.reals_var else v) for k, v in subs)
     return substitute_funsor(expr, subs)
 
 
