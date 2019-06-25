@@ -14,7 +14,7 @@ from funsor.affine import Affine
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.interpreter import interpretation
-from funsor.terms import Funsor, FunsorMeta, Number, Subs, Variable, eager, lazy, substitute, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
 
 
@@ -72,21 +72,12 @@ class Distribution(Funsor):
             inputs.update(value.inputs)
         inputs = OrderedDict(inputs)
         output = reals()
-        fresh = frozenset({params['value'].name})
-        bound = frozenset()
-        super(Distribution, self).__init__(inputs, output, fresh, bound)
+        super(Distribution, self).__init__(inputs, output)
         self.params = params
 
     def __repr__(self):
         return '{}({})'.format(type(self).__name__,
                                ', '.join('{}={}'.format(*kv) for kv in self.params))
-
-    def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        params = OrderedDict((k, Subs(v, subs)) for k, v in self.params)
-        return type(self)(**params)
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
@@ -100,11 +91,6 @@ class Distribution(Funsor):
         value = params.pop('value')
         data = cls.dist_class(**params).log_prob(value)
         return Tensor(data, inputs)
-
-
-@substitute.register(Distribution, tuple)
-def substitute_distribution(expr, subs):
-    return expr.eager_subs(subs)
 
 
 ################################################################################
