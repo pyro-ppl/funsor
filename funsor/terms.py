@@ -599,7 +599,7 @@ def substitute_funsor(expr, subs):
 
     fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
     if fresh_subs:
-        expr = expr.eager_subs(fresh_subs)
+        expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
 
     return expr
 
