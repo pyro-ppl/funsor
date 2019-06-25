@@ -865,8 +865,6 @@ def eager_reduce(op, arg, reduced_vars):
 def eager_distribute_reduce_other(op, red, other):
     if (red.op, op) in ops.DISTRIBUTIVE_OPS:
         # Use distributive law.
-        if not red.reduced_vars.isdisjoint(other.inputs):
-            raise NotImplementedError('TODO alpha-convert')
         arg = op(red.arg, other)
         return arg.reduce(red.op, red.reduced_vars)
 
@@ -877,8 +875,6 @@ def eager_distribute_reduce_other(op, red, other):
 def eager_distribute_other_reduce(op, other, red):
     if (red.op, op) in ops.DISTRIBUTIVE_OPS:
         # Use distributive law.
-        if not red.reduced_vars.isdisjoint(other.inputs):
-            raise NotImplementedError('TODO alpha-convert')
         arg = op(other, red.arg)
         return arg.reduce(red.op, red.reduced_vars)
 
@@ -1138,8 +1134,6 @@ class Lambda(Funsor):
 def eager_getitem_lambda(op, lhs, rhs):
     if op.offset == 0:
         return Subs(lhs.expr, ((lhs.var.name, rhs),))
-    if lhs.var.name in rhs.inputs:
-        raise NotImplementedError('TODO alpha-convert to avoid conflict')
     expr = GetitemOp(op.offset - 1)(lhs.expr, rhs)
     return Lambda(lhs.var, expr)
 
