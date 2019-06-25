@@ -14,7 +14,7 @@ from funsor.affine import Affine
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.interpreter import interpretation
-from funsor.terms import Funsor, FunsorMeta, Number, Subs, Variable, eager, lazy, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Number, Subs, Variable, eager, lazy, substitute, to_funsor
 from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
 
 
@@ -72,7 +72,9 @@ class Distribution(Funsor):
             inputs.update(value.inputs)
         inputs = OrderedDict(inputs)
         output = reals()
-        super(Distribution, self).__init__(inputs, output)
+        fresh = frozenset({params['value'].name})
+        bound = frozenset()
+        super(Distribution, self).__init__(inputs, output, fresh, bound)
         self.params = params
 
     def __repr__(self):
@@ -98,6 +100,11 @@ class Distribution(Funsor):
         value = params.pop('value')
         data = cls.dist_class(**params).log_prob(value)
         return Tensor(data, inputs)
+
+
+@substitute.register(Distribution, tuple)
+def substitute_distribution(expr, subs):
+    return expr.eager_subs(subs)
 
 
 ################################################################################

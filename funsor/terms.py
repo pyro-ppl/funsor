@@ -88,8 +88,7 @@ def reflect(cls, *args):
     result._ast_values = args
 
     # alpha-convert eagerly upon binding any variable
-    if interpreter._GENERIC_SUBS:
-        result = alpha_convert(result)
+    result = alpha_convert(result)
 
     cls._cons_cache[cache_key] = result
     return result
@@ -673,13 +672,6 @@ class Variable(Funsor):
     def __str__(self):
         return self.name
 
-    def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        for k, v in subs:
-            if k == self.name:
-                return v
-        return self
-
 
 @dispatch(str, Domain)
 def to_funsor(name, output):
@@ -719,14 +711,6 @@ class Subs(Funsor):
     def __repr__(self):
         return 'Subs({}, {})'.format(self.arg, self.subs)
 
-    def eager_subs(self, subs):
-        # eagerly fuses substitutions...
-        assert isinstance(subs, tuple)
-        old_subs = tuple((k, Subs(v, subs)) for k, v in self.subs.items())
-        new_subs = tuple((k, v) for k, v in subs if k not in self.subs)
-        subs = old_subs + new_subs
-        return Subs(self.arg, subs) if subs else self.arg
-
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if any(k in sample_inputs for k, v in self.subs.items()):
             raise NotImplementedError('TODO alpha-convert')
@@ -751,9 +735,7 @@ def eager_subs(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
-    if interpreter._GENERIC_SUBS:
-        return substitute(arg, subs)  # TODO make this compatible with FUNSOR_DEBUG=1
-    return interpreter.debug_logged(arg.eager_subs)(subs)
+    return substitute(arg, subs)  # TODO make this compatible with FUNSOR_DEBUG=1
 
 
 _PREFIX = {
@@ -778,10 +760,6 @@ class Unary(Funsor):
         if self.op in _PREFIX:
             return '{}{}'.format(_PREFIX[self.op], self.arg)
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
-
-    def eager_subs(self, subs):
-        arg = Subs(self.arg, subs)
-        return Unary(self.op, arg)
 
 
 @eager.register(Unary, Op, Funsor)
@@ -826,11 +804,6 @@ class Binary(Funsor):
             return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
-    def eager_subs(self, subs):
-        lhs = Subs(self.lhs, subs)
-        rhs = Subs(self.rhs, subs)
-        return Binary(self.op, lhs, rhs)
-
     def eager_reduce(self, op, reduced_vars):
         if op is self.op:
             lhs = self.lhs.reduce(op, reduced_vars)
@@ -867,13 +840,6 @@ class Reduce(Funsor):
     def __repr__(self):
         return 'Reduce({}, {}, {})'.format(
             self.op.__name__, self.arg, self.reduced_vars)
-
-    def eager_subs(self, subs):
-        subs = tuple((k, v) for k, v in subs if k not in self.reduced_vars)
-        if not all(self.reduced_vars.isdisjoint(v.inputs) for k, v in subs):
-            raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        arg = Subs(self.arg, subs)
-        return arg.reduce(self.op, self.reduced_vars)
 
     def eager_reduce(self, op, reduced_vars):
         if op is self.op:
@@ -982,9 +948,6 @@ class Number(Funsor):
     def item(self):
         return self.data
 
-    def eager_subs(self, subs):
-        return self
-
     def eager_unary(self, op):
         dtype = find_domain(op, self.output).dtype
         return Number(op(self.data), dtype)
@@ -1034,9 +997,6 @@ class Align(Funsor):
 
     def align(self, names):
         return self.arg.align(names)
-
-    def eager_subs(self, subs):
-        return Subs(self.arg, subs)
 
     def eager_unary(self, op):
         return Unary(op, self.arg)
@@ -1173,15 +1133,6 @@ class Lambda(Funsor):
         self.var = var
         self.expr = expr
 
-    def eager_subs(self, subs):
-        subs = tuple((k, v) for k, v in subs if k != self.var.name)
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        if any(self.var.name in v.inputs for k, v in subs):
-            raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        expr = self.expr.eager_subs(subs)
-        return Lambda(self.var, expr)
-
 
 @eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
 def eager_getitem_lambda(op, lhs, rhs):
@@ -1227,22 +1178,6 @@ class Independent(Funsor):
         self.fn = fn
         self.reals_var = reals_var
         self.bint_var = bint_var
-
-    def eager_subs(self, subs):
-        fn_subs = []
-        reals_value = None
-        for k, v in subs:
-            if self.bint_var in v.inputs:
-                raise NotImplementedError('TODO alpha-convert')
-            if k == self.reals_var:
-                reals_value = v
-            else:
-                fn_subs.append((k, v))
-        fn = Subs(self.fn, tuple(fn_subs))
-        if reals_value is None:
-            return Independent(fn, self.reals_var, self.bint_var)
-        factors = fn(**{self.reals_var: reals_value[self.bint_var]})
-        return factors.reduce(ops.add, self.bint_var)
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:

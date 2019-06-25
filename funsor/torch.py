@@ -17,7 +17,7 @@ from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Subs, Variable, \
+from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, \
     eager, substitute, to_data, to_funsor
 
 
@@ -540,12 +540,6 @@ class Function(Funsor):
         return '{}({}, {}, {})'.format(type(self).__name__, name,
                                        str(self.output), str(self.args))
 
-    def eager_subs(self, subs):
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        args = tuple(Subs(arg, subs) for arg in self.args)
-        return Function(self.fn, self.output, args)
-
 
 @eager.register(Function, object, Domain, tuple)
 def eager_function(fn, output, args):
@@ -682,12 +676,6 @@ class Einsum(Funsor):
 
     def __str__(self):
         return 'Einsum({}, {})'.format(repr(self.equation), str(self.operands))
-
-    def eager_subs(self, subs):
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        operands = tuple(Subs(x, subs) for x in self.operands)
-        return Einsum(self.equation, operands)
 
 
 @eager.register(Einsum, str, tuple)

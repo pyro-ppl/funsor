@@ -28,9 +28,6 @@ class Integrate(Funsor):
         self.integrand = integrand
         self.reduced_vars = reduced_vars
 
-    def eager_subs(self, subs):
-        raise NotImplementedError('TODO')
-
 
 def _simplify_integrate(fn, log_measure, integrand, reduced_vars):
     """

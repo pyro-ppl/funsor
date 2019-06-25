@@ -14,7 +14,7 @@ from funsor.integrate import Integrate
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
 from funsor.joint import Joint
 from funsor.ops import DISTRIBUTIVE_OPS, UNITS, AssociativeOp
-from funsor.terms import Binary, Funsor, Reduce, Subs, Unary, eager, lazy, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Unary, eager, lazy, to_funsor
 from funsor.torch import Tensor
 
 
@@ -40,12 +40,6 @@ class Finitary(Funsor):
 
     def __repr__(self):
         return 'Finitary({}, {})'.format(self.op.__name__, self.operands)
-
-    def eager_subs(self, subs):
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        operands = tuple(Subs(operand, subs) for operand in self.operands)
-        return Finitary(self.op, operands)
 
 
 @eager.register(Finitary, AssociativeOp, tuple)
