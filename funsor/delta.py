@@ -24,7 +24,6 @@ from funsor.terms import (
     Unary,
     Variable,
     eager,
-    substitute,
     to_funsor
 )
 
@@ -67,27 +66,8 @@ class Delta(Funsor):
         self.log_density = log_density
 
     def eager_subs(self, subs):
-        value = None
-        index_part = []
-        for k, v in subs:
-            if k in self.inputs:
-                if k == self.name:
-                    value = v
-                else:
-                    assert self.name not in v.inputs
-                    index_part.append((k, v))
-        index_part = tuple(index_part)
-
-        if index_part:
-            point = Subs(self.point, index_part)
-            log_density = Subs(self.log_density, index_part)
-            result = Delta(self.name, point, log_density)
-            if value is not None:
-                result = Subs(result, ((self.name, value),))
-            return result
-
-        if value is None:
-            return self
+        assert len(subs) == 1 and subs[0][0] == self.name
+        value = subs[0][1]
 
         if isinstance(value, Variable):
             return Delta(value.name, self.point, self.log_density)
@@ -112,11 +92,6 @@ class Delta(Funsor):
         # TODO Implement ops.add to simulate .to_event().
 
         return None  # defer to default implementation
-
-
-@substitute.register(Delta, tuple)
-def subs_gaussian(expr, subs):
-    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs))
 
 
 @eager.register(Binary, AddOp, Delta, (Funsor, Align))

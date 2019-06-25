@@ -159,7 +159,8 @@ class Tensor(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = {k: materialize(v) for k, v in subs if k in self.inputs}
+        subs = {k: materialize(to_funsor(v, self.inputs[k]))
+                for k, v in subs if k in self.inputs}
         if not subs:
             return self
 
@@ -315,11 +316,6 @@ class Tensor(Funsor):
 @dispatch(torch.Tensor)
 def to_funsor(x):
     return Tensor(x)
-
-
-@substitute.register(Tensor, tuple)
-def subs_tensor(expr, subs):
-    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs))
 
 
 @dispatch(torch.Tensor, Domain)
@@ -497,7 +493,6 @@ def materialize(x):
         if isinstance(domain.dtype, integer_types):
             subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
-    # return Subs(x, subs)
     return substitute(x, subs)
 
 
