@@ -590,11 +590,17 @@ interpreter.children.register(Funsor)(interpreter.children_funsor)
 @substitute.register(Funsor, tuple)
 def substitute_funsor(expr, subs):
     subs = tuple((name, sub) for name, sub in subs if name in expr.inputs)
-    if not subs:
-        return expr
-    assert expr.fresh.isdisjoint(k for k, v in subs), "cannot generically substitute into a fresh variable"
-    return type(expr)(
-        *(substitute(v, subs) for v in expr._ast_values))
+
+    generic_subs = tuple((k, v) for k, v in subs if k not in expr.fresh)
+    if generic_subs:
+        expr = type(expr)(
+            *(substitute(v, generic_subs) for v in expr._ast_values))
+
+    fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
+    if fresh_subs:
+        expr = expr.eager_subs(fresh_subs)
+
+    return expr
 
 
 @dispatch(object)
@@ -672,18 +678,15 @@ class Variable(Funsor):
     def __str__(self):
         return self.name
 
+    def eager_subs(self, subs):
+        assert len(subs) == 1 and subs[0][0] == self.name
+        v = subs[0][1]
+        return v if isinstance(v, Funsor) else to_funsor(v, self.output)
+
 
 @dispatch(str, Domain)
 def to_funsor(name, output):
     return Variable(name, output)
-
-
-@substitute.register(Variable, tuple)
-def substitute_variable(expr, subs):
-    for k, v in subs:
-        if k == expr.name:
-            return v if isinstance(v, Funsor) else to_funsor(v, expr.output)
-    return expr
 
 
 class Subs(Funsor):
@@ -1051,44 +1054,21 @@ class Stack(Funsor):
         self.name = name
 
     def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        pos = None
-        for i, (k, index) in enumerate(subs):
-            if k == self.name:
-                pos = i
-                break
-
-        if pos is None:
-            # Eagerly recurse into components.
-            assert not any(self.name in v.inputs and self.name != k for k, v in subs)
-            components = tuple(Subs(x, subs) for x in self.components)
-            return Stack(components, self.name)
+        assert isinstance(subs, tuple) and len(subs) == 1 and subs[0][0] == self.name
+        index = subs[0][1]
 
         # Try to eagerly select an index.
         assert index.output == bint(len(self.components))
-        subs = subs[:pos] + subs[1 + pos:]
 
         if isinstance(index, Number):
             # Select a single component.
-            result = self.components[index.data]
-            return Subs(result, subs)
-
-        if isinstance(index, Variable):
+            return self.components[index.data]
+        elif isinstance(index, Variable):
             # Rename the stacking dimension.
             components = self.components
-            if subs:
-                components = tuple(Subs(x, subs) for x in components)
             return Stack(components, index.name)
-
-        if not subs:
+        else:
             raise NotImplementedError('TODO support advanced indexing in Stack')
-
-        # Eagerly recurse into components but lazily substitute.
-        components = tuple(Subs(x, subs) for x in self.components)
-        result = Stack(components, self.name)
-        return Subs(result, ((self.name, index),))
 
     def eager_reduce(self, op, reduced_vars):
         components = self.components
@@ -1099,13 +1079,6 @@ class Stack(Funsor):
             return reduce(op, components)
         components = tuple(x.reduce(op, reduced_vars) for x in components)
         return Stack(components, self.name)
-
-
-@substitute.register(Stack, tuple)
-def substitute_stack(expr, subs):
-    if not any(k in expr.fresh for k, v in subs):
-        return substitute_funsor(expr, subs)
-    return expr.eager_subs(subs)
 
 
 class Lambda(Funsor):
