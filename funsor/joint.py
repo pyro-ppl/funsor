@@ -28,6 +28,7 @@ from funsor.terms import (
     Unary,
     Variable,
     eager,
+    substitute,
     to_funsor
 )
 from funsor.torch import Tensor, arange
@@ -242,6 +243,11 @@ def eager_independent(joint, reals_var, bint_var):
             return Joint(deltas, discrete, gaussian)
 
     return None  # defer to default implementation
+
+
+@substitute.register(Joint, tuple)
+def substitute_joint(expr, subs):
+    return expr.eager_subs(subs)
 
 
 ################################################################################

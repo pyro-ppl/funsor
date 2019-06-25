@@ -16,6 +16,7 @@ format: FORCE
 
 test: lint FORCE
 	pytest -v test
+	FUNSOR_GENERIC_SUBS=1 pytest -v test  # TODO remove when removing eager_subs
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py

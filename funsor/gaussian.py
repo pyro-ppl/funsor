@@ -14,7 +14,7 @@ from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, substitute, to_funsor
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -322,7 +322,9 @@ class Gaussian(Funsor):
             assert _issubshape(precision.shape, batch_shape + (dim, dim))
 
         output = reals()
-        super(Gaussian, self).__init__(inputs, output)
+        fresh = frozenset(inputs.keys())
+        bound = frozenset()
+        super(Gaussian, self).__init__(inputs, output, fresh, bound)
         self.loc = loc
         self.precision = precision
         self.batch_shape = batch_shape
@@ -526,6 +528,11 @@ class Gaussian(Funsor):
             return reduce(ops.add, results)
 
         raise NotImplementedError('TODO implement partial sampling of real variables')
+
+
+@substitute.register(Gaussian, tuple)
+def subs_gaussian(expr, subs):
+    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs))
 
 
 @eager.register(Binary, AddOp, Gaussian, Gaussian)

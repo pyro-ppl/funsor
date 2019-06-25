@@ -17,7 +17,8 @@ from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Subs, Variable, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Subs, Variable, \
+    eager, substitute, to_data, to_funsor
 
 
 @contextmanager
@@ -110,7 +111,9 @@ class Tensor(Funsor):
                 assert d.dtype == size
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
-        super(Tensor, self).__init__(inputs, output)
+        fresh = frozenset(inputs.keys())
+        bound = frozenset()
+        super(Tensor, self).__init__(inputs, output, fresh, bound)
         self.data = data
 
     def __repr__(self):
@@ -314,6 +317,11 @@ def to_funsor(x):
     return Tensor(x)
 
 
+@substitute.register(Tensor, tuple)
+def subs_tensor(expr, subs):
+    return expr.eager_subs(tuple((k, to_funsor(v, expr.inputs[k]) if k in expr.inputs else v) for k, v in subs))
+
+
 @dispatch(torch.Tensor, Domain)
 def to_funsor(x, output):
     result = Tensor(x, dtype=output.dtype)
@@ -489,7 +497,8 @@ def materialize(x):
         if isinstance(domain.dtype, integer_types):
             subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
-    return Subs(x, subs)
+    # return Subs(x, subs)
+    return substitute(x, subs)
 
 
 class LazyTuple(tuple):
