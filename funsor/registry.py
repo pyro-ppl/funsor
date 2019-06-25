@@ -12,6 +12,9 @@ class KeyedRegistry(Dispatcher):
             self.register(Variadic[object])(default)
 
     def register(self, *types):
+        # This decorator supports stacking multiple decorators, which is not
+        # supported by multipledipatch (which returns a Dispatch object rather
+        # than the original function).
         def decorator(fn):
             super(KeyedRegistry, self).register(*types)(fn)
             return fn
