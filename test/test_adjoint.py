@@ -10,13 +10,13 @@ import funsor
 from funsor.adjoint import adjoint
 from funsor.domains import bint
 from funsor.einsum import einsum, naive_einsum, naive_plated_einsum
-from funsor.interpreter import interpretation, _GENERIC_SUBS
+from funsor.interpreter import interpretation
 from funsor.terms import Variable, reflect
 from funsor.testing import make_einsum_example, make_plated_hmm_einsum
 
 
-# TODO remove this when removing eager_subs methods
-xfail_if_new_subs = pytest.mark.xfail(_GENERIC_SUBS, reason="fails w/ new subs")
+# FIXME rewrite adjoint for compatibility with substitution changes
+xfail_with_new_subs = pytest.mark.xfail(True, reason="fails w/ new subs")
 
 
 EINSUM_EXAMPLES = [
@@ -37,7 +37,7 @@ EINSUM_EXAMPLES = [
 ]
 
 
-@xfail_if_new_subs
+@xfail_with_new_subs
 @pytest.mark.parametrize('einsum_impl', [naive_einsum, einsum])
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
@@ -65,7 +65,7 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
-@xfail_if_new_subs
+@xfail_with_new_subs
 @pytest.mark.parametrize('einsum_impl', [naive_einsum, einsum])
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
@@ -100,7 +100,7 @@ PLATED_EINSUM_EXAMPLES = [
 ]
 
 
-@xfail_if_new_subs
+@xfail_with_new_subs
 @pytest.mark.parametrize('einsum_impl', [naive_plated_einsum, einsum])
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
@@ -136,7 +136,7 @@ OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
 ]
 
 
-@xfail_if_new_subs
+@xfail_with_new_subs
 @pytest.mark.parametrize('equation,plates', OPTIMIZED_PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
 def test_optimized_plated_einsum_adjoint(equation, plates, backend):

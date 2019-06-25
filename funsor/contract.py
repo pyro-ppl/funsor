@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.terms import Funsor, Subs, eager
+from funsor.terms import Funsor, eager
 
 
 def _simplify_contract(fn, sum_op, prod_op, lhs, rhs, reduced_vars):
@@ -60,17 +60,6 @@ class Contract(Funsor):
         self.lhs = lhs
         self.rhs = rhs
         self.reduced_vars = reduced_vars
-
-    def eager_subs(self, subs):
-        # basically copied from Reduce.eager_subs
-        subs = tuple((k, v) for k, v in subs if k not in self.reduced_vars)
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        if not all(self.reduced_vars.isdisjoint(v.inputs) for k, v in subs):
-            raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        lhs = Subs(self.lhs, subs)
-        rhs = Subs(self.rhs, subs)
-        return Contract(self.sum_op, self.prod_op, lhs, rhs, self.reduced_vars)
 
 
 @eager.register(Contract, ops.AssociativeOp, ops.AssociativeOp, Funsor, Funsor, frozenset)

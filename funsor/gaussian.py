@@ -366,10 +366,6 @@ class Gaussian(Funsor):
         # First perform any variable substitutions.
         if var_subs:
             rename = {k: v.name for k, v in var_subs}
-            targets = frozenset(rename.values())
-            for k, v in int_subs + real_subs + lazy_subs:
-                if not targets.isdisjoint(v.inputs):
-                    raise NotImplementedError('TODO alpha-convert')
             inputs = OrderedDict((rename.get(k, k), d) for k, d in self.inputs.items())
             if len(inputs) != len(self.inputs):
                 raise ValueError("Variable substitution name conflict")

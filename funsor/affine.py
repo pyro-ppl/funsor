@@ -5,7 +5,7 @@ from collections import OrderedDict
 import funsor.ops as ops
 from funsor.domains import find_domain
 from funsor.ops import NegOp, Op
-from funsor.terms import Binary, Funsor, Number, Subs, Unary, Variable, eager
+from funsor.terms import Binary, Funsor, Number, Unary, Variable, eager
 from funsor.torch import Tensor
 
 
@@ -34,19 +34,6 @@ class Affine(Funsor):
         super(Affine, self).__init__(inputs, output)
         self.coeffs = OrderedDict(coeffs)
         self.const = const
-
-    def eager_subs(self, subs):
-        const = Subs(self.const, subs)
-        subs_dict = OrderedDict(subs)
-        coeffs = tuple((var, Subs(coeff, subs))
-                       for var, coeff in self.coeffs.items()
-                       if var.name not in subs_dict)
-        result = Affine(const, coeffs)
-        for var, coeff in self.coeffs.items():
-            if var.name in subs_dict:
-                new_coeff = Subs(coeff, subs) * subs_dict[var.name]
-                result += new_coeff
-        return result
 
 
 ###############################################
