@@ -111,6 +111,11 @@ class Delta(Funsor):
         return None  # defer to default implementation
 
 
+@eager.register(Binary, AddOp, Delta, Delta)
+def _add_placeholder(op, lhs, rhs):
+    raise NotImplementedError("should be handled in joint.py")
+
+
 @eager.register(Binary, AddOp, Delta, (Funsor, Align))
 def eager_add(op, lhs, rhs):
     if lhs.name in rhs.inputs:
