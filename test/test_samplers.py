@@ -258,6 +258,7 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
                          Integrate(p, x * y, p_vars), atol=1e-2)
 
 
+@pytest.mark.xfail(reason="missing patterns")
 @pytest.mark.parametrize('moment', [0, 1, 2, 3])
 def test_lognormal_distribution(moment):
     num_samples = 100000
