@@ -588,6 +588,7 @@ interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
 @substitute.register(Funsor, tuple)
+@interpreter.debug_logged
 def substitute_funsor(expr, subs):
     subs = tuple((name, sub) for name, sub in subs if name in expr.inputs)
 
@@ -738,7 +739,7 @@ def eager_subs(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
-    return substitute(arg, subs)  # TODO make this compatible with FUNSOR_DEBUG=1
+    return substitute(arg, subs)
 
 
 _PREFIX = {
