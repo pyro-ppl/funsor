@@ -1127,7 +1127,7 @@ class Independent(Funsor):
         inputs = fn.inputs.copy()
         shape = (inputs.pop(bint_var).dtype,) + inputs[reals_var].shape
         inputs[reals_var] = reals(*shape)
-        fresh = frozenset()
+        fresh = frozenset({reals_var})
         bound = frozenset({bint_var})
         super(Independent, self).__init__(inputs, fn.output, fresh, bound)
         self.fn = fn
@@ -1140,6 +1140,10 @@ class Independent(Funsor):
         fn = self.fn.unscaled_sample(sampled_vars, sample_inputs)
         return Independent(fn, self.reals_var, self.bint_var)
 
+    def eager_subs(self, subs):
+        subs = tuple((k, v[self.bint_var] if k == self.reals_var else v) for k, v in subs)
+        return substitute(self.fn, subs)
+
 
 @eager.register(Independent, Funsor, str, str)
 def eager_independent_trivial(fn, reals_var, bint_var):
@@ -1147,12 +1151,6 @@ def eager_independent_trivial(fn, reals_var, bint_var):
     if reals_var not in fn.inputs:
         return fn.reduce(ops.add, bint_var)
     return None
-
-
-# @substitute.register(Independent, tuple)
-# def substitute_independent(expr, subs):
-#     subs = tuple((k, v[expr.bint_var] if k == expr.reals_var else v) for k, v in subs)
-#     return substitute_funsor(expr, subs)
 
 
 def _of_shape(fn, shape):
