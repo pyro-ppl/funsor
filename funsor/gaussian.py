@@ -14,7 +14,7 @@ from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, reflect, to_funsor
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, reflect
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 

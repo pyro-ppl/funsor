@@ -200,6 +200,9 @@ class Joint(Funsor):
 @eager.register(Joint, tuple, Funsor, Funsor)
 def eager_joint(deltas, discrete, gaussian):
 
+    if not isinstance(gaussian, (Number, Tensor, Gaussian)):
+        return Joint(deltas, discrete) + gaussian
+
     if any(not isinstance(d, Delta) for d in deltas):
         new_deltas = []
         for d in deltas:
