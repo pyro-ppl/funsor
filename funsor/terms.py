@@ -21,18 +21,16 @@ from funsor.six import getargspec, singledispatch
 
 
 def substitute(expr, subs):
-    if isinstance(subs, dict):
+    if isinstance(subs, (dict, OrderedDict)):
         subs = tuple(subs.items())
     assert isinstance(subs, tuple)
 
-    base_interpretation = interpreter._INTERPRETATION
-
+    @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
     def subs_interpreter(cls, *args):
-        with interpreter.interpretation(base_interpretation):
-            expr = cls(*args)
-            fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
-            if fresh_subs:
-                expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
+        expr = cls(*args)
+        fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
+        if fresh_subs:
+            expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
         return expr
 
     with interpreter.interpretation(subs_interpreter):
