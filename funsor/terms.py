@@ -20,34 +20,23 @@ from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec, singledispatch
 
 
-@dispatch(object, object)
 def substitute(expr, subs):
-    return expr  # default: do nothing
+    if isinstance(subs, dict):
+        subs = tuple(subs.items())
+    assert isinstance(subs, tuple)
 
+    base_interpretation = interpreter._INTERPRETATION
 
-@substitute.register(object, (OrderedDict, dict))
-def substitute_with_tuple(expr, subs):
-    return substitute(expr, tuple(subs.items()))
+    def subs_interpreter(cls, *args):
+        with interpreter.interpretation(base_interpretation):
+            expr = cls(*args)
+            fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
+            if fresh_subs:
+                expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
+        return expr
 
-
-@substitute.register(tuple, tuple)
-def substitute_tuple(expr, subs):
-    return tuple(substitute(v, subs) for v in expr)
-
-
-@substitute.register(Domain, tuple)
-def substitute_domain(expr, subs):
-    return expr
-
-
-@substitute.register(frozenset, tuple)
-def substitute_frozenset(expr, subs):
-    return frozenset(substitute(v, subs) for v in expr)
-
-
-@substitute.register(OrderedDict, tuple)
-def substitute_ordereddict(expr, subs):
-    return OrderedDict([(k, substitute(v, subs)) for k, v in expr.items()])
+    with interpreter.interpretation(subs_interpreter):
+        return interpreter.reinterpret(expr)
 
 
 def alpha_convert(expr):
@@ -587,7 +576,7 @@ interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funso
 interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
-@substitute.register(Funsor, tuple)
+# @substitute.register(Funsor, tuple)
 @interpreter.debug_logged
 def substitute_funsor(expr, subs):
     subs = tuple((name, sub) for name, sub in subs if name in expr.inputs)
@@ -1162,10 +1151,10 @@ def eager_independent_trivial(fn, reals_var, bint_var):
     return None
 
 
-@substitute.register(Independent, tuple)
-def substitute_independent(expr, subs):
-    subs = tuple((k, v[expr.bint_var] if k == expr.reals_var else v) for k, v in subs)
-    return substitute_funsor(expr, subs)
+# @substitute.register(Independent, tuple)
+# def substitute_independent(expr, subs):
+#     subs = tuple((k, v[expr.bint_var] if k == expr.reals_var else v) for k, v in subs)
+#     return substitute_funsor(expr, subs)
 
 
 def _of_shape(fn, shape):

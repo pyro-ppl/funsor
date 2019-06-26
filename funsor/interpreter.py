@@ -7,6 +7,7 @@ import re
 import types
 from collections import OrderedDict
 
+import numpy
 import torch
 from contextlib2 import contextmanager
 
@@ -95,8 +96,10 @@ def reinterpret_funsor(x):
 @recursion_reinterpret.register(int)
 @recursion_reinterpret.register(float)
 @recursion_reinterpret.register(type)
+@recursion_reinterpret.register(functools.partial)
 @recursion_reinterpret.register(types.FunctionType)
 @recursion_reinterpret.register(types.BuiltinFunctionType)
+@recursion_reinterpret.register(numpy.ndarray)
 @recursion_reinterpret.register(torch.Tensor)
 @recursion_reinterpret.register(Domain)
 @recursion_reinterpret.register(Op)
@@ -150,8 +153,10 @@ def _children_tuple(x):
 @children.register(int)
 @children.register(float)
 @children.register(type)
+@children.register(functools.partial)
 @children.register(types.FunctionType)
 @children.register(types.BuiltinFunctionType)
+@children.register(numpy.ndarray)
 @children.register(torch.Tensor)
 @children.register(Domain)
 @children.register(Op)
@@ -167,9 +172,11 @@ def is_atom(x):
         str,
         float,
         type,
+        functools.partial,
         types.FunctionType,
         types.BuiltinFunctionType,
         torch.Tensor,
+        numpy.ndarray,
         Domain,
         Op
     ))
