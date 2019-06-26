@@ -28,7 +28,6 @@ from funsor.terms import (
     Unary,
     Variable,
     eager,
-    substitute,
     to_funsor
 )
 from funsor.torch import Tensor, arange
@@ -83,21 +82,6 @@ class Joint(Funsor):
         self.deltas = deltas
         self.discrete = discrete
         self.gaussian = gaussian
-
-    def eager_subs(self, subs):
-        discrete = Subs(self.discrete, subs)
-        gaussian = Subs(self.gaussian, subs)
-        deltas = []
-        for x in self.deltas:
-            x = Subs(x, subs)
-            if isinstance(x, Delta):
-                deltas.append(x)
-            elif isinstance(x, (Number, Tensor)):
-                discrete += x
-            else:
-                raise ValueError('Cannot substitute {}'.format(x))
-        deltas = tuple(deltas)
-        return Joint(deltas, discrete) + gaussian
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
@@ -215,6 +199,25 @@ class Joint(Funsor):
 
 @eager.register(Joint, tuple, Funsor, Funsor)
 def eager_joint(deltas, discrete, gaussian):
+
+    if not isinstance(gaussian, (Number, Tensor, Gaussian)):
+        return Joint(deltas, discrete) + gaussian
+
+    if any(not isinstance(d, Delta) for d in deltas):
+        new_deltas = []
+        for d in deltas:
+            if isinstance(d, Delta):
+                new_deltas.append(d)
+            elif isinstance(d, (Number, Tensor)):
+                discrete += d
+            else:
+                raise ValueError("Invalid component for Joint: {}".format(d))
+        return Joint(tuple(new_deltas), discrete) + gaussian
+
+    if isinstance(gaussian, (Number, Tensor)) and gaussian is not Number(0):
+        discrete += gaussian
+        return Joint(deltas, discrete, Number(0))
+
     # Demote a Joint to a simpler elementary funsor.
     if not deltas:
         if gaussian is Number(0):
@@ -243,11 +246,6 @@ def eager_independent(joint, reals_var, bint_var):
             return Joint(deltas, discrete, gaussian)
 
     return None  # defer to default implementation
-
-
-@substitute.register(Joint, tuple)
-def substitute_joint(expr, subs):
-    return expr.eager_subs(subs)
 
 
 ################################################################################
