@@ -574,23 +574,6 @@ interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funso
 interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
-# @substitute.register(Funsor, tuple)
-@interpreter.debug_logged
-def substitute_funsor(expr, subs):
-    subs = tuple((name, sub) for name, sub in subs if name in expr.inputs)
-
-    generic_subs = tuple((k, v) for k, v in subs if k not in expr.fresh)
-    if generic_subs:
-        expr = type(expr)(
-            *(substitute(v, generic_subs) for v in expr._ast_values))
-
-    fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
-    if fresh_subs:
-        expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
-
-    return expr
-
-
 @dispatch(object)
 def to_funsor(x):
     """
