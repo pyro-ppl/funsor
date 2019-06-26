@@ -14,7 +14,7 @@ from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, reflect
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, reflect, to_funsor
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -347,7 +347,8 @@ class Gaussian(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = tuple((k, materialize(v)) for k, v in subs if k in self.inputs)
+        subs = tuple((k, materialize(to_funsor(v, self.inputs[k])))
+                     for k, v in subs if k in self.inputs)
         if not subs:
             return self
 
