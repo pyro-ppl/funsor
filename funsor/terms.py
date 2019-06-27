@@ -20,34 +20,21 @@ from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.six import getargspec, singledispatch
 
 
-@dispatch(object, object)
 def substitute(expr, subs):
-    return expr  # default: do nothing
+    if isinstance(subs, (dict, OrderedDict)):
+        subs = tuple(subs.items())
+    assert isinstance(subs, tuple)
 
+    @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
+    def subs_interpreter(cls, *args):
+        expr = cls(*args)
+        fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
+        if fresh_subs:
+            expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
+        return expr
 
-@substitute.register(object, (OrderedDict, dict))
-def substitute_with_tuple(expr, subs):
-    return substitute(expr, tuple(subs.items()))
-
-
-@substitute.register(tuple, tuple)
-def substitute_tuple(expr, subs):
-    return tuple(substitute(v, subs) for v in expr)
-
-
-@substitute.register(Domain, tuple)
-def substitute_domain(expr, subs):
-    return expr
-
-
-@substitute.register(frozenset, tuple)
-def substitute_frozenset(expr, subs):
-    return frozenset(substitute(v, subs) for v in expr)
-
-
-@substitute.register(OrderedDict, tuple)
-def substitute_ordereddict(expr, subs):
-    return OrderedDict([(k, substitute(v, subs)) for k, v in expr.items()])
+    with interpreter.interpretation(subs_interpreter):
+        return interpreter.reinterpret(expr)
 
 
 def alpha_convert(expr):
@@ -59,7 +46,7 @@ def alpha_convert(expr):
     new_values = []
     for v in expr._ast_values:
         v = substitute(v, alpha_subs)
-        if isinstance(v, str):
+        if isinstance(v, str) and v not in expr.fresh:
             v = alpha_subs.get(v, v)
         elif isinstance(v, frozenset):
             swapped = v & frozenset(alpha_subs.keys())
@@ -585,23 +572,6 @@ class Funsor(object):
 
 interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
 interpreter.children.register(Funsor)(interpreter.children_funsor)
-
-
-@substitute.register(Funsor, tuple)
-@interpreter.debug_logged
-def substitute_funsor(expr, subs):
-    subs = tuple((name, sub) for name, sub in subs if name in expr.inputs)
-
-    generic_subs = tuple((k, v) for k, v in subs if k not in expr.fresh)
-    if generic_subs:
-        expr = type(expr)(
-            *(substitute(v, generic_subs) for v in expr._ast_values))
-
-    fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
-    if fresh_subs:
-        expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
-
-    return expr
 
 
 @dispatch(object)
@@ -1132,40 +1102,50 @@ class Independent(Funsor):
     def __init__(self, fn, reals_var, bint_var):
         assert isinstance(fn, Funsor)
         assert isinstance(reals_var, str)
-        assert reals_var in fn.inputs
-        assert fn.inputs[reals_var].dtype == 'real'
+        for k in fn.inputs:
+            if k == reals_var or k.startswith(reals_var + "__BOUND"):
+                reals_var_bound = k
+                break
+        assert reals_var_bound in fn.inputs
+        assert fn.inputs[reals_var_bound].dtype == 'real'
         assert isinstance(bint_var, str)
         assert bint_var in fn.inputs
         assert isinstance(fn.inputs[bint_var].dtype, int)
         inputs = fn.inputs.copy()
-        shape = (inputs.pop(bint_var).dtype,) + inputs[reals_var].shape
+        shape = (inputs.pop(bint_var).dtype,) + inputs.pop(reals_var_bound).shape
         inputs[reals_var] = reals(*shape)
-        fresh = frozenset()
-        bound = frozenset({bint_var})
+        fresh = frozenset({reals_var})
+        bound = frozenset({bint_var, reals_var_bound})
         super(Independent, self).__init__(inputs, fn.output, fresh, bound)
         self.fn = fn
         self.reals_var = reals_var
         self.bint_var = bint_var
+        self.reals_var_bound = reals_var_bound
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
             raise NotImplementedError('TODO alpha-convert')
+        sampled_vars = frozenset(self.reals_var_bound if v == self.reals_var else v
+                                 for v in sampled_vars)
         fn = self.fn.unscaled_sample(sampled_vars, sample_inputs)
         return Independent(fn, self.reals_var, self.bint_var)
+
+    def eager_subs(self, subs):
+        subs = tuple((self.reals_var_bound, v[self.bint_var])
+                     if k == self.reals_var
+                     else (k, v)
+                     for k, v in subs)
+        new_fn = substitute(self.fn, subs)
+        new_fn = new_fn.reduce(ops.add, self.bint_var)
+        return new_fn
 
 
 @eager.register(Independent, Funsor, str, str)
 def eager_independent_trivial(fn, reals_var, bint_var):
     # compare to Independent.eager_subs
-    if reals_var not in fn.inputs:
+    if not any(k.startswith(reals_var + "__BOUND") or k == reals_var for k in fn.inputs):
         return fn.reduce(ops.add, bint_var)
     return None
-
-
-@substitute.register(Independent, tuple)
-def substitute_independent(expr, subs):
-    subs = tuple((k, v[expr.bint_var] if k == expr.reals_var else v) for k, v in subs)
-    return substitute_funsor(expr, subs)
 
 
 def _of_shape(fn, shape):

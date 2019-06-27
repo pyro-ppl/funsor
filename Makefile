@@ -19,14 +19,15 @@ test: lint FORCE
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
+	FUNSOR_USE_TCO=1 pytest -v test/test_numpy.py
 	python examples/discrete_hmm.py -n 2
 	python examples/discrete_hmm.py -n 2 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 50 --lazy
-	#FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 500 --lazy
+	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 500 --lazy
 	python examples/kalman_filter.py -n 2
 	python examples/kalman_filter.py -n 2 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/kalman_filter.py -n 1 -t 50 --lazy
-	#FUNSOR_USE_TCO=1 python examples/kalman_filter.py -n 1 -t 500 --lazy
+	FUNSOR_USE_TCO=1 python examples/kalman_filter.py -n 1 -t 500 --lazy
 	python examples/minipyro.py
 	python examples/minipyro.py --jit
 	python examples/slds.py -n 2 -t 50

@@ -234,7 +234,7 @@ def eager_joint(deltas, discrete, gaussian):
 @eager.register(Independent, Joint, str, str)
 def eager_independent(joint, reals_var, bint_var):
     for i, delta in enumerate(joint.deltas):
-        if delta.name == reals_var:
+        if delta.name == reals_var or delta.name.startswith(reals_var + "__BOUND"):
             delta = Independent(delta, reals_var, bint_var)
             deltas = joint.deltas[:i] + (delta,) + joint.deltas[1+i:]
             discrete = joint.discrete
