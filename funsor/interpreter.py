@@ -101,6 +101,7 @@ def reinterpret_funsor(x):
 @recursion_reinterpret.register(types.BuiltinFunctionType)
 @recursion_reinterpret.register(numpy.ndarray)
 @recursion_reinterpret.register(torch.Tensor)
+@recursion_reinterpret.register(torch.nn.Module)
 @recursion_reinterpret.register(Domain)
 @recursion_reinterpret.register(Op)
 def recursion_reinterpret_ground(x):
@@ -158,6 +159,7 @@ def _children_tuple(x):
 @children.register(types.BuiltinFunctionType)
 @children.register(numpy.ndarray)
 @children.register(torch.Tensor)
+@children.register(torch.nn.Module)
 @children.register(Domain)
 @children.register(Op)
 def _children_ground(x):
@@ -176,6 +178,7 @@ def is_atom(x):
         types.FunctionType,
         types.BuiltinFunctionType,
         torch.Tensor,
+        torch.nn.Module,
         numpy.ndarray,
         Domain,
         Op
