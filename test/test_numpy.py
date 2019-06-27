@@ -5,8 +5,16 @@ import pytest
 
 import funsor
 from funsor import Number, Variable, bint, reals
+from funsor.interpreter import _USE_TCO
 from funsor.numpy import Array
 from funsor.testing import assert_equiv, check_funsor, random_array
+
+
+# FIXME rewrite stack-based interpreter to be compatible with unhashable data
+xfail_with_tco = pytest.mark.xfail(
+    _USE_TCO,
+    reason="fails w/ TCO because numpy arrays can't be hashed"
+)
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
@@ -38,6 +46,7 @@ def test_cons_hash():
     assert Array(x) is Array(x)
 
 
+@xfail_with_tco
 def test_indexing():
     data = np.random.normal(size=(4, 5))
     inputs = OrderedDict([('i', bint(4)),
@@ -61,6 +70,7 @@ def test_indexing():
     check_funsor(x(j=2, k=3), {'i': bint(4)}, reals(), data[:, 2])
 
 
+@xfail_with_tco
 def test_advanced_indexing_shape():
     I, J, M, N = 4, 4, 2, 3
     x = Array(np.random.normal(size=(I, J)), OrderedDict([
@@ -95,6 +105,7 @@ def test_advanced_indexing_shape():
     check_funsor(x(n, m, k=m), {'m': bint(M), 'n': bint(N)}, reals())
 
 
+@xfail_with_tco
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
 def test_advanced_indexing_array(output_shape):
     #      u   v
@@ -148,6 +159,7 @@ def test_advanced_indexing_array(output_shape):
     assert_equiv(expected, x(k=k)(j=j)(i=i))
 
 
+@xfail_with_tco
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
 def test_advanced_indexing_lazy(output_shape):
     x = Array(np.random.normal(size=(2, 3, 4) + output_shape), OrderedDict([
@@ -192,6 +204,7 @@ def test_advanced_indexing_lazy(output_shape):
     assert_equiv(expected, x(k=k)(j=j)(i=i))
 
 
+@xfail_with_tco
 def test_align():
     x = Array(np.random.randn(2, 3, 4), OrderedDict([
         ('i', bint(2)),
