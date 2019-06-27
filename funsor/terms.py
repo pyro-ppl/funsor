@@ -46,7 +46,7 @@ def alpha_convert(expr):
     new_values = []
     for v in expr._ast_values:
         v = substitute(v, alpha_subs)
-        if isinstance(v, str):
+        if isinstance(v, str) and v not in expr.fresh:
             v = alpha_subs.get(v, v)
         elif isinstance(v, frozenset):
             swapped = v & frozenset(alpha_subs.keys())
@@ -1102,36 +1102,48 @@ class Independent(Funsor):
     def __init__(self, fn, reals_var, bint_var):
         assert isinstance(fn, Funsor)
         assert isinstance(reals_var, str)
-        assert reals_var in fn.inputs
-        assert fn.inputs[reals_var].dtype == 'real'
+        for k in fn.inputs:
+            if k == reals_var or k.startswith(reals_var + "__BOUND"):
+                reals_var_bound = k
+                break
+        assert reals_var_bound in fn.inputs
+        assert fn.inputs[reals_var_bound].dtype == 'real'
         assert isinstance(bint_var, str)
         assert bint_var in fn.inputs
         assert isinstance(fn.inputs[bint_var].dtype, int)
         inputs = fn.inputs.copy()
-        shape = (inputs.pop(bint_var).dtype,) + inputs[reals_var].shape
+        shape = (inputs.pop(bint_var).dtype,) + inputs.pop(reals_var_bound).shape
         inputs[reals_var] = reals(*shape)
         fresh = frozenset({reals_var})
-        bound = frozenset({bint_var})
+        bound = frozenset({bint_var, reals_var_bound})
         super(Independent, self).__init__(inputs, fn.output, fresh, bound)
         self.fn = fn
         self.reals_var = reals_var
         self.bint_var = bint_var
+        self.reals_var_bound = reals_var_bound
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
             raise NotImplementedError('TODO alpha-convert')
+        sampled_vars = frozenset(self.reals_var_bound if v == self.reals_var else v
+                                 for v in sampled_vars)
         fn = self.fn.unscaled_sample(sampled_vars, sample_inputs)
         return Independent(fn, self.reals_var, self.bint_var)
 
     def eager_subs(self, subs):
-        subs = tuple((k, v[self.bint_var] if k == self.reals_var else v) for k, v in subs)
-        return substitute(self.fn, subs)
+        subs = tuple((self.reals_var_bound, v[self.bint_var])
+                     if k == self.reals_var
+                     else (k, v)
+                     for k, v in subs)
+        new_fn = substitute(self.fn, subs)
+        new_fn = new_fn.reduce(ops.add, self.bint_var)
+        return new_fn
 
 
 @eager.register(Independent, Funsor, str, str)
 def eager_independent_trivial(fn, reals_var, bint_var):
     # compare to Independent.eager_subs
-    if reals_var not in fn.inputs:
+    if not any(k.startswith(reals_var + "__BOUND") or k == reals_var for k in fn.inputs):
         return fn.reduce(ops.add, bint_var)
     return None
 
