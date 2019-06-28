@@ -7,7 +7,7 @@ from collections import OrderedDict, defaultdict
 import torch
 
 from funsor.domains import Domain
-from funsor.registry import KeyedRegistry
+from funsor.interpreter import dispatched_interpretation
 from funsor.six import getargspec
 from funsor.terms import Funsor, Variable, eager, reflect
 from funsor.torch import Tensor
@@ -30,19 +30,14 @@ def truncate(fn, output):
         TRUNCATION_DEPTHS[fn] -= 1
 
 
-_truncated = KeyedRegistry(default=lambda *args: None)
-
-
+@dispatched_interpretation
 def truncated(cls, *args):
-    result = _truncated(cls, *args)
+    result = truncated.dispatch(cls, *args)
     if result is None:
         result = eager(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
-
-
-truncated.register = _truncated.register
 
 
 class Fix(Funsor):
@@ -60,16 +55,6 @@ class Fix(Funsor):
     def __repr__(self):
         return 'Fix({})'.format(', '.join(
             [type(self).__name__, repr(self.output)] + list(map(repr, self.args))))
-
-    def __str__(self):
-        return 'Fix({})'.format(', '.join(
-            [type(self).__name__, str(self.output)] + list(map(str, self.args))))
-
-    def eager_subs(self, subs):
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        args = tuple(arg.eager_subs(subs) for arg in self.args)
-        return Fix(self.fn, self.output, args)
 
 
 @truncated.register(Fix, object, Domain, tuple)
