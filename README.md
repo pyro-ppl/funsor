@@ -1,4 +1,8 @@
-# Funsor ![unstable](https://img.shields.io/badge/status-unstable-red.svg)
+![unstable](https://img.shields.io/badge/status-unstable-red.svg)
+[![Build Status](https://travis-ci.com/pyro-ppl/funsor.svg?branch=master)](https://travis-ci.com/pyro-ppl/funsor)
+[![Documentation Status](https://readthedocs.org/projects/funsor/badge)](http://funsor.readthedocs.io)
+
+# Funsor
 
 Functional analysis + tensors + symbolic algebra.
 
@@ -59,8 +63,8 @@ def pyro_sample(name, dist, obs=None):
     return value
 
 # ...later during inference...
-log_prob = trace_log_prob.logsumexp()  # collapses delayed variables
-loss = -funsor.eval(log_prob)          # performs variable elimination
+log_prob = trace_log_prob.reduce(logaddexp)  # collapses delayed variables
+loss = -funsor.eval(log_prob)                 # performs variable elimination
 ```
 See [examples/minipyro.py](examples/minipyro.py) for a more complete example.
 

@@ -7,10 +7,11 @@ import pytest
 import torch
 
 import funsor
-from funsor.domains import Domain, bint, reals
-from funsor.terms import Variable
+import funsor.ops as ops
+from funsor.domains import Domain, bint, find_domain, reals
+from funsor.terms import Lambda, Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
-from funsor.torch import Tensor, align_tensors
+from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torch_stack, torch_tensordot
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
@@ -19,6 +20,22 @@ def test_to_funsor(shape, dtype):
     t = torch.randn(shape).type(dtype)
     f = funsor.to_funsor(t)
     assert isinstance(f, Tensor)
+    assert funsor.to_funsor(t, reals(*shape)) is f
+    with pytest.raises(ValueError):
+        funsor.to_funsor(t, reals(5, *shape))
+
+
+def test_to_data():
+    data = torch.zeros(3, 3)
+    x = Tensor(data)
+    assert funsor.to_data(x) is data
+
+
+def test_to_data_error():
+    data = torch.zeros(3, 3)
+    x = Tensor(data, OrderedDict(i=bint(3)))
+    with pytest.raises(ValueError):
+        funsor.to_data(x)
 
 
 def test_cons_hash():
@@ -50,14 +67,14 @@ def test_indexing():
 
 
 def test_advanced_indexing_shape():
-    I, J, M, N = 4, 5, 2, 3
-    x = Tensor(torch.randn(4, 5), OrderedDict([
+    I, J, M, N = 4, 4, 2, 3
+    x = Tensor(torch.randn(I, J), OrderedDict([
         ('i', bint(I)),
         ('j', bint(J)),
     ]))
-    m = Tensor(torch.tensor([2, 3]), OrderedDict([('m', bint(M))]))
-    n = Tensor(torch.tensor([0, 1, 1]), OrderedDict([('n', bint(N))]))
-    assert x.data.shape == (4, 5)
+    m = Tensor(torch.tensor([2, 3]), OrderedDict([('m', bint(M))]), I)
+    n = Tensor(torch.tensor([0, 1, 1]), OrderedDict([('n', bint(N))]), J)
+    assert x.data.shape == (I, J)
 
     check_funsor(x(i=m), {'j': bint(J), 'm': bint(M)}, reals())
     check_funsor(x(i=m, j=n), {'m': bint(M), 'n': bint(N)}, reals())
@@ -91,21 +108,22 @@ def test_advanced_indexing_tensor(output_shape):
     #     \  |  /
     #      \ | /
     #        x
-    x = Tensor(torch.randn((2, 3, 4) + output_shape), OrderedDict([
+    output = reals(*output_shape)
+    x = random_tensor(OrderedDict([
         ('i', bint(2)),
         ('j', bint(3)),
         ('k', bint(4)),
-    ]))
-    i = Tensor(random_tensor(2, (5,)), OrderedDict([
+    ]), output)
+    i = random_tensor(OrderedDict([
         ('u', bint(5)),
-    ]))
-    j = Tensor(random_tensor(3, (6, 5)), OrderedDict([
+    ]), bint(2))
+    j = random_tensor(OrderedDict([
         ('v', bint(6)),
         ('u', bint(5)),
-    ]))
-    k = Tensor(random_tensor(4, (6,)), OrderedDict([
+    ]), bint(3))
+    k = random_tensor(OrderedDict([
         ('v', bint(6)),
-    ]))
+    ]), bint(4))
 
     expected_data = torch.empty((5, 6) + output_shape)
     for u in range(5):
@@ -144,8 +162,8 @@ def test_advanced_indexing_lazy(output_shape):
     ]))
     u = Variable('u', bint(2))
     v = Variable('v', bint(3))
-    i = 1 - u
-    j = 2 - v
+    i = Number(1, 2) - u
+    j = Number(2, 3) - v
     k = u + v
 
     expected_data = torch.empty((2, 3) + output_shape)
@@ -245,6 +263,26 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
     check_funsor(actual, inputs, Domain((), dtype), expected_data)
 
 
+@pytest.mark.parametrize('output_shape2', [(), (2,), (3, 2)], ids=str)
+@pytest.mark.parametrize('output_shape1', [(), (2,), (3, 2)], ids=str)
+@pytest.mark.parametrize('inputs2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')], ids=str)
+@pytest.mark.parametrize('inputs1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')], ids=str)
+def test_binary_broadcast(inputs1, inputs2, output_shape1, output_shape2):
+    sizes = {'a': 4, 'b': 5, 'c': 6}
+    inputs1 = OrderedDict((k, bint(sizes[k])) for k in inputs1)
+    inputs2 = OrderedDict((k, bint(sizes[k])) for k in inputs2)
+    x1 = random_tensor(inputs1, reals(*output_shape1))
+    x2 = random_tensor(inputs1, reals(*output_shape2))
+
+    actual = x1 + x2
+    assert actual.output == find_domain(ops.add, x1.output, x2.output)
+
+    block = {'a': 1, 'b': 2, 'c': 3}
+    actual_block = actual(**block)
+    expected_block = Tensor(x1(**block).data + x2(**block).data)
+    assert_close(actual_block, expected_block)
+
+
 @pytest.mark.parametrize('scalar', [0.5])
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
 @pytest.mark.parametrize('symbol', BINARY_OPS)
@@ -275,26 +313,124 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     check_funsor(actual, inputs, reals(), expected_data)
 
 
-REDUCE_OPS = ['sum', 'prod', 'logsumexp', 'all', 'any', 'min', 'max']
+def test_getitem_number_0_inputs():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    assert_close(x[2], Tensor(data[2]))
+    assert_close(x[:, 1], Tensor(data[:, 1]))
+    assert_close(x[2, 1], Tensor(data[2, 1]))
+    assert_close(x[2, :, 1], Tensor(data[2, :, 1]))
+    assert_close(x[3, ...], Tensor(data[3, ...]))
+    assert_close(x[3, 2, ...], Tensor(data[3, 2, ...]))
+    assert_close(x[..., 1], Tensor(data[..., 1]))
+    assert_close(x[..., 2, 1], Tensor(data[..., 2, 1]))
+    assert_close(x[3, ..., 1], Tensor(data[3, ..., 1]))
+
+
+def test_getitem_number_1_inputs():
+    data = torch.randn((3, 5, 4, 3, 2))
+    inputs = OrderedDict([('i', bint(3))])
+    x = Tensor(data, inputs)
+    assert_close(x[2], Tensor(data[:, 2], inputs))
+    assert_close(x[:, 1], Tensor(data[:, :, 1], inputs))
+    assert_close(x[2, 1], Tensor(data[:, 2, 1], inputs))
+    assert_close(x[2, :, 1], Tensor(data[:, 2, :, 1], inputs))
+    assert_close(x[3, ...], Tensor(data[:, 3, ...], inputs))
+    assert_close(x[3, 2, ...], Tensor(data[:, 3, 2, ...], inputs))
+    assert_close(x[..., 1], Tensor(data[..., 1], inputs))
+    assert_close(x[..., 2, 1], Tensor(data[..., 2, 1], inputs))
+    assert_close(x[3, ..., 1], Tensor(data[:, 3, ..., 1], inputs))
+
+
+def test_getitem_number_2_inputs():
+    data = torch.randn((3, 4, 5, 4, 3, 2))
+    inputs = OrderedDict([('i', bint(3)), ('j', bint(4))])
+    x = Tensor(data, inputs)
+    assert_close(x[2], Tensor(data[:, :, 2], inputs))
+    assert_close(x[:, 1], Tensor(data[:, :, :, 1], inputs))
+    assert_close(x[2, 1], Tensor(data[:, :, 2, 1], inputs))
+    assert_close(x[2, :, 1], Tensor(data[:, :, 2, :, 1], inputs))
+    assert_close(x[3, ...], Tensor(data[:, :, 3, ...], inputs))
+    assert_close(x[3, 2, ...], Tensor(data[:, :, 3, 2, ...], inputs))
+    assert_close(x[..., 1], Tensor(data[..., 1], inputs))
+    assert_close(x[..., 2, 1], Tensor(data[..., 2, 1], inputs))
+    assert_close(x[3, ..., 1], Tensor(data[:, :, 3, ..., 1], inputs))
+
+
+def test_getitem_variable():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    i = Variable('i', bint(5))
+    j = Variable('j', bint(4))
+    assert x[i] is Tensor(data, OrderedDict([('i', bint(5))]))
+    assert x[i, j] is Tensor(data, OrderedDict([('i', bint(5)), ('j', bint(4))]))
+
+
+def test_getitem_string():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    assert x['i'] is Tensor(data, OrderedDict([('i', bint(5))]))
+    assert x['i', 'j'] is Tensor(data, OrderedDict([('i', bint(5)), ('j', bint(4))]))
+
+
+def test_getitem_tensor():
+    data = torch.randn((5, 4, 3, 2))
+    x = Tensor(data)
+    i = Variable('i', bint(5))
+    j = Variable('j', bint(4))
+    k = Variable('k', bint(3))
+    m = Variable('m', bint(2))
+
+    y = random_tensor(OrderedDict(), bint(5))
+    assert_close(x[i](i=y), x[y])
+
+    y = random_tensor(OrderedDict(), bint(4))
+    assert_close(x[:, j](j=y), x[:, y])
+
+    y = random_tensor(OrderedDict(), bint(3))
+    assert_close(x[:, :, k](k=y), x[:, :, y])
+
+    y = random_tensor(OrderedDict(), bint(2))
+    assert_close(x[:, :, :, m](m=y), x[:, :, :, y])
+
+    y = random_tensor(OrderedDict([('i', i.output)]),
+                      bint(j.dtype))
+    assert_close(x[i, j](j=y), x[i, y])
+
+    y = random_tensor(OrderedDict([('i', i.output), ('j', j.output)]),
+                      bint(k.dtype))
+    assert_close(x[i, j, k](k=y), x[i, j, y])
+
+
+def test_lambda_getitem():
+    data = torch.randn(2)
+    x = Tensor(data)
+    y = Tensor(data, OrderedDict(i=bint(2)))
+    i = Variable('i', bint(2))
+    assert x[i] is y
+    assert Lambda(i, y) is x
+
+
+REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
 
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
-@pytest.mark.parametrize('op_name', REDUCE_OPS)
-def test_reduce_all(dims, op_name):
+@pytest.mark.parametrize('op', REDUCE_OPS, ids=str)
+def test_reduce_all(dims, op):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
     data = torch.rand(shape) + 0.5
-    if op_name in ['all', 'any']:
+    if op in [ops.and_, ops.or_]:
         data = data.byte()
-    if op_name == 'logsumexp':
+    if op is ops.logaddexp:
         # work around missing torch.Tensor.logsumexp()
         expected_data = data.reshape(-1).logsumexp(0)
     else:
-        expected_data = getattr(data, op_name)()
+        expected_data = REDUCE_OP_TO_TORCH[op](data)
 
     x = Tensor(data, inputs)
-    actual = getattr(x, op_name)()
+    actual = x.reduce(op)
     check_funsor(actual, {}, reals(), expected_data)
 
 
@@ -304,19 +440,19 @@ def test_reduce_all(dims, op_name):
     for num_reduced in range(len(dims) + 2)
     for reduced_vars in itertools.combinations(dims, num_reduced)
 ])
-@pytest.mark.parametrize('op_name', REDUCE_OPS)
-def test_reduce_subset(dims, reduced_vars, op_name):
+@pytest.mark.parametrize('op', REDUCE_OPS)
+def test_reduce_subset(dims, reduced_vars, op):
     reduced_vars = frozenset(reduced_vars)
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
     data = torch.rand(shape) + 0.5
     dtype = 'real'
-    if op_name in ['all', 'any']:
+    if op in [ops.and_, ops.or_]:
         data = data.byte()
         dtype = 2
     x = Tensor(data, inputs, dtype)
-    actual = getattr(x, op_name)(reduced_vars)
+    actual = x.reduce(op, reduced_vars)
     expected_inputs = OrderedDict(
         (d, bint(sizes[d])) for d in dims if d not in reduced_vars)
 
@@ -325,25 +461,63 @@ def test_reduce_subset(dims, reduced_vars, op_name):
         assert actual is x
     else:
         if reduced_vars == frozenset(dims):
-            if op_name == 'logsumexp':
+            if op is ops.logaddexp:
                 # work around missing torch.Tensor.logsumexp()
                 data = data.reshape(-1).logsumexp(0)
             else:
-                data = getattr(data, op_name)()
+                data = REDUCE_OP_TO_TORCH[op](data)
         else:
             for pos in reversed(sorted(map(dims.index, reduced_vars))):
-                if op_name in ('min', 'max'):
-                    data = getattr(data, op_name)(pos)[0]
-                else:
-                    data = getattr(data, op_name)(pos)
+                data = REDUCE_OP_TO_TORCH[op](data, pos)
+                if op in (ops.min, ops.max):
+                    data = data[0]
         check_funsor(actual, expected_inputs, Domain((), dtype))
         assert_close(actual, Tensor(data, expected_inputs, dtype),
                      atol=1e-5, rtol=1e-5)
 
 
+@pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
+@pytest.mark.parametrize('event_shape', [(), (4,), (2, 3)])
+@pytest.mark.parametrize('op', REDUCE_OPS, ids=str)
+def test_reduce_event(op, event_shape, dims):
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    batch_shape = tuple(sizes[d] for d in dims)
+    shape = batch_shape + event_shape
+    inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
+    torch_op = REDUCE_OP_TO_TORCH[op]
+    data = torch.rand(shape) + 0.5
+    dtype = 'real'
+    if op in [ops.and_, ops.or_]:
+        data = data.byte()
+    expected_data = torch_op(data.reshape(batch_shape + (-1,)), -1)
+    if op in [ops.min, ops.max]:
+        expected_data = expected_data[0]
+
+    x = Tensor(data, inputs, dtype=dtype)
+    actual = getattr(x, torch_op.__name__)()
+    check_funsor(actual, inputs, Domain((), dtype), expected_data)
+
+
+@pytest.mark.parametrize('shape', [(), (4,), (2, 3)])
+def test_all_equal(shape):
+    inputs = OrderedDict()
+    data1 = torch.rand(shape) + 0.5
+    data2 = torch.rand(shape) + 0.5
+    dtype = 'real'
+
+    x1 = Tensor(data1, inputs, dtype=dtype)
+    x2 = Tensor(data2, inputs, dtype=dtype)
+    assert (x1 == x1).all()
+    assert (x2 == x2).all()
+    assert not (x1 == x2).all()
+    assert not (x1 != x1).any()
+    assert not (x2 != x2).any()
+    assert (x1 != x2).any()
+
+
 def test_function_matmul():
 
-    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    @funsor.torch.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
         return torch.matmul(x, y)
 
@@ -358,20 +532,68 @@ def test_function_matmul():
 
 def test_function_lazy_matmul():
 
-    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    @funsor.torch.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
         return torch.matmul(x, y)
 
-    x_lazy = funsor.Variable('x', reals(3, 4))
+    x_lazy = Variable('x', reals(3, 4))
     y = Tensor(torch.randn(4, 5))
     actual_lazy = matmul(x_lazy, y)
     check_funsor(actual_lazy, {'x': reals(3, 4)}, reals(3, 5))
-    assert isinstance(actual_lazy, funsor.Function)
+    assert isinstance(actual_lazy, funsor.torch.Function)
 
     x = Tensor(torch.randn(3, 4))
     actual = actual_lazy(x=x)
     expected_data = torch.matmul(x.data, y.data)
     check_funsor(actual, {}, reals(3, 5), expected_data)
+
+
+def test_function_nested_eager():
+
+    @funsor.torch.function(reals(8), (reals(), bint(8)))
+    def max_and_argmax(x):
+        return tuple(torch.max(x, dim=-1))
+
+    inputs = OrderedDict([('i', bint(2)), ('j', bint(3))])
+    x = Tensor(torch.randn(2, 3, 8), inputs)
+    m, a = x.data.max(dim=-1)
+    expected_max = Tensor(m, inputs, 'real')
+    expected_argmax = Tensor(a, inputs, 8)
+
+    actual_max, actual_argmax = max_and_argmax(x)
+    assert_close(actual_max, expected_max)
+    assert_close(actual_argmax, expected_argmax)
+
+
+def test_function_nested_lazy():
+
+    @funsor.torch.function(reals(8), (reals(), bint(8)))
+    def max_and_argmax(x):
+        return tuple(torch.max(x, dim=-1))
+
+    x_lazy = Variable('x', reals(8))
+    lazy_max, lazy_argmax = max_and_argmax(x_lazy)
+    assert isinstance(lazy_max, funsor.torch.Function)
+    assert isinstance(lazy_argmax, funsor.torch.Function)
+    check_funsor(lazy_max, {'x': reals(8)}, reals())
+    check_funsor(lazy_argmax, {'x': reals(8)}, bint(8))
+
+    inputs = OrderedDict([('i', bint(2)), ('j', bint(3))])
+    y = Tensor(torch.randn(2, 3, 8), inputs)
+    actual_max = lazy_max(x=y)
+    actual_argmax = lazy_argmax(x=y)
+    expected_max, expected_argmax = max_and_argmax(y)
+    assert_close(actual_max, expected_max)
+    assert_close(actual_argmax, expected_argmax)
+
+
+def test_function_of_torch_tensor():
+    x = torch.randn(4, 3)
+    y = torch.randn(3, 2)
+    f = funsor.torch.function(reals(4, 3), reals(3, 2), reals(4, 2))(torch.matmul)
+    actual = f(x, y)
+    expected = f(Tensor(x), Tensor(y))
+    assert_close(actual, expected)
 
 
 def test_align():
@@ -411,5 +633,39 @@ def test_einsum(equation):
     tensors = [torch.randn(tuple(sizes[d] for d in dims)) for dims in inputs]
     funsors = [Tensor(x) for x in tensors]
     expected = Tensor(torch.einsum(equation, *tensors))
-    actual = funsor.einsum(equation, *funsors)
+    actual = Einsum(equation, tuple(funsors))
+    assert_close(actual, expected, atol=1e-5, rtol=None)
+
+
+@pytest.mark.parametrize('y_shape', [(), (4,), (4, 5)], ids=str)
+@pytest.mark.parametrize('xy_shape', [(), (6,), (6, 7)], ids=str)
+@pytest.mark.parametrize('x_shape', [(), (2,), (2, 3)], ids=str)
+def test_tensordot(x_shape, xy_shape, y_shape):
+    x = torch.randn(x_shape + xy_shape)
+    y = torch.randn(xy_shape + y_shape)
+    dim = len(xy_shape)
+    actual = torch_tensordot(Tensor(x), Tensor(y), dim)
+    expected = Tensor(torch.tensordot(x, y, dim))
+    assert_close(actual, expected, atol=1e-5, rtol=None)
+
+
+@pytest.mark.parametrize('n', [1, 2, 5])
+@pytest.mark.parametrize('shape,dim', [
+    ((), 0),
+    ((), -1),
+    ((1,), 0),
+    ((1,), 1),
+    ((1,), -1),
+    ((1,), -2),
+    ((2, 3), 0),
+    ((2, 3), 1),
+    ((2, 3), 2),
+    ((2, 3), -1),
+    ((2, 3), -2),
+    ((2, 3), -3),
+], ids=str)
+def test_stack(n, shape, dim):
+    tensors = [torch.randn(shape) for _ in range(n)]
+    actual = torch_stack(tuple(Tensor(t) for t in tensors), dim=dim)
+    expected = Tensor(torch.stack(tensors, dim=dim))
     assert_close(actual, expected)

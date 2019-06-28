@@ -3,12 +3,12 @@ from __future__ import absolute_import, division, print_function
 import argparse
 from collections import OrderedDict
 
+import pyro.distributions as dist
 import torch
 import torch.nn as nn
 
 import funsor
 import funsor.minipyro as pyro
-import pyro.distributions as dist
 
 
 class Decoder(nn.Module):
@@ -23,9 +23,9 @@ class SalientEncoder(nn.Module):
     pass  # TODO
 
 
-decoder = funsor.function((), (), ())(Decoder())
-nuisance_encoder = funsor.function((), ('loc_scale',))(NuisanceEncoder())
-salient_encoder = funsor.function((), (), ())(SalientEncoder())
+decoder = funsor.torch.function((), (), ())(Decoder())
+nuisance_encoder = funsor.torch.function((), ('loc_scale',))(NuisanceEncoder())
+salient_encoder = funsor.torch.function((), (), ())(SalientEncoder())
 
 
 def model(image=None):

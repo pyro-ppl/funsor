@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import itertools
+from collections import OrderedDict
 
 import numpy as np
 import pytest
@@ -9,8 +10,10 @@ from six.moves import reduce
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
-from funsor.terms import Binary, Number, Stack, Variable, to_funsor
-from funsor.testing import check_funsor
+from funsor.interpreter import interpretation
+from funsor.terms import Binary, Independent, Lambda, Number, Stack, Variable, sequential, to_data, to_funsor
+from funsor.testing import assert_close, check_funsor, random_tensor
+from funsor.torch import REDUCE_OP_TO_TORCH
 
 np.seterr(all='ignore')
 
@@ -20,9 +23,23 @@ def test_to_funsor():
 
 
 @pytest.mark.parametrize('x', ["foo", list(), tuple(), set(), dict()])
-def test_to_funsor_undefined(x):
+def test_to_funsor_error(x):
     with pytest.raises(ValueError):
         to_funsor(x)
+
+
+def test_to_data():
+    actual = to_data(Number(0.))
+    expected = 0.
+    assert type(actual) == type(expected)
+    assert actual == expected
+
+
+def test_to_data_error():
+    with pytest.raises(ValueError):
+        to_data(Variable('x', reals()))
+    with pytest.raises(ValueError):
+        to_data(Variable('y', bint(12)))
 
 
 def test_cons_hash():
@@ -61,7 +78,6 @@ def test_variable(domain):
     x4 = Variable('x', bint(4))
     assert x4 is not x
     assert x4('x') is x4
-    assert x(x=x4) is x4
     assert x(y=x4) is x
 
     xp1 = x + 1.
@@ -142,8 +158,8 @@ def test_binary(symbol, data1, data2):
     check_funsor(actual, {}, Domain((), dtype), expected_data)
 
 
-@pytest.mark.parametrize('op', ops.REDUCE_OP_TO_TORCH,
-                         ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
+@pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
+                         ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
 def test_reduce_all(op):
     x = Variable('x', bint(2))
     y = Variable('y', bint(3))
@@ -154,7 +170,8 @@ def test_reduce_all(op):
     if op is ops.logaddexp:
         pytest.skip()
 
-    actual = f.reduce(op)
+    with interpretation(sequential):
+        actual = f.reduce(op)
 
     values = [f(x=i, y=j, z=k)
               for i in x.output
@@ -169,8 +186,8 @@ def test_reduce_all(op):
     for num_reduced in range(3 + 1)
     for reduced_vars in itertools.combinations('xyz', num_reduced)
 ])
-@pytest.mark.parametrize('op', ops.REDUCE_OP_TO_TORCH,
-                         ids=[op.__name__ for op in ops.REDUCE_OP_TO_TORCH])
+@pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
+                         ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
 def test_reduce_subset(op, reduced_vars):
     reduced_vars = frozenset(reduced_vars)
     x = Variable('x', bint(2))
@@ -182,7 +199,8 @@ def test_reduce_subset(op, reduced_vars):
     if op is ops.logaddexp:
         pytest.skip()
 
-    actual = f.reduce(op, reduced_vars)
+    with interpretation(sequential):
+        actual = f.reduce(op, reduced_vars)
 
     expected = f
     for v in [x, y, z]:
@@ -193,6 +211,46 @@ def test_reduce_subset(op, reduced_vars):
     # TODO check data
     if not reduced_vars:
         assert actual is f
+
+
+@pytest.mark.parametrize('base_shape', [(), (4,), (3, 2)], ids=str)
+def test_lambda(base_shape):
+    z = Variable('z', reals(*base_shape))
+    i = Variable('i', bint(5))
+    j = Variable('j', bint(7))
+
+    zi = Lambda(i, z)
+    assert zi.output.shape == (5,) + base_shape
+    assert zi[i] is z
+
+    zj = Lambda(j, z)
+    assert zj.output.shape == (7,) + base_shape
+    assert zj[j] is z
+
+    zij = Lambda(j, zi)
+    assert zij.output.shape == (7, 5) + base_shape
+    assert zij[j] is zi
+    assert zij[j, i] is z
+    # assert zij[:, i] is zj  # XXX this was disabled by alpha-renaming
+    check_funsor(zij[:, i], zj.inputs, zj.output)
+
+
+def test_independent():
+    f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    assert f.inputs['x'] == reals(4, 5)
+    assert f.inputs['i'] == bint(3)
+
+    actual = Independent(f, 'x', 'i')
+    assert actual.inputs['x'] == reals(3, 4, 5)
+    assert 'i' not in actual.inputs
+
+    x = Variable('x', reals(3, 4, 5))
+    expected = f(x=x['i']).reduce(ops.add, 'i')
+    assert actual.inputs == expected.inputs
+    assert actual.output == expected.output
+
+    data = random_tensor(OrderedDict(), x.output)
+    assert_close(actual(data), expected(data), atol=1e-5, rtol=1e-5)
 
 
 def test_stack_simple():
@@ -206,7 +264,7 @@ def test_stack_simple():
     assert xyz(i=Number(0, 3)) is x
     assert xyz(i=Number(1, 3)) is y
     assert xyz(i=Number(2, 3)) is z
-    assert xyz.sum('i') == 5.
+    assert xyz.reduce(ops.add, 'i') == 5.
 
 
 def test_stack_subs():
@@ -224,7 +282,7 @@ def test_stack_subs():
     assert f(i=Number(2, 3)) is y * z
     assert f(i=j) is Stack((Number(0), x, y * z), 'j')
     assert f(i='j') is Stack((Number(0), x, y * z), 'j')
-    assert f.sum('i') is Number(0) + x + (y * z)
+    assert f.reduce(ops.add, 'i') is Number(0) + x + (y * z)
 
     assert f(x=0) is Stack((Number(0), Number(0), y * z), 'i')
     assert f(y=x) is Stack((Number(0), x, x * z), 'i')
