@@ -82,6 +82,14 @@ def reflect(cls, *args):
 
 
 @dispatched_interpretation
+def normalize(cls, *args):
+    result = normalize.dispatch(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
+    return result
+
+
+@dispatched_interpretation
 def lazy(cls, *args):
     """
     Substitute eagerly but perform ops lazily.
@@ -99,7 +107,7 @@ def eager(cls, *args):
     """
     result = eager.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = normalize(cls, *args)  # reflect(cls, *args)
     return result
 
 
