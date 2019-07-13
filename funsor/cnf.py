@@ -180,6 +180,8 @@ def binary_subtract(op, lhs, rhs):
 
 @normalize.register(Unary, ops.NegOp, Contraction)
 def unary_contract(op, arg):
+    if arg.bin_op is ops.add and arg.red_op is anyop:
+        return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(-t for t in arg.terms))
     raise NotImplementedError("TODO")
 
 
