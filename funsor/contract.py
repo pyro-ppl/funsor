@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.terms import Funsor, eager
+from funsor.terms import Funsor, normalize
 
 
 def _simplify_contract(fn, sum_op, prod_op, lhs, rhs, reduced_vars):
@@ -62,7 +62,7 @@ class Contract(Funsor):
         self.reduced_vars = reduced_vars
 
 
-@eager.register(Contract, ops.AssociativeOp, ops.AssociativeOp, Funsor, Funsor, frozenset)
+@normalize.register(Contract, ops.AssociativeOp, ops.AssociativeOp, Funsor, Funsor, frozenset)
 @contractor
 def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
     return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)

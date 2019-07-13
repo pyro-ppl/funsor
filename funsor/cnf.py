@@ -3,12 +3,14 @@ from __future__ import absolute_import, division, print_function
 from collections import OrderedDict
 from six.moves import reduce
 
+from multipledispatch.variadic import Variadic
+
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
-from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS, NegOp, SubOp, TransformOp
-from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize, reflect
+from funsor.ops import AddOp, AssociativeOp, DISTRIBUTIVE_OPS, NegOp, SubOp, TransformOp
+from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, eager, normalize
 from funsor.torch import Tensor
 
 
@@ -25,14 +27,14 @@ class Contraction(Funsor):
     """
     Declarative representation of a finitary sum-product operation
     """
-    def __init__(self, red_op, bin_op, terms, reduced_vars):
+    def __init__(self, red_op, bin_op, reduced_vars, terms):
         assert isinstance(red_op, AssociativeOp)
         assert isinstance(bin_op, AssociativeOp)
         assert all(isinstance(v, Funsor) for v in terms)
         assert isinstance(reduced_vars, frozenset)
         assert all(isinstance(v, str) for v in reduced_vars)
-
         assert isinstance(terms, tuple) and len(terms) > 0
+
         assert not (isinstance(red_op, AnyOp) and isinstance(bin_op, AnyOp))
         if isinstance(red_op, AnyOp):
             assert not reduced_vars
@@ -40,6 +42,7 @@ class Contraction(Funsor):
             assert len(terms) == 1
         else:
             assert reduced_vars and len(terms) > 1
+            assert (red_op, bin_op) in DISTRIBUTIVE_OPS
 
         inputs = OrderedDict()
         for v in terms:
@@ -58,8 +61,8 @@ class Contraction(Funsor):
         self.reduced_vars = reduced_vars
 
 
-@eager.register(Contraction, AssociativeOp, AssociativeOp, tuple, frozenset)
-def eager_contraction(red_op, bin_op, terms, reduced_vars):
+@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
+def eager_contraction(red_op, bin_op, reduced_vars, terms):
     return reduce(bin_op, terms).reduce(red_op, reduced_vars)
 
 
@@ -67,46 +70,76 @@ def eager_contraction(red_op, bin_op, terms, reduced_vars):
 # Normalizing Contractions
 ##########################################
 
-@normalize.register(Contraction, AssociativeOp, AssociativeOp, tuple, frozenset)
-def normalize_contraction(red_op, bin_op, terms, reduced_vars):
+@normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+def normalize_generic(red_op, bin_op, reduced_vars, *terms):
+    return Contraction(red_op, bin_op, reduced_vars, tuple(terms))
 
-    if not reduced_vars and not isinstance(red_op, AnyOp):
-        return Contraction(anyop, bin_op, terms, reduced_vars)
 
-    if len(terms) == 1 and not isinstance(bin_op, AnyOp):
-        return Contraction(red_op, anyop, terms, reduced_vars)
+@normalize.register(Contraction, AnyOp, AnyOp, frozenset, Funsor)
+def normalize_trivial(red_op, bin_op, reduced_vars, term):
+    assert not reduced_vars
+    return term
+
+
+@normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
+def normalize_contraction(red_op, bin_op, reduced_vars, terms):
+
+    if not reduced_vars and red_op is not anyop:
+        return Contraction(anyop, bin_op, reduced_vars, *terms)
+
+    if len(terms) == 1 and bin_op is not anyop:
+        return Contraction(red_op, anyop, reduced_vars, *terms)
+
+    if red_op is anyop and bin_op is anyop:
+        return terms[0]
 
     if red_op is bin_op:
         new_terms = tuple(v.reduce(red_op, reduced_vars) for v in terms)
-        return Contraction(red_op, bin_op, new_terms, frozenset())
+        return Contraction(red_op, bin_op, frozenset(), *new_terms)
 
     for i, v in enumerate(terms):
+
+        # # push isolated reductions all the way to the leaves
+        # if len(terms) > 1:
+        #     uniques = reduced_vars.intersection(v.inputs) - \
+        #         frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms if vv is not v))
+        #     if uniques:
+        #         new_terms = terms[:i] + v.reduce(red_op, uniques) + terms[i+1:]
+        #         return Contraction(red_op, bin_op, reduced_vars - uniques, *new_terms)
+
         if not isinstance(v, Contraction):
             continue
 
-        if (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
-            new_terms = terms[:i] + (Contraction(anyop, v.bin_op, v.terms, frozenset()),) + terms[i+1:]
-            return Contraction(v.red_op, bin_op, new_terms, v.reduced_vars).reduce(red_op, reduced_vars)
-
-        if isinstance(v.red_op, AnyOp) and (v.bin_op, bin_op) in DISTRIBUTIVE_OPS:
+        if v.red_op is anyop and (v.bin_op, bin_op) in DISTRIBUTIVE_OPS:
             # a * e * (b + c + d) -> (a * e * b) + (a * e * c) + (a * e * d)
+            print("DISTRIBUTE BINARY")
             new_terms = tuple(
-                Contraction(v.red_op, bin_op, terms[:i] + (vt,) + terms[i+1:], v.reduced_vars)
+                Contraction(v.red_op, bin_op, v.reduced_vars, *(terms[:i] + (vt,) + terms[i+1:]))
                 for vt in v.terms)
-            return Contraction(red_op, v.bin_op, new_terms, reduced_vars)
+            return Contraction(red_op, v.bin_op, reduced_vars, *new_terms)
 
-        if isinstance(v.red_op, AnyOp) and bin_op is v.bin_op:
-            # a + (b + c) -> (a + b + c)
+        if (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
+            print("DISTRIBUTE REDUCE")
+            # v_uniques = v.reduced_vars - frozenset().union(*(t.inputs for t in terms if t is not v))
+            new_terms = terms[:i] + (Contraction(v.red_op, v.bin_op, frozenset(), *v.terms),) + terms[i+1:]
+            return Contraction(v.red_op, bin_op, v.reduced_vars, *new_terms).reduce(red_op, reduced_vars)
+
+        # XXX what I had before, conflicts with pushing down unary reductions
+        if v.red_op in (red_op, anyop) and bin_op in (v.bin_op, anyop):
+            print("ASSOCIATE")
+            red_op = v.red_op if red_op is anyop else red_op
+            bin_op = v.bin_op if bin_op is anyop else bin_op
             new_terms = terms[:i] + v.terms + terms[i+1:]
-            return Contraction(red_op, bin_op, new_terms, reduced_vars)
+            return Contraction(red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms)
 
-        if red_op is v.red_op and (isinstance(bin_op, AnyOp) or bin_op is v.bin_op):
-            new_terms = terms[:i] + v.terms + terms[i+1:]
-            return Contraction(red_op, bin_op, new_terms, reduced_vars | v.reduced_vars)
+        # if v.red_op is anyop and bin_op in (v.bin_op, anyop):
+        #     print("ASSOCIATE BINARY")
+        #     bin_op = v.bin_op if bin_op is anyop else bin_op
+        #     new_terms = terms[:i] + v.terms + terms[i+1:]
+        #     return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
-        # raise NotImplementedError("this case is not handled for some reason")
-
-    # nothing to do, reflect
+    # nothing more to do, reflect
     return None
 
 
@@ -116,12 +149,12 @@ def normalize_contraction(red_op, bin_op, terms, reduced_vars):
 
 @normalize.register(Binary, AssociativeOp, Funsor, Funsor)
 def binary_to_contract(op, lhs, rhs):
-    return Contraction(anyop, op, (lhs, rhs), frozenset())
+    return Contraction(anyop, op, frozenset(), lhs, rhs)
 
 
 @normalize.register(Reduce, AssociativeOp, Funsor, frozenset)
 def reduce_funsor(op, arg, reduced_vars):
-    return Contraction(op, anyop, (arg,), reduced_vars)
+    return Contraction(op, anyop, reduced_vars, arg)
 
 
 #######################################################################
@@ -132,7 +165,14 @@ def reduce_funsor(op, arg, reduced_vars):
 def distribute_subs_contraction(arg, subs):
     new_terms = tuple(Subs(v, subs) if any(k in v.inputs for k, s in subs) else v
                       for v in arg.terms)
-    return Contraction(arg.red_op, arg.bin_op, new_terms, arg.reduced_vars)
+    return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *new_terms)
+
+
+@normalize.register(Subs, Subs, tuple)
+def normalize_fuse_subs(arg, subs):
+    # a(b)(c) -> a(b(c), c)
+    new_subs = subs + tuple((k, Subs(v, subs)) for k, v in arg.subs)
+    return Subs(arg.arg, new_subs)
 
 
 @normalize.register(Binary, SubOp, Funsor, Funsor)
@@ -156,69 +196,33 @@ def unary_transform(op, arg):
 
 
 #########################
-# Joint density
+# joint integration
 #########################
 
-class CJoint(Contraction):
-    """
-    Contraction that guarantees all deltas are substituted
-    """
-    def __init__(self, red_op, terms, reduced_vars):
-        assert all(isinstance(v, (Delta, Gaussian, Tensor, Number)) for v in terms)
-        super(CJoint, self).__init__(red_op, ops.add, terms, reduced_vars)
+@eager.register(Contraction, AssociativeOp, AddOp, frozenset, Variadic[(Delta, Gaussian, Number, Tensor)])
+def eager_contract_joint(red_op, bin_op, reduced_vars, *terms):
 
+    if red_op not in (ops.logaddexp, anyop):
+        return None
 
-@normalize.register(CJoint, AssociativeOp, tuple, frozenset)  # TODO
-def normalize_cjoint(red_op, terms, reduced_vars):
-    v = normalize_contraction(red_op, ops.add, terms, reduced_vars)
-    try:
-        return reflect(CJoint, v.red_op, v.terms, v.reduced_vars) if isinstance(v, Contraction) else v
-    except AssertionError:
-        return v
+    # substitute in all deltas
+    deltas = tuple(d for d in terms if isinstance(d, Delta))
+    new_terms = terms
+    for d in deltas:
+        new_terms = tuple(
+            Subs(v, (d.name, d.point))
+            if d.name in v.inputs and (d is not v or d.name in reduced_vars)
+            else v
+            for v in new_terms)
 
+    # TODO handle dropped deltas and their extra inputs
+    deltas = tuple(d for d in new_terms if isinstance(d, Delta))
+    discrete = reduce(ops.add, (t for t in new_terms if isinstance(t, (Number, Tensor))))
+    gaussian = reduce(ops.add, (g for g in new_terms if isinstance(g, Gaussian)))
 
-#########################
-# Affine contraction
-#########################
+    new_terms = deltas + (discrete, gaussian)
 
-class CAffine(Contraction):
-    """
-    Contraction that guarantees it is a multilinear function of its variable terms
-    """
-    def __init__(self, red_op, bin_op, terms, reduced_vars):
-        assert all(isinstance(v, (Number, Tensor, Variable)) for v in terms)
-        assert any(isinstance(v, Variable) for v in terms)
-        var_terms = tuple(v for v in terms if isinstance(v, Variable))
-        assert var_terms == tuple(frozenset(var_terms))  # each var can appear once
-        super(CAffine, self).__init__(red_op, bin_op, terms, reduced_vars)
+    if len(terms) > len(new_terms) or any(v is not t for t, v in zip(new_terms, terms)):
+        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
-
-@normalize.register(CAffine, AssociativeOp, AssociativeOp, tuple, frozenset)
-def normalize_caffine(red_op, bin_op, terms, reduced_vars):
-    v = normalize_contraction(red_op, bin_op, terms, reduced_vars)
-    try:
-        return reflect(CAffine, v.red_op, v.bin_op, v.terms, v.reduced_vars) if isinstance(v, Contraction) else v
-    except AssertionError:
-        return v
-
-
-#######################
-# Finitary replacement
-#######################
-
-class CFinitary(Contraction):
-    """
-    Contraction that does not reduce (was used in optimizer as IR)
-    """
-    def __init__(self, bin_op, terms):
-        assert isinstance(bin_op, AssociativeOp)  # XXX CommutativeOp?
-        super(CFinitary, self).__init__(anyop, bin_op, terms, frozenset())
-
-
-@normalize.register(CFinitary, AssociativeOp, tuple)
-def normalize_finitary(bin_op, terms):
-    v = normalize_contraction(anyop, bin_op, terms, frozenset())
-    try:
-        return reflect(CFinitary, v.bin_op, v.terms) if isinstance(v, Contraction) else v
-    except AssertionError:
-        return v
+    return None

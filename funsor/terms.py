@@ -107,7 +107,7 @@ def eager(cls, *args):
     """
     result = eager.dispatch(cls, *args)
     if result is None:
-        result = normalize(cls, *args)  # reflect(cls, *args)
+        result = reflect(cls, *args)
     return result
 
 
