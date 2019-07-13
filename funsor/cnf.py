@@ -157,6 +157,13 @@ def reduce_funsor(op, arg, reduced_vars):
 # Distributing Unary transformations (Subs, log, exp, neg, reciprocal)
 #######################################################################
 
+@normalize.register(Subs, Funsor, tuple)
+def do_fresh_subs(arg, subs):
+    if all(name in arg.fresh for name, sub in subs):
+        return arg.eager_subs(subs)
+    return None
+
+
 @normalize.register(Subs, Contraction, tuple)
 def distribute_subs_contraction(arg, subs):
     new_terms = tuple(Subs(v, tuple((name, sub) for name, sub in subs if name in v.inputs))

@@ -212,7 +212,6 @@ def test_joint_smoke(expr, expected_type):
         result = eval(expr)
 
     if expected_type is not Contraction:
-        assert isinstance(result, Contraction)
         result = reinterpret(result)
 
     assert isinstance(result, expected_type)
@@ -284,7 +283,6 @@ def test_gaussian_joint_smoke(expr, expected_type):
         result = eval(expr)
 
     if expected_type is not Contraction:
-        assert isinstance(result, Contraction)
         result = reinterpret(result)
 
     assert isinstance(result, expected_type)

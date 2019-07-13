@@ -69,7 +69,8 @@ class Delta(Funsor):
         assert len(subs) == 1 and subs[0][0] == self.name
         value = subs[0][1]
 
-        if isinstance(value, Variable):
+        if isinstance(value, (str, Variable)):
+            value = to_funsor(value, self.output)
             return Delta(value.name, self.point, self.log_density)
 
         if not any(d.dtype == 'real' for side in (value, self.point)
