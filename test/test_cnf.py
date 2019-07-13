@@ -217,8 +217,7 @@ def test_joint_smoke(expr, expected_type):
     assert isinstance(result, expected_type)
 
 
-@pytest.mark.parametrize('expr,expected_type', [
-    ('-g1', Gaussian),
+GAUSSIAN_SMOKE_TESTS = [
     ('g1 + 1', Contraction),
     ('g1 - 1', Contraction),
     ('1 + g1', Contraction),
@@ -241,7 +240,10 @@ def test_joint_smoke(expr, expected_type):
     ('(g1 + g2).reduce(ops.logaddexp, "x")', Contraction),
     ('(g1 + g2).reduce(ops.logaddexp, "y")', Contraction),
     ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
-])
+]
+
+
+@pytest.mark.parametrize('expr,expected_type', GAUSSIAN_SMOKE_TESTS)
 def test_gaussian_joint_smoke(expr, expected_type):
     g1 = Gaussian(
         loc=torch.tensor([[0.0, 0.1, 0.2],
