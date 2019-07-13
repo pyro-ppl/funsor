@@ -211,7 +211,11 @@ def safediv(x, y):
         return truediv(x, y)
 
 
-@Op
+class ReciprocalOp(Op):
+    pass
+
+
+@ReciprocalOp
 def reciprocal(x):
     if isinstance(x, Number):
         return 1. / x
@@ -248,8 +252,9 @@ __all__ = [
     'NegOp',
     'Op',
     'PRODUCT_INVERSES',
-    'UNITS',
+    'ReciprocalOp',
     'SubOp',
+    'UNITS',
     'abs',
     'add',
     'and_',

@@ -9,12 +9,13 @@ import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
-from funsor.ops import AddOp, AssociativeOp, DISTRIBUTIVE_OPS, NegOp, SubOp, TransformOp
+from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
 from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, eager, normalize
 from funsor.torch import Tensor
 
 
 class AnyOp(AssociativeOp):
+    """Placeholder associative op that unifies with any other op"""
     pass
 
 
@@ -63,7 +64,17 @@ class Contraction(Funsor):
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def eager_contraction(red_op, bin_op, reduced_vars, terms):
-    return reduce(bin_op, terms).reduce(red_op, reduced_vars)
+
+    # push down leaf reductions
+    terms, reduced_vars = list(terms), frozenset(reduced_vars)
+    for i, v in enumerate(terms):
+        v_unique = reduced_vars.intersection(v.inputs) - \
+            frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms if vv is not v))
+        terms[i] = v.reduce(red_op, v_unique)
+        reduced_vars -= v_unique
+
+    # sum-product the remaining vars
+    return reduce(bin_op, tuple(terms)).reduce(red_op, reduced_vars)
 
 
 ##########################################
@@ -100,14 +111,6 @@ def normalize_contraction(red_op, bin_op, reduced_vars, terms):
 
     for i, v in enumerate(terms):
 
-        # # push isolated reductions all the way to the leaves
-        # if len(terms) > 1:
-        #     uniques = reduced_vars.intersection(v.inputs) - \
-        #         frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms if vv is not v))
-        #     if uniques:
-        #         new_terms = terms[:i] + v.reduce(red_op, uniques) + terms[i+1:]
-        #         return Contraction(red_op, bin_op, reduced_vars - uniques, *new_terms)
-
         if not isinstance(v, Contraction):
             continue
 
@@ -121,23 +124,16 @@ def normalize_contraction(red_op, bin_op, reduced_vars, terms):
 
         if (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
             print("DISTRIBUTE REDUCE")
-            # v_uniques = v.reduced_vars - frozenset().union(*(t.inputs for t in terms if t is not v))
             new_terms = terms[:i] + (Contraction(v.red_op, v.bin_op, frozenset(), *v.terms),) + terms[i+1:]
             return Contraction(v.red_op, bin_op, v.reduced_vars, *new_terms).reduce(red_op, reduced_vars)
 
-        # XXX what I had before, conflicts with pushing down unary reductions
+        # XXX may conflict with pushing down leaf reductions in eager?
         if v.red_op in (red_op, anyop) and bin_op in (v.bin_op, anyop):
             print("ASSOCIATE")
             red_op = v.red_op if red_op is anyop else red_op
             bin_op = v.bin_op if bin_op is anyop else bin_op
             new_terms = terms[:i] + v.terms + terms[i+1:]
             return Contraction(red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms)
-
-        # if v.red_op is anyop and bin_op in (v.bin_op, anyop):
-        #     print("ASSOCIATE BINARY")
-        #     bin_op = v.bin_op if bin_op is anyop else bin_op
-        #     new_terms = terms[:i] + v.terms + terms[i+1:]
-        #     return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     # nothing more to do, reflect
     return None
@@ -163,7 +159,9 @@ def reduce_funsor(op, arg, reduced_vars):
 
 @normalize.register(Subs, Contraction, tuple)
 def distribute_subs_contraction(arg, subs):
-    new_terms = tuple(Subs(v, subs) if any(k in v.inputs for k, s in subs) else v
+    new_terms = tuple(Subs(v, tuple((name, sub) for name, sub in subs if name in v.inputs))
+                      if any(name in v.inputs for name, sub in subs)
+                      else v
                       for v in arg.terms)
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *new_terms)
 
@@ -175,17 +173,22 @@ def normalize_fuse_subs(arg, subs):
     return Subs(arg.arg, new_subs)
 
 
-@normalize.register(Binary, SubOp, Funsor, Funsor)
+@normalize.register(Binary, ops.SubOp, Funsor, Funsor)
 def binary_subtract(op, lhs, rhs):
     return lhs + -rhs
 
 
-@normalize.register(Unary, NegOp, Contraction)
+@normalize.register(Unary, ops.NegOp, Contraction)
 def unary_contract(op, arg):
     raise NotImplementedError("TODO")
 
 
-@normalize.register(Unary, TransformOp, Contraction)
+@normalize.register(Unary, ops.ReciprocalOp, Contraction)
+def unary_contract(op, arg):
+    raise NotImplementedError("TODO")
+
+
+@normalize.register(Unary, ops.TransformOp, Contraction)
 def unary_transform(op, arg):
     if op is ops.log:
         raise NotImplementedError("TODO")
@@ -199,7 +202,7 @@ def unary_transform(op, arg):
 # joint integration
 #########################
 
-@eager.register(Contraction, AssociativeOp, AddOp, frozenset, Variadic[(Delta, Gaussian, Number, Tensor)])
+@eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Variadic[(Delta, Gaussian, Number, Tensor)])
 def eager_contract_joint(red_op, bin_op, reduced_vars, *terms):
 
     if red_op not in (ops.logaddexp, anyop):
@@ -225,4 +228,5 @@ def eager_contract_joint(red_op, bin_op, reduced_vars, *terms):
     if len(terms) > len(new_terms) or any(v is not t for t, v in zip(new_terms, terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
+    # terminate recursion
     return None
