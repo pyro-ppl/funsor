@@ -9,7 +9,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import bint, reals
-from funsor.einsum import einsum, naive_einsum
+from funsor.einsum import einsum, naive_plated_einsum
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation, reinterpret
 from funsor.terms import Number, Variable, eager, normalize, reflect
@@ -18,30 +18,43 @@ from funsor.torch import Tensor
 
 
 EINSUM_EXAMPLES = [
-    "a,b->",
-    "ab,a->",
-    "a,a->",
-    "a,a->a",
-    "ab,bc,cd->da",
-    "ab,cd,bc->da",
-    "a,a,a,ab->ab",
+    ("a,b->", ''),
+    ("ab,a->", ''),
+    ("a,a->", ''),
+    ("a,a->a", ''),
+    ("ab,bc,cd->da", ''),
+    ("ab,cd,bc->da", ''),
+    ("a,a,a,ab->ab", ''),
+    ('i->', 'i'),
+    (',i->', 'i'),
+    ('ai->', 'i'),
+    (',ai,abij->', 'ij'),
+    ('a,ai,bij->', 'ij'),
+    ('ai,abi,bci,cdi->', 'i'),
+    ('aij,abij,bcij->', 'ij'),
+    ('a,abi,bcij,cdij->', 'ij'),
 ]
 
 
-@pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
+@pytest.mark.parametrize('equation,plates', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
-@pytest.mark.parametrize('einsum_impl', [einsum, naive_einsum])
-def test_normalize_einsum(equation, backend, einsum_impl):
+@pytest.mark.parametrize('einsum_impl', [einsum, naive_plated_einsum])
+def test_normalize_einsum(equation, plates, backend, einsum_impl):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
     with interpretation(reflect):
-        expr = einsum_impl(equation, *funsor_operands, backend=backend)
+        expr = einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
 
     with interpretation(normalize):
         transformed_expr = reinterpret(expr)
 
     assert isinstance(transformed_expr, Contraction)
-    assert all(isinstance(v, (Number, Tensor)) for v in transformed_expr.terms)
+    if plates:
+        assert all(isinstance(v, (Number, Tensor, Contraction)) for v in transformed_expr.terms)
+        assert all(v.red_op in (ops.add, ops.mul) and v.bin_op not in (ops.add, ops.mul) and len(v.terms) == 1
+                   for v in transformed_expr.terms if isinstance(v, Contraction))
+    else:
+        assert all(isinstance(v, (Number, Tensor)) for v in transformed_expr.terms)
 
     with interpretation(normalize):
         transformed_expr2 = reinterpret(transformed_expr)
