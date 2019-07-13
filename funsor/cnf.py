@@ -117,20 +117,16 @@ def normalize_contraction(red_op, bin_op, reduced_vars, terms):
 
         if v.red_op is anyop and (v.bin_op, bin_op) in DISTRIBUTIVE_OPS:
             # a * e * (b + c + d) -> (a * e * b) + (a * e * c) + (a * e * d)
-            print("DISTRIBUTE BINARY")
             new_terms = tuple(
                 Contraction(v.red_op, bin_op, v.reduced_vars, *(terms[:i] + (vt,) + terms[i+1:]))
                 for vt in v.terms)
             return Contraction(red_op, v.bin_op, reduced_vars, *new_terms)
 
         if (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
-            print("DISTRIBUTE REDUCE")
             new_terms = terms[:i] + (Contraction(v.red_op, v.bin_op, frozenset(), *v.terms),) + terms[i+1:]
             return Contraction(v.red_op, bin_op, v.reduced_vars, *new_terms).reduce(red_op, reduced_vars)
 
-        # XXX may conflict with pushing down leaf reductions in eager?
         if v.red_op in (red_op, anyop) and bin_op in (v.bin_op, anyop):
-            print("ASSOCIATE")
             red_op = v.red_op if red_op is anyop else red_op
             bin_op = v.bin_op if bin_op is anyop else bin_op
             new_terms = terms[:i] + v.terms + terms[i+1:]
@@ -230,6 +226,7 @@ def eager_contract_joint(red_op, bin_op, reduced_vars, *terms):
 
     # TODO handle dropped deltas and their extra inputs
     deltas = tuple(d for d in new_terms if isinstance(d, Delta))
+
     discrete = reduce(ops.add, (t for t in new_terms if isinstance(t, (Number, Tensor))))
     gaussian = reduce(ops.add, (g for g in new_terms if isinstance(g, Gaussian)))
 
@@ -242,23 +239,19 @@ def eager_contract_joint(red_op, bin_op, reduced_vars, *terms):
     return None
 
 
-@moment_matching.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Variadic[(Gaussian, Number, Tensor)])
-def moment_matching_contract_joint(red_op, bin_op, reduced_vars, *terms):
+@moment_matching.register(Contraction, AssociativeOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
+def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
 
     if red_op is not ops.logaddexp:
         return None
 
-    approx_vars = frozenset(k for k in reduced_vars
-                            if any(g.inputs.get(k, 'real') != 'real' for g in terms if isinstance(g, Gaussian)))
+    approx_vars = frozenset(k for k in reduced_vars if gaussian.inputs.get(k, 'real') != 'real')
     exact_vars = reduced_vars - approx_vars
 
-    if exact_vars:
-        return Contraction(red_op, bin_op, exact_vars, *terms).reduce(red_op, approx_vars)
+    if exact_vars and approx_vars:
+        return Contraction(red_op, bin_op, exact_vars, discrete, gaussian).reduce(red_op, approx_vars)
 
-    if approx_vars:
-        discrete = reduce(ops.add, (t for t in terms if isinstance(t, (Number, Tensor))))
-        gaussian = reduce(ops.add, (g for g in terms if isinstance(g, Gaussian)))
-
+    if approx_vars and not exact_vars:
         new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
         num_elements = reduce(ops.mul, [
             gaussian.inputs[k].num_elements for k in approx_vars.difference(discrete.inputs)], 1)
