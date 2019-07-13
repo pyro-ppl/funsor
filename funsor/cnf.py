@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+import math
 from collections import OrderedDict
 from six.moves import reduce
 
@@ -8,9 +9,9 @@ from multipledispatch.variadic import Variadic
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import find_domain
-from funsor.gaussian import Gaussian
+from funsor.gaussian import Gaussian, sym_inverse
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
-from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, eager, normalize
+from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, eager, moment_matching, normalize
 from funsor.torch import Tensor
 
 
@@ -238,4 +239,45 @@ def eager_contract_joint(red_op, bin_op, reduced_vars, *terms):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     # terminate recursion
+    return None
+
+
+@moment_matching.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Variadic[(Gaussian, Number, Tensor)])
+def moment_matching_contract_joint(red_op, bin_op, reduced_vars, *terms):
+
+    if red_op is not ops.logaddexp:
+        return None
+
+    approx_vars = frozenset(k for k in reduced_vars
+                            if any(g.inputs.get(k, 'real') != 'real' for g in terms if isinstance(g, Gaussian)))
+    exact_vars = reduced_vars - approx_vars
+
+    if exact_vars:
+        return Contraction(red_op, bin_op, exact_vars, *terms).reduce(red_op, approx_vars)
+
+    if approx_vars:
+        discrete = reduce(ops.add, (t for t in terms if isinstance(t, (Number, Tensor))))
+        gaussian = reduce(ops.add, (g for g in terms if isinstance(g, Gaussian)))
+
+        new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
+        num_elements = reduce(ops.mul, [
+            gaussian.inputs[k].num_elements for k in approx_vars.difference(discrete.inputs)], 1)
+        if num_elements != 1:
+            new_discrete -= math.log(num_elements)
+
+        int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
+        probs = (discrete - new_discrete).exp()
+        old_loc = Tensor(gaussian.loc, int_inputs)
+        new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
+        old_cov = Tensor(sym_inverse(gaussian.precision), int_inputs)
+        diff = old_loc - new_loc
+        outers = Tensor(diff.data.unsqueeze(-1) * diff.data.unsqueeze(-2), diff.inputs)
+        new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
+                   (probs * outers).reduce(ops.add, approx_vars))
+        new_precision = Tensor(sym_inverse(new_cov.data), new_cov.inputs)
+        new_inputs = new_loc.inputs.copy()
+        new_inputs.update((k, d) for k, d in gaussian.inputs.items() if d.dtype == 'real')
+        new_gaussian = Gaussian(new_loc.data, new_precision.data, new_inputs)
+        return new_discrete + new_gaussian
+
     return None
