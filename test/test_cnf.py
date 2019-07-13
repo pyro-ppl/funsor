@@ -13,7 +13,7 @@ from funsor.einsum import einsum, naive_plated_einsum
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation, reinterpret
 from funsor.terms import Number, Variable, eager, normalize, reflect
-from funsor.testing import assert_close, check_funsor, make_einsum_example
+from funsor.testing import assert_close, check_funsor, make_einsum_example, xfail_param
 from funsor.torch import Tensor
 
 
@@ -75,13 +75,14 @@ AFFINE_SMOKE_TESTS = [
     ('n*x', Contraction, {"x": reals()}),
     ('t*x', Contraction, {"i": bint(2), "j": bint(3), "x": reals()}),
     ('x*t', Contraction, {"x": reals(), "i": bint(2), "j": bint(3)}),
-    ('-x', Contraction, {"x": reals()}),
+    ("-(y+z)", Contraction, {"y": reals(), "z": reals()}),
+    # xfail_param(('-x', Contraction, {"x": reals()}), reason="not a contraction"),
     ('t-x', Contraction, {"i": bint(2), "j": bint(3), "x": reals()}),
     ("(t * x)(i=1)", Contraction, {"j": bint(3), "x": reals()}),
     ("(t * x)(i=1, x=y)", Contraction, {"j": bint(3), "y": reals()}),
     ("(t * x + n)(x=y)", Contraction, {"y": reals(), "i": bint(2), "j": bint(3)}),
     ("(x + y)(y=z)", Contraction, {"x": reals(), "z": reals()}),
-    ("(-x)(x=y+z)", Contraction, {"y": reals(), "z": reals()}),
+    # xfail_param(("(-x)(x=y+z)", Contraction, {"y": reals(), "z": reals()}), reason="not a contraction"),
     ("(t * x + t * y)(x=z)", Contraction, {"y": reals(), "z": reals(), "i": bint(2), "j": bint(3)}),
 ]
 
