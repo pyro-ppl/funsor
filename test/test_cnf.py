@@ -13,7 +13,7 @@ from funsor.einsum import einsum, naive_plated_einsum
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation, reinterpret
 from funsor.terms import Number, Variable, eager, normalize, reflect
-from funsor.testing import assert_close, check_funsor, make_einsum_example, xfail_param
+from funsor.testing import assert_close, check_funsor, make_einsum_example  # , xfail_param
 from funsor.torch import Tensor
 
 
@@ -207,6 +207,78 @@ def test_joint_smoke(expr, expected_type):
 
     x0 = Tensor(torch.tensor([0.5, 0.6, 0.7]))
     assert isinstance(x0, Tensor)
+
+    with interpretation(normalize):
+        result = eval(expr)
+
+    if expected_type is not Contraction:
+        assert isinstance(result, Contraction)
+        result = reinterpret(result)
+
+    assert isinstance(result, expected_type)
+
+
+@pytest.mark.parametrize('expr,expected_type', [
+    ('-g1', Gaussian),
+    ('g1 + 1', Contraction),
+    ('g1 - 1', Contraction),
+    ('1 + g1', Contraction),
+    ('g1 + shift', Contraction),
+    ('g1 + shift', Contraction),
+    ('shift + g1', Contraction),
+    ('shift - g1', Contraction),
+    ('g1 + g1', Contraction),
+    ('(g1 + g2 + g2) - g2', Contraction),
+    ('g1(i=i0)', Gaussian),
+    ('g2(i=i0)', Gaussian),
+    ('g1(i=i0) + g2(i=i0)', Contraction),
+    ('g1(i=i0) + g2', Contraction),
+    ('g1(x=x0)', Tensor),
+    ('g2(y=y0)', Tensor),
+    ('(g1 + g2)(i=i0)', Contraction),
+    ('(g1 + g2)(x=x0, y=y0)', Tensor),
+    ('(g2 + g1)(x=x0, y=y0)', Tensor),
+    ('g1.reduce(ops.logaddexp, "x")', Tensor),
+    ('(g1 + g2).reduce(ops.logaddexp, "x")', Contraction),
+    ('(g1 + g2).reduce(ops.logaddexp, "y")', Contraction),
+    ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
+])
+def test_gaussian_joint_smoke(expr, expected_type):
+    g1 = Gaussian(
+        loc=torch.tensor([[0.0, 0.1, 0.2],
+                          [2.0, 3.0, 4.0]]),
+        precision=torch.tensor([[[1.0, 0.1, 0.2],
+                                 [0.1, 1.0, 0.3],
+                                 [0.2, 0.3, 1.0]],
+                                [[1.0, 0.1, 0.2],
+                                 [0.1, 1.0, 0.3],
+                                 [0.2, 0.3, 1.0]]]),
+        inputs=OrderedDict([('i', bint(2)), ('x', reals(3))]))
+    assert isinstance(g1, Gaussian)
+
+    g2 = Gaussian(
+        loc=torch.tensor([[0.0, 0.1],
+                          [2.0, 3.0]]),
+        precision=torch.tensor([[[1.0, 0.2],
+                                 [0.2, 1.0]],
+                                [[1.0, 0.2],
+                                 [0.2, 1.0]]]),
+        inputs=OrderedDict([('i', bint(2)), ('y', reals(2))]))
+    assert isinstance(g2, Gaussian)
+
+    shift = Tensor(torch.tensor([-1., 1.]), OrderedDict([('i', bint(2))]))
+    assert isinstance(shift, Tensor)
+
+    i0 = Number(1, 2)
+    assert isinstance(i0, Number)
+
+    x0 = Tensor(torch.tensor([0.5, 0.6, 0.7]))
+    assert isinstance(x0, Tensor)
+
+    y0 = Tensor(torch.tensor([[0.2, 0.3],
+                              [0.8, 0.9]]),
+                inputs=OrderedDict([('i', bint(2))]))
+    assert isinstance(y0, Tensor)
 
     with interpretation(normalize):
         result = eval(expr)
