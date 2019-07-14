@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import pytest
 
+from funsor.distributions import Normal
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.memoize import memoize
@@ -72,3 +73,18 @@ def test_einsum_complete_sharing_reuse_cache(equation, plates, backend, einsum_i
 
     assert expr1 is expr2
     assert expr1 is not expr3
+
+
+# @pytest.mark.xfail(reason="Joint and Joint.sample cannot directly be memoized in this way?")
+def test_memoize_sample():
+
+    with memoize():
+        j1 = Normal(0, 1, 'x')
+        j2 = Normal(0, 1, 'x')
+        x1 = j1.sample(frozenset({'x'}))
+        x12 = j1.sample(frozenset({'x'}))
+        x2 = j2.sample(frozenset({'x'}))
+
+    assert j1 is j2
+    assert x1 is x12
+    assert x1 is x2
