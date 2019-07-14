@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
 import pytest
+import torch
 
 from funsor.distributions import Normal
 from funsor.einsum import einsum, naive_plated_einsum
@@ -75,16 +76,22 @@ def test_einsum_complete_sharing_reuse_cache(equation, plates, backend, einsum_i
     assert expr1 is not expr3
 
 
-# @pytest.mark.xfail(reason="Joint and Joint.sample cannot directly be memoized in this way?")
-def test_memoize_sample():
+@pytest.mark.parametrize('check_sample', [
+    False, xfail_param(True, reason="Joint.sample cannot directly be memoized in this way yet")])
+def test_memoize_sample(check_sample):
 
     with memoize():
-        j1 = Normal(0, 1, 'x')
-        j2 = Normal(0, 1, 'x')
+        m, s = torch.tensor(0.), torch.tensor(1.)
+        j1 = Normal(m, s, 'x')
+        j2 = Normal(m, s, 'x')
         x1 = j1.sample(frozenset({'x'}))
         x12 = j1.sample(frozenset({'x'}))
         x2 = j2.sample(frozenset({'x'}))
 
+    # this assertion now passes
     assert j1 is j2
-    assert x1 is x12
-    assert x1 is x2
+
+    # these assertions fail because sample is not memoized
+    if check_sample:
+        assert x1 is x12
+        assert x1 is x2
