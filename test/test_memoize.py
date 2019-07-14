@@ -47,3 +47,28 @@ def test_einsum_complete_sharing(equation, plates, backend, einsum_impl, same_la
 
     assert expr1 is expr2
     assert expr1 is not expr3
+
+
+@pytest.mark.parametrize('equation,plates', EINSUM_EXAMPLES)
+@pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize('einsum_impl', [einsum, naive_plated_einsum])
+@pytest.mark.parametrize('same_lazy', [True, xfail_param(False, reason="issue w/ alpha conversion?")])
+def test_einsum_complete_sharing_reuse_cache(equation, plates, backend, einsum_impl, same_lazy):
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+
+    with interpretation(reflect):
+        lazy_expr1 = einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
+        lazy_expr2 = lazy_expr1 if same_lazy else \
+            einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
+
+    cache = {}
+    with memoize(cache) as cache:
+        expr1 = reinterpret(lazy_expr1)
+
+    with memoize(cache):
+        expr2 = reinterpret(lazy_expr2)
+
+    expr3 = reinterpret(lazy_expr1)
+
+    assert expr1 is expr2
+    assert expr1 is not expr3
