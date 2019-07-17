@@ -96,7 +96,7 @@ def lazy(cls, *args):
     """
     result = lazy.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = (normalize if interpreter._NORMALIZE else reflect)(cls, *args)
     return result
 
 
@@ -107,7 +107,7 @@ def eager(cls, *args):
     """
     result = eager.dispatch(cls, *args)
     if result is None:
-        result = reflect(cls, *args)
+        result = (normalize if interpreter._NORMALIZE else reflect)(cls, *args)
     return result
 
 

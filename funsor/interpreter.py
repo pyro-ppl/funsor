@@ -22,6 +22,7 @@ _STACK_SIZE = 0
 
 _INTERPRETATION = None  # To be set later in funsor.terms
 _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
+_NORMALIZE = int(os.environ.get("FUNSOR_NORMALIZE", 0))
 
 _GENSYM_COUNTER = 0
 
