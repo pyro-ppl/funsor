@@ -4,7 +4,6 @@ import functools
 import warnings
 from collections import OrderedDict
 
-import opt_einsum
 import torch
 from contextlib2 import contextmanager
 from multipledispatch import dispatch
@@ -12,7 +11,6 @@ from six import add_metaclass, integer_types
 from six.moves import reduce
 
 import funsor.ops as ops
-# from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import GetitemOp, Op
@@ -445,26 +443,6 @@ def eager_lambda(var, expr):
         data = data.reshape(shape[:dim] + (1,) + shape[dim:])
         data = data.expand(shape[:dim] + (var.dtype,) + shape[dim:])
     return Tensor(data, inputs, expr.dtype)
-
-
-# @eager.register(Contract, AssociativeOp, AssociativeOp, Tensor, Tensor, frozenset)
-# @contractor
-def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):  # TODO resolve circular imports and attach to Contraction
-    if (sum_op, prod_op) == (ops.add, ops.mul):
-        backend = "torch"
-    elif (sum_op, prod_op) == (ops.logaddexp, ops.add):
-        backend = "pyro.ops.einsum.torch_log"
-    else:
-        return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)
-
-    inputs = OrderedDict((k, d) for t in (lhs, rhs)
-                         for k, d in t.inputs.items() if k not in reduced_vars)
-
-    data = opt_einsum.contract(lhs.data, list(lhs.inputs),
-                               rhs.data, list(rhs.inputs),
-                               list(inputs), backend=backend)
-    dtype = find_domain(prod_op, lhs.output, rhs.output).dtype
-    return Tensor(data, inputs, dtype)
 
 
 def arange(name, size):

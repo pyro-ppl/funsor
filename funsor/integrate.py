@@ -5,7 +5,6 @@ from collections import OrderedDict
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.contract import Contract
 from funsor.terms import Funsor, Reduce, eager
 
 
@@ -63,19 +62,18 @@ def integrator(fn):
 
 
 @eager.register(Integrate, Funsor, Funsor, frozenset)
-@integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
-    return Contract(ops.add, ops.mul, log_measure.exp(), integrand, reduced_vars)
+def eager_integrate_generic(log_measure, integrand, reduced_vars):
+    # return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)  # XXX circular imports
+    return (log_measure.exp() * integrand).reduce(ops.add, reduced_vars)
 
 
 @eager.register(Integrate, Reduce, Funsor, frozenset)
-@integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
+def eager_integrate_reduce(log_measure, integrand, reduced_vars):
     if log_measure.op is ops.logaddexp:
         arg = Integrate(log_measure.arg, integrand, reduced_vars)
         return arg.reduce(ops.add, log_measure.reduced_vars)
 
-    return Contract(ops.add, ops.mul, log_measure.exp(), integrand, reduced_vars)
+    return eager_integrate_generic(log_measure, integrand, reduced_vars)
 
 
 __all__ = [
