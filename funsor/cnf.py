@@ -81,13 +81,13 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
 
     if len(terms) == 2:
         result = bin_op(*terms).reduce(red_op, reduced_vars)
-        if result is not normalize(Contraction, red_op, bin_op, unique_vars, *terms):
+        if result is not normalize(Contraction, red_op, bin_op, reduced_vars, terms):
             return result
         return None
 
     if len(terms) == 1:
         result = terms[0].reduce(red_op, reduced_vars)
-        if result is not normalize(Contraction, red_op, bin_op, unique_vars, *terms):
+        if result is not normalize(Contraction, red_op, bin_op, reduced_vars, terms):
             return result
         return None
 
@@ -106,7 +106,7 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
         unique_vars = reduced_vars.intersection(lhs.inputs, rhs.inputs) - \
             frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms[:i] + terms[i+2:]))
         result = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
-        if result is not normalize(Contraction, red_op, bin_op, unique_vars, lhs, rhs):  # did we make progress?
+        if result is not normalize(Contraction, red_op, bin_op, unique_vars, (lhs, rhs)):  # did we make progress?
             # pick the first evaluable pair
             reduced_vars -= unique_vars
             new_terms = terms[:i] + (result,) + terms[i+2:]
@@ -247,19 +247,19 @@ def unary_transform(op, arg):
 
 # @eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Delta, Delta)
 # def eager_contract_deltas(red_op, bin_op, reduced_vars, lhs, rhs):  # TODO only need Binary
-# 
+#
 #     if red_op not in (ops.logaddexp, ops.add, anyop):
 #         return None
-# 
+#
 #     # substitute in all shared deltas
 #     assert lhs.name not in rhs.inputs or rhs.name not in rhs.inputs
 #     lhs = lhs(**{rhs.name: rhs.point}) if rhs.name in lhs.inputs else lhs
 #     rhs = rhs(**{lhs.name: lhs.point}) if lhs.name in rhs.inputs else rhs
-# 
+#
 #     # TODO handle extra inputs of dropped deltas
 #     if reduced_vars or lhs is not lhs or rhs is not rhs:
 #         return bin_op(lhs, rhs).reduce(red_op, reduced_vars)
-# 
+#
 #     return None
 
 

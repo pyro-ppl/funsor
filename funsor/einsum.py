@@ -7,11 +7,11 @@ from six import integer_types
 from six.moves import reduce
 
 import funsor.ops as ops
-from funsor.contract import Contract
-from funsor.interpreter import interpretation, reinterpret
-from funsor.optimizer import Finitary, apply_optimizer, optimize
+from funsor.cnf import Contraction
+from funsor.interpreter import interpretation
+from funsor.optimizer import apply_optimizer, optimize
 from funsor.sum_product import sum_product
-from funsor.terms import Funsor, reflect
+from funsor.terms import Funsor, lazy
 from funsor.torch import Tensor
 
 
@@ -31,7 +31,7 @@ def _make_base_lhs(prod_op, arg, reduced_vars, normalized=False):
         Tensor(make_unit((d.dtype,)), OrderedDict([(var, d)]))
         for var, d in sizes.items() if var in reduced_vars
     )
-    return Finitary(prod_op, terms) if len(terms) > 1 else terms[0]
+    return terms
 
 
 def naive_contract_einsum(eqn, *terms, **kwargs):
@@ -59,12 +59,8 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     reduced_vars = input_dims - output_dims
 
     with interpretation(optimize):
-        rhs = Finitary(prod_op, tuple(terms))
-        lhs = _make_base_lhs(prod_op, rhs, reduced_vars, normalized=False)
-        assert frozenset(lhs.inputs) == reduced_vars
-        result = Contract(sum_op, prod_op, lhs, rhs, reduced_vars)
-
-    return reinterpret(result)
+        # terms = terms + _make_base_lhs(prod_op, rhs, reduced_vars, normalized=False)
+        return Contraction(sum_op, prod_op, reduced_vars, terms)
 
 
 def naive_einsum(eqn, *terms, **kwargs):
@@ -126,7 +122,6 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
 
 
 def einsum(eqn, *terms, **kwargs):
-    with interpretation(reflect):
+    with interpretation(lazy):
         naive_ast = naive_plated_einsum(eqn, *terms, **kwargs)
-        optimized_ast = apply_optimizer(naive_ast)
-    return reinterpret(optimized_ast)  # eager by default
+    return apply_optimizer(naive_ast)

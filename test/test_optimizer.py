@@ -13,7 +13,7 @@ from funsor.domains import bint
 from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
-from funsor.terms import Variable, lazy
+from funsor.terms import Variable, lazy, reflect
 from funsor.testing import assert_close, make_chain_einsum, make_einsum_example, make_hmm_einsum, make_plated_hmm_einsum
 from funsor.torch import Tensor
 
@@ -35,7 +35,7 @@ def test_optimized_einsum(equation, backend, einsum_impl):
     expected = opt_einsum.contract(equation, *operands, backend=backend)
     with interpretation(lazy):
         naive_ast = einsum_impl(equation, *funsor_operands, backend=backend)
-        optimized_ast = apply_optimizer(naive_ast)
+    optimized_ast = apply_optimizer(naive_ast)
     actual = reinterpret(optimized_ast)  # eager by default
 
     assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
@@ -79,9 +79,11 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, ein
         ]
 
         output1_naive = einsum_impl(eqn1, *funsor_operands1, backend=backend1)
-        output1 = apply_optimizer(output1_naive) if optimize1 else output1_naive
+        with interpretation(reflect):
+            output1 = apply_optimizer(output1_naive) if optimize1 else output1_naive
         output2_naive = einsum_impl(outputs1[0] + "," + eqn2, *([output1] + funsor_operands2), backend=backend2)
-        output2 = apply_optimizer(output2_naive) if optimize2 else output2_naive
+        with interpretation(reflect):
+            output2 = apply_optimizer(output2_naive) if optimize2 else output2_naive
 
     actual1 = reinterpret(output1)
     actual2 = reinterpret(output2)

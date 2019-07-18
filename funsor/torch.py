@@ -12,10 +12,10 @@ from six import add_metaclass, integer_types
 from six.moves import reduce
 
 import funsor.ops as ops
-from funsor.contract import Contract, contractor
+# from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.ops import AssociativeOp, GetitemOp, Op
+from funsor.ops import GetitemOp, Op
 from funsor.six import getargspec
 from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, \
     eager, substitute, to_data, to_funsor
@@ -447,9 +447,9 @@ def eager_lambda(var, expr):
     return Tensor(data, inputs, expr.dtype)
 
 
-@eager.register(Contract, AssociativeOp, AssociativeOp, Tensor, Tensor, frozenset)
-@contractor
-def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
+# @eager.register(Contract, AssociativeOp, AssociativeOp, Tensor, Tensor, frozenset)
+# @contractor
+def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):  # TODO resolve circular imports and attach to Contraction
     if (sum_op, prod_op) == (ops.add, ops.mul):
         backend = "torch"
     elif (sum_op, prod_op) == (ops.logaddexp, ops.add):
