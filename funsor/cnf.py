@@ -183,7 +183,7 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
             return Contraction(red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms)
 
     # nothing more to do, reflect
-    return reflect(Contraction, red_op, bin_op, reduced_vars, terms)  # None  # XXX
+    return None
 
 
 #########################################
