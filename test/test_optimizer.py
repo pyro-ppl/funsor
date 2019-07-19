@@ -12,8 +12,8 @@ from funsor.distributions import Categorical
 from funsor.domains import bint
 from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
-from funsor.optimizer import apply_optimizer
-from funsor.terms import Variable, lazy, reflect
+from funsor.optimizer import apply_optimizer, optimize
+from funsor.terms import Variable, lazy, normalize, reflect
 from funsor.testing import assert_close, make_chain_einsum, make_einsum_example, make_hmm_einsum, make_plated_hmm_einsum
 from funsor.torch import Tensor
 
@@ -33,7 +33,7 @@ OPTIMIZED_EINSUM_EXAMPLES = [
 def test_optimized_einsum(equation, backend, einsum_impl):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
-    with interpretation(lazy):
+    with interpretation(normalize):
         naive_ast = einsum_impl(equation, *funsor_operands, backend=backend)
     optimized_ast = apply_optimizer(naive_ast)
     actual = reinterpret(optimized_ast)  # eager by default
@@ -69,7 +69,7 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, ein
     expected1 = opt_einsum.contract(eqn1, *operands1, backend=backend1)
     expected2 = opt_einsum.contract(outputs1[0] + "," + eqn2, *([expected1] + operands2), backend=backend2)
 
-    with interpretation(lazy):
+    with interpretation(normalize):
         funsor_operands1 = [
             Categorical(probs=Tensor(
                 operand,

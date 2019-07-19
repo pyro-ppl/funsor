@@ -8,7 +8,7 @@ from opt_einsum.paths import greedy
 import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, anyop
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Funsor, eager
+from funsor.terms import Funsor, eager, normalize, reflect
 
 
 @interpreter.dispatched_interpretation
@@ -24,7 +24,13 @@ REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimi
 
 
 optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])(
-    lambda r, b, v, *ts: Contraction(r, b, v, tuple(ts)))
+    lambda r, b, v, *ts: optimize(Contraction, r, b, v, tuple(ts)))
+
+
+@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
+@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor)
+def eager_contract_base(red_op, bin_op, reduced_vars, *terms):
+    return None  # eager.dispatch(Contraction, red_op, bin_op, reduced_vars, *terms)
 
 
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
@@ -67,7 +73,7 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
         # count new appearance of variables that aren't reduced
         reduce_dim_counter.update({d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)})
 
-        path_end = Contraction(red_op, bin_op, path_end_reduced_vars, ta, tb)
+        path_end = Contraction(red_op if path_end_reduced_vars else anyop, bin_op, path_end_reduced_vars, ta, tb)
         operands.append(path_end)
 
     # reduce any remaining dims, if necessary

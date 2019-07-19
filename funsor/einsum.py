@@ -11,27 +11,8 @@ from funsor.cnf import Contraction
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer, optimize
 from funsor.sum_product import sum_product
-from funsor.terms import Funsor, lazy
+from funsor.terms import Funsor, normalize
 from funsor.torch import Tensor
-
-
-def _make_base_lhs(prod_op, arg, reduced_vars, normalized=False):
-    if not all(isinstance(d.dtype, integer_types) for d in arg.inputs.values()):
-        raise NotImplementedError("TODO implement continuous base lhss")
-
-    if prod_op not in (ops.add, ops.mul):
-        raise NotImplementedError("{} not supported product op".format(prod_op))
-
-    make_unit = torch.ones if prod_op is ops.mul else torch.zeros
-
-    sizes = OrderedDict(set((var, dtype) for var, dtype in arg.inputs.items()))
-    terms = tuple(
-        Tensor(make_unit((d.dtype,)) / float(d.dtype), OrderedDict([(var, d)]))
-        if normalized else
-        Tensor(make_unit((d.dtype,)), OrderedDict([(var, d)]))
-        for var, d in sizes.items() if var in reduced_vars
-    )
-    return terms
 
 
 def naive_contract_einsum(eqn, *terms, **kwargs):
@@ -59,7 +40,6 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     reduced_vars = input_dims - output_dims
 
     with interpretation(optimize):
-        # terms = terms + _make_base_lhs(prod_op, rhs, reduced_vars, normalized=False)
         return Contraction(sum_op, prod_op, reduced_vars, terms)
 
 
@@ -122,6 +102,6 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
 
 
 def einsum(eqn, *terms, **kwargs):
-    with interpretation(lazy):
+    with interpretation(normalize):
         naive_ast = naive_plated_einsum(eqn, *terms, **kwargs)
     return apply_optimizer(naive_ast)
