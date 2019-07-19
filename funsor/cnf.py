@@ -264,7 +264,9 @@ def unary_transform(op, arg):
 
 @eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Variadic[(Delta, Gaussian, Number, Tensor)])
 def permute_joint_terms(red_op, bin_op, reduced_vars, *terms):
-    new_terms = tuple(v for i, v in sorted(enumerate(terms), key=lambda t: (type(t[1]).__name__, t[0])))
+    # XXX sort of a hack, uses commutativity to put terms in the expected order for comparison
+    ordering = {Delta: 0, Number: 1, Tensor: 2, Gaussian: 3}
+    new_terms = tuple(v for i, v in sorted(enumerate(terms), key=lambda t: (ordering[type(t[1])], t[0])))
     if any(v is not vv for v, vv in zip(terms, new_terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
     return Contraction(red_op, bin_op, reduced_vars, new_terms)
