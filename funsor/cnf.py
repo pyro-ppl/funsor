@@ -11,8 +11,9 @@ import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian, sym_inverse
+from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
-from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, eager, moment_matching, normalize
+from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, eager, moment_matching, normalize, reflect
 from funsor.torch import Tensor
 
 
@@ -31,6 +32,7 @@ class Contraction(Funsor):
     Declarative representation of a finitary sum-product operation
     """
     def __init__(self, red_op, bin_op, reduced_vars, terms):
+        terms = (terms,) if isinstance(terms, Funsor) else terms
         assert isinstance(red_op, AssociativeOp)
         assert isinstance(bin_op, AssociativeOp)
         assert all(isinstance(v, Funsor) for v in terms)
@@ -77,20 +79,18 @@ class Contraction(Funsor):
 #     return reduce(bin_op, tuple(terms)).reduce(red_op, reduced_vars)
 
 
+@recursion_reinterpret.register(Contraction)
+def recursion_reinterpret_contraction(x):
+    return type(x)(*map(recursion_reinterpret, (x.red_op, x.bin_op, x.reduced_vars) + x.terms))
+
+
+@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
+    return eager(Contraction, red_op, bin_op, reduced_vars, tuple(terms))
+
+
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
-
-    if len(terms) == 2:
-        result = bin_op(*terms).reduce(red_op, reduced_vars)
-        if result is not normalize(Contraction, red_op, bin_op, reduced_vars, terms):
-            return result
-        return None
-
-    if len(terms) == 1:
-        result = terms[0].reduce(red_op, reduced_vars)
-        if result is not normalize(Contraction, red_op, bin_op, reduced_vars, terms):
-            return result
-        return None
 
     # push down leaf reductions
     terms, reduced_vars = list(terms), frozenset(reduced_vars)
@@ -116,14 +116,26 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     return None
 
 
+@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor)
+def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
+    return eager.dispatch(Reduce, red_op, term, reduced_vars)
+
+
+@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
+def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
+    result = eager.dispatch(Binary, bin_op, lhs, rhs)
+    if result is not None:
+        result = eager.dispatch(Reduce, red_op, result, reduced_vars)
+    return result
+
+
 ##########################################
 # Normalizing Contractions
 ##########################################
 
 @normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
-@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
-def normalize_generic(red_op, bin_op, reduced_vars, *terms):
-    return Contraction(red_op, bin_op, reduced_vars, tuple(terms))
+def normalize_contraction_generic_args(red_op, bin_op, reduced_vars, *terms):
+    return normalize(Contraction, red_op, bin_op, reduced_vars, tuple(terms))
 
 
 @normalize.register(Contraction, AnyOp, AnyOp, frozenset, Funsor)
@@ -133,7 +145,7 @@ def normalize_trivial(red_op, bin_op, reduced_vars, term):
 
 
 @normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
-def normalize_contraction(red_op, bin_op, reduced_vars, terms):
+def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
 
     if not reduced_vars and red_op is not anyop:
         return Contraction(anyop, bin_op, reduced_vars, *terms)
@@ -171,7 +183,7 @@ def normalize_contraction(red_op, bin_op, reduced_vars, terms):
             return Contraction(red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms)
 
     # nothing more to do, reflect
-    return None
+    return reflect(Contraction, red_op, bin_op, reduced_vars, terms)  # None  # XXX
 
 
 #########################################
@@ -283,31 +295,31 @@ def eager_contract(sum_op, prod_op, reduced_vars, lhs, rhs):
     return Tensor(data, inputs, dtype)
 
 
-@eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Variadic[(Delta, Gaussian, Number, Tensor)])
-def eager_contract_joint(red_op, bin_op, reduced_vars, *terms):
-
-    if not any(isinstance(t, Delta) for t in terms) or red_op not in (ops.logaddexp, ops.add, anyop):
-        return None
-
-    # group terms
-    deltas = reduce(bin_op, (t for t in terms if isinstance(t, Delta)))
-    other = reduce(bin_op, (t for t in terms if not isinstance(t, Delta)))
-
-    # sum out shared Deltas
-    if red_op is ops.logaddexp:
-        delta_subs = OrderedDict((t.name, t.point) for t in deltas.terms
-                                 if isinstance(t, Delta) and t.name in reduced_vars
-                                 and t.name in other.inputs)
-
-        if delta_subs:
-            other = other(**delta_subs)
-
-    new_terms = (deltas, other)
-    if reduced_vars or len(terms) > len(new_terms) or any(v is not t for t, v in zip(new_terms, terms)):
-        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
-
-    # terminate recursion
-    return None
+# @eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Variadic[(Delta, Gaussian, Number, Tensor)])
+# def eager_contract_joint(red_op, bin_op, reduced_vars, *terms):
+# 
+#     if not any(isinstance(t, Delta) for t in terms) or red_op not in (ops.logaddexp, ops.add, anyop):
+#         return None
+# 
+#     # group terms
+#     deltas = reduce(bin_op, (t for t in terms if isinstance(t, Delta)))
+#     other = reduce(bin_op, (t for t in terms if not isinstance(t, Delta)))
+# 
+#     # sum out shared Deltas
+#     if red_op is ops.logaddexp:
+#         delta_subs = OrderedDict((t.name, t.point) for t in deltas.terms
+#                                  if isinstance(t, Delta) and t.name in reduced_vars
+#                                  and t.name in other.inputs)
+# 
+#         if delta_subs:
+#             other = other(**delta_subs)
+# 
+#     new_terms = (deltas, other)
+#     if reduced_vars or len(terms) > len(new_terms) or any(v is not t for t, v in zip(new_terms, terms)):
+#         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
+# 
+#     # terminate recursion
+#     return None
 
 
 @moment_matching.register(Contraction, AssociativeOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
