@@ -51,7 +51,8 @@ class Contraction(Funsor):
 
         inputs = OrderedDict()
         for v in terms:
-            inputs.update(v.inputs)
+            inputs.update((k, d) for k, d in v.inputs.items() if k not in reduced_vars)
+
         if bin_op is anyop:
             output = terms[0].output
         else:
@@ -93,12 +94,17 @@ def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
 def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
 
     # push down leaf reductions
-    terms, reduced_vars = list(terms), frozenset(reduced_vars)
+    terms, reduced_vars, leaf_reduced = list(terms), frozenset(reduced_vars), False
     for i, v in enumerate(terms):
         unique_vars = reduced_vars.intersection(v.inputs) - \
             frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms if vv is not v))
-        terms[i] = v.reduce(red_op, unique_vars)
-        reduced_vars -= unique_vars
+        if unique_vars:
+            leaf_reduced = True
+            terms[i] = v.reduce(red_op, unique_vars)
+            reduced_vars -= unique_vars
+
+    if leaf_reduced:
+        return Contraction(red_op, bin_op, reduced_vars, *terms)
 
     # exploit associativity to recursively evaluate this contraction
     # a bit expensive, but handles interpreter-imposed directionality constraints
@@ -123,6 +129,10 @@ def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
+
+    if reduced_vars - (reduced_vars.intersection(lhs.inputs, rhs.inputs)):
+        return Contraction(red_op, bin_op, reduced_vars, (lhs, rhs))
+
     result = eager.dispatch(Binary, bin_op, lhs, rhs)
     if result is not None:
         result = eager.dispatch(Reduce, red_op, result, reduced_vars)
@@ -159,6 +169,12 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
     if red_op is bin_op:
         new_terms = tuple(v.reduce(red_op, reduced_vars) for v in terms)
         return Contraction(red_op, bin_op, frozenset(), *new_terms)
+
+    if bin_op in ops.UNITS and any(isinstance(t, Number) and t.data == ops.UNITS[bin_op] for t in terms):
+        new_terms = tuple(t for t in terms if not (isinstance(t, Number) and t.data == ops.UNITS[bin_op]))
+        if not new_terms:  # everything was a unit
+            new_terms = (terms[0],)
+        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     for i, v in enumerate(terms):
 
