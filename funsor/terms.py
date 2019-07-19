@@ -67,6 +67,12 @@ def reflect(cls, *args):
     Construct a funsor, populate ``._ast_values``, and cons hash.
     This is the only interpretation allowed to construct funsors.
     """
+    if len(args) > len(cls._ast_fields):
+        # handle varargs
+        new_args = tuple(args[:len(cls._ast_fields) - 1]) + (args[len(cls._ast_fields) - 1 - len(args):],)
+        assert len(new_args) == len(cls._ast_fields)
+        old_args, args = args, new_args
+
     cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
@@ -95,8 +101,10 @@ def lazy(cls, *args):
     Substitute eagerly but perform ops lazily.
     """
     result = lazy.dispatch(cls, *args)
+    # if result is None and interpreter._NORMALIZE:
+    #     result = normalize.dispatch(cls, *args)
     if result is None:
-        result = (normalize if interpreter._NORMALIZE else reflect)(cls, *args)
+        result = reflect(cls, *args)
     return result
 
 
@@ -106,8 +114,10 @@ def eager(cls, *args):
     Eagerly execute ops with known implementations.
     """
     result = eager.dispatch(cls, *args)
+    if result is None and interpreter._NORMALIZE:
+        result = normalize.dispatch(cls, *args)
     if result is None:
-        result = (normalize if interpreter._NORMALIZE else reflect)(cls, *args)
+        result = reflect(cls, *args)
     return result
 
 
@@ -119,7 +129,9 @@ def sequential(cls, *args):
     """
     result = sequential.dispatch(cls, *args)
     if result is None:
-        result = eager(cls, *args)
+        result = eager.dispatch(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
     return result
 
 
