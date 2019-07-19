@@ -262,6 +262,14 @@ def unary_transform(op, arg):
 # patterns for joint integration
 #################################
 
+@eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Variadic[(Delta, Gaussian, Number, Tensor)])
+def permute_joint_terms(red_op, bin_op, reduced_vars, *terms):
+    new_terms = tuple(v for i, v in sorted(enumerate(terms), key=lambda t: (type(t[1]).__name__, t[0])))
+    if any(v is not vv for v, vv in zip(terms, new_terms)):
+        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
+    return Contraction(red_op, bin_op, reduced_vars, new_terms)
+
+
 @eager.register(Contraction, AssociativeOp, (ops.AddOp, AssociativeOp), frozenset, Tensor, Tensor)
 def eager_contract(sum_op, prod_op, reduced_vars, lhs, rhs):
     if (sum_op, prod_op) == (ops.add, ops.mul):

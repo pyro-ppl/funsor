@@ -12,6 +12,7 @@ import pytest
 import torch
 from six.moves import reduce
 
+from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
@@ -71,6 +72,13 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             assert_close(actual_delta, expected_deltas[name])
         assert_close(actual.discrete, expected.discrete, atol=atol, rtol=rtol)
         assert_close(actual.gaussian, expected.gaussian, atol=atol, rtol=rtol)
+    elif isinstance(actual, Contraction):
+        assert actual.red_op == expected.red_op
+        assert actual.bin_op == expected.bin_op
+        assert actual.reduced_vars == expected.reduced_vars
+        assert len(actual.terms) == len(expected.terms)
+        for ta, te in zip(actual.terms, expected.terms):
+            assert_close(ta, te, atol, rtol)
     elif isinstance(actual, torch.Tensor):
         assert actual.dtype == expected.dtype, msg
         if actual.dtype in (torch.long, torch.uint8):

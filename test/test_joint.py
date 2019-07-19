@@ -12,7 +12,6 @@ from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
-from funsor.joint import Joint
 from funsor.terms import Number, Reduce, eager, moment_matching
 from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
@@ -161,7 +160,7 @@ def test_reduce_logaddexp_deltas_lazy():
     a = Delta('a', Tensor(torch.randn(3, 2), OrderedDict(i=bint(3))))
     b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
     x = a + b
-    # assert isinstance(x, Joint)
+    assert isinstance(x, Contraction)
     assert set(x.inputs) == {'a', 'b', 'i'}
 
     y = x.reduce(ops.logaddexp, 'i')
@@ -175,7 +174,7 @@ def test_reduce_logaddexp_deltas_discrete_lazy():
     b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
     c = Tensor(torch.randn(3), OrderedDict(i=bint(3)))
     x = a + b + c
-    # assert isinstance(x, Joint)
+    assert isinstance(x, Contraction)
     assert set(x.inputs) == {'a', 'b', 'i'}
 
     y = x.reduce(ops.logaddexp, 'i')
@@ -188,7 +187,7 @@ def test_reduce_logaddexp_gaussian_lazy():
     a = random_gaussian(OrderedDict(i=bint(3), a=reals(2)))
     b = random_tensor(OrderedDict(i=bint(3), b=bint(2)))
     x = a + b
-    # assert isinstance(x, Joint)
+    assert isinstance(x, Contraction)
     assert set(x.inputs) == {'a', 'b', 'i'}
 
     y = x.reduce(ops.logaddexp, 'i')
@@ -208,7 +207,7 @@ def test_reduce_logaddexp_gaussian_lazy():
 def test_reduce_add(inputs):
     int_inputs = OrderedDict((k, d) for k, d in inputs.items() if d.dtype != 'real')
     x = random_gaussian(inputs) + random_tensor(int_inputs)
-    # assert isinstance(x, Joint)
+    assert isinstance(x, Contraction)
     actual = x.reduce(ops.add, 'i')
 
     xs = [x(i=i) for i in range(x.inputs['i'].dtype)]

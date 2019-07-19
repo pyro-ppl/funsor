@@ -8,11 +8,11 @@ import torch
 from six.moves import reduce
 
 import funsor.ops as ops
+from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
-from funsor.joint import Joint
 from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
@@ -91,27 +91,27 @@ def test_block_matrix_batched(batch_shape):
 
 @pytest.mark.parametrize('expr,expected_type', [
     ('-g1', Gaussian),
-    ('g1 + 1', Joint),
-    ('g1 - 1', Joint),
-    ('1 + g1', Joint),
-    ('g1 + shift', Joint),
-    ('g1 + shift', Joint),
-    ('shift + g1', Joint),
-    ('shift - g1', Joint),
-    ('g1 + g1', Joint),
-    ('(g1 + g2 + g2) - g2', Joint),
+    ('g1 + 1', Contraction),
+    ('g1 - 1', Contraction),
+    ('1 + g1', Contraction),
+    ('g1 + shift', Contraction),
+    ('g1 + shift', Contraction),
+    ('shift + g1', Contraction),
+    ('shift - g1', Contraction),
+    ('g1 + g1', Contraction),
+    ('(g1 + g2 + g2) - g2', Contraction),
     ('g1(i=i0)', Gaussian),
     ('g2(i=i0)', Gaussian),
-    ('g1(i=i0) + g2(i=i0)', Joint),
-    ('g1(i=i0) + g2', Joint),
+    ('g1(i=i0) + g2(i=i0)', Contraction),
+    ('g1(i=i0) + g2', Contraction),
     ('g1(x=x0)', Tensor),
     ('g2(y=y0)', Tensor),
-    ('(g1 + g2)(i=i0)', Joint),
+    ('(g1 + g2)(i=i0)', Contraction),
     ('(g1 + g2)(x=x0, y=y0)', Tensor),
     ('(g2 + g1)(x=x0, y=y0)', Tensor),
     ('g1.reduce(ops.logaddexp, "x")', Tensor),
-    ('(g1 + g2).reduce(ops.logaddexp, "x")', Joint),
-    ('(g1 + g2).reduce(ops.logaddexp, "y")', Joint),
+    ('(g1 + g2).reduce(ops.logaddexp, "x")', Contraction),
+    ('(g1 + g2).reduce(ops.logaddexp, "y")', Contraction),
     ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
 ])
 def test_smoke(expr, expected_type):

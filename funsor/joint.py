@@ -6,16 +6,18 @@ from collections import OrderedDict
 
 from six import add_metaclass
 from six.moves import reduce
+from multipledispatch.variadic import Variadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 import funsor.terms
+# from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.gaussian import Gaussian, sym_inverse
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
-from funsor.ops import AddOp, NegOp, SubOp
+from funsor.ops import AddOp, AssociativeOp, NegOp, SubOp
 from funsor.terms import (
     Align,
     Binary,
@@ -287,6 +289,21 @@ def eager_sub(op, lhs, rhs):
         return op(lhs, rhs)
 
     return None  # defer to default implementation
+
+
+# @eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset,
+#                 (Delta, Gaussian, Number, Tensor), (Delta, Gaussian, Number, Tensor),
+#                 Variadic[(Delta, Gaussian, Number, Tensor)])
+# def permute_joint_terms(red_op, bin_op, reduced_vars, a, b, *terms):
+#     terms = (a, b) + terms
+#     if len(terms) == 2 and all(isinstance(t, Tensor) for t in terms):
+#         # XXX hack to work around the type signature
+#         return eager_contract_binary_tensors(red_op, bin_op, reduced_vars, *terms)
+# 
+#     new_terms = tuple(v for i, v in sorted(enumerate(terms), key=lambda t: (type(t[1]).__name__, t[0])))
+#     if any(v is not vv for v, vv in zip(terms, new_terms)):
+#         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
+#     return Contraction(red_op, bin_op, reduced_vars, new_terms)
 
 
 ################################################################################
