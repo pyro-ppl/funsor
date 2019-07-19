@@ -51,8 +51,6 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
     assert isinstance(transformed_expr, Contraction)
     if plates:
         assert all(isinstance(v, (Number, Tensor, Contraction)) for v in transformed_expr.terms)
-        assert all(v.red_op in (ops.add, ops.mul) and v.bin_op not in (ops.add, ops.mul) and len(v.terms) == 1
-                   for v in transformed_expr.terms if isinstance(v, Contraction))
     else:
         assert all(isinstance(v, (Number, Tensor)) for v in transformed_expr.terms)
 
@@ -115,6 +113,7 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 
 
 JOINT_SMOKE_TESTS = [
+    ('(g + dy).reduce(ops.logaddexp, "y")', Gaussian),
     ('dx + dy', Contraction),
     ('dx + g', Contraction),
     ('dy + g', Contraction),
@@ -172,7 +171,6 @@ JOINT_SMOKE_TESTS = [
     ('(t + g)(x=x0)', Tensor),
     ('(g + g)(x=x0)', Tensor),
     ('(g + dy).reduce(ops.logaddexp, "x")', Contraction),
-    ('(g + dy).reduce(ops.logaddexp, "y")', Gaussian),
     ('(t + g + dy).reduce(ops.logaddexp, "x")', Contraction),
     ('(t + g + dy).reduce(ops.logaddexp, "y")', Contraction),
     ('(t + g).reduce(ops.logaddexp, "x")', Tensor),
@@ -208,12 +206,7 @@ def test_joint_smoke(expr, expected_type):
     x0 = Tensor(torch.tensor([0.5, 0.6, 0.7]))
     assert isinstance(x0, Tensor)
 
-    with interpretation(normalize):
-        result = eval(expr)
-
-    if expected_type is not Contraction:
-        result = reinterpret(result)
-
+    result = eval(expr)
     assert isinstance(result, expected_type)
 
 
@@ -281,12 +274,7 @@ def test_gaussian_joint_smoke(expr, expected_type):
                 inputs=OrderedDict([('i', bint(2))]))
     assert isinstance(y0, Tensor)
 
-    with interpretation(normalize):
-        result = eval(expr)
-
-    if expected_type is not Contraction:
-        result = reinterpret(result)
-
+    result = eval(expr)
     assert isinstance(result, expected_type)
 
 

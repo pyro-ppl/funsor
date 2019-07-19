@@ -249,65 +249,6 @@ def eager_independent(joint, reals_var, bint_var):
 
 
 ################################################################################
-# Patterns to update a Joint with other funsors
-################################################################################
-
-@eager.register(Binary, AddOp, Joint, Joint)
-def eager_add(op, joint, other):
-    # Fuse two joint distributions.
-    for d in other.deltas:
-        joint += d
-    joint += other.discrete
-    joint += other.gaussian
-    return joint
-
-
-@eager.register(Binary, AddOp, Joint, Delta)
-def eager_add(op, joint, delta):
-    # Update with a degenerate distribution, typically a monte carlo sample.
-    if delta.name in joint.inputs:
-        joint = Subs(joint, ((delta.name, delta.point),))
-        if not isinstance(joint, Joint):
-            return joint + delta
-    for d in joint.deltas:
-        if d.name in delta.inputs:
-            delta = Subs(delta, ((d.name, d.point),))
-    deltas = joint.deltas + (delta,)
-    return Joint(deltas, joint.discrete, joint.gaussian)
-
-
-@eager.register(Binary, AddOp, Joint, (Number, Tensor))
-def eager_add(op, joint, other):
-    # Update with a delayed discrete random variable.
-    subs = tuple((d.name, d.point) for d in joint.deltas if d in other.inputs)
-    if subs:
-        return joint + Subs(other, subs)
-    return Joint(joint.deltas, joint.discrete + other, joint.gaussian)
-
-
-@eager.register(Binary, AddOp, Joint, Gaussian)
-def eager_add(op, joint, other):
-    # Update with a delayed gaussian random variable.
-    subs = tuple((d.name, d.point) for d in joint.deltas if d.name in other.inputs)
-    if subs:
-        other = Subs(other, subs)
-    if joint.gaussian is not Number(0):
-        other = joint.gaussian + other
-    if not isinstance(other, Gaussian):
-        return Joint(joint.deltas, joint.discrete) + other
-    return Joint(joint.deltas, joint.discrete, other)
-
-
-eager.register(Binary, AddOp, Reduce, Joint)(
-    funsor.terms.eager_distribute_reduce_other)
-
-
-@eager.register(Binary, AddOp, (Funsor, Align, Delta), Joint)
-def eager_add(op, other, joint):
-    return joint + other
-
-
-################################################################################
 # Patterns to create a Joint from elementary funsors
 ################################################################################
 
@@ -320,18 +261,18 @@ def eager_add(op, lhs, rhs):
         lhs = lhs(**{rhs.name: rhs.point})
     elif lhs.name in rhs.inputs:
         rhs = rhs(**{lhs.name: lhs.point})
-    return Joint(deltas=(lhs, rhs))
+    else:
+        return None
+    return op(lhs, rhs)
 
 
 @eager.register(Binary, AddOp, Delta, (Number, Tensor, Gaussian))
 def eager_add(op, delta, other):
     if delta.name in other.inputs:
         other = Subs(other, ((delta.name, delta.point),))
-        assert isinstance(other, (Number, Tensor, Gaussian))
-    if isinstance(other, (Number, Tensor)):
-        return Joint((delta,), discrete=other)
-    else:
-        return Joint((delta,), gaussian=other)
+        # assert isinstance(other, (Number, Tensor, Gaussian))
+        return op(delta, other)
+    return None
 
 
 @eager.register(Binary, AddOp, (Number, Tensor, Gaussian), Delta)
@@ -339,44 +280,13 @@ def eager_add(op, other, delta):
     return delta + other
 
 
-@eager.register(Binary, AddOp, Gaussian, (Number, Tensor))
-def eager_add(op, gaussian, discrete):
-    return Joint(discrete=discrete, gaussian=gaussian)
-
-
-@eager.register(Binary, AddOp, (Number, Tensor), Gaussian)
-def eager_add(op, discrete, gaussian):
-    return Joint(discrete=discrete, gaussian=gaussian)
-
-
-################################################################################
-# Patterns to compute Radon-Nikodym derivatives
-################################################################################
-
-@eager.register(Binary, SubOp, Joint, (Funsor, Align, Gaussian, Joint))
-def eager_sub(op, joint, other):
-    return joint + -other
-
-
-@eager.register(Binary, SubOp, (Funsor, Align), Joint)
-def eager_sub(op, other, joint):
-    return -joint + other
-
-
-@eager.register(Binary, SubOp, Delta, (Number, Tensor, Gaussian, Joint))
-@eager.register(Binary, SubOp, (Number, Tensor), Gaussian)
-@eager.register(Binary, SubOp, Gaussian, (Number, Tensor, Joint))
+@eager.register(Binary, SubOp, Delta, Gaussian)
 def eager_sub(op, lhs, rhs):
-    return lhs + -rhs
+    if lhs.name in rhs.inputs:
+        rhs = rhs(**{lhs.name: lhs.point})
+        return op(lhs, rhs)
 
-
-@eager.register(Unary, NegOp, Joint)
-def eager_neg(op, joint):
-    if joint.deltas:
-        raise ValueError("Cannot negate deltas")
-    discrete = -joint.discrete
-    gaussian = -joint.gaussian
-    return Joint(discrete=discrete, gaussian=gaussian)
+    return None  # defer to default implementation
 
 
 ################################################################################
