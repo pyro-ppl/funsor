@@ -135,6 +135,7 @@ class FunsorDistribution(dist.TorchDistribution):
         return DistributionFunsor(self, pyro_dist, inputs)
 
 
+# TODO try to combine this with funsor.distributions.Distribution
 class DistributionFunsor(Funsor):
     """
     :class:`~funsor.terms.Funsor` wrapper around a
@@ -148,6 +149,9 @@ class DistributionFunsor(Funsor):
         super(DistributionFunsor, self).__init__(self, inputs, output)
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
+        raise NotImplementedError("TODO")
+
+    def eager_subs(self, TODO):
         raise NotImplementedError("TODO")
 
 
