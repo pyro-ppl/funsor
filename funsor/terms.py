@@ -272,6 +272,10 @@ class Funsor(object):
                 "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
 
+    @property
+    def requires_grad(self):
+        return False
+
     def reduce(self, op, reduced_vars=None):
         """
         Reduce along all or a subset of inputs.
