@@ -8,7 +8,7 @@ from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.delta import Delta
+from funsor.delta import Delta, MultiDelta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
@@ -24,7 +24,7 @@ def id_from_inputs(inputs):
 
 
 SMOKE_TESTS = [
-    ('dx + dy', Contraction),
+    ('dx + dy', MultiDelta),
     ('dx + g', Contraction),
     ('dy + g', Contraction),
     ('g + dx', Contraction),
@@ -44,7 +44,7 @@ SMOKE_TESTS = [
     ('t - g', Contraction),
     ('g + g', Contraction),
     ('-(g + g)', Contraction),
-    ('(dx + dy)(i=i0)', Contraction),
+    ('(dx + dy)(i=i0)', MultiDelta),
     ('(dx + g)(i=i0)', Contraction),
     ('(dy + g)(i=i0)', Contraction),
     ('(g + dx)(i=i0)', Contraction),
