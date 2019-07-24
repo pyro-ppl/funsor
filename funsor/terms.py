@@ -865,32 +865,6 @@ def moment_matching_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
 
 
-class Convolve(Funsor):
-    """
-    Lazy convolution over multiple variables.
-
-    Note that time lag information must be in the input names in arg.
-    TODO describe arg naming convention.
-    """
-    def __init__(self, sum_op, prod_op, arg, sum_vars, prod_vars):
-        assert isinstance(sum_op, AssociativeOp)
-        assert isinstance(prod_op, AssociativeOp)
-        assert isinstance(arg, Funsor)
-        assert isinstance(sum_vars, frozenset)
-        assert isinstance(prod_vars, frozenset)
-        reduced_vars = sum_vars | prod_vars
-        inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if k not in reduced_vars)
-        output = arg.output
-        fresh = frozenset()
-        bound = reduced_vars
-        super(Convolve, self).__init__(inputs, output, fresh, bound)
-        self.sum_op = sum_op
-        self.prod_op = prod_op
-        self.arg = arg
-        self.sum_vars = sum_vars
-        self.prod_vars = prod_vars
-
-
 class NumberMeta(FunsorMeta):
     """
     Wrapper to fill in default ``dtype``.
