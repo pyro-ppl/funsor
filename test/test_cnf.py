@@ -5,13 +5,11 @@ import torch
 
 from collections import OrderedDict
 
-import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.einsum import einsum, naive_plated_einsum
-from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation, reinterpret
-from funsor.terms import Number, Variable, eager, moment_matching, normalize, reflect
+from funsor.terms import Number, Variable, eager, normalize, reflect
 from funsor.testing import assert_close, check_funsor, make_einsum_example  # , xfail_param
 from funsor.torch import Tensor
 
@@ -109,36 +107,3 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 
     assert isinstance(result, expected_type)
     check_funsor(result, expected_inputs, expected_output)
-
-
-@pytest.mark.xfail(reason="pattern collisions with Joint")
-def test_reduce_moment_matching_univariate():
-    int_inputs = [('i', bint(2))]
-    real_inputs = [('x', reals())]
-    inputs = OrderedDict(int_inputs + real_inputs)
-    int_inputs = OrderedDict(int_inputs)
-    real_inputs = OrderedDict(real_inputs)
-
-    p = 0.8
-    t = 1.234
-    s1, s2, s3 = 2.0, 3.0, 4.0
-    loc = torch.tensor([[-s1], [s1]])
-    precision = torch.tensor([[[s2 ** -2]], [[s3 ** -2]]])
-    discrete = Tensor(torch.tensor([1 - p, p]).log() + t, int_inputs)
-    gaussian = Gaussian(loc, precision, inputs)
-
-    with interpretation(normalize):
-        joint = discrete + gaussian
-
-    with interpretation(moment_matching):
-        actual = joint.reduce(ops.logaddexp, 'i')
-
-    expected_loc = torch.tensor([(2 * p - 1) * s1])
-    expected_variance = (4 * p * (1 - p) * s1 ** 2
-                         + (1 - p) * s2 ** 2
-                         + p * s3 ** 2)
-    expected_precision = torch.tensor([[1 / expected_variance]])
-    expected_gaussian = Gaussian(expected_loc, expected_precision, real_inputs)
-    expected_discrete = Tensor(torch.tensor(t))
-    expected = expected_discrete + expected_gaussian
-    assert_close(actual, expected, atol=1e-5, rtol=None)
