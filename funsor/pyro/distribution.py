@@ -6,10 +6,11 @@ import pyro.distributions as dist
 import torch
 
 from funsor.delta import Delta
+from funsor.domains import bint
 from funsor.interpreter import interpretation, reinterpret
 from funsor.joint import Joint
 from funsor.optimizer import apply_optimizer
-from funsor.pyro.convert import funsor_to_tensor, tensor_to_funsor
+from funsor.pyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
 from funsor.terms import Funsor, lazy
 
 
@@ -52,7 +53,11 @@ class FunsorDistribution(dist.TorchDistribution):
     def _sample_delta(self, sample_shape):
         sample_inputs = None
         if sample_shape:
-            sample_inputs = OrderedDict("TODO")
+            sample_inputs = OrderedDict()
+            shape = sample_shape + self.batch_shape
+            for dim in range(-len(shape), -len(self.batch_shape)):
+                if shape[dim] > 1:
+                    sample_inputs[DIM_TO_NAME[dim]] = bint(shape[dim])
         delta = self.funsor_dist.sample(frozenset({"value"}), sample_inputs)
         if isinstance(delta, Joint):
             delta, = delta.deltas
