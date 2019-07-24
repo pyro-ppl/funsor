@@ -4,6 +4,7 @@ import math
 import numbers
 import re
 from collections import Hashable, OrderedDict
+from functools import singledispatch
 from weakref import WeakValueDictionary
 
 from multipledispatch import dispatch
@@ -15,7 +16,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.six import getargspec, singledispatch
+from funsor.util import getargspec
 
 
 def substitute(expr, subs):

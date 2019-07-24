@@ -14,9 +14,8 @@ from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, \
-    eager, substitute, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, eager, substitute, to_data, to_funsor
+from funsor.util import getargspec
 
 
 @contextmanager
