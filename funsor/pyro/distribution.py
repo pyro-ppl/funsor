@@ -39,7 +39,8 @@ class FunsorDistribution(dist.TorchDistribution):
         with interpretation(lazy):
             log_prob = apply_optimizer(self.funsor_dist(value=value))
         log_prob = reinterpret(log_prob)
-        log_prob = funsor_to_tensor(log_prob)
+        ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
+        log_prob = funsor_to_tensor(log_prob, ndims=ndims)
         return log_prob
 
     def _sample_delta(self, sample_shape):
@@ -52,15 +53,18 @@ class FunsorDistribution(dist.TorchDistribution):
         assert isinstance(delta, Delta)
         return delta
 
+    @torch.no_grad()
     def sample(self, sample_shape=torch.Size()):
         delta = self._sample_delta(sample_shape)
-        value = delta.point
+        ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
+        value = funsor_to_tensor(delta.point, ndims=ndims)
         return value.detach()
 
     def rsample(self, sample_shape=torch.Size()):
         delta = self._sample_delta(sample_shape)
         assert not delta.log_prob.requires_grad, "distribution is not fully reparametrized"
-        value = delta.point
+        ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
+        value = funsor_to_tensor(delta.point, ndims=ndims)
         return value
 
     def expand(self, batch_shape, _instance=None):

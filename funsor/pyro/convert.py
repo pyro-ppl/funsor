@@ -14,6 +14,9 @@ NAME_TO_DIM = dict(zip(DIM_TO_NAME, range(-100, 0)))
 
 
 def tensor_to_funsor(tensor, event_dim=0, dtype="real"):
+    """
+    Convert a :class:`torch.Tensor` to a :class:`funsor.torch.Tensor` .
+    """
     assert isinstance(tensor, torch.Tensor)
     batch_shape = tensor.shape[:tensor.dim() - event_dim]
     event_shape = tensor.shape[tensor.dim() - event_dim:]
@@ -34,7 +37,10 @@ def tensor_to_funsor(tensor, event_dim=0, dtype="real"):
     return Tensor(tensor, inputs, dtype)
 
 
-def funsor_to_tensor(funsor_):
+def funsor_to_tensor(funsor_, ndims):
+    """
+    Convert a :class:`funsor.torch.Tensor` to a :class:`torch.Tensor` .
+    """
     assert isinstance(funsor_, Tensor)
     assert all(k.startswith("_pyro_dim_") for k in funsor_.inputs)
     names = tuple(sorted(funsor_.inputs, key=NAME_TO_DIM.__getitem__))
@@ -45,11 +51,19 @@ def funsor_to_tensor(funsor_):
         batch_shape = [1] * (-dims[0])
         for dim, size in zip(dims, tensor.shape):
             batch_shape[dim] = size
+        batch_shape = torch.Size(batch_shape)
         tensor = tensor.reshape(batch_shape + funsor_.output.shape)
+    if ndims != tensor.dim():
+        tensor = tensor.reshape((1,) * (ndims - tensor.dim()) + tensor.shape)
+    assert tensor.dim() == ndims
     return tensor
 
 
 def dist_to_funsor(pyro_dist, reinterpreted_batch_ndims=0):
+    """
+    Convert a :class:`torch.distributions.Distribution` to a
+    :class:`~funsor.terms.Funsor` .
+    """
     assert isinstance(pyro_dist, torch.distributions.Distribution)
     while isinstance(pyro_dist, dist.Independent):
         reinterpreted_batch_ndims += pyro_dist.reinterpreted_batch_ndims
