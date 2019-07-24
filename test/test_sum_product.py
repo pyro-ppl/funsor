@@ -1,7 +1,7 @@
 from collections import OrderedDict
+from functools import reduce
 
 import pytest
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.domains import bint

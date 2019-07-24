@@ -1,8 +1,8 @@
 import math
 from collections import OrderedDict
 
-import pytest
 import pyro
+import pytest
 import torch
 
 import funsor

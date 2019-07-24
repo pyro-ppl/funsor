@@ -12,7 +12,6 @@ from funsor.interpreter import interpretation
 from funsor.terms import Variable, reflect
 from funsor.testing import make_einsum_example, make_plated_hmm_einsum
 
-
 # FIXME rewrite adjoint for compatibility with substitution changes
 xfail_with_new_subs = pytest.mark.xfail(True, reason="fails w/ new subs")
 

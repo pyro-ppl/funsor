@@ -3,12 +3,12 @@ import itertools
 import numbers
 import operator
 from collections import OrderedDict, namedtuple
+from functools import reduce
 
 import numpy as np
 import opt_einsum
 import pytest
 import torch
-from six.moves import reduce
 
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, reals

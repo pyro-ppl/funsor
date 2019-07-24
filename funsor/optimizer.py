@@ -1,7 +1,7 @@
 import collections
+from functools import reduce
 
 from opt_einsum.paths import greedy
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.contract import Contract, contractor
@@ -19,7 +19,7 @@ from funsor.torch import Tensor
 class Finitary(Funsor):
     """
     Lazy finitary operation. Used internally in the optimizer.
-    Finitary(op, operands) == six.moves.reduce(op, operands)
+    Finitary(op, operands) == functools.reduce(op, operands)
     """
     def __init__(self, op, operands):
         assert callable(op)

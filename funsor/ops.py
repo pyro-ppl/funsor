@@ -3,7 +3,6 @@ from numbers import Number
 
 import numpy as np
 from multipledispatch import Dispatcher
-from six import add_metaclass
 
 _builtin_abs = abs
 _builtin_max = max
@@ -82,8 +81,7 @@ class GetitemMeta(type):
             return instance
 
 
-@add_metaclass(GetitemMeta)
-class GetitemOp(Op):
+class GetitemOp(Op, metaclass=GetitemMeta):
     """
     Op encoding an index into one dime, e.g. ``x[:,:,:,y]`` for offset of 3.
     """

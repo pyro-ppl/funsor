@@ -1,7 +1,7 @@
 from collections import OrderedDict, defaultdict
+from functools import reduce
 
 import torch
-from six.moves import reduce
 
 from funsor.domains import bint
 from funsor.ops import UNITS, Op

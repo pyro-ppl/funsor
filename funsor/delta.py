@@ -1,7 +1,5 @@
 from collections import OrderedDict
 
-from six import add_metaclass
-
 import funsor.ops as ops
 import funsor.terms
 from funsor.domains import Domain, reals
@@ -36,8 +34,7 @@ class DeltaMeta(FunsorMeta):
         return super(DeltaMeta, cls).__call__(name, point, log_density)
 
 
-@add_metaclass(DeltaMeta)
-class Delta(Funsor):
+class Delta(Funsor, metaclass=DeltaMeta):
     """
     Normalized delta distribution binding a single variable.
 

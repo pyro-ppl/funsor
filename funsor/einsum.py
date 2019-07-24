@@ -1,8 +1,7 @@
 from collections import OrderedDict
+from functools import reduce
 
 import torch
-from six import integer_types
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.contract import Contract
@@ -14,7 +13,7 @@ from funsor.torch import Tensor
 
 
 def _make_base_lhs(prod_op, arg, reduced_vars, normalized=False):
-    if not all(isinstance(d.dtype, integer_types) for d in arg.inputs.values()):
+    if not all(isinstance(d.dtype, int) for d in arg.inputs.values()):
         raise NotImplementedError("TODO implement continuous base lhss")
 
     if prod_op not in (ops.add, ops.mul):

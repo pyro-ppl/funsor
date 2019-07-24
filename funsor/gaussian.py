@@ -1,11 +1,10 @@
 import math
 import warnings
 from collections import OrderedDict, defaultdict
+from functools import reduce
 
 import torch
 from pyro.distributions.util import broadcast_shape
-from six import add_metaclass, integer_types
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.delta import Delta
@@ -138,7 +137,7 @@ def _parse_slices(index, value):
     for pos, i in reversed(list(enumerate(index))):
         if isinstance(i, slice):
             start_stops.append((i.start, i.stop))
-        elif isinstance(i, integer_types):
+        elif isinstance(i, int):
             start_stops.append((i, i + 1))
             value = value.unsqueeze(pos - len(index))
         else:
@@ -286,8 +285,7 @@ class GaussianMeta(FunsorMeta):
         return super(GaussianMeta, cls).__call__(loc, precision, inputs)
 
 
-@add_metaclass(GaussianMeta)
-class Gaussian(Funsor):
+class Gaussian(Funsor, metaclass=GaussianMeta):
     """
     Funsor representing a batched joint Gaussian distribution as a log-density
     function.
@@ -314,7 +312,7 @@ class Gaussian(Funsor):
 
         # Compute total shape of all bint inputs.
         batch_shape = tuple(d.dtype for d in inputs.values()
-                            if isinstance(d.dtype, integer_types))
+                            if isinstance(d.dtype, int))
         if not torch._C._get_tracing_state():
             assert _issubshape(loc.shape, batch_shape + (dim,))
             assert _issubshape(precision.shape, batch_shape + (dim, dim))

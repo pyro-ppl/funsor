@@ -1,13 +1,12 @@
 import functools
 import warnings
 from collections import OrderedDict
+from functools import reduce
 
 import opt_einsum
 import torch
 from contextlib2 import contextmanager
 from multipledispatch import dispatch
-from six import add_metaclass, integer_types
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.contract import Contract, contractor
@@ -38,7 +37,7 @@ def align_tensor(new_inputs, x):
     """
     assert isinstance(new_inputs, OrderedDict)
     assert isinstance(x, (Number, Tensor))
-    assert all(isinstance(d.dtype, integer_types) for d in x.inputs.values())
+    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
 
     data = x.data
     if isinstance(x, Number):
@@ -91,8 +90,7 @@ class TensorMeta(FunsorMeta):
         return super(TensorMeta, cls).__call__(data, inputs, dtype)
 
 
-@add_metaclass(TensorMeta)
-class Tensor(Funsor):
+class Tensor(Funsor, metaclass=TensorMeta):
     """
     Funsor backed by a PyTorch Tensor.
 
@@ -491,7 +489,7 @@ def materialize(x):
         return x
     subs = []
     for name, domain in x.inputs.items():
-        if isinstance(domain.dtype, integer_types):
+        if isinstance(domain.dtype, int):
             subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
     return substitute(x, subs)

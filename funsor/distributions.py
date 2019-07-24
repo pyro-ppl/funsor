@@ -4,7 +4,6 @@ from collections import OrderedDict
 import pyro.distributions as dist
 import torch
 from pyro.distributions.util import broadcast_shape
-from six import add_metaclass
 
 import funsor.delta
 import funsor.ops as ops
@@ -53,8 +52,7 @@ class DistributionMeta(FunsorMeta):
             return super(DistributionMeta, cls).__call__(*args)
 
 
-@add_metaclass(DistributionMeta)
-class Distribution(Funsor):
+class Distribution(Funsor, metaclass=DistributionMeta):
     """
     Funsor backed by a PyTorch distribution object.
     """

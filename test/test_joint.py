@@ -1,8 +1,8 @@
 from collections import OrderedDict
+from functools import reduce
 
 import pytest
 import torch
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.delta import Delta
