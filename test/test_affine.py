@@ -40,7 +40,7 @@ def test_smoke(expr, expected_type):
 
     result = eval(expr)
     assert isinstance(result, expected_type)
-    assert result.is_affine()
+    assert result.is_affine
 
 
 SUBS_TESTS = [
@@ -76,4 +76,4 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     result = eval(expr)
     assert isinstance(result, expected_type)
     check_funsor(result, expected_inputs, expected_output)
-    assert result.is_affine()
+    assert result.is_affine

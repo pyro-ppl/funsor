@@ -67,12 +67,13 @@ class Contraction(Funsor):
         self.terms = terms
         self.reduced_vars = reduced_vars
 
+    @property
     def is_affine(self):
         for t in self.terms:
             if not isinstance(t, (Number, Tensor, Variable, Contraction)):
                 return False
             if isinstance(t, Contraction):
-                if not (self.bin_op, t.bin_op) in DISTRIBUTIVE_OPS and t.red_op is anyop:
+                if not (self.bin_op, t.bin_op) in DISTRIBUTIVE_OPS:
                     return False
                 if not len(t.terms) == 2:
                     return False
