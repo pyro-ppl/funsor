@@ -8,7 +8,7 @@ from six.moves import reduce
 import funsor.ops as ops
 import funsor.terms
 from funsor.domains import Domain, reals
-from funsor.integrate import Integrate, integrator
+from funsor.integrate import Integrate
 from funsor.interpreter import debug_logged
 from funsor.ops import AddOp, SubOp, TransformOp
 from funsor.registry import KeyedRegistry
@@ -148,7 +148,6 @@ def eager_independent(delta, reals_var, bint_var):
 
 
 @eager.register(Integrate, Delta, Funsor, frozenset)
-@integrator
 def eager_integrate(delta, integrand, reduced_vars):
     assert delta.name in reduced_vars
     integrand = Subs(integrand, ((delta.name, delta.point),))
@@ -336,7 +335,6 @@ def eager_add_funsor_delta(op, lhs, rhs):
 
 
 @eager.register(Integrate, MultiDelta, Funsor, frozenset)
-@integrator
 def eager_integrate(delta, integrand, reduced_vars):
     assert reduced_vars & delta.fresh
     subs = tuple((name, point) for name, (point, log_density) in delta.terms
