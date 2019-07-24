@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function
 import pyro.distributions as dist
 import pytest
 import torch
-from torch.distributions import constraints
 
 from funsor.pyro.convert import tensor_to_funsor
 from funsor.pyro.distribution import FunsorDistribution
