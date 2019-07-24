@@ -160,7 +160,7 @@ def test_reduce_logaddexp_deltas_lazy():
     a = Delta('a', Tensor(torch.randn(3, 2), OrderedDict(i=bint(3))))
     b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
     x = a + b
-    assert isinstance(x, Contraction)
+    assert isinstance(x, MultiDelta)
     assert set(x.inputs) == {'a', 'b', 'i'}
 
     y = x.reduce(ops.logaddexp, 'i')

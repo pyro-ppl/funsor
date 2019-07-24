@@ -134,6 +134,22 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
+GROUND_TERMS = (Delta, MultiDelta, Gaussian, Number, Tensor)
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)  # Variadic[Funsor])
+def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_vars, *terms):
+    # when bin_op is commutative, put terms into a canonical order for pattern matching
+    ordering = {Delta: 0, MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
+    new_terms = tuple(
+        v for i, v in sorted(enumerate(terms),
+                             key=lambda t: (ordering[type(t[1])] if type(t[1]) in ordering else -1, t[0]))
+    )
+    if any(v is not vv for v, vv in zip(terms, new_terms)):
+        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
+    return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
+
+
 ##########################################
 # Normalizing Contractions
 ##########################################
@@ -279,17 +295,6 @@ def eager_exp(op, arg, reduced_vars):
 # patterns for joint integration
 #################################
 
-@eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset,
-                Variadic[(Delta, MultiDelta, Gaussian, Number, Tensor)])
-def permute_joint_terms(red_op, bin_op, reduced_vars, *terms):
-    # XXX sort of a hack, uses commutativity to put terms in the expected order for comparison
-    ordering = {Delta: 0, MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
-    new_terms = tuple(v for i, v in sorted(enumerate(terms), key=lambda t: (ordering[type(t[1])], t[0])))
-    if any(v is not vv for v, vv in zip(terms, new_terms)):
-        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
-    return Contraction(red_op, bin_op, reduced_vars, new_terms)
-
-
 @eager.register(Contraction, AssociativeOp, (ops.AddOp, AssociativeOp), frozenset, Tensor, Tensor)
 def eager_contract(sum_op, prod_op, reduced_vars, lhs, rhs):
     if (sum_op, prod_op) == (ops.add, ops.mul):
@@ -346,9 +351,9 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
     return None
 
 
-@eager.register(Contraction, ops.AddOp, AssociativeOp, frozenset, Unary, Funsor)
+@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Unary, Funsor)
 def eager_contraction_binary(red_op, bin_op, reduced_vars, lhs, rhs):
-    if bin_op is ops.mul and lhs.op is ops.exp and \
+    if lhs.op is ops.exp and \
             isinstance(lhs.arg, (Delta, MultiDelta, Gaussian, Number, Tensor)) and \
             lhs.arg.fresh & reduced_vars:
         return Integrate(lhs.arg, rhs, reduced_vars)
