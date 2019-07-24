@@ -75,16 +75,17 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
-            remaining_sum_vars = sum_vars.intersection(f.inputs)
+            f = reduce(prod_op, group_factors)
+            remaining_sum_vars = sum_vars.intersection(f.inputs).difference(group_vars)
             if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf & eliminate))
+                f = f.convolve(sum_op, prod_op, group_vars, leaf & eliminate)
+                results.append(f)
             else:
                 new_plates = frozenset().union(
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
-                f = f.reduce(prod_op, leaf - new_plates)
+                f = f.convolve(sum_op, prod_op, group_vars, leaf - new_plates)
                 ordinal_to_factors[new_plates].append(f)
 
     return results

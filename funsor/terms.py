@@ -416,6 +416,9 @@ class Funsor(object):
 
         return None  # defer to default implementation
 
+    def convolve(self, sum_op, prod_op, sum_vars, prod_vars):
+        return self.reduce(sum_op, sum_vars).reduce(prod_op, prod_vars)
+
     # The following methods conform to a standard array/tensor interface.
 
     def __invert__(self):
