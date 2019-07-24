@@ -10,7 +10,7 @@ from six import add_metaclass
 
 import funsor.delta
 import funsor.ops as ops
-from funsor.affine import Affine
+from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.interpreter import interpretation
@@ -392,16 +392,28 @@ def eager_normal(loc, scale, value):
     return Normal(loc, scale, 'value')(value=value)
 
 
-@eager.register(Normal, (Variable, Affine), Tensor, (Variable, Affine))
-@eager.register(Normal, (Variable, Affine), Tensor, Tensor)
-@eager.register(Normal, Tensor, Tensor, (Variable, Affine))
+@eager.register(Normal, (Variable, Contraction), Tensor, (Variable, Contraction))
+@eager.register(Normal, (Variable, Contraction), Tensor, Tensor)
+@eager.register(Normal, Tensor, Tensor, (Variable, Contraction))
 def eager_normal(loc, scale, value):
     affine = (loc - value) / scale
-    assert isinstance(affine, Affine)
+    if not affine.is_affine():
+        return None
+
     real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
     assert not any(v.shape for v in real_inputs.values())
 
-    tensors = [affine.const] + [c for v, c in affine.coeffs.items()]
+    const, coeffs = to_funsor(torch.tensor(0.)), OrderedDict((k, Number(0.)) for k in real_inputs)
+    for t in affine.terms:
+        if isinstance(t, (Number, Tensor)):
+            const += t
+        elif isinstance(t, Variable):
+            coeffs[t.name] += 1.
+        elif isinstance(t, Contraction):
+            v, c = t.terms if isinstance(t.terms[0], Variable) else reversed(t.terms)
+            coeffs[v.name] += c
+
+    tensors = [const] + list(coeffs.values())
     inputs, tensors = align_tensors(*tensors)
     tensors = torch.broadcast_tensors(*tensors)
     const, coeffs = tensors[0], tensors[1:]

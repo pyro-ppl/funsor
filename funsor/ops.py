@@ -72,6 +72,10 @@ class NegOp(Op):
     pass
 
 
+class DivOp(Op):
+    pass
+
+
 class GetitemMeta(type):
     _cache = {}
 
@@ -112,7 +116,7 @@ lt = Op(operator.lt)
 ne = Op(operator.ne)
 neg = NegOp(operator.neg)
 sub = SubOp(operator.sub)
-truediv = Op(operator.truediv)
+truediv = DivOp(operator.truediv)
 
 add = AddOp(operator.add)
 and_ = AssociativeOp(operator.and_)
@@ -199,13 +203,13 @@ def logaddexp(x, y):
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
-@Op
+@SubOp
 def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
 
 
-@Op
+@DivOp
 def safediv(x, y):
     if isinstance(y, Number):
         return truediv(x, y)
