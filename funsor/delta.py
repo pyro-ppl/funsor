@@ -319,7 +319,7 @@ def eager_add_multidelta(op, lhs, rhs):
 @eager.register(Binary, (AddOp, SubOp), MultiDelta, (Funsor, Align))
 def eager_add_delta_funsor(op, lhs, rhs):
     if lhs.fresh.intersection(rhs.inputs):
-        rhs = rhs(**{name: point for name, point in lhs.terms if name in rhs.inputs})
+        rhs = rhs(**{name: point for name, (point, ld) in lhs.terms if name in rhs.inputs})
         return op(lhs, rhs)
 
     return None  # defer to default implementation
