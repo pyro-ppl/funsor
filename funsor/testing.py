@@ -16,7 +16,6 @@ from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
-from funsor.joint import Joint
 from funsor.numpy import Array
 from funsor.terms import Funsor, Number
 from funsor.torch import Tensor
@@ -64,14 +63,6 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     elif isinstance(actual, Gaussian):
         assert_close(actual.loc, expected.loc, atol=atol, rtol=rtol)
         assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)
-    elif isinstance(actual, Joint):
-        actual_deltas = {d.name: d for d in actual.deltas}
-        expected_deltas = {d.name: d for d in expected.deltas}
-        assert set(actual_deltas) == set(expected_deltas)
-        for name, actual_delta in actual_deltas.items():
-            assert_close(actual_delta, expected_deltas[name])
-        assert_close(actual.discrete, expected.discrete, atol=atol, rtol=rtol)
-        assert_close(actual.gaussian, expected.gaussian, atol=atol, rtol=rtol)
     elif isinstance(actual, Contraction):
         assert actual.red_op == expected.red_op
         assert actual.bin_op == expected.bin_op

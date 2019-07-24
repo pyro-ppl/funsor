@@ -42,8 +42,8 @@ class Distribution(object):
         with funsor.interpreter.interpretation(funsor.terms.eager):
             dist = self.funsor_dist(value='value')
             delta = dist.sample(frozenset(['value']))
-        if isinstance(delta, funsor.joint.Joint):
-            delta, = delta.deltas
+        if isinstance(delta, funsor.delta.MultiDelta):
+            delta = funsor.delta.Delta(delta.terms[0][0], delta.terms[0][1][0], delta.terms[0][1][1])
         return delta.point
 
     # Similar to torch.distributions.Distribution.expand().

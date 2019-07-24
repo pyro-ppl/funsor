@@ -13,7 +13,6 @@ from funsor.cnf import Contraction
 from funsor.delta import Delta, MultiDelta
 from funsor.domains import bint, reals
 from funsor.integrate import Integrate
-from funsor.joint import Joint
 from funsor.montecarlo import monte_carlo_interpretation
 from funsor.terms import Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented

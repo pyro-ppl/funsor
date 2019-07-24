@@ -7,12 +7,11 @@ from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.contract import Contract, contractor
-from funsor.delta import Delta
+from funsor.delta import Delta, MultiDelta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
-from funsor.joint import Joint
 from funsor.ops import DISTRIBUTIVE_OPS, UNITS, AssociativeOp
 from funsor.terms import Binary, Funsor, Reduce, Unary, eager, lazy, to_funsor
 from funsor.torch import Tensor
@@ -252,7 +251,7 @@ def optimize_contract_funsor_finitary(sum_op, prod_op, lhs, rhs, reduced_vars):
 
 @optimize.register(Contract, AssociativeOp, AssociativeOp, Unary, Funsor, frozenset)
 def optimize_contract_exp_funsor(sum_op, prod_op, lhs, rhs, reduced_vars):
-    if lhs.op is ops.exp and isinstance(lhs.arg, (Gaussian, Tensor, Delta, Joint)) and \
+    if lhs.op is ops.exp and isinstance(lhs.arg, (Gaussian, Tensor, Delta, MultiDelta)) and \
             sum_op is ops.add and prod_op is ops.mul:
         return Integrate(lhs.arg, rhs, reduced_vars)
     return None
