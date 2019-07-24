@@ -26,11 +26,6 @@ def eager_add(op, delta, other):
     return None
 
 
-@eager.register(Binary, AddOp, (Number, Tensor, Gaussian), Delta)
-def eager_add(op, other, delta):
-    return delta + other
-
-
 @eager.register(Binary, SubOp, Delta, Gaussian)
 def eager_sub(op, lhs, rhs):
     if lhs.name in rhs.inputs:
