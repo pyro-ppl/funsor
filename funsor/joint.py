@@ -1,44 +1,18 @@
 from __future__ import absolute_import, division, print_function
 
-import functools
-import math
-from collections import OrderedDict
-
-from six import add_metaclass
-from six.moves import reduce
-from multipledispatch.variadic import Variadic
-
-import funsor.interpreter as interpreter
-import funsor.ops as ops
-import funsor.terms
 from funsor.delta import Delta, MultiDelta
-from funsor.domains import reals
-from funsor.gaussian import Gaussian, sym_inverse
-from funsor.integrate import Integrate
-from funsor.montecarlo import monte_carlo
-from funsor.ops import AddOp, AssociativeOp, NegOp, SubOp
-from funsor.terms import (
-    Align,
-    Binary,
-    Funsor,
-    FunsorMeta,
-    Independent,
-    Number,
-    Reduce,
-    Subs,
-    Unary,
-    Variable,
-    eager,
-    to_funsor
-)
-from funsor.torch import Tensor, arange
+from funsor.gaussian import Gaussian
+from funsor.ops import AddOp, SubOp
+from funsor.terms import Binary, Number, eager
+from funsor.torch import Tensor
 
 
 @eager.register(Binary, AddOp, Delta, (Number, Tensor, Gaussian))
 def eager_add(op, delta, other):
     if delta.name in other.inputs:
-        other = Subs(other, ((delta.name, delta.point),))
+        other = other(**{delta.name: delta.point})
         return op(delta, other)
+
     return None
 
 

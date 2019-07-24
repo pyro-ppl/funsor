@@ -7,7 +7,6 @@ from collections import OrderedDict
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.gaussian import Gaussian

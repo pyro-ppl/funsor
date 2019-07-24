@@ -12,7 +12,7 @@ from funsor.delta import Delta, MultiDelta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
-from funsor.terms import Number, Reduce, eager, moment_matching
+from funsor.terms import Number, eager, moment_matching
 from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 

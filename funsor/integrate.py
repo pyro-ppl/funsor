@@ -1,12 +1,9 @@
 from __future__ import absolute_import, division, print_function
 
-import functools
 from collections import OrderedDict
 
-import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.contract import Contract
-from funsor.terms import Funsor, Reduce, eager
+from funsor.terms import Funsor, eager
 
 
 class Integrate(Funsor):
