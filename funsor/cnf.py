@@ -8,9 +8,10 @@ import opt_einsum
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.delta import Delta
+from funsor.delta import Delta, MultiDelta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian, sym_inverse
+from funsor.integrate import Integrate
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
 from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, eager, moment_matching, normalize, reflect
@@ -65,6 +66,12 @@ class Contraction(Funsor):
         self.bin_op = bin_op
         self.terms = terms
         self.reduced_vars = reduced_vars
+
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        if self.red_op in (ops.logaddexp, anyop) and self.bin_op in (ops.logaddexp, ops.add, anyop):
+            new_terms = tuple(v.unscaled_sample(sampled_vars, sample_inputs) for v in self.terms)
+            return Contraction(self.red_op, self.bin_op, self.reduced_vars, *new_terms)
+        raise TypeError("Cannot sample through ops ({}, {})".format(self.red_op, self.bin_op))
 
 
 @recursion_reinterpret.register(Contraction)
@@ -253,8 +260,18 @@ def unary_transform(op, arg):
     if op is ops.log:
         raise NotImplementedError("TODO")
     elif op is ops.exp:
+        if arg.bin_op in (ops.add, anyop) and arg.red_op in (anyop, ops.logaddexp):
+            new_terms = tuple(v.exp() for v in arg.terms)
+            return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
         raise NotImplementedError("TODO")
 
+    return None
+
+
+@eager.register(Reduce, ops.AddOp, Unary, frozenset)
+def eager_exp(op, arg, reduced_vars):
+    if arg.op is ops.exp and isinstance(arg.arg, (Delta, MultiDelta)):
+        return ops.exp(arg.arg.reduce(ops.logaddexp, reduced_vars))
     return None
 
 
@@ -262,10 +279,11 @@ def unary_transform(op, arg):
 # patterns for joint integration
 #################################
 
-@eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Variadic[(Delta, Gaussian, Number, Tensor)])
+@eager.register(Contraction, AssociativeOp, ops.AddOp, frozenset,
+                Variadic[(Delta, MultiDelta, Gaussian, Number, Tensor)])
 def permute_joint_terms(red_op, bin_op, reduced_vars, *terms):
     # XXX sort of a hack, uses commutativity to put terms in the expected order for comparison
-    ordering = {Delta: 0, Number: 1, Tensor: 2, Gaussian: 3}
+    ordering = {Delta: 0, MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
     new_terms = tuple(v for i, v in sorted(enumerate(terms), key=lambda t: (ordering[type(t[1])], t[0])))
     if any(v is not vv for v, vv in zip(terms, new_terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
@@ -325,4 +343,13 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
         new_gaussian = Gaussian(new_loc.data, new_precision.data, new_inputs)
         return new_discrete + new_gaussian
 
+    return None
+
+
+@eager.register(Contraction, ops.AddOp, AssociativeOp, frozenset, Unary, Funsor)
+def eager_contraction_binary(red_op, bin_op, reduced_vars, lhs, rhs):
+    if bin_op is ops.mul and lhs.op is ops.exp and \
+            isinstance(lhs.arg, (Delta, MultiDelta, Gaussian, Number, Tensor)) and \
+            lhs.arg.fresh & reduced_vars:
+        return Integrate(lhs.arg, rhs, reduced_vars)
     return None

@@ -12,7 +12,7 @@ import funsor.interpreter as interpreter
 import funsor.ops as ops
 import funsor.terms
 # from funsor.cnf import Contraction
-from funsor.delta import Delta
+from funsor.delta import Delta, MultiDelta
 from funsor.domains import reals
 from funsor.gaussian import Gaussian, sym_inverse
 from funsor.integrate import Integrate, integrator
@@ -254,7 +254,7 @@ def eager_independent(joint, reals_var, bint_var):
 # Patterns to create a Joint from elementary funsors
 ################################################################################
 
-@eager.register(Binary, AddOp, Delta, Delta)
+# @eager.register(Binary, AddOp, Delta, Delta)
 def eager_add(op, lhs, rhs):
     if lhs.name == rhs.name:
         raise NotImplementedError
@@ -286,6 +286,15 @@ def eager_add(op, other, delta):
 def eager_sub(op, lhs, rhs):
     if lhs.name in rhs.inputs:
         rhs = rhs(**{lhs.name: lhs.point})
+        return op(lhs, rhs)
+
+    return None  # defer to default implementation
+
+
+@eager.register(Binary, SubOp, MultiDelta, Gaussian)
+def eager_add_delta_funsor(op, lhs, rhs):
+    if lhs.fresh.intersection(rhs.inputs):
+        rhs = rhs(**{name: point for name, point in lhs.terms if name in rhs.inputs})
         return op(lhs, rhs)
 
     return None  # defer to default implementation

@@ -59,23 +59,24 @@ def integrator(fn):
     Decorator for integration implementations.
     """
     fn = interpreter.debug_logged(fn)
-    return functools.partial(_simplify_integrate, fn)
+    return fn  # functools.partial(_simplify_integrate, fn)
 
 
 @eager.register(Integrate, Funsor, Funsor, frozenset)
 @integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
-    return Contract(ops.add, ops.mul, log_measure.exp(), integrand, reduced_vars)
+    return (log_measure.exp() * integrand).reduce(ops.add, reduced_vars)
+    # return Contract(ops.add, ops.mul, log_measure.exp(), integrand, reduced_vars)
 
 
-@eager.register(Integrate, Reduce, Funsor, frozenset)
-@integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
-    if log_measure.op is ops.logaddexp:
-        arg = Integrate(log_measure.arg, integrand, reduced_vars)
-        return arg.reduce(ops.add, log_measure.reduced_vars)
-
-    return Contract(ops.add, ops.mul, log_measure.exp(), integrand, reduced_vars)
+# @eager.register(Integrate, Reduce, Funsor, frozenset)
+# @integrator
+# def eager_integrate(log_measure, integrand, reduced_vars):
+#     if log_measure.op is ops.logaddexp:
+#         arg = Integrate(log_measure.arg, integrand, reduced_vars)
+#         return arg.reduce(ops.add, log_measure.reduced_vars)
+# 
+#     return Contract(ops.add, ops.mul, log_measure.exp(), integrand, reduced_vars)
 
 
 __all__ = [
