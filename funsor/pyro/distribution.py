@@ -28,18 +28,24 @@ class FunsorDistribution(dist.TorchDistribution):
         contain extra dims of size 1.
     :param event_shape: The distribution's event shape.
     """
-    def __init__(self, funsor_dist, batch_shape=torch.Size(), event_shape=torch.Size()):
+    arg_constraints = {}
+
+    def __init__(self, funsor_dist, batch_shape=torch.Size(), event_shape=torch.Size(),
+                 dtype="real"):
         assert isinstance(funsor_dist, Funsor)
+        assert isinstance(batch_shape, tuple)
+        assert isinstance(event_shape, tuple)
         assert "value" in funsor_dist.inputs
         super(FunsorDistribution, self).__init__(batch_shape, event_shape)
         self.funsor_dist = funsor_dist
+        self.dtype = dtype
 
     def log_prob(self, value):
-        value = tensor_to_funsor(value, event_dim=self.event_dim)
+        ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
+        value = tensor_to_funsor(value, event_dim=self.event_dim, dtype=self.dtype)
         with interpretation(lazy):
             log_prob = apply_optimizer(self.funsor_dist(value=value))
         log_prob = reinterpret(log_prob)
-        ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
         log_prob = funsor_to_tensor(log_prob, ndims=ndims)
         return log_prob
 
