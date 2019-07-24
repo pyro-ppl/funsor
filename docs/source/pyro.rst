@@ -15,6 +15,14 @@ FunsorDistribution Base Class
     :show-inheritance:
     :member-order: bysource
 
+Hidden Markov Models
+====================
+.. automodule:: funsor.pyro.hmm
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
+
 Conversion Utilities
 ====================
 .. automodule:: funsor.pyro.convert
