@@ -193,7 +193,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, prev, curr):
 def parse_lags(name):
     lags = defaultdict(0)
     while True:
-        match = re.match(r"(.*)\(([^=]+)=([0-9]+)\)", name)
+        match = re.match(r"(.*)\(([^=\)]+)=([0-9]+)\)", name)
         if match:
             name, time, lag = match.groups()
             lags[time] = int(lag)
@@ -208,56 +208,76 @@ def format_lags(name, lags):
     return "".join(parts)
 
 
-def increment_lags(dependent_vars, time):
-    step = {}
-    for name in dependent_vars:
-        name, lags = parse_lags(name)
-        lags[time] += 1
-        step[name] = format_lags(name, lags)
-    # TODO fix sum_vars
-    sum_vars = frozenset(step).intersection(step.values())
-    x_subs = {curr: prev for prev, curr in step.values()
-              if "TODO"}
-    y_subs = {prev: curr for prev, curr in step.values()
-              if "TODO"}
-    return x_subs, y_subs, sum_vars
+def increment_lags(all_vars, sum_basenames, time):
+    """
+    Compute a substitution of sum_vars that increments time, and compute the
+    set of new variables that should be summed out.
+    """
+    subs = {}
+    for name in all_vars:
+        basename, lags = parse_lags(name)
+        if basename in sum_basenames:
+            lags[time] += 1
+            subs[name] = format_lags(basename, lags)
+    sum_vars = frozenset(subs.values()) - frozenset(subs)
+    return subs, sum_vars
 
 
-def markov_sum_product(sum_op, prod_op, arg, dependent_vars, prod_vars):
+def markov_sum_product(sum_op, prod_op, arg, sum_vars, prod_vars):
     """
-    This encodes time dependency as a special convention in ``arg.inputs``; see
-    :func:`print_lags` and :func:`format_lags` for details.
+    This combines log(time) reduction with structured variable elimination [2].
+
+    Note time dependency is encoded as a special convention in the names in
+    ``arg.inputs``; see :func:`parse_lags` and :func:`format_lags` for details.
+
+    **References:**
+
+    [1] Simo Sarkka, Angel F. Garcia-Fernandez (2019)
+        "Temporal Parallelization of Bayesian Filters and Smoothers"
+        https://arxiv.org/pdf/1905.13002
+    [2] Jeff Bilmes (2010)
+        "Dynamic Graphical Models"
+        http://melodi.ee.washington.edu/people/bilmes/mypubs/bilmes-spm-dgm-2010.pdf
     """
-    assert dependent_vars.issubset(arg.inputs)
+    assert sum_vars.issubset(arg.inputs)
     assert prod_vars.issubset(arg.inputs)
-    assert dependent_vars.isdisjoint(prod_vars)
+    assert sum_vars.isdisjoint(prod_vars)
+
+    # Compute set of lags, indexed by plate dim.
     lags = defaultdict(dict)
-    for name in dependent_vars:
+    for name in sum_vars:
         for basename, name_lags in parse_lags(name):
             for prod_var in prod_vars:
                 lags[prod_var][basename] = name_lags[prod_var]
 
+    # First eliminate all plates (prod_vars with window=0).
+    plates = frozenset(k for k in prod_vars if len(set(lags[k].values())) < 2)
+    arg = arg.reduce(prod_op, plates)
+    prod_vars -= plates
+
     # Eliminate time dimensions one at a time.
-    # TODO decide optimal order.
     for time in prod_vars:
         window = max(lags[time].values()) - min(lags[time].values())
-        if window == 0:
-            arg = arg.reduce(prod_op, time)
-            continue
+        assert window >= 1
 
-        # TODO does dependent_vars depend on time?
-        x_subs, y_subs, sum_vars = increment_lags(dependent_vars, time)
+        x_subs = {}
+        y_subs, y_sum_vars = increment_lags(sum_vars, time)
         while arg.inputs[time].size > 1:
+            # Partition into tiles of overlapping pairs of windows.
             duration = arg.inputs[time].size - window + 1  # XXX Correct?
-            even_duration = duration // (1 + window) * (1 + window)
-            x_subs[time] = Slice(time, 0, even_duration, 1 + window, duration)
-            y_subs[time] = Slice(time, 1, even_duration, 1 + window, duration)
+            tiled_duration = duration // (1 + window) * (1 + window)
+            x_subs[time] = Slice(time, 0, tiled_duration, 1 + window, duration)
+            y_subs[time] = Slice(time, 1, tiled_duration, 1 + window, duration)
             x = arg(**x_subs)
             y = arg(**y_subs)
-            contracted = prod_op(x, y).reduce(sum_op, sum_vars)
-            if duration > even_duration:
-                extra = arg(**{time: Slice(time, even_duration, duration)})
-                contracted = Cat((contracted, extra), time)
-            arg = contracted
+            tiled_arg = prod_op(x, y).reduce(sum_op, y_sum_vars)
+
+            # Concatenate any extra data not covered by tiles.
+            if duration > tiled_duration:
+                extra = arg(**{time: Slice(time, tiled_duration, duration)})
+                tiled_arg = Cat((tiled_arg, extra), time)
+            arg = tiled_arg
+
         arg = arg(**{time: 0})
+
     return arg

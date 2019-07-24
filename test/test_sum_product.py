@@ -9,7 +9,7 @@ import funsor.ops as ops
 from funsor.domains import bint
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
-from funsor.sum_product import _partition, partial_sum_product, sequential_sum_product, sum_product
+from funsor.sum_product import _partition, markov_sum_product, partial_sum_product, sequential_sum_product, sum_product
 from funsor.terms import reflect
 from funsor.testing import assert_close, random_gaussian, random_tensor
 
@@ -124,3 +124,29 @@ def test_sequential_sum_product(sum_op, prod_op, batch_inputs, state_domain, num
     expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
     expected = expected.align(tuple(actual.inputs.keys()))
     assert_close(actual, expected, rtol=1e-4 * num_steps)
+
+
+MARKOV_SUM_PRODUCT_EXAMPLES = [
+    # x --- x
+    (("x", "x(t=1)"), {"x"}, {"t"}),
+    # x --- x
+    (("x", "x(t=1)", "t"), {"x"}, {"t"}),
+    # x ------- x -------- x
+    #      x -------- x -------- x
+    (("x", "x(t=2)"), {"x"}, {"t"}),
+    # x   x   x
+    #   \   \
+    # y   y   y
+    (("x", "y(t=1)"), {"x", "y"}, {"t"}),
+]
+
+
+@pytest.mark.parametrize("sum_op,prod_op", [ops.logaddexp, ops.add])
+@pytest.mark.parametrize("inputs,sum_basenames,prod_vars", MARKOV_SUM_PRODUCT_EXAMPLES)
+def test_markov_sum_product(sum_op, prod_op, inputs, sum_basenames, prod_vars):
+    inputs = OrderedDict([(k, 2) for k in inputs])
+    arg = random_tensor(inputs)
+    actual = markov_sum_product(sum_op, prod_op, arg, sum_basenames, prod_vars)
+    expected_inputs = OrderedDict((k, v) for k, v in arg.inputs.items()
+                                  if k not in prod_vars)
+    assert actual.inputs == expected_inputs
