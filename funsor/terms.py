@@ -1150,7 +1150,8 @@ class Independent(Funsor):
         return Independent(fn, self.reals_var, self.bint_var)
 
     def eager_subs(self, subs):
-        subs = tuple((self.reals_var_bound, v[self.bint_var])
+        subs = tuple((self.reals_var_bound,
+                      to_funsor(v, self.inputs[k])[self.bint_var])
                      if k == self.reals_var
                      else (k, v)
                      for k, v in subs)

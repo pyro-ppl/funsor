@@ -1,10 +1,12 @@
 from collections import OrderedDict
+from functools import singledispatch
 
 import pyro.distributions as dist
 import torch
 
-from funsor.distributions import MultivariateNormal, Normal
+from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint
+from funsor.terms import Independent
 from funsor.torch import Tensor
 
 # Conversion functions use fixed names for Pyro batch dims, but
@@ -65,28 +67,47 @@ def funsor_to_tensor(funsor_, ndims, event_inputs=()):
     return tensor
 
 
+@singledispatch
 def dist_to_funsor(pyro_dist, event_inputs=()):
     """
     Convert a :class:`torch.distributions.Distribution` to a
     :class:`~funsor.terms.Funsor` .
     """
     assert isinstance(pyro_dist, torch.distributions.Distribution)
-
-    while isinstance(pyro_dist, dist.Independent):
-        pyro_dist = pyro_dist.base_dist
-
-    if isinstance(pyro_dist, dist.Categorical):
-        return tensor_to_funsor(pyro_dist.logits, event_inputs + ("value",))
-
-    if isinstance(pyro_dist, dist.Normal):
-        loc = tensor_to_funsor(pyro_dist.loc, event_inputs)
-        scale = tensor_to_funsor(pyro_dist.scale, event_inputs)
-        return Normal(loc, scale)
-
-    if isinstance(pyro_dist, dist.MultivariateNormal):
-        loc = tensor_to_funsor(pyro_dist.loc, event_inputs, 1)
-        scale_tril = tensor_to_funsor(pyro_dist.scale_tril, event_inputs, 2)
-        return MultivariateNormal(loc, scale_tril)
-
     raise ValueError("Cannot convert {} distribution to a Funsor"
                      .format(type(pyro_dist).__name__))
+
+
+@dist_to_funsor.register(dist.Independent)
+def _independent_to_funsor(pyro_dist, event_inputs=()):
+    event_names = tuple("_event_{}".format(len(event_inputs) + i)
+                        for i in range(pyro_dist.reinterpreted_batch_ndims))
+    result = dist_to_funsor(pyro_dist.base_dist, event_inputs + event_names)
+    for name in reversed(event_names):
+        result = Independent(result, "value", name)
+    return result
+
+
+@dist_to_funsor.register(dist.Categorical)
+def _categorical_to_funsor(pyro_dist, event_inputs=()):
+    return tensor_to_funsor(pyro_dist.logits, event_inputs + ("value",))
+
+
+@dist_to_funsor.register(dist.Bernoulli)
+def _bernoulli_to_funsor(pyro_dist, event_inputs=()):
+    logits = tensor_to_funsor(pyro_dist.logits, event_inputs)
+    return BernoulliLogits(logits)
+
+
+@dist_to_funsor.register(dist.Normal)
+def _normal_to_funsor(pyro_dist, event_inputs=()):
+    loc = tensor_to_funsor(pyro_dist.loc, event_inputs)
+    scale = tensor_to_funsor(pyro_dist.scale, event_inputs)
+    return Normal(loc, scale)
+
+
+@dist_to_funsor.register(dist.MultivariateNormal)
+def _mvn_to_funsor(pyro_dist, event_inputs=()):
+    loc = tensor_to_funsor(pyro_dist.loc, event_inputs, 1)
+    scale_tril = tensor_to_funsor(pyro_dist.scale_tril, event_inputs, 2)
+    return MultivariateNormal(loc, scale_tril)

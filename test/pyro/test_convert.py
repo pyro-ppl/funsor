@@ -38,6 +38,19 @@ def test_dist_to_funsor_categorical(batch_shape, cardinality):
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
+def test_dist_to_funsor_bernoulli(batch_shape):
+    logits = torch.randn(batch_shape)
+    d = dist.Bernoulli(logits=logits)
+    f = dist_to_funsor(d)
+    assert isinstance(f, Funsor)
+
+    value = d.sample()
+    actual_log_prob = f(value=tensor_to_funsor(value))
+    expected_log_prob = tensor_to_funsor(d.log_prob(value))
+    assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_dist_to_funsor_normal(batch_shape):
     loc = torch.randn(batch_shape)
     scale = torch.randn(batch_shape).exp()
@@ -64,5 +77,21 @@ def test_dist_to_funsor_mvn(batch_shape, event_size):
 
     value = d.sample()
     actual_log_prob = f(value=tensor_to_funsor(value, event_output=1))
+    expected_log_prob = tensor_to_funsor(d.log_prob(value))
+    assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize("event_shape", [(), (6,), (3, 2)], ids=str)
+@pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
+def test_dist_to_funsor_diag_normal(batch_shape, event_shape):
+    loc = torch.randn(batch_shape + event_shape)
+    scale = torch.randn(batch_shape + event_shape).exp()
+    d = dist.Normal(loc, scale).to_event(len(event_shape))
+    f = dist_to_funsor(d)
+    assert isinstance(f, Funsor)
+
+    value = d.sample()
+    funsor_value = tensor_to_funsor(value, event_output=len(event_shape))
+    actual_log_prob = f(value=funsor_value)
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob)
