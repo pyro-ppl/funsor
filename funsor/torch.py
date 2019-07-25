@@ -418,7 +418,7 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
         rhs_data = rhs_data.reshape(rhs_data.shape + (1,) * (len(lhs.output.shape) - 1))
 
     # Perform advanced indexing.
-    target_dim = len(lhs.inputs) + op.offset
+    target_dim = lhs_data.dim() - len(lhs.output.shape) + op.offset
     index = [None] * lhs_data.dim()
     for i in range(target_dim):
         index[i] = torch.arange(lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 2))
