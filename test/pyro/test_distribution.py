@@ -13,7 +13,7 @@ class Categorical(FunsorDistribution):
     def __init__(self, logits):
         batch_shape = logits.shape[:-1]
         event_shape = torch.Size()
-        funsor_dist = tensor_to_funsor(logits, event_dim=1)["value"]
+        funsor_dist = tensor_to_funsor(logits, ("value",))
         dtype = int(logits.size(-1))
         super(Categorical, self).__init__(
             funsor_dist, batch_shape, event_shape, dtype)
