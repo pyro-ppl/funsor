@@ -84,3 +84,37 @@ def test_discrete_normal_log_prob(init_shape, trans_shape, obs_shape, state_dim)
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize("state_dim", [2, 3])
+@pytest.mark.parametrize("init_shape,trans_shape,obs_shape", DISCRETE_HMM_SHAPES, ids=str)
+def test_discrete_mvn_smoke(init_shape, trans_shape, obs_shape, state_dim):
+    event_size = 4
+    init_logits = torch.randn(init_shape + (state_dim,))
+    trans_logits = torch.randn(trans_shape + (state_dim, state_dim))
+    loc = torch.randn(obs_shape + (state_dim, event_size))
+    cov = torch.randn(obs_shape + (state_dim, event_size, 2 * event_size))
+    cov = cov.matmul(cov.transpose(-1, -2))
+    scale_tril = torch.cholesky(cov)
+    obs_dist = dist.MultivariateNormal(loc, scale_tril=scale_tril)
+
+    actual_dist = DiscreteHMM(init_logits, trans_logits, obs_dist)
+    expected_dist = dist.DiscreteHMM(init_logits, trans_logits, obs_dist)
+    assert actual_dist.event_shape == expected_dist.event_shape
+    assert actual_dist.batch_shape == expected_dist.batch_shape
+
+
+@pytest.mark.parametrize("state_dim", [2, 3])
+@pytest.mark.parametrize("init_shape,trans_shape,obs_shape", DISCRETE_HMM_SHAPES, ids=str)
+def test_discrete_diag_normal_smoke(init_shape, trans_shape, obs_shape, state_dim):
+    event_size = 4
+    init_logits = torch.randn(init_shape + (state_dim,))
+    trans_logits = torch.randn(trans_shape + (state_dim, state_dim))
+    loc = torch.randn(obs_shape + (state_dim, event_size))
+    scale = torch.randn(obs_shape + (state_dim, event_size)).exp()
+    obs_dist = dist.Normal(loc, scale).to_event(1)
+
+    actual_dist = DiscreteHMM(init_logits, trans_logits, obs_dist)
+    expected_dist = dist.DiscreteHMM(init_logits, trans_logits, obs_dist)
+    assert actual_dist.event_shape == expected_dist.event_shape
+    assert actual_dist.batch_shape == expected_dist.batch_shape

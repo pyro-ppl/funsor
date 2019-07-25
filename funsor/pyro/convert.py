@@ -3,8 +3,9 @@ from collections import OrderedDict
 import pyro.distributions as dist
 import torch
 
-from funsor.distributions import MultivariateNormal, Normal
+from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint
+from funsor.terms import Lambda, Variable
 from funsor.torch import Tensor
 
 # Conversion functions use fixed names for Pyro batch dims, but
@@ -72,11 +73,24 @@ def dist_to_funsor(pyro_dist, event_inputs=()):
     """
     assert isinstance(pyro_dist, torch.distributions.Distribution)
 
-    while isinstance(pyro_dist, dist.Independent):
+    if isinstance(pyro_dist, dist.Independent):
+        ndims = pyro_dist.reinterpreted_batch_ndims
+        for i in range(ndims):
+            event_inputs += ("_event_{}".format(len(event_inputs)),)
         pyro_dist = pyro_dist.base_dist
+        result = dist_to_funsor(pyro_dist, event_inputs)
+        for i in range(ndims):
+            name = event_inputs[-1 - i]
+            var = Variable(name, result.inputs[name])
+            result = Lambda(var, result)
+        return result
 
     if isinstance(pyro_dist, dist.Categorical):
         return tensor_to_funsor(pyro_dist.logits, event_inputs + ("value",))
+
+    if isinstance(pyro_dist, dist.Bernoulli):
+        logits = tensor_to_funsor(pyro_dist.logits, event_inputs)
+        return BernoulliLogits(logits)
 
     if isinstance(pyro_dist, dist.Normal):
         loc = tensor_to_funsor(pyro_dist.loc, event_inputs)
