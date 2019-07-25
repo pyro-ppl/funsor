@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 from collections import OrderedDict  # noqa: F401
 
 import pytest
@@ -47,7 +45,7 @@ def test_contract_einsum_product_lhs(equation, backend, fill):
 
     assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
     print(expected / actual, actual / expected)
-    assert_close(expected, actual, atol=1e-4)
+    assert_close(expected, actual, atol=1e-4, rtol=1e-4)
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
