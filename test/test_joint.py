@@ -89,10 +89,10 @@ SMOKE_TESTS = [
 @pytest.mark.parametrize('expr,expected_type', SMOKE_TESTS)
 def test_smoke(expr, expected_type):
     dx = Delta('x', Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2))])))
-    assert isinstance(dx, Delta)
+    assert isinstance(dx, MultiDelta)
 
     dy = Delta('y', Tensor(torch.randn(3, 4), OrderedDict([('j', bint(3))])))
-    assert isinstance(dy, Delta)
+    assert isinstance(dy, MultiDelta)
 
     t = Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
     assert isinstance(t, Tensor)

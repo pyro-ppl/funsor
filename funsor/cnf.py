@@ -1,11 +1,10 @@
-import math
 from collections import OrderedDict
 from functools import reduce
 
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.delta import Delta, MultiDelta
+from funsor.delta import MultiDelta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
@@ -130,13 +129,13 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
-GROUND_TERMS = (Delta, MultiDelta, Gaussian, Number, Tensor)
+GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
 
 
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
 def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_vars, *terms):
     # when bin_op is commutative, put terms into a canonical order for pattern matching
-    ordering = {Delta: 0, MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
+    ordering = {MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
     new_terms = tuple(
         v for i, v in sorted(enumerate(terms),
                              key=lambda t: (ordering[type(t[1])] if type(t[1]) in ordering else -1, t[0]))

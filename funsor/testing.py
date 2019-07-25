@@ -11,7 +11,7 @@ import pytest
 import torch
 
 from funsor.cnf import Contraction
-from funsor.delta import Delta
+from funsor.delta import MultiDelta
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.numpy import Array
@@ -54,10 +54,14 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
 
     if isinstance(actual, (Number, Tensor)):
         assert_close(actual.data, expected.data, atol=atol, rtol=rtol)
-    elif isinstance(actual, Delta):
-        assert actual.name == expected.name
-        assert_close(actual.point, expected.point, atol=atol, rtol=rtol)
-        assert_close(actual.log_density, expected.log_density, atol=atol, rtol=rtol)
+    elif isinstance(actual, MultiDelta):
+        assert frozenset(n for n, (p, l) in actual.terms) == frozenset(n for n, (p, l) in expected.terms)
+        actual = actual.align(tuple(n for n, (p, l) in expected.terms))
+        for (actual_name, (actual_point, actual_ld)), (expected_name, (expected_point, expected_ld)) in \
+                zip(actual.terms, expected.terms):
+            assert actual_name == expected_name
+            assert_close(actual_point, expected_point, atol=atol, rtol=rtol)
+            assert_close(actual_ld, expected_ld, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
         assert_close(actual.loc, expected.loc, atol=atol, rtol=rtol)
         assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)

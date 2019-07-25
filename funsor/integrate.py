@@ -1,4 +1,3 @@
-import functools
 from collections import OrderedDict
 
 import funsor.ops as ops

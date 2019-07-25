@@ -5,7 +5,7 @@ from opt_einsum.paths import greedy
 
 import funsor.ops as ops
 from funsor.contract import Contract, contractor
-from funsor.delta import Delta, MultiDelta
+from funsor.delta import MultiDelta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
@@ -249,7 +249,7 @@ def optimize_contract_funsor_finitary(sum_op, prod_op, lhs, rhs, reduced_vars):
 
 @optimize.register(Contract, AssociativeOp, AssociativeOp, Unary, Funsor, frozenset)
 def optimize_contract_exp_funsor(sum_op, prod_op, lhs, rhs, reduced_vars):
-    if lhs.op is ops.exp and isinstance(lhs.arg, (Gaussian, Tensor, Delta, MultiDelta)) and \
+    if lhs.op is ops.exp and isinstance(lhs.arg, (Gaussian, Tensor, MultiDelta)) and \
             sum_op is ops.add and prod_op is ops.mul:
         return Integrate(lhs.arg, rhs, reduced_vars)
     return None

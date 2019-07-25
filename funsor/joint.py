@@ -1,4 +1,3 @@
-import functools
 import math
 from collections import OrderedDict
 from functools import reduce
@@ -7,31 +6,13 @@ import opt_einsum
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.delta import Delta, MultiDelta
+from funsor.delta import MultiDelta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian, sym_inverse
 from funsor.integrate import Integrate
-from funsor.ops import AddOp, AssociativeOp, SubOp
+from funsor.ops import AssociativeOp, SubOp
 from funsor.terms import Binary, Funsor, Number, Reduce, Unary, eager, moment_matching
 from funsor.torch import Tensor
-
-
-@eager.register(Binary, AddOp, Delta, (Number, Tensor, Gaussian))
-def eager_add(op, delta, other):
-    if delta.name in other.inputs:
-        other = other(**{delta.name: delta.point})
-        return op(delta, other)
-
-    return None
-
-
-@eager.register(Binary, SubOp, Delta, Gaussian)
-def eager_sub(op, lhs, rhs):
-    if lhs.name in rhs.inputs:
-        rhs = rhs(**{lhs.name: lhs.point})
-        return op(lhs, rhs)
-
-    return None  # defer to default implementation
 
 
 @eager.register(Binary, SubOp, MultiDelta, Gaussian)
@@ -49,7 +30,7 @@ def eager_add_delta_funsor(op, lhs, rhs):
 
 @eager.register(Reduce, ops.AddOp, Unary, frozenset)
 def eager_exp(op, arg, reduced_vars):
-    if arg.op is ops.exp and isinstance(arg.arg, (Delta, MultiDelta)):
+    if arg.op is ops.exp and isinstance(arg.arg, MultiDelta):
         return ops.exp(arg.arg.reduce(ops.logaddexp, reduced_vars))
     return None
 
@@ -113,7 +94,7 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
 @eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Unary, Funsor)
 def eager_contraction_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     if lhs.op is ops.exp and \
-            isinstance(lhs.arg, (Delta, MultiDelta, Gaussian, Number, Tensor)) and \
+            isinstance(lhs.arg, (MultiDelta, Gaussian, Number, Tensor)) and \
             lhs.arg.fresh & reduced_vars:
         return Integrate(lhs.arg, rhs, reduced_vars)
     return None
