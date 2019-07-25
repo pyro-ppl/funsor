@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 import pyro.distributions as dist
 import torch
 from pyro.distributions.util import broadcast_shape
@@ -29,27 +27,12 @@ class DiscreteHMM(FunsorDistribution):
         self._has_rsample = observation_dist.has_rsample
 
         # Convert tensors and distributions to funsors.
-        init = tensor_to_funsor(initial_logits, event_dim=1)
-        init = init["value"]
-
-        if transition_logits.dim() == 2:
-            trans = tensor_to_funsor(transition_logits, event_dim=2)
-        elif transition_logits.size(-3) == 1:
-            trans = tensor_to_funsor(transition_logits.squeeze(-3), event_dim=2)
-        else:
-            trans = tensor_to_funsor(transition_logits, event_dim=3)["time"]
-        trans = trans["state", "state(time=1)"]
-
-        if len(observation_dist.batch_shape) == 1:
-            obs = dist_to_funsor(observation_dist, reinterpreted_batch_ndims=1)
-        else:
-            obs = dist_to_funsor(observation_dist, reinterpreted_batch_ndims=2)
-            homogeneous = (observation_dist.batch_shape[-2] == 1)
-            obs = obs[0 if homogeneous else "time"]
-        obs = obs["state", "value"]
+        init = tensor_to_funsor(initial_logits, ("state",))
+        trans = tensor_to_funsor(transition_logits, ("time", "state", "state(time=1)"))
+        obs = dist_to_funsor(observation_dist, ("time", "state"))
         dtype = obs.inputs["value"].dtype
 
-        # Construct the joint, marginalizing over latent variables.
+        # Construct the joint, then marginalize out latent variables.
         with interpretation(lazy):
             # FIXME this is a bogus expression of the correct type. This should
             #   be replaced with markov_sum_product() once that is working.
