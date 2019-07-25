@@ -6,6 +6,7 @@ install:
 	pip install -e .[dev]
 
 docs: FORCE
+	mkdir -p docs/source/_static
 	$(MAKE) -C docs html
 
 lint: FORCE

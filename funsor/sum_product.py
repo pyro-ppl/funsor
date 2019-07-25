@@ -2,10 +2,13 @@ from __future__ import absolute_import, division, print_function
 
 from collections import OrderedDict, defaultdict
 
+import torch
 from six.moves import reduce
 
-from funsor.ops import UNITS
+from funsor.domains import bint
+from funsor.ops import UNITS, Op
 from funsor.terms import Funsor, Number
+from funsor.torch import Tensor, align_tensor
 
 
 def _partition(terms, sum_vars):
@@ -96,3 +99,91 @@ def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozense
     """
     factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates)
     return reduce(prod_op, factors, Number(UNITS[prod_op]))
+
+
+# TODO Promote this to a first class funsor and move this logic
+# into eager_cat for Tensor.
+def Cat(parts, name):
+    if len(parts) == 1:
+        return parts[0]
+    if len(set(part.output for part in parts)) > 1:
+        raise NotImplementedError("TODO")
+    if not all(isinstance(part, Tensor) for part in parts):
+        raise NotImplementedError("TODO")
+
+    inputs = OrderedDict()
+    for x in parts:
+        inputs.update(x.inputs)
+    tensors = []
+    for part in parts:
+        inputs[name] = part.inputs[name]
+        shape = tuple(d.size for d in inputs.values())
+        tensors.append(align_tensor(inputs, part).expand(shape))
+
+    dim = tuple(inputs).index(name)
+    tensor = torch.cat(tensors, dim=dim)
+    inputs[name] = bint(tensor.size(dim))
+    return Tensor(tensor, inputs, dtype=parts[0].dtype)
+
+
+# TODO Promote this to a first class funsor, enabling zero-copy slicing.
+def Slice(name, *args):
+    start = 0
+    step = 1
+    bound = None
+    if len(args) == 1:
+        stop = args[0]
+        bound = stop
+    elif len(args) == 2:
+        start, stop = args
+        bound = stop
+    elif len(args) == 3:
+        start, stop, step = args
+        bound = stop
+    elif len(args) == 4:
+        start, stop, step, bound = args
+    else:
+        raise ValueError
+    if step <= 0:
+        raise ValueError
+    # FIXME triggers tensor op
+    # TODO move this logic up into funsor.torch.arange?
+    data = torch.arange(start, stop, step)
+    inputs = OrderedDict([(name, bint(len(data)))])
+    return Tensor(data, inputs, dtype=bound)
+
+
+def sequential_sum_product(sum_op, prod_op, trans, time, prev, curr):
+    """
+    For a funsor ``trans`` with dimensions ``time``, ``prev`` and ``curr``,
+    computes a recursion equivalent to::
+
+        tail_time = 1 + arange("time", trans.inputs["time"].size - 1)
+        tail = sequential_sum_product(sum_op, prod_op,
+                                      trans(time=tail_time),
+                                      "time", "prev", "curr")
+        return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
+           .reduce(sum_op, "drop")
+
+    but does so efficiently in parallel in O(log(time)).
+    """
+    assert isinstance(sum_op, Op)
+    assert isinstance(prod_op, Op)
+    assert isinstance(trans, Funsor)
+    assert isinstance(time, str)
+    assert isinstance(prev, str)
+    assert isinstance(curr, str)
+
+    while trans.inputs["time"].size > 1:
+        duration = trans.inputs["time"].size
+        even_duration = duration // 2 * 2
+        # TODO support syntax
+        # x = trans(time=slice(0, even_duration, 2), ...)
+        x = trans(time=Slice("time", 0, even_duration, 2, duration), curr="_drop")
+        y = trans(time=Slice("time", 1, even_duration, 2, duration), prev="_drop")
+        contracted = prod_op(x, y).reduce(sum_op, "_drop")
+        if duration > even_duration:
+            extra = trans(time=Slice("time", duration - 1, duration))
+            contracted = Cat((contracted, extra), "time")
+        trans = contracted
+    return trans(time=0)

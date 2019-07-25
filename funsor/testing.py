@@ -72,6 +72,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             assert_close(ta, te, atol, rtol)
     elif isinstance(actual, torch.Tensor):
         assert actual.dtype == expected.dtype, msg
+        assert actual.shape == expected.shape, msg
         if actual.dtype in (torch.long, torch.uint8):
             assert (actual == expected).all(), msg
         else:

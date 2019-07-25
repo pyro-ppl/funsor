@@ -144,6 +144,10 @@ class Tensor(Funsor):
     def item(self):
         return self.data.item()
 
+    @property
+    def requires_grad(self):
+        return self.data.requires_grad
+
     def align(self, names):
         assert isinstance(names, tuple)
         assert all(name in self.inputs for name in names)
