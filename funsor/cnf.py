@@ -6,13 +6,12 @@ import opt_einsum
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian, sym_inverse
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
 from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, Variable, \
-    eager, moment_matching, normalize, reflect
+    eager, moment_matching, normalize
 from funsor.torch import Tensor
 
 

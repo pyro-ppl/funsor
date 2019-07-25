@@ -68,7 +68,7 @@ def reflect(cls, *args):
         # handle varargs
         new_args = tuple(args[:len(cls._ast_fields) - 1]) + (args[len(cls._ast_fields) - 1 - len(args):],)
         assert len(new_args) == len(cls._ast_fields)
-        old_args, args = args, new_args
+        _, args = args, new_args
 
     cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
