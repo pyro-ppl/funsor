@@ -66,22 +66,19 @@ class Contraction(Funsor):
         self.bin_op = bin_op
         self.terms = terms
         self.reduced_vars = reduced_vars
+        self.is_affine = self._is_affine()
 
-    @property
-    def is_affine(self):
+    def _is_affine(self):
         for t in self.terms:
             if not isinstance(t, (Number, Tensor, Variable, Contraction)):
                 return False
             if isinstance(t, Contraction):
-                if not (self.bin_op, t.bin_op) in DISTRIBUTIVE_OPS:
-                    return False
-                if not len(t.terms) == 2:
-                    return False
-                if not any(isinstance(tt, Variable) for tt in t.terms):
-                    return False
-                if not any(isinstance(tt, (Number, Tensor)) for tt in t.terms):
+                if not (self.bin_op, t.bin_op) in DISTRIBUTIVE_OPS and t.is_affine:
                     return False
 
+        if self.bin_op is ops.add and self.red_op is not anyop:
+            return sum(1 for k, v in self.inputs.items() if v.dtype == 'real') == \
+                sum(sum(1 for k, v in t.inputs.items() if v.dtype == 'real') for t in self.terms)
         return True
 
 
