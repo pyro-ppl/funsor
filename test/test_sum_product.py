@@ -7,8 +7,11 @@ from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.domains import bint
-from funsor.sum_product import _partition, partial_sum_product, sum_product
-from funsor.testing import assert_close, random_tensor
+from funsor.interpreter import interpretation
+from funsor.optimizer import apply_optimizer
+from funsor.sum_product import _partition, partial_sum_product, sequential_sum_product, sum_product
+from funsor.terms import reflect
+from funsor.testing import assert_close, random_gaussian, random_tensor
 
 
 @pytest.mark.parametrize('inputs,dims,expected_num_components', [
@@ -79,3 +82,45 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
 
     expected = sum_product(sum_op, prod_op, factors, vars1 | vars2, plates)
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('num_steps', list(range(1, 13)))
+@pytest.mark.parametrize('sum_op,prod_op', [
+    (ops.add, ops.mul),
+    (ops.logaddexp, ops.add),
+], ids=str)
+@pytest.mark.parametrize('state_domain', [
+    bint(2),
+    bint(3),
+    # TODO test with Gaussians.
+    # reals(),
+    # reals(2),
+], ids=str)
+@pytest.mark.parametrize('batch_inputs', [
+    {},
+    {"foo": bint(5)},
+    {"foo": bint(2), "bar": bint(4)},
+], ids=lambda d: ",".join(d.keys()))
+def test_sequential_sum_product(sum_op, prod_op, batch_inputs, state_domain, num_steps):
+    inputs = OrderedDict(batch_inputs)
+    inputs.update(time=bint(num_steps), prev=state_domain, curr=state_domain)
+    if state_domain.dtype == "real":
+        trans = random_gaussian(inputs)
+    else:
+        trans = random_tensor(inputs)
+
+    actual = sequential_sum_product(sum_op, prod_op, trans, "time", "prev", "curr")
+    expected_inputs = batch_inputs.copy()
+    expected_inputs.update(prev=state_domain, curr=state_domain)
+    assert dict(actual.inputs) == expected_inputs
+
+    # Check against contract.
+    operands = tuple(trans(time=t, prev="t_{}".format(t), curr="t_{}".format(t+1))
+                     for t in range(num_steps))
+    reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
+    with interpretation(reflect):
+        expected = sum_product(sum_op, prod_op, operands, reduce_vars)
+    expected = apply_optimizer(expected)
+    expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
+    expected = expected.align(tuple(actual.inputs.keys()))
+    assert_close(actual, expected, rtol=1e-4 * num_steps)

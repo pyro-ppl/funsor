@@ -44,6 +44,9 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
 
 
 def naive_einsum(eqn, *terms, **kwargs):
+    """
+    Implements standard variable elimination.
+    """
     backend = kwargs.pop('backend', 'torch')
     if backend == 'torch':
         sum_op, prod_op = ops.add, ops.mul
@@ -102,6 +105,16 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
 
 
 def einsum(eqn, *terms, **kwargs):
+    r"""
+    Top-level interface for optimized tensor variable elimination.
+
+    :param str equation: An einsum equation.
+    :param funsor.terms.Funsor \*terms: One or more operands.
+    :param set plates: Optional keyword argument denoting which funsor
+        dimensions are plate dimensions. Among all input dimensions (from
+        terms): dimensions in plates but not in outputs are product-reduced;
+        dimensions in neither plates nor outputs are sum-reduced.
+    """
     with interpretation(normalize):
         naive_ast = naive_plated_einsum(eqn, *terms, **kwargs)
     return apply_optimizer(naive_ast)
