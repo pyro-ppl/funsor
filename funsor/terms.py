@@ -703,13 +703,34 @@ class Subs(Funsor):
         return Subs(arg, tuple(self.subs.items()))
 
 
+def normalize_simultaneous_subs(subs):
+    # connected components/topological sort algorithm for computing normal form:
+    # 1. order output expressions topologically
+    # 2. substitute variables along topology so there are no connected components
+    def _normal_form(roots, remaining):
+        while remaining:
+            for name, node in list(remaining.items()):
+                if not any(inp in remaining for inp in node.inputs):
+                    lhss = OrderedDict((inp, roots[inp]) for inp in node.inputs if inp in roots)
+                    rhs = remaining.pop(name)
+                    roots[name] = rhs(**_normal_form(OrderedDict(), lhss)) if lhss else rhs
+
+        return roots
+
+    assert isinstance(subs, (tuple, OrderedDict))
+    subs = OrderedDict(subs) if isinstance(subs, tuple) else subs.copy()
+    if frozenset(subs.keys()) & frozenset().union(*(outp.inputs.keys() for outp in subs.values())):
+        subs = _normal_form(OrderedDict(), subs)
+    return tuple(subs.items())
+
+
 @lazy.register(Subs, Funsor, object)
 @eager.register(Subs, Funsor, object)
 def eager_subs(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
-    return substitute(arg, subs)
+    return substitute(arg, normalize_simultaneous_subs(subs))
 
 
 _PREFIX = {
