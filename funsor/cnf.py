@@ -1,7 +1,6 @@
-from __future__ import absolute_import, division, print_function
-
+import math
 from collections import OrderedDict
-from six.moves import reduce
+from functools import reduce
 
 from multipledispatch.variadic import Variadic
 

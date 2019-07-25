@@ -1,9 +1,5 @@
-from __future__ import absolute_import, division, print_function
-
 from collections import OrderedDict
-
-from six import add_metaclass
-from six.moves import reduce
+from functools import reduce
 
 import funsor.ops as ops
 import funsor.terms
@@ -39,8 +35,7 @@ class DeltaMeta(FunsorMeta):
         return super(DeltaMeta, cls).__call__(name, point, log_density)
 
 
-@add_metaclass(DeltaMeta)
-class Delta(Funsor):
+class Delta(Funsor, metaclass=DeltaMeta):
     """
     Normalized delta distribution binding a single variable.
 
@@ -209,8 +204,7 @@ class MultiDeltaMeta(FunsorMeta):
         return super(MultiDeltaMeta, cls).__call__(terms)
 
 
-@add_metaclass(MultiDeltaMeta)
-class MultiDelta(Funsor):
+class MultiDelta(Funsor, metaclass=MultiDeltaMeta):
     """
     Normalized delta distribution binding multiple variables.
     """

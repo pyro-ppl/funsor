@@ -1,16 +1,14 @@
-from __future__ import absolute_import, division, print_function
-
 import contextlib
 import itertools
 import numbers
 import operator
 from collections import OrderedDict, namedtuple
+from functools import reduce
 
 import numpy as np
 import opt_einsum
 import pytest
 import torch
-from six.moves import reduce
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta

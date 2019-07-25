@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret

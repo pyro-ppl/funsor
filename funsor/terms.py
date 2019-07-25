@@ -1,23 +1,20 @@
-from __future__ import absolute_import, division, print_function
-
 import functools
 import itertools
 import math
 import numbers
 import re
 from collections import Hashable, OrderedDict
+from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
 from multipledispatch import dispatch
-from six import add_metaclass, integer_types
-from six.moves import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.six import getargspec, singledispatch
+from funsor.util import getargspec
 
 
 def substitute(expr, subs):
@@ -188,8 +185,7 @@ class FunsorMeta(type):
         return interpret(cls, *args)
 
 
-@add_metaclass(FunsorMeta)
-class Funsor(object):
+class Funsor(object, metaclass=FunsorMeta):
     """
     Abstract base class for immutable functional tensors.
 
@@ -418,7 +414,7 @@ class Funsor(object):
         eager_vars = []
         lazy_vars = []
         for k in reduced_vars:
-            if isinstance(self.inputs[k].dtype, integer_types) and not self.inputs[k].shape:
+            if isinstance(self.inputs[k].dtype, int) and not self.inputs[k].shape:
                 eager_vars.append(k)
             else:
                 lazy_vars.append(k)
@@ -899,8 +895,7 @@ class NumberMeta(FunsorMeta):
         return super(NumberMeta, cls).__call__(data, dtype)
 
 
-@add_metaclass(NumberMeta)
-class Number(Funsor):
+class Number(Funsor, metaclass=NumberMeta):
     """
     Funsor backed by a Python number.
 
@@ -909,7 +904,7 @@ class Number(Funsor):
     """
     def __init__(self, data, dtype=None):
         assert isinstance(data, numbers.Number)
-        if isinstance(dtype, integer_types):
+        if isinstance(dtype, int):
             data = type(dtype)(data)
             if dtype != 2:  # booleans have bitwise interpretation
                 assert 0 <= data and data < dtype
@@ -1085,7 +1080,7 @@ class Lambda(Funsor):
     """
     def __init__(self, var, expr):
         assert isinstance(var, Variable)
-        assert isinstance(var.dtype, integer_types)
+        assert isinstance(var.dtype, int)
         assert isinstance(expr, Funsor)
         inputs = expr.inputs.copy()
         inputs.pop(var.name, None)
