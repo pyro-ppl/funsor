@@ -1,16 +1,12 @@
-from __future__ import absolute_import, division, print_function
-
 import warnings
 
 import pytest
 import torch
-
-from torch.autograd import grad
-from torch.distributions import constraints, kl_divergence
-
-from pyro.ops.indexing import Vindex as _Vindex
 from pyro.generic import distributions as dist
 from pyro.generic import infer, optim, pyro, pyro_backend
+from pyro.ops.indexing import Vindex as _Vindex
+from torch.autograd import grad
+from torch.distributions import constraints, kl_divergence
 
 import funsor
 from funsor.testing import assert_close, xfail_param

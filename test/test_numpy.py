@@ -9,7 +9,6 @@ from funsor.interpreter import _USE_TCO
 from funsor.numpy import Array
 from funsor.testing import assert_equiv, check_funsor, random_array
 
-
 # FIXME rewrite stack-based interpreter to be compatible with unhashable data
 xfail_with_tco = pytest.mark.xfail(
     _USE_TCO,
