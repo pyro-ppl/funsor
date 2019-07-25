@@ -136,8 +136,6 @@ def Cat(parts, name):
             inputs[name] = part.inputs[name]  # typically a smaller bint
             int_inputs[name] = inputs[name]
             shape = tuple(d.size for d in int_inputs.values())
-            loc_shape = shape + (-1,)
-            precision_shape = shape + (-1, -1)
             if isinstance(part, Gaussian):
                 discrete = None
                 gaussian = part
@@ -148,8 +146,8 @@ def Cat(parts, name):
                 gaussian = part.gaussian
             discretes.append(discrete)
             loc, precision = align_gaussian(inputs, gaussian)
-            locs.append(loc.expand(loc_shape))
-            precisions.append(precision.expand(precision_shape))
+            locs.append(loc.expand(shape + (-1,)))
+            precisions.append(precision.expand(shape + (-1, -1)))
 
         dim = tuple(inputs).index(name)
         loc = torch.cat(locs, dim=dim)
