@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 from setuptools import find_packages, setup
 
 setup(
@@ -16,7 +14,6 @@ setup(
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
         'pyro-ppl>=0.3',
-        'six>=1.10.0',
         'torch>=1.0.0',
         'unification',
     ],
