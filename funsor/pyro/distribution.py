@@ -43,7 +43,7 @@ class FunsorDistribution(dist.TorchDistribution):
 
     def log_prob(self, value):
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
-        value = tensor_to_funsor(value, event_dim=self.event_dim, dtype=self.dtype)
+        value = tensor_to_funsor(value, event_output=self.event_dim, dtype=self.dtype)
         with interpretation(lazy):
             log_prob = apply_optimizer(self.funsor_dist(value=value))
         log_prob = reinterpret(log_prob)
