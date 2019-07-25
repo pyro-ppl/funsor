@@ -1,10 +1,7 @@
-from __future__ import absolute_import, division, print_function
-
 from collections import OrderedDict
 
 import numpy as np
 from multipledispatch import dispatch
-from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain
@@ -24,7 +21,7 @@ def align_array(new_inputs, x):
     """
     assert isinstance(new_inputs, OrderedDict)
     assert isinstance(x, (Number, Array))
-    assert all(isinstance(d.dtype, integer_types) for d in x.inputs.values())
+    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
 
     data = x.data
     if isinstance(x, Number):
@@ -77,8 +74,7 @@ class ArrayMeta(FunsorMeta):
         return super(ArrayMeta, cls).__call__(data, inputs, dtype)
 
 
-@add_metaclass(ArrayMeta)
-class Array(Funsor):
+class Array(Funsor, metaclass=ArrayMeta):
     """
     Funsor backed by a numpy ndarray.
 
@@ -88,7 +84,7 @@ class Array(Funsor):
     def __init__(self, data, inputs=None, dtype="real"):
         assert isinstance(data, np.ndarray) or np.isscalar(data)
         assert isinstance(inputs, tuple)
-        assert all(isinstance(d.dtype, integer_types) for k, d in inputs)
+        assert all(isinstance(d.dtype, int) for k, d in inputs)
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
         fresh = frozenset(inputs.keys())
@@ -282,7 +278,7 @@ def materialize(x):
         return x
     subs = []
     for name, domain in x.inputs.items():
-        if not isinstance(domain.dtype, integer_types):
+        if not isinstance(domain.dtype, int):
             raise ValueError('materialize() requires integer free variables but found '
                              '"{}" of domain {}'.format(name, domain))
         assert not domain.shape
