@@ -19,8 +19,5 @@ def memoize(cache=None):
             cache[key] = cls(*args)
         return cache[key]
 
-    try:
-        with interpreter.interpretation(memoize_interpretation):
-            yield cache
-    finally:
-        assert cache is not None  # XXX do anything more here?
+    with interpreter.interpretation(memoize_interpretation):
+        yield cache
