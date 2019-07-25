@@ -1,11 +1,7 @@
-from __future__ import absolute_import, division, print_function
-
 import functools
 import math
 from collections import OrderedDict
-
-from six import add_metaclass
-from six.moves import reduce
+from functools import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
@@ -43,8 +39,7 @@ class JointMeta(FunsorMeta):
         return super(JointMeta, cls).__call__(deltas, discrete, gaussian)
 
 
-@add_metaclass(JointMeta)
-class Joint(Funsor):
+class Joint(Funsor, metaclass=JointMeta):
     """
     Normal form for a joint log probability density funsor.
 

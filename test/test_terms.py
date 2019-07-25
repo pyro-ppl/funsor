@@ -1,11 +1,9 @@
-from __future__ import absolute_import, division, print_function
-
 import itertools
 from collections import OrderedDict
+from functools import reduce
 
 import numpy as np
 import pytest
-from six.moves import reduce
 
 import funsor
 import funsor.ops as ops

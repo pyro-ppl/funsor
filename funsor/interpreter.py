@@ -1,11 +1,10 @@
-from __future__ import absolute_import, division, print_function
-
 import functools
 import inspect
 import os
 import re
 import types
 from collections import OrderedDict
+from functools import singledispatch
 
 import numpy
 import torch
@@ -14,7 +13,6 @@ from contextlib2 import contextmanager
 from funsor.domains import Domain
 from funsor.ops import Op
 from funsor.registry import KeyedRegistry
-from funsor.six import singledispatch
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
