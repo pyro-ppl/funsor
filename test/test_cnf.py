@@ -11,7 +11,7 @@ from funsor.einsum import einsum, naive_plated_einsum
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation, reinterpret
 from funsor.terms import Number, Variable, eager, moment_matching, normalize, reflect
-from funsor.testing import assert_close, check_funsor, make_einsum_example, xfail_param
+from funsor.testing import assert_close, check_funsor, make_einsum_example
 from funsor.torch import Tensor
 
 
@@ -168,7 +168,7 @@ JOINT_SMOKE_TESTS = [
     ('(t + g)(x=x0)', Tensor),
     ('(g + g)(x=x0)', Tensor),
     ('(g + dy).reduce(ops.logaddexp, "x")', Contraction),
-    # ('(g + dy).reduce(ops.logaddexp, "y")', Gaussian),
+    # ('(g + dy).reduce(ops.logaddexp, "y")', Gaussian),  # TODO xfail when FUNSOR_NORMALIZE == 0
     ('(t + g + dy).reduce(ops.logaddexp, "x")', Contraction),
     ('(t + g + dy).reduce(ops.logaddexp, "y")', Contraction),
     ('(t + g).reduce(ops.logaddexp, "x")', Tensor),
