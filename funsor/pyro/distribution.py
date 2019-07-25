@@ -3,6 +3,7 @@ from collections import OrderedDict
 import pyro.distributions as dist
 import torch
 
+from funsor.cnf import Contraction
 from funsor.delta import MultiDelta
 from funsor.domains import bint
 from funsor.interpreter import interpretation, reinterpret
@@ -56,6 +57,8 @@ class FunsorDistribution(dist.TorchDistribution):
                 if shape[dim] > 1:
                     sample_inputs[DIM_TO_NAME[dim]] = bint(shape[dim])
         delta = self.funsor_dist.sample(frozenset({"value"}), sample_inputs)
+        if isinstance(delta, Contraction):
+            delta = delta.terms[0]
         assert isinstance(delta, MultiDelta)
         return delta
 
@@ -63,14 +66,14 @@ class FunsorDistribution(dist.TorchDistribution):
     def sample(self, sample_shape=torch.Size()):
         delta = self._sample_delta(sample_shape)
         ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
-        value = funsor_to_tensor(delta.point, ndims=ndims)
+        value = funsor_to_tensor(delta.terms[0][1], ndims=ndims)
         return value.detach()
 
     def rsample(self, sample_shape=torch.Size()):
         delta = self._sample_delta(sample_shape)
-        assert not delta.log_prob.requires_grad, "distribution is not fully reparametrized"
+        assert not delta.log_density.requires_grad, "distribution is not fully reparametrized"
         ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
-        value = funsor_to_tensor(delta.point, ndims=ndims)
+        value = funsor_to_tensor(delta.terms[0][1], ndims=ndims)
         return value
 
     def expand(self, batch_shape, _instance=None):

@@ -10,7 +10,7 @@ from multipledispatch import dispatch
 
 import funsor.ops as ops
 from funsor.contract import Contract, contractor
-from funsor.delta import Delta
+from funsor.delta import MultiDelta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, eager, substitute, to_data, to_funsor
@@ -281,7 +281,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             size = domain.dtype
             point = Tensor(mod_sample % size, sb_inputs, size)
             mod_sample = mod_sample / size
-            results.append(Delta(name, point))
+            results.append((name, point))
 
         # Account for the log normalizer factor.
         # Derivation: Let f be a nonnormalized distribution (a funsor), and
@@ -303,13 +303,13 @@ class Tensor(Funsor, metaclass=TensorMeta):
             index.append(flat_sample)
             log_prob = flat_logits[index]
             assert log_prob.shape == flat_sample.shape
-            results.append(Tensor(flat_logits.detach().logsumexp(-1) +
-                                  (log_prob - log_prob.detach()), sb_inputs))
+            log_density = Tensor(flat_logits.detach().logsumexp(-1) +
+                                 (log_prob - log_prob.detach()), sb_inputs)
         else:
             # This is the special case f = detach(f).
-            results.append(Tensor(flat_logits.logsumexp(-1), batch_inputs))
+            log_density = Tensor(flat_logits.logsumexp(-1), batch_inputs)
 
-        return reduce(ops.add, results)
+        return MultiDelta(tuple(results), log_density)
 
 
 @dispatch(torch.Tensor)
