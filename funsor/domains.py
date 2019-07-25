@@ -50,6 +50,11 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     def num_elements(self):
         return reduce(operator.mul, self.shape, 1)
 
+    @property
+    def size(self):
+        assert isinstance(self.dtype, int)
+        return self.dtype
+
 
 def reals(*shape):
     """
