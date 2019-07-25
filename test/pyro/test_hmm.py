@@ -25,7 +25,7 @@ DISCRETE_HMM_SHAPES = [
 ]
 
 
-@pytest.mark.xfail(reason="Requires non-scalar shape of bint output")
+# @pytest.mark.xfail(reason="Requires non-scalar shape of bint output")
 @pytest.mark.parametrize("state_dim", [2, 3])
 @pytest.mark.parametrize("init_shape,trans_shape,obs_shape", DISCRETE_HMM_SHAPES, ids=str)
 def test_discrete_categorical_log_prob(init_shape, trans_shape, obs_shape, state_dim):
@@ -63,7 +63,7 @@ def test_discrete_normal_smoke(init_shape, trans_shape, obs_shape, state_dim):
     assert actual_dist.batch_shape == expected_dist.batch_shape
 
 
-@pytest.mark.xfail(reason="DiscreteHMM math is incomplete.")
+# @pytest.mark.xfail(reason="DiscreteHMM math is incomplete.")
 @pytest.mark.parametrize("state_dim", [2, 3])
 @pytest.mark.parametrize("init_shape,trans_shape,obs_shape", DISCRETE_HMM_SHAPES, ids=str)
 def test_discrete_normal_log_prob(init_shape, trans_shape, obs_shape, state_dim):
