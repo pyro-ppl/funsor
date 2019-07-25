@@ -33,8 +33,12 @@ EINSUM_EXAMPLES = [
 
 @pytest.mark.parametrize('equation,plates', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
-@pytest.mark.parametrize('einsum_impl', [einsum, naive_plated_einsum])
-@pytest.mark.parametrize('same_lazy', [True, xfail_param(False, reason="nested interpreters?")])
+@pytest.mark.parametrize('einsum_impl,same_lazy', [
+    (einsum, True),
+    (einsum, xfail_param(False, reason="nested interpreters?")),
+    (naive_plated_einsum, True),
+    (naive_plated_einsum, False)
+])
 def test_einsum_complete_sharing(equation, plates, backend, einsum_impl, same_lazy):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
@@ -54,8 +58,12 @@ def test_einsum_complete_sharing(equation, plates, backend, einsum_impl, same_la
 
 @pytest.mark.parametrize('equation,plates', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
-@pytest.mark.parametrize('einsum_impl', [einsum, naive_plated_einsum])
-@pytest.mark.parametrize('same_lazy', [True, xfail_param(False, reason="nested interpreters?")])
+@pytest.mark.parametrize('einsum_impl,same_lazy', [
+    (einsum, True),
+    (einsum, xfail_param(False, reason="nested interpreters?")),
+    (naive_plated_einsum, True),
+    (naive_plated_einsum, False)
+])
 def test_einsum_complete_sharing_reuse_cache(equation, plates, backend, einsum_impl, same_lazy):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
