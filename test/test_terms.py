@@ -8,8 +8,8 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
-from funsor.interpreter import interpretation
-from funsor.terms import Binary, Independent, Lambda, Number, Stack, Variable, sequential, to_data, to_funsor
+from funsor.interpreter import interpretation, _NORMALIZE
+from funsor.terms import Independent, Lambda, Number, Stack, Variable, sequential, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
@@ -88,8 +88,6 @@ def test_substitute():
     z = Variable('z', reals())
 
     f = x * y + x * z
-    assert isinstance(f, Binary)
-    assert f.op is ops.add
 
     assert f(y=2) is x * 2 + x * z
     assert f(z=2) is x * y + x * 2
@@ -179,6 +177,7 @@ def test_reduce_all(op):
     assert actual == expected
 
 
+@pytest.mark.skipif(_NORMALIZE, reason="weirdly slow")
 @pytest.mark.parametrize('reduced_vars', [
     reduced_vars
     for num_reduced in range(3 + 1)

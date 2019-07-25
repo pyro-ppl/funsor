@@ -99,15 +99,19 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     # a bit expensive, but handles interpreter-imposed directionality constraints
     terms = tuple(terms)
     # return reduce(bin_op, terms).reduce(red_op, reduced_vars)
-    for i, (lhs, rhs) in enumerate(zip(terms[0:-1], terms[1:])):
-        unique_vars = reduced_vars.intersection(lhs.inputs, rhs.inputs) - \
-            frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms[:i] + terms[i+2:]))
-        result = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
-        if result is not normalize(Contraction, red_op, bin_op, unique_vars, (lhs, rhs)):  # did we make progress?
-            # pick the first evaluable pair
-            reduced_vars -= unique_vars
-            new_terms = terms[:i] + (result,) + terms[i+2:]
-            return Contraction(red_op, bin_op, reduced_vars, *new_terms)
+    # for i, (lhs, rhs) in enumerate(zip(terms[0:-1], terms[1:])):
+    for i, lhs in enumerate(terms[0:-1]):
+        for j_, rhs in enumerate(terms[i+1:]):
+            j = i + j_ + 1
+            unique_vars = reduced_vars.intersection(lhs.inputs, rhs.inputs) - \
+                frozenset().union(*(reduced_vars.intersection(vv.inputs)
+                                    for vv in terms[:i] + terms[i+1:j] + terms[j+1:]))
+            result = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
+            if result is not normalize(Contraction, red_op, bin_op, unique_vars, (lhs, rhs)):  # did we make progress?
+                # pick the first evaluable pair
+                reduced_vars -= unique_vars
+                new_terms = terms[:i] + (result,) + terms[i+1:j] + terms[j+1:]
+                return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     return None
 

@@ -10,8 +10,6 @@ from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
-from funsor.interpreter import interpretation
-from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
@@ -373,9 +371,9 @@ def test_integrate_variable(int_inputs, real_inputs):
     integrand = reduce(ops.add, [Variable(k, d) for k, d in real_inputs.items()])
     reduced_vars = frozenset(real_inputs)
 
-    with monte_carlo_interpretation(particle=bint(100000)):
-        approx = Integrate(log_measure, integrand, reduced_vars)
-        assert isinstance(approx, Tensor)
+    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(100000)))
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {'particle'})
+    assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
     assert isinstance(exact, Tensor)
@@ -404,9 +402,9 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     integrand = random_gaussian(inputs)
     reduced_vars = frozenset(real_inputs)
 
-    with monte_carlo_interpretation(particle=bint(10000)):
-        approx = Integrate(log_measure, integrand, reduced_vars)
-        assert isinstance(approx, Tensor)
+    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(10000)))
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {'particle'})
+    assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
     assert isinstance(exact, Tensor)
@@ -419,7 +417,7 @@ def test_mc_plate_gaussian():
                            (('loc', reals()),)) + torch.tensor(-0.9189)
     integrand = Gaussian(torch.randn((100, 1)) + 3., torch.ones((100, 1, 1)),
                          (('data', bint(100)), ('loc', reals())))
-    with interpretation(monte_carlo):
-        res = Integrate(log_measure, integrand, frozenset({'loc'}))
-        res = res.reduce(ops.mul, frozenset({'data'}))
-        assert not torch.isinf(res).any()
+
+    res = Integrate(log_measure.sample(frozenset({'loc'})), integrand, frozenset({'loc'}))
+    res = res.reduce(ops.mul, frozenset({'data'}))
+    assert not torch.isinf(res).any()

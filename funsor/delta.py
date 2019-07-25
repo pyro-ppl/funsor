@@ -1,5 +1,5 @@
+import math
 from collections import OrderedDict
-from functools import reduce
 
 import funsor.ops as ops
 import funsor.terms
@@ -28,7 +28,7 @@ from funsor.terms import (
 def Delta(name, point, log_density=0):
     """Syntactic sugar for MultiDelta"""
     point, log_density = to_funsor(point), to_funsor(log_density)
-    return MultiDelta(((name, (point, log_density)),))
+    return MultiDelta(((name, point),), log_density)
 
 
 def solve(expr, value):
@@ -77,91 +77,97 @@ class MultiDeltaMeta(FunsorMeta):
     """
     Wrapper to fill in defaults.
     """
-    def __call__(cls, terms):
+    def __call__(cls, terms, log_density=0):
         terms = tuple(terms.items()) if isinstance(terms, OrderedDict) else terms
-        terms = tuple((name, (to_funsor(point), to_funsor(log_density)))
-                      for name, (point, log_density) in terms)
-        return super(MultiDeltaMeta, cls).__call__(terms)
+        terms = tuple((name, to_funsor(point)) for name, point in terms)
+        log_density = to_funsor(log_density)
+        return super(MultiDeltaMeta, cls).__call__(terms, log_density)
 
 
 class MultiDelta(Funsor, metaclass=MultiDeltaMeta):
     """
     Normalized delta distribution binding multiple variables.
+    Represents joint log-density of all points with a single Tensor.
     """
-    def __init__(self, terms):
+    def __init__(self, terms, log_density):
         assert isinstance(terms, tuple) and len(terms) > 0
-        inputs = OrderedDict()
-        for term in terms:
-            assert len(term) == 2
-            name, (point, log_density) = term
+        assert isinstance(log_density, Funsor)
+        assert log_density.output == reals()
+        inputs = log_density.inputs.copy()
+        for name, point in terms:
             assert isinstance(name, str)
             assert isinstance(point, Funsor)
-            assert isinstance(log_density, Funsor)
-            assert log_density.output == reals()
             assert name not in inputs
             inputs.update({name: point.output})
             inputs.update(point.inputs)
-            inputs.update(log_density.inputs)
 
-        output = reals()
-        fresh = frozenset(name for name, (point, log_density) in terms)
+        output = log_density.output
+        fresh = frozenset(name for name, point in terms)
         bound = frozenset()
         super(MultiDelta, self).__init__(inputs, output, fresh, bound)
         self.terms = terms
+        self.log_density = log_density
 
     def align(self, names):
         assert isinstance(names, tuple)
         assert all(name in self.fresh for name in names)
-        if not names or names == tuple(n for n, (p, ld) in self.terms):
+        if not names or names == tuple(n for n, p in self.terms):
             return self
 
         new_terms = sorted(self.terms, key=lambda t: names.index(t[0]))
-        return MultiDelta(new_terms)
+        return MultiDelta(new_terms, self.log_density)
 
     def eager_subs(self, subs):
         terms = OrderedDict(self.terms)
         new_terms = terms.copy()
-        constant = Number(0)
+        log_density = self.log_density
         for name, value in subs:
             if isinstance(value, (str, Variable)):
                 value = to_funsor(value, self.output)
                 new_terms[value.name] = new_terms.pop(name)
                 continue
 
-            if not any(d.dtype == 'real' for side in (value, terms[name][0])
+            if not any(d.dtype == 'real' for side in (value, terms[name])
                        for d in side.inputs.values()):
-                point, log_density = new_terms.pop(name)
-                constant += (value == point).all().log() + log_density
+                point = new_terms.pop(name)
+                log_density += (value == point).all().log()
                 continue
 
             # Try to invert the substitution.
-            soln = solve(value, terms[name][0])
+            soln = solve(value, terms[name])
             if soln is None:
                 return None  # lazily substitute
-            new_name, point, log_density = soln
-            log_density += new_terms.pop(name)[1]
-            new_terms[new_name] = (point, log_density)
+            new_name, point, point_log_density = soln
+            log_density += point_log_density
+            new_terms.pop(name)
+            new_terms[new_name] = point
 
-        return MultiDelta(new_terms) + constant if new_terms else constant
+        return MultiDelta(new_terms, log_density) if new_terms else log_density
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
-            if any(name in reduced_vars for name, (point, ld) in self.terms):
-                result_terms = tuple((name, (point, ld))
-                                     for name, (point, ld) in self.terms
-                                     if name not in reduced_vars)
-                result = MultiDelta(result_terms) if result_terms else Number(0)
-                result += ops.log(
-                    reduce(ops.mul, [self.inputs[v].dtype for v in reduced_vars - self.fresh], Number(1)))
-                return result  # Deltas are normalized.
-            return self
+            result = Subs(self, tuple((name, point) for name, point in self.terms if name in reduced_vars))
+            if isinstance(result, MultiDelta):
+                terms = tuple((name, (result.log_density + point).reduce(op, reduced_vars.intersection(point.inputs)))
+                              if reduced_vars.intersection(point.inputs)
+                              else (name, point)
+                              for name, point in result.terms)
+                log_density = result.log_density.reduce(op, reduced_vars.intersection(result.log_density.inputs))
+                return MultiDelta(terms, log_density)
+            else:
+                value = Number(sum([math.log(self.inputs[v].dtype) for v in reduced_vars - self.fresh]))
+                log_density = result.reduce(op, reduced_vars.intersection(result.inputs))
+                return value + (0. * log_density) if log_density.inputs else value  # XXX hack to get shape right
 
-        # TODO Implement ops.add to simulate .to_event().
+        if op is ops.add:
+            raise NotImplementedError("TODO Implement ops.add to simulate .to_event().")
 
         return None  # defer to default implementation
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        return self
+        if sampled_vars <= self.fresh:
+            return self
+        raise NotImplementedError("TODO implement sample for particle indices")
 
 
 eager.register(Binary, AddOp, MultiDelta, Reduce)(
@@ -178,13 +184,13 @@ def eager_add_multidelta(op, lhs, rhs):
     if rhs.fresh.intersection(lhs.inputs):
         return eager_add_funsor_delta(op, lhs, rhs)
 
-    return MultiDelta(lhs.terms + rhs.terms)
+    return MultiDelta(lhs.terms + rhs.terms, lhs.log_density + rhs.log_density)
 
 
 @eager.register(Binary, (AddOp, SubOp), MultiDelta, (Funsor, Align))
 def eager_add_delta_funsor(op, lhs, rhs):
     if lhs.fresh.intersection(rhs.inputs):
-        rhs = rhs(**{name: point for name, (point, ld) in lhs.terms if name in rhs.inputs})
+        rhs = rhs(**{name: point for name, point in lhs.terms if name in rhs.inputs})
         return op(lhs, rhs)
 
     return None  # defer to default implementation
@@ -198,7 +204,7 @@ def eager_add_funsor_delta(op, lhs, rhs):
 @eager.register(Integrate, MultiDelta, Funsor, frozenset)
 def eager_integrate(delta, integrand, reduced_vars):
     assert reduced_vars & delta.fresh
-    subs = tuple((name, point) for name, (point, log_density) in delta.terms
+    subs = tuple((name, point) for name, point in delta.terms
                  if name in reduced_vars)
     integrand = Subs(integrand, subs)
     log_measure = Subs(delta, subs)
