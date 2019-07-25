@@ -78,6 +78,15 @@ class Joint(Funsor, metaclass=JointMeta):
         self.discrete = discrete
         self.gaussian = gaussian
 
+    def align(self, names):
+        if not self.deltas:
+            discrete = self.discrete.align(tuple(k for k in names if k in self.discrete.inputs))
+            gaussian = self.gaussian.align(tuple(k for k in names if k in self.gaussian.inputs))
+            result = discrete + gaussian
+            if tuple(result.inputs) == names:
+                return result
+        return super(Joint, self).align(names)
+
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
             # Keep mixture parameters lazy.
