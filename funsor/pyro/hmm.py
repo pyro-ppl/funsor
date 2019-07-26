@@ -71,3 +71,13 @@ class DiscreteHMM(FunsorDistribution):
     # TODO remove this once self.funsor_dist is defined.
     def _sample_delta(self, sample_shape):
         raise NotImplementedError("TODO")
+
+    def expand(self, batch_shape, _instance=None):
+        new = self._get_checked_instance(DiscreteHMM, _instance)
+        batch_shape = torch.Size(batch_shape)
+        new._has_rsample = self._has_rsample
+        new._init = self._init
+        new._trans = self._trans
+        new._obs = self._obs
+        super(DiscreteHMM, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        return new
