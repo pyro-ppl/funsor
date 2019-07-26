@@ -36,25 +36,6 @@ def eager_exp(op, arg, reduced_vars):
     return None
 
 
-@eager.register(Contraction, AssociativeOp, (ops.AddOp, AssociativeOp), frozenset, Tensor, Tensor)
-def eager_contract(sum_op, prod_op, reduced_vars, lhs, rhs):
-    if (sum_op, prod_op) == (ops.add, ops.mul):
-        backend = "torch"
-    elif (sum_op, prod_op) == (ops.logaddexp, ops.add):
-        backend = "pyro.ops.einsum.torch_log"
-    else:
-        return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)
-
-    inputs = OrderedDict((k, d) for t in (lhs, rhs)
-                         for k, d in t.inputs.items() if k not in reduced_vars)
-
-    data = opt_einsum.contract(lhs.data, list(lhs.inputs),
-                               rhs.data, list(rhs.inputs),
-                               list(inputs), backend=backend)
-    dtype = find_domain(prod_op, lhs.output, rhs.output).dtype
-    return Tensor(data, inputs, dtype)
-
-
 @moment_matching.register(Contraction, AssociativeOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
 def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
 
