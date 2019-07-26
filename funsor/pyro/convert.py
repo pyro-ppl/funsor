@@ -3,6 +3,7 @@ from functools import singledispatch
 
 import pyro.distributions as dist
 import torch
+from pyro.distributions.torch_distribution import MaskedDistribution
 
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint
@@ -85,6 +86,14 @@ def _independent_to_funsor(pyro_dist, event_inputs=()):
     result = dist_to_funsor(pyro_dist.base_dist, event_inputs + event_names)
     for name in reversed(event_names):
         result = Independent(result, "value", name)
+    return result
+
+
+@dist_to_funsor.register(MaskedDistribution)
+def _masked_to_funsor(pyro_dist, event_inputs=()):
+    # FIXME This is subject to NANs.
+    mask = tensor_to_funsor(pyro_dist._mask.float(), event_inputs)
+    result = mask * dist_to_funsor(pyro_dist.base_dist, event_inputs)
     return result
 
 
