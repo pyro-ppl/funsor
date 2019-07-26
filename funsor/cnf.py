@@ -9,7 +9,7 @@ from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
-from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, eager, normalize
+from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize
 from funsor.torch import Tensor
 
 

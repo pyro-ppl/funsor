@@ -1,7 +1,4 @@
-from collections import OrderedDict
 from functools import reduce
-
-import torch
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
@@ -9,7 +6,6 @@ from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer, optimize
 from funsor.sum_product import sum_product
 from funsor.terms import Funsor, normalize
-from funsor.torch import Tensor
 
 
 def naive_contract_einsum(eqn, *terms, **kwargs):

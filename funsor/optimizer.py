@@ -6,7 +6,7 @@ from opt_einsum.paths import greedy
 import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, anyop
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Funsor, eager, normalize, reflect
+from funsor.terms import Funsor, eager
 
 
 @interpreter.dispatched_interpretation

@@ -14,7 +14,7 @@ from funsor.terms import (
     Funsor,
     FunsorMeta,
     Independent,
-    Lambda,
+    # Lambda,
     Number,
     Reduce,
     Subs,

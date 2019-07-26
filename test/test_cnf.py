@@ -1,10 +1,6 @@
 import pytest
-import torch
-
-from collections import OrderedDict
 
 from funsor.cnf import Contraction
-from funsor.domains import bint, reals
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.terms import Number, eager, normalize, reflect
