@@ -6,6 +6,7 @@ import opt_einsum
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
+from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian, sym_inverse
 from funsor.interpreter import recursion_reinterpret
@@ -98,9 +99,11 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
         unique_vars = reduced_vars.intersection(v.inputs) - \
             frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms if vv is not v))
         if unique_vars:
-            leaf_reduced = True
-            terms[i] = v.reduce(red_op, unique_vars)
-            reduced_vars -= unique_vars
+            result = v.reduce(red_op, unique_vars)
+            if result is not normalize(Contraction, red_op, anyop, unique_vars, (v,)):
+                terms[i] = result
+                reduced_vars -= unique_vars
+                leaf_reduced = True
 
     if leaf_reduced:
         return Contraction(red_op, bin_op, reduced_vars, *terms)
@@ -109,15 +112,19 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     # a bit expensive, but handles interpreter-imposed directionality constraints
     terms = tuple(terms)
     # return reduce(bin_op, terms).reduce(red_op, reduced_vars)
-    for i, (lhs, rhs) in enumerate(zip(terms[0:-1], terms[1:])):
-        unique_vars = reduced_vars.intersection(lhs.inputs, rhs.inputs) - \
-            frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms[:i] + terms[i+2:]))
-        result = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
-        if result is not normalize(Contraction, red_op, bin_op, unique_vars, (lhs, rhs)):  # did we make progress?
-            # pick the first evaluable pair
-            reduced_vars -= unique_vars
-            new_terms = terms[:i] + (result,) + terms[i+2:]
-            return Contraction(red_op, bin_op, reduced_vars, *new_terms)
+    # for i, (lhs, rhs) in enumerate(zip(terms[0:-1], terms[1:])):
+    for i, lhs in enumerate(terms[0:-1]):
+        for j_, rhs in enumerate(terms[i+1:]):
+            j = i + j_ + 1
+            unique_vars = reduced_vars.intersection(lhs.inputs, rhs.inputs) - \
+                frozenset().union(*(reduced_vars.intersection(vv.inputs)
+                                    for vv in terms[:i] + terms[i+1:j] + terms[j+1:]))
+            result = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
+            if result is not normalize(Contraction, red_op, bin_op, unique_vars, (lhs, rhs)):  # did we make progress?
+                # pick the first evaluable pair
+                reduced_vars -= unique_vars
+                new_terms = terms[:i] + (result,) + terms[i+1:j] + terms[j+1:]
+                return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     return None
 
@@ -139,6 +146,22 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     if result is not None:
         result = eager.dispatch(Reduce, red_op, result, reduced_vars)
     return result
+
+
+GROUND_TERMS = (Delta, Gaussian, Number, Tensor)
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
+def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_vars, *terms):
+    # when bin_op is commutative, put terms into a canonical order for pattern matching
+    ordering = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
+    new_terms = tuple(
+        v for i, v in sorted(enumerate(terms),
+                             key=lambda t: (ordering[type(t[1])] if type(t[1]) in ordering else -1, t[0]))
+    )
+    if any(v is not vv for v, vv in zip(terms, new_terms)):
+        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
+    return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
 
 
 ##########################################
@@ -281,6 +304,9 @@ def unary_transform(op, arg):
     if op is ops.log:
         raise NotImplementedError("TODO")
     elif op is ops.exp:
+        if arg.bin_op in (ops.add, anyop) and arg.red_op in (anyop, ops.logaddexp):
+            new_terms = tuple(v.exp() for v in arg.terms)
+            return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
         raise NotImplementedError("TODO")
 
     return None
