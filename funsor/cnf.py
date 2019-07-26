@@ -131,7 +131,9 @@ def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
 def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 
     if reduced_vars - (reduced_vars.intersection(lhs.inputs, rhs.inputs)):
-        return Contraction(red_op, bin_op, reduced_vars, (lhs, rhs))
+        result = eager.dispatch(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
+        if result is not None:
+            return result
 
     result = eager.dispatch(Binary, bin_op, lhs, rhs)
     if result is not None:

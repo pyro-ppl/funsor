@@ -417,8 +417,8 @@ def test_normal_affine(expr):
     assert isinstance(actual, Joint)
     assert dict(actual.inputs) == dict(expected.inputs), (actual.inputs, expected.inputs)
 
-    assert_close(actual.gaussian.align(tuple(expected.gaussian.inputs)), expected.gaussian)
-    assert_close(actual.discrete.align(tuple(expected.discrete.inputs)), expected.discrete)
+    for ta, te in zip(actual.terms, expected.terms):
+        assert_close(ta.align(tuple(te.inputs)), te)
 
 
 def test_normal_independent():
