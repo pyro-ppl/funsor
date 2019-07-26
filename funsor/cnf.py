@@ -61,6 +61,20 @@ class Contraction(Funsor):
         self.bin_op = bin_op
         self.terms = terms
         self.reduced_vars = reduced_vars
+        self.is_affine = self._is_affine()
+
+    def _is_affine(self):
+        for t in self.terms:
+            if not isinstance(t, (Number, Tensor, Variable, Contraction)):
+                return False
+            if isinstance(t, Contraction):
+                if not (self.bin_op, t.bin_op) in DISTRIBUTIVE_OPS and t.is_affine:
+                    return False
+
+        if self.bin_op is ops.add and self.red_op is not anyop:
+            return sum(1 for k, v in self.inputs.items() if v.dtype == 'real') == \
+                sum(sum(1 for k, v in t.inputs.items() if v.dtype == 'real') for t in self.terms)
+        return True
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if self.red_op in (ops.logaddexp, anyop) and self.bin_op in (ops.logaddexp, ops.add, anyop):
@@ -127,7 +141,9 @@ def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
 def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 
     if reduced_vars - (reduced_vars.intersection(lhs.inputs, rhs.inputs)):
-        return Contraction(red_op, bin_op, reduced_vars, (lhs, rhs))
+        result = eager.dispatch(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
+        if result is not None:
+            return result
 
     result = eager.dispatch(Binary, bin_op, lhs, rhs)
     if result is not None:
@@ -260,15 +276,29 @@ def binary_subtract(op, lhs, rhs):
     return lhs + -rhs
 
 
+@normalize.register(Binary, ops.DivOp, Funsor, Funsor)
+def binary_divide(op, lhs, rhs):
+    return lhs * Unary(ops.reciprocal, rhs)
+
+
 @normalize.register(Unary, ops.NegOp, Contraction)
 def unary_contract(op, arg):
     if arg.bin_op is ops.add and arg.red_op is anyop:
-        return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(-t for t in arg.terms))
-    raise NotImplementedError("TODO")
+        return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
+    if arg.bin_op is ops.mul:
+        return arg * Number(-1.)
+    return None
+
+
+@normalize.register(Unary, ops.NegOp, Variable)
+def unary_neg_variable(op, arg):
+    return arg * Number(-1.)
 
 
 @normalize.register(Unary, ops.ReciprocalOp, Contraction)
 def unary_contract(op, arg):
+    if arg.bin_op is ops.mul and arg.red_op is anyop:
+        return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
     raise NotImplementedError("TODO")
 
 
