@@ -4,7 +4,7 @@ from functools import reduce
 import pytest
 
 import funsor.ops as ops
-from funsor.domains import bint, reals
+from funsor.domains import bint
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import _partition, partial_sum_product, sequential_sum_product, sum_product
@@ -83,13 +83,16 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
 
 
 @pytest.mark.parametrize('num_steps', list(range(1, 13)))
-@pytest.mark.parametrize('sum_op,prod_op,state_domain', [
-    (ops.add, ops.mul, bint(2)),
-    (ops.add, ops.mul, bint(3)),
-    (ops.logaddexp, ops.add, bint(2)),
-    (ops.logaddexp, ops.add, bint(3)),
-    (ops.logaddexp, ops.add, reals()),
-    (ops.logaddexp, ops.add, reals(2)),
+@pytest.mark.parametrize('sum_op,prod_op', [
+    (ops.add, ops.mul),
+    (ops.logaddexp, ops.add),
+], ids=str)
+@pytest.mark.parametrize('state_domain', [
+    bint(2),
+    bint(3),
+    # TODO test with Gaussians.
+    # reals(),
+    # reals(2),
 ], ids=str)
 @pytest.mark.parametrize('batch_inputs', [
     {},
