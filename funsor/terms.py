@@ -1213,6 +1213,11 @@ def _log1p(x):
     return Unary(ops.log1p, x)
 
 
+@ops.reciprocal.register(Funsor)
+def _reciprocal(x):
+    return Unary(ops.reciprocal, x)
+
+
 __all__ = [
     'Binary',
     'Funsor',

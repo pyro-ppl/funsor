@@ -3,21 +3,21 @@ from collections import OrderedDict
 import pytest
 import torch
 
-from funsor.affine import Affine
+from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.terms import Number, Variable
 from funsor.testing import check_funsor
 from funsor.torch import Tensor
 
 SMOKE_TESTS = [
-    ('t+x', Affine),
-    ('x+t', Affine),
-    ('n+x', Affine),
-    ('n*x', Affine),
-    ('t*x', Affine),
-    ('x*t', Affine),
-    ('-x', Affine),
-    ('t-x', Affine),
+    ('t+x', Contraction),
+    ('x+t', Contraction),
+    ('n+x', Contraction),
+    ('n*x', Contraction),
+    ('t*x', Contraction),
+    ('x*t', Contraction),
+    ('-x', Contraction),
+    ('t-x', Contraction),
 ]
 
 
@@ -38,15 +38,16 @@ def test_smoke(expr, expected_type):
 
     result = eval(expr)
     assert isinstance(result, expected_type)
+    assert result.is_affine
 
 
 SUBS_TESTS = [
-    ("(t * x)(i=1)", Affine, {"j": bint(3), "x": reals()}),
-    ("(t * x)(i=1, x=y)", Affine, {"j": bint(3), "y": reals()}),
-    ("(t * x + n)(x=y)", Affine, {"y": reals(), "i": bint(2), "j": bint(3)}),
-    ("(x + y)(y=z)", Affine, {"x": reals(), "z": reals()}),
-    ("(-x)(x=y+z)", Affine, {"y": reals(), "z": reals()}),
-    ("(t * x + t * y)(x=z)", Affine, {"y": reals(), "z": reals(), "i": bint(2), "j": bint(3)}),
+    ("(t * x)(i=1)", Contraction, {"j": bint(3), "x": reals()}),
+    ("(t * x)(i=1, x=y)", Contraction, {"j": bint(3), "y": reals()}),
+    ("(t * x + n)(x=y)", Contraction, {"y": reals(), "i": bint(2), "j": bint(3)}),
+    ("(x + y)(y=z)", Contraction, {"x": reals(), "z": reals()}),
+    ("(-x)(x=y+z)", Contraction, {"y": reals(), "z": reals()}),
+    ("(t * x + t * y)(x=z)", Contraction, {"y": reals(), "z": reals(), "i": bint(2), "j": bint(3)}),
 ]
 
 
@@ -73,3 +74,4 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     result = eval(expr)
     assert isinstance(result, expected_type)
     check_funsor(result, expected_inputs, expected_output)
+    assert result.is_affine
