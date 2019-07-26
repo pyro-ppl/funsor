@@ -10,8 +10,8 @@ from funsor.domains import bint, reals
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation, reinterpret
-from funsor.terms import Number, Variable, eager, moment_matching, normalize, reflect
-from funsor.testing import assert_close, check_funsor, make_einsum_example
+from funsor.terms import Number, eager, moment_matching, normalize, reflect
+from funsor.testing import assert_close, make_einsum_example  # , xfail_param
 from funsor.torch import Tensor
 
 
@@ -62,52 +62,6 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
         expected = reinterpret(expr)
 
     assert_close(actual, expected, rtol=1e-4)
-
-
-AFFINE_SMOKE_TESTS = [
-    ('t+x', Contraction, {"i": bint(2), "j": bint(3), "x": reals()}),
-    ('x+t', Contraction, {"x": reals(), "i": bint(2), "j": bint(3)}),
-    ('n+x', Contraction, {"x": reals()}),
-    ('n*x', Contraction, {"x": reals()}),
-    ('t*x', Contraction, {"i": bint(2), "j": bint(3), "x": reals()}),
-    ('x*t', Contraction, {"x": reals(), "i": bint(2), "j": bint(3)}),
-    ("-(y+z)", Contraction, {"y": reals(), "z": reals()}),
-    # xfail_param(('-x', Contraction, {"x": reals()}), reason="not a contraction"),
-    ('t-x', Contraction, {"i": bint(2), "j": bint(3), "x": reals()}),
-    ("(t * x)(i=1)", Contraction, {"j": bint(3), "x": reals()}),
-    ("(t * x)(i=1, x=y)", Contraction, {"j": bint(3), "y": reals()}),
-    ("(t * x + n)(x=y)", Contraction, {"y": reals(), "i": bint(2), "j": bint(3)}),
-    ("(x + y)(y=z)", Contraction, {"x": reals(), "z": reals()}),
-    # xfail_param(("(-x)(x=y+z)", Contraction, {"y": reals(), "z": reals()}), reason="not a contraction"),
-    ("(t * x + t * y)(x=z)", Contraction, {"y": reals(), "z": reals(), "i": bint(2), "j": bint(3)}),
-]
-
-
-@pytest.mark.parametrize("expr,expected_type,expected_inputs", AFFINE_SMOKE_TESTS)
-def test_affine_subs(expr, expected_type, expected_inputs):
-
-    expected_output = reals()
-
-    t = Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
-    assert isinstance(t, Tensor)
-
-    n = Number(2.)
-    assert isinstance(n, Number)
-
-    x = Variable('x', reals())
-    assert isinstance(x, Variable)
-
-    y = Variable('y', reals())
-    assert isinstance(y, Variable)
-
-    z = Variable('z', reals())
-    assert isinstance(z, Variable)
-
-    with interpretation(normalize):
-        result = eval(expr)
-
-    assert isinstance(result, expected_type)
-    check_funsor(result, expected_inputs, expected_output)
 
 
 JOINT_SMOKE_TESTS = [
