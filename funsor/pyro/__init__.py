@@ -1,8 +1,7 @@
 from funsor.pyro.distribution import FunsorDistribution
-from funsor.pyro.hmm import DiscreteHMM, GaussianGaussianHMM
+from funsor.pyro.hmm import DiscreteHMM
 
 __all__ = [
     "DiscreteHMM",
     "FunsorDistribution",
-    "GaussianGaussianHMM",
 ]

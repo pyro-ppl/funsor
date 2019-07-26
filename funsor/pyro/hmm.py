@@ -1,4 +1,3 @@
-import pyro.distributions as dist
 import torch
 from pyro.distributions.util import broadcast_shape
 
@@ -20,17 +19,20 @@ class DiscreteHMM(FunsorDistribution):
         assert len(observation_dist.batch_shape) >= 1
         time_shape = broadcast_shape((1,), transition_logits.shape[-3:-2],
                                      observation_dist.batch_shape[-2:-1])
-        # FIXME this non-scalar event_shape won't work for Categorical observation_dist.
         event_shape = time_shape + observation_dist.event_shape
         batch_shape = broadcast_shape(initial_logits.shape[:-1],
                                       transition_logits.shape[:-3],
                                       observation_dist.batch_shape[:-2])
         self._has_rsample = observation_dist.has_rsample
 
+        # Normalize.
+        initial_logits = initial_logits - initial_logits.logsumexp(-1, True)
+        transition_logits = transition_logits - transition_logits.logsumexp(-1, True)
+
         # Convert tensors and distributions to funsors.
         init = tensor_to_funsor(initial_logits, ("state",))
         trans = tensor_to_funsor(transition_logits, ("time", "state", "state(time=1)"))
-        obs = dist_to_funsor(observation_dist, ("time", "state"))
+        obs = dist_to_funsor(observation_dist, ("time", "state(time=1)"))
         dtype = obs.inputs["value"].dtype
 
         # Construct the joint funsor.
@@ -55,31 +57,17 @@ class DiscreteHMM(FunsorDistribution):
         value = tensor_to_funsor(value, ("time",), event_output=self.event_dim - 1,
                                  dtype=self.dtype)
 
-        log_prob = self._obs(value=value)
-        log_prob += self._trans
-        log_prob = sequential_sum_product(ops.logaddexp, ops.add,
-                                          log_prob, "time", "state", "state(time=1)")
-        log_prob = log_prob.reduce(ops.logaddexp, "state(time=1)")
-        log_prob += self._init
-        log_prob = log_prob.reduce(ops.logaddexp, "state")
+        # Compare with pyro.distributions.hmm.DiscreteHMM.log_prob().
+        obs = self._obs(value=value)
+        result = self._trans + obs
+        result = sequential_sum_product(ops.logaddexp, ops.add,
+                                        result, "time", "state", "state(time=1)")
+        result = self._init + result.reduce(ops.logaddexp, "state(time=1)")
+        result = result.reduce(ops.logaddexp, "state")
 
-        log_prob = funsor_to_tensor(log_prob, ndims=ndims)
-        return log_prob
+        result = funsor_to_tensor(result, ndims=ndims)
+        return result
 
     # TODO remove this once self.funsor_dist is defined.
     def _sample_delta(self, sample_shape):
-        raise NotImplementedError("TODO")
-
-
-class GaussianGaussianHMM(FunsorDistribution):
-    has_rsample = True
-
-    def __init__(self, initial_dist, transition_matrix, transition_dist,
-                 observation_matrix, observation_dist):
-        assert isinstance(initial_dist, dist.MultivariateNormal)
-        assert isinstance(transition_matrix, torch.Tensor)
-        assert isinstance(transition_dist, dist.MultivariateNormal)
-        assert isinstance(observation_matrix, torch.Tensor)
-        assert isinstance(observation_dist, dist.MultivariateNormal)
-        # TODO assert shapes...
         raise NotImplementedError("TODO")
