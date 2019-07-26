@@ -6,6 +6,7 @@ from funsor.pyro.convert import dist_to_funsor, funsor_to_tensor, tensor_to_funs
 from funsor.terms import Funsor
 from funsor.testing import assert_close
 from funsor.torch import Tensor
+from pyro.distributions.torch_distribution import MaskedDistribution
 
 EVENT_SHAPES = [(), (1,), (5,), (4, 3)]
 BATCH_SHAPES = [(), (1,), (4,), (2, 3), (1, 2, 1, 3, 1)]
@@ -83,7 +84,7 @@ def test_dist_to_funsor_mvn(batch_shape, event_size):
 
 @pytest.mark.parametrize("event_shape", [(), (6,), (3, 2)], ids=str)
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
-def test_dist_to_funsor_diag_normal(batch_shape, event_shape):
+def test_dist_to_funsor_independent(batch_shape, event_shape):
     loc = torch.randn(batch_shape + event_shape)
     scale = torch.randn(batch_shape + event_shape).exp()
     d = dist.Normal(loc, scale).to_event(len(event_shape))
@@ -93,5 +94,21 @@ def test_dist_to_funsor_diag_normal(batch_shape, event_shape):
     value = d.sample()
     funsor_value = tensor_to_funsor(value, event_output=len(event_shape))
     actual_log_prob = f(value=funsor_value)
+    expected_log_prob = tensor_to_funsor(d.log_prob(value))
+    assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
+def test_dist_to_funsor_masked(batch_shape):
+    loc = torch.randn(batch_shape)
+    scale = torch.randn(batch_shape).exp()
+    mask = torch.bernoulli(torch.full(batch_shape, 0.5)).byte()
+    d = dist.Normal(loc, scale).mask(mask)
+    assert isinstance(d, MaskedDistribution)
+    f = dist_to_funsor(d)
+    assert isinstance(f, Funsor)
+
+    value = d.sample()
+    actual_log_prob = f(value=tensor_to_funsor(value))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob)
