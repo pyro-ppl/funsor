@@ -8,8 +8,8 @@ from funsor.testing import assert_close, xfail_param
 
 DISCRETE_HMM_SHAPES = [
     # init_shape, trans_shape, obs_shape
-    xfail_param((), (1,), ()),
-    xfail_param((), (), (1,)),
+    xfail_param((), (1,), (), reason="time series of length 1 are not yet supported"),
+    xfail_param((), (), (1,), reason="time series of length 1 are not yet supported"),
     ((), (2,), ()),
     ((), (7,), ()),
     ((), (), (7,)),
