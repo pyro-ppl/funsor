@@ -4,7 +4,7 @@ from functools import reduce
 import torch
 
 from funsor.domains import bint
-from funsor.ops import UNITS, Op
+from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Funsor, Number
 from funsor.torch import Tensor, align_tensor
 
@@ -165,23 +165,23 @@ def sequential_sum_product(sum_op, prod_op, trans, time, prev, curr):
 
     but does so efficiently in parallel in O(log(time)).
     """
-    assert isinstance(sum_op, Op)
-    assert isinstance(prod_op, Op)
+    assert isinstance(sum_op, AssociativeOp)
+    assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
     assert isinstance(time, str)
     assert isinstance(prev, str)
     assert isinstance(curr, str)
 
-    while trans.inputs["time"].size > 1:
-        duration = trans.inputs["time"].size
+    while trans.inputs[time].size > 1:
+        duration = trans.inputs[time].size
         even_duration = duration // 2 * 2
         # TODO support syntax
         # x = trans(time=slice(0, even_duration, 2), ...)
-        x = trans(time=Slice("time", 0, even_duration, 2, duration), curr="_drop")
-        y = trans(time=Slice("time", 1, even_duration, 2, duration), prev="_drop")
+        x = trans(**{time: Slice("time", 0, even_duration, 2, duration), curr: "_drop"})
+        y = trans(**{time: Slice("time", 1, even_duration, 2, duration), prev: "_drop"})
         contracted = prod_op(x, y).reduce(sum_op, "_drop")
         if duration > even_duration:
-            extra = trans(time=Slice("time", duration - 1, duration))
-            contracted = Cat((contracted, extra), "time")
+            extra = trans(**{time: Slice(time, duration - 1, duration)})
+            contracted = Cat((contracted, extra), time)
         trans = contracted
     return trans(time=0)
