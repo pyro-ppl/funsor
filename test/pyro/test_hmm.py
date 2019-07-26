@@ -30,9 +30,9 @@ DISCRETE_HMM_SHAPES = [
 @pytest.mark.parametrize("init_shape,trans_shape,obs_shape", DISCRETE_HMM_SHAPES, ids=str)
 def test_discrete_categorical_log_prob(init_shape, trans_shape, obs_shape, state_dim):
     obs_dim = 4
-    init_logits = torch.randn(init_shape + (state_dim,)) * 0  # DEBUG
-    trans_logits = torch.randn(trans_shape + (state_dim, state_dim)) * 0  # DEBUG
-    obs_logits = torch.randn(obs_shape + (state_dim, obs_dim)) * 0  # DEBUG
+    init_logits = torch.randn(init_shape + (state_dim,))
+    trans_logits = torch.randn(trans_shape + (state_dim, state_dim))
+    obs_logits = torch.randn(obs_shape + (state_dim, obs_dim))
     obs_dist = dist.Categorical(logits=obs_logits)
 
     actual_dist = DiscreteHMM(init_logits, trans_logits, obs_dist)
