@@ -3,6 +3,7 @@ from collections import OrderedDict
 from functools import reduce
 
 import opt_einsum
+from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
@@ -88,6 +89,11 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
         new_gaussian = Gaussian(new_loc.data, new_precision.data, new_inputs)
         return new_discrete + new_gaussian
 
+    return None
+
+
+@moment_matching.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[object])
+def moment_matching_contract_default(*args):
     return None
 
 

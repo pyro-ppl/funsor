@@ -88,9 +88,11 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
         unique_vars = reduced_vars.intersection(v.inputs) - \
             frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms if vv is not v))
         if unique_vars:
-            leaf_reduced = True
-            terms[i] = v.reduce(red_op, unique_vars)
-            reduced_vars -= unique_vars
+            result = v.reduce(red_op, unique_vars)
+            if result is not normalize(Contraction, red_op, anyop, unique_vars, (v,)):
+                terms[i] = result
+                reduced_vars -= unique_vars
+                leaf_reduced = True
 
     if leaf_reduced:
         return Contraction(red_op, bin_op, reduced_vars, *terms)
