@@ -40,9 +40,12 @@ class Distribution(object):
         with funsor.interpreter.interpretation(funsor.terms.eager):
             dist = self.funsor_dist(value='value')
             delta = dist.sample(frozenset(['value']))
-        if isinstance(delta, funsor.delta.MultiDelta):
-            delta = funsor.delta.Delta(delta.terms[0][0], delta.terms[0][1][0], delta.terms[0][1][1])
-        return delta.point
+        if isinstance(delta, funsor.cnf.Contraction):
+            assert len(delta.terms) == 2
+            assert any(isinstance(t, funsor.delta.MultiDelta) for t in delta.terms)
+            delta = [t for t in delta.terms if isinstance(t, funsor.delta.MultiDelta)][0]
+        assert isinstance(delta, funsor.delta.MultiDelta)
+        return delta.terms[0][1]
 
     # Similar to torch.distributions.Distribution.expand().
     def expand_inputs(self, name, size):

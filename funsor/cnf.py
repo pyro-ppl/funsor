@@ -78,7 +78,7 @@ class Contraction(Funsor):
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if self.red_op in (ops.logaddexp, anyop) and self.bin_op in (ops.logaddexp, ops.add, anyop):
-            new_terms = tuple(v.unscaled_sample(sampled_vars, sample_inputs) for v in self.terms)
+            new_terms = tuple(v.unscaled_sample(sampled_vars.intersection(v.inputs), sample_inputs) for v in self.terms)
             return Contraction(self.red_op, self.bin_op, self.reduced_vars, *new_terms)
         raise TypeError("Cannot sample through ops ({}, {})".format(self.red_op, self.bin_op))
 
