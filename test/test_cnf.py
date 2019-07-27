@@ -4,7 +4,7 @@ from funsor.cnf import Contraction
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.terms import Number, eager, normalize, reflect
-from funsor.testing import assert_close, make_einsum_example  # , xfail_param
+from funsor.testing import assert_close, check_funsor, make_einsum_example  # , xfail_param
 from funsor.torch import Tensor
 
 
@@ -40,6 +40,8 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
         transformed_expr = reinterpret(expr)
 
     assert isinstance(transformed_expr, Contraction)
+    check_funsor(transformed_expr, expr.inputs, expr.output)
+
     if plates:
         assert all(isinstance(v, (Number, Tensor, Contraction)) for v in transformed_expr.terms)
     else:

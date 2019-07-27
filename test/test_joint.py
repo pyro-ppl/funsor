@@ -79,7 +79,7 @@ SMOKE_TESTS = [
     ('(t + g)(x=x0)', Tensor),
     ('(g + g)(x=x0)', Tensor),
     ('(g + dy).reduce(ops.logaddexp, "x")', Contraction),
-    ('(g + dy).reduce(ops.logaddexp, "y")', Gaussian),
+    ('(g + dy).reduce(ops.logaddexp, "y")', Contraction),
     ('(t + g + dy).reduce(ops.logaddexp, "x")', Contraction),
     ('(t + g + dy).reduce(ops.logaddexp, "y")', Contraction),
     ('(t + g).reduce(ops.logaddexp, "x")', Tensor),

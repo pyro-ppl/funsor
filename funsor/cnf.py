@@ -160,7 +160,7 @@ def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_va
     ordering = {MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
     new_terms = tuple(
         v for i, v in sorted(enumerate(terms),
-                             key=lambda t: (ordering[type(t[1])] if type(t[1]) in ordering else -1, t[0]))
+                             key=lambda t: (ordering.get(type(t[1]), -1), t[0]))
     )
     if any(v is not vv for v, vv in zip(terms, new_terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
@@ -286,30 +286,31 @@ def unary_contract(op, arg):
     if arg.bin_op is ops.add and arg.red_op is anyop:
         return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
     if arg.bin_op is ops.mul:
-        return arg * Number(-1.)
+        return arg * -1
     return None
 
 
 @normalize.register(Unary, ops.NegOp, Variable)
 def unary_neg_variable(op, arg):
-    return arg * Number(-1.)
+    return arg * -1
 
 
 @normalize.register(Unary, ops.ReciprocalOp, Contraction)
 def unary_contract(op, arg):
     if arg.bin_op is ops.mul and arg.red_op is anyop:
         return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
-    raise NotImplementedError("TODO")
+    return None  # raise NotImplementedError("TODO")
 
 
 @normalize.register(Unary, ops.TransformOp, Contraction)
 def unary_transform(op, arg):
     if op is ops.log:
-        raise NotImplementedError("TODO")
+        if arg.bin_op in (ops.mul, anyop) and arg.red_op in (anyop, ops.add):
+            new_terms = tuple(v.exp() for v in arg.terms)
+            return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
     elif op is ops.exp:
         if arg.bin_op in (ops.add, anyop) and arg.red_op in (anyop, ops.logaddexp):
             new_terms = tuple(v.exp() for v in arg.terms)
             return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
-        raise NotImplementedError("TODO")
 
     return None

@@ -98,6 +98,7 @@ class MultiDelta(Funsor, metaclass=MultiDeltaMeta):
             assert isinstance(name, str)
             assert isinstance(point, Funsor)
             assert name not in inputs
+            assert name not in point.inputs
             inputs.update({name: point.output})
             inputs.update(point.inputs)
 
@@ -212,7 +213,11 @@ def eager_add_delta_funsor(op, lhs, rhs):
 
 @eager.register(Binary, AddOp, (Funsor, Align), MultiDelta)
 def eager_add_funsor_delta(op, lhs, rhs):
-    return eager_add_delta_funsor(op, rhs, lhs)  # XXX is this pattern redundant? it should be
+    if rhs.fresh.intersection(lhs.inputs):
+        lhs = lhs(**{name: point for name, point in rhs.terms if name in lhs.inputs})
+        return op(lhs, rhs)
+
+    return None
 
 
 @eager.register(Integrate, MultiDelta, Funsor, frozenset)
