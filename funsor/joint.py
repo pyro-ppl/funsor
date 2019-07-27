@@ -2,17 +2,15 @@ import math
 from collections import OrderedDict
 from functools import reduce
 
-import opt_einsum
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import MultiDelta
-from funsor.domains import find_domain
 from funsor.gaussian import Gaussian, sym_inverse
 from funsor.integrate import Integrate
 from funsor.ops import AssociativeOp, SubOp
-from funsor.terms import Binary, Funsor, Number, Reduce, Unary, eager, moment_matching
+from funsor.terms import Binary, Funsor, Number, Unary, eager, moment_matching
 from funsor.torch import Tensor
 
 
@@ -28,13 +26,6 @@ def eager_add_delta_funsor(op, lhs, rhs):
 #################################
 # patterns for joint integration
 #################################
-
-@eager.register(Reduce, ops.AddOp, Unary, frozenset)
-def eager_exp(op, arg, reduced_vars):
-    if arg.op is ops.exp and isinstance(arg.arg, MultiDelta):
-        return ops.exp(arg.arg.reduce(ops.logaddexp, reduced_vars))
-    return None
-
 
 @moment_matching.register(Contraction, AssociativeOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
 def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):

@@ -152,9 +152,9 @@ class MultiDelta(Funsor, metaclass=MultiDeltaMeta):
                 terms = []
                 for name, point in result.terms:
                     if reduced_vars.intersection(point.inputs):
-                        point_reduced_vars = reduced_vars & (frozenset(point.inputs) | frozenset(result.log_density.inputs))
-                        # point = Integrate(result.log_density, point, point_reduced_vars)
-                        point = (result.log_density.exp() * point).reduce(ops.add, point_reduced_vars)
+                        point_reduced_vars = reduced_vars.intersection(
+                            frozenset(point.inputs) | frozenset(result.log_density.inputs))
+                        point = Integrate(result.log_density, point, point_reduced_vars)
                     terms.append((name, point))
 
                 # rescale the log_density to account for reduced vars that only appeared in points
@@ -167,7 +167,6 @@ class MultiDelta(Funsor, metaclass=MultiDeltaMeta):
 
                 log_density = result.log_density.reduce(op, reduced_vars.intersection(result.log_density.inputs))
 
-                # import pdb; pdb.set_trace()
                 return MultiDelta(tuple(terms), log_density - scale1) + (scale1 + scale2)
             else:
                 value = Number(sum([math.log(self.inputs[v].dtype) for v in reduced_vars]))
@@ -218,7 +217,8 @@ def eager_add_funsor_delta(op, lhs, rhs):
 
 @eager.register(Integrate, MultiDelta, Funsor, frozenset)
 def eager_integrate(delta, integrand, reduced_vars):
-    assert reduced_vars & delta.fresh
+    if not reduced_vars & delta.fresh:
+        return None
     subs = tuple((name, point) for name, point in delta.terms
                  if name in reduced_vars)
     integrand = Subs(integrand, subs)
