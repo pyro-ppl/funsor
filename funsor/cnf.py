@@ -306,8 +306,8 @@ def unary_contract(op, arg):
 def unary_transform(op, arg):
     if op is ops.log:
         if arg.bin_op in (ops.mul, anyop) and arg.red_op in (anyop, ops.add):
-            new_terms = tuple(v.exp() for v in arg.terms)
-            return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
+            new_terms = tuple(v.log() for v in arg.terms)
+            return Contraction(ops.logaddexp, ops.add, arg.reduced_vars, *new_terms)
     elif op is ops.exp:
         if arg.bin_op in (ops.add, anyop) and arg.red_op in (anyop, ops.logaddexp):
             new_terms = tuple(v.exp() for v in arg.terms)
