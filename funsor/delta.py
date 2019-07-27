@@ -147,15 +147,30 @@ class MultiDelta(Funsor, metaclass=MultiDeltaMeta):
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
             result = Subs(self, tuple((name, point) for name, point in self.terms if name in reduced_vars))
+            reduced_vars -= frozenset(name for name, point in self.terms)
             if isinstance(result, MultiDelta):
-                terms = tuple((name, (result.log_density + point).reduce(op, reduced_vars.intersection(point.inputs)))
-                              if reduced_vars.intersection(point.inputs)
-                              else (name, point)
-                              for name, point in result.terms)
+                terms = []
+                for name, point in result.terms:
+                    if reduced_vars.intersection(point.inputs):
+                        point_reduced_vars = reduced_vars & (frozenset(point.inputs) | frozenset(result.log_density.inputs))
+                        # point = Integrate(result.log_density, point, point_reduced_vars)
+                        point = (result.log_density.exp() * point).reduce(ops.add, point_reduced_vars)
+                    terms.append((name, point))
+
+                # rescale the log_density to account for reduced vars that only appeared in points
+                scale1 = Number(
+                    sum([math.log(self.inputs[v].dtype) for v in reduced_vars.difference(result.log_density.inputs)]))
+
+                # rescale the output term to account for non-point reduced_vars
+                scale2 = Number(
+                    sum([math.log(self.inputs[v].dtype) for v in reduced_vars.intersection(result.log_density.inputs)]))
+
                 log_density = result.log_density.reduce(op, reduced_vars.intersection(result.log_density.inputs))
-                return MultiDelta(terms, log_density)
+
+                # import pdb; pdb.set_trace()
+                return MultiDelta(tuple(terms), log_density - scale1) + (scale1 + scale2)
             else:
-                value = Number(sum([math.log(self.inputs[v].dtype) for v in reduced_vars - self.fresh]))
+                value = Number(sum([math.log(self.inputs[v].dtype) for v in reduced_vars]))
                 log_density = result.reduce(op, reduced_vars.intersection(result.inputs))
                 return value + (0. * log_density) if log_density.inputs else value  # XXX hack to get shape right
 
