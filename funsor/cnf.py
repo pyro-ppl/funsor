@@ -5,11 +5,11 @@ from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.delta import MultiDelta
-from funsor.domains import find_domain
+from funsor.domains import find_domain, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
-from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize
+from funsor.terms import Binary, Funsor, Independent, Number, Reduce, Subs, Unary, Variable, eager, normalize
 from funsor.torch import Tensor
 
 
@@ -151,6 +151,22 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
+# @eager.register(Independent, Contraction, str, str)
+# def eager_independent_contraction(fn, reals_var, bint_var):
+#     if reals_var not in fn.inputs:
+#         return fn.reduce(ops.add, bint_var)
+#     if reals_var in fn.inputs and fn.inputs[reals_var].dtype == 'real' and \
+#             bint_var in fn.inputs and isinstance(fn.inputs[bint_var].dtype, int):
+#         shape = (fn.inputs[bint_var].dtype,) + fn.inputs[reals_var].shape
+#         return fn(**{reals_var: to_funsor(reals_var, reals(*shape))[bint_var]}).reduce(ops.add, bint_var)
+# 
+#     return None  # XXX probably should not be here...
+
+
+##########################################
+# Normalizing Contractions
+##########################################
+
 GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
 
 
@@ -166,10 +182,6 @@ def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_va
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
     return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
 
-
-##########################################
-# Normalizing Contractions
-##########################################
 
 @normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
 def normalize_contraction_generic_args(red_op, bin_op, reduced_vars, *terms):
