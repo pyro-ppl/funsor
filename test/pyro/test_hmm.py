@@ -3,8 +3,16 @@ import pytest
 import torch
 from pyro.distributions.util import broadcast_shape
 
-from funsor.pyro.hmm import DiscreteHMM
+from funsor.pyro.hmm import DiscreteHMM, GaussianMRF
 from funsor.testing import assert_close, xfail_param
+
+
+def random_mvn(batch_shape, dim):
+    loc = torch.randn(batch_shape + (dim,))
+    cov = torch.randn(batch_shape + (dim, 2 * dim))
+    cov = cov.matmul(cov.transpose(-1, -2))
+    return dist.MultivariateNormal(loc, cov)
+
 
 DISCRETE_HMM_SHAPES = [
     # init_shape, trans_shape, obs_shape
@@ -113,6 +121,26 @@ def test_discrete_diag_normal_log_prob(init_shape, trans_shape, obs_shape, state
     batch_shape = broadcast_shape(init_shape + (1,), trans_shape, obs_shape)
     data = obs_dist.expand(batch_shape + (state_dim,)).sample()
     data = data[(slice(None),) * len(batch_shape) + (0,)]
+    actual_log_prob = actual_dist.log_prob(data)
+    expected_log_prob = expected_dist.log_prob(data)
+    assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize("obs_dim", [1, 2, 3])
+@pytest.mark.parametrize("hidden_dim", [1, 2, 3])
+@pytest.mark.parametrize("init_shape,trans_shape,obs_shape", DISCRETE_HMM_SHAPES, ids=str)
+def test_gaussian_mrf_log_prob(init_shape, trans_shape, obs_shape, hidden_dim, obs_dim):
+    init_dist = random_mvn(init_shape, hidden_dim)
+    trans_dist = random_mvn(trans_shape, hidden_dim + hidden_dim)
+    obs_dist = random_mvn(obs_shape, hidden_dim + obs_dim)
+
+    actual_dist = GaussianMRF(init_dist, trans_dist, obs_dist)
+    expected_dist = dist.GaussianMRF(init_dist, trans_dist, obs_dist)
+    assert actual_dist.event_shape == expected_dist.event_shape
+    assert actual_dist.batch_shape == expected_dist.batch_shape
+
+    batch_shape = broadcast_shape(init_shape + (1,), trans_shape, obs_shape)
+    data = obs_dist.expand(batch_shape).sample()[..., hidden_dim:]
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob)
