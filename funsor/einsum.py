@@ -3,7 +3,7 @@ from functools import reduce
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.interpreter import interpretation
-from funsor.optimizer import apply_optimizer, optimize
+from funsor.optimizer import apply_optimizer
 from funsor.sum_product import sum_product
 from funsor.terms import Funsor, normalize
 
@@ -31,9 +31,7 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     input_dims = frozenset(d for inp in inputs for d in inp)
     output_dims = frozenset(d for d in output)
     reduced_vars = input_dims - output_dims
-
-    with interpretation(optimize):
-        return Contraction(sum_op, prod_op, reduced_vars, terms)
+    return Contraction(sum_op, prod_op, reduced_vars, *terms)
 
 
 def naive_einsum(eqn, *terms, **kwargs):

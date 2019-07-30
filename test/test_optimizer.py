@@ -26,7 +26,7 @@ OPTIMIZED_EINSUM_EXAMPLES = [
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_log'])
 @pytest.mark.parametrize("einsum_impl", [
     naive_einsum,
-    # naive_contract_einsum,  # XXX not working, probably issue with canonicalization
+    naive_contract_einsum,
 ])
 def test_optimized_einsum(equation, backend, einsum_impl):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
