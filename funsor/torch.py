@@ -779,8 +779,7 @@ def _max(x, y):
 
 @ops.reciprocal.register(torch.Tensor)
 def _reciprocal(x):
-    result = x.reciprocal()
-    result.clamp_(max=torch.finfo(result.dtype).max)
+    result = x.reciprocal().clamp(max=torch.finfo(x.dtype).max)
     return result
 
 
