@@ -16,21 +16,19 @@ from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
 
-def _issubshape(subshape, supershape):
-    if len(subshape) > len(supershape):
-        return False
-    for sub, sup in zip(reversed(subshape), reversed(supershape)):
-        if sub not in (1, sup):
-            return False
-    return True
-
-
 def _log_det_tri(x):
     return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
 
 
 def _det_tri(x):
     return x.diagonal(dim1=-1, dim2=-2).prod(-1)
+
+
+def _vv(vec1, vec2):
+    """
+    Computes the inner product ``< vec1 | vec 2 >``.
+    """
+    return vec1.unsqueeze(-2).matmul(vec2.unsqueeze(-1)).squeeze(-1).squeeze(-1)
 
 
 def _mv(mat, vec):
@@ -108,11 +106,13 @@ def _compute_offsets(inputs):
     This ignores all int inputs.
 
     :param OrderedDict inputs: A schema mapping variable name to domain.
-    :return: a pair ``(offsets, total)``.
+    :return: a pair ``(offsets, total)``, where ``offsets`` is an OrderedDict
+        mapping input name to integer offset, and ``total`` is the total event
+        size.
     :rtype: tuple
     """
     assert isinstance(inputs, OrderedDict)
-    offsets = {}
+    offsets = OrderedDict()
     total = 0
     for key, domain in inputs.items():
         if domain.dtype == 'real':
@@ -217,6 +217,8 @@ class BlockMatrix(object):
                     self.parts[i][j] = torch.zeros(shape, **options)
 
         # Concatenate parts.
+        # TODO This could be optimized into a single .reshape().cat().reshape() if
+        #   all inputs are contiguous, thereby saving a memcopy.
         columns = {i: torch.cat([v for j, v in sorted(part.items())], dim=-1)
                    for i, part in self.parts.items()}
         result = torch.cat([v for i, v in sorted(columns.items())], dim=-2)
@@ -314,8 +316,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         batch_shape = tuple(d.dtype for d in inputs.values()
                             if isinstance(d.dtype, int))
         if not torch._C._get_tracing_state():
-            assert _issubshape(loc.shape, batch_shape + (dim,))
-            assert _issubshape(precision.shape, batch_shape + (dim, dim))
+            assert loc.shape == batch_shape + (dim,)
+            assert precision.shape == batch_shape + (dim, dim)
 
         output = reals()
         fresh = frozenset(inputs.keys())
@@ -380,42 +382,75 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             int_result = Gaussian(funsors[0].data, funsors[1].data, inputs)
             return Subs(int_result, real_subs + lazy_subs)
 
-        # Try to perform a complete substitution of all real variables, resulting in a Tensor.
+        # Broadcast all component tensors.
         real_subs = OrderedDict(subs)
         assert real_subs and not int_subs
-        if all(k in real_subs for k, d in self.inputs.items() if d.dtype == 'real'):
-            # Broadcast all component tensors.
-            int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
-            tensors = [Tensor(self.loc, int_inputs),
-                       Tensor(self.precision, int_inputs)]
-            tensors.extend(real_subs.values())
-            inputs, tensors = align_tensors(*tensors)
-            batch_dim = tensors[0].dim() - 1
-            batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
-            (loc, precision), values = tensors[:2], tensors[2:]
+        int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
+        tensors = [Tensor(self.loc, int_inputs),
+                   Tensor(self.precision, int_inputs)]
+        tensors.extend(real_subs.values())
+        int_inputs, tensors = align_tensors(*tensors)
+        batch_dim = tensors[0].dim() - 1
+        batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
+        (loc, precision), values = tensors[:2], tensors[2:]
+        offsets, event_size = _compute_offsets(self.inputs)
+        slices = [(k, slice(offset, offset + self.inputs[k].num_elements))
+                  for k, offset in offsets.items()]
 
+        # Expand all substituted values.
+        values = OrderedDict(zip(real_subs, values))
+        for k, value in values.items():
+            value = value.reshape(value.shape[:batch_dim] + (-1,))
+            if not torch._C._get_tracing_state():
+                assert value.size(-1) == self.inputs[k].num_elements
+            values[k] = value.expand(batch_shape + value.shape[-1:])
+
+        # Try to perform a complete substitution of all real variables, resulting in a Tensor.
+        if all(k in real_subs for k, d in self.inputs.items() if d.dtype == 'real'):
             # Form the concatenated value.
-            offsets, event_size = _compute_offsets(self.inputs)
             value = BlockVector(batch_shape + (event_size,))
-            for k, value_k in zip(real_subs, values):
-                offset = offsets[k]
-                value_k = value_k.reshape(value_k.shape[:batch_dim] + (-1,))
-                if not torch._C._get_tracing_state():
-                    assert value_k.size(-1) == self.inputs[k].num_elements
-                value_k = value_k.expand(batch_shape + value_k.shape[-1:])
-                value[..., offset: offset + self.inputs[k].num_elements] = value_k
+            for k, i in slices:
+                if k in values:
+                    value[..., i] = values[k]
             value = value.as_tensor()
 
             # Evaluate the non-normalized log density.
             result = -0.5 * _vmv(precision, value - loc)
-            result = Tensor(result, inputs)
+            result = Tensor(result, int_inputs)
             assert result.output == reals()
             return Subs(result, lazy_subs)
 
         # Perform a partial substution of a subset of real variables, resulting in a Joint.
-        # See "The Matrix Cookbook" (November 15, 2012) ss. 8.1.3 eq. 353.
-        # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
-        raise NotImplementedError('TODO implement partial substitution of real variables')
+        # We split real inputs into two sets: a for the preserved and b for the substituted.
+        # raise NotImplementedError('TODO')
+        b = frozenset(k for k, v in real_subs.items())
+        a = frozenset(k for k, d in self.inputs.items() if d.dtype == 'real' and k not in b)
+        loc_a = torch.cat([loc[..., i] for k, i in slices if k in a], dim=-1)
+        diff_b = torch.cat([values[k] - loc[..., i] for k, i in slices if k in b], dim=-1)
+        prec_aa = torch.cat([torch.cat([
+            precision[..., i1, i2]
+            for k2, i2 in slices if k2 in a], dim=-1)
+            for k1, i1 in slices if k1 in a], dim=-2)
+        prec_ab = torch.cat([torch.cat([
+            precision[..., i1, i2]
+            for k2, i2 in slices if k2 in b], dim=-1)
+            for k1, i1 in slices if k1 in a], dim=-2)
+        prec_bb = torch.cat([torch.cat([
+            precision[..., i1, i2]
+            for k2, i2 in slices if k2 in b], dim=-1)
+            for k1, i1 in slices if k1 in b], dim=-2)
+        prec_ab_diff_b = _mv(prec_ab, diff_b)
+        update = (prec_ab_diff_b.unsqueeze(-1)
+                                .cholesky_solve(prec_aa.cholesky())
+                                .squeeze(-1))
+        loc = loc_a - update
+        log_scale = 0.5 * (_vv(update, prec_ab_diff_b) - _vmv(prec_bb, diff_b))
+        precision = prec_aa.expand(loc.shape + (-1,))
+        inputs = int_inputs.copy()
+        for k, d in self.inputs.items():
+            if k not in real_subs:
+                inputs[k] = d
+        return Gaussian(loc, precision, inputs) + Tensor(log_scale, int_inputs)
 
     @lazy_property
     def _log_normalizer(self):
