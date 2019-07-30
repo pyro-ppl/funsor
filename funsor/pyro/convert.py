@@ -1,3 +1,4 @@
+import math
 from collections import OrderedDict
 from functools import singledispatch
 
@@ -7,6 +8,7 @@ from pyro.distributions.torch_distribution import MaskedDistribution
 
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint
+from funsor.gaussian import Gaussian
 from funsor.terms import Independent
 from funsor.torch import Tensor
 
@@ -66,6 +68,27 @@ def funsor_to_tensor(funsor_, ndims, event_inputs=()):
         tensor = tensor.reshape((1,) * (ndims - tensor.dim()) + tensor.shape)
     assert tensor.dim() == ndims
     return tensor
+
+
+def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
+    """
+    Convert a joint :class:`torch.distributions.MultivariateNormal`
+    distribution into a :class:`~funsor.terms.Funsor` with multiple real
+    inputs.
+    """
+    assert isinstance(pyro_dist, torch.distributions.MultivariateNormal)
+    assert isinstance(event_dims, tuple)
+    assert isinstance(real_inputs, OrderedDict)
+    loc = tensor_to_funsor(pyro_dist.loc, event_dims, 1)
+    scale_tril = tensor_to_funsor(pyro_dist.scale_tril, event_dims, 2)
+    precision = tensor_to_funsor(pyro_dist.precision_matrix, event_dims, 2)
+    assert loc.inputs == scale_tril.inputs
+    assert loc.inputs == precision.inputs
+    log_prob = (-0.5 * loc.output.shape[0] * math.log(2 * math.pi) -
+                scale_tril.data.diagonal(dim1=-1, dim2=-2).log().sum(-1))
+    inputs = loc.inputs.copy()
+    inputs.update(real_inputs)
+    return Tensor(log_prob, loc.inputs) + Gaussian(loc.data, precision.data, inputs)
 
 
 @singledispatch
