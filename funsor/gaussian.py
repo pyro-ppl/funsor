@@ -422,7 +422,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         # Perform a partial substution of a subset of real variables, resulting in a Joint.
         # We split real inputs into two sets: a for the preserved and b for the substituted.
-        raise NotImplementedError('TODO')
+        # raise NotImplementedError('TODO')
         b = frozenset(k for k, v in real_subs.items())
         a = frozenset(k for k, d in self.inputs.items() if d.dtype == 'real' and k not in b)
         loc_a = torch.cat([loc[..., i] for k, i in slices if k in a], dim=-1)
@@ -440,10 +440,11 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             for k2, i2 in slices if k2 in b], dim=-1)
             for k1, i1 in slices if k1 in b], dim=-2)
         prec_ab_diff_b = _mv(prec_ab, diff_b)
-        loc = loc_a + (prec_ab_diff_b.unsqueeze(-1)
-                                     .cholesky_solve(prec_aa.cholesky())
-                                     .squeeze(-1))
-        log_scale = _vv(loc_a, prec_ab_diff_b) - 0.5 * _vmv(prec_bb, diff_b)
+        update = (prec_ab_diff_b.unsqueeze(-1)
+                                .cholesky_solve(prec_aa.cholesky())
+                                .squeeze(-1))
+        loc = loc_a - update
+        log_scale = 0.5 * (_vv(update, prec_ab_diff_b) - _vmv(prec_bb, diff_b))
         precision = prec_aa
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
