@@ -4,6 +4,8 @@ from functools import reduce
 import torch
 
 from funsor.domains import bint
+from funsor.gaussian import Gaussian, align_gaussian
+from funsor.joint import Joint
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Funsor, Number
 from funsor.torch import Tensor, align_tensor
@@ -106,22 +108,62 @@ def Cat(parts, name):
         return parts[0]
     if len(set(part.output for part in parts)) > 1:
         raise NotImplementedError("TODO")
-    if not all(isinstance(part, Tensor) for part in parts):
-        raise NotImplementedError("TODO")
-
     inputs = OrderedDict()
     for x in parts:
         inputs.update(x.inputs)
-    tensors = []
-    for part in parts:
-        inputs[name] = part.inputs[name]
-        shape = tuple(d.size for d in inputs.values())
-        tensors.append(align_tensor(inputs, part).expand(shape))
 
-    dim = tuple(inputs).index(name)
-    tensor = torch.cat(tensors, dim=dim)
-    inputs[name] = bint(tensor.size(dim))
-    return Tensor(tensor, inputs, dtype=parts[0].dtype)
+    if all(isinstance(part, Tensor) for part in parts):
+        tensors = []
+        for part in parts:
+            inputs[name] = part.inputs[name]  # typically a smaller bint
+            shape = tuple(d.size for d in inputs.values())
+            tensors.append(align_tensor(inputs, part).expand(shape))
+
+        dim = tuple(inputs).index(name)
+        tensor = torch.cat(tensors, dim=dim)
+        inputs[name] = bint(tensor.size(dim))
+        return Tensor(tensor, inputs, dtype=parts[0].dtype)
+
+    if all(isinstance(part, (Gaussian, Joint)) for part in parts):
+        int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != "real")
+        real_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype == "real")
+        inputs = int_inputs.copy()
+        inputs.update(real_inputs)
+        discretes = []
+        locs = []
+        precisions = []
+        for part in parts:
+            inputs[name] = part.inputs[name]  # typically a smaller bint
+            int_inputs[name] = inputs[name]
+            shape = tuple(d.size for d in int_inputs.values())
+            if isinstance(part, Gaussian):
+                discrete = None
+                gaussian = part
+            elif isinstance(part, Joint):
+                if part.deltas:
+                    raise NotImplementedError("TODO")
+                discrete = align_tensor(int_inputs, part.discrete).expand(shape)
+                gaussian = part.gaussian
+            discretes.append(discrete)
+            loc, precision = align_gaussian(inputs, gaussian)
+            locs.append(loc.expand(shape + (-1,)))
+            precisions.append(precision.expand(shape + (-1, -1)))
+
+        dim = tuple(inputs).index(name)
+        loc = torch.cat(locs, dim=dim)
+        precision = torch.cat(precisions, dim=dim)
+        inputs[name] = bint(loc.size(dim))
+        int_inputs[name] = inputs[name]
+        result = Gaussian(loc, precision, inputs)
+        if any(d is not None for d in discretes):
+            for i, d in enumerate(discretes):
+                if d is None:
+                    discretes[i] = locs[i].new_zeros(locs[i].shape[:-1])
+            discrete = torch.cat(discretes, dim=dim)
+            result += Tensor(discrete, int_inputs)
+        return result
+
+    raise NotImplementedError("TODO")
 
 
 # TODO Promote this to a first class funsor, enabling zero-copy slicing.
