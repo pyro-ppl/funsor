@@ -187,10 +187,10 @@ class SwitchingLinearMRF(FunsorDistribution):
         assert isinstance(transition_mvn, torch.distributions.MultivariateNormal)
         assert isinstance(observation_mvn, torch.distributions.MultivariateNormal)
 
-        hidden_cardinality = initial_cat.param_shape()[-1]
+        hidden_cardinality = initial_cat.param_shape[-1]
         hidden_dim = initial_mvn.event_shape[0]
         obs_dim = observation_mvn.event_shape[0] - hidden_dim
-        assert transition_cat.param_shape()[-1] == hidden_cardinality
+        assert transition_cat.param_shape[-1] == hidden_cardinality
         assert transition_mvn.event_shape[0] == hidden_dim + hidden_dim
         shape = broadcast_shape(initial_cat.batch_shape + (1, hidden_cardinality),
                                 initial_mvn.batch_shape + (1, hidden_cardinality),
