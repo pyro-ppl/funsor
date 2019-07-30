@@ -6,7 +6,6 @@ import torch
 from funsor.cnf import Contraction
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian
-#from funsor.joint import Joint
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Funsor, Number
 from funsor.torch import Tensor, align_tensor
