@@ -147,6 +147,13 @@ class MultiDelta(Funsor, metaclass=MultiDeltaMeta):
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
+            if reduced_vars - self.fresh and self.fresh - reduced_vars:
+                result = self.eager_reduce(op, reduced_vars & self.fresh) if reduced_vars & self.fresh else self
+                if result is not self:
+                    result = result.eager_reduce(op, reduced_vars - self.fresh) if reduced_vars - self.fresh else self
+                    return result if result is not self else None
+                return None
+
             result = Subs(self, tuple((name, point) for name, point in self.terms if name in reduced_vars))
             reduced_vars -= frozenset(name for name, point in self.terms)
             if isinstance(result, MultiDelta):
@@ -167,12 +174,13 @@ class MultiDelta(Funsor, metaclass=MultiDeltaMeta):
                     sum([math.log(self.inputs[v].dtype) for v in reduced_vars.intersection(result.log_density.inputs)]))
 
                 log_density = result.log_density.reduce(op, reduced_vars.intersection(result.log_density.inputs))
-
-                return MultiDelta(tuple(terms), log_density - scale1) + (scale1 + scale2)
+                final_result = MultiDelta(tuple(terms), log_density - scale1) + (scale1 + scale2)
+                return final_result
             else:
                 value = Number(sum([math.log(self.inputs[v].dtype) for v in reduced_vars]))
                 log_density = result.reduce(op, reduced_vars.intersection(result.inputs))
-                return value + (0. * log_density) if log_density.inputs else value  # XXX hack to get shape right
+                final_result = value + (0. * log_density) if log_density.inputs else value
+                return final_result
 
         if op is ops.add:
             raise NotImplementedError("TODO Implement ops.add to simulate .to_event().")
@@ -226,10 +234,10 @@ def eager_integrate(delta, integrand, reduced_vars):
         return None
     subs = tuple((name, point) for name, point in delta.terms
                  if name in reduced_vars)
-    integrand = Subs(integrand, subs)
-    log_measure = Subs(delta, subs)
-    reduced_vars -= delta.fresh
-    return Integrate(log_measure, integrand, reduced_vars)
+    new_integrand = Subs(integrand, subs)
+    new_log_measure = Subs(delta, subs)
+    result = Integrate(new_log_measure, new_integrand, reduced_vars - delta.fresh)
+    return result
 
 
 @eager.register(Independent, MultiDelta, str, str)

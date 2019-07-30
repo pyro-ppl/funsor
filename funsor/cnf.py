@@ -5,11 +5,11 @@ from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.delta import MultiDelta
-from funsor.domains import find_domain, reals
+from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
-from funsor.terms import Binary, Funsor, Independent, Number, Reduce, Subs, Unary, Variable, eager, normalize
+from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize
 from funsor.torch import Tensor
 
 
@@ -159,7 +159,7 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 #             bint_var in fn.inputs and isinstance(fn.inputs[bint_var].dtype, int):
 #         shape = (fn.inputs[bint_var].dtype,) + fn.inputs[reals_var].shape
 #         return fn(**{reals_var: to_funsor(reals_var, reals(*shape))[bint_var]}).reduce(ops.add, bint_var)
-# 
+#
 #     return None  # XXX probably should not be here...
 
 

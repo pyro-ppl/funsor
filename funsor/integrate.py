@@ -1,7 +1,6 @@
 from collections import OrderedDict
 
-import funsor.ops as ops
-from funsor.terms import Funsor, eager
+from funsor.terms import Funsor
 
 
 class Integrate(Funsor):
@@ -22,11 +21,6 @@ class Integrate(Funsor):
         self.log_measure = log_measure
         self.integrand = integrand
         self.reduced_vars = reduced_vars
-
-
-@eager.register(Integrate, Funsor, Funsor, frozenset)
-def eager_integrate(log_measure, integrand, reduced_vars):
-    return (log_measure.exp() * integrand).reduce(ops.add, reduced_vars)
 
 
 __all__ = [

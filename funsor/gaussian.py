@@ -560,8 +560,8 @@ def eager_neg(op, arg):
 @eager.register(Integrate, Gaussian, Variable, frozenset)
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
-    if real_vars:
-        assert real_vars == frozenset([integrand.name])
+    if real_vars == frozenset([integrand.name]):
+        # assert real_vars == frozenset([integrand.name])
         data = log_measure.loc * log_measure._log_normalizer.data.exp().unsqueeze(-1)
         data = data.reshape(log_measure.loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')

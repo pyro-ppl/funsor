@@ -10,7 +10,7 @@ from funsor.delta import MultiDelta
 from funsor.gaussian import Gaussian, sym_inverse
 from funsor.integrate import Integrate
 from funsor.ops import AssociativeOp, SubOp
-from funsor.terms import Binary, Funsor, Number, Unary, eager, moment_matching
+from funsor.terms import Binary, Funsor, Number, Reduce, Unary, eager, moment_matching, normalize
 from funsor.torch import Tensor
 
 
@@ -69,10 +69,36 @@ def moment_matching_contract_default(*args):
     return None
 
 
+@normalize.register(Integrate, Funsor, Funsor, frozenset)
+def normalize_integrate(log_measure, integrand, reduced_vars):
+    return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
+
+
+# @normalize.register(Integrate, Contraction, Funsor, frozenset)
+# def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
+#     delta_terms = [t for t in log_measure.terms if isinstance(t, MultiDelta)
+#                    and t.fresh.intersection(reduced_vars, integrand.inputs)]
+#     if log_measure.bin_op is ops.add and log_measure.red_op in (ops.logaddexp, anyop) and delta_terms:
+#         for delta in delta_terms:
+#             integrand = integrand(**{name: point for name, point in delta.terms
+#                                      if name in reduced_vars.intersection(integrand.inputs)})
+#     return normalize_integrate(log_measure, integrand, reduced_vars)
+
+
 @eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Unary, Funsor)
 def eager_contraction_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     if lhs.op is ops.exp and \
             isinstance(lhs.arg, (MultiDelta, Gaussian, Number, Tensor)) and \
-            lhs.arg.fresh & reduced_vars:
-        return Integrate(lhs.arg, rhs, reduced_vars)
+            reduced_vars <= lhs.arg.fresh.intersection(rhs.inputs):
+        return eager.dispatch(Integrate, lhs.arg, rhs, reduced_vars)
+    return eager(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
+
+
+@eager.register(Reduce, ops.AddOp, Unary, frozenset)
+def eager_reduce_exp(op, arg, reduced_vars):
+    if arg.op is ops.exp and isinstance(arg.arg, (Gaussian, Tensor, MultiDelta)):
+        # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
+        log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
+        if log_result is not normalize(Reduce, ops.logaddexp, arg.arg, reduced_vars):
+            return log_result.exp()
     return None
