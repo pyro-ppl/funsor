@@ -125,7 +125,7 @@ class GaussianMRF(FunsorDistribution):
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
-        ndims = max(len(self.batch_shape), value.dim() - 1)
+        ndims = max(len(self.batch_shape), value.dim() - 2)
         value = tensor_to_funsor(value, ("time",), 1)
 
         # Compare with pyro.distributions.hmm.GaussianMRF.log_prob().
