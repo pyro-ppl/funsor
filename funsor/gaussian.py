@@ -445,7 +445,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                                 .squeeze(-1))
         loc = loc_a - update
         log_scale = 0.5 * (_vv(update, prec_ab_diff_b) - _vmv(prec_bb, diff_b))
-        precision = prec_aa
+        precision = prec_aa.expand(loc.shape + (-1,))
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
             if k not in real_subs:
