@@ -143,4 +143,4 @@ def test_gaussian_mrf_log_prob(init_shape, trans_shape, obs_shape, hidden_dim, o
     data = obs_dist.expand(batch_shape).sample()[..., hidden_dim:]
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
-    assert_close(actual_log_prob, expected_log_prob)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=1e-4)
