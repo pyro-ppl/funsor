@@ -13,7 +13,7 @@ from funsor.interpreter import interpretation
 from funsor.joint import Joint
 from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
-from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
+from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
 from funsor.torch import Tensor
 
 
@@ -210,8 +210,7 @@ def test_eager_subs(int_inputs, real_inputs):
         expected = g(**ground_values)
         actual = g
         for k in reversed(order):
-            with xfail_if_not_implemented():
-                actual = actual(**{k: dependent_values[k]})
+            actual = actual(**{k: dependent_values[k]})
         assert_close(actual, expected, atol=1e-4)
 
 

@@ -1,15 +1,19 @@
+from collections import OrderedDict
+
 import pyro.distributions as dist
 import pytest
 import torch
+from pyro.distributions.torch_distribution import MaskedDistribution
 
-from funsor.pyro.convert import dist_to_funsor, funsor_to_tensor, tensor_to_funsor
+from funsor.domains import bint, reals
+from funsor.pyro.convert import dist_to_funsor, funsor_to_tensor, mvn_to_funsor, tensor_to_funsor
 from funsor.terms import Funsor
 from funsor.testing import assert_close
 from funsor.torch import Tensor
-from pyro.distributions.torch_distribution import MaskedDistribution
 
 EVENT_SHAPES = [(), (1,), (5,), (4, 3)]
 BATCH_SHAPES = [(), (1,), (4,), (2, 3), (1, 2, 1, 3, 1)]
+REAL_SIZES = [(1,), (1, 1), (1, 1, 1), (1, 2), (2, 1), (2, 3), (3, 1, 2)]
 
 
 @pytest.mark.parametrize("event_shape,event_output", [
@@ -24,6 +28,43 @@ def test_tensor_funsor_tensor(batch_shape, event_shape, event_output):
     f = tensor_to_funsor(t, event_inputs, event_output)
     t2 = funsor_to_tensor(f, t.dim(), event_inputs)
     assert_close(t2, t)
+
+
+@pytest.mark.parametrize("event_sizes", REAL_SIZES, ids=str)
+@pytest.mark.parametrize("event_shape", EVENT_SHAPES, ids=str)
+@pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
+def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
+    event_size = sum(event_sizes)
+    loc = torch.randn(batch_shape + event_shape + (event_size,))
+    cov = torch.randn(batch_shape + event_shape + (event_size, 2 * event_size))
+    cov = cov.matmul(cov.transpose(-1, -2))
+    mvn = dist.MultivariateNormal(loc, cov)
+    int_inputs = OrderedDict((k, bint(size)) for k, size in zip("abc", event_shape))
+    real_inputs = OrderedDict((k, reals(size)) for k, size in zip("xyz", event_sizes))
+
+    f = mvn_to_funsor(mvn, tuple(int_inputs), real_inputs)
+    assert isinstance(f, Funsor)
+    for k, d in int_inputs.items():
+        if d.num_elements == 1:
+            assert d not in f.inputs
+        else:
+            assert k in f.inputs
+            assert f.inputs[k] == d
+    for k, d in real_inputs.items():
+        assert k in f.inputs
+        assert f.inputs[k] == d
+
+    value = mvn.sample()
+    subs = {}
+    beg = 0
+    for k, d in real_inputs.items():
+        end = beg + d.num_elements
+        subs[k] = tensor_to_funsor(value[..., beg:end], tuple(int_inputs), 1)
+        beg = end
+    print("DEBUG {}".format(subs))
+    actual_log_prob = f(**subs)
+    expected_log_prob = tensor_to_funsor(mvn.log_prob(value), tuple(int_inputs))
+    assert_close(actual_log_prob, expected_log_prob)
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)

@@ -1,14 +1,15 @@
+from collections import OrderedDict
+
 import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.domains import reals
-from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
-from funsor.pyro.convert import dist_to_funsor, funsor_to_tensor, tensor_to_funsor
+from funsor.pyro.convert import dist_to_funsor, funsor_to_tensor, mvn_to_funsor, tensor_to_funsor
 from funsor.pyro.distribution import FunsorDistribution
 from funsor.sum_product import sequential_sum_product
-from funsor.terms import Stack, Variable, lazy, moment_matching
+from funsor.terms import Variable, lazy, moment_matching
 
 
 class DiscreteHMM(FunsorDistribution):
@@ -102,14 +103,12 @@ class GaussianMRF(FunsorDistribution):
 
         # Convert distributions to funsors.
         init = dist_to_funsor(initial_dist)(value="state")
-        trans_inputs = tensor_to_funsor(transition_dist.loc, ("time",), 1).inputs.copy()
-        trans_inputs["state"] = reals(hidden_dim)
-        trans_inputs["state(time=1)"] = reals(hidden_dim)
-        trans = Gaussian(transition_dist.loc, transition_dist.precision_matrix, trans_inputs)
-        obs_inputs = tensor_to_funsor(observation_dist.loc, ("time",), 1).inputs.copy()
-        obs_inputs["state(time=1)"] = reals(hidden_dim)
-        obs_inputs["value"] = reals(obs_dim)
-        obs = Gaussian(observation_dist.loc, observation_dist.precision_matrix, obs_inputs)
+        trans = mvn_to_funsor(transition_dist, ("time",),
+                              OrderedDict([("state", reals(hidden_dim)),
+                                           ("state(time=1)", reals(hidden_dim))]))
+        obs = mvn_to_funsor(observation_dist, ("time",),
+                            OrderedDict([("state(time=1)", reals(hidden_dim)),
+                                         ("value", reals(obs_dim))]))
 
         # Construct the joint funsor.
         with interpretation(lazy):
@@ -125,18 +124,20 @@ class GaussianMRF(FunsorDistribution):
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
-        ndims = max(len(self.batch_shape), value.dim() - 1)
+        ndims = max(len(self.batch_shape), value.dim() - 2)
         value = tensor_to_funsor(value, ("time",), 1)
 
         # Compare with pyro.distributions.hmm.GaussianMRF.log_prob().
         logp_oh = self._trans + self._obs(value=value)
+        logp_oh = sequential_sum_product(ops.logaddexp, ops.add,
+                                         logp_oh, "time", "state", "state(time=1)")
+        logp_oh += self._init
+        logp_oh = logp_oh.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
         logp_h = self._trans + self._obs.reduce(ops.logaddexp, "value")
-        logp = Stack((logp_oh, logp_h), "_stack")  # TODO add eager_stack_gaussian
-        logp = sequential_sum_product(ops.logaddexp, ops.add,
-                                      logp, "time", "state", "state(time=1)")
-        logp += self._init
-        logp = logp.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
-        logp_oh, logp_h = logp(_stack=0), logp(_stack=1)
+        logp_h = sequential_sum_product(ops.logaddexp, ops.add,
+                                        logp_h, "time", "state", "state(time=1)")
+        logp_h += self._init
+        logp_h = logp_h.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
         result = logp_oh - logp_h
 
         result = funsor_to_tensor(result, ndims=ndims)
@@ -202,15 +203,12 @@ class SwitchingLinearMRF(FunsorDistribution):
         # Convert distributions to funsors.
         init = (dist_to_funsor(initial_cat)(value="class") +
                 dist_to_funsor(initial_mvn, ("class",))(value="state"))
-        trans_inputs = tensor_to_funsor(transition_mvn.loc, ("time", "class"), 1).inputs.copy()
-        trans_inputs["state"] = reals(hidden_dim)
-        trans_inputs["state(time=1)"] = reals(hidden_dim)
-        trans = (dist_to_funsor(transition_cat, ("time", "class"))(value="class(time=1)") +
-                 Gaussian(transition_mvn.loc, transition_mvn.precision_matrix, trans_inputs))
-        obs_inputs = tensor_to_funsor(observation_mvn.loc, ("time", "class(time=1)"), 1).inputs.copy()
-        obs_inputs["state(time=1)"] = reals(hidden_dim)
-        obs_inputs["value"] = reals(obs_dim)
-        obs = Gaussian(observation_mvn.loc, observation_mvn.precision_matrix, obs_inputs)
+        trans = mvn_to_funsor(transition_mvn, ("time", "class"),
+                              OrderedDict([("state", reals(hidden_dim)),
+                                           ("state(time=1)", reals(hidden_dim))]))
+        obs = mvn_to_funsor(observation_mvn, ("time", "class(time=1)"),
+                            OrderedDict([("state(time=1)", reals(hidden_dim)),
+                                         ("value", reals(obs_dim))]))
 
         # Construct the joint funsor.
         with interpretation(lazy):
@@ -225,21 +223,21 @@ class SwitchingLinearMRF(FunsorDistribution):
         super(SwitchingLinearMRF, self).__init__(funsor_dist, batch_shape, event_shape)
 
     # TODO remove this once self.funsor_dist is defined.
+    @interpretation(moment_matching)
     def log_prob(self, value):
         ndims = max(len(self.batch_shape), value.dim() - 1)
         value = tensor_to_funsor(value, ("time",), 1)
 
         # Compare with pyro.distributions.hmm.GaussianMRF.log_prob().
+        sum_vars = frozenset({"class", "state", "class(time=1)", "state(time=1)"})
         logp_oh = self._trans + self._obs(value=value)
+        logp_oh = sequential_sum_product(ops.logaddexp, ops.add, logp_oh, "time",
+                                         ("class", "state"), ("class", "state(time=1)"))
+        logp_oh = (logp_oh + self._init).reduce(ops.logaddexp, sum_vars)
         logp_h = self._trans + self._obs.reduce(ops.logaddexp, "value")
-        logp = Stack((logp_oh, logp_h), "_stack")
-        with interpretation(moment_matching):
-            logp = sequential_sum_product(ops.logaddexp, ops.add, logp, "time",
-                                          ("class", "state"), ("class", "state(time=1)"))
-            logp += self._init
-            logp = logp.reduce(ops.logaddexp,
-                               frozenset({"class", "state", "class(time=1)", "state(time=1)"}))
-        logp_oh, logp_h = logp(_stack=0), logp(_stack=1)
+        logp_h = sequential_sum_product(ops.logaddexp, ops.add, logp_h, "time",
+                                        ("class", "state"), ("class", "state(time=1)"))
+        logp_h = (logp_h + self._init).reduce(ops.logaddexp, sum_vars)
         result = logp_oh - logp_h
 
         result = funsor_to_tensor(result, ndims=ndims)
