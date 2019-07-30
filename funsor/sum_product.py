@@ -3,9 +3,10 @@ from functools import reduce
 
 import torch
 
+from funsor.cnf import Contraction
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.joint import Joint
+#from funsor.joint import Joint
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Funsor, Number
 from funsor.torch import Tensor, align_tensor
@@ -124,7 +125,7 @@ def Cat(parts, name):
         inputs[name] = bint(tensor.size(dim))
         return Tensor(tensor, inputs, dtype=parts[0].dtype)
 
-    if all(isinstance(part, (Gaussian, Joint)) for part in parts):
+    if all(isinstance(part, (Gaussian, Contraction)) for part in parts):
         int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != "real")
         real_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype == "real")
         inputs = int_inputs.copy()
@@ -139,11 +140,13 @@ def Cat(parts, name):
             if isinstance(part, Gaussian):
                 discrete = None
                 gaussian = part
-            elif isinstance(part, Joint):
-                if part.deltas:
+            elif isinstance(part, Contraction):
+                if len(part.terms) != 2 or not all(isinstance(t, (Gaussian, Tensor)) for t in part.terms):
                     raise NotImplementedError("TODO")
-                discrete = align_tensor(int_inputs, part.discrete).expand(shape)
-                gaussian = part.gaussian
+                discrete = align_tensor(int_inputs, part.terms[0]).expand(shape)
+                gaussian = part.terms[1]
+            else:
+                raise NotImplementedError("Should not be here!")
             discretes.append(discrete)
             loc, precision = align_gaussian(inputs, gaussian)
             locs.append(loc.expand(shape + (-1,)))

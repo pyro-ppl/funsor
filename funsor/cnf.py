@@ -9,7 +9,7 @@ from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
-from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize
+from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize
 from funsor.torch import Tensor
 
 
@@ -81,6 +81,15 @@ class Contraction(Funsor):
             new_terms = tuple(v.unscaled_sample(sampled_vars.intersection(v.inputs), sample_inputs) for v in self.terms)
             return Contraction(self.red_op, self.bin_op, self.reduced_vars, *new_terms)
         raise TypeError("Cannot sample through ops ({}, {})".format(self.red_op, self.bin_op))
+
+    def align(self, names):
+        assert isinstance(names, tuple)
+        assert all(name in self.inputs for name in names)
+        new_terms = tuple(t.align(tuple(n for n in names if n in t.inputs)) for t in self.terms)
+        result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *new_terms)
+        if not names == tuple(result.inputs):
+            return Align(result, names)  # raise NotImplementedError("TODO align all terms")
+        return result
 
 
 @recursion_reinterpret.register(Contraction)
