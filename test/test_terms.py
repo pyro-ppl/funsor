@@ -8,8 +8,8 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
-from funsor.interpreter import interpretation, _NORMALIZE
-from funsor.terms import Independent, Lambda, Number, Stack, Variable, sequential, to_data, to_funsor
+from funsor.interpreter import interpretation
+from funsor.terms import Independent, Lambda, Number, Stack, Variable, eager, sequential, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
@@ -177,7 +177,7 @@ def test_reduce_all(op):
     assert actual == expected
 
 
-@pytest.mark.skipif(_NORMALIZE, reason="weirdly slow")
+@pytest.mark.parametrize('use_normalize', [True, False])
 @pytest.mark.parametrize('reduced_vars', [
     reduced_vars
     for num_reduced in range(3 + 1)
@@ -185,7 +185,7 @@ def test_reduce_all(op):
 ])
 @pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
                          ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
-def test_reduce_subset(op, reduced_vars):
+def test_reduce_subset(op, reduced_vars, use_normalize):
     reduced_vars = frozenset(reduced_vars)
     x = Variable('x', bint(2))
     y = Variable('y', bint(3))
@@ -196,13 +196,19 @@ def test_reduce_subset(op, reduced_vars):
     if op is ops.logaddexp:
         pytest.skip()
 
+    # don't use normalize within sequential - distributivity blows up this expression
+    # TODO fix this by balancing expression trees in normalize/optimize
+    if use_normalize:
+        pytest.skip()
+
     with interpretation(sequential):
         actual = f.reduce(op, reduced_vars)
 
-    expected = f
-    for v in [x, y, z]:
-        if v.name in reduced_vars:
-            expected = reduce(op, [expected(**{v.name: i}) for i in v.output])
+    with interpretation(eager if use_normalize else sequential):
+        expected = f
+        for v in [x, y, z]:
+            if v.name in reduced_vars:
+                expected = reduce(op, [expected(**{v.name: i}) for i in v.output])
 
     check_funsor(actual, expected.inputs, expected.output)
     # TODO check data
