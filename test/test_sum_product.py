@@ -118,4 +118,4 @@ def test_sequential_sum_product(sum_op, prod_op, batch_inputs, state_domain, num
     expected = apply_optimizer(expected)
     expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
     expected = expected.align(tuple(actual.inputs.keys()))
-    assert_close(actual, expected, rtol=1e-4 * num_steps)
+    assert_close(actual, expected, rtol=5e-4 * num_steps)

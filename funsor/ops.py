@@ -61,6 +61,10 @@ class AddOp(AssociativeOp):
     pass
 
 
+class MulOp(AssociativeOp):
+    pass
+
+
 class SubOp(Op):
     pass
 
@@ -116,7 +120,7 @@ truediv = DivOp(operator.truediv)
 
 add = AddOp(operator.add)
 and_ = AssociativeOp(operator.and_)
-mul = AssociativeOp(operator.mul)
+mul = MulOp(operator.mul)
 or_ = AssociativeOp(operator.or_)
 xor = AssociativeOp(operator.xor)
 

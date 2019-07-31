@@ -152,7 +152,11 @@ def moment_matching(cls, *args):
     """
     result = moment_matching.dispatch(cls, *args)
     if result is None:
-        result = eager(cls, *args)
+        result = eager.dispatch(cls, *args)
+    if result is None and interpreter._NORMALIZE:
+        result = normalize.dispatch(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
     return result
 
 
