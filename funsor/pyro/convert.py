@@ -5,9 +5,10 @@ from functools import singledispatch
 import pyro.distributions as dist
 import torch
 from pyro.distributions.torch_distribution import MaskedDistribution
+from pyro.distributions.util import broadcast_shape
 
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
-from funsor.domains import bint
+from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.terms import Independent
 from funsor.torch import Tensor
@@ -89,6 +90,43 @@ def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
     inputs = loc.inputs.copy()
     inputs.update(real_inputs)
     return Tensor(log_prob, loc.inputs) + Gaussian(loc.data, precision.data, inputs)
+
+
+def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_name="value_y"):
+    """
+    Convert a noisy affine function to a Gaussian. The noisy affine function is defined as::
+
+        y = x @ matrix + mvn.sample()
+
+    :param ~torch.Tensor matrix: A matrix with rightmost shape ``(x_dim, y_dim)``.
+    :param ~torch.distributions.MultivariateNormal mvn: A multivariate normal
+        distribution with ``event_shape == (y_dim,)``.
+    """
+    assert isinstance(mvn, torch.distributions.MultivariateNormal)
+    assert isinstance(matrix, torch.Tensor)
+    x_dim, y_dim = matrix.shape[-2:]
+    assert mvn.event_shape == (y_dim,)
+    batch_shape = broadcast_shape(matrix.shape[:-2], mvn.batch_shape)
+    matrix = matrix.expand(batch_shape + (x_dim, y_dim))
+    log_prob = (-0.5 * y_dim * math.log(2 * math.pi) -
+                mvn.scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1))
+    mvn = mvn.expand(batch_shape)
+
+    P_yy = mvn.precision_matrix
+    neg_P_xy = matrix.matmul(P_yy)
+    P_xy = -neg_P_xy
+    P_yx = P_xy.transpose(-1, -2)
+    P_xx = neg_P_xy.matmul(matrix.transpose(-1, -2))
+    precision = torch.cat([torch.cat([P_xx, P_xy], -1),
+                           torch.cat([P_yx, P_yy], -1)], -2)
+    loc_y = mvn.loc
+    loc_x = loc_y.new_zeros(batch_shape + (x_dim,))
+    loc = torch.cat([loc_x, loc_y], -1)
+
+    inputs = tensor_to_funsor(loc, event_dims, 1).inputs.copy()
+    inputs[x_name] = reals(x_dim)
+    inputs[y_name] = reals(y_dim)
+    return tensor_to_funsor(log_prob, event_dims) + Gaussian(loc, precision, inputs)
 
 
 @singledispatch

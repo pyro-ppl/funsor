@@ -3,7 +3,7 @@ import pytest
 import torch
 from pyro.distributions.util import broadcast_shape
 
-from funsor.pyro.hmm import DiscreteHMM, GaussianMRF
+from funsor.pyro.hmm import DiscreteHMM, GaussianDiscreteMRF, GaussianMRF
 from funsor.testing import assert_close, xfail_param
 
 
@@ -144,3 +144,37 @@ def test_gaussian_mrf_log_prob(init_shape, trans_shape, obs_shape, hidden_dim, o
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize("sample_shape", [(), (8,), (7, 6)], ids=str)
+@pytest.mark.parametrize("obs_dim", [3, 4])
+@pytest.mark.parametrize("hidden_dim", [1, 2])
+@pytest.mark.parametrize("init_shape,trans_matrix_shape,trans_dist_shape,obs_logits_shape,obs_dist_shape", [
+    ((), (6,), (), (), ()),
+    ((), (), (6,), (), ()),
+    ((), (), (), (6,), ()),
+    ((), (), (), (), (6,)),
+    ((5,), (5, 6), (5, 6), (5, 6), (5, 6)),
+], ids=str)
+def test_gaussian_discrete_mrf_shape(sample_shape, init_shape, trans_matrix_shape, trans_dist_shape,
+                                     obs_logits_shape, obs_dist_shape, obs_dim, hidden_dim):
+    init_dist = random_mvn(init_shape, hidden_dim)
+    trans_matrix = torch.randn(trans_matrix_shape + (hidden_dim, hidden_dim))
+    trans_dist = random_mvn(trans_dist_shape, hidden_dim)
+    obs_logits = torch.randn(obs_logits_shape + (obs_dim,))
+    obs_dist = random_mvn(obs_dist_shape + (obs_dim,), hidden_dim)
+
+    actual_dist = GaussianDiscreteMRF(init_dist, trans_matrix, trans_dist, obs_logits, obs_dist)
+
+    shape = broadcast_shape(init_shape + (1,),
+                            trans_matrix_shape,
+                            trans_dist_shape,
+                            obs_logits_shape,
+                            obs_dist_shape)
+    batch_shape, event_shape = shape[:-1], shape[-1:]
+    assert actual_dist.event_shape == event_shape
+    assert actual_dist.batch_shape == batch_shape
+
+    data = dist.Categorical(logits=obs_logits).expand(shape).sample(sample_shape)
+    actual_log_prob = actual_dist.log_prob(data)
+    assert actual_log_prob.shape == sample_shape + batch_shape
