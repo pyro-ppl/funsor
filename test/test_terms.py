@@ -9,7 +9,7 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Independent, Lambda, Number, Stack, Variable, eager, sequential, to_data, to_funsor
+from funsor.terms import Independent, Lambda, Number, Stack, Variable, eager, sequential, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
@@ -88,8 +88,6 @@ def test_substitute():
     z = Variable('z', reals())
 
     f = x * y + x * z
-    assert isinstance(f, Binary)
-    assert f.op is ops.add
 
     assert f(y=2) is x * 2 + x * z
     assert f(z=2) is x * y + x * 2
@@ -156,26 +154,33 @@ def test_binary(symbol, data1, data2):
     check_funsor(actual, {}, Domain((), dtype), expected_data)
 
 
+@pytest.mark.parametrize('use_normalize', [True, False])
 @pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
                          ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
-def test_reduce_all(op):
+def test_reduce_all(op, use_normalize):
     x = Variable('x', bint(2))
     y = Variable('y', bint(3))
     z = Variable('z', bint(4))
-    f = x * y + z
-    dtype = f.dtype
-    check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
     if op is ops.logaddexp:
         pytest.skip()
 
+    # don't use normalize within sequential
+    if use_normalize:
+        pytest.skip()
+
     with interpretation(sequential):
+        f = x * y + z
+        dtype = f.dtype
+        check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
         actual = f.reduce(op)
 
-    values = [f(x=i, y=j, z=k)
-              for i in x.output
-              for j in y.output
-              for k in z.output]
-    expected = reduce(op, values)
+    with interpretation(eager if use_normalize else sequential):
+        values = [f(x=i, y=j, z=k)
+                  for i in x.output
+                  for j in y.output
+                  for k in z.output]
+        expected = reduce(op, values)
+
     assert actual == expected
 
 
