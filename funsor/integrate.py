@@ -1,9 +1,6 @@
-import functools
 from collections import OrderedDict
 
-import funsor.interpreter as interpreter
-import funsor.ops as ops
-from funsor.terms import Funsor, Reduce, eager
+from funsor.terms import Funsor
 
 
 class Integrate(Funsor):
@@ -26,55 +23,6 @@ class Integrate(Funsor):
         self.reduced_vars = reduced_vars
 
 
-def _simplify_integrate(fn, log_measure, integrand, reduced_vars):
-    """
-    Reduce free variables that do not appear in both inputs.
-    """
-    if not reduced_vars:
-        return log_measure.exp() * integrand
-
-    log_measure_vars = frozenset(log_measure.inputs)
-    integrand_vars = frozenset(integrand.inputs)
-    assert reduced_vars <= log_measure_vars | integrand_vars
-    progress = False
-    if not reduced_vars <= log_measure_vars:
-        integrand = integrand.reduce(ops.add, reduced_vars - log_measure_vars)
-        reduced_vars = reduced_vars & log_measure_vars
-        progress = True
-    if not reduced_vars <= integrand_vars:
-        log_measure = log_measure.reduce(ops.logaddexp, reduced_vars - integrand_vars)
-        reduced_vars = reduced_vars & integrand_vars
-        progress = True
-    if progress:
-        return Integrate(log_measure, integrand, reduced_vars)
-
-    return fn(log_measure, integrand, reduced_vars)
-
-
-def integrator(fn):
-    """
-    Decorator for integration implementations.
-    """
-    fn = interpreter.debug_logged(fn)
-    return functools.partial(_simplify_integrate, fn)
-
-
-@eager.register(Integrate, Funsor, Funsor, frozenset)
-def eager_integrate_generic(log_measure, integrand, reduced_vars):
-    # return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)  # XXX circular imports
-    return (log_measure.exp() * integrand).reduce(ops.add, reduced_vars)
-
-
-@eager.register(Integrate, Reduce, Funsor, frozenset)
-def eager_integrate_reduce(log_measure, integrand, reduced_vars):
-    if log_measure.op is ops.logaddexp:
-        arg = Integrate(log_measure.arg, integrand, reduced_vars)
-        return arg.reduce(ops.add, log_measure.reduced_vars)
-
-    return eager_integrate_generic(log_measure, integrand, reduced_vars)
-
-
 __all__ = [
     'Integrate',
-    'integrator',
 ]

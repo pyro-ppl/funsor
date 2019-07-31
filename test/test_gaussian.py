@@ -6,12 +6,10 @@ import pytest
 import torch
 
 import funsor.ops as ops
+from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
-from funsor.interpreter import interpretation
-from funsor.joint import Joint
-from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
 from funsor.torch import Tensor
@@ -89,27 +87,27 @@ def test_block_matrix_batched(batch_shape):
 
 @pytest.mark.parametrize('expr,expected_type', [
     ('-g1', Gaussian),
-    ('g1 + 1', Joint),
-    ('g1 - 1', Joint),
-    ('1 + g1', Joint),
-    ('g1 + shift', Joint),
-    ('g1 + shift', Joint),
-    ('shift + g1', Joint),
-    ('shift - g1', Joint),
-    ('g1 + g1', Joint),
-    ('(g1 + g2 + g2) - g2', Joint),
+    ('g1 + 1', Contraction),
+    ('g1 - 1', Contraction),
+    ('1 + g1', Contraction),
+    ('g1 + shift', Contraction),
+    ('g1 + shift', Contraction),
+    ('shift + g1', Contraction),
+    ('shift - g1', Contraction),
+    ('g1 + g1', Contraction),
+    ('(g1 + g2 + g2) - g2', Contraction),
     ('g1(i=i0)', Gaussian),
     ('g2(i=i0)', Gaussian),
-    ('g1(i=i0) + g2(i=i0)', Joint),
-    ('g1(i=i0) + g2', Joint),
+    ('g1(i=i0) + g2(i=i0)', Contraction),
+    ('g1(i=i0) + g2', Contraction),
     ('g1(x=x0)', Tensor),
     ('g2(y=y0)', Tensor),
-    ('(g1 + g2)(i=i0)', Joint),
+    ('(g1 + g2)(i=i0)', Contraction),
     ('(g1 + g2)(x=x0, y=y0)', Tensor),
     ('(g2 + g1)(x=x0, y=y0)', Tensor),
     ('g1.reduce(ops.logaddexp, "x")', Tensor),
-    ('(g1 + g2).reduce(ops.logaddexp, "x")', Joint),
-    ('(g1 + g2).reduce(ops.logaddexp, "y")', Joint),
+    ('(g1 + g2).reduce(ops.logaddexp, "x")', Contraction),
+    ('(g1 + g2).reduce(ops.logaddexp, "y")', Contraction),
     ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
 ])
 def test_smoke(expr, expected_type):
@@ -372,9 +370,9 @@ def test_integrate_variable(int_inputs, real_inputs):
     integrand = reduce(ops.add, [Variable(k, d) for k, d in real_inputs.items()])
     reduced_vars = frozenset(real_inputs)
 
-    with monte_carlo_interpretation(particle=bint(100000)):
-        approx = Integrate(log_measure, integrand, reduced_vars)
-        assert isinstance(approx, Tensor)
+    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(100000)))
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {'particle'})
+    assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
     assert isinstance(exact, Tensor)
@@ -403,9 +401,9 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     integrand = random_gaussian(inputs)
     reduced_vars = frozenset(real_inputs)
 
-    with monte_carlo_interpretation(particle=bint(10000)):
-        approx = Integrate(log_measure, integrand, reduced_vars)
-        assert isinstance(approx, Tensor)
+    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(10000)))
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {'particle'})
+    assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
     assert isinstance(exact, Tensor)
@@ -418,7 +416,7 @@ def test_mc_plate_gaussian():
                            (('loc', reals()),)) + torch.tensor(-0.9189)
     integrand = Gaussian(torch.randn((100, 1)) + 3., torch.ones((100, 1, 1)),
                          (('data', bint(100)), ('loc', reals())))
-    with interpretation(monte_carlo):
-        res = Integrate(log_measure, integrand, frozenset({'loc'}))
-        res = res.reduce(ops.mul, frozenset({'data'}))
-        assert not torch.isinf(res).any()
+
+    res = Integrate(log_measure.sample(frozenset({'loc'})), integrand, frozenset({'loc'}))
+    res = res.reduce(ops.mul, frozenset({'data'}))
+    assert not torch.isinf(res).any()

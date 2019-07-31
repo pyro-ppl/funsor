@@ -9,7 +9,7 @@ from pyro.distributions.util import broadcast_shape
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.integrate import Integrate, integrator
+from funsor.integrate import Integrate
 from funsor.ops import AddOp, NegOp, SubOp
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, reflect, to_funsor
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
@@ -593,11 +593,10 @@ def eager_neg(op, arg):
 
 
 @eager.register(Integrate, Gaussian, Variable, frozenset)
-@integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
-    if real_vars:
-        assert real_vars == frozenset([integrand.name])
+    if real_vars == frozenset([integrand.name]):
+        # assert real_vars == frozenset([integrand.name])
         data = log_measure.loc * log_measure._log_normalizer.data.exp().unsqueeze(-1)
         data = data.reshape(log_measure.loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
@@ -607,7 +606,6 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
-@integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars:

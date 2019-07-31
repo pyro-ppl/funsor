@@ -5,12 +5,12 @@ import pytest
 import torch
 
 import funsor.ops as ops
-from funsor.delta import Delta
+from funsor.cnf import Contraction
+from funsor.delta import Delta, MultiDelta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
-from funsor.joint import Joint
-from funsor.terms import Number, Reduce, eager, moment_matching
+from funsor.terms import Number, eager, moment_matching
 from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 
@@ -22,55 +22,55 @@ def id_from_inputs(inputs):
 
 
 SMOKE_TESTS = [
-    ('dx + dy', Joint),
-    ('dx + g', Joint),
-    ('dy + g', Joint),
-    ('g + dx', Joint),
-    ('g + dy', Joint),
-    ('dx + t', Joint),
-    ('dy + t', Joint),
-    ('dx - t', Joint),
-    ('dy - t', Joint),
-    ('t + dx', Joint),
-    ('t + dy', Joint),
-    ('g + 1', Joint),
-    ('g - 1', Joint),
-    ('1 + g', Joint),
-    ('g + t', Joint),
-    ('g - t', Joint),
-    ('t + g', Joint),
-    ('t - g', Joint),
-    ('g + g', Joint),
-    ('-(g + g)', Joint),
-    ('(dx + dy)(i=i0)', Joint),
-    ('(dx + g)(i=i0)', Joint),
-    ('(dy + g)(i=i0)', Joint),
-    ('(g + dx)(i=i0)', Joint),
-    ('(g + dy)(i=i0)', Joint),
-    ('(dx + t)(i=i0)', Joint),
-    ('(dy + t)(i=i0)', Joint),
-    ('(dx - t)(i=i0)', Joint),
-    ('(dy - t)(i=i0)', Joint),
-    ('(t + dx)(i=i0)', Joint),
-    ('(t + dy)(i=i0)', Joint),
-    ('(g + 1)(i=i0)', Joint),
-    ('(g - 1)(i=i0)', Joint),
-    ('(1 + g)(i=i0)', Joint),
-    ('(g + t)(i=i0)', Joint),
-    ('(g - t)(i=i0)', Joint),
-    ('(t + g)(i=i0)', Joint),
-    ('(g + g)(i=i0)', Joint),
-    ('(dx + dy)(x=x0)', Joint),
+    ('dx + dy', MultiDelta),
+    ('dx + g', Contraction),
+    ('dy + g', Contraction),
+    ('g + dx', Contraction),
+    ('g + dy', Contraction),
+    ('dx + t', Contraction),
+    ('dy + t', Contraction),
+    ('dx - t', Contraction),
+    ('dy - t', Contraction),
+    ('t + dx', Contraction),
+    ('t + dy', Contraction),
+    ('g + 1', Contraction),
+    ('g - 1', Contraction),
+    ('1 + g', Contraction),
+    ('g + t', Contraction),
+    ('g - t', Contraction),
+    ('t + g', Contraction),
+    ('t - g', Contraction),
+    ('g + g', Contraction),
+    ('-(g + g)', Contraction),
+    ('(dx + dy)(i=i0)', MultiDelta),
+    ('(dx + g)(i=i0)', Contraction),
+    ('(dy + g)(i=i0)', Contraction),
+    ('(g + dx)(i=i0)', Contraction),
+    ('(g + dy)(i=i0)', Contraction),
+    ('(dx + t)(i=i0)', Contraction),
+    ('(dy + t)(i=i0)', Contraction),
+    ('(dx - t)(i=i0)', Contraction),
+    ('(dy - t)(i=i0)', Contraction),
+    ('(t + dx)(i=i0)', Contraction),
+    ('(t + dy)(i=i0)', Contraction),
+    ('(g + 1)(i=i0)', Contraction),
+    ('(g - 1)(i=i0)', Contraction),
+    ('(1 + g)(i=i0)', Contraction),
+    ('(g + t)(i=i0)', Contraction),
+    ('(g - t)(i=i0)', Contraction),
+    ('(t + g)(i=i0)', Contraction),
+    ('(g + g)(i=i0)', Contraction),
+    ('(dx + dy)(x=x0)', MultiDelta),
     ('(dx + g)(x=x0)', Tensor),
-    ('(dy + g)(x=x0)', Joint),
+    ('(dy + g)(x=x0)', Contraction),
     ('(g + dx)(x=x0)', Tensor),
-    ('(g + dy)(x=x0)', Joint),
+    ('(g + dy)(x=x0)', Contraction),
     ('(dx + t)(x=x0)', Tensor),
-    ('(dy + t)(x=x0)', Joint),
+    ('(dy + t)(x=x0)', Contraction),
     ('(dx - t)(x=x0)', Tensor),
-    ('(dy - t)(x=x0)', Joint),
+    ('(dy - t)(x=x0)', Contraction),
     ('(t + dx)(x=x0)', Tensor),
-    ('(t + dy)(x=x0)', Joint),
+    ('(t + dy)(x=x0)', Contraction),
     ('(g + 1)(x=x0)', Tensor),
     ('(g - 1)(x=x0)', Tensor),
     ('(1 + g)(x=x0)', Tensor),
@@ -78,10 +78,10 @@ SMOKE_TESTS = [
     ('(g - t)(x=x0)', Tensor),
     ('(t + g)(x=x0)', Tensor),
     ('(g + g)(x=x0)', Tensor),
-    ('(g + dy).reduce(ops.logaddexp, "x")', Joint),
-    ('(g + dy).reduce(ops.logaddexp, "y")', Gaussian),
-    ('(t + g + dy).reduce(ops.logaddexp, "x")', Joint),
-    ('(t + g + dy).reduce(ops.logaddexp, "y")', Joint),
+    ('(g + dy).reduce(ops.logaddexp, "x")', Contraction),
+    ('(g + dy).reduce(ops.logaddexp, "y")', Contraction),
+    ('(t + g + dy).reduce(ops.logaddexp, "x")', Contraction),
+    ('(t + g + dy).reduce(ops.logaddexp, "y")', Contraction),
     ('(t + g).reduce(ops.logaddexp, "x")', Tensor),
 ]
 
@@ -89,10 +89,10 @@ SMOKE_TESTS = [
 @pytest.mark.parametrize('expr,expected_type', SMOKE_TESTS)
 def test_smoke(expr, expected_type):
     dx = Delta('x', Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2))])))
-    assert isinstance(dx, Delta)
+    assert isinstance(dx, MultiDelta)
 
     dy = Delta('y', Tensor(torch.randn(3, 4), OrderedDict([('j', bint(3))])))
-    assert isinstance(dy, Delta)
+    assert isinstance(dy, MultiDelta)
 
     t = Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
     assert isinstance(t, Tensor)
@@ -158,11 +158,11 @@ def test_reduce_logaddexp_deltas_lazy():
     a = Delta('a', Tensor(torch.randn(3, 2), OrderedDict(i=bint(3))))
     b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
     x = a + b
-    assert isinstance(x, Joint)
+    assert isinstance(x, MultiDelta)
     assert set(x.inputs) == {'a', 'b', 'i'}
 
     y = x.reduce(ops.logaddexp, 'i')
-    assert isinstance(y, Reduce)
+    # assert isinstance(y, Reduce)
     assert set(y.inputs) == {'a', 'b'}
     assert_close(x.reduce(ops.logaddexp), y.reduce(ops.logaddexp))
 
@@ -172,11 +172,11 @@ def test_reduce_logaddexp_deltas_discrete_lazy():
     b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
     c = Tensor(torch.randn(3), OrderedDict(i=bint(3)))
     x = a + b + c
-    assert isinstance(x, Joint)
+    assert isinstance(x, Contraction)
     assert set(x.inputs) == {'a', 'b', 'i'}
 
     y = x.reduce(ops.logaddexp, 'i')
-    assert isinstance(y, Reduce)
+    # assert isinstance(y, Reduce)
     assert set(y.inputs) == {'a', 'b'}
     assert_close(x.reduce(ops.logaddexp), y.reduce(ops.logaddexp))
 
@@ -185,11 +185,11 @@ def test_reduce_logaddexp_gaussian_lazy():
     a = random_gaussian(OrderedDict(i=bint(3), a=reals(2)))
     b = random_tensor(OrderedDict(i=bint(3), b=bint(2)))
     x = a + b
-    assert isinstance(x, Joint)
+    assert isinstance(x, Contraction)
     assert set(x.inputs) == {'a', 'b', 'i'}
 
     y = x.reduce(ops.logaddexp, 'i')
-    assert isinstance(y, Reduce)
+    # assert isinstance(y, Reduce)
     assert set(y.inputs) == {'a', 'b'}
     assert_close(x.reduce(ops.logaddexp), y.reduce(ops.logaddexp))
 
@@ -205,7 +205,7 @@ def test_reduce_logaddexp_gaussian_lazy():
 def test_reduce_add(inputs):
     int_inputs = OrderedDict((k, d) for k, d in inputs.items() if d.dtype != 'real')
     x = random_gaussian(inputs) + random_tensor(int_inputs)
-    assert isinstance(x, Joint)
+    assert isinstance(x, Contraction)
     actual = x.reduce(ops.add, 'i')
 
     xs = [x(i=i) for i in range(x.inputs['i'].dtype)]
