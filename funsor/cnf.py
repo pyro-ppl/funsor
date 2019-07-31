@@ -1,18 +1,15 @@
-import math
 from collections import OrderedDict
 from functools import reduce
 
-import opt_einsum
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import find_domain
-from funsor.gaussian import Gaussian, sym_inverse
+from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
-from funsor.terms import Binary, Funsor, Number, Reduce, Subs, Unary, Variable, \
-    eager, moment_matching, normalize
+from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize
 from funsor.torch import Tensor
 
 
@@ -78,6 +75,21 @@ class Contraction(Funsor):
             return sum(1 for k, v in self.inputs.items() if v.dtype == 'real') == \
                 sum(sum(1 for k, v in t.inputs.items() if v.dtype == 'real') for t in self.terms)
         return True
+
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        if self.red_op in (ops.logaddexp, anyop) and self.bin_op in (ops.logaddexp, ops.add, anyop):
+            new_terms = tuple(v.unscaled_sample(sampled_vars.intersection(v.inputs), sample_inputs) for v in self.terms)
+            return Contraction(self.red_op, self.bin_op, self.reduced_vars, *new_terms)
+        raise TypeError("Cannot sample through ops ({}, {})".format(self.red_op, self.bin_op))
+
+    def align(self, names):
+        assert isinstance(names, tuple)
+        assert all(name in self.inputs for name in names)
+        new_terms = tuple(t.align(tuple(n for n in names if n in t.inputs)) for t in self.terms)
+        result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *new_terms)
+        if not names == tuple(result.inputs):
+            return Align(result, names)  # raise NotImplementedError("TODO align all terms")
+        return result
 
 
 @recursion_reinterpret.register(Contraction)
@@ -148,6 +160,10 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
+##########################################
+# Normalizing Contractions
+##########################################
+
 GROUND_TERMS = (Delta, Gaussian, Number, Tensor)
 
 
@@ -157,16 +173,12 @@ def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_va
     ordering = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
     new_terms = tuple(
         v for i, v in sorted(enumerate(terms),
-                             key=lambda t: (ordering[type(t[1])] if type(t[1]) in ordering else -1, t[0]))
+                             key=lambda t: (ordering.get(type(t[1]), -1), t[0]))
     )
     if any(v is not vv for v, vv in zip(terms, new_terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
     return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
 
-
-##########################################
-# Normalizing Contractions
-##########################################
 
 @normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
 def normalize_contraction_generic_args(red_op, bin_op, reduced_vars, *terms):
@@ -283,90 +295,31 @@ def unary_contract(op, arg):
     if arg.bin_op is ops.add and arg.red_op is anyop:
         return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
     if arg.bin_op is ops.mul:
-        return arg * Number(-1.)
+        return arg * -1
     return None
 
 
 @normalize.register(Unary, ops.NegOp, Variable)
 def unary_neg_variable(op, arg):
-    return arg * Number(-1.)
+    return arg * -1
 
 
 @normalize.register(Unary, ops.ReciprocalOp, Contraction)
 def unary_contract(op, arg):
     if arg.bin_op is ops.mul and arg.red_op is anyop:
         return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
-    raise NotImplementedError("TODO")
+    return None  # raise NotImplementedError("TODO")
 
 
 @normalize.register(Unary, ops.TransformOp, Contraction)
 def unary_transform(op, arg):
     if op is ops.log:
-        raise NotImplementedError("TODO")
+        if arg.bin_op in (ops.mul, anyop) and arg.red_op in (anyop, ops.add):
+            new_terms = tuple(v.log() for v in arg.terms)
+            return Contraction(ops.logaddexp, ops.add, arg.reduced_vars, *new_terms)
     elif op is ops.exp:
         if arg.bin_op in (ops.add, anyop) and arg.red_op in (anyop, ops.logaddexp):
             new_terms = tuple(v.exp() for v in arg.terms)
             return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
-        raise NotImplementedError("TODO")
-
-    return None
-
-
-#################################
-# patterns for joint integration
-#################################
-
-@eager.register(Contraction, AssociativeOp, (ops.AddOp, AssociativeOp), frozenset, Tensor, Tensor)
-def eager_contract(sum_op, prod_op, reduced_vars, lhs, rhs):
-    if (sum_op, prod_op) == (ops.add, ops.mul):
-        backend = "torch"
-    elif (sum_op, prod_op) == (ops.logaddexp, ops.add):
-        backend = "pyro.ops.einsum.torch_log"
-    else:
-        return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)
-
-    inputs = OrderedDict((k, d) for t in (lhs, rhs)
-                         for k, d in t.inputs.items() if k not in reduced_vars)
-
-    data = opt_einsum.contract(lhs.data, list(lhs.inputs),
-                               rhs.data, list(rhs.inputs),
-                               list(inputs), backend=backend)
-    dtype = find_domain(prod_op, lhs.output, rhs.output).dtype
-    return Tensor(data, inputs, dtype)
-
-
-@moment_matching.register(Contraction, AssociativeOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
-def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
-
-    if red_op is not ops.logaddexp:
-        return None
-
-    approx_vars = frozenset(k for k in reduced_vars if gaussian.inputs.get(k, 'real') != 'real')
-    exact_vars = reduced_vars - approx_vars
-
-    if exact_vars and approx_vars:
-        return Contraction(red_op, bin_op, exact_vars, discrete, gaussian).reduce(red_op, approx_vars)
-
-    if approx_vars and not exact_vars:
-        new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
-        num_elements = reduce(ops.mul, [
-            gaussian.inputs[k].num_elements for k in approx_vars.difference(discrete.inputs)], 1)
-        if num_elements != 1:
-            new_discrete -= math.log(num_elements)
-
-        int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
-        probs = (discrete - new_discrete).exp()
-        old_loc = Tensor(gaussian.loc, int_inputs)
-        new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
-        old_cov = Tensor(sym_inverse(gaussian.precision), int_inputs)
-        diff = old_loc - new_loc
-        outers = Tensor(diff.data.unsqueeze(-1) * diff.data.unsqueeze(-2), diff.inputs)
-        new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
-                   (probs * outers).reduce(ops.add, approx_vars))
-        new_precision = Tensor(sym_inverse(new_cov.data), new_cov.inputs)
-        new_inputs = new_loc.inputs.copy()
-        new_inputs.update((k, d) for k, d in gaussian.inputs.items() if d.dtype == 'real')
-        new_gaussian = Gaussian(new_loc.data, new_precision.data, new_inputs)
-        return new_discrete + new_gaussian
 
     return None
