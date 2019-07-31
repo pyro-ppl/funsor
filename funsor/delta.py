@@ -13,8 +13,6 @@ from funsor.terms import (
     Binary,
     Funsor,
     FunsorMeta,
-    Independent,
-    # Lambda,
     Number,
     Reduce,
     Subs,
@@ -238,21 +236,6 @@ def eager_integrate(delta, integrand, reduced_vars):
     new_log_measure = Subs(delta, subs)
     result = Integrate(new_log_measure, new_integrand, reduced_vars - delta.fresh)
     return result
-
-
-@eager.register(Independent, MultiDelta, str, str)
-def eager_independent(delta, reals_var, bint_var):
-    # if delta.name == reals_var or delta.name.startswith(reals_var + "__BOUND"):
-    #     i = Variable(bint_var, delta.inputs[bint_var])
-    #     point = Lambda(i, delta.point)
-    #     if bint_var in delta.log_density.inputs:
-    #         log_density = delta.log_density.reduce(ops.add, bint_var)
-    #     else:
-    #         log_density = delta.log_density * delta.inputs[bint_var].dtype
-    #     return Delta(reals_var, point, log_density)
-
-    raise NotImplementedError("TODO")
-    # return None  # defer to default implementation
 
 
 __all__ = [

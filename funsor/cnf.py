@@ -160,18 +160,6 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
-# @eager.register(Independent, Contraction, str, str)
-# def eager_independent_contraction(fn, reals_var, bint_var):
-#     if reals_var not in fn.inputs:
-#         return fn.reduce(ops.add, bint_var)
-#     if reals_var in fn.inputs and fn.inputs[reals_var].dtype == 'real' and \
-#             bint_var in fn.inputs and isinstance(fn.inputs[bint_var].dtype, int):
-#         shape = (fn.inputs[bint_var].dtype,) + fn.inputs[reals_var].shape
-#         return fn(**{reals_var: to_funsor(reals_var, reals(*shape))[bint_var]}).reduce(ops.add, bint_var)
-#
-#     return None  # XXX probably should not be here...
-
-
 ##########################################
 # Normalizing Contractions
 ##########################################
