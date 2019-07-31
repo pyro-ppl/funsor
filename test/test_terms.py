@@ -154,26 +154,33 @@ def test_binary(symbol, data1, data2):
     check_funsor(actual, {}, Domain((), dtype), expected_data)
 
 
+@pytest.mark.parametrize('use_normalize', [True, False])
 @pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
                          ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
-def test_reduce_all(op):
+def test_reduce_all(op, use_normalize):
     x = Variable('x', bint(2))
     y = Variable('y', bint(3))
     z = Variable('z', bint(4))
-    f = x * y + z
-    dtype = f.dtype
-    check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
     if op is ops.logaddexp:
         pytest.skip()
 
+    # don't use normalize within sequential
+    if use_normalize:
+        pytest.skip()
+
     with interpretation(sequential):
+        f = x * y + z
+        dtype = f.dtype
+        check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
         actual = f.reduce(op)
 
-    values = [f(x=i, y=j, z=k)
-              for i in x.output
-              for j in y.output
-              for k in z.output]
-    expected = reduce(op, values)
+    with interpretation(eager if use_normalize else sequential):
+        values = [f(x=i, y=j, z=k)
+                  for i in x.output
+                  for j in y.output
+                  for k in z.output]
+        expected = reduce(op, values)
+
     assert actual == expected
 
 
