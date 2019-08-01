@@ -31,12 +31,12 @@ class FunsorDistribution(dist.TorchDistribution):
     arg_constraints = {}
 
     def __init__(self, funsor_dist, batch_shape=torch.Size(), event_shape=torch.Size(),
-                 dtype="real"):
+                 dtype="real", validate_args=None):
         assert isinstance(funsor_dist, Funsor)
         assert isinstance(batch_shape, tuple)
         assert isinstance(event_shape, tuple)
         assert "value" in funsor_dist.inputs
-        super(FunsorDistribution, self).__init__(batch_shape, event_shape)
+        super(FunsorDistribution, self).__init__(batch_shape, event_shape, validate_args)
         self.funsor_dist = funsor_dist
         self.dtype = dtype
 

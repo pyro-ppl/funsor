@@ -19,7 +19,7 @@ from funsor.terms import Variable, lazy, moment_matching
 
 
 class DiscreteHMM(FunsorDistribution):
-    def __init__(self, initial_logits, transition_logits, observation_dist):
+    def __init__(self, initial_logits, transition_logits, observation_dist, validate_args=None):
         assert isinstance(initial_logits, torch.Tensor)
         assert isinstance(transition_logits, torch.Tensor)
         assert isinstance(observation_dist, torch.distributions.Distribution)
@@ -53,7 +53,7 @@ class DiscreteHMM(FunsorDistribution):
             self._trans = trans
             self._obs = obs
 
-        super(DiscreteHMM, self).__init__(funsor_dist, batch_shape, event_shape, dtype)
+        super(DiscreteHMM, self).__init__(funsor_dist, batch_shape, event_shape, dtype, validate_args)
 
     @torch.distributions.constraints.dependent_property
     def has_rsample(self):
@@ -96,7 +96,7 @@ class DiscreteHMM(FunsorDistribution):
 class GaussianMRF(FunsorDistribution):
     has_rsample = True
 
-    def __init__(self, initial_dist, transition_dist, observation_dist):
+    def __init__(self, initial_dist, transition_dist, observation_dist, validate_args=None):
         assert isinstance(initial_dist, torch.distributions.MultivariateNormal)
         assert isinstance(transition_dist, torch.distributions.MultivariateNormal)
         assert isinstance(observation_dist, torch.distributions.MultivariateNormal)
@@ -128,7 +128,8 @@ class GaussianMRF(FunsorDistribution):
             self._trans = trans
             self._obs = obs
 
-        super(GaussianMRF, self).__init__(funsor_dist, batch_shape, event_shape)
+        dtype = "real"
+        super(GaussianMRF, self).__init__(funsor_dist, batch_shape, event_shape, dtype, validate_args)
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
@@ -201,7 +202,7 @@ class GaussianDiscreteMRF(FunsorDistribution):
         ``p(state[t+1] | obs[t+1])``.
     """
     def __init__(self, initial_dist, transition_matrix, transition_dist,
-                 observation_logits, observation_dist):
+                 observation_logits, observation_dist, validate_args=None):
         assert isinstance(initial_dist, torch.distributions.MultivariateNormal)
         assert isinstance(transition_matrix, torch.Tensor)
         assert isinstance(transition_dist, torch.distributions.MultivariateNormal)
@@ -238,7 +239,8 @@ class GaussianDiscreteMRF(FunsorDistribution):
             self._trans = trans
             self._obs = obs
 
-        super(GaussianDiscreteMRF, self).__init__(funsor_dist, batch_shape, event_shape, dtype)
+        super(GaussianDiscreteMRF, self).__init__(
+            funsor_dist, batch_shape, event_shape, dtype, validate_args)
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
