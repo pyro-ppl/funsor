@@ -2,7 +2,6 @@ from collections import OrderedDict
 
 import torch
 from pyro.distributions.util import broadcast_shape
-from torch.distributions import constraints
 
 import funsor.ops as ops
 from funsor.domains import reals
@@ -62,6 +61,8 @@ class DiscreteHMM(FunsorDistribution):
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
+        if self._validate_args:
+            self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
         value = tensor_to_funsor(value, ("time",), event_output=self.event_dim - 1,
                                  dtype=self.dtype)
@@ -131,6 +132,8 @@ class GaussianMRF(FunsorDistribution):
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
+        if self._validate_args:
+            self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - 2)
         value = tensor_to_funsor(value, ("time",), 1)
 
@@ -236,10 +239,6 @@ class GaussianDiscreteMRF(FunsorDistribution):
             self._obs = obs
 
         super(GaussianDiscreteMRF, self).__init__(funsor_dist, batch_shape, event_shape, dtype)
-
-    @constraints.dependent_property
-    def support(self):
-        return constraints.integer_interval(0, self.dtype - 1)
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):

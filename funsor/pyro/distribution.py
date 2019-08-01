@@ -2,6 +2,7 @@ from collections import OrderedDict
 
 import pyro.distributions as dist
 import torch
+from torch.distributions import constraints
 
 from funsor.delta import Delta
 from funsor.domains import bint
@@ -39,7 +40,16 @@ class FunsorDistribution(dist.TorchDistribution):
         self.funsor_dist = funsor_dist
         self.dtype = dtype
 
+    @constraints.dependent_property
+    def support(self):
+        if self.dtype == "real":
+            return constraints.real
+        else:
+            return constraints.integer_interval(0, self.dtype - 1)
+
     def log_prob(self, value):
+        if self._validate_args:
+            self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
         value = tensor_to_funsor(value, event_output=self.event_dim, dtype=self.dtype)
         with interpretation(lazy):
