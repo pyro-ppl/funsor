@@ -182,13 +182,12 @@ class GaussianDiscreteMRF(FunsorDistribution):
         def model(data):
             state = pyro.sample("state_0", initial_dist)
             for t in range(len(data)):
-                noise = pyro.sample("noise_{}".format(t), transition_dist)
+                noise = pyro.sample("noise_{}".format(t + 1), transition_dist)
                 state = state @ transition_matrix[t] + noise
-                obs = pyro.sample("x_{}".format(t),
+                obs = pyro.sample("obs_{}".format(t + 1),
                                   dist.Categorical(observation_logits),
                                   obs=data[t])
-                pyro.sample("state_{}".format(t),
-                            observation_dist[t, data[t]],
+                pyro.sample("state_{}".format(t + 1), observation_dist[t, obs],
                             obs=state)
 
     :param ~torch.distributions.MultivariateNormal initial_dist: Represents
@@ -196,7 +195,8 @@ class GaussianDiscreteMRF(FunsorDistribution):
     :param ~torch.Tensor transition_matrix: Transforms ``state[t]`` to
         ``prediction[t+1]``.
     :param ~torch.distributions.MultivariateNormal transition_dist: Represents
-        ``p(state[t+1] | prediction[t+1])``.
+        ``p(state[t+1] | prediction[t+1]) = p(noise[t+1])`` where
+        ``noise = state - prediction``.
     :param ~torch.Tensor observation_logits: Represents ``p(obs[t+1])``.
     :param ~torch.distributions.MultivariateNormal observation_dist: Represents
         ``p(state[t+1] | obs[t+1])``.
