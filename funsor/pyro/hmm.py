@@ -2,6 +2,7 @@ from collections import OrderedDict
 
 import torch
 from pyro.distributions.util import broadcast_shape
+from torch.distributions import constraints
 
 import funsor.ops as ops
 from funsor.domains import reals
@@ -182,7 +183,8 @@ class GaussianDiscreteMRF(FunsorDistribution):
                 obs = pyro.sample("x_{}".format(t),
                                   dist.Categorical(observation_logits),
                                   obs=data[t])
-                pyro.sample("state_{}".format(t), observation_dist[t, data[t]],
+                pyro.sample("state_{}".format(t),
+                            observation_dist[t, data[t]],
                             obs=state)
 
     :param ~torch.distributions.MultivariateNormal initial_dist: Represents
@@ -235,8 +237,14 @@ class GaussianDiscreteMRF(FunsorDistribution):
 
         super(GaussianDiscreteMRF, self).__init__(funsor_dist, batch_shape, event_shape, dtype)
 
+    @constraints.dependent_property
+    def support(self):
+        return constraints.integer_interval(0, self.dtype - 1)
+
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
+        if self._validate_args:
+            self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - 1)
         value = tensor_to_funsor(value, ("time",), dtype=self.dtype)
 

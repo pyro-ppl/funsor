@@ -1,3 +1,5 @@
+import itertools
+
 import pyro.distributions as dist
 import pytest
 import torch
@@ -178,3 +180,24 @@ def test_gaussian_discrete_mrf_shape(sample_shape, init_shape, trans_matrix_shap
     data = dist.Categorical(logits=obs_logits).expand(shape).sample(sample_shape)
     actual_log_prob = actual_dist.log_prob(data)
     assert actual_log_prob.shape == sample_shape + batch_shape
+
+
+@pytest.mark.parametrize("obs_dim", [2, 3])
+@pytest.mark.parametrize("hidden_dim", [1, 2])
+@pytest.mark.parametrize("num_steps", [2, 3, 4, 5])
+@pytest.mark.parametrize("batch_shape", [(), (5,), (3, 2)], ids=str)
+def test_gaussian_discrete_mrf_normalized(batch_shape, num_steps, hidden_dim, obs_dim):
+    init_dist = random_mvn(batch_shape, hidden_dim)
+    trans_matrix = torch.randn(batch_shape + (num_steps, hidden_dim, hidden_dim))
+    trans_dist = random_mvn(batch_shape + (num_steps,), hidden_dim)
+    obs_logits = torch.randn(batch_shape + (num_steps, obs_dim))
+    obs_dist = random_mvn(batch_shape + (num_steps, obs_dim), hidden_dim)
+    actual_dist = GaussianDiscreteMRF(init_dist, trans_matrix, trans_dist, obs_logits, obs_dist)
+
+    data = torch.tensor(list(itertools.product(*[list(range(obs_dim))] * num_steps)))
+    assert data.shape == (obs_dim ** num_steps, num_steps)
+    data = data.reshape(data.shape[:1] + (1,) * len(batch_shape) + data.shape[1:])
+    log_prob = actual_dist.log_prob(data)
+    assert log_prob.shape[1:] == batch_shape
+    log_total = log_prob.logsumexp(0)
+    assert log_total.abs().max() < 4, log_total
