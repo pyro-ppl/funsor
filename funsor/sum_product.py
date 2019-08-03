@@ -210,6 +210,11 @@ def sequential_sum_product(sum_op, prod_op, trans, time, prev, curr):
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
     :param ~funsor.terms.Funsor trans: A transition funsor.
+    :param str time: The name of the time input dimension.
+    :param prev: The name or tuple of names of previous state inputs.
+    :type prev: str or tuple
+    :param curr: The name or tuple of names of current state inputs.
+    :type curr: str or tuple
     """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
