@@ -1,7 +1,6 @@
 import pyro.distributions as dist
 import pytest
 import torch
-from torch.distributions import constraints
 
 from funsor.pyro.convert import tensor_to_funsor
 from funsor.pyro.distribution import FunsorDistribution
@@ -18,10 +17,6 @@ class Categorical(FunsorDistribution):
         dtype = int(logits.size(-1))
         super(Categorical, self).__init__(
             funsor_dist, batch_shape, event_shape, dtype, validate_args)
-
-    @constraints.dependent_property
-    def support(self):
-        return constraints.integer_interval(0, self.dtype - 1)
 
 
 @pytest.mark.parametrize("cardinality", [2, 3])
