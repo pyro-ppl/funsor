@@ -335,7 +335,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     def _log_normalizer(self):
         dim = self.precision.size(-1)
         log_det_term = _log_det_tri(self._precision_chol)
-        data = 0.5 * math.log(2 * math.pi) * dim - log_det_term
+        loc_info_vec_term = 0.5 * self.info_vec.unsqueeze(-1).triangular_solve(
+            self._precision_chol, upper=False).solution.squeeze(-1).pow(2).sum(-1)
+        data = 0.5 * dim * math.log(2 * math.pi) - log_det_term + loc_info_vec_term
         inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
         return Tensor(data, inputs)
 
@@ -489,16 +491,16 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 prec_ba = self.precision[..., b.unsqueeze(-1), a]
                 prec_bb = self.precision[..., b.unsqueeze(-1), b]
                 prec_b = prec_bb.cholesky()
-                prec_a = prec_ba.cholesky_solve(prec_b)
+                prec_a = prec_ba.triangular_solve(prec_b, upper=False).solution
                 prec_at = prec_a.transpose(-1, -2)
                 precision = prec_aa - prec_at.matmul(prec_a)
 
                 info_a = self.info_vec[..., a]
                 info_b = self.info_vec[..., b]
-                b_tmp = info_b.unsqueeze(-1).cholesky_solve(prec_b)
+                b_tmp = info_b.unsqueeze(-1).triangular_solve(prec_b, upper=False).solution
                 info_vec = info_a - prec_at.matmul(b_tmp).squeeze(-1)
 
-                log_prob = Tensor(0.5 * len(b) * math.log(2 * math.pi) + _log_det_tri(prec_b) +
+                log_prob = Tensor(0.5 * len(b) * math.log(2 * math.pi) - _log_det_tri(prec_b) +
                                   0.5 * b_tmp.squeeze(-1).pow(2).sum(-1),
                                   int_inputs)
                 result = log_prob + Gaussian(info_vec, precision, inputs)
@@ -542,10 +544,10 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         if sampled_vars == frozenset(real_inputs):
             shape = sample_shape + self.info_vec.shape
             white_noise = torch.randn(shape + (1,))
-            white_vec = self.info_vec.unsqueeze(-1).cholesky_solve(self._precision_chol)
-            sample = (white_noise + white_vec).cholesky_solve(self._precision_chol).squeeze(-1)
-            if not torch._C._get_tracing_state():
-                assert sample.shape == self.info_vec.shape
+            white_vec = self.info_vec.unsqueeze(-1).triangular_solve(
+                self._precision_chol, upper=False).solution
+            sample = (white_noise + white_vec).triangular_solve(
+                self._precision_chol, upper=False, transpose=True).solution.squeeze(-1)
             offsets, _ = _compute_offsets(real_inputs)
             results = []
             for key, domain in real_inputs.items():
@@ -597,8 +599,9 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars:
         assert real_vars == frozenset([integrand.name])
-        data = log_measure.loc * log_measure._log_normalizer.data.exp().unsqueeze(-1)
-        data = data.reshape(log_measure.loc.shape[:-1] + integrand.output.shape)
+        loc = log_measure.info_vec.unsqueeze(-1).cholesky_solve(log_measure._precision_chol).squeeze(-1)
+        data = loc * log_measure._log_normalizer.data.exp().unsqueeze(-1)
+        data = data.reshape(loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
         return Tensor(data, inputs)
 
@@ -616,18 +619,19 @@ def eager_integrate(log_measure, integrand, reduced_vars):
         if lhs_reals == real_vars and rhs_reals <= real_vars:
             inputs = OrderedDict((k, d) for t in (log_measure, integrand)
                                  for k, d in t.inputs.items())
-            lhs_loc, lhs_precision = align_gaussian(inputs, log_measure)
-            rhs_loc, rhs_precision = align_gaussian(inputs, integrand)
+            lhs_info_vec, lhs_precision = align_gaussian(inputs, log_measure)
+            rhs_info_vec, rhs_precision = align_gaussian(inputs, integrand)
 
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
             lhs_precision_chol = lhs_precision.cholesky()
             lhs_covariance = lhs_precision_chol.cholesky_inverse()
-            dim = lhs_loc.size(-1)
+            dim = lhs_info_vec.size(-1)
             norm = (2 * math.pi) ** (0.5 * dim) / _det_tri(lhs_precision_chol)
-            data = (-0.5) * norm * (_vmv(rhs_precision, lhs_loc - rhs_loc) +
-                                    _trace_mm(rhs_precision, lhs_covariance))
+            lhs_loc = lhs_info_vec.unsqueeze(-1).cholesky_solve(lhs_precision_chol)
+            vmv_term = lhs_loc.matmul(rhs_precision.matmul(lhs_loc) - rhs_info_vec).squeeze(-1).squeeze(-1)
+            data = (-0.5) * norm * (vmv_term + _trace_mm(rhs_precision, lhs_covariance))
             inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)
             result = Tensor(data, inputs)
             return result.reduce(ops.add, reduced_vars - real_vars)
