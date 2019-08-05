@@ -123,7 +123,7 @@ def test_discrete_diag_normal_log_prob(init_shape, trans_shape, obs_shape, state
     data = data[(slice(None),) * len(batch_shape) + (0,)]
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
-    assert_close(actual_log_prob, expected_log_prob)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
 
 
 @pytest.mark.parametrize("obs_dim", [1, 2, 3])

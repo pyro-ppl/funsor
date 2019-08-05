@@ -166,7 +166,8 @@ class Joint(Funsor, metaclass=JointMeta):
             gaussian = self.gaussian
             int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
             probs = (discrete - new_discrete).exp()
-            old_loc = Tensor(gaussian.loc, int_inputs)
+            old_loc = Tensor(gaussian.info_vec.unsqueeze(-1).cholesky_solve(
+                gaussian._precision_chol).squeeze(-1), int_inputs)
             new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
             old_cov = Tensor(sym_inverse(gaussian.precision), int_inputs)
             diff = old_loc - new_loc
@@ -174,9 +175,10 @@ class Joint(Funsor, metaclass=JointMeta):
             new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
                        (probs * outers).reduce(ops.add, approx_vars))
             new_precision = Tensor(sym_inverse(new_cov.data), new_cov.inputs)
+            new_info_vec = new_precision.data.matmul(new_loc.data.unsqueeze(-1)).squeeze(-1)
             new_inputs = new_loc.inputs.copy()
             new_inputs.update((k, d) for k, d in self.gaussian.inputs.items() if d.dtype == 'real')
-            new_gaussian = Gaussian(new_loc.data, new_precision.data, new_inputs)
+            new_gaussian = Gaussian(new_info_vec, new_precision.data, new_inputs)
             result = Joint(self.deltas, new_discrete, new_gaussian)
             return result.reduce(ops.logaddexp, lazy_vars)
 
