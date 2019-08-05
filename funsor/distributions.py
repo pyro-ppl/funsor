@@ -373,10 +373,10 @@ def eager_normal(loc, scale, value):
     inputs.update(value.inputs)
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
-    log_prob = -0.5 * math.log(2 * math.pi) - scale.log()  # FIXME
     precision = scale.pow(-2)
     info_vec = (precision * loc).unsqueeze(-1)
     precision = precision.unsqueeze(-1).unsqueeze(-1)
+    log_prob = -0.5 * math.log(2 * math.pi) - scale.log() - 0.5 * (loc * info_vec).squeeze(-1)
     return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
 
 
@@ -396,6 +396,7 @@ def eager_normal(loc, scale, value):
     affine = (loc - value) / scale
     assert isinstance(affine, Affine)
     real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
+    int_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype != 'real')
     assert not any(v.shape for v in real_inputs.values())
 
     tensors = [affine.const] + [c for v, c in affine.coeffs.items()]
@@ -414,8 +415,8 @@ def eager_normal(loc, scale, value):
     precision = precision.as_tensor()
     info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
 
-    log_prob = -0.5 * math.log(2 * math.pi) - scale.log()  # FIXME
-    return log_prob + Gaussian(info_vec, precision, affine.inputs)
+    log_prob = -0.5 * math.log(2 * math.pi) - scale.data.log() - 0.5 * (loc * info_vec).sum(-1)
+    return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, affine.inputs)
 
 
 class MultivariateNormal(Distribution):
@@ -454,10 +455,11 @@ def eager_mvn(loc, scale_tril, value):
     inputs.update(value.inputs)
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
-    log_prob = (-0.5 * dim * math.log(2 * math.pi)
-                - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1))  # FIXME
     precision = scale_tril.cholesky_inverse()
     info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
+    log_prob = (-0.5 * dim * math.log(2 * math.pi)
+                - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+                - 0.5 * (loc * info_vec).sum(-1))
     return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
 
 
