@@ -55,6 +55,19 @@ def _trace_mm(x, y):
     return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
 
 
+def _pinverse(mat):
+    """
+    Like torch.pinverse() but supports batching.
+    """
+    shape = mat.shape
+    mat = mat.reshape((-1,) + mat.shape[-2:])
+    if mat.size(0) == 1:
+        flat = mat[0].pinverse()
+    else:
+        flat = torch.stack([m.pinverse() for m in mat])
+    return flat.reshape(shape)
+
+
 def sym_inverse(mat):
     r"""
     Computes ``inverse(mat)`` assuming mat is symmetric and usually positive
@@ -66,7 +79,7 @@ def sym_inverse(mat):
         tri = torch.inverse(torch.cholesky(mat))
         return torch.matmul(tri.transpose(-1, -2), tri)
     except RuntimeError as e:
-        warnings.warn(e.message, RuntimeWarning)
+        warnings.warn(e, RuntimeWarning)
 
     # Try masked reciprocal.
     if mat.size(-1) == 1:
@@ -75,9 +88,11 @@ def sym_inverse(mat):
         return result
 
     # Fall back to pseudoinverse.
-    return torch.pinverse(mat)
+    return _pinverse(mat)
 
 
+# TODO(https://github.com/pyro-ppl/funsor/issues/184)
+# switch to information-filter form to avoid need for pseudoinverses.
 def sym_solve_mv(mat, vec):
     r"""
     Computes ``mat \ vec`` assuming mat is symmetric and usually positive definite,
@@ -85,10 +100,9 @@ def sym_solve_mv(mat, vec):
     """
     try:
         # Attempt to use stable positive definite math.
-        tri = torch.inverse(torch.cholesky(mat))
-        return _mv(tri.transpose(-1, -2), _mv(tri, vec))
+        return vec.unsqueeze(-1).cholesky_solve(mat.cholesky()).squeeze(-1)
     except RuntimeError as e:
-        warnings.warn(e.message, RuntimeWarning)
+        warnings.warn(e, RuntimeWarning)
 
     # Fall back to pseudoinverse.
     if mat.size(-1) == 1:
@@ -97,7 +111,7 @@ def sym_solve_mv(mat, vec):
         result = vec / mat
         result[(mat != 0) == 0] = 0
         return result
-    return _mv(torch.pinverse(mat), vec)
+    return _mv(_pinverse(mat), vec)
 
 
 def _compute_offsets(inputs):
@@ -422,7 +436,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         # Perform a partial substution of a subset of real variables, resulting in a Joint.
         # We split real inputs into two sets: a for the preserved and b for the substituted.
-        # raise NotImplementedError('TODO')
         b = frozenset(k for k, v in real_subs.items())
         a = frozenset(k for k, d in self.inputs.items() if d.dtype == 'real' and k not in b)
         loc_a = torch.cat([loc[..., i] for k, i in slices if k in a], dim=-1)
@@ -440,9 +453,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             for k2, i2 in slices if k2 in b], dim=-1)
             for k1, i1 in slices if k1 in b], dim=-2)
         prec_ab_diff_b = _mv(prec_ab, diff_b)
-        update = (prec_ab_diff_b.unsqueeze(-1)
-                                .cholesky_solve(prec_aa.cholesky())
-                                .squeeze(-1))
+        update = sym_solve_mv(prec_aa, prec_ab_diff_b)
         loc = loc_a - update
         log_scale = 0.5 * (_vv(update, prec_ab_diff_b) - _vmv(prec_bb, diff_b))
         precision = prec_aa.expand(loc.shape + (-1,))
