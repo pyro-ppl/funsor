@@ -187,11 +187,12 @@ def random_gaussian(inputs):
     assert isinstance(inputs, OrderedDict)
     batch_shape = tuple(d.dtype for d in inputs.values() if d.dtype != 'real')
     event_shape = (sum(d.num_elements for d in inputs.values() if d.dtype == 'real'),)
-    loc = torch.randn(batch_shape + event_shape)
     prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
     precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
     precision = precision + 0.05 * torch.eye(event_shape[0])
-    return Gaussian(loc, precision, inputs)
+    loc = torch.randn(batch_shape + event_shape)
+    precision_loc = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
+    return Gaussian(precision_loc, precision, inputs)
 
 
 def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
