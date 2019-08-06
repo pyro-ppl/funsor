@@ -61,10 +61,9 @@ def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
         end = beg + d.num_elements
         subs[k] = tensor_to_funsor(value[..., beg:end], tuple(int_inputs), 1)
         beg = end
-    print("DEBUG {}".format(subs))
     actual_log_prob = f(**subs)
     expected_log_prob = tensor_to_funsor(mvn.log_prob(value), tuple(int_inputs))
-    assert_close(actual_log_prob, expected_log_prob)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)

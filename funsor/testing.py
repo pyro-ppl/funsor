@@ -59,7 +59,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert_close(actual.point, expected.point, atol=atol, rtol=rtol)
         assert_close(actual.log_density, expected.log_density, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
-        assert_close(actual.loc, expected.loc, atol=atol, rtol=rtol)
+        assert_close(actual.info_vec, expected.info_vec, atol=atol, rtol=rtol)
         assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)
     elif isinstance(actual, Joint):
         actual_deltas = {d.name: d for d in actual.deltas}
@@ -187,11 +187,12 @@ def random_gaussian(inputs):
     assert isinstance(inputs, OrderedDict)
     batch_shape = tuple(d.dtype for d in inputs.values() if d.dtype != 'real')
     event_shape = (sum(d.num_elements for d in inputs.values() if d.dtype == 'real'),)
-    loc = torch.randn(batch_shape + event_shape)
     prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
     precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
     precision = precision + 0.05 * torch.eye(event_shape[0])
-    return Gaussian(loc, precision, inputs)
+    loc = torch.randn(batch_shape + event_shape)
+    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
+    return Gaussian(info_vec, precision, inputs)
 
 
 def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):

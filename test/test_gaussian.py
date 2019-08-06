@@ -7,7 +7,7 @@ import torch
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse, cholesky_solve
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.joint import Joint
@@ -15,6 +15,37 @@ from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
 from funsor.torch import Tensor
+
+
+@pytest.mark.parametrize("size", [1, 2, 3], ids=str)
+@pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+def test_cholesky_solve(batch_shape, size):
+    b = torch.randn(batch_shape + (size, 5))
+    x = torch.randn(batch_shape + (size, size))
+    x = x.transpose(-1, -2).matmul(x)
+    u = x.cholesky()
+    expected = cholesky_solve(b, u)
+    assert not expected.requires_grad
+    actual = cholesky_solve(b.requires_grad_(), u.requires_grad_())
+    assert actual.requires_grad
+    assert_close(expected, actual)
+
+
+def naive_cholesky_inverse(u):
+    shape = u.shape
+    return torch.stack([
+        part.cholesky_inverse()
+        for part in u.reshape((-1,) + u.shape[-2:])
+    ]).reshape(shape)
+
+
+@pytest.mark.parametrize("size", [1, 2, 3], ids=str)
+@pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+def test_cholesky_inverse(batch_shape, size):
+    x = torch.randn(batch_shape + (size, size))
+    x = x.transpose(-1, -2).matmul(x)
+    u = x.cholesky()
+    assert_close(cholesky_inverse(u), naive_cholesky_inverse(u))
 
 
 def test_block_vector():
@@ -96,15 +127,15 @@ def test_block_matrix_batched(batch_shape):
     ('g1 + shift', Joint),
     ('shift + g1', Joint),
     ('shift - g1', Joint),
-    ('g1 + g1', Joint),
-    ('(g1 + g2 + g2) - g2', Joint),
+    ('g1 + g1', Gaussian),
+    ('(g1 + g2 + g2) - g2', Gaussian),
     ('g1(i=i0)', Gaussian),
     ('g2(i=i0)', Gaussian),
-    ('g1(i=i0) + g2(i=i0)', Joint),
-    ('g1(i=i0) + g2', Joint),
+    ('g1(i=i0) + g2(i=i0)', Gaussian),
+    ('g1(i=i0) + g2', Gaussian),
     ('g1(x=x0)', Tensor),
     ('g2(y=y0)', Tensor),
-    ('(g1 + g2)(i=i0)', Joint),
+    ('(g1 + g2)(i=i0)', Gaussian),
     ('(g1 + g2)(x=x0, y=y0)', Tensor),
     ('(g2 + g1)(x=x0, y=y0)', Tensor),
     ('g1.reduce(ops.logaddexp, "x")', Tensor),
@@ -114,8 +145,8 @@ def test_block_matrix_batched(batch_shape):
 ])
 def test_smoke(expr, expected_type):
     g1 = Gaussian(
-        loc=torch.tensor([[0.0, 0.1, 0.2],
-                          [2.0, 3.0, 4.0]]),
+        info_vec=torch.tensor([[0.0, 0.1, 0.2],
+                               [2.0, 3.0, 4.0]]),
         precision=torch.tensor([[[1.0, 0.1, 0.2],
                                  [0.1, 1.0, 0.3],
                                  [0.2, 0.3, 1.0]],
@@ -126,8 +157,8 @@ def test_smoke(expr, expected_type):
     assert isinstance(g1, Gaussian)
 
     g2 = Gaussian(
-        loc=torch.tensor([[0.0, 0.1],
-                          [2.0, 3.0]]),
+        info_vec=torch.tensor([[0.0, 0.1],
+                               [2.0, 3.0]]),
         precision=torch.tensor([[[1.0, 0.2],
                                  [0.2, 1.0]],
                                 [[1.0, 0.2],
@@ -190,6 +221,34 @@ def test_align(int_inputs, real_inputs):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
+def test_eager_subs_origin(int_inputs, real_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(sorted(real_inputs.items()))
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+    g = random_gaussian(inputs)
+
+    # Check that Gaussian log density at origin is zero.
+    origin = {k: torch.zeros(d.shape) for k, d in real_inputs.items()}
+    actual = g(**origin)
+    expected_data = torch.zeros(tuple(d.size for d in int_inputs.values()))
+    expected = Tensor(expected_data, int_inputs)
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('int_inputs', [
+    {},
+    {'i': bint(2)},
+    {'i': bint(2), 'j': bint(3)},
+], ids=id_from_inputs)
+@pytest.mark.parametrize('real_inputs', [
+    {'x': reals()},
+    {'x': reals(4)},
+    {'x': reals(2, 3)},
+    {'x': reals(), 'y': reals()},
+    {'x': reals(2), 'y': reals(3)},
+    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+], ids=id_from_inputs)
 def test_eager_subs(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
@@ -211,7 +270,7 @@ def test_eager_subs(int_inputs, real_inputs):
         actual = g
         for k in reversed(order):
             actual = actual(**{k: dependent_values[k]})
-        assert_close(actual, expected, atol=1e-4)
+        assert_close(actual, expected, atol=1e-5, rtol=1e-5)
 
 
 def test_eager_subs_variable():
@@ -250,9 +309,9 @@ def test_add_gaussian_number(int_inputs, real_inputs):
     values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
-    assert_close((g + n)(**values), g(**values) + n, atol=1e-4)
-    assert_close((n + g)(**values), n + g(**values), atol=1e-4)
-    assert_close((g - n)(**values), g(**values) - n, atol=1e-4)
+    assert_close((g + n)(**values), g(**values) + n, atol=1e-5, rtol=1e-5)
+    assert_close((n + g)(**values), n + g(**values), atol=1e-5, rtol=1e-5)
+    assert_close((g - n)(**values), g(**values) - n, atol=1e-5, rtol=1e-5)
 
 
 @pytest.mark.parametrize('int_inputs', [
@@ -279,9 +338,9 @@ def test_add_gaussian_tensor(int_inputs, real_inputs):
     values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
-    assert_close((g + t)(**values), g(**values) + t, atol=1e-4)
-    assert_close((t + g)(**values), t + g(**values), atol=1e-4)
-    assert_close((g - t)(**values), g(**values) - t, atol=1e-4)
+    assert_close((g + t)(**values), g(**values) + t, atol=1e-5, rtol=1e-5)
+    assert_close((t + g)(**values), t + g(**values), atol=1e-5, rtol=1e-5)
+    assert_close((g - t)(**values), g(**values) - t, atol=1e-5, rtol=1e-5)
 
 
 @pytest.mark.parametrize('lhs_inputs', [

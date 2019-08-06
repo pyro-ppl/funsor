@@ -130,7 +130,7 @@ def Cat(parts, name):
         inputs = int_inputs.copy()
         inputs.update(real_inputs)
         discretes = []
-        locs = []
+        info_vecs = []
         precisions = []
         for part in parts:
             inputs[name] = part.inputs[name]  # typically a smaller bint
@@ -145,20 +145,20 @@ def Cat(parts, name):
                 discrete = align_tensor(int_inputs, part.discrete).expand(shape)
                 gaussian = part.gaussian
             discretes.append(discrete)
-            loc, precision = align_gaussian(inputs, gaussian)
-            locs.append(loc.expand(shape + (-1,)))
+            info_vec, precision = align_gaussian(inputs, gaussian)
+            info_vecs.append(info_vec.expand(shape + (-1,)))
             precisions.append(precision.expand(shape + (-1, -1)))
 
         dim = tuple(inputs).index(name)
-        loc = torch.cat(locs, dim=dim)
+        info_vec = torch.cat(info_vecs, dim=dim)
         precision = torch.cat(precisions, dim=dim)
-        inputs[name] = bint(loc.size(dim))
+        inputs[name] = bint(info_vec.size(dim))
         int_inputs[name] = inputs[name]
-        result = Gaussian(loc, precision, inputs)
+        result = Gaussian(info_vec, precision, inputs)
         if any(d is not None for d in discretes):
             for i, d in enumerate(discretes):
                 if d is None:
-                    discretes[i] = locs[i].new_zeros(locs[i].shape[:-1])
+                    discretes[i] = info_vecs[i].new_zeros(info_vecs[i].shape[:-1])
             discrete = torch.cat(discretes, dim=dim)
             result += Tensor(discrete, int_inputs)
         return result
