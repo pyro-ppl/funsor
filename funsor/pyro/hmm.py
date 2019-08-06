@@ -15,7 +15,7 @@ from funsor.pyro.convert import (
 )
 from funsor.pyro.distribution import FunsorDistribution
 from funsor.sum_product import sequential_sum_product
-from funsor.terms import Variable, lazy
+from funsor.terms import Variable, lazy, moment_matching
 
 
 class DiscreteHMM(FunsorDistribution):
@@ -102,7 +102,7 @@ class GaussianHMM(FunsorDistribution):
 
         z = initial_distribution.sample()
         x = []
-        for t in range(num_events):
+        for t in range(num_steps):
             z = z @ transition_matrix + transition_dist.sample()
             x.append(z @ observation_matrix + observation_dist.sample())
 
@@ -299,4 +299,124 @@ class GaussianMRF(FunsorDistribution):
         new._trans = self._trans
         new._obs = self._obs
         super(GaussianMRF, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        return new
+
+
+class SwitchingLinearHMM(FunsorDistribution):
+    """
+    Switching Linear Dynamical System represented as a Hidden Markov Model.
+
+    This corresponds to the generative model::
+
+        z = Categorical(logits=initial_logits).sample()
+        y = initial_mvn[z].sample()
+        x = []
+        for t in range(num_steps):
+            z = Categorical(logits=transition_logits[t, z]).sample()
+            y = y @ transition_matrix[t, z] + transition_mvn[t, z].sample()
+            x.append(y @ observation_matrix[t, z] + observation_mvn[t, z].sample())
+
+    This uses the :func:`~funsor.terms.moment_matching` approximation.
+
+    Let ``class`` be the latent class, ``state`` be the latent multivariate
+    normal state, and ``value`` be the observed multivariate normal value.
+
+    :param ~torch.Tensor initial_logits: Represents ``p(class[0])``.
+    :param ~torch.distributions.MultivariateNormal initial_mvn: Represents
+        ``p(state[0] | class[0])``.
+    :param ~torch.Tensor transition_logits: Represents
+        ``p(class[t+1] | class[t])``.
+    :param ~torch.Tensor transition_matrix:
+    :param ~torch.distributions.MultivariateNormal transition_mvn: Represents
+        ``p(state[t], state[t+1] | class[t])``.
+    :param ~torch.Tensor observation_matrix:
+    :param ~torch.distributions.MultivariateNormal observation_mvn: Represents
+        ``p(value[t+1], state[t+1] | class[t+1])``.
+    """
+    has_rsample = True
+    arg_constraints = {}
+
+    def __init__(self, initial_logits, initial_mvn,
+                 transition_logits, transition_matrix, transition_mvn,
+                 observation_matrix, observation_mvn, validate_args=None):
+        assert isinstance(initial_logits, torch.Tensor)
+        assert isinstance(initial_mvn, torch.distributions.MultivariateNormal)
+        assert isinstance(transition_logits, torch.Tensor)
+        assert isinstance(transition_matrix, torch.Tensor)
+        assert isinstance(transition_mvn, torch.distributions.MultivariateNormal)
+        assert isinstance(observation_matrix, torch.Tensor)
+        assert isinstance(observation_mvn, torch.distributions.MultivariateNormal)
+        hidden_cardinality = initial_logits.size(-1)
+        hidden_dim = initial_mvn.event_shape[0]
+        obs_dim = observation_mvn.event_shape[0]
+        assert transition_logits.size(-1) == hidden_cardinality
+        assert transition_matrix.shape[-2:] == (hidden_dim, hidden_dim)
+        assert transition_mvn.event_shape[0] == hidden_dim
+        shape = broadcast_shape(initial_logits.shape[:-1] + (1, hidden_cardinality),
+                                initial_mvn.batch_shape + (1, hidden_cardinality),
+                                transition_logits.shape[:-1],
+                                transition_matrix.shape[:-2],
+                                transition_mvn.batch_shape,
+                                observation_mvn.batch_shape)
+        batch_shape, time_shape = shape[:-2], shape[-2:-1]
+        event_shape = time_shape + (obs_dim,)
+
+        # Normalize.
+        initial_logits = initial_logits - initial_logits.logsumexp(-1, True)
+        transition_logits = transition_logits - transition_logits.logsumexp(-1, True)
+
+        # Convert tensors and distributions to funsors.
+        init = (tensor_to_funsor(initial_logits, ("class",)) +
+                dist_to_funsor(initial_mvn, ("class",))(value="state"))
+        trans = (tensor_to_funsor(transition_logits, ("time", "class", "class(time=1)")) +
+                 matrix_and_mvn_to_funsor(transition_matrix, transition_mvn,
+                                          ("time", "class(time=1)"), "state", "state(time=1)"))
+        obs = matrix_and_mvn_to_funsor(observation_matrix, observation_mvn,
+                                       ("time", "class(time=1)"), "state(time=1)", "value")
+        dtype = "real"
+
+        # Construct the joint funsor.
+        with interpretation(lazy):
+            # TODO perform math here once sequential_sum_product has been
+            #   implemented as a first-class funsor.
+            funsor_dist = Variable("value", obs.inputs["value"])  # a bogus value
+            # Until funsor_dist is defined, we save factors for hand-computation in .log_prob().
+            self._init = init
+            self._trans = trans
+            self._obs = obs
+
+        super(SwitchingLinearHMM, self).__init__(
+            funsor_dist, batch_shape, event_shape, dtype, validate_args)
+
+    # TODO remove this once self.funsor_dist is defined.
+    def log_prob(self, value):
+        ndims = max(len(self.batch_shape), value.dim() - 1)
+        value = tensor_to_funsor(value, ("time",), 1)
+
+        with interpretation(moment_matching):
+            sum_vars = frozenset({"class", "state", "class(time=1)", "state(time=1)"})
+            time_step = [("class", "state"), ("class(time=1)", "state(time=1)")]
+            logp_oh = self._trans + self._obs(value=value)
+            logp_oh = sequential_sum_product(ops.logaddexp, ops.add, logp_oh, "time", *time_step)
+            logp_oh = (logp_oh + self._init).reduce(ops.logaddexp, sum_vars)
+            logp_h = self._trans + self._obs.reduce(ops.logaddexp, "value")
+            logp_h = sequential_sum_product(ops.logaddexp, ops.add, logp_h, "time", *time_step)
+            logp_h = (logp_h + self._init).reduce(ops.logaddexp, sum_vars)
+            result = logp_oh - logp_h
+
+        result = funsor_to_tensor(result, ndims=ndims)
+        return result
+
+    # TODO remove this once self.funsor_dist is defined.
+    def _sample_delta(self, sample_shape):
+        raise NotImplementedError("TODO")
+
+    def expand(self, batch_shape, _instance=None):
+        new = self._get_checked_instance(DiscreteHMM, _instance)
+        batch_shape = torch.Size(batch_shape)
+        new._has_rsample = self._has_rsample
+        new._init = self._init
+        new._trans = self._trans
+        new._obs = self._obs
+        super(SwitchingLinearHMM, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
         return new

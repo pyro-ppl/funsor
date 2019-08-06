@@ -5,9 +5,8 @@ import pytest
 import torch
 from pyro.distributions.util import broadcast_shape
 
-from funsor.pyro.hmm import DiscreteHMM, GaussianHMM, GaussianMRF
-from funsor.testing import assert_close, xfail_param, random_mvn
-
+from funsor.pyro.hmm import DiscreteHMM, GaussianHMM, GaussianMRF, SwitchingLinearHMM
+from funsor.testing import assert_close, random_mvn, xfail_param
 
 DISCRETE_HMM_SHAPES = [
     # init_shape, trans_shape, obs_shape
@@ -185,3 +184,48 @@ def test_gaussian_mrf_log_prob(init_shape, trans_shape, obs_shape, hidden_dim, o
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=1e-4)
+
+
+SLHMM_SCHEMA = ",".join([
+    "init_cat_shape", "init_mvn_shape",
+    "trans_cat_shape", "trans_mat_shape", "trans_mvn_shape",
+    "obs_mat_shape", "obs_mvn_shape",
+])
+SLHMM_SHAPES = [
+    ((2,), (), (5, 1, 2,), (5, 1, 3, 3), (5, 1), (5, 1, 3, 4), (5, 1)),
+]
+
+
+@pytest.mark.parametrize(SLHMM_SCHEMA, SLHMM_SHAPES, ids=str)
+def test_switching_linear_hmm_shape(init_cat_shape, init_mvn_shape,
+                                    trans_cat_shape, trans_mat_shape, trans_mvn_shape,
+                                    obs_mat_shape, obs_mvn_shape):
+    hidden_dim, obs_dim = obs_mat_shape[-2:]
+    assert trans_mat_shape[-2:] == (hidden_dim, hidden_dim)
+
+    init_logits = torch.randn(init_cat_shape)
+    init_mvn = random_mvn(init_mvn_shape, hidden_dim)
+    trans_logits = torch.randn(trans_cat_shape)
+    trans_matrix = torch.randn(trans_mat_shape)
+    trans_mvn = random_mvn(trans_mvn_shape, hidden_dim)
+    obs_matrix = torch.randn(obs_mat_shape)
+    obs_mvn = random_mvn(obs_mvn_shape, obs_dim)
+    shape = broadcast_shape(init_cat_shape[:-1] + (1,) + init_cat_shape[-1:],
+                            init_mvn_shape,
+                            trans_cat_shape[:-1],
+                            trans_mat_shape[:-2],
+                            trans_mvn_shape,
+                            obs_mat_shape[:-2],
+                            obs_mvn_shape)
+    expected_batch_shape, time_shape = shape[:-2], shape[-2:-1]
+    expected_event_shape = time_shape + (obs_dim,)
+
+    actual_dist = SwitchingLinearHMM(init_logits, init_mvn,
+                                     trans_logits, trans_matrix, trans_mvn,
+                                     obs_matrix, obs_mvn)
+    assert actual_dist.event_shape == expected_event_shape
+    assert actual_dist.batch_shape == expected_batch_shape
+
+    data = obs_mvn.expand(shape).sample()[..., 0, :]
+    actual_log_prob = actual_dist.log_prob(data)
+    assert actual_log_prob.shape == expected_batch_shape
