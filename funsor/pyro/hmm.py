@@ -303,7 +303,7 @@ class GaussianMRF(FunsorDistribution):
 
 
 class SwitchingLinearHMM(FunsorDistribution):
-    """
+    r"""
     Switching Linear Dynamical System represented as a Hidden Markov Model.
 
     This corresponds to the generative model::
@@ -315,6 +315,15 @@ class SwitchingLinearHMM(FunsorDistribution):
             z = Categorical(logits=transition_logits[t, z]).sample()
             y = y @ transition_matrix[t, z] + transition_mvn[t, z].sample()
             x.append(y @ observation_matrix[t, z] + observation_mvn[t, z].sample())
+
+    Viewed as a dynamical bayesian network::
+
+        z[t-1] ----> z[t] ---> z[t+1]         Discrete
+           |  \       |  \       |   \
+           | y[t-1] ----> y[t] ----> y[t+1]   Gaussian
+           |   /      |   /      |   /
+           V  /       V  /       V  /
+        x[t-1]       x[t]      x[t+1]         Gaussian
 
     This uses the :func:`~funsor.terms.moment_matching` approximation.
 
