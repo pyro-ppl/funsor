@@ -31,24 +31,13 @@ def _mv(mat, vec):
     return torch.matmul(mat, vec.unsqueeze(-1)).squeeze(-1)
 
 
-def _vmv(mat, vec):
-    """
-    Computes the inner product ``<vec | mat | vec>``.
-    """
-    vt = vec.unsqueeze(-2)
-    v = vec.unsqueeze(-1)
-    result = torch.matmul(vt, torch.matmul(mat, v))
-    return result.squeeze(-1).squeeze(-1)
-
-
 def _trace_mm(x, y):
     """
     Computes ``trace(x @ y)``.
     """
     assert x.dim() >= 2
     assert y.dim() >= 2
-    xy = x * y
-    return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
+    return (x * y).sum([-1, -2])
 
 
 def cholesky_solve(b, u):
@@ -299,8 +288,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     Mathematically, a Gaussian represents the density function::
 
-        f(x) = < info_vec | x > - 0.5 * < x | precision | x >
-             = < info_vec - 0.5 * precision @ x | x >
+        f(x) = < x | info_vec > - 0.5 * < x | precision | x >
+             = < x | info_vec - 0.5 * precision @ x >
 
     Note that :class:`Gaussian` s are not normalized, rather they are
     canonicalized to evaluate to zero log density at the origin: ``f(0) = 0``.
@@ -447,7 +436,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             value = value.as_tensor()
 
             # Evaluate the non-normalized log density.
-            result = (info_vec * value).sum(-1) - 0.5 * _vmv(precision, value)
+            result = _vv(value, info_vec - 0.5 * _mv(precision, value))
 
             result = Tensor(result, int_inputs)
             assert result.output == reals()
@@ -473,7 +462,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         info_b = torch.cat([info_vec[..., i] for k, i in slices if k in b], dim=-1)
         value_b = torch.cat([values[k] for k, i in slices if k in b], dim=-1)
         info_vec = info_a - _mv(prec_ab, value_b)
-        log_scale = (info_b * value_b).sum(-1) - 0.5 * _vmv(prec_bb, value_b)
+        log_scale = _vv(value_b, info_b - 0.5 * _mv(prec_bb, value_b))
         precision = prec_aa.expand(info_vec.shape + (-1,))
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
