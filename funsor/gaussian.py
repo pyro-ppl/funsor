@@ -340,7 +340,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return self.precision.cholesky()
 
     @lazy_property
-    def _log_normalizer(self):
+    def log_normalizer(self):
         dim = self.precision.size(-1)
         log_det_term = _log_det_tri(self._precision_chol)
         loc_info_vec_term = 0.5 * self.info_vec.unsqueeze(-1).triangular_solve(
@@ -482,7 +482,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
             inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in reduced_reals)
             if reduced_reals == real_vars:
-                result = self._log_normalizer
+                result = self.log_normalizer
             else:
                 int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
                 offsets, _ = _compute_offsets(self.inputs)
@@ -564,7 +564,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 point = Tensor(data, inputs)
                 assert point.output == domain
                 results.append(Delta(key, point))
-            results.append(self._log_normalizer)
+            results.append(self.log_normalizer)
             return reduce(ops.add, results)
 
         raise NotImplementedError('TODO implement partial sampling of real variables')
@@ -608,7 +608,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     if real_vars:
         assert real_vars == frozenset([integrand.name])
         loc = cholesky_solve(log_measure.info_vec.unsqueeze(-1), log_measure._precision_chol).squeeze(-1)
-        data = loc * log_measure._log_normalizer.data.exp().unsqueeze(-1)
+        data = loc * log_measure.log_normalizer.data.exp().unsqueeze(-1)
         data = data.reshape(loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
         return Tensor(data, inputs)
@@ -634,7 +634,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
-            norm = lhs._log_normalizer.data.exp()
+            norm = lhs.log_normalizer.data.exp()
             lhs_cov = cholesky_inverse(lhs._precision_chol)
             lhs_loc = cholesky_solve(lhs.info_vec.unsqueeze(-1), lhs._precision_chol).squeeze(-1)
             vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
