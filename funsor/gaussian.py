@@ -7,7 +7,6 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-import funsor.torch_patch  # noqa F401
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
@@ -52,6 +51,25 @@ def _trace_mm(x, y):
     return xy.reshape(xy.shape[:-2] + (-1,)).sum(-1)
 
 
+def cholesky_solve(b, u):
+    """
+    Like :func:`torch.cholesky_solve` but supports gradients.
+    """
+    if not b.requires_grad and not u.requires_grad:
+        return b.cholesky_solve(u)
+    x = b.triangular_solve(u, upper=False).solution
+    return x.triangular_solve(u, upper=False, transpose=True).solution
+
+
+def cholesky_inverse(u):
+    """
+    Like :func:`torch.cholesky_inverse` but supports batching and gradients.
+    """
+    if u.dim() == 2:
+        return u.cholesky_inverse()
+    return cholesky_solve(torch.eye(u.size(-1)).expand(u.size()), u)
+
+
 def _pinverse(mat):
     """
     Like torch.pinverse() but supports batching.
@@ -73,7 +91,7 @@ def sym_inverse(mat):
     """
     try:
         # Attempt to use stable positive definite math.
-        return mat.cholesky().cholesky_inverse()
+        return cholesky_inverse(mat.cholesky())
     except RuntimeError as e:
         warnings.warn(e, RuntimeWarning)
 
@@ -600,7 +618,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars:
         assert real_vars == frozenset([integrand.name])
-        loc = log_measure.info_vec.unsqueeze(-1).cholesky_solve(log_measure._precision_chol).squeeze(-1)
+        loc = cholesky_solve(log_measure.info_vec.unsqueeze(-1), log_measure._precision_chol).squeeze(-1)
         data = loc * log_measure._log_normalizer.data.exp().unsqueeze(-1)
         data = data.reshape(loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
@@ -628,8 +646,8 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
             norm = lhs._log_normalizer.data.exp()
-            lhs_cov = lhs._precision_chol.cholesky_inverse()
-            lhs_loc = lhs.info_vec.unsqueeze(-1).cholesky_solve(lhs._precision_chol).squeeze(-1)
+            lhs_cov = cholesky_inverse(lhs._precision_chol)
+            lhs_loc = cholesky_solve(lhs.info_vec.unsqueeze(-1), lhs._precision_chol).squeeze(-1)
             vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
             data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
             inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)

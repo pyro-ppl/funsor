@@ -8,7 +8,7 @@ import funsor.ops as ops
 import funsor.terms
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.gaussian import Gaussian, sym_inverse
+from funsor.gaussian import Gaussian, cholesky_solve, sym_inverse
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, NegOp, SubOp
@@ -166,8 +166,9 @@ class Joint(Funsor, metaclass=JointMeta):
             gaussian = self.gaussian
             int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
             probs = (discrete - new_discrete).exp()
-            old_loc = Tensor(gaussian.info_vec.unsqueeze(-1).cholesky_solve(
-                gaussian._precision_chol).squeeze(-1), int_inputs)
+            old_loc = Tensor(cholesky_solve(gaussian.info_vec.unsqueeze(-1),
+                                            gaussian._precision_chol).squeeze(-1),
+                             int_inputs)
             new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
             old_cov = Tensor(sym_inverse(gaussian.precision), int_inputs)
             diff = old_loc - new_loc

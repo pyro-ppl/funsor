@@ -261,7 +261,7 @@ def test_reduce_moment_matching_multivariate():
 
     expected_loc = torch.zeros(2)
     expected_covariance = torch.tensor([[101., 0.], [0., 2.]])
-    expected_precision = expected_covariance.cholesky().cholesky_inverse()
+    expected_precision = expected_covariance.inverse()
     expected_gaussian = Gaussian(expected_loc, expected_precision, real_inputs)
     expected_discrete = Tensor(torch.tensor(4.).log())
     expected = expected_discrete + expected_gaussian

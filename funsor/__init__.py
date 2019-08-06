@@ -1,4 +1,3 @@
-import funsor.torch_patch  # noqa F401
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret

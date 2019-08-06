@@ -7,7 +7,7 @@ import torch
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse, cholesky_solve
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.joint import Joint
@@ -15,6 +15,37 @@ from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
 from funsor.torch import Tensor
+
+
+@pytest.mark.parametrize("size", [1, 2, 3], ids=str)
+@pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+def test_cholesky_solve(batch_shape, size):
+    b = torch.randn(batch_shape + (size, 5))
+    x = torch.randn(batch_shape + (size, size))
+    x = x.transpose(-1, -2).matmul(x)
+    u = x.cholesky()
+    expected = cholesky_solve(b, u)
+    assert not expected.requires_grad
+    actual = cholesky_solve(b.requires_grad_(), u.requires_grad_())
+    assert actual.requires_grad
+    assert_close(expected, actual)
+
+
+def naive_cholesky_inverse(u):
+    shape = u.shape
+    return torch.stack([
+        part.cholesky_inverse()
+        for part in u.reshape((-1,) + u.shape[-2:])
+    ]).reshape(shape)
+
+
+@pytest.mark.parametrize("size", [1, 2, 3], ids=str)
+@pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+def test_cholesky_inverse(batch_shape, size):
+    x = torch.randn(batch_shape + (size, size))
+    x = x.transpose(-1, -2).matmul(x)
+    u = x.cholesky()
+    assert_close(cholesky_inverse(u), naive_cholesky_inverse(u))
 
 
 def test_block_vector():

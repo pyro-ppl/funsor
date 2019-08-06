@@ -9,7 +9,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import Affine
 from funsor.domains import bint, reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
 from funsor.interpreter import interpretation
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
@@ -455,7 +455,7 @@ def eager_mvn(loc, scale_tril, value):
     inputs.update(value.inputs)
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
-    precision = scale_tril.cholesky_inverse()
+    precision = cholesky_inverse(scale_tril)
     info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
     log_prob = (-0.5 * dim * math.log(2 * math.pi)
                 - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
