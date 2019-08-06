@@ -21,10 +21,6 @@ def _log_det_tri(x):
     return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
 
 
-def _det_tri(x):
-    return x.diagonal(dim1=-1, dim2=-2).prod(-1)
-
-
 def _vv(vec1, vec2):
     """
     Computes the inner product ``< vec1 | vec 2 >``.
@@ -241,10 +237,10 @@ def align_gaussian(new_inputs, old):
     assert info_vec.shape[-1:] == (old_dim,)
     assert precision.shape[-2:] == (old_dim, old_dim)
     if new_offsets != old_offsets:
-        old_loc = info_vec
+        old_info_vec = info_vec
         old_precision = precision
-        info_vec = BlockVector(old_loc.shape[:-1] + (new_dim,))
-        precision = BlockMatrix(old_loc.shape[:-1] + (new_dim, new_dim))
+        info_vec = BlockVector(old_info_vec.shape[:-1] + (new_dim,))
+        precision = BlockMatrix(old_info_vec.shape[:-1] + (new_dim, new_dim))
         for k1, new_offset1 in new_offsets.items():
             if k1 not in old_offsets:
                 continue
@@ -252,7 +248,7 @@ def align_gaussian(new_inputs, old):
             num_elements1 = old.inputs[k1].num_elements
             old_slice1 = slice(offset1, offset1 + num_elements1)
             new_slice1 = slice(new_offset1, new_offset1 + num_elements1)
-            info_vec[..., new_slice1] = old_loc[..., old_slice1]
+            info_vec[..., new_slice1] = old_info_vec[..., old_slice1]
             for k2, new_offset2 in new_offsets.items():
                 if k2 not in old_offsets:
                     continue
@@ -282,6 +278,11 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     """
     Funsor representing a batched joint Gaussian distribution as a log-density
     function.
+
+    Mathematically, a Gaussian represents the density function::
+
+        value -> < info_vec | value > - 0.5 * < value | precision | value >
+              == < info_vec - 0.5 * precision @ value | value >
 
     Note that :class:`Gaussian` s are not normalized, rather they are
     canonicalized to evaluate to zero log density at the origin. This canonical
@@ -621,17 +622,16 @@ def eager_integrate(log_measure, integrand, reduced_vars):
                                  for k, d in t.inputs.items())
             lhs_info_vec, lhs_precision = align_gaussian(inputs, log_measure)
             rhs_info_vec, rhs_precision = align_gaussian(inputs, integrand)
+            lhs = Gaussian(lhs_info_vec, lhs_precision, inputs)
 
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
-            lhs_precision_chol = lhs_precision.cholesky()
-            lhs_covariance = lhs_precision_chol.cholesky_inverse()
-            dim = lhs_info_vec.size(-1)
-            norm = (2 * math.pi) ** (0.5 * dim) / _det_tri(lhs_precision_chol)
-            lhs_loc = lhs_info_vec.unsqueeze(-1).cholesky_solve(lhs_precision_chol)
-            vmv_term = lhs_loc.matmul(rhs_precision.matmul(lhs_loc) - rhs_info_vec).squeeze(-1).squeeze(-1)
-            data = (-0.5) * norm * (vmv_term + _trace_mm(rhs_precision, lhs_covariance))
+            norm = lhs._log_normalizer.data.exp()
+            lhs_cov = lhs._precision_chol.cholesky_inverse()
+            lhs_loc = lhs.info_vec.unsqueeze(-1).cholesky_solve(lhs._precision_chol).squeeze(-1)
+            vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * rhs_precision.matmul(lhs_loc.unsqueeze(-1)).squeeze(-1))
+            data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
             inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)
             result = Tensor(data, inputs)
             return result.reduce(ops.add, reduced_vars - real_vars)
