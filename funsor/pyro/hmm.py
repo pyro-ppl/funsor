@@ -6,7 +6,13 @@ from pyro.distributions.util import broadcast_shape
 import funsor.ops as ops
 from funsor.domains import reals
 from funsor.interpreter import interpretation
-from funsor.pyro.convert import dist_to_funsor, funsor_to_tensor, mvn_to_funsor, tensor_to_funsor
+from funsor.pyro.convert import (
+    dist_to_funsor,
+    funsor_to_tensor,
+    matrix_and_mvn_to_funsor,
+    mvn_to_funsor,
+    tensor_to_funsor
+)
 from funsor.pyro.distribution import FunsorDistribution
 from funsor.sum_product import sequential_sum_product
 from funsor.terms import Variable, lazy
@@ -87,6 +93,140 @@ class DiscreteHMM(FunsorDistribution):
         return new
 
 
+class GaussianHMM(FunsorDistribution):
+    """
+    Hidden Markov Model with Gaussians for initial, transition, and observation
+    distributions.
+
+    This corresponds to the generative model::
+
+        z = initial_distribution.sample()
+        x = []
+        for t in range(num_events):
+            z = z @ transition_matrix + transition_dist.sample()
+            x.append(z @ observation_matrix + observation_dist.sample())
+
+    The event_shape of this distribution includes time on the left::
+
+        event_shape = (num_steps,) + observation_dist.event_shape
+
+    This distribution supports any combination of homogeneous/heterogeneous
+    time dependency of ``transition_dist`` and ``observation_dist``. However,
+    because time is included in this distribution's event_shape, the
+    homogeneous+homogeneous case will have a broadcastable event_shape with
+    ``num_steps = 1``, allowing :meth:`log_prob` to work with arbitrary length
+    data::
+
+        event_shape = (1, obs_dim)  # homogeneous + homogeneous case
+
+    :param ~torch.distributions.MultivariateNormal initial_dist: A distribution
+        over initial states. This should have batch_shape broadcastable to
+        ``self.batch_shape``.  This should have event_shape ``(hidden_dim,)``.
+    :param ~torch.Tensor transition_matrix: A linear transformation of hidden
+        state. This should have shape broadcastable to
+        ``self.batch_shape + (num_steps, hidden_dim, hidden_dim)`` where the
+        rightmost dims are ordered ``(old, new)``.
+    :param ~torch.distributions.MultivariateNormal transition_dist: A process
+        noise distribution. This should have batch_shape broadcastable to
+        ``self.batch_shape + (num_steps,)``.  This should have event_shape
+        ``(hidden_dim,)``.
+    :param ~torch.Tensor transition_matrix: A linear transformation from hidden
+        to observed state. This should have shape broadcastable to
+        ``self.batch_shape + (num_steps, hidden_dim, obs_dim)``.
+    :param ~torch.distributions.MultivariateNormal observation_dist: An
+        observation noise distribution. This should have batch_shape
+        broadcastable to ``self.batch_shape + (num_steps,)``.  This should have
+        event_shape ``(obs_dim,)``.
+    """
+    has_rsample = True
+    arg_constraints = {}
+
+    def __init__(self, initial_dist, transition_matrix, transition_dist,
+                 observation_matrix, observation_dist, validate_args=None):
+        assert isinstance(initial_dist, torch.distributions.MultivariateNormal)
+        assert isinstance(transition_matrix, torch.Tensor)
+        assert isinstance(transition_dist, torch.distributions.MultivariateNormal)
+        assert isinstance(observation_matrix, torch.Tensor)
+        assert isinstance(observation_dist, torch.distributions.MultivariateNormal)
+        hidden_dim, obs_dim = observation_matrix.shape[-2:]
+        assert initial_dist.event_shape == (hidden_dim,)
+        assert transition_matrix.shape[-2:] == (hidden_dim, hidden_dim)
+        assert transition_dist.event_shape == (hidden_dim,)
+        assert observation_dist.event_shape == (obs_dim,)
+        shape = broadcast_shape(initial_dist.batch_shape + (1,),
+                                transition_matrix.shape[:-2],
+                                transition_dist.batch_shape,
+                                observation_matrix.shape[:-2],
+                                observation_dist.batch_shape)
+        batch_shape, time_shape = shape[:-1], shape[-1:]
+        event_shape = time_shape + (obs_dim,)
+
+        # Convert distributions to funsors.
+        init = dist_to_funsor(initial_dist)(value="state")
+        trans = matrix_and_mvn_to_funsor(transition_matrix, transition_dist,
+                                         ("time",), "state", "state(time=1)")
+        obs = matrix_and_mvn_to_funsor(observation_matrix, observation_dist,
+                                       ("time",), "state(time=1)", "value")
+        dtype = "real"
+
+        # Construct the joint funsor.
+        with interpretation(lazy):
+            # TODO perform math here once sequential_sum_product has been
+            #   implemented as a first-class funsor.
+            funsor_dist = Variable("value", obs.inputs["value"])  # a bogus value
+            # Until funsor_dist is defined, we save factors for hand-computation in .log_prob().
+            self._init = init
+            self._trans = trans
+            self._obs = obs
+
+        super(GaussianHMM, self).__init__(
+            funsor_dist, batch_shape, event_shape, dtype, validate_args)
+
+    def expand(self, batch_shape, _instance=None):
+        new = self._get_checked_instance(GaussianHMM, _instance)
+        batch_shape = torch.Size(broadcast_shape(self.batch_shape, batch_shape))
+        # We only need to expand one of the inputs, since batch_shape is determined
+        # by broadcasting all three. To save computation in _sequential_gaussian_tensordot(),
+        # we expand only _init, which is applied only after _sequential_gaussian_tensordot().
+        new._init = self._init.expand(batch_shape)
+        new._trans = self._trans
+        new._obs = self._obs
+        super(GaussianHMM, new).__init__(batch_shape, self.event_shape, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
+        return new
+
+    def log_prob(self, value):
+        if self._validate_args:
+            self._validate_sample(value)
+        ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
+        value = tensor_to_funsor(value, ("time",), event_output=self.event_dim - 1,
+                                 dtype=self.dtype)
+
+        # Compare with pyro.distributions.hmm.GaussianHMM.log_prob().
+        obs = self._obs(value=value)
+        result = self._trans + obs
+        result = sequential_sum_product(ops.logaddexp, ops.add,
+                                        result, "time", "state", "state(time=1)")
+        result = self._init + result.reduce(ops.logaddexp, "state(time=1)")
+        result = result.reduce(ops.logaddexp, "state")
+
+        result = funsor_to_tensor(result, ndims=ndims)
+        return result
+
+    # TODO remove this once self.funsor_dist is defined.
+    def _sample_delta(self, sample_shape):
+        raise NotImplementedError("TODO")
+
+    def expand(self, batch_shape, _instance=None):
+        new = self._get_checked_instance(DiscreteHMM, _instance)
+        batch_shape = torch.Size(batch_shape)
+        new._init = self._init
+        new._trans = self._trans
+        new._obs = self._obs
+        super(GaussianMRF, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        return new
+
+
 class GaussianMRF(FunsorDistribution):
     has_rsample = True
 
@@ -155,7 +295,6 @@ class GaussianMRF(FunsorDistribution):
     def expand(self, batch_shape, _instance=None):
         new = self._get_checked_instance(DiscreteHMM, _instance)
         batch_shape = torch.Size(batch_shape)
-        new._has_rsample = self._has_rsample
         new._init = self._init
         new._trans = self._trans
         new._obs = self._obs
