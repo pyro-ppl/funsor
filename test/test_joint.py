@@ -40,8 +40,6 @@ SMOKE_TESTS = [
     ('g - t', Joint),
     ('t + g', Joint),
     ('t - g', Joint),
-    ('g + g', Joint),
-    ('-(g + g)', Joint),
     ('(dx + dy)(i=i0)', Joint),
     ('(dx + g)(i=i0)', Joint),
     ('(dy + g)(i=i0)', Joint),
@@ -59,7 +57,6 @@ SMOKE_TESTS = [
     ('(g + t)(i=i0)', Joint),
     ('(g - t)(i=i0)', Joint),
     ('(t + g)(i=i0)', Joint),
-    ('(g + g)(i=i0)', Joint),
     ('(dx + dy)(x=x0)', Joint),
     ('(dx + g)(x=x0)', Tensor),
     ('(dy + g)(x=x0)', Joint),
@@ -98,8 +95,8 @@ def test_smoke(expr, expected_type):
     assert isinstance(t, Tensor)
 
     g = Gaussian(
-        loc=torch.tensor([[0.0, 0.1, 0.2],
-                          [2.0, 3.0, 4.0]]),
+        info_vec=torch.tensor([[0.0, 0.1, 0.2],
+                               [2.0, 3.0, 4.0]]),
         precision=torch.tensor([[[1.0, 0.1, 0.2],
                                  [0.1, 1.0, 0.3],
                                  [0.2, 0.3, 1.0]],
@@ -151,7 +148,7 @@ def test_reduce_logaddexp(int_inputs, real_inputs):
     actual = state.reduce(ops.logaddexp, frozenset(truth))
 
     expected = t + g(**truth)
-    assert_close(actual, expected)
+    assert_close(actual, expected, atol=1e-5, rtol=1e-5)
 
 
 def test_reduce_logaddexp_deltas_lazy():
@@ -225,8 +222,9 @@ def test_reduce_moment_matching_univariate():
     s1, s2, s3 = 2.0, 3.0, 4.0
     loc = torch.tensor([[-s1], [s1]])
     precision = torch.tensor([[[s2 ** -2]], [[s3 ** -2]]])
+    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
     discrete = Tensor(torch.tensor([1 - p, p]).log() + t, int_inputs)
-    gaussian = Gaussian(loc, precision, inputs)
+    gaussian = Gaussian(info_vec, precision, inputs)
     joint = discrete + gaussian
     with interpretation(moment_matching):
         actual = joint.reduce(ops.logaddexp, 'i')
@@ -236,7 +234,8 @@ def test_reduce_moment_matching_univariate():
                          + (1 - p) * s2 ** 2
                          + p * s3 ** 2)
     expected_precision = torch.tensor([[1 / expected_variance]])
-    expected_gaussian = Gaussian(expected_loc, expected_precision, real_inputs)
+    expected_info_vec = expected_precision.matmul(expected_loc.unsqueeze(-1)).squeeze(-1)
+    expected_gaussian = Gaussian(expected_info_vec, expected_precision, real_inputs)
     expected_discrete = Tensor(torch.tensor(t))
     expected = expected_discrete + expected_gaussian
     assert_close(actual, expected, atol=1e-5, rtol=None)

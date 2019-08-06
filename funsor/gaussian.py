@@ -281,16 +281,16 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     Mathematically, a Gaussian represents the density function::
 
-        value -> < info_vec | value > - 0.5 * < value | precision | value >
-              == < info_vec - 0.5 * precision @ value | value >
+        f(x) = < info_vec | x > - 0.5 * < x | precision | x >
+             = < info_vec - 0.5 * precision @ x | x >
 
     Note that :class:`Gaussian` s are not normalized, rather they are
-    canonicalized to evaluate to zero log density at the origin. This canonical
-    form is useful in combination with the information filter representation
-    because it allows :class:`Gaussian` s with incomplete information, i.e.
-    zero eigenvalues in the precision matrix.  These incomplete distributions
-    arise when making low-dimensional observations on higher dimensional hidden
-    state.
+    canonicalized to evaluate to zero log density at the origin: ``f(0) = 0``.
+    This canonical form is useful in combination with the information filter
+    representation because it allows :class:`Gaussian` s with incomplete
+    information, i.e.  zero eigenvalues in the precision matrix.  These
+    incomplete distributions arise when making low-dimensional observations on
+    higher dimensional hidden state.
 
     :param torch.Tensor info_vec: An optional batched information vector,
         where ``info_vec = precision @ mean``.
@@ -630,7 +630,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             norm = lhs._log_normalizer.data.exp()
             lhs_cov = lhs._precision_chol.cholesky_inverse()
             lhs_loc = lhs.info_vec.unsqueeze(-1).cholesky_solve(lhs._precision_chol).squeeze(-1)
-            vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * rhs_precision.matmul(lhs_loc.unsqueeze(-1)).squeeze(-1))
+            vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
             data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
             inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)
             result = Tensor(data, inputs)
