@@ -33,7 +33,7 @@ def _mv(mat, vec):
 
 def _trace_mm(x, y):
     """
-    Computes ``trace(x @ y)``.
+    Computes ``trace(x.T @ y)``.
     """
     assert x.dim() >= 2
     assert y.dim() >= 2
