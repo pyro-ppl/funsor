@@ -6,12 +6,12 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 from funsor.pyro.hmm import DiscreteHMM, GaussianHMM, GaussianMRF, SwitchingLinearHMM
-from funsor.testing import assert_close, random_mvn, xfail_param
+from funsor.testing import assert_close, random_mvn
 
 DISCRETE_HMM_SHAPES = [
     # init_shape, trans_shape, obs_shape
-    xfail_param((), (1,), (), reason="time series of length 1 are not yet supported"),
-    xfail_param((), (), (1,), reason="time series of length 1 are not yet supported"),
+    ((), (1,), ()),
+    ((), (), (1,)),
     ((), (2,), ()),
     ((), (7,), ()),
     ((), (), (7,)),
@@ -123,6 +123,7 @@ def test_discrete_diag_normal_log_prob(init_shape, trans_shape, obs_shape, state
 @pytest.mark.parametrize("obs_dim", [1, 2, 3])
 @pytest.mark.parametrize("hidden_dim", [1, 2, 3])
 @pytest.mark.parametrize("init_shape,trans_mat_shape,trans_mvn_shape,obs_mat_shape,obs_mvn_shape", [
+    ((), (), (), (), ()),
     ((), (6,), (), (), ()),
     ((), (), (6,), (), ()),
     ((), (), (), (6,), ()),
@@ -192,7 +193,16 @@ SLHMM_SCHEMA = ",".join([
     "obs_mat_shape", "obs_mvn_shape",
 ])
 SLHMM_SHAPES = [
+    ((2,), (), (1, 2,), (1, 3, 3), (1,), (1, 3, 4), (1,)),
+    ((2,), (), (5, 1, 2,), (1, 3, 3), (1,), (1, 3, 4), (1,)),
+    ((2,), (), (1, 2,), (5, 1, 3, 3), (1,), (1, 3, 4), (1,)),
+    ((2,), (), (1, 2,), (1, 3, 3), (5, 1), (1, 3, 4), (1,)),
+    ((2,), (), (1, 2,), (1, 3, 3), (1,), (5, 1, 3, 4), (1,)),
+    ((2,), (), (1, 2,), (1, 3, 3), (1,), (1, 3, 4), (5, 1)),
     ((2,), (), (5, 1, 2,), (5, 1, 3, 3), (5, 1), (5, 1, 3, 4), (5, 1)),
+    ((2,), (2,), (5, 2, 2,), (5, 2, 3, 3), (5, 2), (5, 2, 3, 4), (5, 2)),
+    ((7, 2,), (), (7, 5, 1, 2,), (7, 5, 1, 3, 3), (7, 5, 1), (7, 5, 1, 3, 4), (7, 5, 1)),
+    ((7, 2,), (7, 2), (7, 5, 2, 2,), (7, 5, 2, 3, 3), (7, 5, 2), (7, 5, 2, 3, 4), (7, 5, 2)),
 ]
 
 
@@ -210,8 +220,9 @@ def test_switching_linear_hmm_shape(init_cat_shape, init_mvn_shape,
     trans_mvn = random_mvn(trans_mvn_shape, hidden_dim)
     obs_matrix = torch.randn(obs_mat_shape)
     obs_mvn = random_mvn(obs_mvn_shape, obs_dim)
-    shape = broadcast_shape(init_cat_shape[:-1] + (1,) + init_cat_shape[-1:],
-                            init_mvn_shape,
+
+    init_shape = broadcast_shape(init_cat_shape, init_mvn_shape)
+    shape = broadcast_shape(init_shape[:-1] + (1, init_shape[-1]),
                             trans_cat_shape[:-1],
                             trans_mat_shape[:-2],
                             trans_mvn_shape,

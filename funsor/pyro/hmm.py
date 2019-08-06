@@ -316,14 +316,14 @@ class SwitchingLinearHMM(FunsorDistribution):
             y = y @ transition_matrix[t, z] + transition_mvn[t, z].sample()
             x.append(y @ observation_matrix[t, z] + observation_mvn[t, z].sample())
 
-    Viewed as a dynamical bayesian network::
+    Viewed as a dynamic Bayesian network::
 
-        z[t-1] ----> z[t] ---> z[t+1]         Discrete
+        z[t-1] ----> z[t] ---> z[t+1]         Discrete latent class
            |  \       |  \       |   \
-           | y[t-1] ----> y[t] ----> y[t+1]   Gaussian
+           | y[t-1] ----> y[t] ----> y[t+1]   Gaussian latent state
            |   /      |   /      |   /
            V  /       V  /       V  /
-        x[t-1]       x[t]      x[t+1]         Gaussian
+        x[t-1]       x[t]      x[t+1]         Gaussian observation
 
     This uses the :func:`~funsor.terms.moment_matching` approximation.
 
@@ -336,10 +336,12 @@ class SwitchingLinearHMM(FunsorDistribution):
     :param ~torch.Tensor transition_logits: Represents
         ``p(class[t+1] | class[t])``.
     :param ~torch.Tensor transition_matrix:
-    :param ~torch.distributions.MultivariateNormal transition_mvn: Represents
+    :param ~torch.distributions.MultivariateNormal transition_mvn: Together
+        with ``transition_matrix``, this represents
         ``p(state[t], state[t+1] | class[t])``.
     :param ~torch.Tensor observation_matrix:
-    :param ~torch.distributions.MultivariateNormal observation_mvn: Represents
+    :param ~torch.distributions.MultivariateNormal observation_mvn: Together
+        with ``observation_matrix``, this represents
         ``p(value[t+1], state[t+1] | class[t+1])``.
     """
     has_rsample = True
@@ -361,11 +363,12 @@ class SwitchingLinearHMM(FunsorDistribution):
         assert transition_logits.size(-1) == hidden_cardinality
         assert transition_matrix.shape[-2:] == (hidden_dim, hidden_dim)
         assert transition_mvn.event_shape[0] == hidden_dim
-        shape = broadcast_shape(initial_logits.shape[:-1] + (1, hidden_cardinality),
-                                initial_mvn.batch_shape + (1, hidden_cardinality),
+        init_shape = broadcast_shape(initial_logits.shape, initial_mvn.batch_shape)
+        shape = broadcast_shape(init_shape[:-1] + (1, init_shape[-1]),
                                 transition_logits.shape[:-1],
                                 transition_matrix.shape[:-2],
                                 transition_mvn.batch_shape,
+                                observation_matrix.shape[:-2],
                                 observation_mvn.batch_shape)
         batch_shape, time_shape = shape[:-2], shape[-2:-1]
         event_shape = time_shape + (obs_dim,)
@@ -399,19 +402,16 @@ class SwitchingLinearHMM(FunsorDistribution):
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
-        ndims = max(len(self.batch_shape), value.dim() - 1)
+        ndims = max(len(self.batch_shape), value.dim() - 2)
         value = tensor_to_funsor(value, ("time",), 1)
 
         with interpretation(moment_matching):
-            sum_vars = frozenset({"class", "state", "class(time=1)", "state(time=1)"})
-            time_step = [("class", "state"), ("class(time=1)", "state(time=1)")]
-            logp_oh = self._trans + self._obs(value=value)
-            logp_oh = sequential_sum_product(ops.logaddexp, ops.add, logp_oh, "time", *time_step)
-            logp_oh = (logp_oh + self._init).reduce(ops.logaddexp, sum_vars)
-            logp_h = self._trans + self._obs.reduce(ops.logaddexp, "value")
-            logp_h = sequential_sum_product(ops.logaddexp, ops.add, logp_h, "time", *time_step)
-            logp_h = (logp_h + self._init).reduce(ops.logaddexp, sum_vars)
-            result = logp_oh - logp_h
+            result = self._trans + self._obs(value=value)
+            result = sequential_sum_product(ops.logaddexp, ops.add, result, "time",
+                                            ("class", "state"), ("class(time=1)", "state(time=1)"))
+            result = result.reduce(ops.logaddexp, frozenset(["class(time=1)", "state(time=1)"]))
+            result += self._init
+            result = result.reduce(ops.logaddexp, frozenset(["class", "state"]))
 
         result = funsor_to_tensor(result, ndims=ndims)
         return result
