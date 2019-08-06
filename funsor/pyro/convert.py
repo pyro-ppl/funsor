@@ -2,8 +2,8 @@ import math
 from collections import OrderedDict
 from functools import singledispatch
 
-import pyro.distributions as dist
 import torch
+import torch.distributions as dist
 from pyro.distributions.torch_distribution import MaskedDistribution
 from pyro.distributions.util import broadcast_shape
 
