@@ -195,6 +195,17 @@ def random_gaussian(inputs):
     return Gaussian(info_vec, precision, inputs)
 
 
+def random_mvn(batch_shape, dim):
+    """
+    Generate a random :class:`torch.distributions.MultivariateNormal` with given shape.
+    """
+    rank = dim + dim
+    loc = torch.randn(batch_shape + (dim,))
+    cov = torch.randn(batch_shape + (dim, rank))
+    cov = cov.matmul(cov.transpose(-1, -2))
+    return torch.distributions.MultivariateNormal(loc, cov)
+
+
 def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
 
     assert num_obs_plates >= num_hidden_plates

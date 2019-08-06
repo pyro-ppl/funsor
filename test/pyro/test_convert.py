@@ -6,9 +6,15 @@ import torch
 from pyro.distributions.torch_distribution import MaskedDistribution
 
 from funsor.domains import bint, reals
-from funsor.pyro.convert import dist_to_funsor, funsor_to_tensor, mvn_to_funsor, tensor_to_funsor
+from funsor.pyro.convert import (
+    dist_to_funsor,
+    funsor_to_tensor,
+    matrix_and_mvn_to_funsor,
+    mvn_to_funsor,
+    tensor_to_funsor
+)
 from funsor.terms import Funsor
-from funsor.testing import assert_close
+from funsor.testing import assert_close, random_mvn
 from funsor.torch import Tensor
 
 EVENT_SHAPES = [(), (1,), (5,), (4, 3)]
@@ -35,10 +41,7 @@ def test_tensor_funsor_tensor(batch_shape, event_shape, event_output):
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
     event_size = sum(event_sizes)
-    loc = torch.randn(batch_shape + event_shape + (event_size,))
-    cov = torch.randn(batch_shape + event_shape + (event_size, 2 * event_size))
-    cov = cov.matmul(cov.transpose(-1, -2))
-    mvn = dist.MultivariateNormal(loc, cov)
+    mvn = random_mvn(batch_shape + event_shape, event_size)
     int_inputs = OrderedDict((k, bint(size)) for k, size in zip("abc", event_shape))
     real_inputs = OrderedDict((k, reals(size)) for k, size in zip("xyz", event_sizes))
 
@@ -64,6 +67,38 @@ def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
     actual_log_prob = f(**subs)
     expected_log_prob = tensor_to_funsor(mvn.log_prob(value), tuple(int_inputs))
     assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.parametrize("x_size", [1, 2, 3])
+@pytest.mark.parametrize("y_size", [1, 2, 3])
+@pytest.mark.parametrize("event_shape", EVENT_SHAPES, ids=str)
+@pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
+def test_matrix_and_mvn_to_funsor(batch_shape, event_shape, x_size, y_size):
+    matrix = torch.randn(batch_shape + event_shape + (x_size, y_size))
+    y_mvn = random_mvn(batch_shape + event_shape, y_size)
+    xy_mvn = random_mvn(batch_shape + event_shape, x_size + y_size)
+    int_inputs = OrderedDict((k, bint(size)) for k, size in zip("abc", event_shape))
+    real_inputs = OrderedDict([("x", reals(x_size)), ("y", reals(y_size))])
+
+    f = (matrix_and_mvn_to_funsor(matrix, y_mvn, tuple(int_inputs), "x", "y") +
+         mvn_to_funsor(xy_mvn, tuple(int_inputs), real_inputs))
+    assert isinstance(f, Funsor)
+    for k, d in int_inputs.items():
+        if d.num_elements == 1:
+            assert d not in f.inputs
+        else:
+            assert k in f.inputs
+            assert f.inputs[k] == d
+    assert f.inputs["x"] == reals(x_size)
+    assert f.inputs["y"] == reals(y_size)
+
+    xy = torch.randn(x_size + y_size)
+    x, y = xy[:x_size], xy[x_size:]
+    y_pred = x.unsqueeze(-2).matmul(matrix).squeeze(-2)
+    actual_log_prob = f(x=x, y=y)
+    expected_log_prob = tensor_to_funsor(
+        xy_mvn.log_prob(xy) + y_mvn.log_prob(y - y_pred), tuple(int_inputs))
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=1e-4)
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
