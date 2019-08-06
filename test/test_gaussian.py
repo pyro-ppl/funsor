@@ -270,7 +270,7 @@ def test_eager_subs(int_inputs, real_inputs):
         actual = g
         for k in reversed(order):
             actual = actual(**{k: dependent_values[k]})
-        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+        assert_close(actual, expected, atol=1e-5, rtol=1e-5)
 
 
 def test_eager_subs_variable():
@@ -309,9 +309,9 @@ def test_add_gaussian_number(int_inputs, real_inputs):
     values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
-    assert_close((g + n)(**values), g(**values) + n, atol=1e-4)
-    assert_close((n + g)(**values), n + g(**values), atol=1e-4)
-    assert_close((g - n)(**values), g(**values) - n, atol=1e-4)
+    assert_close((g + n)(**values), g(**values) + n, atol=1e-5, rtol=1e-5)
+    assert_close((n + g)(**values), n + g(**values), atol=1e-5, rtol=1e-5)
+    assert_close((g - n)(**values), g(**values) - n, atol=1e-5, rtol=1e-5)
 
 
 @pytest.mark.parametrize('int_inputs', [
@@ -338,9 +338,9 @@ def test_add_gaussian_tensor(int_inputs, real_inputs):
     values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
-    assert_close((g + t)(**values), g(**values) + t, atol=1e-4)
-    assert_close((t + g)(**values), t + g(**values), atol=1e-4)
-    assert_close((g - t)(**values), g(**values) - t, atol=1e-4)
+    assert_close((g + t)(**values), g(**values) + t, atol=1e-5, rtol=1e-5)
+    assert_close((t + g)(**values), t + g(**values), atol=1e-5, rtol=1e-5)
+    assert_close((g - t)(**values), g(**values) - t, atol=1e-5, rtol=1e-5)
 
 
 @pytest.mark.parametrize('lhs_inputs', [
