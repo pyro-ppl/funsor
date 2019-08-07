@@ -1,5 +1,4 @@
 import math
-import warnings
 from collections import OrderedDict, defaultdict
 from functools import reduce
 
@@ -57,41 +56,6 @@ def cholesky_inverse(u):
     if u.dim() == 2:
         return u.cholesky_inverse()
     return cholesky_solve(torch.eye(u.size(-1)).expand(u.size()), u)
-
-
-def _pinverse(mat):
-    """
-    Like torch.pinverse() but supports batching.
-    """
-    shape = mat.shape
-    mat = mat.reshape((-1,) + mat.shape[-2:])
-    if mat.size(0) == 1:
-        flat = mat[0].pinverse()
-    else:
-        flat = torch.stack([m.pinverse() for m in mat])
-    return flat.reshape(shape)
-
-
-def sym_inverse(mat):
-    r"""
-    Computes ``inverse(mat)`` assuming mat is symmetric and usually positive
-    definite, but falling back to general pseudoinverse if positive
-    definiteness fails.
-    """
-    try:
-        # Attempt to use stable positive definite math.
-        return cholesky_inverse(mat.cholesky())
-    except RuntimeError as e:
-        warnings.warn(e, RuntimeWarning)
-
-    # Try masked reciprocal.
-    if mat.size(-1) == 1:
-        result = mat.reciprocal()
-        result[(mat != 0) == 0] = 0
-        return result
-
-    # Fall back to pseudoinverse.
-    return _pinverse(mat)
 
 
 def _compute_offsets(inputs):
