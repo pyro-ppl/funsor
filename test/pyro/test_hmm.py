@@ -6,13 +6,13 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 from funsor.pyro.hmm import DiscreteHMM, GaussianHMM, GaussianMRF
-from funsor.testing import assert_close, xfail_param, random_mvn
+from funsor.testing import assert_close, random_mvn
 
 
 DISCRETE_HMM_SHAPES = [
     # init_shape, trans_shape, obs_shape
-    xfail_param((), (1,), (), reason="time series of length 1 are not yet supported"),
-    xfail_param((), (), (1,), reason="time series of length 1 are not yet supported"),
+    ((), (1,), ()),
+    ((), (), (1,)),
     ((), (2,), ()),
     ((), (7,), ()),
     ((), (), (7,)),
@@ -124,6 +124,7 @@ def test_discrete_diag_normal_log_prob(init_shape, trans_shape, obs_shape, state
 @pytest.mark.parametrize("obs_dim", [1, 2, 3])
 @pytest.mark.parametrize("hidden_dim", [1, 2, 3])
 @pytest.mark.parametrize("init_shape,trans_mat_shape,trans_mvn_shape,obs_mat_shape,obs_mvn_shape", [
+    ((), (), (), (), ()),
     ((), (6,), (), (), ()),
     ((), (), (6,), (), ()),
     ((), (), (), (6,), ()),

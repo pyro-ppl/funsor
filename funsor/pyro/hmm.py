@@ -71,7 +71,7 @@ class DiscreteHMM(FunsorDistribution):
         obs = self._obs(value=value)
         result = self._trans + obs
         result = sequential_sum_product(ops.logaddexp, ops.add,
-                                        result, "time", "state", "state(time=1)")
+                                        result, "time", {"state": "state(time=1)"})
         result = self._init + result.reduce(ops.logaddexp, "state(time=1)")
         result = result.reduce(ops.logaddexp, "state")
 
@@ -102,7 +102,7 @@ class GaussianHMM(FunsorDistribution):
 
         z = initial_distribution.sample()
         x = []
-        for t in range(num_events):
+        for t in range(num_steps):
             z = z @ transition_matrix + transition_dist.sample()
             x.append(z @ observation_matrix + observation_dist.sample())
 
@@ -206,7 +206,7 @@ class GaussianHMM(FunsorDistribution):
         obs = self._obs(value=value)
         result = self._trans + obs
         result = sequential_sum_product(ops.logaddexp, ops.add,
-                                        result, "time", "state", "state(time=1)")
+                                        result, "time", {"state": "state(time=1)"})
         result = self._init + result.reduce(ops.logaddexp, "state(time=1)")
         result = result.reduce(ops.logaddexp, "state")
 
@@ -275,12 +275,12 @@ class GaussianMRF(FunsorDistribution):
         # Compare with pyro.distributions.hmm.GaussianMRF.log_prob().
         logp_oh = self._trans + self._obs(value=value)
         logp_oh = sequential_sum_product(ops.logaddexp, ops.add,
-                                         logp_oh, "time", "state", "state(time=1)")
+                                         logp_oh, "time", {"state": "state(time=1)"})
         logp_oh += self._init
         logp_oh = logp_oh.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
         logp_h = self._trans + self._obs.reduce(ops.logaddexp, "value")
         logp_h = sequential_sum_product(ops.logaddexp, ops.add,
-                                        logp_h, "time", "state", "state(time=1)")
+                                        logp_h, "time", {"state": "state(time=1)"})
         logp_h += self._init
         logp_h = logp_h.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
         result = logp_oh - logp_h
