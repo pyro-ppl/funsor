@@ -102,7 +102,7 @@ class GaussianHMM(FunsorDistribution):
 
         z = initial_distribution.sample()
         x = []
-        for t in range(num_events):
+        for t in range(num_steps):
             z = z @ transition_matrix + transition_dist.sample()
             x.append(z @ observation_matrix + observation_dist.sample())
 

@@ -226,6 +226,8 @@ def sequential_sum_product(sum_op, prod_op, trans, time, prev, curr):
     assert isinstance(prev, tuple) and all(isinstance(n, str) for n in prev)
     assert isinstance(curr, tuple) and all(isinstance(n, str) for n in curr)
     assert len(prev) == len(curr)
+    if time not in trans.inputs:
+        return trans  # edge case of a single time step
 
     drop = tuple("_drop_{}".format(i) for i in range(len(prev)))
     prev_to_drop = dict(zip(prev, drop))
