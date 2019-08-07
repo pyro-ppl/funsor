@@ -130,7 +130,7 @@ def Cat(parts, name):
         inputs = int_inputs.copy()
         inputs.update(real_inputs)
         discretes = []
-        locs = []
+        info_vecs = []
         precisions = []
         for part in parts:
             inputs[name] = part.inputs[name]  # typically a smaller bint
@@ -147,20 +147,20 @@ def Cat(parts, name):
             else:
                 raise NotImplementedError("Should not be here!")
             discretes.append(discrete)
-            loc, precision = align_gaussian(inputs, gaussian)
-            locs.append(loc.expand(shape + (-1,)))
+            info_vec, precision = align_gaussian(inputs, gaussian)
+            info_vecs.append(info_vec.expand(shape + (-1,)))
             precisions.append(precision.expand(shape + (-1, -1)))
 
         dim = tuple(inputs).index(name)
-        loc = torch.cat(locs, dim=dim)
+        info_vec = torch.cat(info_vecs, dim=dim)
         precision = torch.cat(precisions, dim=dim)
-        inputs[name] = bint(loc.size(dim))
+        inputs[name] = bint(info_vec.size(dim))
         int_inputs[name] = inputs[name]
-        result = Gaussian(loc, precision, inputs)
+        result = Gaussian(info_vec, precision, inputs)
         if any(d is not None for d in discretes):
             for i, d in enumerate(discretes):
                 if d is None:
-                    discretes[i] = locs[i].new_zeros(locs[i].shape[:-1])
+                    discretes[i] = info_vecs[i].new_zeros(info_vecs[i].shape[:-1])
             discrete = torch.cat(discretes, dim=dim)
             result += Tensor(discrete, int_inputs)
         return result
@@ -208,24 +208,42 @@ def sequential_sum_product(sum_op, prod_op, trans, time, prev, curr):
            .reduce(sum_op, "drop")
 
     but does so efficiently in parallel in O(log(time)).
+
+    :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
+    :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
+    :param ~funsor.terms.Funsor trans: A transition funsor.
+    :param str time: The name of the time input dimension.
+    :param prev: The name or tuple of names of previous state inputs.
+    :type prev: str or tuple
+    :param curr: The name or tuple of names of current state inputs.
+    :type curr: str or tuple
     """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
     assert isinstance(time, str)
-    assert isinstance(prev, str)
-    assert isinstance(curr, str)
+    if isinstance(prev, str):
+        prev = (prev,)
+        curr = (curr,)
+    assert isinstance(prev, tuple) and all(isinstance(n, str) for n in prev)
+    assert isinstance(curr, tuple) and all(isinstance(n, str) for n in curr)
+    assert len(prev) == len(curr)
+
+    drop = tuple("_drop_{}".format(i) for i in range(len(prev)))
+    prev_to_drop = dict(zip(prev, drop))
+    curr_to_drop = dict(zip(curr, drop))
+    drop = frozenset(drop)
 
     while trans.inputs[time].size > 1:
         duration = trans.inputs[time].size
         even_duration = duration // 2 * 2
         # TODO support syntax
         # x = trans(time=slice(0, even_duration, 2), ...)
-        x = trans(**{time: Slice("time", 0, even_duration, 2, duration), curr: "_drop"})
-        y = trans(**{time: Slice("time", 1, even_duration, 2, duration), prev: "_drop"})
-        contracted = prod_op(x, y).reduce(sum_op, "_drop")
+        x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
+        y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
+        contracted = prod_op(x, y).reduce(sum_op, drop)
         if duration > even_duration:
             extra = trans(**{time: Slice(time, duration - 1, duration)})
             contracted = Cat((contracted, extra), time)
         trans = contracted
-    return trans(time=0)
+    return trans(**{time: 0})

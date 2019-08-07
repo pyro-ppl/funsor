@@ -2,6 +2,7 @@ from collections import OrderedDict
 
 import pyro.distributions as dist
 import torch
+from torch.distributions import constraints
 
 from funsor.cnf import Contraction
 from funsor.delta import MultiDelta
@@ -30,16 +31,25 @@ class FunsorDistribution(dist.TorchDistribution):
     arg_constraints = {}
 
     def __init__(self, funsor_dist, batch_shape=torch.Size(), event_shape=torch.Size(),
-                 dtype="real"):
+                 dtype="real", validate_args=None):
         assert isinstance(funsor_dist, Funsor)
         assert isinstance(batch_shape, tuple)
         assert isinstance(event_shape, tuple)
         assert "value" in funsor_dist.inputs
-        super(FunsorDistribution, self).__init__(batch_shape, event_shape)
+        super(FunsorDistribution, self).__init__(batch_shape, event_shape, validate_args)
         self.funsor_dist = funsor_dist
         self.dtype = dtype
 
+    @constraints.dependent_property
+    def support(self):
+        if self.dtype == "real":
+            return constraints.real
+        else:
+            return constraints.integer_interval(0, self.dtype - 1)
+
     def log_prob(self, value):
+        if self._validate_args:
+            self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
         value = tensor_to_funsor(value, event_output=self.event_dim, dtype=self.dtype)
         with interpretation(lazy):

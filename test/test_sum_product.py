@@ -8,7 +8,7 @@ from funsor.domains import bint, reals
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import _partition, partial_sum_product, sequential_sum_product, sum_product
-from funsor.terms import reflect
+from funsor.terms import moment_matching, reflect
 from funsor.testing import assert_close, random_gaussian, random_tensor
 
 
@@ -119,3 +119,48 @@ def test_sequential_sum_product(sum_op, prod_op, batch_inputs, state_domain, num
     expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
     expected = expected.align(tuple(actual.inputs.keys()))
     assert_close(actual, expected, rtol=5e-4 * num_steps)
+
+
+@pytest.mark.parametrize('num_steps', list(range(1, 6)))
+@pytest.mark.parametrize('batch_inputs', [
+    {},
+    {"foo": bint(5)},
+    {"foo": bint(2), "bar": bint(4)},
+], ids=lambda d: ",".join(d.keys()))
+@pytest.mark.parametrize('x_domain,y_domain', [
+    (bint(2), bint(3)),
+    (reals(), reals(2, 2)),
+    (bint(2), reals(2)),
+], ids=str)
+def test_sequential_sum_product_multi(x_domain, y_domain, batch_inputs, num_steps):
+    sum_op = ops.logaddexp
+    prod_op = ops.add
+    inputs = OrderedDict(batch_inputs)
+    inputs.update(time=bint(num_steps),
+                  x_prev=x_domain, x_curr=x_domain,
+                  y_prev=y_domain, y_curr=y_domain)
+    if any(v.dtype == "real" for v in inputs.values()):
+        trans = random_gaussian(inputs)
+    else:
+        trans = random_tensor(inputs)
+    prev = ("x_prev", "y_prev")
+    curr = ("x_curr", "y_curr")
+
+    with interpretation(moment_matching):
+        actual = sequential_sum_product(sum_op, prod_op, trans, "time", prev, curr)
+        expected_inputs = batch_inputs.copy()
+        expected_inputs.update(x_prev=x_domain, x_curr=x_domain,
+                               y_prev=y_domain, y_curr=y_domain)
+        assert dict(actual.inputs) == expected_inputs
+
+        # Check against contract.
+        operands = tuple(trans(time=t,
+                               x_prev="x_{}".format(t), x_curr="x_{}".format(t+1),
+                               y_prev="y_{}".format(t), y_curr="y_{}".format(t+1))
+                         for t in range(num_steps))
+        reduce_vars = frozenset("x_{}".format(t) for t in range(1, num_steps)).union(
+                                "y_{}".format(t) for t in range(1, num_steps))
+        expected = sum_product(sum_op, prod_op, operands, reduce_vars)
+        expected = expected(**{"x_0": "x_prev", "x_{}".format(num_steps): "x_curr",
+                               "y_0": "y_prev", "y_{}".format(num_steps): "y_curr"})
+        expected = expected.align(tuple(actual.inputs.keys()))

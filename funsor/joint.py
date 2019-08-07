@@ -7,7 +7,7 @@ from multipledispatch.variadic import Variadic
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import MultiDelta
-from funsor.gaussian import Gaussian, sym_inverse
+from funsor.gaussian import Gaussian, cholesky_solve, cholesky_inverse
 from funsor.integrate import Integrate
 from funsor.ops import AssociativeOp, SubOp
 from funsor.terms import Binary, Funsor, Number, Reduce, Unary, eager, moment_matching, normalize
@@ -33,13 +33,15 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
     if red_op is not ops.logaddexp:
         return None
 
-    approx_vars = frozenset(k for k in reduced_vars if gaussian.inputs.get(k, 'real') != 'real')
+    approx_vars = frozenset(k for k in reduced_vars if k in gaussian.inputs
+                            and gaussian.inputs[k].dtype != 'real')
     exact_vars = reduced_vars - approx_vars
 
     if exact_vars and approx_vars:
         return Contraction(red_op, bin_op, exact_vars, discrete, gaussian).reduce(red_op, approx_vars)
 
     if approx_vars and not exact_vars:
+        discrete += gaussian.log_normalizer
         new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
         num_elements = reduce(ops.mul, [
             gaussian.inputs[k].num_elements for k in approx_vars.difference(discrete.inputs)], 1)
@@ -48,17 +50,21 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
 
         int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
         probs = (discrete - new_discrete).exp()
-        old_loc = Tensor(gaussian.loc, int_inputs)
+        old_loc = Tensor(cholesky_solve(gaussian.info_vec.unsqueeze(-1),
+                                        gaussian._precision_chol).squeeze(-1),
+                         int_inputs)
         new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
-        old_cov = Tensor(sym_inverse(gaussian.precision), int_inputs)
+        old_cov = Tensor(cholesky_inverse(gaussian._precision_chol), int_inputs)
         diff = old_loc - new_loc
         outers = Tensor(diff.data.unsqueeze(-1) * diff.data.unsqueeze(-2), diff.inputs)
         new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
                    (probs * outers).reduce(ops.add, approx_vars))
-        new_precision = Tensor(sym_inverse(new_cov.data), new_cov.inputs)
+        new_precision = Tensor(cholesky_inverse(new_cov.data.cholesky()), new_cov.inputs)
+        new_info_vec = new_precision.data.matmul(new_loc.data.unsqueeze(-1)).squeeze(-1)
         new_inputs = new_loc.inputs.copy()
         new_inputs.update((k, d) for k, d in gaussian.inputs.items() if d.dtype == 'real')
-        new_gaussian = Gaussian(new_loc.data, new_precision.data, new_inputs)
+        new_gaussian = Gaussian(new_info_vec.data, new_precision.data, new_inputs)
+        new_discrete -= new_gaussian.log_normalizer
         return new_discrete + new_gaussian
 
     return None

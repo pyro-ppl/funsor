@@ -10,13 +10,13 @@ SHAPES = [(), (1,), (4,), (2, 3), (1, 2, 1, 3, 1)]
 
 
 class Categorical(FunsorDistribution):
-    def __init__(self, logits):
+    def __init__(self, logits, validate_args=None):
         batch_shape = logits.shape[:-1]
         event_shape = torch.Size()
         funsor_dist = tensor_to_funsor(logits, ("value",))
         dtype = int(logits.size(-1))
         super(Categorical, self).__init__(
-            funsor_dist, batch_shape, event_shape, dtype)
+            funsor_dist, batch_shape, event_shape, dtype, validate_args)
 
 
 @pytest.mark.parametrize("cardinality", [2, 3])

@@ -2,13 +2,14 @@ import math
 from collections import OrderedDict
 from functools import singledispatch
 
-import pyro.distributions as dist
 import torch
+import torch.distributions as dist
 from pyro.distributions.torch_distribution import MaskedDistribution
+from pyro.distributions.util import broadcast_shape
 
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
-from funsor.domains import bint
-from funsor.gaussian import Gaussian
+from funsor.domains import bint, reals
+from funsor.gaussian import Gaussian, cholesky_solve
 from funsor.terms import Independent
 from funsor.torch import Tensor
 
@@ -84,11 +85,52 @@ def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
     precision = tensor_to_funsor(pyro_dist.precision_matrix, event_dims, 2)
     assert loc.inputs == scale_tril.inputs
     assert loc.inputs == precision.inputs
-    log_prob = (-0.5 * loc.output.shape[0] * math.log(2 * math.pi) -
-                scale_tril.data.diagonal(dim1=-1, dim2=-2).log().sum(-1))
+    info_vec = precision.data.matmul(loc.data.unsqueeze(-1)).squeeze(-1)
+    log_prob = (-0.5 * loc.output.shape[0] * math.log(2 * math.pi)
+                - scale_tril.data.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+                - 0.5 * (info_vec * loc.data).sum(-1))
     inputs = loc.inputs.copy()
     inputs.update(real_inputs)
-    return Tensor(log_prob, loc.inputs) + Gaussian(loc.data, precision.data, inputs)
+    return Tensor(log_prob, loc.inputs) + Gaussian(info_vec, precision.data, inputs)
+
+
+def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_name="value_y"):
+    """
+    Convert a noisy affine function to a Gaussian. The noisy affine function is defined as::
+
+        y = x @ matrix + mvn.sample()
+
+    :param ~torch.Tensor matrix: A matrix with rightmost shape ``(x_size, y_size)``.
+    :param ~torch.distributions.MultivariateNormal mvn: A multivariate normal
+        distribution with ``event_shape == (y_size,)``.
+    """
+    assert isinstance(mvn, torch.distributions.MultivariateNormal)
+    assert isinstance(matrix, torch.Tensor)
+    x_size, y_size = matrix.shape[-2:]
+    assert mvn.event_shape == (y_size,)
+    info_vec = cholesky_solve(mvn.loc.unsqueeze(-1), mvn.scale_tril).squeeze(-1)
+    log_prob = (-0.5 * y_size * math.log(2 * math.pi)
+                - mvn.scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+                - 0.5 * (info_vec * mvn.loc).sum(-1))
+
+    batch_shape = broadcast_shape(matrix.shape[:-2], mvn.batch_shape)
+    P_yy = mvn.precision_matrix.expand(batch_shape + (y_size, y_size))
+    neg_P_xy = matrix.matmul(P_yy)
+    P_xy = -neg_P_xy
+    P_yx = P_xy.transpose(-1, -2)
+    P_xx = neg_P_xy.matmul(matrix.transpose(-1, -2))
+    precision = torch.cat([torch.cat([P_xx, P_xy], -1),
+                           torch.cat([P_yx, P_yy], -1)], -2)
+    info_y = info_vec.expand(batch_shape + (y_size,))
+    info_x = -matrix.matmul(info_y.unsqueeze(-1)).squeeze(-1)
+    info_vec = torch.cat([info_x, info_y], -1)
+
+    info_vec = tensor_to_funsor(info_vec, event_dims, 1)
+    precision = tensor_to_funsor(precision, event_dims, 2)
+    inputs = info_vec.inputs.copy()
+    inputs[x_name] = reals(x_size)
+    inputs[y_name] = reals(y_size)
+    return tensor_to_funsor(log_prob, event_dims) + Gaussian(info_vec.data, precision.data, inputs)
 
 
 @singledispatch
