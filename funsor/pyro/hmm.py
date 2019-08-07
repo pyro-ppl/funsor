@@ -370,6 +370,7 @@ class SwitchingLinearHMM(FunsorDistribution):
                                 transition_mvn.batch_shape,
                                 observation_matrix.shape[:-2],
                                 observation_mvn.batch_shape)
+        assert shape[-1] == hidden_cardinality
         batch_shape, time_shape = shape[:-2], shape[-2:-1]
         event_shape = time_shape + (obs_dim,)
 
@@ -413,8 +414,7 @@ class SwitchingLinearHMM(FunsorDistribution):
                                             {"class": "class(time=1)", "state": "state(time=1)"})
             result = result.reduce(ops.logaddexp, frozenset(["class(time=1)", "state(time=1)"]))
             result += self._init
-            result = result.reduce(ops.logaddexp,
-                                   frozenset(result.inputs).intersection(["class", "state"]))
+            result = result.reduce(ops.logaddexp, frozenset(["class", "state"]))
 
         result = funsor_to_tensor(result, ndims=ndims)
         return result

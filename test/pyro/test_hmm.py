@@ -242,16 +242,15 @@ def test_switching_linear_hmm_shape(init_cat_shape, init_mvn_shape,
     assert actual_log_prob.shape == expected_batch_shape
 
 
-@pytest.mark.parametrize("num_components", [2])
-@pytest.mark.parametrize("obs_dim", [1, 2])
-@pytest.mark.parametrize("hidden_dim", [1, 2])
+@pytest.mark.parametrize("num_components", [2, 3])
+@pytest.mark.parametrize("obs_dim,hidden_dim", [(1, 1), (2, 1), (2, 2)])
 @pytest.mark.parametrize("num_steps", [1, 2, 3, 4, 5, 6])
 def test_switching_linear_hmm_log_prob(num_steps, hidden_dim, obs_dim, num_components):
     # This tests agreement between an SLDS and an HMM when all components
     # are identical, i.e. so latent can be marginalized out.
-    init_logits = torch.zeros(hidden_dim)
+    init_logits = torch.zeros(num_components)
     init_mvn = random_mvn((), hidden_dim)
-    trans_logits = torch.zeros(hidden_dim)
+    trans_logits = torch.zeros(num_components)
     trans_matrix = torch.randn(hidden_dim, hidden_dim)
     trans_mvn = random_mvn((), hidden_dim)
     obs_matrix = torch.randn(hidden_dim, obs_dim)
@@ -260,7 +259,8 @@ def test_switching_linear_hmm_log_prob(num_steps, hidden_dim, obs_dim, num_compo
     expected_dist = GaussianHMM(init_mvn,
                                 trans_matrix.expand(num_steps, -1, -1),
                                 trans_mvn, obs_matrix, obs_mvn)
-    actual_dist = SwitchingLinearHMM(init_logits, init_mvn, trans_logits,
+    actual_dist = SwitchingLinearHMM(init_logits, init_mvn,
+                                     trans_logits,
                                      trans_matrix.expand(num_steps, num_components, -1, -1),
                                      trans_mvn, obs_matrix, obs_mvn)
     assert actual_dist.batch_shape == expected_dist.batch_shape
