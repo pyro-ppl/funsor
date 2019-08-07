@@ -225,9 +225,11 @@ def test_reduce_moment_matching_univariate():
     info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
     discrete = Tensor(torch.tensor([1 - p, p]).log() + t, int_inputs)
     gaussian = Gaussian(info_vec, precision, inputs)
+    gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
     with interpretation(moment_matching):
         actual = joint.reduce(ops.logaddexp, 'i')
+    assert_close(actual.reduce(ops.logaddexp), joint.reduce(ops.logaddexp))
 
     expected_loc = torch.tensor([(2 * p - 1) * s1])
     expected_variance = (4 * p * (1 - p) * s1 ** 2
@@ -236,6 +238,7 @@ def test_reduce_moment_matching_univariate():
     expected_precision = torch.tensor([[1 / expected_variance]])
     expected_info_vec = expected_precision.matmul(expected_loc.unsqueeze(-1)).squeeze(-1)
     expected_gaussian = Gaussian(expected_info_vec, expected_precision, real_inputs)
+    expected_gaussian -= expected_gaussian.log_normalizer
     expected_discrete = Tensor(torch.tensor(t))
     expected = expected_discrete + expected_gaussian
     assert_close(actual, expected, atol=1e-5, rtol=None)
@@ -255,14 +258,17 @@ def test_reduce_moment_matching_multivariate():
     precision = torch.zeros(4, 1, 1) + torch.eye(2, 2)
     discrete = Tensor(torch.zeros(4), int_inputs)
     gaussian = Gaussian(loc, precision, inputs)
+    gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
     with interpretation(moment_matching):
         actual = joint.reduce(ops.logaddexp, 'i')
+    assert_close(actual.reduce(ops.logaddexp), joint.reduce(ops.logaddexp))
 
     expected_loc = torch.zeros(2)
     expected_covariance = torch.tensor([[101., 0.], [0., 2.]])
     expected_precision = expected_covariance.inverse()
     expected_gaussian = Gaussian(expected_loc, expected_precision, real_inputs)
+    expected_gaussian -= expected_gaussian.log_normalizer
     expected_discrete = Tensor(torch.tensor(4.).log())
     expected = expected_discrete + expected_gaussian
     assert_close(actual, expected, atol=1e-5, rtol=None)
@@ -277,7 +283,10 @@ def test_reduce_moment_matching_shape(interp):
     gaussian = random_gaussian(OrderedDict(
         [('k', bint(4)), ('l', bint(3)), ('m', bint(2)), ('y', reals()), ('z', reals(2))]))
     reduced_vars = frozenset(['i', 'k', 'l'])
+    real_vars = frozenset(k for k, d in gaussian.inputs.items() if d.dtype == "real")
     joint = delta + discrete + gaussian
     with interpretation(interp):
         actual = joint.reduce(ops.logaddexp, reduced_vars)
     assert set(actual.inputs) == set(joint.inputs) - reduced_vars
+    assert_close(actual.reduce(ops.logaddexp, real_vars),
+                 joint.reduce(ops.logaddexp, real_vars | reduced_vars))
