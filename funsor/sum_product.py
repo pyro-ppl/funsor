@@ -221,13 +221,13 @@ def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
 
 def sequential_sum_product(sum_op, prod_op, trans, time, step):
     """
-    For a funsor ``trans`` with dimensions ``time``, ``step.keys()``,
-    and ``step.values()``, computes a recursion equivalent to::
+    For a funsor ``trans`` with dimensions ``time``, ``prev`` and ``curr``,
+    computes a recursion equivalent to::
 
         tail_time = 1 + arange("time", trans.inputs["time"].size - 1)
         tail = sequential_sum_product(sum_op, prod_op,
                                       trans(time=tail_time),
-                                      "time", step)
+                                      "time", {"prev": "curr"})
         return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
            .reduce(sum_op, "drop")
 
@@ -237,7 +237,8 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
     :param ~funsor.terms.Funsor trans: A transition funsor.
     :param str time: The name of the time input dimension.
-    :param dict step: A dict mapping previous variable to current variable.
+    :param dict step: A dict mapping previous variables to current variables.
+        This can contain multiple pairs of prev->curr variable names.
     """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
