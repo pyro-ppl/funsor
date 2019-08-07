@@ -11,6 +11,7 @@ from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.joint import Joint
+from funsor.montecarlo import monte_carlo_interpretation
 from funsor.terms import Number, Reduce, Variable, eager, moment_matching
 from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
@@ -294,17 +295,20 @@ def test_reduce_moment_matching_shape(interp):
 
 
 def test_reduce_moment_matching_moments():
+    x = Variable('x', reals(2))
     gaussian = random_gaussian(OrderedDict(
         [('i', bint(2)), ('j', bint(3)), ('x', reals(2))]))
     with interpretation(moment_matching):
-        actual = gaussian.reduce(ops.logaddexp, 'j')
-    x = Variable('x', reals(2))
+        approx = gaussian.reduce(ops.logaddexp, 'j')
+    with monte_carlo_interpretation(s=bint(100000)):
+        actual = Integrate(approx, Number(1.), frozenset(['x']))
+        expected = Integrate(gaussian, Number(1.), frozenset(['j', 'x']))
+        assert_close(actual, expected, atol=1e-3, rtol=1e-3)
 
-    sample_inputs = OrderedDict(s=bint(10000))
-    actual_samples = actual.sample(frozenset(['x']), sample_inputs)
-    expected_samples = gaussian.sample(frozenset(['j', 'x']), sample_inputs)
-    assert_close(actual_samples.reduce(ops.logaddexp, 'x'),
-                 expected_samples.reduce(ops.logaddexp, frozenset(['j', 'x'])))
-    actual_mean = Integrate(actual_samples, x, frozenset(['x']))
-    expected_mean = Integrate(expected_samples, x, frozenset(['j', 'x']))
-    assert_close(actual_mean, expected_mean, atol=1e-1, rtol=1e-1)
+        actual = Integrate(approx, x, frozenset(['x']))
+        expected = Integrate(gaussian, x, frozenset(['j', 'x']))
+        assert_close(actual, expected, atol=1e-2, rtol=1e-2)
+
+        actual = Integrate(approx, x * x, frozenset(['x']))
+        expected = Integrate(gaussian, x * x, frozenset(['j', 'x']))
+        assert_close(actual, expected, atol=1e-2, rtol=1e-2)
