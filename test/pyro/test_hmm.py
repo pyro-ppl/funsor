@@ -259,8 +259,7 @@ def test_switching_linear_hmm_log_prob(num_steps, hidden_dim, obs_dim, num_compo
     expected_dist = GaussianHMM(init_mvn,
                                 trans_matrix.expand(num_steps, -1, -1),
                                 trans_mvn, obs_matrix, obs_mvn)
-    actual_dist = SwitchingLinearHMM(init_logits, init_mvn,
-                                     trans_logits,
+    actual_dist = SwitchingLinearHMM(init_logits, init_mvn, trans_logits,
                                      trans_matrix.expand(num_steps, num_components, -1, -1),
                                      trans_mvn, obs_matrix, obs_mvn)
     assert actual_dist.batch_shape == expected_dist.batch_shape
