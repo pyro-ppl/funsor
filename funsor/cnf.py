@@ -155,7 +155,7 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
             return result
 
     result = eager.dispatch(Binary, bin_op, lhs, rhs)
-    if result is not None:
+    if result is not None and reduced_vars:
         result = eager.dispatch(Reduce, red_op, result, reduced_vars)
     return result
 
@@ -290,12 +290,12 @@ def binary_divide(op, lhs, rhs):
     return lhs * Unary(ops.reciprocal, rhs)
 
 
-@normalize.register(Unary, ops.NegOp, Contraction)
-def unary_contract(op, arg):
-    if arg.bin_op is ops.add and arg.red_op is anyop:
-        return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
-    if arg.bin_op is ops.mul:
-        return arg * -1
+@normalize.register(Unary, ops.TransformOp, Unary)
+def unary_log_exp(op, arg):
+    if op is ops.log and arg.op is ops.exp:
+        return arg.arg
+    if op is ops.exp and arg.op is ops.log:
+        return arg.arg
     return None
 
 
@@ -322,4 +322,20 @@ def unary_transform(op, arg):
             new_terms = tuple(v.exp() for v in arg.terms)
             return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
 
+    return None
+
+
+@normalize.register(Unary, ops.NegOp, Contraction)
+def unary_contract(op, arg):
+    if arg.bin_op is ops.add and arg.red_op is anyop:
+        return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
+    if arg.bin_op is ops.mul:
+        return arg * -1
+    return None
+
+
+@normalize.register(Unary, ops.NegOp, Unary)
+def unary_neg_neg(op, arg):
+    if arg.op is ops.neg:
+        return arg.arg
     return None
