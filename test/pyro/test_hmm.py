@@ -248,9 +248,9 @@ def test_switching_linear_hmm_shape(init_cat_shape, init_mvn_shape,
 def test_switching_linear_hmm_log_prob(num_steps, hidden_dim, obs_dim, num_components):
     # This tests agreement between an SLDS and an HMM when all components
     # are identical, i.e. so latent can be marginalized out.
-    init_logits = torch.zeros(num_components)
+    init_logits = torch.randn(num_components)
     init_mvn = random_mvn((), hidden_dim)
-    trans_logits = torch.zeros(num_components)
+    trans_logits = torch.randn(num_components)
     trans_matrix = torch.randn(hidden_dim, hidden_dim)
     trans_mvn = random_mvn((), hidden_dim)
     obs_matrix = torch.randn(hidden_dim, obs_dim)
@@ -271,4 +271,4 @@ def test_switching_linear_hmm_log_prob(num_steps, hidden_dim, obs_dim, num_compo
     expected_log_prob = expected_dist.log_prob(data)
     assert expected_log_prob.shape == expected_dist.batch_shape
     actual_log_prob = actual_dist.log_prob(data)
-    assert_close(actual_log_prob, expected_log_prob)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
