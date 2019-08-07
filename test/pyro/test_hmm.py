@@ -8,6 +8,21 @@ from pyro.distributions.util import broadcast_shape
 from funsor.pyro.hmm import DiscreteHMM, GaussianHMM, GaussianMRF, SwitchingLinearHMM
 from funsor.testing import assert_close, random_mvn
 
+
+def check_expand(old_dist, old_data):
+    new_batch_shape = (2,) + old_dist.batch_shape
+    new_dist = old_dist.expand(new_batch_shape)
+    assert new_dist.batch_shape == new_batch_shape
+
+    old_log_prob = new_dist.log_prob(old_data)
+    assert old_log_prob.shape == new_batch_shape
+
+    new_data = old_data.expand(new_batch_shape + new_dist.event_shape)
+    new_log_prob = new_dist.log_prob(new_data)
+    assert_close(old_log_prob, new_log_prob)
+    assert new_dist.log_prob(new_data).shape == new_batch_shape
+
+
 DISCRETE_HMM_SHAPES = [
     # init_shape, trans_shape, obs_shape
     ((), (1,), ()),
@@ -17,13 +32,13 @@ DISCRETE_HMM_SHAPES = [
     ((), (), (7,)),
     ((), (7,), (1,)),
     ((), (1,), (7,)),
-    ((), (7,), (11, 7)),
-    ((), (11, 7), (7,)),
-    ((), (11, 7), (11, 7)),
-    ((11,), (7,), (7,)),
-    ((11,), (7,), (11, 7)),
-    ((11,), (11, 7), (7,)),
-    ((11,), (11, 7), (11, 7)),
+    ((), (7,), (5, 7)),
+    ((), (5, 7), (7,)),
+    ((), (5, 7), (5, 7)),
+    ((5,), (7,), (7,)),
+    ((5,), (7,), (5, 7)),
+    ((5,), (5, 7), (7,)),
+    ((5,), (5, 7), (5, 7)),
     ((4, 1, 1), (3, 1, 7), (2, 7)),
 ]
 
@@ -48,6 +63,7 @@ def test_discrete_categorical_log_prob(init_shape, trans_shape, obs_shape, state
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob)
+    check_expand(actual_dist, data)
 
 
 @pytest.mark.parametrize("state_dim", [2, 3])
@@ -70,6 +86,7 @@ def test_discrete_normal_log_prob(init_shape, trans_shape, obs_shape, state_dim)
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob)
+    check_expand(actual_dist, data)
 
 
 @pytest.mark.parametrize("state_dim", [2, 3])
@@ -95,6 +112,7 @@ def test_discrete_mvn_log_prob(init_shape, trans_shape, obs_shape, state_dim):
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob)
+    check_expand(actual_dist, data)
 
 
 @pytest.mark.parametrize("state_dim", [2, 3])
@@ -118,6 +136,7 @@ def test_discrete_diag_normal_log_prob(init_shape, trans_shape, obs_shape, state
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
+    check_expand(actual_dist, data)
 
 
 @pytest.mark.parametrize("obs_dim,hidden_dim",
@@ -164,7 +183,8 @@ def test_gaussian_hmm_log_prob(init_shape, trans_mat_shape, trans_mvn_shape,
     actual_log_prob = actual_dist.log_prob(data)
 
     expected_log_prob = expected_dist.log_prob(data)
-    assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=1e-4)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
+    check_expand(actual_dist, data)
 
 
 @pytest.mark.parametrize("obs_dim", [1, 2, 3])
@@ -185,6 +205,7 @@ def test_gaussian_mrf_log_prob(init_shape, trans_shape, obs_shape, hidden_dim, o
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=1e-4)
+    check_expand(actual_dist, data)
 
 
 SLHMM_SCHEMA = ",".join([
@@ -240,6 +261,7 @@ def test_switching_linear_hmm_shape(init_cat_shape, init_mvn_shape,
     data = obs_mvn.expand(shape).sample()[..., 0, :]
     actual_log_prob = actual_dist.log_prob(data)
     assert actual_log_prob.shape == expected_batch_shape
+    check_expand(actual_dist, data)
 
 
 @pytest.mark.parametrize("num_components", [2, 3])
@@ -250,9 +272,10 @@ def test_switching_linear_hmm_shape(init_cat_shape, init_mvn_shape,
 def test_switching_linear_hmm_log_prob(exact, num_steps, hidden_dim, obs_dim, num_components):
     # This tests agreement between an SLDS and an HMM when all components
     # are identical, i.e. so latent can be marginalized out.
-    init_logits = torch.randn(num_components)
+    torch.manual_seed(2)
+    init_logits = torch.rand(num_components)
     init_mvn = random_mvn((), hidden_dim)
-    trans_logits = torch.randn(num_components)
+    trans_logits = torch.rand(num_components)
     trans_matrix = torch.randn(hidden_dim, hidden_dim)
     trans_mvn = random_mvn((), hidden_dim)
     obs_matrix = torch.randn(hidden_dim, obs_dim)
@@ -273,4 +296,4 @@ def test_switching_linear_hmm_log_prob(exact, num_steps, hidden_dim, obs_dim, nu
     expected_log_prob = expected_dist.log_prob(data)
     assert expected_log_prob.shape == expected_dist.batch_shape
     actual_log_prob = actual_dist.log_prob(data)
-    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=None)

@@ -86,10 +86,12 @@ class DiscreteHMM(FunsorDistribution):
         new = self._get_checked_instance(DiscreteHMM, _instance)
         batch_shape = torch.Size(batch_shape)
         new._has_rsample = self._has_rsample
-        new._init = self._init
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
         new._trans = self._trans
         new._obs = self._obs
-        super(DiscreteHMM, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        super(DiscreteHMM, new).__init__(
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
         return new
 
 
@@ -183,19 +185,6 @@ class GaussianHMM(FunsorDistribution):
         super(GaussianHMM, self).__init__(
             funsor_dist, batch_shape, event_shape, dtype, validate_args)
 
-    def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(GaussianHMM, _instance)
-        batch_shape = torch.Size(broadcast_shape(self.batch_shape, batch_shape))
-        # We only need to expand one of the inputs, since batch_shape is determined
-        # by broadcasting all three. To save computation in _sequential_gaussian_tensordot(),
-        # we expand only _init, which is applied only after _sequential_gaussian_tensordot().
-        new._init = self._init.expand(batch_shape)
-        new._trans = self._trans
-        new._obs = self._obs
-        super(GaussianHMM, new).__init__(batch_shape, self.event_shape, validate_args=False)
-        new.validate_args = self.__dict__.get('_validate_args')
-        return new
-
     def log_prob(self, value):
         if self._validate_args:
             self._validate_sample(value)
@@ -208,8 +197,8 @@ class GaussianHMM(FunsorDistribution):
         result = self._trans + obs
         result = sequential_sum_product(ops.logaddexp, ops.add,
                                         result, "time", {"state": "state(time=1)"})
-        result = self._init + result.reduce(ops.logaddexp, "state(time=1)")
-        result = result.reduce(ops.logaddexp, "state")
+        result += self._init
+        result = result.reduce(ops.logaddexp, frozenset(["state", "state(time=1)"]))
 
         result = funsor_to_tensor(result, ndims=ndims)
         return result
@@ -219,12 +208,14 @@ class GaussianHMM(FunsorDistribution):
         raise NotImplementedError("TODO")
 
     def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(DiscreteHMM, _instance)
+        new = self._get_checked_instance(GaussianHMM, _instance)
         batch_shape = torch.Size(batch_shape)
-        new._init = self._init
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
         new._trans = self._trans
         new._obs = self._obs
-        super(GaussianMRF, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        super(GaussianHMM, new).__init__(
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
         return new
 
 
@@ -294,12 +285,14 @@ class GaussianMRF(FunsorDistribution):
         raise NotImplementedError("TODO")
 
     def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(DiscreteHMM, _instance)
+        new = self._get_checked_instance(GaussianMRF, _instance)
         batch_shape = torch.Size(batch_shape)
-        new._init = self._init
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
         new._trans = self._trans
         new._obs = self._obs
-        super(GaussianMRF, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        super(GaussianMRF, new).__init__(
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
         return new
 
 
@@ -417,9 +410,9 @@ class SwitchingLinearHMM(FunsorDistribution):
             result = self._trans + self._obs(value=value)
             result = seq_sum_prod(ops.logaddexp, ops.add, result, "time",
                                   {"class": "class(time=1)", "state": "state(time=1)"})
-            result = result.reduce(ops.logaddexp, frozenset(["class(time=1)", "state(time=1)"]))
             result += self._init
-            result = result.reduce(ops.logaddexp, frozenset(["class", "state"]))
+            result = result.reduce(
+                ops.logaddexp, frozenset(["class", "state", "class(time=1)", "state(time=1)"]))
 
             result = funsor_to_tensor(result, ndims=ndims)
             return result
@@ -429,11 +422,13 @@ class SwitchingLinearHMM(FunsorDistribution):
         raise NotImplementedError("TODO")
 
     def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(DiscreteHMM, _instance)
+        new = self._get_checked_instance(SwitchingLinearHMM, _instance)
         batch_shape = torch.Size(batch_shape)
-        new._has_rsample = self._has_rsample
-        new._init = self._init
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
         new._trans = self._trans
         new._obs = self._obs
-        super(SwitchingLinearHMM, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        new.exact = self.exact
+        super(SwitchingLinearHMM, new).__init__(
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
         return new
