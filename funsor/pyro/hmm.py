@@ -385,9 +385,9 @@ class SwitchingLinearHMM(FunsorDistribution):
                                           ("time", "class(time=1)"), "state", "state(time=1)"))
         obs = matrix_and_mvn_to_funsor(observation_matrix, observation_mvn,
                                        ("time", "class(time=1)"), "state(time=1)", "value")
-        dtype = "real"
-        if "class" not in trans.inputs or "class(time=1)" not in set(trans.inputs).union(obs.inputs):
+        if "class(time=1)" not in set(trans.inputs).union(obs.inputs):
             raise ValueError("neither transition nor observation depend on discrete state")
+        dtype = "real"
 
         # Construct the joint funsor.
         with interpretation(lazy):
@@ -413,7 +413,8 @@ class SwitchingLinearHMM(FunsorDistribution):
                                             ("class", "state"), ("class(time=1)", "state(time=1)"))
             result = result.reduce(ops.logaddexp, frozenset(["class(time=1)", "state(time=1)"]))
             result += self._init
-            result = result.reduce(ops.logaddexp, frozenset(["class", "state"]))
+            result = result.reduce(ops.logaddexp,
+                                   frozenset(result.inputs).intersection(["class", "state"]))
 
         result = funsor_to_tensor(result, ndims=ndims)
         return result
