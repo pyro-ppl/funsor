@@ -8,9 +8,10 @@ import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
+from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.joint import Joint
-from funsor.terms import Number, Reduce, eager, moment_matching
+from funsor.terms import Number, Reduce, Variable, eager, moment_matching
 from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 
@@ -290,3 +291,20 @@ def test_reduce_moment_matching_shape(interp):
     assert set(actual.inputs) == set(joint.inputs) - reduced_vars
     assert_close(actual.reduce(ops.logaddexp, real_vars),
                  joint.reduce(ops.logaddexp, real_vars | reduced_vars))
+
+
+def test_reduce_moment_matching_moments():
+    gaussian = random_gaussian(OrderedDict(
+        [('i', bint(2)), ('j', bint(3)), ('x', reals(2))]))
+    with interpretation(moment_matching):
+        actual = gaussian.reduce(ops.logaddexp, 'j')
+    x = Variable('x', reals(2))
+
+    sample_inputs = OrderedDict(s=bint(10000))
+    actual_samples = actual.sample(frozenset(['x']), sample_inputs)
+    expected_samples = gaussian.sample(frozenset(['j', 'x']), sample_inputs)
+    assert_close(actual_samples.reduce(ops.logaddexp, 'x'),
+                 expected_samples.reduce(ops.logaddexp, frozenset(['j', 'x'])))
+    actual_mean = Integrate(actual_samples, x, frozenset(['x']))
+    expected_mean = Integrate(expected_samples, x, frozenset(['j', 'x']))
+    assert_close(actual_mean, expected_mean, atol=1e-1, rtol=1e-1)
