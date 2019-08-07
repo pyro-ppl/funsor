@@ -14,8 +14,8 @@ from funsor.pyro.convert import (
     tensor_to_funsor
 )
 from funsor.pyro.distribution import FunsorDistribution
-from funsor.sum_product import sequential_sum_product
-from funsor.terms import Variable, lazy, moment_matching
+from funsor.sum_product import naive_sequential_sum_product, sequential_sum_product
+from funsor.terms import Variable, eager, lazy, moment_matching
 
 
 class DiscreteHMM(FunsorDistribution):
@@ -149,6 +149,7 @@ class GaussianHMM(FunsorDistribution):
         assert isinstance(observation_matrix, torch.Tensor)
         assert isinstance(observation_dist, torch.distributions.MultivariateNormal)
         hidden_dim, obs_dim = observation_matrix.shape[-2:]
+        assert obs_dim >= hidden_dim // 2, "obs_dim must be at least half of hidden_dim"
         assert initial_dist.event_shape == (hidden_dim,)
         assert transition_matrix.shape[-2:] == (hidden_dim, hidden_dim)
         assert transition_dist.event_shape == (hidden_dim,)
@@ -349,7 +350,7 @@ class SwitchingLinearHMM(FunsorDistribution):
 
     def __init__(self, initial_logits, initial_mvn,
                  transition_logits, transition_matrix, transition_mvn,
-                 observation_matrix, observation_mvn, validate_args=None):
+                 observation_matrix, observation_mvn, exact=False, validate_args=None):
         assert isinstance(initial_logits, torch.Tensor)
         assert isinstance(initial_mvn, torch.distributions.MultivariateNormal)
         assert isinstance(transition_logits, torch.Tensor)
@@ -358,11 +359,13 @@ class SwitchingLinearHMM(FunsorDistribution):
         assert isinstance(observation_matrix, torch.Tensor)
         assert isinstance(observation_mvn, torch.distributions.MultivariateNormal)
         hidden_cardinality = initial_logits.size(-1)
-        hidden_dim = initial_mvn.event_shape[0]
-        obs_dim = observation_mvn.event_shape[0]
+        hidden_dim, obs_dim = observation_matrix.shape[-2:]
+        assert obs_dim >= hidden_dim // 2, "obs_dim must be at least half of hidden_dim"
+        assert initial_mvn.event_shape[0] == hidden_dim
         assert transition_logits.size(-1) == hidden_cardinality
         assert transition_matrix.shape[-2:] == (hidden_dim, hidden_dim)
         assert transition_mvn.event_shape[0] == hidden_dim
+        assert observation_mvn.event_shape[0] == obs_dim
         init_shape = broadcast_shape(initial_logits.shape, initial_mvn.batch_shape)
         shape = broadcast_shape(init_shape[:-1] + (1, init_shape[-1]),
                                 transition_logits.shape[:-1],
@@ -402,22 +405,24 @@ class SwitchingLinearHMM(FunsorDistribution):
 
         super(SwitchingLinearHMM, self).__init__(
             funsor_dist, batch_shape, event_shape, dtype, validate_args)
+        self.exact = exact
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
         ndims = max(len(self.batch_shape), value.dim() - 2)
         value = tensor_to_funsor(value, ("time",), 1)
 
-        with interpretation(moment_matching):
+        seq_sum_prod = naive_sequential_sum_product if self.exact else sequential_sum_product
+        with interpretation(eager if self.exact else moment_matching):
             result = self._trans + self._obs(value=value)
-            result = sequential_sum_product(ops.logaddexp, ops.add, result, "time",
-                                            {"class": "class(time=1)", "state": "state(time=1)"})
+            result = seq_sum_prod(ops.logaddexp, ops.add, result, "time",
+                                  {"class": "class(time=1)", "state": "state(time=1)"})
             result = result.reduce(ops.logaddexp, frozenset(["class(time=1)", "state(time=1)"]))
             result += self._init
             result = result.reduce(ops.logaddexp, frozenset(["class", "state"]))
 
-        result = funsor_to_tensor(result, ndims=ndims)
-        return result
+            result = funsor_to_tensor(result, ndims=ndims)
+            return result
 
     # TODO remove this once self.funsor_dist is defined.
     def _sample_delta(self, sample_shape):

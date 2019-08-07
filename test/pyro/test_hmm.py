@@ -120,8 +120,8 @@ def test_discrete_diag_normal_log_prob(init_shape, trans_shape, obs_shape, state
     assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
 
 
-@pytest.mark.parametrize("obs_dim", [1, 2, 3])
-@pytest.mark.parametrize("hidden_dim", [1, 2, 3])
+@pytest.mark.parametrize("obs_dim,hidden_dim",
+                         [(1, 1), (1, 2), (2, 1), (2, 2), (2, 3), (3, 2)])
 @pytest.mark.parametrize("init_shape,trans_mat_shape,trans_mvn_shape,obs_mat_shape,obs_mvn_shape", [
     ((), (), (), (), ()),
     ((), (6,), (), (), ()),
@@ -243,9 +243,11 @@ def test_switching_linear_hmm_shape(init_cat_shape, init_mvn_shape,
 
 
 @pytest.mark.parametrize("num_components", [2, 3])
-@pytest.mark.parametrize("obs_dim,hidden_dim", [(1, 1), (2, 1), (2, 2)])
+@pytest.mark.parametrize("obs_dim,hidden_dim",
+                         [(1, 1), (1, 2), (2, 1), (2, 2), (2, 3), (3, 2)])
 @pytest.mark.parametrize("num_steps", [1, 2, 3, 4, 5, 6])
-def test_switching_linear_hmm_log_prob(num_steps, hidden_dim, obs_dim, num_components):
+@pytest.mark.parametrize("exact", [True, False], ids=["exact", "approx"])
+def test_switching_linear_hmm_log_prob(exact, num_steps, hidden_dim, obs_dim, num_components):
     # This tests agreement between an SLDS and an HMM when all components
     # are identical, i.e. so latent can be marginalized out.
     init_logits = torch.randn(num_components)
@@ -261,7 +263,8 @@ def test_switching_linear_hmm_log_prob(num_steps, hidden_dim, obs_dim, num_compo
                                 trans_mvn, obs_matrix, obs_mvn)
     actual_dist = SwitchingLinearHMM(init_logits, init_mvn, trans_logits,
                                      trans_matrix.expand(num_steps, num_components, -1, -1),
-                                     trans_mvn, obs_matrix, obs_mvn)
+                                     trans_mvn, obs_matrix, obs_mvn,
+                                     exact=exact)
     assert actual_dist.batch_shape == expected_dist.batch_shape
     assert actual_dist.event_shape == expected_dist.event_shape
 
