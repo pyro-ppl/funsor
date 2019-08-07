@@ -319,8 +319,6 @@ class SwitchingLinearHMM(FunsorDistribution):
            V  /       V  /       V  /
         x[t-1]       x[t]      x[t+1]         Gaussian observation
 
-    This uses the :func:`~funsor.terms.moment_matching` approximation.
-
     Let ``class`` be the latent class, ``state`` be the latent multivariate
     normal state, and ``value`` be the observed multivariate normal value.
 
@@ -337,6 +335,10 @@ class SwitchingLinearHMM(FunsorDistribution):
     :param ~torch.distributions.MultivariateNormal observation_mvn: Together
         with ``observation_matrix``, this represents
         ``p(value[t+1], state[t+1] | class[t+1])``.
+    :param bool exact: If True, perform exact inference at cost exponential in
+        ``num_steps``. If False, use a :func:`~funsor.terms.moment_matching`
+        approximation and use parallel scan algorithm to reduce parallel
+        complexity to logarathmic in ``num_steps``. Defalts to False.
     """
     has_rsample = True
     arg_constraints = {}
