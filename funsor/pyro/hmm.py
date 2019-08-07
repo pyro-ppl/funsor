@@ -338,7 +338,7 @@ class SwitchingLinearHMM(FunsorDistribution):
     :param bool exact: If True, perform exact inference at cost exponential in
         ``num_steps``. If False, use a :func:`~funsor.terms.moment_matching`
         approximation and use parallel scan algorithm to reduce parallel
-        complexity to logarathmic in ``num_steps``. Defaults to False.
+        complexity to logarithmic in ``num_steps``. Defaults to False.
     """
     has_rsample = True
     arg_constraints = {}
