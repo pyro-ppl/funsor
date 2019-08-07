@@ -240,3 +240,38 @@ def test_switching_linear_hmm_shape(init_cat_shape, init_mvn_shape,
     data = obs_mvn.expand(shape).sample()[..., 0, :]
     actual_log_prob = actual_dist.log_prob(data)
     assert actual_log_prob.shape == expected_batch_shape
+
+
+@pytest.mark.parametrize("num_components", [2])
+@pytest.mark.parametrize("obs_dim", [1, 2])
+@pytest.mark.parametrize("hidden_dim", [1, 2])
+@pytest.mark.parametrize("num_steps", [1, 2, 3, 4, 5, 6])
+def test_switching_linear_hmm_log_prob(num_steps, hidden_dim, obs_dim, num_components):
+    # This tests agreement between an SLDS and an HMM when all components
+    # are identical, i.e. so latent can be marginalized out.
+    init_logits = torch.randn(hidden_dim)
+    init_mvn = random_mvn((), hidden_dim)
+    trans_logits = torch.zeros(hidden_dim)
+    trans_matrix = torch.randn(hidden_dim, hidden_dim)
+    trans_mvn = random_mvn((), hidden_dim)
+    obs_matrix = torch.randn(hidden_dim, obs_dim)
+    obs_mvn = random_mvn((), obs_dim)
+
+    expected_dist = GaussianHMM(init_mvn,
+                                trans_matrix.expand(num_steps, -1, -1),
+                                trans_mvn, obs_matrix, obs_mvn)
+    actual_dist = SwitchingLinearHMM(init_logits, init_mvn,
+                                     trans_logits.expand(num_steps, num_components, -1),
+                                     trans_matrix.expand(num_components, -1, -1),
+                                     trans_mvn.expand((num_components,)),
+                                     obs_matrix.expand(num_components, -1, -1),
+                                     obs_mvn.expand((num_components,)))
+    assert actual_dist.batch_shape == expected_dist.batch_shape
+    assert actual_dist.event_shape == expected_dist.event_shape
+
+    data = obs_mvn.sample(expected_dist.batch_shape + (num_steps,))
+    assert data.shape == expected_dist.shape()
+    expected_log_prob = expected_dist.log_prob(data)
+    assert expected_log_prob.shape == expected_dist.batch_shape
+    actual_log_prob = actual_dist.log_prob(data)
+    assert_close(actual_log_prob, expected_log_prob)
