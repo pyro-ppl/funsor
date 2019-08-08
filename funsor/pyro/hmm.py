@@ -339,7 +339,8 @@ class GaussianDiscreteMRF(FunsorDistribution):
         obs_dim = observation_logits.size(-1)
         assert transition_matrix.shape[-2:] == (hidden_dim, hidden_dim)
         assert transition_dist.event_shape[0] == hidden_dim
-        assert observation_dist.shape()[-2:] == (obs_dim, hidden_dim)
+        assert (observation_dist.batch_shape +
+                observation_dist.event_shape)[-2:] == (obs_dim, hidden_dim)
         shape = broadcast_shape(initial_dist.batch_shape + (1,),
                                 transition_matrix.shape[:-2],
                                 transition_dist.batch_shape,
@@ -379,12 +380,12 @@ class GaussianDiscreteMRF(FunsorDistribution):
         with interpretation(moment_matching):
             logp_oh = self._trans + self._obs(value=value)
             logp_oh = sequential_sum_product(ops.logaddexp, ops.add,
-                                             logp_oh, "time", "state", "state(time=1)")
+                                             logp_oh, "time", {"state": "state(time=1)"})
             logp_oh += self._init
             logp_oh = logp_oh.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
             logp_h = self._trans + self._obs.reduce(ops.logaddexp, "value")
             logp_h = sequential_sum_product(ops.logaddexp, ops.add,
-                                            logp_h, "time", "state", "state(time=1)")
+                                            logp_h, "time", {"state": "state(time=1)"})
             logp_h += self._init
             logp_h = logp_h.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
             result = logp_oh - logp_h
@@ -397,13 +398,14 @@ class GaussianDiscreteMRF(FunsorDistribution):
         raise NotImplementedError("TODO")
 
     def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(DiscreteHMM, _instance)
+        new = self._get_checked_instance(GaussianDiscreteMRF, _instance)
         batch_shape = torch.Size(batch_shape)
-        new._has_rsample = self._has_rsample
-        new._init = self._init
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
         new._trans = self._trans
         new._obs = self._obs
-        super(GaussianDiscreteMRF, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        super(GaussianDiscreteMRF, new).__init__(
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
         return new
 
 
