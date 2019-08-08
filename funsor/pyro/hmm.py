@@ -14,8 +14,8 @@ from funsor.pyro.convert import (
     tensor_to_funsor
 )
 from funsor.pyro.distribution import FunsorDistribution
-from funsor.sum_product import sequential_sum_product
-from funsor.terms import Variable, lazy
+from funsor.sum_product import naive_sequential_sum_product, sequential_sum_product
+from funsor.terms import Variable, eager, lazy, moment_matching
 
 
 class DiscreteHMM(FunsorDistribution):
@@ -86,10 +86,12 @@ class DiscreteHMM(FunsorDistribution):
         new = self._get_checked_instance(DiscreteHMM, _instance)
         batch_shape = torch.Size(batch_shape)
         new._has_rsample = self._has_rsample
-        new._init = self._init
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
         new._trans = self._trans
         new._obs = self._obs
-        super(DiscreteHMM, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        super(DiscreteHMM, new).__init__(
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
         return new
 
 
@@ -149,6 +151,7 @@ class GaussianHMM(FunsorDistribution):
         assert isinstance(observation_matrix, torch.Tensor)
         assert isinstance(observation_dist, torch.distributions.MultivariateNormal)
         hidden_dim, obs_dim = observation_matrix.shape[-2:]
+        assert obs_dim >= hidden_dim // 2, "obs_dim must be at least half of hidden_dim"
         assert initial_dist.event_shape == (hidden_dim,)
         assert transition_matrix.shape[-2:] == (hidden_dim, hidden_dim)
         assert transition_dist.event_shape == (hidden_dim,)
@@ -182,19 +185,6 @@ class GaussianHMM(FunsorDistribution):
         super(GaussianHMM, self).__init__(
             funsor_dist, batch_shape, event_shape, dtype, validate_args)
 
-    def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(GaussianHMM, _instance)
-        batch_shape = torch.Size(broadcast_shape(self.batch_shape, batch_shape))
-        # We only need to expand one of the inputs, since batch_shape is determined
-        # by broadcasting all three. To save computation in _sequential_gaussian_tensordot(),
-        # we expand only _init, which is applied only after _sequential_gaussian_tensordot().
-        new._init = self._init.expand(batch_shape)
-        new._trans = self._trans
-        new._obs = self._obs
-        super(GaussianHMM, new).__init__(batch_shape, self.event_shape, validate_args=False)
-        new.validate_args = self.__dict__.get('_validate_args')
-        return new
-
     def log_prob(self, value):
         if self._validate_args:
             self._validate_sample(value)
@@ -207,8 +197,8 @@ class GaussianHMM(FunsorDistribution):
         result = self._trans + obs
         result = sequential_sum_product(ops.logaddexp, ops.add,
                                         result, "time", {"state": "state(time=1)"})
-        result = self._init + result.reduce(ops.logaddexp, "state(time=1)")
-        result = result.reduce(ops.logaddexp, "state")
+        result += self._init
+        result = result.reduce(ops.logaddexp, frozenset(["state", "state(time=1)"]))
 
         result = funsor_to_tensor(result, ndims=ndims)
         return result
@@ -218,12 +208,14 @@ class GaussianHMM(FunsorDistribution):
         raise NotImplementedError("TODO")
 
     def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(DiscreteHMM, _instance)
+        new = self._get_checked_instance(GaussianHMM, _instance)
         batch_shape = torch.Size(batch_shape)
-        new._init = self._init
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
         new._trans = self._trans
         new._obs = self._obs
-        super(GaussianMRF, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        super(GaussianHMM, new).__init__(
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
         return new
 
 
@@ -293,10 +285,152 @@ class GaussianMRF(FunsorDistribution):
         raise NotImplementedError("TODO")
 
     def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(DiscreteHMM, _instance)
+        new = self._get_checked_instance(GaussianMRF, _instance)
         batch_shape = torch.Size(batch_shape)
-        new._init = self._init
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
         new._trans = self._trans
         new._obs = self._obs
-        super(GaussianMRF, new).__init__(self.funsor_dist, batch_shape, self.event_shape)
+        super(GaussianMRF, new).__init__(
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
+        return new
+
+
+class SwitchingLinearHMM(FunsorDistribution):
+    r"""
+    Switching Linear Dynamical System represented as a Hidden Markov Model.
+
+    This corresponds to the generative model::
+
+        z = Categorical(logits=initial_logits).sample()
+        y = initial_mvn[z].sample()
+        x = []
+        for t in range(num_steps):
+            z = Categorical(logits=transition_logits[t, z]).sample()
+            y = y @ transition_matrix[t, z] + transition_mvn[t, z].sample()
+            x.append(y @ observation_matrix[t, z] + observation_mvn[t, z].sample())
+
+    Viewed as a dynamic Bayesian network::
+
+        z[t-1] ----> z[t] ---> z[t+1]         Discrete latent class
+           |  \       |  \       |   \
+           | y[t-1] ----> y[t] ----> y[t+1]   Gaussian latent state
+           |   /      |   /      |   /
+           V  /       V  /       V  /
+        x[t-1]       x[t]      x[t+1]         Gaussian observation
+
+    Let ``class`` be the latent class, ``state`` be the latent multivariate
+    normal state, and ``value`` be the observed multivariate normal value.
+
+    :param ~torch.Tensor initial_logits: Represents ``p(class[0])``.
+    :param ~torch.distributions.MultivariateNormal initial_mvn: Represents
+        ``p(state[0] | class[0])``.
+    :param ~torch.Tensor transition_logits: Represents
+        ``p(class[t+1] | class[t])``.
+    :param ~torch.Tensor transition_matrix:
+    :param ~torch.distributions.MultivariateNormal transition_mvn: Together
+        with ``transition_matrix``, this represents
+        ``p(state[t], state[t+1] | class[t])``.
+    :param ~torch.Tensor observation_matrix:
+    :param ~torch.distributions.MultivariateNormal observation_mvn: Together
+        with ``observation_matrix``, this represents
+        ``p(value[t+1], state[t+1] | class[t+1])``.
+    :param bool exact: If True, perform exact inference at cost exponential in
+        ``num_steps``. If False, use a :func:`~funsor.terms.moment_matching`
+        approximation and use parallel scan algorithm to reduce parallel
+        complexity to logarithmic in ``num_steps``. Defaults to False.
+    """
+    has_rsample = True
+    arg_constraints = {}
+
+    def __init__(self, initial_logits, initial_mvn,
+                 transition_logits, transition_matrix, transition_mvn,
+                 observation_matrix, observation_mvn, exact=False, validate_args=None):
+        assert isinstance(initial_logits, torch.Tensor)
+        assert isinstance(initial_mvn, torch.distributions.MultivariateNormal)
+        assert isinstance(transition_logits, torch.Tensor)
+        assert isinstance(transition_matrix, torch.Tensor)
+        assert isinstance(transition_mvn, torch.distributions.MultivariateNormal)
+        assert isinstance(observation_matrix, torch.Tensor)
+        assert isinstance(observation_mvn, torch.distributions.MultivariateNormal)
+        hidden_cardinality = initial_logits.size(-1)
+        hidden_dim, obs_dim = observation_matrix.shape[-2:]
+        assert obs_dim >= hidden_dim // 2, "obs_dim must be at least half of hidden_dim"
+        assert initial_mvn.event_shape[0] == hidden_dim
+        assert transition_logits.size(-1) == hidden_cardinality
+        assert transition_matrix.shape[-2:] == (hidden_dim, hidden_dim)
+        assert transition_mvn.event_shape[0] == hidden_dim
+        assert observation_mvn.event_shape[0] == obs_dim
+        init_shape = broadcast_shape(initial_logits.shape, initial_mvn.batch_shape)
+        shape = broadcast_shape(init_shape[:-1] + (1, init_shape[-1]),
+                                transition_logits.shape[:-1],
+                                transition_matrix.shape[:-2],
+                                transition_mvn.batch_shape,
+                                observation_matrix.shape[:-2],
+                                observation_mvn.batch_shape)
+        assert shape[-1] == hidden_cardinality
+        batch_shape, time_shape = shape[:-2], shape[-2:-1]
+        event_shape = time_shape + (obs_dim,)
+
+        # Normalize.
+        initial_logits = initial_logits - initial_logits.logsumexp(-1, True)
+        transition_logits = transition_logits - transition_logits.logsumexp(-1, True)
+
+        # Convert tensors and distributions to funsors.
+        init = (tensor_to_funsor(initial_logits, ("class",)) +
+                dist_to_funsor(initial_mvn, ("class",))(value="state"))
+        trans = (tensor_to_funsor(transition_logits, ("time", "class", "class(time=1)")) +
+                 matrix_and_mvn_to_funsor(transition_matrix, transition_mvn,
+                                          ("time", "class(time=1)"), "state", "state(time=1)"))
+        obs = matrix_and_mvn_to_funsor(observation_matrix, observation_mvn,
+                                       ("time", "class(time=1)"), "state(time=1)", "value")
+        if "class(time=1)" not in set(trans.inputs).union(obs.inputs):
+            raise ValueError("neither transition nor observation depend on discrete state")
+        dtype = "real"
+
+        # Construct the joint funsor.
+        with interpretation(lazy):
+            # TODO perform math here once sequential_sum_product has been
+            #   implemented as a first-class funsor.
+            funsor_dist = Variable("value", obs.inputs["value"])  # a bogus value
+            # Until funsor_dist is defined, we save factors for hand-computation in .log_prob().
+            self._init = init
+            self._trans = trans
+            self._obs = obs
+
+        super(SwitchingLinearHMM, self).__init__(
+            funsor_dist, batch_shape, event_shape, dtype, validate_args)
+        self.exact = exact
+
+    # TODO remove this once self.funsor_dist is defined.
+    def log_prob(self, value):
+        ndims = max(len(self.batch_shape), value.dim() - 2)
+        value = tensor_to_funsor(value, ("time",), 1)
+
+        seq_sum_prod = naive_sequential_sum_product if self.exact else sequential_sum_product
+        with interpretation(eager if self.exact else moment_matching):
+            result = self._trans + self._obs(value=value)
+            result = seq_sum_prod(ops.logaddexp, ops.add, result, "time",
+                                  {"class": "class(time=1)", "state": "state(time=1)"})
+            result += self._init
+            result = result.reduce(
+                ops.logaddexp, frozenset(["class", "state", "class(time=1)", "state(time=1)"]))
+
+            result = funsor_to_tensor(result, ndims=ndims)
+            return result
+
+    # TODO remove this once self.funsor_dist is defined.
+    def _sample_delta(self, sample_shape):
+        raise NotImplementedError("TODO")
+
+    def expand(self, batch_shape, _instance=None):
+        new = self._get_checked_instance(SwitchingLinearHMM, _instance)
+        batch_shape = torch.Size(batch_shape)
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
+        new._trans = self._trans
+        new._obs = self._obs
+        new.exact = self.exact
+        super(SwitchingLinearHMM, new).__init__(
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
         return new
