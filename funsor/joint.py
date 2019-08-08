@@ -1,5 +1,4 @@
 import functools
-import math
 from collections import OrderedDict
 from functools import reduce
 
@@ -8,7 +7,7 @@ import funsor.ops as ops
 import funsor.terms
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.gaussian import Gaussian, sym_inverse
+from funsor.gaussian import Gaussian, cholesky_solve, cholesky_inverse
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, NegOp, SubOp
@@ -155,28 +154,28 @@ class Joint(Funsor, metaclass=JointMeta):
 
             # Moment-matching approximation.
             assert approx_vars and not exact_vars
-            discrete = self.discrete
-
-            new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
-            num_elements = reduce(ops.mul, [
-                self.inputs[k].num_elements for k in approx_vars.difference(discrete.inputs)], 1)
-            if num_elements != 1:
-                new_discrete -= math.log(num_elements)
-
             gaussian = self.gaussian
+            discrete = self.discrete + gaussian.log_normalizer
+            new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
+
             int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
             probs = (discrete - new_discrete).exp()
-            old_loc = Tensor(gaussian.loc, int_inputs)
+            old_loc = Tensor(cholesky_solve(gaussian.info_vec.unsqueeze(-1),
+                                            gaussian._precision_chol).squeeze(-1),
+                             int_inputs)
             new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
-            old_cov = Tensor(sym_inverse(gaussian.precision), int_inputs)
+            old_cov = Tensor(cholesky_inverse(gaussian._precision_chol), int_inputs)
             diff = old_loc - new_loc
             outers = Tensor(diff.data.unsqueeze(-1) * diff.data.unsqueeze(-2), diff.inputs)
             new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
                        (probs * outers).reduce(ops.add, approx_vars))
-            new_precision = Tensor(sym_inverse(new_cov.data), new_cov.inputs)
+            new_precision = Tensor(cholesky_inverse(new_cov.data.cholesky()), new_cov.inputs)
+            new_info_vec = new_precision.data.matmul(new_loc.data.unsqueeze(-1)).squeeze(-1)
             new_inputs = new_loc.inputs.copy()
             new_inputs.update((k, d) for k, d in self.gaussian.inputs.items() if d.dtype == 'real')
-            new_gaussian = Gaussian(new_loc.data, new_precision.data, new_inputs)
+            new_gaussian = Gaussian(new_info_vec, new_precision.data, new_inputs)
+            new_discrete -= new_gaussian.log_normalizer
+
             result = Joint(self.deltas, new_discrete, new_gaussian)
             return result.reduce(ops.logaddexp, lazy_vars)
 

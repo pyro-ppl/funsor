@@ -9,7 +9,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import Affine
 from funsor.domains import bint, reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
 from funsor.interpreter import interpretation
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
@@ -373,10 +373,11 @@ def eager_normal(loc, scale, value):
     inputs.update(value.inputs)
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
-    log_prob = -0.5 * math.log(2 * math.pi) - scale.log()
-    loc = loc.unsqueeze(-1)
-    precision = scale.pow(-2).unsqueeze(-1).unsqueeze(-1)
-    return Tensor(log_prob, int_inputs) + Gaussian(loc, precision, inputs)
+    precision = scale.pow(-2)
+    info_vec = (precision * loc).unsqueeze(-1)
+    precision = precision.unsqueeze(-1).unsqueeze(-1)
+    log_prob = -0.5 * math.log(2 * math.pi) - scale.log() - 0.5 * (loc * info_vec).squeeze(-1)
+    return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
 
 
 # Create a transformed Gaussian from a ground prior or ground likelihood.
@@ -395,6 +396,7 @@ def eager_normal(loc, scale, value):
     affine = (loc - value) / scale
     assert isinstance(affine, Affine)
     real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
+    int_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype != 'real')
     assert not any(v.shape for v in real_inputs.values())
 
     tensors = [affine.const] + [c for v, c in affine.coeffs.items()]
@@ -411,9 +413,10 @@ def eager_normal(loc, scale, value):
             precision[..., i, j] = c1 * c2
     loc = loc.as_tensor()
     precision = precision.as_tensor()
+    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
 
-    log_prob = -0.5 * math.log(2 * math.pi) - scale.log()
-    return log_prob + Gaussian(loc, precision, affine.inputs)
+    log_prob = -0.5 * math.log(2 * math.pi) - scale.data.log() - 0.5 * (loc * info_vec).sum(-1)
+    return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, affine.inputs)
 
 
 class MultivariateNormal(Distribution):
@@ -452,10 +455,12 @@ def eager_mvn(loc, scale_tril, value):
     inputs.update(value.inputs)
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
-    log_prob = -0.5 * dim * math.log(2 * math.pi) - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
-    inv_scale_tril = torch.inverse(scale_tril)
-    precision = torch.matmul(inv_scale_tril.transpose(-1, -2), inv_scale_tril)
-    return Tensor(log_prob, int_inputs) + Gaussian(loc, precision, inputs)
+    precision = cholesky_inverse(scale_tril)
+    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
+    log_prob = (-0.5 * dim * math.log(2 * math.pi)
+                - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+                - 0.5 * (loc * info_vec).sum(-1))
+    return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
 
 
 __all__ = [

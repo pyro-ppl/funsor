@@ -130,7 +130,7 @@ def Cat(parts, name):
         inputs = int_inputs.copy()
         inputs.update(real_inputs)
         discretes = []
-        locs = []
+        info_vecs = []
         precisions = []
         for part in parts:
             inputs[name] = part.inputs[name]  # typically a smaller bint
@@ -145,20 +145,20 @@ def Cat(parts, name):
                 discrete = align_tensor(int_inputs, part.discrete).expand(shape)
                 gaussian = part.gaussian
             discretes.append(discrete)
-            loc, precision = align_gaussian(inputs, gaussian)
-            locs.append(loc.expand(shape + (-1,)))
+            info_vec, precision = align_gaussian(inputs, gaussian)
+            info_vecs.append(info_vec.expand(shape + (-1,)))
             precisions.append(precision.expand(shape + (-1, -1)))
 
         dim = tuple(inputs).index(name)
-        loc = torch.cat(locs, dim=dim)
+        info_vec = torch.cat(info_vecs, dim=dim)
         precision = torch.cat(precisions, dim=dim)
-        inputs[name] = bint(loc.size(dim))
+        inputs[name] = bint(info_vec.size(dim))
         int_inputs[name] = inputs[name]
-        result = Gaussian(loc, precision, inputs)
+        result = Gaussian(info_vec, precision, inputs)
         if any(d is not None for d in discretes):
             for i, d in enumerate(discretes):
                 if d is None:
-                    discretes[i] = locs[i].new_zeros(locs[i].shape[:-1])
+                    discretes[i] = info_vecs[i].new_zeros(info_vecs[i].shape[:-1])
             discrete = torch.cat(discretes, dim=dim)
             result += Tensor(discrete, int_inputs)
         return result
@@ -193,7 +193,33 @@ def Slice(name, *args):
     return Tensor(data, inputs, dtype=bound)
 
 
-def sequential_sum_product(sum_op, prod_op, trans, time, prev, curr):
+def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
+    assert isinstance(sum_op, AssociativeOp)
+    assert isinstance(prod_op, AssociativeOp)
+    assert isinstance(trans, Funsor)
+    assert isinstance(time, str)
+    assert isinstance(step, dict)
+    assert all(isinstance(k, str) for k in step.keys())
+    assert all(isinstance(v, str) for v in step.values())
+    if time not in trans.inputs:
+        return trans  # edge case of a single time step
+
+    step = OrderedDict(sorted(step.items()))
+    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
+    prev_to_drop = dict(zip(step.keys(), drop))
+    curr_to_drop = dict(zip(step.values(), drop))
+    drop = frozenset(drop)
+
+    factors = [trans(**{time: t}) for t in range(trans.inputs[time].size)]
+    while len(factors) > 1:
+        y = factors.pop()(**prev_to_drop)
+        x = factors.pop()(**curr_to_drop)
+        xy = prod_op(x, y).reduce(sum_op, drop)
+        factors.append(xy)
+    return factors[0]
+
+
+def sequential_sum_product(sum_op, prod_op, trans, time, step):
     """
     For a funsor ``trans`` with dimensions ``time``, ``prev`` and ``curr``,
     computes a recursion equivalent to::
@@ -201,7 +227,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, prev, curr):
         tail_time = 1 + arange("time", trans.inputs["time"].size - 1)
         tail = sequential_sum_product(sum_op, prod_op,
                                       trans(time=tail_time),
-                                      "time", "prev", "curr")
+                                      "time", {"prev": "curr"})
         return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
            .reduce(sum_op, "drop")
 
@@ -211,25 +237,23 @@ def sequential_sum_product(sum_op, prod_op, trans, time, prev, curr):
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
     :param ~funsor.terms.Funsor trans: A transition funsor.
     :param str time: The name of the time input dimension.
-    :param prev: The name or tuple of names of previous state inputs.
-    :type prev: str or tuple
-    :param curr: The name or tuple of names of current state inputs.
-    :type curr: str or tuple
+    :param dict step: A dict mapping previous variables to current variables.
+        This can contain multiple pairs of prev->curr variable names.
     """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
     assert isinstance(time, str)
-    if isinstance(prev, str):
-        prev = (prev,)
-        curr = (curr,)
-    assert isinstance(prev, tuple) and all(isinstance(n, str) for n in prev)
-    assert isinstance(curr, tuple) and all(isinstance(n, str) for n in curr)
-    assert len(prev) == len(curr)
+    assert isinstance(step, dict)
+    assert all(isinstance(k, str) for k in step.keys())
+    assert all(isinstance(v, str) for v in step.values())
+    if time not in trans.inputs:
+        return trans  # edge case of a single time step
 
-    drop = tuple("_drop_{}".format(i) for i in range(len(prev)))
-    prev_to_drop = dict(zip(prev, drop))
-    curr_to_drop = dict(zip(curr, drop))
+    step = OrderedDict(sorted(step.items()))
+    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
+    prev_to_drop = dict(zip(step.keys(), drop))
+    curr_to_drop = dict(zip(step.values(), drop))
     drop = frozenset(drop)
 
     while trans.inputs[time].size > 1:
