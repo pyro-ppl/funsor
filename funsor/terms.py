@@ -160,6 +160,7 @@ class FunsorMeta(type):
         else:
             cls._ast_fields = getargspec(cls.__init__)[0][1:]
             cls._cons_cache = WeakValueDictionary()
+            cls._type_cache = WeakValueDictionary()
 
     def __call__(cls, *args, **kwargs):
         if cls._ast_types:
@@ -175,16 +176,17 @@ class FunsorMeta(type):
 
         return interpret(cls, *args)
 
-    @functools.lru_cache(maxsize=None)  # TODO proper type cons-hashing instead of this
     def __getitem__(cls, arg_types):
         if not isinstance(arg_types, tuple):
             arg_types = (arg_types,)
-        assert not cls._ast_types, "cannot subscript a subscripted type {}".format(cls)
-        assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
-        new_name = cls.__name__ + "[{}]".format(", ".join(t.__name__ for t in arg_types))
-        new_dct = cls.__dict__.copy()
-        new_dct.update({"_ast_types": arg_types})
-        return FunsorMeta(new_name, (cls,), new_dct)
+        if arg_types not in cls._type_cache:
+            assert not cls._ast_types, "cannot subscript a subscripted type {}".format(cls)
+            assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
+            new_name = cls.__name__ + "[{}]".format(", ".join(t.__name__ for t in arg_types))
+            new_dct = cls.__dict__.copy()
+            new_dct.update({"_ast_types": arg_types})
+            cls._type_cache[arg_types] = FunsorMeta(new_name, (cls,), new_dct)
+        return cls._type_cache[arg_types]
 
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
         if not isinstance(subcls, FunsorMeta):
