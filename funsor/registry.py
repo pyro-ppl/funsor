@@ -10,6 +10,7 @@ class KeyedRegistry(object):
         self.registry = defaultdict(lambda: Dispatcher('f'))
 
     def register(self, key, *types):
+        key = getattr(key, "_ast_origin", key)
         register = self.registry[key].register
         if self.default:
             objects = (object,) * len(types)
@@ -26,6 +27,7 @@ class KeyedRegistry(object):
         return decorator
 
     def __call__(self, key, *args, **kwargs):
+        key = getattr(key, "_ast_origin", key)
         if self.default is None or key in self.registry:
             return self.registry[key](*args, **kwargs)
         return self.default(*args, **kwargs)

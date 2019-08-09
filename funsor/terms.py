@@ -68,7 +68,8 @@ def reflect(cls, *args):
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
-    result = super(FunsorMeta, cls).__call__(*args)
+    cls_specific = (cls._ast_origin if cls._ast_types else cls)[tuple(map(type, args))]
+    result = super(FunsorMeta, cls_specific).__call__(*args)
     result._ast_values = args
 
     # alpha-convert eagerly upon binding any variable
@@ -129,7 +130,7 @@ interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
 class FunsorMeta(type):
     """
-    Metaclass for Funsors to perform three independent tasks:
+    Metaclass for Funsors to perform four independent tasks:
 
     1.  Fill in default kwargs and convert kwargs to args before deferring to a
         nonstandard interpretation. This allows derived metaclasses to fill in
@@ -147,13 +148,23 @@ class FunsorMeta(type):
         and for unit testing, since ``.__eq__()`` is overloaded with
         elementwise semantics. Cons hashing differs from memoization in that
         it incurs no memory overhead beyond the cons hash dict.
+    4.  Support subtyping with parameters for pattern matching, e.g. Number[int, int].
     """
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
-        cls._ast_fields = getargspec(cls.__init__)[0][1:]
-        cls._cons_cache = WeakValueDictionary()
+        if not hasattr(cls, "_ast_types"):
+            cls._ast_types = ()
+        if cls._ast_types:
+            base, = bases
+            cls._ast_origin = base
+        else:
+            cls._ast_fields = getargspec(cls.__init__)[0][1:]
+            cls._cons_cache = WeakValueDictionary()
 
     def __call__(cls, *args, **kwargs):
+        if cls._ast_types:
+            cls = cls._ast_origin
+
         # Convert kwargs to args.
         if kwargs:
             args = list(args)
@@ -163,6 +174,36 @@ class FunsorMeta(type):
             args = tuple(args)
 
         return interpret(cls, *args)
+
+    @functools.lru_cache(maxsize=None)  # TODO proper type cons-hashing instead of this
+    def __getitem__(cls, arg_types):
+        if not isinstance(arg_types, tuple):
+            arg_types = (arg_types,)
+        assert not cls._ast_types, "cannot subscript a subscripted type {}".format(cls)
+        assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
+        new_name = cls.__name__ + "[{}]".format(", ".join(t.__name__ for t in arg_types))
+        new_dct = cls.__dict__.copy()
+        new_dct.update({"_ast_types": arg_types})
+        return FunsorMeta(new_name, (cls,), new_dct)
+
+    def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
+        if not isinstance(subcls, FunsorMeta):
+            return super(FunsorMeta, getattr(cls, "_ast_origin", cls)).__subclasscheck__(subcls)
+        elif cls._ast_types and subcls._ast_types:
+            return subcls is cls or \
+                (super(FunsorMeta, cls._ast_origin).__subclasscheck__(subcls._ast_origin) and
+                 len(cls._ast_types) == len(subcls._ast_types) and
+                 all(issubclass(subcls_param, param)
+                     for subcls_param, param in zip(subcls._ast_types, cls._ast_types)))
+        elif not cls._ast_types and subcls._ast_types:
+            return super(FunsorMeta, cls).__subclasscheck__(subcls._ast_origin)
+        elif cls._ast_types and not subcls._ast_types:
+            # issubclass(Number, Number[int, int]) == False
+            # issubclass(SubclassOfNumber, Number[int, int]) == True
+            return cls._ast_origin is not subcls and super(FunsorMeta, cls._ast_origin).__subclasscheck__(subcls)
+        elif not cls._ast_types and not subcls._ast_types:
+            return super(FunsorMeta, cls).__subclasscheck__(subcls)
+        raise TypeError("could not unify: {}, {}".format(cls, subcls))
 
 
 class Funsor(object, metaclass=FunsorMeta):
