@@ -185,7 +185,8 @@ class FunsorMeta(type):
             new_name = cls.__name__ + "[{}]".format(", ".join(t.__name__ for t in arg_types))
             new_dct = cls.__dict__.copy()
             new_dct.update({"_ast_types": arg_types})
-            cls._type_cache[arg_types] = FunsorMeta(new_name, (cls,), new_dct)
+            # type(cls) to handle FunsorMeta subclasses
+            cls._type_cache[arg_types] = type(cls)(new_name, (cls,), new_dct)
         return cls._type_cache[arg_types]
 
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
