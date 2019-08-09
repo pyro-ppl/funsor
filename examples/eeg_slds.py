@@ -40,19 +40,26 @@ def main(args):
     hidden_dim = args.hidden_dim
     T, obs_dim = data.shape
 
-    N_test = 100
-    N_train = T - 100
+    N_test = 180
+    N_train = T - N_test
+
+    assert N_train % args.num_splits == 0
+    if args.num_splits > 1:
+        training_data = data[0:N_train, :].reshape(args.num_splits, -1, obs_dim)
+    else:
+        training_data = data[0:N_train, :]
 
     print("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
-    print("N_train: {}  N_test: {}".format(N_train, N_test))
+    print("N_train: {}  N_test: {}  num_splits: {}".format(N_train, N_test, args.num_splits))
 
     if args.device == 'gpu':
         torch.set_default_tensor_type(torch.cuda.FloatTensor)
         data = data.cuda()
+        training_data = training_data.cuda()
 
     initial_logits = 0.1 * torch.randn(K)
     transition_logits = 0.1 * torch.randn(K, K)
-    transition_matrix = 0.3 * torch.randn(hidden_dim, hidden_dim)
+    transition_matrix = 0.1 * torch.randn(hidden_dim, hidden_dim) + torch.eye(hidden_dim)
     log_transition_noise = 0.1 * torch.randn(hidden_dim)
     observation_matrix = 0.3 * torch.randn(hidden_dim, obs_dim)
     log_obs_noise = 0.1 * torch.randn(obs_dim)
@@ -67,7 +74,7 @@ def main(args):
         p.requires_grad_(True)
 
     adam = torch.optim.Adam(params, lr=args.learning_rate)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[25, 50], gamma=0.2)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[20, 50], gamma=0.2)
     ts = [time.time()]
 
     for step in range(args.num_steps):
@@ -80,7 +87,7 @@ def main(args):
                                        transition_mvn=transition_mvn, observation_matrix=observation_matrix,
                                        observation_mvn=observation_mvn)
 
-        nll = -slds_dist.log_prob(data[0:N_train, :]) / N_train
+        nll = -slds_dist.log_prob(training_data).mean() / training_data.size(-2)
         nll.backward()
         clip(params, clip=args.clip)
 
@@ -90,10 +97,11 @@ def main(args):
         ts.append(time.time())
         step_dt = ts[-1] - ts[-2]
 
-        if step % 2 == 0:
+        if step % 5 == 0:
             with torch.no_grad():
-                ten_step_ll = (slds_dist.log_prob(data[0:N_train + 10, :]) + N_train * nll).item() / 10.0
-                hun_step_ll = (slds_dist.log_prob(data[0:N_train + 100, :]) + N_train * nll).item() / 100.0
+                zer_step_ll = slds_dist.log_prob(data[0:N_train, :]).item()
+                ten_step_ll = (slds_dist.log_prob(data[0:N_train + 10, :]) - zer_step_ll).item() / 10.0
+                hun_step_ll = (slds_dist.log_prob(data[0:N_train + 180, :]) - zer_step_ll).item() / 180.0
             print("[step %03d]  training nll: %.4f   test lls: %.4f  %.4f \t\t (step_dt: %.2f)" % (step,
                   nll.item(), ten_step_ll, hun_step_ll, step_dt))
 
@@ -112,6 +120,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-n", "--num-steps", default=100, type=int)
+    parser.add_argument("-s", "--num-splits", default=25, type=int)
     parser.add_argument("-hd", "--hidden-dim", default=5, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.1, type=float)
