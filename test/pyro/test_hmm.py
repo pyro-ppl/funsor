@@ -263,6 +263,12 @@ def test_switching_linear_hmm_shape(init_cat_shape, init_mvn_shape,
     assert actual_log_prob.shape == expected_batch_shape
     check_expand(actual_dist, data)
 
+    final_cat, final_mvn = actual_dist.filter(data)
+    assert isinstance(final_cat, dist.Categorical)
+    assert isinstance(final_mvn, dist.MultivariateNormal)
+    assert final_cat.batch_shape == actual_dist.batch_shape
+    assert final_mvn.batch_shape == actual_dist.batch_shape + final_cat.logits.shape[-1:]
+
 
 @pytest.mark.parametrize("num_components", [2, 3])
 @pytest.mark.parametrize("obs_dim,hidden_dim",

@@ -96,6 +96,56 @@ def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
     return Tensor(log_prob, loc.inputs) + Gaussian(info_vec, precision.data, inputs)
 
 
+def funsor_to_mvn(gaussian, ndims, event_inputs=()):
+    """
+    Convert a :class:`~funsor.terms.Funsor` to a
+    :class:`pyro.distributions.MultivariateNormal` .
+    """
+    assert sum(1 for d in gaussian.inputs.values() if d.dtype == "real") == 1
+    if isinstance(gaussian, Joint):
+        gaussian = gaussian.gaussian
+    assert isinstance(gaussian, Gaussian)
+
+    precision = gaussian.precision
+    loc = gaussian.info_vec.unsqueeze(-1).cholesky_solve(precision.cholesky()).squeeze(-1)
+
+    int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != "real")
+    loc = Tensor(loc, int_inputs)
+    precision = Tensor(precision, int_inputs)
+    assert len(loc.output.shape) == 1
+    assert precision.output.shape == loc.output.shape * 2
+
+    loc = funsor_to_tensor(loc, ndims + 1, event_inputs)
+    precision = funsor_to_tensor(precision, ndims + 2, event_inputs)
+    return pyro.distributions.MultivariateNormal(loc, precision_matrix=precision)
+
+
+def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
+    """
+    Converts a labeled gaussian mixture model to a pair of distributions.
+
+    :return: A pair ``(cat, mvn)``, where ``cat`` is a
+    :class:`~pyro.distributions.Categorical` distribution over mixture
+        components and ``mvn`` is a
+        :class:`~pyro.distributions.MultivariateNormal` with rightmost
+        batch dimension ranging over mixture components.
+    """
+    assert isinstance(funsor_, Joint), funsor_
+    assert sum(1 for d in funsor_.inputs.values() if d.dtype == "real") == 1
+    assert event_inputs, "no components name found"
+    assert not funsor_.deltas
+    discrete = funsor_.discrete
+    gaussian = funsor_.gaussian
+    assert isinstance(discrete, Tensor)
+    assert isinstance(gaussian, Gaussian)
+
+    logits = funsor_to_tensor(discrete + gaussian.log_normalizer, ndims + 1, event_inputs)
+    cat = pyro.distributions.Categorical(logits=logits)
+    mvn = funsor_to_mvn(gaussian, ndims + 1, event_inputs)
+    assert cat.batch_shape == mvn.batch_shape[:-1]
+    return cat, mvn
+
+
 def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_name="value_y"):
     """
     Convert a noisy affine function to a Gaussian. The noisy affine function is defined as::
@@ -133,30 +183,6 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
     inputs[x_name] = reals(x_size)
     inputs[y_name] = reals(y_size)
     return tensor_to_funsor(log_prob, event_dims) + Gaussian(info_vec.data, precision.data, inputs)
-
-
-def funsor_to_cat_and_mvn(funsor_, int_name, real_name):
-    """
-    Converts a labeled gaussian mixture model to a pair of distributions.
-
-    :param Funsor funsor_:
-    :param str int_name: Name of the int input for components.
-    :param str real_name: Name of the real input.
-    :return: A pair ``(cat, mvn)``, where ``cat`` is a
-    :class:`~pyro.distributions.Categorical` distribution over mixture
-        components and ``mvn`` is a
-        :class:`~pyro.distributions.MultivariateNormal` with rightmost
-        batch dimension ranging over mixture components.
-    """
-    assert isinstance(funsor_, Joint)
-    assert isinstance(funsor_.inputs[int_name].dtype, int)
-    assert funsor_.inputs[real_name].dtype == "real"
-
-    raise NotImplementedError("TODO")
-
-    cat = pyro.distributions.Categorical(logits="TODO")
-    mvn = pyro.distributions.MultivariateNormal(loc="TODO", precision_matrix="TODO")
-    return cat, mvn
 
 
 @singledispatch

@@ -436,7 +436,7 @@ class SwitchingLinearHMM(FunsorDistribution):
         new.validate_args = self.__dict__.get('_validate_args')
         return new
 
-    def forecast(self, value):
+    def filter(self, value):
         ndims = max(len(self.batch_shape), value.dim() - 2)
         value = tensor_to_funsor(value, ("time",), 1)
 
@@ -446,11 +446,9 @@ class SwitchingLinearHMM(FunsorDistribution):
             logp = seq_sum_prod(ops.logaddexp, ops.add, logp, "time",
                                 {"class": "class(time=1)", "state": "state(time=1)"})
             logp += self._init
-            logp = logp.reduce(ops.logaddexp, frozenset(["class(time=1)", "state(time=1)"]))
+            logp = logp.reduce(ops.logaddexp, frozenset(["class", "state"]))
 
-        cat, mvn = funsor_to_cat_and_mvn(logp, "class(time=1)", "state(time=1)")
-        if len(cat.batch_shape) < ndims:
-            cat = cat.expand((1,) * (ndims - len(cat.batch_shape)) + cat.batch_shape)
-        if len(mvn.batch_shape) - 1 < ndims:
-            mvn = mvn.expand((1,) * (ndims - len(mvn.batch_shape) - 1) + mvn.batch_shape)
+        cat, mvn = funsor_to_cat_and_mvn(logp, ndims, ("class(time=1)",))
+        cat = cat.expand(self.batch_shape)
+        mvn = mvn.expand(self.batch_shape + cat.logits.shape[-1:])
         return cat, mvn
