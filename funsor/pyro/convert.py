@@ -2,6 +2,7 @@ import math
 from collections import OrderedDict
 from functools import singledispatch
 
+import pyro.distributions
 import torch
 import torch.distributions as dist
 from pyro.distributions.torch_distribution import MaskedDistribution
@@ -10,6 +11,7 @@ from pyro.distributions.util import broadcast_shape
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian, cholesky_solve
+from funsor.joint import Joint
 from funsor.terms import Independent
 from funsor.torch import Tensor
 
@@ -131,6 +133,30 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
     inputs[x_name] = reals(x_size)
     inputs[y_name] = reals(y_size)
     return tensor_to_funsor(log_prob, event_dims) + Gaussian(info_vec.data, precision.data, inputs)
+
+
+def funsor_to_cat_and_mvn(funsor_, int_name, real_name):
+    """
+    Converts a labeled gaussian mixture model to a pair of distributions.
+
+    :param Funsor funsor_:
+    :param str int_name: Name of the int input for components.
+    :param str real_name: Name of the real input.
+    :return: A pair ``(cat, mvn)``, where ``cat`` is a
+    :class:`~pyro.distributions.Categorical` distribution over mixture
+        components and ``mvn`` is a
+        :class:`~pyro.distributions.MultivariateNormal` with rightmost
+        batch dimension ranging over mixture components.
+    """
+    assert isinstance(funsor_, Joint)
+    assert isinstance(funsor_.inputs[int_name].dtype, int)
+    assert funsor_.inputs[real_name].dtype == "real"
+
+    raise NotImplementedError("TODO")
+
+    cat = pyro.distributions.Categorical(logits="TODO")
+    mvn = pyro.distributions.MultivariateNormal(loc="TODO", precision_matrix="TODO")
+    return cat, mvn
 
 
 @singledispatch

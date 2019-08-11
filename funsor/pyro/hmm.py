@@ -8,6 +8,7 @@ from funsor.domains import reals
 from funsor.interpreter import interpretation
 from funsor.pyro.convert import (
     dist_to_funsor,
+    funsor_to_cat_and_mvn,
     funsor_to_tensor,
     matrix_and_mvn_to_funsor,
     mvn_to_funsor,
@@ -434,3 +435,22 @@ class SwitchingLinearHMM(FunsorDistribution):
             self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
         new.validate_args = self.__dict__.get('_validate_args')
         return new
+
+    def forecast(self, value):
+        ndims = max(len(self.batch_shape), value.dim() - 2)
+        value = tensor_to_funsor(value, ("time",), 1)
+
+        seq_sum_prod = naive_sequential_sum_product if self.exact else sequential_sum_product
+        with interpretation(eager if self.exact else moment_matching):
+            logp = self._trans + self._obs(value=value)
+            logp = seq_sum_prod(ops.logaddexp, ops.add, logp, "time",
+                                {"class": "class(time=1)", "state": "state(time=1)"})
+            logp += self._init
+            logp = logp.reduce(ops.logaddexp, frozenset(["class(time=1)", "state(time=1)"]))
+
+        cat, mvn = funsor_to_cat_and_mvn(logp, "class(time=1)", "state(time=1)")
+        if len(cat.batch_shape) < ndims:
+            cat = cat.expand((1,) * (ndims - len(cat.batch_shape)) + cat.batch_shape)
+        if len(mvn.batch_shape) - 1 < ndims:
+            mvn = mvn.expand((1,) * (ndims - len(mvn.batch_shape) - 1) + mvn.batch_shape)
+        return cat, mvn
