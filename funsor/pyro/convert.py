@@ -125,10 +125,10 @@ def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
     Converts a labeled gaussian mixture model to a pair of distributions.
 
     :return: A pair ``(cat, mvn)``, where ``cat`` is a
-    :class:`~pyro.distributions.Categorical` distribution over mixture
+        :class:`~pyro.distributions.Categorical` distribution over mixture
         components and ``mvn`` is a
-        :class:`~pyro.distributions.MultivariateNormal` with rightmost
-        batch dimension ranging over mixture components.
+        :class:`~pyro.distributions.MultivariateNormal` with rightmost batch
+        dimension ranging over mixture components.
     """
     assert isinstance(funsor_, Joint), funsor_
     assert sum(1 for d in funsor_.inputs.values() if d.dtype == "real") == 1

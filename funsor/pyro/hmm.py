@@ -437,6 +437,19 @@ class SwitchingLinearHMM(FunsorDistribution):
         return new
 
     def filter(self, value):
+        """
+        Compute posterior over final state given a sequence of observations.
+
+        :param ~torch.Tensor value: A sequence of observations.
+        :return: A posterior distribution over latent states at the final time
+            step, represented as a pair ``(cat, mvn)``, where
+            :class:`~pyro.distributions.Categorical` distribution over mixture
+            components and ``mvn`` is a
+            :class:`~pyro.distributions.MultivariateNormal` with rightmost
+            batch dimension ranging over mixture components. This can then be
+            used to initialize a sequential Pyro model for prediction.
+        :rtype: tuple
+        """
         ndims = max(len(self.batch_shape), value.dim() - 2)
         value = tensor_to_funsor(value, ("time",), 1)
 
