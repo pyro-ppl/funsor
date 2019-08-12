@@ -411,9 +411,11 @@ class SwitchingLinearHMM(FunsorDistribution):
         seq_sum_prod = naive_sequential_sum_product if self.exact else sequential_sum_product
         with interpretation(eager if self.exact else moment_matching):
             result = self._trans + self._obs(value=value)
+            print("result0\n", result)
             result = seq_sum_prod(ops.logaddexp, ops.add, result, "time",
                                   {"class": "class(time=1)", "state": "state(time=1)"})
             result += self._init
+            print(result)
             result = result.reduce(
                 ops.logaddexp, frozenset(["class", "state", "class(time=1)", "state(time=1)"]))
 

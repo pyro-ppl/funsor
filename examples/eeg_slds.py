@@ -10,6 +10,7 @@ import torch.distributions as tdist
 import torch.nn as nn
 
 from funsor.pyro import SwitchingLinearHMM
+#from funsor.pyro.convert import funsor_to_cat_and_mvn
 
 
 def download_data():
@@ -38,25 +39,32 @@ class SLDS(nn.Module):
         self.log_obs_noise = nn.Parameter(0.1 * torch.randn(obs_dim))
         self.initial_mvn = None
 
-    def log_prob(self, value):
+    def get_dist(self, prototype):
         if self.initial_mvn is None:
-            initial_mvn_mean = torch.zeros(self.hidden_dim).type_as(value)
-            initial_mvn_cov = torch.eye(self.hidden_dim).type_as(value)
-            self.initial_mvn = tdist.MultivariateNormal(initial_mvn_mean, initial_mvn_cov)
+            initial_mvn_mean = torch.zeros(self.hidden_dim).type_as(prototype)
+            initial_mvn_cov = torch.eye(self.hidden_dim).type_as(prototype)
+            self.initial_mvn = tdist.MultivariateNormal(loc=initial_mvn_mean,
+                                                        covariance_matrix=initial_mvn_cov)
 
-        transition_mvn = tdist.MultivariateNormal(torch.zeros(self.hidden_dim).type_as(value),
-                                                  torch.diag(self.log_transition_noise.exp()))
-        observation_mvn = tdist.MultivariateNormal(torch.zeros(self.obs_dim).type_as(value),
-                                                   torch.diag(self.log_obs_noise.exp()))
-        slds_dist = SwitchingLinearHMM(initial_logits=self.initial_logits,
-                                       initial_mvn=self.initial_mvn,
-                                       transition_logits=self.transition_logits,
-                                       transition_matrix=self.transition_matrix,
-                                       transition_mvn=transition_mvn,
-                                       observation_matrix=self.observation_matrix,
-                                       observation_mvn=observation_mvn)
+        transition_mvn = tdist.MultivariateNormal(loc=torch.zeros(self.hidden_dim).type_as(prototype),
+                                                  covariance_matrix=torch.diag(self.log_transition_noise.exp()))
+        observation_mvn = tdist.MultivariateNormal(loc=torch.zeros(self.obs_dim).type_as(prototype),
+                                                   covariance_matrix=torch.diag(self.log_obs_noise.exp()))
 
-        return slds_dist.log_prob(value)
+        return SwitchingLinearHMM(initial_logits=self.initial_logits,
+                                  initial_mvn=self.initial_mvn,
+                                  transition_logits=self.transition_logits,
+                                  transition_matrix=self.transition_matrix,
+                                  transition_mvn=transition_mvn,
+                                  observation_matrix=self.observation_matrix,
+                                  observation_mvn=observation_mvn,
+                                  exact=True)
+
+    def log_prob(self, value):
+        return self.get_dist(value).log_prob(value)
+
+    def filter(self, value):
+        return self.get_dist(value).filter(value)
 
 
 def main(args):
@@ -73,7 +81,7 @@ def main(args):
     data_std = data.std(0)
     data /= data_std
 
-    data = data[0:600, :]
+    data = data[0:200, 0:5]
 
     hidden_dim = args.hidden_dim
     T, obs_dim = data.shape
@@ -87,9 +95,23 @@ def main(args):
     print("N_train: {}  N_test: {}".format(N_train, N_test))
 
     slds = SLDS(num_components=args.num_components, hidden_dim=hidden_dim, obs_dim=obs_dim)
-    if exists('slds.torch'):
-        print('Loading model from slds.torch...')
-        slds.load_state_dict(torch.load('slds.torch'))
+
+    if 0:
+        if exists('slds.torch'):
+            print('Loading model from slds.torch...')
+            slds.load_state_dict(torch.load('slds.torch'))
+
+
+        for delta in range(3):
+
+            cat, mvn = slds.filter(data[0:N_train + delta, :])
+            #print("cat.logits\n", cat.logits)
+            obs_loc = torch.mv(slds.observation_matrix.t(), mvn.loc[0])
+            print("[delta %d] obs_loc\n" % delta, obs_loc.data.cpu().numpy())
+            print("[delta %d] obs\n" % delta, data[N_train + delta].data.cpu().numpy())
+            #print("mvn.precision\n", mvn.precision_matrix)
+
+        import sys; sys.exit()
 
     if args.device == 'gpu':
         torch.set_default_tensor_type(torch.cuda.FloatTensor)
@@ -103,7 +125,7 @@ def main(args):
     ts = [time.time()]
 
     for step in range(args.num_steps):
-        if step > 30:
+        if step > 90:
             def closure():
                 opt.zero_grad()
                 loss = -slds.log_prob(data[0:N_train, :]) / N_train
@@ -122,7 +144,7 @@ def main(args):
         ts.append(time.time())
         step_dt = ts[-1] - ts[-2]
 
-        if step % 5 == 0:
+        if step % 5 == 0 or step == args.num_steps - 1:
             with torch.no_grad():
                 zer_step_ll = slds.log_prob(data[0:N_train, :]).item()
                 ten_step_ll = (slds.log_prob(data[0:N_train + 10, :]) - zer_step_ll).item() / 10.0
