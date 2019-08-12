@@ -8,6 +8,7 @@ from funsor.domains import reals
 from funsor.interpreter import interpretation
 from funsor.pyro.convert import (
     dist_to_funsor,
+    funsor_to_cat_and_mvn,
     funsor_to_tensor,
     matrix_and_mvn_to_funsor,
     mvn_to_funsor,
@@ -434,3 +435,33 @@ class SwitchingLinearHMM(FunsorDistribution):
             self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
         new.validate_args = self.__dict__.get('_validate_args')
         return new
+
+    def filter(self, value):
+        """
+        Compute posterior over final state given a sequence of observations.
+
+        :param ~torch.Tensor value: A sequence of observations.
+        :return: A posterior distribution over latent states at the final time
+            step, represented as a pair ``(cat, mvn)``, where
+            :class:`~pyro.distributions.Categorical` distribution over mixture
+            components and ``mvn`` is a
+            :class:`~pyro.distributions.MultivariateNormal` with rightmost
+            batch dimension ranging over mixture components. This can then be
+            used to initialize a sequential Pyro model for prediction.
+        :rtype: tuple
+        """
+        ndims = max(len(self.batch_shape), value.dim() - 2)
+        value = tensor_to_funsor(value, ("time",), 1)
+
+        seq_sum_prod = naive_sequential_sum_product if self.exact else sequential_sum_product
+        with interpretation(eager if self.exact else moment_matching):
+            logp = self._trans + self._obs(value=value)
+            logp = seq_sum_prod(ops.logaddexp, ops.add, logp, "time",
+                                {"class": "class(time=1)", "state": "state(time=1)"})
+            logp += self._init
+            logp = logp.reduce(ops.logaddexp, frozenset(["class", "state"]))
+
+        cat, mvn = funsor_to_cat_and_mvn(logp, ndims, ("class(time=1)",))
+        cat = cat.expand(self.batch_shape)
+        mvn = mvn.expand(self.batch_shape + cat.logits.shape[-1:])
+        return cat, mvn
