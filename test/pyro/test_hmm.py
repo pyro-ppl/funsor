@@ -303,3 +303,46 @@ def test_switching_linear_hmm_log_prob(exact, num_steps, hidden_dim, obs_dim, nu
     assert expected_log_prob.shape == expected_dist.batch_shape
     actual_log_prob = actual_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=None)
+
+
+@pytest.mark.parametrize("num_steps", [2, 5, 6])
+@pytest.mark.parametrize("exact", [True, False], ids=["exact", "approx"])
+def test_switching_linear_hmm_log_prob_alternating(exact, num_steps, hidden_dim=4, obs_dim=3, num_components=2):
+    # This tests agreement between an SLDS and an HMM in the case that the two
+    # SLDS discrete states alternate back and forth between 0 and 1 deterministically
+    torch.manual_seed(2)
+    init_logits = torch.tensor([-9e9, 0.0])
+    init_mvn = random_mvn((), hidden_dim)
+
+    left_logits, right_logits = torch.tensor([0.0, -9e9]), torch.tensor([-9e9, 0.0])
+    trans_logits = torch.stack([left_logits if t % 2 == 0 else right_logits for t in range(num_steps)])
+    trans_logits = trans_logits.unsqueeze(-2)
+
+    hmm_trans_matrix = torch.randn(num_steps, hidden_dim, hidden_dim)
+    switching_trans_matrix = hmm_trans_matrix.unsqueeze(-3).expand(-1, num_components, -1, -1)
+
+    trans_mvn = random_mvn((), hidden_dim)
+    hmm_obs_matrix = torch.randn(num_steps, hidden_dim, obs_dim)
+    switching_obs_matrix = hmm_obs_matrix.unsqueeze(-3).expand(-1, num_components, -1, -1)
+    obs_mvn = random_mvn((), obs_dim)
+
+    # scramble matrices in places that should never be accessed given deterministic dynamics in discrete space
+    for t in range(num_steps):
+        switching_trans_matrix[t, t % 2, :, :] = torch.rand(hidden_dim, hidden_dim)
+        switching_obs_matrix[t, t % 2, :, :] = torch.rand(hidden_dim, obs_dim)
+
+    expected_dist = GaussianHMM(init_mvn, hmm_trans_matrix,
+                                trans_mvn, hmm_obs_matrix, obs_mvn)
+    actual_dist = SwitchingLinearHMM(init_logits, init_mvn, trans_logits,
+                                     switching_trans_matrix,
+                                     trans_mvn, switching_obs_matrix, obs_mvn,
+                                     exact=exact)
+    # assert actual_dist.batch_shape == expected_dist.batch_shape
+    # assert actual_dist.event_shape == expected_dist.event_shape
+
+    data = obs_mvn.sample(expected_dist.batch_shape + (num_steps,))
+    # assert data.shape == expected_dist.shape()
+    expected_log_prob = expected_dist.log_prob(data)
+    # assert expected_log_prob.shape == expected_dist.batch_shape
+    actual_log_prob = actual_dist.log_prob(data)
+    assert_close(actual_log_prob, expected_log_prob, atol=0.25, rtol=None)
