@@ -1,5 +1,6 @@
 import argparse
 import os
+from os.path import exists
 from urllib.request import urlopen
 import time
 
@@ -12,7 +13,7 @@ from funsor.pyro import SwitchingLinearHMM
 
 
 def download_data():
-    if not os.path.exists("eeg.dat"):
+    if not exists("eeg.dat"):
         url = "http://archive.ics.uci.edu/ml/machine-learning-databases/00264/EEG%20Eye%20State.arff"
         with open("eeg.dat", "wb") as f:
             f.write(urlopen(url).read())
@@ -90,6 +91,9 @@ def main(args):
     print("N_train: {}  N_test: {}  num_splits: {}".format(N_train, N_test, args.num_splits))
 
     slds = SLDS(num_components=args.num_components, hidden_dim=hidden_dim, obs_dim=obs_dim)
+    if exists('slds.torch'):
+        print('Loading model from slds.torch...')
+        slds.load_state_dict(torch.load('slds.torch'))
 
     if args.device == 'gpu':
         torch.set_default_tensor_type(torch.cuda.FloatTensor)
@@ -141,6 +145,8 @@ def main(args):
             print("[observation matrix.abs] mean: %.2f std: %.2f" % (slds.observation_matrix.abs().mean().item(),
                                                                      slds.observation_matrix.abs().std().item()))
             print("[log_obs_noise] mean: %.2f std: %.2f" % (slds.log_obs_noise.mean().item(), slds.log_obs_noise.std().item()))
+
+    torch.save(slds.state_dict(), 'slds.torch')
 
 
 if __name__ == '__main__':
