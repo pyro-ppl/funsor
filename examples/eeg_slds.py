@@ -73,22 +73,18 @@ def main(args):
     data_std = data.std(0)
     data /= data_std
 
-    data = data[0:800, :]
+    data = data[0:600, :]
 
     hidden_dim = args.hidden_dim
     T, obs_dim = data.shape
 
-    N_test = 180
+    N_test = 100
     N_train = T - N_test
 
     assert N_train % args.num_splits == 0
-    if args.num_splits > 1:
-        training_data = data[0:N_train, :].reshape(args.num_splits, -1, obs_dim)
-    else:
-        training_data = data[0:N_train, :]
 
     print("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
-    print("N_train: {}  N_test: {}  num_splits: {}".format(N_train, N_test, args.num_splits))
+    print("N_train: {}  N_test: {}".format(N_train, N_test))
 
     slds = SLDS(num_components=args.num_components, hidden_dim=hidden_dim, obs_dim=obs_dim)
     if exists('slds.torch'):
@@ -98,7 +94,6 @@ def main(args):
     if args.device == 'gpu':
         torch.set_default_tensor_type(torch.cuda.FloatTensor)
         data = data.cuda()
-        training_data = training_data.cuda()
         slds.cuda()
 
     adam = torch.optim.Adam(slds.parameters(), lr=0.3, amsgrad=True)
@@ -111,12 +106,12 @@ def main(args):
         if step > 30:
             def closure():
                 opt.zero_grad()
-                loss = -slds.log_prob(training_data).mean() / training_data.size(-2)
+                loss = -slds.log_prob(data[0:N_train, :]) / N_train
                 loss.backward(retain_graph=True)
                 return loss
             nll = opt.step(closure)
         else:
-            nll = -slds.log_prob(training_data).mean() / training_data.size(-2)
+            nll = -slds.log_prob(data[0:N_train, :]) / N_train
             nll.backward()
         #clip(params, clip=args.clip)
         #opt.zero_grad()
