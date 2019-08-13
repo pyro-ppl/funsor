@@ -47,9 +47,9 @@ class SLDS(nn.Module):
                                                         covariance_matrix=initial_mvn_cov)
 
         transition_mvn = tdist.MultivariateNormal(loc=torch.zeros(self.hidden_dim).type_as(prototype),
-                                                  covariance_matrix=torch.diag(self.log_transition_noise.exp()))
+                                                  covariance_matrix=torch.diag(1.0e-3 + self.log_transition_noise.exp()))
         observation_mvn = tdist.MultivariateNormal(loc=torch.zeros(self.obs_dim).type_as(prototype),
-                                                   covariance_matrix=torch.diag(self.log_obs_noise.exp()))
+                                                   covariance_matrix=torch.diag(1.0e-3 + self.log_obs_noise.exp()))
 
         return SwitchingLinearHMM(initial_logits=self.initial_logits,
                                   initial_mvn=self.initial_mvn,
@@ -58,7 +58,7 @@ class SLDS(nn.Module):
                                   transition_mvn=transition_mvn,
                                   observation_matrix=self.observation_matrix,
                                   observation_mvn=observation_mvn,
-                                  exact=True)
+                                  exact=False)
 
     def log_prob(self, value):
         return self.get_dist(value).log_prob(value)
@@ -81,7 +81,7 @@ def main(args):
     data_std = data.std(0)
     data /= data_std
 
-    data = data[0:200, 0:5]
+    data = 50.0 * data[0:200, 0:5]
 
     hidden_dim = args.hidden_dim
     T, obs_dim = data.shape
