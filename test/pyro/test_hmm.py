@@ -303,3 +303,65 @@ def test_switching_linear_hmm_log_prob(exact, num_steps, hidden_dim, obs_dim, nu
     assert expected_log_prob.shape == expected_dist.batch_shape
     actual_log_prob = actual_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=None)
+
+
+@pytest.mark.xfail(reason="incorrect log_prob or numerical issues?")
+@pytest.mark.parametrize("hidden_dim", [2, 3])
+@pytest.mark.parametrize("init_shape,trans_mat_shape,trans_mvn_shape,obs_mvn_shape", [
+    ((), (), (), ()),
+    ((), (6,), (), ()),
+    ((), (), (6,), ()),
+    ((), (), (), ()),
+    ((), (), (), (6,)),
+    ((5,), (6,), (), ()),
+    ((), (5, 1), (6,), ()),
+    ((), (), (), (6,)),
+    ((), (6,), (5, 1), ()),
+    ((5,), (), (), (6,)),
+], ids=str)
+def test_gaussian_hmm_log_prob_null_dynamics(init_shape, trans_mat_shape, trans_mvn_shape,
+                                             obs_mvn_shape, hidden_dim):
+    obs_dim = hidden_dim
+    init_dist = random_mvn(init_shape, hidden_dim)
+
+    # impose null dynamics
+    trans_mat = torch.zeros(trans_mat_shape + (hidden_dim, hidden_dim))
+    trans_dist = random_mvn(trans_mvn_shape, hidden_dim)
+
+    # make covariance matrices diagonal for simplicity
+    trans_dist.covariance_matrix = trans_dist.covariance_matrix * torch.eye(hidden_dim)
+
+    # trivial observation matrix (hidden_dim = obs_dim)
+    obs_mat = torch.eye(hidden_dim)
+    obs_dist = random_mvn(obs_mvn_shape, obs_dim)
+    obs_dist.covariance_matrix = obs_dist.covariance_matrix * torch.eye(obs_dim)
+
+    actual_dist = GaussianHMM(init_dist, trans_mat, trans_dist, obs_mat, obs_dist)
+    expected_dist = dist.GaussianHMM(init_dist, trans_mat, trans_dist, obs_mat, obs_dist)
+    assert actual_dist.batch_shape == expected_dist.batch_shape
+    assert actual_dist.event_shape == expected_dist.event_shape
+
+    shape = broadcast_shape(init_shape + (1,),
+                            trans_mat_shape, trans_mvn_shape,
+                            obs_mvn_shape)
+    data = obs_dist.expand(shape).sample()
+    assert data.shape == actual_dist.shape()
+
+    # https://github.com/pyro-ppl/funsor/issues/184
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+    actual_log_prob = actual_dist.log_prob(data)
+
+    expected_log_prob = expected_dist.log_prob(data)
+
+    # passes
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
+    check_expand(actual_dist, data)
+
+    obs_cov = obs_dist.covariance_matrix.diagonal(dim1=-1, dim2=-2)
+    trans_cov = trans_dist.covariance_matrix.diagonal(dim1=-1, dim2=-2)
+    sum_cov = obs_cov + trans_cov
+
+    # doesn't pass
+    analytic_log_prob = dist.Normal(trans_dist.loc, sum_cov.sqrt()).log_prob(data)
+    assert_close(analytic_log_prob, actual_log_prob, atol=0.1)
