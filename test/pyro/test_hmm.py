@@ -306,8 +306,9 @@ def test_switching_linear_hmm_log_prob(exact, num_steps, hidden_dim, obs_dim, nu
 
 
 @pytest.mark.parametrize("num_steps", [2, 5, 6])
-@pytest.mark.parametrize("exact", [True, False], ids=["exact", "approx"])
-def test_switching_linear_hmm_log_prob_alternating(exact, num_steps, hidden_dim=4, obs_dim=3, num_components=2):
+@pytest.mark.parametrize("exact", [True], ids=["exact"])
+# @pytest.mark.parametrize("exact", [True, False], ids=["exact", "approx"])
+def test_switching_linear_hmm_log_prob_alternating(exact, num_steps, hidden_dim=4, obs_dim=3, num_components=3):
     # This tests agreement between an SLDS and an HMM in the case that the two
     # SLDS discrete states alternate back and forth between 0 and 1 deterministically
     torch.manual_seed(15)
@@ -335,6 +336,7 @@ def test_switching_linear_hmm_log_prob_alternating(exact, num_steps, hidden_dim=
     hmm_obs_mvn_cov = torch.zeros(num_steps, obs_dim, obs_dim)
 
     for t in range(num_steps):
+        # select relevant bits for hmm given deterministic dynamics in discrete space
         hmm_trans_mvn_loc[t] = trans_mvn.loc[t, 1 - (t % 2)]
         hmm_trans_mvn_cov[t] = trans_mvn.covariance_matrix[t, 1 - (t % 2)]
         hmm_obs_mvn_loc[t] = obs_mvn.loc[t, 1 - (t % 2)]
