@@ -360,8 +360,9 @@ def test_gaussian_hmm_log_prob_null_dynamics(init_shape, trans_mat_shape, trans_
 
     obs_cov = obs_dist.covariance_matrix.diagonal(dim1=-1, dim2=-2)
     trans_cov = trans_dist.covariance_matrix.diagonal(dim1=-1, dim2=-2)
-    sum_cov = obs_cov + trans_cov
+    sum_scale = (obs_cov + trans_cov).sqrt()
+    sum_loc = trans_dist.loc + obs_dist.loc
 
     # doesn't pass
-    analytic_log_prob = dist.Normal(trans_dist.loc, sum_cov.sqrt()).log_prob(data)
+    analytic_log_prob = dist.Normal(sum_loc, sum_scale).log_prob(data).sum(-1).sum(-1)
     assert_close(analytic_log_prob, actual_log_prob, atol=0.1)
