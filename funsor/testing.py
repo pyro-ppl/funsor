@@ -195,7 +195,7 @@ def random_gaussian(inputs):
     return Gaussian(info_vec, precision, inputs)
 
 
-def random_mvn(batch_shape, dim, jitter=None):
+def random_mvn(batch_shape, dim):
     """
     Generate a random :class:`torch.distributions.MultivariateNormal` with given shape.
     """
@@ -203,8 +203,6 @@ def random_mvn(batch_shape, dim, jitter=None):
     loc = torch.randn(batch_shape + (dim,))
     cov = torch.randn(batch_shape + (dim, rank))
     cov = cov.matmul(cov.transpose(-1, -2))
-    if jitter is not None:
-        cov = cov + jitter * torch.eye(dim)
     return torch.distributions.MultivariateNormal(loc, cov)
 
 

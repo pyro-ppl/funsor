@@ -306,19 +306,20 @@ def test_switching_linear_hmm_log_prob(exact, num_steps, hidden_dim, obs_dim, nu
 
 
 @pytest.mark.parametrize("num_steps", [2, 3])
-@pytest.mark.parametrize("exact", [True], ids=["exact"])
-def test_switching_linear_hmm_log_prob_alternating(exact, num_steps):
-    hidden_dim = 2
-    obs_dim = 2
-    num_components = 2
-
+@pytest.mark.parametrize("num_components", [2, 3])
+@pytest.mark.parametrize("exact", [True, False], ids=["exact", "approx"])
+def test_switching_linear_hmm_log_prob_alternating(exact, num_steps, num_components):
     # This tests agreement between an SLDS and an HMM in the case that the two
     # SLDS discrete states alternate back and forth between 0 and 1 deterministically
-    torch.manual_seed(15)
+
+    torch.manual_seed(0)
+
+    hidden_dim = 4
+    obs_dim = 3
     extra_components = num_components - 2
 
     init_logits = torch.tensor([float("-inf"), 0.0] + extra_components * [float("-inf")])
-    init_mvn = random_mvn((num_components,), hidden_dim, jitter=0.05)
+    init_mvn = random_mvn((num_components,), hidden_dim)
 
     left_logits = torch.tensor([0.0, float("-inf")] + extra_components * [float("-inf")])
     right_logits = torch.tensor([float("-inf"), 0.0] + extra_components * [float("-inf")])
@@ -328,10 +329,10 @@ def test_switching_linear_hmm_log_prob_alternating(exact, num_steps):
     hmm_trans_matrix = torch.randn(num_steps, hidden_dim, hidden_dim)
     switching_trans_matrix = hmm_trans_matrix.unsqueeze(-3).expand(-1, num_components, -1, -1)
 
-    trans_mvn = random_mvn((num_steps, num_components,), hidden_dim, jitter=0.05)
+    trans_mvn = random_mvn((num_steps, num_components,), hidden_dim)
     hmm_obs_matrix = torch.randn(num_steps, hidden_dim, obs_dim)
     switching_obs_matrix = hmm_obs_matrix.unsqueeze(-3).expand(-1, num_components, -1, -1)
-    obs_mvn = random_mvn((num_steps, num_components), obs_dim, jitter=0.05)
+    obs_mvn = random_mvn((num_steps, num_components), obs_dim)
 
     hmm_trans_mvn_loc = torch.empty(num_steps, hidden_dim)
     hmm_trans_mvn_cov = torch.empty(num_steps, hidden_dim, hidden_dim)
@@ -370,4 +371,4 @@ def test_switching_linear_hmm_log_prob_alternating(exact, num_steps):
     expected_log_prob = expected_dist.log_prob(data)
     assert expected_log_prob.shape == expected_dist.batch_shape
     actual_log_prob = actual_dist.log_prob(data)
-    assert_close(actual_log_prob, expected_log_prob, atol=1e-3, rtol=None)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-2, rtol=None)
