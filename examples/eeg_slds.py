@@ -10,7 +10,6 @@ import torch.distributions as tdist
 import torch.nn as nn
 
 from funsor.pyro import SwitchingLinearHMM
-#from funsor.pyro.convert import funsor_to_cat_and_mvn
 
 
 def download_data():
@@ -26,10 +25,11 @@ def clip(params, clip=10.0):
 
 
 class SLDS(nn.Module):
-    def __init__(self, num_components, hidden_dim, obs_dim):
+    def __init__(self, num_components, hidden_dim, obs_dim, exact=False):
         self.num_components = num_components
         self.hidden_dim = hidden_dim
         self.obs_dim = obs_dim
+        self.exact = exact
         super(SLDS, self).__init__()
         self.initial_logits = nn.Parameter(0.1 * torch.randn(num_components))
         self.transition_logits = nn.Parameter(0.1 * torch.randn(num_components, num_components))
@@ -58,7 +58,7 @@ class SLDS(nn.Module):
                                   transition_mvn=transition_mvn,
                                   observation_matrix=self.observation_matrix,
                                   observation_mvn=observation_mvn,
-                                  exact=False)
+                                  exact=self.exact)
 
     def log_prob(self, value):
         return self.get_dist(value).log_prob(value)
@@ -81,12 +81,12 @@ def main(args):
     data_std = data.std(0)
     data /= data_std
 
-    data = 50.0 * data[0:200, 0:5]
+    data = data[0:120, 0:5]
 
     hidden_dim = args.hidden_dim
     T, obs_dim = data.shape
 
-    N_test = 100
+    N_test = 20
     N_train = T - N_test
 
     assert N_train % args.num_splits == 0
@@ -94,7 +94,7 @@ def main(args):
     print("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
     print("N_train: {}  N_test: {}".format(N_train, N_test))
 
-    slds = SLDS(num_components=args.num_components, hidden_dim=hidden_dim, obs_dim=obs_dim)
+    slds = SLDS(num_components=args.num_components, hidden_dim=hidden_dim, obs_dim=obs_dim, exact=args.exact)
 
     if 0:
         if exists('slds.torch'):
@@ -148,7 +148,7 @@ def main(args):
             with torch.no_grad():
                 zer_step_ll = slds.log_prob(data[0:N_train, :]).item()
                 ten_step_ll = (slds.log_prob(data[0:N_train + 10, :]) - zer_step_ll).item() / 10.0
-                hun_step_ll = (slds.log_prob(data[0:N_train + 180, :]) - zer_step_ll).item() / 180.0
+                hun_step_ll = (slds.log_prob(data[0:N_train + 20, :]) - zer_step_ll).item() / 20.0
             print("[step %03d]  training nll: %.4f   test lls: %.4f  %.4f \t\t (step_dt: %.2f)" % (step,
                   nll.item(), ten_step_ll, hun_step_ll, step_dt))
 
@@ -176,5 +176,6 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--clip", default=1.0, type=float)
     parser.add_argument("-d", "--device", default="gpu", type=str)
     parser.add_argument("-v", "--verbose", action='store_true')
+    parser.add_argument("-e", "--exact", action='store_true')
     args = parser.parse_args()
     main(args)
