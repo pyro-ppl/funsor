@@ -1,5 +1,7 @@
 import argparse
 import time
+from collections import OrderedDict
+
 import torch
 
 import funsor
@@ -15,16 +17,34 @@ def main(args):
     hidden_dim = args.hidden_dim
     obs_dim = args.obs_dim
 
+    # TODO replace these with matrix_and_mvn_to_funsor()
+    # as in SwitchingLinearHMM.__init__().
+    @funsor.torch.function(funsor.reals(hidden_dim),
+                           funsor.reals(hidden_dim, hidden_dim),
+                           funsor.reals(hidden_dim))
+    def trans_mm(vector, matrix):
+        return vector.unsqueeze(-2).matmul(matrix).squeeze(-2)
+
+    @funsor.torch.function(funsor.reals(hidden_dim),
+                           funsor.reals(hidden_dim, obs_dim),
+                           funsor.reals(obs_dim))
+    def obs_mm(vector, matrix):
+        return vector.unsqueeze(-2).matmul(matrix).squeeze(-2)
+
     # Declare parameters.
-    trans_probs = funsor.Tensor(torch.tensor(torch.eye(num_comp)))
+    s_inputs = OrderedDict([("s", funsor.bint(num_comp))])  # for class-dependent parameters
 
-    trans_noise = funsor.Tensor(torch.eye(hidden_dim).unsqueeze(0).expand(num_comp, hidden_dim, hidden_dim))
-    trans_matrix = funsor.Tensor(torch.eye(hidden_dim, requires_grad=True))
+    trans_probs = funsor.Tensor(torch.eye(num_comp), s_inputs)
 
-    obs_matrix = funsor.Tensor(torch.rand(num_comp, hidden_dim, obs_dim, requires_grad=True))
-    obs_noise = funsor.Tensor(torch.eye(obs_dim).unsqueeze(0).expand(num_comp, obs_dim, obs_dim))
+    trans_noise = funsor.Tensor(torch.eye(hidden_dim).expand(num_comp, -1, -1), s_inputs)
+    trans_matrix = funsor.Tensor(torch.eye(hidden_dim).expand(num_comp, -1, -1), s_inputs)
+
+    obs_matrix = funsor.Tensor(torch.rand(num_comp, hidden_dim, obs_dim), s_inputs)
+    obs_noise = funsor.Tensor(torch.eye(obs_dim).expand(num_comp, -1, -1), s_inputs)
 
     params = [trans_matrix.data, obs_matrix.data]
+    for p in params:
+        p.requires_grad_()
 
     # A Gaussian HMM model.
     @funsor.interpreter.interpretation(funsor.terms.moment_matching)
@@ -34,7 +54,7 @@ def main(args):
         # s is the discrete latent state,
         # x is the continuous latent state,
         # y is the observed state.
-        s_curr = funsor.Tensor(torch.tensor(0), dtype=2)
+        s_curr = funsor.Tensor(torch.tensor(0), dtype=num_comp)
         x_curr = funsor.Tensor(torch.zeros(hidden_dim))
 
         for t, y in enumerate(data):
@@ -43,11 +63,14 @@ def main(args):
 
             # A delayed sample statement.
             s_curr = funsor.Variable('s_{}'.format(t), funsor.bint(num_comp))
-            log_prob += dist.Categorical(trans_probs[s_prev], value=s_curr)
+            log_prob += dist.Categorical(trans_probs(s=s_prev), value=s_curr)
 
             # A delayed sample statement.
             x_curr = funsor.Variable('x_{}'.format(t), funsor.reals(hidden_dim))
-            log_prob += dist.MultivariateNormal(torch.mm(trans_matrix, x_prev), trans_noise[s_curr], value=x_curr)
+            trans = trans_matrix(s=s_curr)
+            log_prob += dist.MultivariateNormal(
+                trans_mm(x_prev, trans),
+                trans_noise(s=s_curr), value=x_curr)
 
             # Marginalize out previous delayed sample statements.
             if t > 0:
@@ -55,7 +78,9 @@ def main(args):
                     ops.logaddexp, frozenset([s_prev.name, x_prev.name]))
 
             # An observe statement.
-            log_prob += dist.MultivariateNormal(torch.mm(x_curr, obs_matrix[s_curr]), obs_noise[s_curr], value=y)
+            log_prob += dist.MultivariateNormal(
+                obs_mm(x_curr, obs_matrix(s=s_curr)),
+                obs_noise(s=s_curr), value=y)
 
         log_prob = log_prob.reduce(ops.logaddexp)
         return log_prob
@@ -71,6 +96,7 @@ def main(args):
         optim.zero_grad()
         log_prob = model(data)
         assert not log_prob.inputs, 'free variables remain'
+        assert isinstance(log_prob, funsor.Tensor)
         loss = -log_prob.data
         loss.backward()
         optim.step()
