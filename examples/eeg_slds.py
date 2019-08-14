@@ -1,5 +1,4 @@
 import argparse
-import os
 from os.path import exists
 from urllib.request import urlopen
 import time
@@ -47,9 +46,9 @@ class SLDS(nn.Module):
                                                         covariance_matrix=initial_mvn_cov)
 
         transition_mvn = tdist.MultivariateNormal(loc=torch.zeros(self.hidden_dim).type_as(prototype),
-                                                  covariance_matrix=torch.diag(1.0e-3 + self.log_transition_noise.exp()))
+                                                  covariance_matrix=torch.diag(self.log_transition_noise.exp()))
         observation_mvn = tdist.MultivariateNormal(loc=torch.zeros(self.obs_dim).type_as(prototype),
-                                                   covariance_matrix=torch.diag(1.0e-3 + self.log_obs_noise.exp()))
+                                                   covariance_matrix=torch.diag(self.log_obs_noise.exp()))
 
         return SwitchingLinearHMM(initial_logits=self.initial_logits,
                                   initial_mvn=self.initial_mvn,
@@ -101,17 +100,17 @@ def main(args):
             print('Loading model from slds.torch...')
             slds.load_state_dict(torch.load('slds.torch'))
 
-
         for delta in range(3):
 
             cat, mvn = slds.filter(data[0:N_train + delta, :])
-            #print("cat.logits\n", cat.logits)
+            # print("cat.logits\n", cat.logits)
             obs_loc = torch.mv(slds.observation_matrix.t(), mvn.loc[0])
             print("[delta %d] obs_loc\n" % delta, obs_loc.data.cpu().numpy())
             print("[delta %d] obs\n" % delta, data[N_train + delta].data.cpu().numpy())
-            #print("mvn.precision\n", mvn.precision_matrix)
+            # print("mvn.precision\n", mvn.precision_matrix)
 
-        import sys; sys.exit()
+        import sys
+        sys.exit()
 
     if args.device == 'gpu':
         torch.set_default_tensor_type(torch.cuda.FloatTensor)
@@ -119,9 +118,8 @@ def main(args):
         slds.cuda()
 
     adam = torch.optim.Adam(slds.parameters(), lr=0.3, amsgrad=True)
-    #adam = torch.optim.Adam(params, lr=args.learning_rate, amsgrad=True)
-    #scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[20, 40, 80], gamma=0.2)
-    opt = torch.optim.LBFGS(slds.parameters(), lr=args.learning_rate) #, line_search_fn='strong_wolfe')
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[20, 40, 80], gamma=0.2)
+    opt = torch.optim.LBFGS(slds.parameters(), lr=args.learning_rate)  # line_search_fn='strong_wolfe')
     ts = [time.time()]
 
     for step in range(args.num_steps):
@@ -135,10 +133,11 @@ def main(args):
         else:
             nll = -slds.log_prob(data[0:N_train, :]) / N_train
             nll.backward()
-        #clip(params, clip=args.clip)
-        #opt.zero_grad()
 
-            adam.step() #, scheduler.step()
+        # clip(params, clip=args.clip)
+        # opt.zero_grad()
+
+            adam.step()  # scheduler.step()
             adam.zero_grad()
 
         ts.append(time.time())
@@ -161,9 +160,10 @@ def main(args):
                                                                    slds.log_transition_noise.std().item()))
             print("[observation matrix.abs] mean: %.2f std: %.2f" % (slds.observation_matrix.abs().mean().item(),
                                                                      slds.observation_matrix.abs().std().item()))
-            print("[log_obs_noise] mean: %.2f std: %.2f" % (slds.log_obs_noise.mean().item(), slds.log_obs_noise.std().item()))
+            print("[log_obs_noise] mean: %.2f std: %.2f" % (slds.log_obs_noise.mean().item(),
+                                                            slds.log_obs_noise.std().item()))
 
-    torch.save(slds.state_dict(), 'slds.torch')
+    # torch.save(slds.state_dict(), 'slds.torch')
 
 
 if __name__ == '__main__':
