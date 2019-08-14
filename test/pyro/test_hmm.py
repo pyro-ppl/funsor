@@ -305,10 +305,13 @@ def test_switching_linear_hmm_log_prob(exact, num_steps, hidden_dim, obs_dim, nu
     assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=None)
 
 
-@pytest.mark.xfail(reason="incorrect log_prob?")
 @pytest.mark.parametrize("num_steps", [2, 3])
 @pytest.mark.parametrize("exact", [True], ids=["exact"])
-def test_switching_linear_hmm_log_prob_alternating(exact, num_steps, hidden_dim=4, obs_dim=3, num_components=3):
+def test_switching_linear_hmm_log_prob_alternating(exact, num_steps):
+    hidden_dim = 2
+    obs_dim = 2
+    num_components = 2
+
     # This tests agreement between an SLDS and an HMM in the case that the two
     # SLDS discrete states alternate back and forth between 0 and 1 deterministically
     torch.manual_seed(15)
@@ -330,20 +333,23 @@ def test_switching_linear_hmm_log_prob_alternating(exact, num_steps, hidden_dim=
     switching_obs_matrix = hmm_obs_matrix.unsqueeze(-3).expand(-1, num_components, -1, -1)
     obs_mvn = random_mvn((num_steps, num_components), obs_dim, jitter=0.05)
 
-    hmm_trans_mvn_loc = torch.zeros(num_steps, hidden_dim)
-    hmm_trans_mvn_cov = torch.zeros(num_steps, hidden_dim, hidden_dim)
-    hmm_obs_mvn_loc = torch.zeros(num_steps, obs_dim)
-    hmm_obs_mvn_cov = torch.zeros(num_steps, obs_dim, obs_dim)
+    hmm_trans_mvn_loc = torch.empty(num_steps, hidden_dim)
+    hmm_trans_mvn_cov = torch.empty(num_steps, hidden_dim, hidden_dim)
+    hmm_obs_mvn_loc = torch.empty(num_steps, obs_dim)
+    hmm_obs_mvn_cov = torch.empty(num_steps, obs_dim, obs_dim)
 
     for t in range(num_steps):
         # select relevant bits for hmm given deterministic dynamics in discrete space
-        hmm_trans_mvn_loc[t] = trans_mvn.loc[t, 1 - (t % 2)]
-        hmm_trans_mvn_cov[t] = trans_mvn.covariance_matrix[t, 1 - (t % 2)]
-        hmm_obs_mvn_loc[t] = obs_mvn.loc[t, 1 - (t % 2)]
-        hmm_obs_mvn_cov[t] = obs_mvn.covariance_matrix[t, 1 - (t % 2)]
+        s = t % 2  # 0, 1, 0, 1, ...
+        hmm_trans_mvn_loc[t] = trans_mvn.loc[t, s]
+        hmm_trans_mvn_cov[t] = trans_mvn.covariance_matrix[t, s]
+        hmm_obs_mvn_loc[t] = obs_mvn.loc[t, s]
+        hmm_obs_mvn_cov[t] = obs_mvn.covariance_matrix[t, s]
+
         # scramble matrices in places that should never be accessed given deterministic dynamics in discrete space
-        switching_trans_matrix[t, t % 2, :, :] = torch.rand(hidden_dim, hidden_dim)
-        switching_obs_matrix[t, t % 2, :, :] = torch.rand(hidden_dim, obs_dim)
+        s = 1 - (t % 2)  # 1, 0, 1, 0, ...
+        switching_trans_matrix[t, s, :, :] = torch.rand(hidden_dim, hidden_dim)
+        switching_obs_matrix[t, s, :, :] = torch.rand(hidden_dim, obs_dim)
 
     expected_dist = GaussianHMM(dist.MultivariateNormal(init_mvn.loc[1], init_mvn.covariance_matrix[1]),
                                 hmm_trans_matrix,
@@ -364,4 +370,4 @@ def test_switching_linear_hmm_log_prob_alternating(exact, num_steps, hidden_dim=
     expected_log_prob = expected_dist.log_prob(data)
     assert expected_log_prob.shape == expected_dist.batch_shape
     actual_log_prob = actual_dist.log_prob(data)
-    assert_close(actual_log_prob, expected_log_prob, atol=1.0, rtol=None)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-3, rtol=None)
