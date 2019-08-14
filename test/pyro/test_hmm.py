@@ -305,7 +305,6 @@ def test_switching_linear_hmm_log_prob(exact, num_steps, hidden_dim, obs_dim, nu
     assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=None)
 
 
-@pytest.mark.xfail(reason="incorrect log_prob or numerical issues?")
 @pytest.mark.parametrize("hidden_dim", [2, 3])
 @pytest.mark.parametrize("init_shape,trans_mat_shape,trans_mvn_shape,obs_mvn_shape", [
     ((), (), (), ()),
@@ -326,15 +325,11 @@ def test_gaussian_hmm_log_prob_null_dynamics(init_shape, trans_mat_shape, trans_
 
     # impose null dynamics
     trans_mat = torch.zeros(trans_mat_shape + (hidden_dim, hidden_dim))
-    trans_dist = random_mvn(trans_mvn_shape, hidden_dim)
-
-    # make covariance matrices diagonal for simplicity
-    trans_dist.covariance_matrix = trans_dist.covariance_matrix * torch.eye(hidden_dim)
+    trans_dist = random_mvn(trans_mvn_shape, hidden_dim, diag=True)
 
     # trivial observation matrix (hidden_dim = obs_dim)
     obs_mat = torch.eye(hidden_dim)
-    obs_dist = random_mvn(obs_mvn_shape, obs_dim)
-    obs_dist.covariance_matrix = obs_dist.covariance_matrix * torch.eye(obs_dim)
+    obs_dist = random_mvn(obs_mvn_shape, obs_dim, diag=True)
 
     actual_dist = GaussianHMM(init_dist, trans_mat, trans_dist, obs_mat, obs_dist)
     expected_dist = dist.GaussianHMM(init_dist, trans_mat, trans_dist, obs_mat, obs_dist)
@@ -354,7 +349,6 @@ def test_gaussian_hmm_log_prob_null_dynamics(init_shape, trans_mat_shape, trans_
 
     expected_log_prob = expected_dist.log_prob(data)
 
-    # passes
     assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
     check_expand(actual_dist, data)
 
@@ -363,6 +357,5 @@ def test_gaussian_hmm_log_prob_null_dynamics(init_shape, trans_mat_shape, trans_
     sum_scale = (obs_cov + trans_cov).sqrt()
     sum_loc = trans_dist.loc + obs_dist.loc
 
-    # doesn't pass
     analytic_log_prob = dist.Normal(sum_loc, sum_scale).log_prob(data).sum(-1).sum(-1)
-    assert_close(analytic_log_prob, actual_log_prob, atol=0.1)
+    assert_close(analytic_log_prob, actual_log_prob, atol=1.0e-5)
