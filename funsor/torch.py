@@ -139,6 +139,11 @@ class Tensor(Funsor, metaclass=TensorMeta):
     def item(self):
         return self.data.item()
 
+    def clamp_finite(self):
+        finfo = torch.finfo(self.data.dtype)
+        data = self.data.clamp(min=finfo.min, max=finfo.max)
+        return Tensor(data, self.inputs, self.dtype)
+
     @property
     def requires_grad(self):
         return self.data.requires_grad

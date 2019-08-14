@@ -312,3 +312,19 @@ def test_reduce_moment_matching_moments():
         actual = Integrate(approx, x * x, frozenset(['x']))
         expected = Integrate(gaussian, x * x, frozenset(['j', 'x']))
         assert_close(actual, expected, atol=1e-2, rtol=1e-2)
+
+
+def test_reduce_moment_matching_finite():
+    delta = Delta('x', random_tensor(OrderedDict([('h', bint(7))])))
+    discrete = random_tensor(OrderedDict(
+        [('i', bint(6)), ('j', bint(5)), ('k', bint(3))]))
+    gaussian = random_gaussian(OrderedDict(
+        [('k', bint(3)), ('l', bint(2)), ('y', reals()), ('z', reals(2))]))
+
+    discrete.data[1:, :] = -float('inf')
+    discrete.data[:, 1:] = -float('inf')
+
+    reduced_vars = frozenset(['j', 'k'])
+    joint = delta + discrete + gaussian
+    with interpretation(moment_matching):
+        joint.reduce(ops.logaddexp, reduced_vars)
