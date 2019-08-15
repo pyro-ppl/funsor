@@ -7,6 +7,8 @@ import torch
 import funsor
 import funsor.distributions as dist
 import funsor.ops as ops
+from funsor.gaussian import Gaussian
+from funsor.pyro.convert import matrix_and_mvn_to_funsor
 
 
 def main(args):
@@ -17,32 +19,18 @@ def main(args):
     hidden_dim = args.hidden_dim
     obs_dim = args.obs_dim
 
-    # TODO replace these with matrix_and_mvn_to_funsor()
-    # as in SwitchingLinearHMM.__init__().
-    @funsor.torch.function(funsor.reals(hidden_dim),
-                           funsor.reals(hidden_dim, hidden_dim),
-                           funsor.reals(hidden_dim))
-    def trans_mm(vector, matrix):
-        return vector.unsqueeze(-2).matmul(matrix).squeeze(-2)
-
-    @funsor.torch.function(funsor.reals(hidden_dim),
-                           funsor.reals(hidden_dim, obs_dim),
-                           funsor.reals(obs_dim))
-    def obs_mm(vector, matrix):
-        return vector.unsqueeze(-2).matmul(matrix).squeeze(-2)
-
     # Declare parameters.
     s_inputs = OrderedDict([("s", funsor.bint(num_comp))])  # for class-dependent parameters
 
     trans_probs = funsor.Tensor(torch.eye(num_comp), s_inputs)
 
-    trans_noise = funsor.Tensor(torch.eye(hidden_dim).expand(num_comp, -1, -1), s_inputs)
-    trans_matrix = funsor.Tensor(torch.eye(hidden_dim).expand(num_comp, -1, -1), s_inputs)
+    trans_noise = torch.eye(hidden_dim).expand(num_comp, -1, -1)
+    trans_matrix = torch.eye(hidden_dim).expand(num_comp, -1, -1)
 
-    obs_matrix = funsor.Tensor(torch.rand(num_comp, hidden_dim, obs_dim), s_inputs)
-    obs_noise = funsor.Tensor(torch.eye(obs_dim).expand(num_comp, -1, -1), s_inputs)
+    obs_matrix = torch.randn(num_comp, hidden_dim, obs_dim)
+    obs_noise = torch.eye(obs_dim).expand(num_comp, -1, -1)
 
-    params = [trans_matrix.data, obs_matrix.data]
+    params = [trans_matrix, obs_matrix]
     for p in params:
         p.requires_grad_()
 
@@ -55,7 +43,11 @@ def main(args):
         # x is the continuous latent state,
         # y is the observed state.
         s_curr = funsor.Tensor(torch.tensor(0), dtype=num_comp)
-        x_curr = funsor.Tensor(torch.zeros(hidden_dim))
+        x_curr = None
+        x_init_mvn = Gaussian(torch.zeros(hidden_dim), torch.eye(hidden_dim),
+                              inputs=OrderedDict([('x_0', funsor.reals(hidden_dim))]))
+        trans_mvn = torch.distributions.MultivariateNormal(torch.zeros(hidden_dim), trans_noise)
+        obs_mvn = torch.distributions.MultivariateNormal(torch.zeros(obs_dim), obs_noise)
 
         for t, y in enumerate(data):
             s_prev = s_curr
@@ -67,20 +59,23 @@ def main(args):
 
             # A delayed sample statement.
             x_curr = funsor.Variable('x_{}'.format(t), funsor.reals(hidden_dim))
-            trans = trans_matrix(s=s_curr)
-            log_prob += dist.MultivariateNormal(
-                trans_mm(x_prev, trans),
-                trans_noise(s=s_curr), value=x_curr)
+            if t == 0:
+                x_dist = x_init_mvn
+            else:
+                x_dist = matrix_and_mvn_to_funsor(trans_matrix, trans_mvn,
+                                                  ("s_{}".format(t),),
+                                                  x_name="x_{}".format(t - 1), y_name="x_{}".format(t))
+            log_prob += x_dist(value=x_curr)
 
             # Marginalize out previous delayed sample statements.
             if t > 0:
-                log_prob = log_prob.reduce(
-                    ops.logaddexp, frozenset([s_prev.name, x_prev.name]))
+                log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_prev.name, x_prev.name]))
 
             # An observe statement.
-            log_prob += dist.MultivariateNormal(
-                obs_mm(x_curr, obs_matrix(s=s_curr)),
-                obs_noise(s=s_curr), value=y)
+            obs_mvn = torch.distributions.MultivariateNormal(torch.zeros(obs_dim), obs_noise)
+            y_dist = matrix_and_mvn_to_funsor(obs_matrix, obs_mvn,
+                                              ("s_{}".format(t),), x_name="x_{}".format(t), y_name="value")
+            log_prob += y_dist(value=y)
 
         log_prob = log_prob.reduce(ops.logaddexp)
         return log_prob
@@ -101,14 +96,14 @@ def main(args):
         loss.backward()
         optim.step()
         ts.append(time.time())
-        if args.verbose and step % 10 == 0:
+        if args.verbose and step % 3 == 0:
             dt = ts[-1] - ts[-2]
             print('step {} loss = {:4f}    step_dt: {:3f}'.format(step, loss.item(), dt))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
-    parser.add_argument("-t", "--time-steps", default=100, type=int)
+    parser.add_argument("-t", "--time-steps", default=50, type=int)
     parser.add_argument("-n", "--train-steps", default=101, type=int)
     parser.add_argument("-hd", "--hidden-dim", default=2, type=int)
     parser.add_argument("-od", "--obs-dim", default=2, type=int)
