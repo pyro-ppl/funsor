@@ -5,7 +5,6 @@ import time
 
 import numpy as np
 import torch
-import torch.distributions as tdist
 import torch.nn as nn
 
 from collections import OrderedDict
@@ -30,22 +29,30 @@ def clip(params, clip=10.0):
 
 
 class SLDS(nn.Module):
-    def __init__(self, num_components, hidden_dim, obs_dim):
+    def __init__(self, num_components, hidden_dim, obs_dim,
+                 fine_transition_noise=False, fine_observation_matrix=False,
+                 fine_observation_noise=False):
         self.num_components = num_components
         self.hidden_dim = hidden_dim
         self.obs_dim = obs_dim
         super(SLDS, self).__init__()
-        #self.initial_logits = nn.Parameter(0.1 * torch.randn(num_components))
         self.transition_logits = nn.Parameter(0.1 * torch.randn(num_components, num_components))
         transition_matrix = 0.03 * torch.randn(hidden_dim, hidden_dim) + torch.eye(hidden_dim)
         self.transition_matrix = nn.Parameter(transition_matrix.expand(num_components, -1, -1))
-        self.log_transition_noise = nn.Parameter(0.1 * torch.randn(hidden_dim))
-        #self.log_transition_noise = nn.Parameter(0.1 * torch.randn(num_components, hidden_dim))
-        self.observation_matrix = nn.Parameter(0.3 * torch.randn(hidden_dim, obs_dim))
-        #self.observation_matrix = nn.Parameter(0.3 * torch.randn(num_components, hidden_dim, obs_dim))
-        self.log_obs_noise = nn.Parameter(0.1 * torch.randn(obs_dim))
-        #self.log_obs_noise = nn.Parameter(0.1 * torch.randn(num_components, obs_dim))
+        if fine_transition_noise:
+            self.log_transition_noise = nn.Parameter(0.1 * torch.randn(num_components, hidden_dim))
+        else:
+            self.log_transition_noise = nn.Parameter(0.1 * torch.randn(hidden_dim))
+        if fine_observation_matrix:
+            self.observation_matrix = nn.Parameter(0.3 * torch.randn(num_components, hidden_dim, obs_dim))
+        else:
+            self.observation_matrix = nn.Parameter(0.3 * torch.randn(hidden_dim, obs_dim))
+        if fine_observation_noise:
+            self.log_obs_noise = nn.Parameter(0.1 * torch.randn(num_components, obs_dim))
+        else:
+            self.log_obs_noise = nn.Parameter(0.1 * torch.randn(obs_dim))
 
+    @funsor.interpreter.interpretation(funsor.terms.moment_matching)
     def log_prob(self, data):
         trans_logits = self.transition_logits - self.transition_logits.logsumexp(dim=-1, keepdim=True)
         trans_probs = funsor.Tensor(trans_logits, OrderedDict([("s", funsor.bint(self.num_components))]))
@@ -107,7 +114,7 @@ def main(args):
     data_std = data.std(0)
     data /= data_std
 
-    data = data[0:50, :]
+    data = data[0:500, :]
 
     hidden_dim = args.hidden_dim
     T, obs_dim = data.shape
@@ -118,7 +125,9 @@ def main(args):
     print("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
     print("N_train: {}  N_test: {}".format(N_train, N_test))
 
-    slds = SLDS(num_components=args.num_components, hidden_dim=hidden_dim, obs_dim=obs_dim)
+    slds = SLDS(num_components=args.num_components, hidden_dim=hidden_dim, obs_dim=obs_dim,
+                fine_observation_noise=args.fon, fine_transition_noise=args.ftn,
+                fine_observation_matrix=args.fom)
 
     if 0:
         if exists('slds.torch'):
@@ -156,7 +165,7 @@ def main(args):
         ts.append(time.time())
         step_dt = ts[-1] - ts[-2]
 
-        if step % 1 == 0 or step == args.num_steps - 1:
+        if step % 5 == 0 or step == args.num_steps - 1:
             print("[step %03d]  training nll: %.4f   test lls: %.4f  %.4f \t\t (step_dt: %.2f)" % (step,
                   nll.item(), 0.0, 0.0, step_dt))
 
@@ -178,11 +187,14 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-n", "--num-steps", default=1000, type=int)
-    parser.add_argument("-hd", "--hidden-dim", default=4, type=int)
+    parser.add_argument("-hd", "--hidden-dim", default=7, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.1, type=float)
     parser.add_argument("-c", "--clip", default=1.0, type=float)
     parser.add_argument("-d", "--device", default="cpu", type=str)
     parser.add_argument("-v", "--verbose", action='store_true')
+    parser.add_argument("--fon", action='store_true')
+    parser.add_argument("--fom", action='store_true')
+    parser.add_argument("--ftn", action='store_true')
     args = parser.parse_args()
     main(args)
