@@ -19,10 +19,7 @@ def main(args):
     hidden_dim = args.hidden_dim
     obs_dim = args.obs_dim
 
-    # Declare parameters.
-    s_inputs = OrderedDict([("s", funsor.bint(num_comp))])  # for class-dependent parameters
-
-    trans_probs = funsor.Tensor(torch.eye(num_comp), s_inputs)
+    trans_probs = funsor.Tensor(torch.eye(num_comp), OrderedDict([("s", funsor.bint(num_comp))]))
 
     trans_noise = torch.eye(hidden_dim).expand(num_comp, -1, -1)
     trans_matrix = torch.eye(hidden_dim).expand(num_comp, -1, -1)
@@ -102,6 +99,7 @@ def main(args):
 
 
 if __name__ == '__main__':
+
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-t", "--time-steps", default=50, type=int)
     parser.add_argument("-n", "--train-steps", default=101, type=int)
