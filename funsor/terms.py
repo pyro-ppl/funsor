@@ -34,11 +34,7 @@ def substitute(expr, subs):
         return interpreter.reinterpret(expr)
 
 
-def alpha_convert(expr):
-    alpha_subs = {name: interpreter.gensym(name + "__BOUND")
-                  for name in expr.bound if "__BOUND" not in name}
-    if not alpha_subs:
-        return expr
+def alpha_substitute(expr, alpha_subs):
 
     new_values = []
     for v in expr._ast_values:
@@ -56,6 +52,16 @@ def alpha_convert(expr):
             v = OrderedDict([(alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v.items()])
         new_values.append(v)
 
+    return tuple(new_values)
+
+
+def alpha_convert(expr):
+    alpha_subs = {name: interpreter.gensym(name + "__BOUND")
+                  for name in expr.bound if "__BOUND" not in name}
+    if not alpha_subs:
+        return expr
+
+    new_values = alpha_substitute(expr, alpha_subs)
     return reflect(type(expr), *new_values)
 
 
