@@ -62,11 +62,11 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
 def test_einsum_adjoint_unary_marginals(einsum_impl, equation, backend):
-    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    equation = ",".join(inputs) + "->"
 
-    targets = [Variable(k, bint(sizes[k])) for k in set(sizes)]
     with AdjointTape() as tape:  # interpretation(reflect):
+        inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+        equation = ",".join(inputs) + "->"
+        targets = [Variable(k, bint(sizes[k])) for k in set(sizes)]
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
     actuals = tape.adjoint(ops.logaddexp, ops.add, fwd_expr, targets)
 
