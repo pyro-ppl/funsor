@@ -44,9 +44,8 @@ class AdjointTape(object):
         interpreter.set_interpretation(self._old_interpretation)
         self._old_interpretation = None
 
-    def adjoint(self, red_op, root, targets):
+    def adjoint(self, red_op, bin_op, root, targets):
 
-        bin_op = [b for a, b in ops.DISTRIBUTIVE_OPS if a is red_op][0]
         bin_unit = to_funsor(ops.UNITS[bin_op])
 
         adjoint_values = defaultdict(lambda: bin_unit)
@@ -67,14 +66,14 @@ class AdjointTape(object):
                 inputs = _alpha_deconvert(fn(*inputs)(**other_subs))
                 output = type(output)(*_alpha_deconvert(output(**other_subs)))
 
-            in_adjs = adjoint_ops(fn, red_op, adjoint_values[output], output, *inputs)
+            in_adjs = adjoint_ops(fn, red_op, bin_op, adjoint_values[output], *inputs)
             for v, adjv in in_adjs.items():
                 multiplicities[v] += 1
                 adjoint_values[v] = bin_op(adjoint_values[v], adjv)
 
         target_adjs = {}
         for v in targets:
-            target_adjs[v] = adjoint_values[v] / multiplicities[v]
+            target_adjs[v] = adjoint_values[v] / multiplicities[v]  # TODO use correct op here with bin_op
             if not isinstance(v, Variable):
                 target_adjs[v] = bin_op(target_adjs[v], v)
 
@@ -89,44 +88,49 @@ def _fail_default(*args):
 adjoint_ops = KeyedRegistry(default=_fail_default)
 
 
-@adjoint_ops.register(Tensor, AssociativeOp, Funsor, Funsor, torch.Tensor, tuple, object)
-def adjoint_tensor(adj_op, out_adj, out, data, inputs, dtype):
+@adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object)
+def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
+    out = Tensor(data, inputs, dtype)
     all_vars = frozenset(k for (k, v) in inputs)
     in_adjs = {}
     for (k, v) in inputs:
-        in_adj = (out_adj + out).reduce(adj_op, all_vars - {k})  # TODO generalize beyond +
+        in_adj = adj_binop(out_adj, out).reduce(adj_redop, all_vars - {k})
         in_adjs[Variable(k, v)] = in_adj
     return in_adjs
 
 
-@adjoint_ops.register(Binary, AssociativeOp, Funsor, Funsor, ops.AddOp, Funsor, Funsor)
-def adjoint_binary(adj_op, out_adj, out, op, lhs, rhs):
-    assert adj_op is ops.logaddexp
+@adjoint_ops.register(Binary, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, Funsor)
+def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
+    assert adj_binop is op
+    assert (adj_redop, op) in ops.DISTRIBUTIVE_OPS
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
-    lhs_adj = op(out_adj, rhs).reduce(adj_op, lhs_reduced_vars)
+    lhs_adj = op(out_adj, rhs).reduce(adj_redop, lhs_reduced_vars)
 
     rhs_reduced_vars = frozenset(lhs.inputs) - frozenset(rhs.inputs)
-    rhs_adj = op(out_adj, lhs).reduce(adj_op, rhs_reduced_vars)
+    rhs_adj = op(out_adj, lhs).reduce(adj_redop, rhs_reduced_vars)
 
     return {lhs: lhs_adj, rhs: rhs_adj}
 
 
-@adjoint_ops.register(Reduce, AssociativeOp, Funsor, Funsor, AssociativeOp, Funsor, frozenset)
-def adjoint_reduce(adj_op, out_adj, out, op, arg, reduced_vars):
-    assert op in (ops.logaddexp, ops.add)
-    assert adj_op is ops.logaddexp  # TODO generalize
+@adjoint_ops.register(Reduce, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, frozenset)
+def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
+    assert adj_redop is op or (adj_redop, op) in ops.DISTRIBUTIVE_OPS
+    assert adj_binop is op or (op, adj_binop) in ops.DISTRIBUTIVE_OPS
 
     if op is ops.logaddexp:
-        return {arg: ops.add(out_adj, arg * 0.)}  # XXX hack to simulate "expand"
+        # XXX using a hack to simulate "expand"
+        return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], arg, arg))}
     elif op is ops.add:  # plate!
-        return {arg: ops.add(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
+        out = arg.reduce(op, reduced_vars)
+        return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
 
 
-@adjoint_ops.register(Contract, AssociativeOp, Funsor, Funsor, AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
-def adjoint_contract(adj_op, out_adj, out, sum_op, prod_op, lhs, rhs, reduced_vars):
-    assert adj_op is ops.logaddexp  # TODO generalize
-    assert sum_op is ops.logaddexp and prod_op is ops.add  # TODO generalize
+@adjoint_ops.register(Contract, AssociativeOp, AssociativeOp, Funsor,
+                      AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
+def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, lhs, rhs, reduced_vars):
+    assert adj_binop is prod_op
+    assert adj_redop is sum_op
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
     lhs_adj = Contract(sum_op, prod_op, out_adj, rhs, lhs_reduced_vars)

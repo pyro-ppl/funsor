@@ -39,7 +39,7 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
 
     with AdjointTape() as tape:  # interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
-    actuals = tape.adjoint(ops.logaddexp, fwd_expr, funsor_operands)
+    actuals = tape.adjoint(ops.logaddexp, ops.add, fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
@@ -68,7 +68,7 @@ def test_einsum_adjoint_unary_marginals(einsum_impl, equation, backend):
     targets = [Variable(k, bint(sizes[k])) for k in set(sizes)]
     with AdjointTape() as tape:  # interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
-    actuals = tape.adjoint(ops.logaddexp, fwd_expr, targets)
+    actuals = tape.adjoint(ops.logaddexp, ops.add, fwd_expr, targets)
 
     for target in targets:
         actual = actuals[target]
@@ -100,7 +100,7 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
 
     with AdjointTape() as tape:  # interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, plates=plates, backend=backend)
-    actuals = tape.adjoint(ops.logaddexp, fwd_expr, funsor_operands)
+    actuals = tape.adjoint(ops.logaddexp, ops.add, fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
@@ -134,7 +134,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
 
     with AdjointTape() as tape:  # interpretation(reflect):
         fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
-    actuals = tape.adjoint(ops.logaddexp, fwd_expr, funsor_operands)
+    actuals = tape.adjoint(ops.logaddexp, ops.add, fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
