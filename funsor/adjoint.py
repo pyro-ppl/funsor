@@ -101,7 +101,6 @@ def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
 
 @adjoint_ops.register(Binary, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, Funsor)
 def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
-    assert adj_binop is op
     assert (adj_redop, op) in ops.DISTRIBUTIVE_OPS
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
@@ -115,7 +114,6 @@ def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
 
 @adjoint_ops.register(Reduce, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, frozenset)
 def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
-    assert adj_redop is op or (adj_redop, op) in ops.DISTRIBUTIVE_OPS
     assert adj_binop is op or (op, adj_binop) in ops.DISTRIBUTIVE_OPS
 
     if op is ops.logaddexp:
@@ -129,8 +127,6 @@ def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
 @adjoint_ops.register(Contract, AssociativeOp, AssociativeOp, Funsor,
                       AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
 def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, lhs, rhs, reduced_vars):
-    assert adj_binop is prod_op
-    assert adj_redop is sum_op
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
     lhs_adj = Contract(sum_op, prod_op, out_adj, rhs, lhs_reduced_vars)
