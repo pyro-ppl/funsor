@@ -163,10 +163,19 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = {k: materialize(to_funsor(v, self.inputs[k]))
-                for k, v in subs if k in self.inputs}
+        subs = OrderedDict((k, to_funsor(v, self.inputs[k]))
+                           for k, v in subs if k in self.inputs)
         if not subs:
             return self
+
+        # special case: renaming
+        # must be handled to ensure proper cons hashing
+        if all(isinstance(v, Variable) and v.name not in self.inputs for v in subs.values()):
+            renamed_inputs = OrderedDict((subs[k].name if k in subs else k, self.inputs[k]) for k in self.inputs)
+            return Tensor(self.data, renamed_inputs, self.dtype)
+
+        # materialize after checking for renaming case
+        subs = OrderedDict((k, materialize(v)) for k, v in subs.items())
 
         # Compute result shapes.
         inputs = OrderedDict()
