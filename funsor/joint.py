@@ -29,6 +29,7 @@ def eager_add_delta_funsor(op, lhs, rhs):
 
 @moment_matching.register(Contraction, AssociativeOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
 def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
+    # TODO update to match master's Joint.moment_matching_reduce
 
     if red_op is not ops.logaddexp:
         return None

@@ -14,7 +14,7 @@ from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torc
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
-@pytest.mark.parametrize('dtype', [torch.float, torch.long, torch.uint8])
+@pytest.mark.parametrize('dtype', [torch.float, torch.long, torch.uint8, torch.bool])
 def test_to_funsor(shape, dtype):
     t = torch.randn(shape).type(dtype)
     f = funsor.to_funsor(t)

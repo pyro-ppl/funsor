@@ -138,6 +138,11 @@ class Tensor(Funsor, metaclass=TensorMeta):
     def item(self):
         return self.data.item()
 
+    def clamp_finite(self):
+        finfo = torch.finfo(self.data.dtype)
+        data = self.data.clamp(min=finfo.min, max=finfo.max)
+        return Tensor(data, self.inputs, self.dtype)
+
     @property
     def requires_grad(self):
         return self.data.requires_grad
@@ -157,10 +162,19 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = {k: materialize(to_funsor(v, self.inputs[k]))
-                for k, v in subs if k in self.inputs}
+        subs = OrderedDict((k, to_funsor(v, self.inputs[k]))
+                           for k, v in subs if k in self.inputs)
         if not subs:
             return self
+
+        # special case: renaming
+        # must be handled to ensure proper cons hashing
+        if all(isinstance(v, Variable) and v.name not in self.inputs for v in subs.values()):
+            renamed_inputs = OrderedDict((subs[k].name if k in subs else k, self.inputs[k]) for k in self.inputs)
+            return Tensor(self.data, renamed_inputs, self.dtype)
+
+        # materialize after checking for renaming case
+        subs = OrderedDict((k, materialize(v)) for k, v in subs.items())
 
         # Compute result shapes.
         inputs = OrderedDict()
@@ -725,7 +739,7 @@ def _exp(x):
 
 @ops.log.register(torch.Tensor)
 def _log(x):
-    if x.dtype in (torch.uint8, torch.long):
+    if x.dtype in (torch.bool, torch.uint8, torch.long):
         x = x.float()
     return x.log()
 

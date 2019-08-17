@@ -5,15 +5,12 @@ from pyro.ops.contract import einsum as pyro_einsum
 from pyro.ops.einsum.adjoint import require_backward as pyro_require_backward
 
 import funsor
-from funsor.adjoint import adjoint
+import funsor.ops as ops
+from funsor.adjoint import AdjointTape
 from funsor.domains import bint
 from funsor.einsum import einsum, naive_einsum, naive_plated_einsum
-from funsor.interpreter import interpretation
-from funsor.terms import Variable, reflect
+from funsor.terms import Variable
 from funsor.testing import make_einsum_example, make_plated_hmm_einsum
-
-# FIXME rewrite adjoint for compatibility with substitution changes
-xfail_with_new_subs = pytest.mark.skipif(True, reason="fails w/ new subs")
 
 
 EINSUM_EXAMPLES = [
@@ -34,16 +31,15 @@ EINSUM_EXAMPLES = [
 ]
 
 
-@xfail_with_new_subs
 @pytest.mark.parametrize('einsum_impl', [naive_einsum, einsum])
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
 def test_einsum_adjoint(einsum_impl, equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
-    with interpretation(reflect):
+    with AdjointTape() as tape:  # interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
-    actuals = adjoint(fwd_expr, funsor_operands)
+    actuals = tape.adjoint(ops.logaddexp, ops.add, fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
@@ -62,18 +58,17 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
-@xfail_with_new_subs
 @pytest.mark.parametrize('einsum_impl', [naive_einsum, einsum])
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
 def test_einsum_adjoint_unary_marginals(einsum_impl, equation, backend):
-    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    equation = ",".join(inputs) + "->"
 
-    targets = [Variable(k, bint(sizes[k])) for k in set(sizes)]
-    with interpretation(reflect):
+    with AdjointTape() as tape:  # interpretation(reflect):
+        inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+        equation = ",".join(inputs) + "->"
+        targets = [Variable(k, bint(sizes[k])) for k in set(sizes)]
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
-    actuals = adjoint(fwd_expr, targets)
+    actuals = tape.adjoint(ops.logaddexp, ops.add, fwd_expr, targets)
 
     for target in targets:
         actual = actuals[target]
@@ -97,16 +92,15 @@ PLATED_EINSUM_EXAMPLES = [
 ]
 
 
-@xfail_with_new_subs
 @pytest.mark.parametrize('einsum_impl', [naive_plated_einsum, einsum])
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
 def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
-    with interpretation(reflect):
+    with AdjointTape() as tape:  # interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, plates=plates, backend=backend)
-    actuals = adjoint(fwd_expr, funsor_operands)
+    actuals = tape.adjoint(ops.logaddexp, ops.add, fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
@@ -133,15 +127,14 @@ OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
 ]
 
 
-@xfail_with_new_subs
 @pytest.mark.parametrize('equation,plates', OPTIMIZED_PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_marginal'])
 def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
-    with interpretation(reflect):
+    with AdjointTape() as tape:  # interpretation(reflect):
         fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
-    actuals = adjoint(fwd_expr, funsor_operands)
+    actuals = tape.adjoint(ops.logaddexp, ops.add, fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)

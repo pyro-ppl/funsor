@@ -7,7 +7,13 @@ import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
-from funsor.sum_product import _partition, partial_sum_product, sequential_sum_product, sum_product
+from funsor.sum_product import (
+    _partition,
+    naive_sequential_sum_product,
+    partial_sum_product,
+    sequential_sum_product,
+    sum_product
+)
 from funsor.terms import moment_matching, reflect
 from funsor.testing import assert_close, random_gaussian, random_tensor
 
@@ -82,7 +88,7 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     assert_close(actual, expected)
 
 
-@pytest.mark.parametrize('num_steps', list(range(1, 13)))
+@pytest.mark.parametrize('num_steps', [None] + list(range(1, 13)))
 @pytest.mark.parametrize('sum_op,prod_op,state_domain', [
     (ops.add, ops.mul, bint(2)),
     (ops.add, ops.mul, bint(3)),
@@ -96,15 +102,20 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     {"foo": bint(5)},
     {"foo": bint(2), "bar": bint(4)},
 ], ids=lambda d: ",".join(d.keys()))
-def test_sequential_sum_product(sum_op, prod_op, batch_inputs, state_domain, num_steps):
+@pytest.mark.parametrize('impl', [sequential_sum_product, naive_sequential_sum_product])
+def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
     inputs = OrderedDict(batch_inputs)
-    inputs.update(time=bint(num_steps), prev=state_domain, curr=state_domain)
+    inputs.update(prev=state_domain, curr=state_domain)
+    if num_steps is None:
+        num_steps = 1
+    else:
+        inputs["time"] = bint(num_steps)
     if state_domain.dtype == "real":
         trans = random_gaussian(inputs)
     else:
         trans = random_tensor(inputs)
 
-    actual = sequential_sum_product(sum_op, prod_op, trans, "time", "prev", "curr")
+    actual = impl(sum_op, prod_op, trans, "time", {"prev": "curr"})
     expected_inputs = batch_inputs.copy()
     expected_inputs.update(prev=state_domain, curr=state_domain)
     assert dict(actual.inputs) == expected_inputs
@@ -121,7 +132,7 @@ def test_sequential_sum_product(sum_op, prod_op, batch_inputs, state_domain, num
     assert_close(actual, expected, rtol=5e-4 * num_steps)
 
 
-@pytest.mark.parametrize('num_steps', list(range(1, 6)))
+@pytest.mark.parametrize('num_steps', [None] + list(range(1, 6)))
 @pytest.mark.parametrize('batch_inputs', [
     {},
     {"foo": bint(5)},
@@ -132,22 +143,25 @@ def test_sequential_sum_product(sum_op, prod_op, batch_inputs, state_domain, num
     (reals(), reals(2, 2)),
     (bint(2), reals(2)),
 ], ids=str)
-def test_sequential_sum_product_multi(x_domain, y_domain, batch_inputs, num_steps):
+@pytest.mark.parametrize('impl', [sequential_sum_product, naive_sequential_sum_product])
+def test_sequential_sum_product_multi(impl, x_domain, y_domain, batch_inputs, num_steps):
     sum_op = ops.logaddexp
     prod_op = ops.add
     inputs = OrderedDict(batch_inputs)
-    inputs.update(time=bint(num_steps),
-                  x_prev=x_domain, x_curr=x_domain,
+    inputs.update(x_prev=x_domain, x_curr=x_domain,
                   y_prev=y_domain, y_curr=y_domain)
+    if num_steps is None:
+        num_steps = 1
+    else:
+        inputs["time"] = bint(num_steps)
     if any(v.dtype == "real" for v in inputs.values()):
         trans = random_gaussian(inputs)
     else:
         trans = random_tensor(inputs)
-    prev = ("x_prev", "y_prev")
-    curr = ("x_curr", "y_curr")
+    step = {"x_prev": "x_curr", "y_prev": "y_curr"}
 
     with interpretation(moment_matching):
-        actual = sequential_sum_product(sum_op, prod_op, trans, "time", prev, curr)
+        actual = impl(sum_op, prod_op, trans, "time", step)
         expected_inputs = batch_inputs.copy()
         expected_inputs.update(x_prev=x_domain, x_curr=x_domain,
                                y_prev=y_domain, y_curr=y_domain)

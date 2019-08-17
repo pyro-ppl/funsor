@@ -2,11 +2,13 @@ import math
 from collections import OrderedDict
 from functools import singledispatch
 
+import pyro.distributions
 import torch
 import torch.distributions as dist
 from pyro.distributions.torch_distribution import MaskedDistribution
 from pyro.distributions.util import broadcast_shape
 
+from funsor.cnf import Contraction
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian, cholesky_solve
@@ -92,6 +94,56 @@ def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
     inputs = loc.inputs.copy()
     inputs.update(real_inputs)
     return Tensor(log_prob, loc.inputs) + Gaussian(info_vec, precision.data, inputs)
+
+
+def funsor_to_mvn(gaussian, ndims, event_inputs=()):
+    """
+    Convert a :class:`~funsor.terms.Funsor` to a
+    :class:`pyro.distributions.MultivariateNormal` .
+    """
+    assert sum(1 for d in gaussian.inputs.values() if d.dtype == "real") == 1
+    if isinstance(gaussian, Contraction):
+        gaussian = [v for v in gaussian.terms if isinstance(v, Gaussian)][0]
+    assert isinstance(gaussian, Gaussian)
+
+    precision = gaussian.precision
+    loc = gaussian.info_vec.unsqueeze(-1).cholesky_solve(precision.cholesky()).squeeze(-1)
+
+    int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != "real")
+    loc = Tensor(loc, int_inputs)
+    precision = Tensor(precision, int_inputs)
+    assert len(loc.output.shape) == 1
+    assert precision.output.shape == loc.output.shape * 2
+
+    loc = funsor_to_tensor(loc, ndims + 1, event_inputs)
+    precision = funsor_to_tensor(precision, ndims + 2, event_inputs)
+    return pyro.distributions.MultivariateNormal(loc, precision_matrix=precision)
+
+
+def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
+    """
+    Converts a labeled gaussian mixture model to a pair of distributions.
+
+    :return: A pair ``(cat, mvn)``, where ``cat`` is a
+        :class:`~pyro.distributions.Categorical` distribution over mixture
+        components and ``mvn`` is a
+        :class:`~pyro.distributions.MultivariateNormal` with rightmost batch
+        dimension ranging over mixture components.
+    """
+    assert isinstance(funsor_, Contraction), funsor_
+    assert sum(1 for d in funsor_.inputs.values() if d.dtype == "real") == 1
+    assert event_inputs, "no components name found"
+    # assert not funsor_.deltas
+    discrete = [v for v in funsor_.terms if isinstance(v, Tensor)][0]  # funsor_.discrete
+    gaussian = [v for v in funsor_.terms if isinstance(v, Gaussian)][0]
+    assert isinstance(discrete, Tensor)
+    assert isinstance(gaussian, Gaussian)
+
+    logits = funsor_to_tensor(discrete + gaussian.log_normalizer, ndims + 1, event_inputs)
+    cat = pyro.distributions.Categorical(logits=logits)
+    mvn = funsor_to_mvn(gaussian, ndims + 1, event_inputs)
+    assert cat.batch_shape == mvn.batch_shape[:-1]
+    return cat, mvn
 
 
 def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_name="value_y"):
