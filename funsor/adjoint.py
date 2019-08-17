@@ -4,11 +4,11 @@ import torch
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.cnf import Contraction
+from funsor.cnf import Contraction, anyop
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Funsor, Reduce, Variable, alpha_substitute, lazy, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Variable, alpha_substitute, normalize, to_funsor
 from funsor.torch import Tensor
 
 
@@ -16,9 +16,9 @@ def _alpha_deconvert(expr):
     alpha_subs = {name: name.split("__BOUND")[0]
                   for name in expr.bound if "__BOUND" in name}
     if not alpha_subs:
-        return tuple(expr._ast_values)
+        return type(expr), tuple(expr._ast_values)
 
-    return alpha_substitute(expr, alpha_subs)
+    return type(expr), alpha_substitute(expr, alpha_subs)
 
 
 class AdjointTape(object):
@@ -61,10 +61,11 @@ class AdjointTape(object):
                     continue
 
             # reverse the effects of alpha-renaming
-            with interpretation(lazy):
+            with interpretation(normalize):  # lazy):
                 other_subs = {name: name.split("__BOUND")[0] for name in output.inputs if "__BOUND" in name}
-                inputs = _alpha_deconvert(fn(*inputs)(**other_subs))
-                output = type(output)(*_alpha_deconvert(output(**other_subs)))
+                fn, inputs = _alpha_deconvert(fn(*inputs)(**other_subs))
+                otype, oinputs = _alpha_deconvert(output(**other_subs))
+                output = otype(*oinputs)
 
             in_adjs = adjoint_ops(fn, red_op, bin_op, adjoint_values[output], *inputs)
             for v, adjv in in_adjs.items():
@@ -142,9 +143,9 @@ def adjoint_contract_unary(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduc
 def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs):
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
-    lhs_adj = Contraction(sum_op, prod_op, lhs_reduced_vars, out_adj, rhs)
+    lhs_adj = Contraction(sum_op if sum_op is not anyop else adj_redop, prod_op, lhs_reduced_vars, out_adj, rhs)
 
     rhs_reduced_vars = frozenset(lhs.inputs) - frozenset(rhs.inputs)
-    rhs_adj = Contraction(sum_op, prod_op, rhs_reduced_vars, out_adj, lhs)
+    rhs_adj = Contraction(sum_op if sum_op is not anyop else adj_redop, prod_op, rhs_reduced_vars, out_adj, lhs)
 
     return {lhs: lhs_adj, rhs: rhs_adj}
