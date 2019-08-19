@@ -1,3 +1,5 @@
+from functools import reduce
+
 import opt_einsum
 import pytest
 import torch
@@ -8,8 +10,9 @@ import funsor
 from funsor.adjoint import AdjointTape
 from funsor.domains import bint
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
-from funsor.terms import Binary, Variable
-from funsor.testing import make_einsum_example, make_plated_hmm_einsum, xfail_param
+from funsor.interpreter import interpretation
+from funsor.terms import Binary, Variable, lazy
+from funsor.testing import assert_close, make_einsum_example, make_plated_hmm_einsum, xfail_param
 
 
 EINSUM_EXAMPLES = [
@@ -179,3 +182,25 @@ def test_adjoint_binary_sum(lhs_equation, lhs_plates, rhs_equation, rhs_plates, 
         assert isinstance(actual, funsor.Tensor)
         assert expected.shape == actual.data.shape
         assert torch.allclose(expected, actual.data, atol=1e-7)
+
+
+@pytest.mark.xfail(reason="issues with multiplicities")
+@pytest.mark.parametrize("equation,plates", [(e, "") for e in EINSUM_EXAMPLES[:5]] + PLATED_EINSUM_EXAMPLES)
+@pytest.mark.parametrize('backend', [
+    'pyro.ops.einsum.torch_marginal',
+])
+def test_adjoint_involution(equation, plates, backend):
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+    sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
+
+    # forward-backward once
+    with AdjointTape() as tape:
+        fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
+    with interpretation(lazy), AdjointTape() as tape2:
+        bwd_exprs = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
+        bwd_expr = reduce(lambda a, b: Binary(sum_op, a, b), bwd_exprs.values())
+
+    # backward again
+    actual = tape2.adjoint(sum_op, prod_op, bwd_expr, (fwd_expr,))
+
+    assert_close(actual[fwd_expr], fwd_expr)
