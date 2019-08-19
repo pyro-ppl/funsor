@@ -1,7 +1,6 @@
 from collections import OrderedDict
 
-import opt_einsum
-import pyro.ops.contract as pyro_einsum
+from pyro.ops.contract import einsum as pyro_einsum
 import pytest
 import torch
 
@@ -23,14 +22,17 @@ OPTIMIZED_EINSUM_EXAMPLES = [
 
 
 @pytest.mark.parametrize('equation', OPTIMIZED_EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize('backend', [
+    'pyro.ops.einsum.torch_log',
+    'pyro.ops.einsum.torch_map',
+])
 @pytest.mark.parametrize("einsum_impl", [
     naive_einsum,
     naive_contract_einsum,
 ])
 def test_optimized_einsum(equation, backend, einsum_impl):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    expected = opt_einsum.contract(equation, *operands, backend=backend)
+    expected = pyro_einsum(equation, *operands, backend=backend)[0]
     with interpretation(normalize):
         naive_ast = einsum_impl(equation, *funsor_operands, backend=backend)
     optimized_ast = apply_optimizer(naive_ast)
@@ -53,8 +55,10 @@ def test_optimized_einsum(equation, backend, einsum_impl):
 ])
 @pytest.mark.parametrize("optimize1", [False, True])
 @pytest.mark.parametrize("optimize2", [False, True])
-@pytest.mark.parametrize("backend1", ['torch', 'pyro.ops.einsum.torch_log'])
-@pytest.mark.parametrize("backend2", ['torch', 'pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize("backend1", [
+    'torch', 'pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_map'])
+@pytest.mark.parametrize("backend2", [
+    'torch', 'pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_map'])
 @pytest.mark.parametrize("einsum_impl", [naive_einsum, naive_contract_einsum])
 def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, einsum_impl):
     inputs1, outputs1, sizes1, operands1, _ = make_einsum_example(eqn1, sizes=(3,))
@@ -64,8 +68,9 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, ein
     operands1 = [operand.abs() / operand.abs().sum(-1, keepdim=True)
                  for operand in operands1]
 
-    expected1 = opt_einsum.contract(eqn1, *operands1, backend=backend1)
-    expected2 = opt_einsum.contract(outputs1[0] + "," + eqn2, *([expected1] + operands2), backend=backend2)
+    expected1 = pyro_einsum(eqn1, *operands1, backend=backend1, modulo_total=True)[0]
+    expected2 = pyro_einsum(outputs1[0] + "," + eqn2, *([expected1] + operands2),
+                            backend=backend2, modulo_total=True)[0]
 
     with interpretation(normalize):
         funsor_operands1 = [
@@ -98,10 +103,13 @@ PLATED_EINSUM_EXAMPLES = [
 
 
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', ['pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize('backend', [
+    'pyro.ops.einsum.torch_log',
+    'pyro.ops.einsum.torch_map',
+])
 def test_optimized_plated_einsum(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    expected = pyro_einsum.einsum(equation, *operands, plates=plates, backend=backend)[0]
+    expected = pyro_einsum(equation, *operands, plates=plates, backend=backend)[0]
     actual = einsum(equation, *funsor_operands, plates=plates, backend=backend)
 
     if len(equation) < 10:

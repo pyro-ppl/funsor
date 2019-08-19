@@ -117,10 +117,10 @@ def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
 def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
     assert adj_binop is op or (op, adj_binop) in ops.DISTRIBUTIVE_OPS
 
-    if op is ops.logaddexp:
+    if op is adj_redop:
         # XXX using a hack to simulate "expand"
         return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], arg, arg))}
-    elif op is ops.add:  # plate!
+    elif op is adj_binop:  # plate!
         out = arg.reduce(op, reduced_vars)
         return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
 

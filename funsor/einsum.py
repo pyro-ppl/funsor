@@ -8,6 +8,20 @@ from funsor.sum_product import sum_product
 from funsor.terms import Funsor, normalize
 
 
+BACKEND_OPS = {
+    "torch": (ops.add, ops.mul),
+    "pyro.ops.einsum.torch_log": (ops.logaddexp, ops.add),
+    "pyro.ops.einsum.torch_marginal": (ops.logaddexp, ops.add),
+    "pyro.ops.einsum.torch_map": (ops.max, ops.add),
+    "pyro.ops.einsum.torch_sample": (ops.logaddexp, ops.add),
+}
+
+BACKEND_ADJOINT_OPS = {
+    "pyro.ops.einsum.torch_marginal": (ops.logaddexp, ops.add),
+    "pyro.ops.einsum.torch_map": (ops.max, ops.add),
+}
+
+
 def naive_contract_einsum(eqn, *terms, **kwargs):
     """
     Use for testing Contract against einsum
@@ -15,10 +29,8 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     assert "plates" not in kwargs
 
     backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
-        sum_op, prod_op = ops.logaddexp, ops.add
+    if backend in BACKEND_OPS:
+        sum_op, prod_op = BACKEND_OPS[backend]
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
@@ -39,10 +51,8 @@ def naive_einsum(eqn, *terms, **kwargs):
     Implements standard variable elimination.
     """
     backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
-        sum_op, prod_op = ops.logaddexp, ops.add
+    if backend in BACKEND_OPS:
+        sum_op, prod_op = BACKEND_OPS[backend]
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
@@ -69,10 +79,8 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
         return naive_einsum(eqn, *terms, **kwargs)
 
     backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
-        sum_op, prod_op = ops.logaddexp, ops.add
+    if backend in BACKEND_OPS:
+        sum_op, prod_op = BACKEND_OPS[backend]
     else:
         raise ValueError("{} backend not implemented".format(backend))
 

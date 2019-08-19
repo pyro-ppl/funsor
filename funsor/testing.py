@@ -132,6 +132,7 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
     for dims in inputs:
         shape = tuple(sizes[dim] for dim in dims)
         operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
+        operands[-1]._pyro_dims = dims
     funsor_operands = [
         Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)
@@ -224,7 +225,7 @@ def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
         inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
         inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
     equation = ",".join(inputs) + "->"
-    return (equation, ''.join(set(obs_plates + hidden_plates)))
+    return (equation, ''.join(sorted(tuple(set(obs_plates + hidden_plates)))))
 
 
 def make_chain_einsum(num_steps):
