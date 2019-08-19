@@ -101,15 +101,23 @@ def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
 
 @adjoint_ops.register(Binary, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, Funsor)
 def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
-    assert (adj_redop, op) in ops.DISTRIBUTIVE_OPS
+    assert op is adj_redop or (adj_redop, op) in ops.DISTRIBUTIVE_OPS
 
-    lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
-    lhs_adj = op(out_adj, rhs).reduce(adj_redop, lhs_reduced_vars)
+    if (adj_redop, op) in ops.DISTRIBUTIVE_OPS:
+        lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
+        lhs_adj = op(out_adj, rhs).reduce(adj_redop, lhs_reduced_vars)
 
-    rhs_reduced_vars = frozenset(lhs.inputs) - frozenset(rhs.inputs)
-    rhs_adj = op(out_adj, lhs).reduce(adj_redop, rhs_reduced_vars)
+        rhs_reduced_vars = frozenset(lhs.inputs) - frozenset(rhs.inputs)
+        rhs_adj = op(out_adj, lhs).reduce(adj_redop, rhs_reduced_vars)
 
-    return {lhs: lhs_adj, rhs: rhs_adj}
+        return {lhs: lhs_adj, rhs: rhs_adj}
+
+    elif op is adj_redop:
+        # XXX hacks to simulate "expand"
+        lhs_adj = adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], lhs, lhs))
+        rhs_adj = adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], rhs, rhs))
+
+        return {lhs: lhs_adj, rhs: rhs_adj}
 
 
 @adjoint_ops.register(Reduce, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, frozenset)
