@@ -18,12 +18,12 @@ setup(
         'unification',
     ],
     extras_require={
-        'test': ['flake8', 'pytest>=4.1', 'pytest-xdist>=1.27.0', 'torchvision==0.2.1'],
+        'test': ['flake8', 'pytest>=4.1', 'pytest-xdist==1.27.0', 'torchvision==0.2.1'],
         'dev': [
             'flake8',
             'isort',
             'pytest>=4.1',
-            'pytest-xdist>=1.27.0',
+            'pytest-xdist==1.27.0',
             'sphinx>=2.0',
             'sphinx_rtd_theme',
             'torchvision==0.2.1',
