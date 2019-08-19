@@ -16,7 +16,7 @@ format: FORCE
 	isort -y
 
 test: lint FORCE
-	pytest -v test
+	pytest -v test -n auto
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py

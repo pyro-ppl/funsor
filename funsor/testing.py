@@ -222,7 +222,7 @@ def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
         inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
         inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
     equation = ",".join(inputs) + "->"
-    return (equation, ''.join(set(obs_plates + hidden_plates)))
+    return (equation, ''.join(sorted(tuple(set(obs_plates + hidden_plates)))))
 
 
 def make_chain_einsum(num_steps):

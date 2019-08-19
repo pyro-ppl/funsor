@@ -23,6 +23,7 @@ setup(
             'flake8',
             'isort',
             'pytest>=4.1',
+            'pytest-xdist',
             'sphinx>=2.0',
             'sphinx_rtd_theme',
             'torchvision==0.2.1',
