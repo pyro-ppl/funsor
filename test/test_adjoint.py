@@ -11,7 +11,7 @@ from funsor.adjoint import AdjointTape
 from funsor.domains import bint
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Variable, lazy
+from funsor.terms import Binary, Variable, lazy, to_funsor
 from funsor.testing import assert_close, make_einsum_example, make_plated_hmm_einsum, xfail_param
 
 
@@ -154,10 +154,15 @@ def test_adjoint_binary_sum(lhs_equation, lhs_plates, rhs_equation, rhs_plates, 
     rhs_inputs, rhs_outputs, rhs_sizes, rhs_operands, rhs_funsor_operands = make_einsum_example(rhs_equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
+    # make up numbers
+    const1 = to_funsor(torch.tensor(0.5231))
+    const2 = to_funsor(torch.tensor(0.8376))
+
     with AdjointTape() as tape:  # interpretation(reflect):
-        fwd_expr = Binary(sum_op,
-                          einsum(lhs_equation, *lhs_funsor_operands, plates=lhs_plates, backend=backend),
-                          einsum(rhs_equation, *rhs_funsor_operands, plates=rhs_plates, backend=backend))
+        lhs = einsum(lhs_equation, *lhs_funsor_operands, plates=lhs_plates, backend=backend)
+        rhs = einsum(rhs_equation, *rhs_funsor_operands, plates=rhs_plates, backend=backend)
+        fwd_expr = Binary(sum_op, Binary(prod_op, const1, lhs), Binary(prod_op, const2, rhs))
+
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, lhs_funsor_operands + rhs_funsor_operands)
 
     for operand in lhs_operands:
@@ -176,7 +181,8 @@ def test_adjoint_binary_sum(lhs_equation, lhs_plates, rhs_equation, rhs_plates, 
                                           lhs_operands + rhs_operands,
                                           lhs_funsor_operands + rhs_funsor_operands)):
         actual = actuals[fv]
-        expected = tv._pyro_backward_result
+        const = const1 if any(tv is o for o in lhs_operands) else const2
+        expected = prod_op(tv._pyro_backward_result, const.data)
         if inp:
             actual = actual.align(tuple(inp))
         assert isinstance(actual, funsor.Tensor)
