@@ -112,7 +112,7 @@ def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
 
         return {lhs: lhs_adj, rhs: rhs_adj}
 
-    elif op is adj_redop:
+    if op is adj_redop:
         # XXX hacks to simulate "expand"
         lhs_adj = adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], lhs, lhs))
         rhs_adj = adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], rhs, rhs))
@@ -127,7 +127,8 @@ def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
     if op is adj_redop:
         # XXX using a hack to simulate "expand"
         return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], arg, arg))}
-    elif op is adj_binop:  # plate!
+
+    if op is adj_binop:  # plate!
         out = arg.reduce(op, reduced_vars)
         return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
 
@@ -135,6 +136,7 @@ def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
 @adjoint_ops.register(Contract, AssociativeOp, AssociativeOp, Funsor,
                       AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
 def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, lhs, rhs, reduced_vars):
+    assert adj_redop is sum_op and adj_binop is prod_op
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
     lhs_adj = Contract(sum_op, prod_op, out_adj, rhs, lhs_reduced_vars)
