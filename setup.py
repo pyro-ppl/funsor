@@ -18,7 +18,7 @@ setup(
         'unification',
     ],
     extras_require={
-        'test': ['flake8', 'pytest>=4.1', 'torchvision==0.2.1'],
+        'test': ['flake8', 'pytest>=4.1', 'pytest-xdist', 'torchvision==0.2.1'],
         'dev': [
             'flake8',
             'isort',
@@ -29,7 +29,7 @@ setup(
             'torchvision==0.2.1',
         ],
     },
-    tests_require=['flake8', 'pytest>=4.1'],
+    tests_require=['flake8', 'pytest>=4.1', 'pytest-xdist'],
     keywords='probabilistic machine learning bayesian statistics pytorch',
     classifiers=[
         'Intended Audience :: Developers',
