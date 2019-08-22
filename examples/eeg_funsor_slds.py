@@ -12,8 +12,7 @@ from collections import OrderedDict
 import funsor
 import funsor.distributions as dist
 import funsor.ops as ops
-from funsor.gaussian import Gaussian
-from funsor.pyro.convert import matrix_and_mvn_to_funsor
+from funsor.pyro.convert import matrix_and_mvn_to_funsor, mvn_to_funsor
 
 
 def download_data():
@@ -37,8 +36,8 @@ class SLDS(nn.Module):
         self.obs_dim = obs_dim
         super(SLDS, self).__init__()
         self.transition_logits = nn.Parameter(0.1 * torch.randn(num_components, num_components))
-        transition_matrix = 0.03 * torch.randn(hidden_dim, hidden_dim) + torch.eye(hidden_dim)
-        self.transition_matrix = nn.Parameter(transition_matrix.expand(num_components, -1, -1))
+        transition_matrix = torch.eye(hidden_dim) + 0.05 * torch.randn(num_components, hidden_dim, hidden_dim)
+        self.transition_matrix = nn.Parameter(transition_matrix)
         if fine_transition_noise:
             self.log_transition_noise = nn.Parameter(0.1 * torch.randn(num_components, hidden_dim))
         else:
@@ -52,21 +51,26 @@ class SLDS(nn.Module):
         else:
             self.log_obs_noise = nn.Parameter(0.1 * torch.randn(obs_dim))
 
+        x_init_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.hidden_dim), torch.eye(self.hidden_dim))
+        self.x_init_mvn = mvn_to_funsor(x_init_mvn, real_inputs=OrderedDict([('x_0', funsor.reals(self.hidden_dim))]))
+
     @funsor.interpreter.interpretation(funsor.terms.moment_matching)
     def log_prob(self, data):
         trans_logits = self.transition_logits - self.transition_logits.logsumexp(dim=-1, keepdim=True)
         trans_probs = funsor.Tensor(trans_logits, OrderedDict([("s", funsor.bint(self.num_components))]))
 
-        log_prob = funsor.Number(0.)
-
-        s_curr = funsor.Tensor(torch.tensor(0), dtype=self.num_components)
-        x_curr = None
-        x_init_mvn = Gaussian(torch.zeros(self.hidden_dim), torch.eye(self.hidden_dim),
-                              inputs=OrderedDict([('x_0', funsor.reals(self.hidden_dim))]))
         trans_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.hidden_dim),
                                                            self.log_transition_noise.exp().diag_embed())
         obs_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.obs_dim),
                                                          self.log_obs_noise.exp().diag_embed())
+
+        x_trans_dist = matrix_and_mvn_to_funsor(self.transition_matrix, trans_mvn, ("s", "x", "y"))
+        y_dist = matrix_and_mvn_to_funsor(self.observation_matrix, obs_mvn, ("s", "x", "y"))
+
+        log_prob = funsor.Number(0.)
+
+        s_curr = funsor.Tensor(torch.tensor(0), dtype=self.num_components)
+        x_curr = None
 
         for t, y in enumerate(data):
             s_prev = s_curr
@@ -77,19 +81,16 @@ class SLDS(nn.Module):
 
             x_curr = funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim))
             if t == 0:
-                x_dist = x_init_mvn
+                log_prob += self.x_init_mvn(value=x_curr)
             else:
-                x_dist = matrix_and_mvn_to_funsor(self.transition_matrix, trans_mvn,
-                                                  ("s_{}".format(t),),
-                                                  x_name="x_{}".format(t - 1), y_name="x_{}".format(t))
-            log_prob += x_dist(value=x_curr)
+                log_prob += x_trans_dist(value=x_curr, s="s_{}".format(t), x="x_{}".format(t - 1), y="x_{}".format(t))
+            print("inputs after trans[t=%d]:" % t, log_prob.inputs)
 
             if t > 0:
                 log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_prev.name, x_prev.name]))
 
-            y_dist = matrix_and_mvn_to_funsor(self.observation_matrix, obs_mvn,
-                                              ("s_{}".format(t),), x_name="x_{}".format(t), y_name="value")
-            log_prob += y_dist(value=y)
+            log_prob += y_dist(value=y, s="s_{}".format(t), x="x_{}".format(t), y="y_{}".format(t))
+            print("inputs after yobs [t=%d]:" % t, log_prob.inputs)
 
         log_prob = log_prob.reduce(ops.logaddexp)
         assert not log_prob.inputs, 'free variables remain'
@@ -107,14 +108,13 @@ def main(args):
     download_data()
     data = np.loadtxt('eeg.dat', delimiter=',', skiprows=19)
     # labels = data[:, -1]
+    data = data[1000:1005, :]
 
     data = torch.tensor(data[:, :-1]).float()
     data_mean = data.mean(0)
     data -= data_mean
     data_std = data.std(0)
     data /= data_std
-
-    data = data[0:500, :]
 
     hidden_dim = args.hidden_dim
     T, obs_dim = data.shape
@@ -139,13 +139,13 @@ def main(args):
         data = data.cuda()
         slds.cuda()
 
-    adam = torch.optim.Adam(slds.parameters(), lr=0.3, amsgrad=True)
+    adam = torch.optim.Adam(slds.parameters(), lr=args.learning_rate, amsgrad=True)
     # scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[20, 40, 80], gamma=0.2)
     opt = torch.optim.LBFGS(slds.parameters(), lr=args.learning_rate)  # line_search_fn='strong_wolfe')
     ts = [time.time()]
 
     for step in range(args.num_steps):
-        if step > 90:
+        if step > 9999:
             def closure():
                 opt.zero_grad()
                 loss = -slds.log_prob(data[0:N_train, :]) / N_train
@@ -165,7 +165,7 @@ def main(args):
         ts.append(time.time())
         step_dt = ts[-1] - ts[-2]
 
-        if step % 5 == 0 or step == args.num_steps - 1:
+        if step % 20 == 0 or step == args.num_steps - 1:
             print("[step %03d]  training nll: %.4f   test lls: %.4f  %.4f \t\t (step_dt: %.2f)" % (step,
                   nll.item(), 0.0, 0.0, step_dt))
 
@@ -178,18 +178,20 @@ def main(args):
                                                                    slds.log_transition_noise.std().item()))
             print("[observation matrix.abs] mean: %.2f std: %.2f" % (slds.observation_matrix.abs().mean().item(),
                                                                      slds.observation_matrix.abs().std().item()))
-            print("[log_obs_noise] mean: %.2f std: %.2f" % (slds.log_obs_noise.mean().item(),
-                                                            slds.log_obs_noise.std().item()))
+            print("[log_obs_noise] mean: %.2f std: %.2f  min: %.2f  max: %.2f" % (slds.log_obs_noise.mean().item(),
+                                                                                  slds.log_obs_noise.std().item(),
+                                                                                  slds.log_obs_noise.min().item(),
+                                                                                  slds.log_obs_noise.max().item()))
 
     # torch.save(slds.state_dict(), 'slds.torch')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
-    parser.add_argument("-n", "--num-steps", default=1000, type=int)
+    parser.add_argument("-n", "--num-steps", default=2000, type=int)
     parser.add_argument("-hd", "--hidden-dim", default=7, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
-    parser.add_argument("-lr", "--learning-rate", default=0.1, type=float)
+    parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)
     parser.add_argument("-c", "--clip", default=1.0, type=float)
     parser.add_argument("-d", "--device", default="cpu", type=str)
     parser.add_argument("-v", "--verbose", action='store_true')
