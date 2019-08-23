@@ -56,6 +56,8 @@ extensions = [
 
 autodoc_inherit_docstrings = False
 
+# FIXME the sphinx version on readthedocs does not
+# support this option. These must be manually added.
 # autodoc_default_options = {
 #     'member-order': 'bysource',
 #     'show-inheritance': True,
