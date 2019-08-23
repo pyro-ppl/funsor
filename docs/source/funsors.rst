@@ -41,6 +41,22 @@ Gaussian
     :show-inheritance:
     :member-order: bysource
 
+Joint
+-----
+.. automodule:: funsor.joint
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
+
+Affine
+--------
+.. automodule:: funsor.affine
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
+
 Contract
 --------
 .. automodule:: funsor.contract
