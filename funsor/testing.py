@@ -1,16 +1,14 @@
-from __future__ import absolute_import, division, print_function
-
 import contextlib
 import itertools
 import numbers
 import operator
 from collections import OrderedDict, namedtuple
+from functools import reduce
 
 import numpy as np
 import opt_einsum
 import pytest
 import torch
-from six.moves import reduce
 
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, reals
@@ -61,7 +59,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert_close(actual.point, expected.point, atol=atol, rtol=rtol)
         assert_close(actual.log_density, expected.log_density, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
-        assert_close(actual.loc, expected.loc, atol=atol, rtol=rtol)
+        assert_close(actual.info_vec, expected.info_vec, atol=atol, rtol=rtol)
         assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)
     elif isinstance(actual, Joint):
         actual_deltas = {d.name: d for d in actual.deltas}
@@ -73,7 +71,8 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert_close(actual.gaussian, expected.gaussian, atol=atol, rtol=rtol)
     elif isinstance(actual, torch.Tensor):
         assert actual.dtype == expected.dtype, msg
-        if actual.dtype in (torch.long, torch.uint8):
+        assert actual.shape == expected.shape, msg
+        if actual.dtype in (torch.long, torch.uint8, torch.bool):
             assert (actual == expected).all(), msg
         else:
             eq = (actual == expected)
@@ -130,6 +129,7 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
     for dims in inputs:
         shape = tuple(sizes[dim] for dim in dims)
         operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
+        operands[-1]._pyro_dims = dims
     funsor_operands = [
         Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)
@@ -188,11 +188,25 @@ def random_gaussian(inputs):
     assert isinstance(inputs, OrderedDict)
     batch_shape = tuple(d.dtype for d in inputs.values() if d.dtype != 'real')
     event_shape = (sum(d.num_elements for d in inputs.values() if d.dtype == 'real'),)
-    loc = torch.randn(batch_shape + event_shape)
     prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
     precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
     precision = precision + 0.05 * torch.eye(event_shape[0])
-    return Gaussian(loc, precision, inputs)
+    loc = torch.randn(batch_shape + event_shape)
+    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
+    return Gaussian(info_vec, precision, inputs)
+
+
+def random_mvn(batch_shape, dim, diag=False):
+    """
+    Generate a random :class:`torch.distributions.MultivariateNormal` with given shape.
+    """
+    rank = dim + dim
+    loc = torch.randn(batch_shape + (dim,))
+    cov = torch.randn(batch_shape + (dim, rank))
+    cov = cov.matmul(cov.transpose(-1, -2))
+    if diag:
+        cov = cov * torch.eye(dim)
+    return torch.distributions.MultivariateNormal(loc, cov)
 
 
 def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
@@ -208,7 +222,7 @@ def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
         inputs.append(str(opt_einsum.get_symbol(t)) + str(opt_einsum.get_symbol(t+1)) + hidden_plates)
         inputs.append(str(opt_einsum.get_symbol(t+1)) + obs_plates)
     equation = ",".join(inputs) + "->"
-    return (equation, ''.join(set(obs_plates + hidden_plates)))
+    return (equation, ''.join(sorted(tuple(set(obs_plates + hidden_plates)))))
 
 
 def make_chain_einsum(num_steps):

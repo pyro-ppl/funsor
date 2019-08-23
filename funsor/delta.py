@@ -1,10 +1,7 @@
-from __future__ import absolute_import, division, print_function
-
 from collections import OrderedDict
 
-from six import add_metaclass
-
 import funsor.ops as ops
+import funsor.terms
 from funsor.domains import Domain, reals
 from funsor.integrate import Integrate, integrator
 from funsor.interpreter import debug_logged
@@ -18,6 +15,7 @@ from funsor.terms import (
     Independent,
     Lambda,
     Number,
+    Reduce,
     Subs,
     Unary,
     Variable,
@@ -36,8 +34,7 @@ class DeltaMeta(FunsorMeta):
         return super(DeltaMeta, cls).__call__(name, point, log_density)
 
 
-@add_metaclass(DeltaMeta)
-class Delta(Funsor):
+class Delta(Funsor, metaclass=DeltaMeta):
     """
     Normalized delta distribution binding a single variable.
 
@@ -56,33 +53,16 @@ class Delta(Funsor):
         inputs.update(point.inputs)
         inputs.update(log_density.inputs)
         output = reals()
-        super(Delta, self).__init__(inputs, output)
+        fresh = frozenset({name})
+        bound = frozenset()
+        super(Delta, self).__init__(inputs, output, fresh, bound)
         self.name = name
         self.point = point
         self.log_density = log_density
 
     def eager_subs(self, subs):
-        value = None
-        index_part = []
-        for k, v in subs:
-            if k in self.inputs:
-                if k == self.name:
-                    value = v
-                else:
-                    assert self.name not in v.inputs
-                    index_part.append((k, v))
-        index_part = tuple(index_part)
-
-        if index_part:
-            point = Subs(self.point, index_part)
-            log_density = Subs(self.log_density, index_part)
-            result = Delta(self.name, point, log_density)
-            if value is not None:
-                result = Subs(result, ((self.name, value),))
-            return result
-
-        if value is None:
-            return self
+        assert len(subs) == 1 and subs[0][0] == self.name
+        value = subs[0][1]
 
         if isinstance(value, Variable):
             return Delta(value.name, self.point, self.log_density)
@@ -136,16 +116,22 @@ def eager_add(op, lhs, rhs):
     return None  # defer to default implementation
 
 
+eager.register(Binary, AddOp, Delta, Reduce)(
+    funsor.terms.eager_distribute_other_reduce)
+eager.register(Binary, AddOp, Reduce, Delta)(
+    funsor.terms.eager_distribute_reduce_other)
+
+
 @eager.register(Independent, Delta, str, str)
 def eager_independent(delta, reals_var, bint_var):
-    if delta.name == reals_var:
+    if delta.name == reals_var or delta.name.startswith(reals_var + "__BOUND"):
         i = Variable(bint_var, delta.inputs[bint_var])
         point = Lambda(i, delta.point)
         if bint_var in delta.log_density.inputs:
             log_density = delta.log_density.reduce(ops.add, bint_var)
         else:
             log_density = delta.log_density * delta.inputs[bint_var].dtype
-        return Delta(delta.name, point, log_density)
+        return Delta(reals_var, point, log_density)
 
     return None  # defer to default implementation
 

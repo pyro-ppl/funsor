@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 import itertools
 from collections import OrderedDict
 
@@ -11,11 +9,11 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.terms import Lambda, Number, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
-from funsor.torch import REDUCE_OP_TO_TORCH, Tensor, align_tensors, torch_einsum
+from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torch_stack, torch_tensordot
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
-@pytest.mark.parametrize('dtype', [torch.float, torch.long, torch.uint8])
+@pytest.mark.parametrize('dtype', [torch.float, torch.long, torch.uint8, torch.bool])
 def test_to_funsor(shape, dtype):
     t = torch.randn(shape).type(dtype)
     f = funsor.to_funsor(t)
@@ -552,7 +550,7 @@ def test_function_nested_eager():
 
     @funsor.torch.function(reals(8), (reals(), bint(8)))
     def max_and_argmax(x):
-        return torch.max(x, dim=-1)
+        return tuple(torch.max(x, dim=-1))
 
     inputs = OrderedDict([('i', bint(2)), ('j', bint(3))])
     x = Tensor(torch.randn(2, 3, 8), inputs)
@@ -569,7 +567,7 @@ def test_function_nested_lazy():
 
     @funsor.torch.function(reals(8), (reals(), bint(8)))
     def max_and_argmax(x):
-        return torch.max(x, dim=-1)
+        return tuple(torch.max(x, dim=-1))
 
     x_lazy = Variable('x', reals(8))
     lazy_max, lazy_argmax = max_and_argmax(x_lazy)
@@ -585,6 +583,15 @@ def test_function_nested_lazy():
     expected_max, expected_argmax = max_and_argmax(y)
     assert_close(actual_max, expected_max)
     assert_close(actual_argmax, expected_argmax)
+
+
+def test_function_of_torch_tensor():
+    x = torch.randn(4, 3)
+    y = torch.randn(3, 2)
+    f = funsor.torch.function(reals(4, 3), reals(3, 2), reals(4, 2))(torch.matmul)
+    actual = f(x, y)
+    expected = f(Tensor(x), Tensor(y))
+    assert_close(actual, expected)
 
 
 def test_align():
@@ -624,5 +631,39 @@ def test_einsum(equation):
     tensors = [torch.randn(tuple(sizes[d] for d in dims)) for dims in inputs]
     funsors = [Tensor(x) for x in tensors]
     expected = Tensor(torch.einsum(equation, *tensors))
-    actual = torch_einsum(equation, *funsors)
+    actual = Einsum(equation, tuple(funsors))
+    assert_close(actual, expected, atol=1e-5, rtol=None)
+
+
+@pytest.mark.parametrize('y_shape', [(), (4,), (4, 5)], ids=str)
+@pytest.mark.parametrize('xy_shape', [(), (6,), (6, 7)], ids=str)
+@pytest.mark.parametrize('x_shape', [(), (2,), (2, 3)], ids=str)
+def test_tensordot(x_shape, xy_shape, y_shape):
+    x = torch.randn(x_shape + xy_shape)
+    y = torch.randn(xy_shape + y_shape)
+    dim = len(xy_shape)
+    actual = torch_tensordot(Tensor(x), Tensor(y), dim)
+    expected = Tensor(torch.tensordot(x, y, dim))
+    assert_close(actual, expected, atol=1e-5, rtol=None)
+
+
+@pytest.mark.parametrize('n', [1, 2, 5])
+@pytest.mark.parametrize('shape,dim', [
+    ((), 0),
+    ((), -1),
+    ((1,), 0),
+    ((1,), 1),
+    ((1,), -1),
+    ((1,), -2),
+    ((2, 3), 0),
+    ((2, 3), 1),
+    ((2, 3), 2),
+    ((2, 3), -1),
+    ((2, 3), -2),
+    ((2, 3), -3),
+], ids=str)
+def test_stack(n, shape, dim):
+    tensors = [torch.randn(shape) for _ in range(n)]
+    actual = torch_stack(tuple(Tensor(t) for t in tensors), dim=dim)
+    expected = Tensor(torch.stack(tensors, dim=dim))
     assert_close(actual, expected)

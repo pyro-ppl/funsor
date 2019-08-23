@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 import functools
 from collections import OrderedDict
 
@@ -21,13 +19,12 @@ class Integrate(Funsor):
                              for (k, d) in term.inputs.items()
                              if k not in reduced_vars)
         output = integrand.output
-        super(Integrate, self).__init__(inputs, output)
+        fresh = frozenset()
+        bound = reduced_vars
+        super(Integrate, self).__init__(inputs, output, fresh, bound)
         self.log_measure = log_measure
         self.integrand = integrand
         self.reduced_vars = reduced_vars
-
-    def eager_subs(self, subs):
-        raise NotImplementedError('TODO')
 
 
 def _simplify_integrate(fn, log_measure, integrand, reduced_vars):
@@ -73,8 +70,6 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 @integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     if log_measure.op is ops.logaddexp:
-        if not log_measure.reduced_vars.isdisjoint(reduced_vars):
-            raise NotImplementedError('TODO alpha convert')
         arg = Integrate(log_measure.arg, integrand, reduced_vars)
         return arg.reduce(ops.add, log_measure.reduced_vars)
 

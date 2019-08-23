@@ -1,21 +1,27 @@
-from __future__ import absolute_import, division, print_function
-
 import functools
+import warnings
 from collections import OrderedDict
+from functools import reduce
 
 import opt_einsum
 import torch
+from contextlib2 import contextmanager
 from multipledispatch import dispatch
-from six import add_metaclass, integer_types
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.six import getargspec
-from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Subs, Variable, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, eager, substitute, to_data, to_funsor
+from funsor.util import getargspec
+
+
+@contextmanager
+def ignore_jit_warnings():
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+        yield
 
 
 def align_tensor(new_inputs, x):
@@ -31,7 +37,7 @@ def align_tensor(new_inputs, x):
     """
     assert isinstance(new_inputs, OrderedDict)
     assert isinstance(x, (Number, Tensor))
-    assert all(isinstance(d.dtype, integer_types) for d in x.inputs.values())
+    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
 
     data = x.data
     if isinstance(x, Number):
@@ -59,7 +65,7 @@ def align_tensors(*args):
     This is mainly useful for implementing eager funsor operations.
 
     :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
-        :class:`~funsor.terms.Number`s.
+        :class:`~funsor.terms.Number` s.
     :return: a pair ``(inputs, tensors)`` where tensors are all
         :class:`torch.Tensor` s that can be broadcast together to a single data
         with given ``inputs``.
@@ -84,8 +90,7 @@ class TensorMeta(FunsorMeta):
         return super(TensorMeta, cls).__call__(data, inputs, dtype)
 
 
-@add_metaclass(TensorMeta)
-class Tensor(Funsor):
+class Tensor(Funsor, metaclass=TensorMeta):
     """
     Funsor backed by a PyTorch Tensor.
 
@@ -95,12 +100,15 @@ class Tensor(Funsor):
     def __init__(self, data, inputs=None, dtype="real"):
         assert isinstance(data, torch.Tensor)
         assert isinstance(inputs, tuple)
-        assert len(inputs) <= data.dim()
-        for (k, d), size in zip(inputs, data.shape):
-            assert d.dtype == size
+        if not torch._C._get_tracing_state():
+            assert len(inputs) <= data.dim()
+            for (k, d), size in zip(inputs, data.shape):
+                assert d.dtype == size
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
-        super(Tensor, self).__init__(inputs, output)
+        fresh = frozenset(inputs.keys())
+        bound = frozenset()
+        super(Tensor, self).__init__(inputs, output, fresh, bound)
         self.data = data
 
     def __repr__(self):
@@ -131,16 +139,23 @@ class Tensor(Funsor):
     def item(self):
         return self.data.item()
 
+    def clamp_finite(self):
+        finfo = torch.finfo(self.data.dtype)
+        data = self.data.clamp(min=finfo.min, max=finfo.max)
+        return Tensor(data, self.inputs, self.dtype)
+
+    @property
+    def requires_grad(self):
+        return self.data.requires_grad
+
     def align(self, names):
         assert isinstance(names, tuple)
         assert all(name in self.inputs for name in names)
         if not names or names == tuple(self.inputs):
             return self
+
         inputs = OrderedDict((name, self.inputs[name]) for name in names)
         inputs.update(self.inputs)
-
-        if any(d.shape for d in self.inputs.values()):
-            raise NotImplementedError("TODO: Implement align with vector indices.")
         old_dims = tuple(self.inputs)
         new_dims = tuple(inputs)
         data = self.data.permute(tuple(old_dims.index(d) for d in new_dims))
@@ -148,9 +163,19 @@ class Tensor(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = {k: materialize(v) for k, v in subs if k in self.inputs}
+        subs = OrderedDict((k, to_funsor(v, self.inputs[k]))
+                           for k, v in subs if k in self.inputs)
         if not subs:
             return self
+
+        # special case: renaming
+        # must be handled to ensure proper cons hashing
+        if all(isinstance(v, Variable) and v.name not in self.inputs for v in subs.values()):
+            renamed_inputs = OrderedDict((subs[k].name if k in subs else k, self.inputs[k]) for k in self.inputs)
+            return Tensor(self.data, renamed_inputs, self.dtype)
+
+        # materialize after checking for renaming case
+        subs = OrderedDict((k, materialize(v)) for k, v in subs.items())
 
         # Compute result shapes.
         inputs = OrderedDict()
@@ -407,7 +432,7 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
         rhs_data = rhs_data.reshape(rhs_data.shape + (1,) * (len(lhs.output.shape) - 1))
 
     # Perform advanced indexing.
-    target_dim = len(lhs.inputs) + op.offset
+    target_dim = lhs_data.dim() - len(lhs.output.shape) + op.offset
     index = [None] * lhs_data.dim()
     for i in range(target_dim):
         index[i] = torch.arange(lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 2))
@@ -478,10 +503,10 @@ def materialize(x):
         return x
     subs = []
     for name, domain in x.inputs.items():
-        if isinstance(domain.dtype, integer_types):
+        if isinstance(domain.dtype, int):
             subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
-    return Subs(x, subs)
+    return substitute(x, subs)
 
 
 class LazyTuple(tuple):
@@ -522,12 +547,6 @@ class Function(Funsor):
         name = getattr(self.fn, '__name__', type(self.fn).__name__)
         return '{}({}, {}, {})'.format(type(self).__name__, name,
                                        str(self.output), str(self.args))
-
-    def eager_subs(self, subs):
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        args = tuple(Subs(arg, subs) for arg in self.args)
-        return Function(self.fn, self.output, args)
 
 
 @eager.register(Function, object, Domain, tuple)
@@ -626,27 +645,98 @@ def function(*signature):
     return functools.partial(_function, inputs, output)
 
 
-def torch_einsum(equation, *operands):
+class Einsum(Funsor):
     """
     Wrapper around :func:`torch.einsum` to operate on real-valued Funsors.
 
     Note this operates only on the ``output`` tensor. To perform sum-product
     contractions on named dimensions, instead use ``+`` and
     :class:`~funsor.terms.Reduce`.
+
+    :param str equation: An einsum equation.
+    :param tuple operands: A tuple of input funsors.
     """
-    assert isinstance(equation, str)
-    assert isinstance(operands, tuple)
-    for x in operands:
-        assert isinstance(x, Funsor)
-        assert x.dtype == 'real'
-    inputs, output = equation.split('->')
-    inputs = inputs.split(',')
-    sizes = {dim: size
-             for input_, operand in zip(inputs, operands)
-             for dim, size in zip(input_, operand.output.shape)}
-    output = reals(*(sizes[dim] for dim in output))
-    fn = functools.partial(torch.einsum, equation)
-    return Function(fn, output, operands)
+    def __init__(self, equation, operands):
+        assert isinstance(equation, str)
+        assert isinstance(operands, tuple)
+        assert all(isinstance(x, Funsor) for x in operands)
+        ein_inputs, ein_output = equation.split('->')
+        ein_inputs = ein_inputs.split(',')
+        size_dict = {}
+        inputs = OrderedDict()
+        assert len(ein_inputs) == len(operands)
+        for ein_input, x in zip(ein_inputs, operands):
+            assert x.dtype == 'real'
+            inputs.update(x.inputs)
+            assert len(ein_inputs) == len(x.output.shape)
+            for name, size in zip(ein_inputs, x.output.shape):
+                other_size = size_dict.setdefault(name, size)
+                if other_size != size:
+                    raise ValueError("Size mismatch at {}: {} vs {}"
+                                     .format(name, size, other_size))
+        output = reals(*(size_dict[d] for d in ein_output))
+        super(Einsum, self).__init__(inputs, output)
+        self.equation = equation
+        self.operands = operands
+
+    def __repr__(self):
+        return 'Einsum({}, {})'.format(repr(self.equation), repr(self.operands))
+
+    def __str__(self):
+        return 'Einsum({}, {})'.format(repr(self.equation), str(self.operands))
+
+
+@eager.register(Einsum, str, tuple)
+def eager_einsum(equation, operands):
+    if all(isinstance(x, Tensor) for x in operands):
+        inputs, tensors = align_tensors(*operands)
+        data = torch.einsum(equation, tensors)
+        return Tensor(data, inputs)
+
+    return None  # defer to default implementation
+
+
+def torch_tensordot(x, y, dims):
+    """
+    Wrapper around :func:`torch.tensordot` to operate on real-valued Funsors.
+
+    Note this operates only on the ``output`` tensor. To perform sum-product
+    contractions on named dimensions, instead use ``+`` and
+    :class:`~funsor.terms.Reduce`.
+    """
+    x_start, x_end = 0, len(x.output.shape)
+    y_start = x_end - dims
+    y_end = y_start + len(y.output.shape)
+    symbols = 'abcdefghijklmnopqrstuvwxyz'
+    equation = '{},{}->{}'.format(symbols[x_start:x_end],
+                                  symbols[y_start:y_end],
+                                  symbols[x_start:y_start] + symbols[x_end:y_end])
+    return Einsum(equation, (x, y))
+
+
+def _torch_stack(dim, *parts):
+    return torch.stack(parts, dim=dim)
+
+
+def torch_stack(parts, dim=0):
+    """
+    Wrapper around :func:`torch.stack` to operate on real-valued Funsors.
+
+    Note this operates only on the ``output`` tensor. To stack funsors in a
+    new named dim, instead use :class:`~funsor.terms.Stack`.
+    """
+    assert isinstance(dim, int)
+    assert isinstance(parts, tuple)
+    assert len(set(x.output for x in parts)) == 1
+    shape = parts[0].output.shape
+    if dim >= 0:
+        dim = dim - len(shape) - 1
+    assert dim < 0
+    split = dim + len(shape) + 1
+    shape = shape[:split] + (len(parts),) + shape[split:]
+    output = Domain(shape, parts[0].dtype)
+    fn = functools.partial(_torch_stack, dim)
+    return Function(fn, output, parts)
 
 
 ################################################################################
@@ -670,7 +760,7 @@ def _exp(x):
 
 @ops.log.register(torch.Tensor)
 def _log(x):
-    if x.dtype in (torch.uint8, torch.long):
+    if x.dtype in (torch.bool, torch.uint8, torch.long):
         x = x.float()
     return x.log()
 
@@ -757,6 +847,7 @@ REDUCE_OP_TO_TORCH = {
 
 
 __all__ = [
+    'Einsum',
     'Function',
     'REDUCE_OP_TO_TORCH',
     'Tensor',
@@ -764,6 +855,7 @@ __all__ = [
     'align_tensors',
     'arange',
     'function',
+    'ignore_jit_warnings',
     'materialize',
-    'torch_einsum',
+    'torch_tensordot',
 ]

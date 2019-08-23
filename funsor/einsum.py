@@ -1,10 +1,7 @@
-from __future__ import absolute_import, division, print_function
-
 from collections import OrderedDict
+from functools import reduce
 
 import torch
-from six import integer_types
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.contract import Contract
@@ -15,8 +12,22 @@ from funsor.terms import Funsor, reflect
 from funsor.torch import Tensor
 
 
+BACKEND_OPS = {
+    "torch": (ops.add, ops.mul),
+    "pyro.ops.einsum.torch_log": (ops.logaddexp, ops.add),
+    "pyro.ops.einsum.torch_marginal": (ops.logaddexp, ops.add),
+    "pyro.ops.einsum.torch_map": (ops.max, ops.add),
+    "pyro.ops.einsum.torch_sample": (ops.logaddexp, ops.add),
+}
+
+BACKEND_ADJOINT_OPS = {
+    "pyro.ops.einsum.torch_marginal": (ops.logaddexp, ops.add),
+    "pyro.ops.einsum.torch_map": (ops.max, ops.add),
+}
+
+
 def _make_base_lhs(prod_op, arg, reduced_vars, normalized=False):
-    if not all(isinstance(d.dtype, integer_types) for d in arg.inputs.values()):
+    if not all(isinstance(d.dtype, int) for d in arg.inputs.values()):
         raise NotImplementedError("TODO implement continuous base lhss")
 
     if prod_op not in (ops.add, ops.mul):
@@ -41,10 +52,8 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     assert "plates" not in kwargs
 
     backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
-        sum_op, prod_op = ops.logaddexp, ops.add
+    if backend in BACKEND_OPS:
+        sum_op, prod_op = BACKEND_OPS[backend]
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
@@ -68,11 +77,12 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
 
 
 def naive_einsum(eqn, *terms, **kwargs):
+    """
+    Implements standard variable elimination.
+    """
     backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
-        sum_op, prod_op = ops.logaddexp, ops.add
+    if backend in BACKEND_OPS:
+        sum_op, prod_op = BACKEND_OPS[backend]
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
@@ -99,10 +109,8 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
         return naive_einsum(eqn, *terms, **kwargs)
 
     backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
-        sum_op, prod_op = ops.logaddexp, ops.add
+    if backend in BACKEND_OPS:
+        sum_op, prod_op = BACKEND_OPS[backend]
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
@@ -126,6 +134,16 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
 
 
 def einsum(eqn, *terms, **kwargs):
+    r"""
+    Top-level interface for optimized tensor variable elimination.
+
+    :param str equation: An einsum equation.
+    :param funsor.terms.Funsor \*terms: One or more operands.
+    :param set plates: Optional keyword argument denoting which funsor
+        dimensions are plate dimensions. Among all input dimensions (from
+        terms): dimensions in plates but not in outputs are product-reduced;
+        dimensions in neither plates nor outputs are sum-reduced.
+    """
     with interpretation(reflect):
         naive_ast = naive_plated_einsum(eqn, *terms, **kwargs)
         optimized_ast = apply_optimizer(naive_ast)

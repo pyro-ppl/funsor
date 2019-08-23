@@ -1,23 +1,68 @@
-from __future__ import absolute_import, division, print_function
-
 import functools
 import itertools
 import math
 import numbers
 import re
 from collections import Hashable, OrderedDict
+from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
 from multipledispatch import dispatch
-from six import add_metaclass, integer_types
-from six.moves import reduce
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.six import getargspec, singledispatch
+from funsor.util import getargspec
+
+
+def substitute(expr, subs):
+    if isinstance(subs, (dict, OrderedDict)):
+        subs = tuple(subs.items())
+    assert isinstance(subs, tuple)
+
+    @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
+    def subs_interpreter(cls, *args):
+        expr = cls(*args)
+        fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
+        if fresh_subs:
+            expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
+        return expr
+
+    with interpreter.interpretation(subs_interpreter):
+        return interpreter.reinterpret(expr)
+
+
+def alpha_substitute(expr, alpha_subs):
+
+    new_values = []
+    for v in expr._ast_values:
+        v = substitute(v, alpha_subs)
+        if isinstance(v, str) and v not in expr.fresh:
+            v = alpha_subs.get(v, v)
+        elif isinstance(v, frozenset):
+            swapped = v & frozenset(alpha_subs.keys())
+            v |= frozenset(alpha_subs[k] for k in swapped)
+            v -= swapped
+        elif isinstance(v, tuple) and isinstance(v[0], tuple) and len(v[0]) == 2 and \
+                isinstance(v[0][0], str) and isinstance(v[0][1], Funsor):
+            v = tuple((alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v)
+        elif isinstance(v, OrderedDict):  # XXX is this case ever actually triggered?
+            v = OrderedDict([(alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v.items()])
+        new_values.append(v)
+
+    return tuple(new_values)
+
+
+def alpha_convert(expr):
+    alpha_subs = {name: interpreter.gensym(name + "__BOUND")
+                  for name in expr.bound if "__BOUND" not in name}
+    if not alpha_subs:
+        return expr
+
+    new_values = alpha_substitute(expr, alpha_subs)
+    return reflect(type(expr), *new_values)
 
 
 def reflect(cls, *args):
@@ -28,8 +73,13 @@ def reflect(cls, *args):
     cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
+
     result = super(FunsorMeta, cls).__call__(*args)
     result._ast_values = args
+
+    # alpha-convert eagerly upon binding any variable
+    result = alpha_convert(result)
+
     cls._cons_cache[cache_key] = result
     return result
 
@@ -63,6 +113,18 @@ def sequential(cls, *args):
     vectorized ops sequentially if no known vectorized implementation exists.
     """
     result = sequential.dispatch(cls, *args)
+    if result is None:
+        result = eager(cls, *args)
+    return result
+
+
+@dispatched_interpretation
+def moment_matching(cls, *args):
+    """
+    A moment matching interpretation of :class:`Reduce` expressions. This falls
+    back to :class:`eager` in other cases.
+    """
+    result = moment_matching.dispatch(cls, *args)
     if result is None:
         result = eager(cls, *args)
     return result
@@ -109,8 +171,7 @@ class FunsorMeta(type):
         return interpret(cls, *args)
 
 
-@add_metaclass(FunsorMeta)
-class Funsor(object):
+class Funsor(object, metaclass=FunsorMeta):
     """
     Abstract base class for immutable functional tensors.
 
@@ -123,15 +184,21 @@ class Funsor(object):
         free variables to domains.
     :param Domain output: An output domain.
     """
-    def __init__(self, inputs, output):
+    def __init__(self, inputs, output, fresh=None, bound=None):
+        fresh = frozenset() if fresh is None else fresh
+        bound = frozenset() if bound is None else bound
         assert isinstance(inputs, OrderedDict)
         for name, input_ in inputs.items():
             assert isinstance(name, str)
             assert isinstance(input_, Domain)
         assert isinstance(output, Domain)
+        assert isinstance(fresh, frozenset)
+        assert isinstance(bound, frozenset)
         super(Funsor, self).__init__()
         self.inputs = inputs
         self.output = output
+        self.fresh = fresh
+        self.bound = bound
 
     @property
     def dtype(self):
@@ -206,6 +273,10 @@ class Funsor(object):
             raise ValueError(
                 "only one element Funsors can be converted to Python scalars")
         raise NotImplementedError
+
+    @property
+    def requires_grad(self):
+        return False
 
     def reduce(self, op, reduced_vars=None):
         """
@@ -329,7 +400,7 @@ class Funsor(object):
         eager_vars = []
         lazy_vars = []
         for k in reduced_vars:
-            if isinstance(self.inputs[k].dtype, integer_types) and not self.inputs[k].shape:
+            if isinstance(self.inputs[k].dtype, int) and not self.inputs[k].shape:
                 eager_vars.append(k)
             else:
                 lazy_vars.append(k)
@@ -341,6 +412,13 @@ class Funsor(object):
             if lazy_vars:
                 result = Reduce(op, result, frozenset(lazy_vars))
             return result
+
+        return None  # defer to default implementation
+
+    def moment_matching_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        if not reduced_vars:
+            return self
 
         return None  # defer to default implementation
 
@@ -498,7 +576,8 @@ class Funsor(object):
         return result
 
 
-interpreter.reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
+interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
+interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
 @dispatch(object)
@@ -566,7 +645,8 @@ class Variable(Funsor):
     """
     def __init__(self, name, output):
         inputs = OrderedDict([(name, output)])
-        super(Variable, self).__init__(inputs, output)
+        fresh = frozenset({name})
+        super(Variable, self).__init__(inputs, output, fresh)
         self.name = name
 
     def __repr__(self):
@@ -576,11 +656,9 @@ class Variable(Funsor):
         return self.name
 
     def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        for k, v in subs:
-            if k == self.name:
-                return v
-        return self
+        assert len(subs) == 1 and subs[0][0] == self.name
+        v = subs[0][1]
+        return v if isinstance(v, Funsor) else to_funsor(v, self.output)
 
 
 @dispatch(str, Domain)
@@ -604,22 +682,17 @@ class Subs(Funsor):
             del inputs[key]
         for key, value in subs:
             inputs.update(value.inputs)
-        super(Subs, self).__init__(inputs, arg.output)
+        fresh = frozenset()
+        bound = frozenset(key for key, value in subs if key not in inputs)
+        super(Subs, self).__init__(inputs, arg.output, fresh, bound)
         self.arg = arg
         self.subs = OrderedDict(subs)
 
     def __repr__(self):
         return 'Subs({}, {})'.format(self.arg, self.subs)
 
-    def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        old_subs = tuple((k, Subs(v, subs)) for k, v in self.subs.items())
-        new_subs = tuple((k, v) for k, v in subs if k not in self.subs)
-        subs = old_subs + new_subs
-        return Subs(self.arg, subs) if subs else self.arg
-
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        if any(k in sample_inputs for k, v in self.subs):
+        if any(k in sample_inputs for k, v in self.subs.items()):
             raise NotImplementedError('TODO alpha-convert')
         subs_sampled_vars = set()
         for name in sampled_vars:
@@ -642,7 +715,7 @@ def eager_subs(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
-    return interpreter.debug_logged(arg.eager_subs)(subs)
+    return substitute(arg, subs)
 
 
 _PREFIX = {
@@ -667,10 +740,6 @@ class Unary(Funsor):
         if self.op in _PREFIX:
             return '{}{}'.format(_PREFIX[self.op], self.arg)
         return 'Unary({}, {})'.format(self.op.__name__, self.arg)
-
-    def eager_subs(self, subs):
-        arg = Subs(self.arg, subs)
-        return Unary(self.op, arg)
 
 
 @eager.register(Unary, Op, Funsor)
@@ -715,11 +784,6 @@ class Binary(Funsor):
             return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
-    def eager_subs(self, subs):
-        lhs = Subs(self.lhs, subs)
-        rhs = Subs(self.rhs, subs)
-        return Binary(self.op, lhs, rhs)
-
     def eager_reduce(self, op, reduced_vars):
         if op is self.op:
             lhs = self.lhs.reduce(op, reduced_vars)
@@ -746,7 +810,9 @@ class Reduce(Funsor):
         assert isinstance(reduced_vars, frozenset)
         inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if k not in reduced_vars)
         output = arg.output
-        super(Reduce, self).__init__(inputs, output)
+        fresh = frozenset()
+        bound = reduced_vars
+        super(Reduce, self).__init__(inputs, output, fresh, bound)
         self.op = op
         self.arg = arg
         self.reduced_vars = reduced_vars
@@ -754,13 +820,6 @@ class Reduce(Funsor):
     def __repr__(self):
         return 'Reduce({}, {}, {})'.format(
             self.op.__name__, self.arg, self.reduced_vars)
-
-    def eager_subs(self, subs):
-        subs = tuple((k, v) for k, v in subs if k not in self.reduced_vars)
-        if not all(self.reduced_vars.isdisjoint(v.inputs) for k, v in subs):
-            raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        arg = Subs(self.arg, subs)
-        return arg.reduce(self.op, self.reduced_vars)
 
     def eager_reduce(self, op, reduced_vars):
         if op is self.op:
@@ -782,9 +841,34 @@ def eager_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
 
 
+@eager.register(Binary, AssociativeOp, Reduce, (Funsor, Reduce))
+def eager_distribute_reduce_other(op, red, other):
+    if (red.op, op) in ops.DISTRIBUTIVE_OPS:
+        # Use distributive law.
+        arg = op(red.arg, other)
+        return arg.reduce(red.op, red.reduced_vars)
+
+    return None  # defer to default implementation
+
+
+@eager.register(Binary, AssociativeOp, Funsor, Reduce)
+def eager_distribute_other_reduce(op, other, red):
+    if (red.op, op) in ops.DISTRIBUTIVE_OPS:
+        # Use distributive law.
+        arg = op(other, red.arg)
+        return arg.reduce(red.op, red.reduced_vars)
+
+    return None  # defer to default implementation
+
+
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
+
+
+@moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
+def moment_matching_reduce(op, arg, reduced_vars):
+    return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
 
 
 class NumberMeta(FunsorMeta):
@@ -797,8 +881,7 @@ class NumberMeta(FunsorMeta):
         return super(NumberMeta, cls).__call__(data, dtype)
 
 
-@add_metaclass(NumberMeta)
-class Number(Funsor):
+class Number(Funsor, metaclass=NumberMeta):
     """
     Funsor backed by a Python number.
 
@@ -807,7 +890,7 @@ class Number(Funsor):
     """
     def __init__(self, data, dtype=None):
         assert isinstance(data, numbers.Number)
-        if isinstance(dtype, integer_types):
+        if isinstance(dtype, int):
             data = type(dtype)(data)
             if dtype != 2:  # booleans have bitwise interpretation
                 assert 0 <= data and data < dtype
@@ -839,9 +922,6 @@ class Number(Funsor):
 
     def item(self):
         return self.data
-
-    def eager_subs(self, subs):
-        return self
 
     def eager_unary(self, op):
         dtype = find_domain(op, self.output).dtype
@@ -885,20 +965,27 @@ class Align(Funsor):
         inputs = OrderedDict((name, arg.inputs[name]) for name in names)
         inputs.update(arg.inputs)
         output = arg.output
-        super(Align, self).__init__(inputs, output)
+        fresh = frozenset()  # TODO get this right
+        bound = frozenset()
+        super(Align, self).__init__(inputs, output, fresh, bound)
         self.arg = arg
 
     def align(self, names):
         return self.arg.align(names)
-
-    def eager_subs(self, subs):
-        return Subs(self.arg, subs)
 
     def eager_unary(self, op):
         return Unary(op, self.arg)
 
     def eager_reduce(self, op, reduced_vars):
         return self.arg.reduce(op, reduced_vars)
+
+
+@eager.register(Align, Funsor, tuple)
+def eager_align(arg, names):
+    if not frozenset(names) == frozenset(arg.inputs.keys()):
+        # assume there's been a substitution and this align is no longer valid
+        return arg
+    return None
 
 
 @eager.register(Binary, Op, Align, Funsor)
@@ -914,6 +1001,10 @@ def eager_binary_funsor_align(op, lhs, rhs):
 @eager.register(Binary, Op, Align, Align)
 def eager_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
+
+
+eager.register(Binary, AssociativeOp, Reduce, Align)(eager_distribute_reduce_other)
+eager.register(Binary, AssociativeOp, Align, Reduce)(eager_distribute_other_reduce)
 
 
 class Stack(Funsor):
@@ -933,49 +1024,27 @@ class Stack(Funsor):
         inputs = OrderedDict([(name, domain)])
         for x in components:
             inputs.update(x.inputs)
-        super(Stack, self).__init__(inputs, output)
+        fresh = frozenset({name})
+        super(Stack, self).__init__(inputs, output, fresh)
         self.components = components
         self.name = name
 
     def eager_subs(self, subs):
-        assert isinstance(subs, tuple)
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        pos = None
-        for i, (k, index) in enumerate(subs):
-            if k == self.name:
-                pos = i
-                break
-
-        if pos is None:
-            # Eagerly recurse into components.
-            assert not any(self.name in v.inputs and self.name != k for k, v in subs)
-            components = tuple(Subs(x, subs) for x in self.components)
-            return Stack(components, self.name)
+        assert isinstance(subs, tuple) and len(subs) == 1 and subs[0][0] == self.name
+        index = subs[0][1]
 
         # Try to eagerly select an index.
         assert index.output == bint(len(self.components))
-        subs = subs[:pos] + subs[1 + pos:]
 
         if isinstance(index, Number):
             # Select a single component.
-            result = self.components[index.data]
-            return Subs(result, subs)
-
-        if isinstance(index, Variable):
+            return self.components[index.data]
+        elif isinstance(index, Variable):
             # Rename the stacking dimension.
             components = self.components
-            if subs:
-                components = tuple(Subs(x, subs) for x in components)
             return Stack(components, index.name)
-
-        if not subs:
+        else:
             raise NotImplementedError('TODO support advanced indexing in Stack')
-
-        # Eagerly recurse into components but lazily substitute.
-        components = tuple(Subs(x, subs) for x in self.components)
-        result = Stack(components, self.name)
-        return Subs(result, ((self.name, index),))
 
     def eager_reduce(self, op, reduced_vars):
         components = self.components
@@ -997,32 +1066,23 @@ class Lambda(Funsor):
     """
     def __init__(self, var, expr):
         assert isinstance(var, Variable)
-        assert isinstance(var.dtype, integer_types)
+        assert isinstance(var.dtype, int)
         assert isinstance(expr, Funsor)
         inputs = expr.inputs.copy()
         inputs.pop(var.name, None)
         shape = (var.dtype,) + expr.output.shape
         output = Domain(shape, expr.dtype)
-        super(Lambda, self).__init__(inputs, output)
+        fresh = frozenset()
+        bound = frozenset({var.name})  # TODO make sure this is correct
+        super(Lambda, self).__init__(inputs, output, fresh, bound)
         self.var = var
         self.expr = expr
-
-    def eager_subs(self, subs):
-        subs = tuple((k, v) for k, v in subs if k != self.var.name)
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        if any(self.var.name in v.inputs for k, v in subs):
-            raise NotImplementedError('TODO alpha-convert to avoid conflict')
-        expr = self.expr.eager_subs(subs)
-        return Lambda(self.var, expr)
 
 
 @eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
 def eager_getitem_lambda(op, lhs, rhs):
     if op.offset == 0:
-        return lhs.expr.eager_subs(((lhs.var.name, rhs),))
-    if lhs.var.name in rhs.inputs:
-        raise NotImplementedError('TODO alpha-convert to avoid conflict')
+        return Subs(lhs.expr, ((lhs.var.name, rhs),))
     expr = GetitemOp(op.offset - 1)(lhs.expr, rhs)
     return Lambda(lhs.var, expr)
 
@@ -1047,40 +1107,51 @@ class Independent(Funsor):
     def __init__(self, fn, reals_var, bint_var):
         assert isinstance(fn, Funsor)
         assert isinstance(reals_var, str)
-        assert reals_var in fn.inputs
-        assert fn.inputs[reals_var].dtype == 'real'
+        for k in fn.inputs:
+            if k == reals_var or k.startswith(reals_var + "__BOUND"):
+                reals_var_bound = k
+                break
+        assert reals_var_bound in fn.inputs
+        assert fn.inputs[reals_var_bound].dtype == 'real'
         assert isinstance(bint_var, str)
         assert bint_var in fn.inputs
         assert isinstance(fn.inputs[bint_var].dtype, int)
         inputs = fn.inputs.copy()
-        shape = (inputs.pop(bint_var).dtype,) + inputs[reals_var].shape
+        shape = (inputs.pop(bint_var).dtype,) + inputs.pop(reals_var_bound).shape
         inputs[reals_var] = reals(*shape)
-        super(Independent, self).__init__(inputs, fn.output)
+        fresh = frozenset({reals_var})
+        bound = frozenset({bint_var, reals_var_bound})
+        super(Independent, self).__init__(inputs, fn.output, fresh, bound)
         self.fn = fn
         self.reals_var = reals_var
         self.bint_var = bint_var
-
-    def eager_subs(self, subs):
-        fn_subs = []
-        reals_value = None
-        for k, v in subs:
-            if self.bint_var in v.inputs:
-                raise NotImplementedError('TODO alpha-convert')
-            if k == self.reals_var:
-                reals_value = v
-            else:
-                fn_subs.append((k, v))
-        fn = Subs(self.fn, tuple(fn_subs))
-        if reals_value is None:
-            return Independent(fn, self.reals_var, self.bint_var)
-        factors = fn(**{self.reals_var: reals_value[self.bint_var]})
-        return factors.reduce(ops.add, self.bint_var)
+        self.reals_var_bound = reals_var_bound
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
             raise NotImplementedError('TODO alpha-convert')
+        sampled_vars = frozenset(self.reals_var_bound if v == self.reals_var else v
+                                 for v in sampled_vars)
         fn = self.fn.unscaled_sample(sampled_vars, sample_inputs)
         return Independent(fn, self.reals_var, self.bint_var)
+
+    def eager_subs(self, subs):
+        subs = tuple((self.reals_var_bound,
+                      to_funsor(v, self.inputs[k])[self.bint_var])
+                     if k == self.reals_var
+                     else (k, v)
+                     for k, v in subs)
+        new_fn = substitute(self.fn, subs)
+        new_fn = new_fn.reduce(ops.add, self.bint_var)
+        return new_fn
+
+
+@eager.register(Independent, Funsor, str, str)
+def eager_independent_trivial(fn, reals_var, bint_var):
+    # compare to Independent.eager_subs
+    if not any(k.startswith(reals_var + "__BOUND") or k == reals_var for k in fn.inputs):
+        return fn.reduce(ops.add, bint_var)
+    return None
 
 
 def _of_shape(fn, shape):
@@ -1142,6 +1213,7 @@ __all__ = [
     'Variable',
     'eager',
     'lazy',
+    'moment_matching',
     'of_shape',
     'reflect',
     'sequential',

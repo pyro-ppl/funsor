@@ -1,11 +1,9 @@
-from __future__ import absolute_import, division, print_function
-
 from collections import OrderedDict
 
 import opt_einsum
 import pytest
 import torch
-from pyro.ops.contract import naive_ubersum
+from pyro.ops.contract import einsum as pyro_einsum
 
 import funsor
 from funsor.distributions import Categorical
@@ -29,7 +27,11 @@ EINSUM_EXAMPLES = [
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize('backend', [
+    'torch',
+    'pyro.ops.einsum.torch_log',
+    'pyro.ops.einsum.torch_map',
+])
 def test_einsum(equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
@@ -108,10 +110,14 @@ PLATED_EINSUM_EXAMPLES = [
 
 
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize('backend', [
+    'torch',
+    'pyro.ops.einsum.torch_log',
+    'pyro.ops.einsum.torch_map',
+])
 def test_plated_einsum(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-    expected = naive_ubersum(equation, *operands, plates=plates, backend=backend, modulo_total=False)[0]
+    expected = pyro_einsum(equation, *operands, plates=plates, backend=backend, modulo_total=False)[0]
     with interpretation(reflect):
         naive_ast = naive_plated_einsum(equation, *funsor_operands, plates=plates, backend=backend)
         optimized_ast = apply_optimizer(naive_ast)

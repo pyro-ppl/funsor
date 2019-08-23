@@ -1,12 +1,10 @@
-from __future__ import absolute_import, division, print_function
-
 from collections import OrderedDict
 
 from contextlib2 import contextmanager
 
 from funsor.integrate import Integrate, integrator
 from funsor.interpreter import dispatched_interpretation, interpretation
-from funsor.terms import eager, Funsor
+from funsor.terms import Funsor, eager
 
 
 @dispatched_interpretation

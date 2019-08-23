@@ -1,5 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
 import argparse
 
 import torch
@@ -28,17 +26,21 @@ def main(args):
 
             # A delayed sample statement.
             x_curr = funsor.Variable('x_{}'.format(t), funsor.reals())
-            log_prob += dist.Normal(x_prev, trans_noise, value=x_curr)
+            log_prob += dist.Normal(1 + x_prev / 2., trans_noise, value=x_curr)
 
-            if not args.lazy and isinstance(x_prev, funsor.Variable):
+            # Optionally marginalize out the previous state.
+            if t > 0 and not args.lazy:
                 log_prob = log_prob.reduce(ops.logaddexp, x_prev.name)
 
-            log_prob += dist.Normal(x_curr, emit_noise, value=y)
+            # An observe statement.
+            log_prob += dist.Normal(0.5 + 3 * x_curr, emit_noise, value=y)
 
+        # Marginalize out all remaining delayed variables.
         log_prob = log_prob.reduce(ops.logaddexp)
         return log_prob
 
     # Train model parameters.
+    torch.manual_seed(0)
     data = torch.randn(args.time_steps)
     optim = torch.optim.Adam(params, lr=args.learning_rate)
     for step in range(args.train_steps):
@@ -53,6 +55,8 @@ def main(args):
         loss = -log_prob.data
         loss.backward()
         optim.step()
+        if args.verbose and step % 10 == 0:
+            print('step {} loss = {}'.format(step, loss.item()))
 
 
 if __name__ == '__main__':
@@ -62,13 +66,6 @@ if __name__ == '__main__':
     parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)
     parser.add_argument("--lazy", action='store_true')
     parser.add_argument("--filter", action='store_true')
-    parser.add_argument("--xfail-if-not-implemented", action='store_true')
+    parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
-
-    if args.xfail_if_not_implemented:
-        try:
-            main(args)
-        except NotImplementedError:
-            print('XFAIL')
-    else:
-        main(args)
+    main(args)

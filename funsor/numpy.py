@@ -1,14 +1,11 @@
-from __future__ import absolute_import, division, print_function
-
 from collections import OrderedDict
 
 import numpy as np
 from multipledispatch import dispatch
-from six import add_metaclass, integer_types
 
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, Subs, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, substitute, to_data, to_funsor
 
 
 def align_array(new_inputs, x):
@@ -24,7 +21,7 @@ def align_array(new_inputs, x):
     """
     assert isinstance(new_inputs, OrderedDict)
     assert isinstance(x, (Number, Array))
-    assert all(isinstance(d.dtype, integer_types) for d in x.inputs.values())
+    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
 
     data = x.data
     if isinstance(x, Number):
@@ -52,7 +49,7 @@ def align_arrays(*args):
     This is mainly useful for implementing eager funsor operations.
 
     :param funsor.terms.Funsor \*args: Multiple :class:`Array` s and
-        :class:`~funsor.terms.Number`s.
+        :class:`~funsor.terms.Number` s.
     :return: a pair ``(inputs, arrays)`` where arrayss are all
         :class:`numpy.ndarray` s that can be broadcast together to a single data
         with given ``inputs``.
@@ -77,8 +74,7 @@ class ArrayMeta(FunsorMeta):
         return super(ArrayMeta, cls).__call__(data, inputs, dtype)
 
 
-@add_metaclass(ArrayMeta)
-class Array(Funsor):
+class Array(Funsor, metaclass=ArrayMeta):
     """
     Funsor backed by a numpy ndarray.
 
@@ -88,10 +84,12 @@ class Array(Funsor):
     def __init__(self, data, inputs=None, dtype="real"):
         assert isinstance(data, np.ndarray) or np.isscalar(data)
         assert isinstance(inputs, tuple)
-        assert all(isinstance(d.dtype, integer_types) for k, d in inputs)
+        assert all(isinstance(d.dtype, int) for k, d in inputs)
         inputs = OrderedDict(inputs)
         output = Domain(data.shape[len(inputs):], dtype)
-        super(Array, self).__init__(inputs, output)
+        fresh = frozenset(inputs.keys())
+        bound = frozenset()
+        super(Array, self).__init__(inputs, output, fresh, bound)
         self.data = data
 
     def __repr__(self):
@@ -280,10 +278,10 @@ def materialize(x):
         return x
     subs = []
     for name, domain in x.inputs.items():
-        if not isinstance(domain.dtype, integer_types):
+        if not isinstance(domain.dtype, int):
             raise ValueError('materialize() requires integer free variables but found '
                              '"{}" of domain {}'.format(name, domain))
         assert not domain.shape
         subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
-    return Subs(x, subs)
+    return substitute(x, subs)

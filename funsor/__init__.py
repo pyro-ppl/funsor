@@ -1,13 +1,12 @@
-from __future__ import absolute_import, division, print_function
-
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
 from funsor.terms import Funsor, Independent, Lambda, Number, Variable, of_shape, to_data, to_funsor
-from funsor.torch import Tensor, arange, torch_einsum
+from funsor.torch import Tensor, arange
 
 from . import (
     adjoint,
+    affine,
     contract,
     delta,
     distributions,
@@ -17,6 +16,7 @@ from . import (
     integrate,
     interpreter,
     joint,
+    memoize,
     minipyro,
     montecarlo,
     ops,
@@ -36,6 +36,7 @@ __all__ = [
     'Tensor',
     'Variable',
     'adjoint',
+    'affine',
     'arange',
     'backward',
     'bint',
@@ -49,6 +50,7 @@ __all__ = [
     'integrate',
     'interpreter',
     'joint',
+    'memoize',
     'minipyro',
     'montecarlo',
     'of_shape',
@@ -61,5 +63,4 @@ __all__ = [
     'to_data',
     'to_funsor',
     'torch',
-    'torch_einsum',
 ]

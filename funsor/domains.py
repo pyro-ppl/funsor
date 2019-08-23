@@ -1,11 +1,9 @@
-from __future__ import absolute_import, division, print_function
-
 import operator
 from collections import namedtuple
+from functools import reduce
 
+import torch
 from pyro.distributions.util import broadcast_shape
-from six import integer_types
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.util import lazy_property
@@ -18,8 +16,10 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     """
     def __new__(cls, shape, dtype):
         assert isinstance(shape, tuple)
-        assert all(isinstance(size, integer_types) for size in shape)
-        if isinstance(dtype, integer_types):
+        if torch._C._get_tracing_state():
+            shape = tuple(map(int, shape))
+        assert all(isinstance(size, int) for size in shape), shape
+        if isinstance(dtype, int):
             assert not shape
         elif isinstance(dtype, str):
             assert dtype == 'real'
@@ -29,7 +29,7 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
 
     def __repr__(self):
         shape = tuple(self.shape)
-        if isinstance(self.dtype, integer_types):
+        if isinstance(self.dtype, int):
             if not shape:
                 return 'bint({})'.format(self.dtype)
             return 'bint({}, {})'.format(self.dtype, shape)
@@ -38,7 +38,7 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
         return 'reals{}'.format(shape)
 
     def __iter__(self):
-        if isinstance(self.dtype, integer_types) and not self.shape:
+        if isinstance(self.dtype, int) and not self.shape:
             from funsor.terms import Number
             return (Number(i, self.dtype) for i in range(self.dtype))
         raise NotImplementedError
@@ -46,6 +46,11 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     @lazy_property
     def num_elements(self):
         return reduce(operator.mul, self.shape, 1)
+
+    @property
+    def size(self):
+        assert isinstance(self.dtype, int)
+        return self.dtype
 
 
 def reals(*shape):
@@ -59,7 +64,9 @@ def bint(size):
     """
     Construct a bounded integer domain of scalar shape.
     """
-    assert isinstance(size, integer_types) and size >= 0
+    if torch._C._get_tracing_state():
+        size = int(size)
+    assert isinstance(size, int) and size >= 0
     return Domain((), size)
 
 

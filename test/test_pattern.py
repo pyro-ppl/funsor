@@ -1,11 +1,9 @@
-from __future__ import absolute_import, division, print_function
+from unification import unify
 
 from funsor.domains import reals
 from funsor.interpreter import interpretation, reinterpret
-from funsor.terms import Number, Variable, lazy
-
 from funsor.pattern import match, match_vars, unify_interpreter
-from unification import unify
+from funsor.terms import Number, Variable, lazy
 
 
 def test_unify_binary():

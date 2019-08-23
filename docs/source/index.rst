@@ -24,6 +24,7 @@ Welcome to Funsor's documentation!
    :caption: Interfaces:
 
    distributions
+   pyro
    minipyro
    einsum
 

@@ -1,23 +1,25 @@
-from __future__ import absolute_import, division, print_function
-
 import collections
+from functools import reduce
 
 from opt_einsum.paths import greedy
-from six.moves import reduce
 
 import funsor.ops as ops
 from funsor.contract import Contract, contractor
+from funsor.delta import Delta
 from funsor.domains import find_domain
+from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import dispatched_interpretation, interpretation, reinterpret
+from funsor.joint import Joint
 from funsor.ops import DISTRIBUTIVE_OPS, UNITS, AssociativeOp
-from funsor.terms import Binary, Funsor, Reduce, Subs, Unary, eager, lazy, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Unary, eager, lazy, to_funsor
+from funsor.torch import Tensor
 
 
 class Finitary(Funsor):
     """
     Lazy finitary operation. Used internally in the optimizer.
-    Finitary(op, operands) == six.moves.reduce(op, operands)
+    Finitary(op, operands) == functools.reduce(op, operands)
     """
     def __init__(self, op, operands):
         assert callable(op)
@@ -36,12 +38,6 @@ class Finitary(Funsor):
 
     def __repr__(self):
         return 'Finitary({}, {})'.format(self.op.__name__, self.operands)
-
-    def eager_subs(self, subs):
-        if not any(k in self.inputs for k, v in subs):
-            return self
-        operands = tuple(Subs(operand, subs) for operand in self.operands)
-        return Finitary(self.op, operands)
 
 
 @eager.register(Finitary, AssociativeOp, tuple)
@@ -148,6 +144,15 @@ def optimize_reduction_trivial(op, arg, reduced_vars):
     return None
 
 
+@optimize.register(Reduce, AssociativeOp, Binary, frozenset)
+@eager.register(Reduce, AssociativeOp, Binary, frozenset)
+def optimize_reduce_binary_exp(op, arg, reduced_vars):
+    if op is not ops.add or arg.op is not ops.mul or \
+            not isinstance(arg.lhs, Unary) or arg.lhs.op is not ops.exp:
+        return None
+    return Integrate(arg.lhs.arg, arg.rhs, reduced_vars)
+
+
 @optimize.register(Reduce, AssociativeOp, Finitary, frozenset)
 def optimize_reduction(op, arg, reduced_vars):
     r"""
@@ -163,7 +168,7 @@ def optimize_reduction(op, arg, reduced_vars):
     return Contract(op, arg.op, arg, to_funsor(UNITS[arg.op]), reduced_vars)
 
 
-@optimize.register(Contract, AssociativeOp, AssociativeOp, Finitary, (Finitary, Funsor), frozenset)
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Finitary, (Finitary, Funsor, Unary), frozenset)
 def optimize_contract_finitary_funsor(sum_op, prod_op, lhs, rhs, reduced_vars):
 
     if prod_op is not lhs.op:
@@ -231,19 +236,28 @@ def optimize_exp_finitary(op, arg):
     return Finitary(ops.mul, tuple(operand.exp() for operand in arg.operands))
 
 
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Unary, Unary, frozenset)
 @optimize.register(Contract, AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
 @contractor
 def optimize_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
     return None
 
 
-@optimize.register(Integrate, Funsor, Funsor, frozenset)
-def optimize_integrate(log_measure, integrand, reduced_vars):
-    return Contract(ops.add, ops.mul, log_measure.exp(), integrand, reduced_vars)
-
-
-@optimize.register(Contract, AssociativeOp, AssociativeOp, Funsor, Finitary, frozenset)
+@optimize.register(Contract, AssociativeOp, AssociativeOp, (Unary, Funsor), Finitary, frozenset)
 def optimize_contract_funsor_finitary(sum_op, prod_op, lhs, rhs, reduced_vars):
+    return Contract(sum_op, prod_op, rhs, lhs, reduced_vars)
+
+
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Unary, Funsor, frozenset)
+def optimize_contract_exp_funsor(sum_op, prod_op, lhs, rhs, reduced_vars):
+    if lhs.op is ops.exp and isinstance(lhs.arg, (Gaussian, Tensor, Delta, Joint)) and \
+            sum_op is ops.add and prod_op is ops.mul:
+        return Integrate(lhs.arg, rhs, reduced_vars)
+    return None
+
+
+@optimize.register(Contract, AssociativeOp, AssociativeOp, Funsor, Unary, frozenset)
+def optimize_contract_funsor_exp(sum_op, prod_op, lhs, rhs, reduced_vars):
     return Contract(sum_op, prod_op, rhs, lhs, reduced_vars)
 
 
