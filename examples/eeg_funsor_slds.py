@@ -64,8 +64,8 @@ class SLDS(nn.Module):
         obs_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.obs_dim),
                                                          self.log_obs_noise.exp().diag_embed())
 
-        x_trans_dist = matrix_and_mvn_to_funsor(self.transition_matrix, trans_mvn, ("s", "x", "y"))
-        y_dist = matrix_and_mvn_to_funsor(self.observation_matrix, obs_mvn, ("s", "x", "y"))
+        x_trans_dist = matrix_and_mvn_to_funsor(self.transition_matrix, trans_mvn, ("s",), "x", "y")
+        y_dist = matrix_and_mvn_to_funsor(self.observation_matrix, obs_mvn, ("s",), "x", "y")
 
         log_prob = funsor.Number(0.)
 
@@ -83,15 +83,14 @@ class SLDS(nn.Module):
             if t == 0:
                 log_prob += self.x_init_mvn(value=x_curr)
             else:
-                log_prob += x_trans_dist(value=x_curr, s="s_{}".format(t), x="x_{}".format(t - 1), y="x_{}".format(t))
-            print("inputs after trans[t=%d]:" % t, log_prob.inputs)
+                log_prob += x_trans_dist(s=s_curr, x=x_prev, y=x_curr)
 
             if t > 0:
                 log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_prev.name, x_prev.name]))
 
-            log_prob += y_dist(value=y, s="s_{}".format(t), x="x_{}".format(t), y="y_{}".format(t))
-            print("inputs after yobs [t=%d]:" % t, log_prob.inputs)
+            log_prob += y_dist(s=s_curr, x=x_curr, y=y)
 
+        assert set(log_prob.inputs) == {"s_{}".format(t), "x_{}".format(t)}
         log_prob = log_prob.reduce(ops.logaddexp)
         assert not log_prob.inputs, 'free variables remain'
 
@@ -108,7 +107,7 @@ def main(args):
     download_data()
     data = np.loadtxt('eeg.dat', delimiter=',', skiprows=19)
     # labels = data[:, -1]
-    data = data[1000:1005, :]
+    data = data[1000:1250, :]
 
     data = torch.tensor(data[:, :-1]).float()
     data_mean = data.mean(0)
@@ -165,15 +164,17 @@ def main(args):
         ts.append(time.time())
         step_dt = ts[-1] - ts[-2]
 
-        if step % 20 == 0 or step == args.num_steps - 1:
+        if step % 2 == 0 or step == args.num_steps - 1:
             print("[step %03d]  training nll: %.4f   test lls: %.4f  %.4f \t\t (step_dt: %.2f)" % (step,
                   nll.item(), 0.0, 0.0, step_dt))
 
         if step % 20 == 0 and args.verbose:
             print("[transition logits] mean: %.2f std: %.2f" % (slds.transition_logits.mean().item(),
                                                                 slds.transition_logits.std().item()))
+            print("[transition logits]\n", slds.transition_logits.data.numpy())
             print("[transition matrix.abs] mean: %.2f std: %.2f" % (slds.transition_matrix.abs().mean().item(),
                                                                     slds.transition_matrix.abs().std().item()))
+            print("[transition matrix]\n", slds.transition_matrix.data.numpy())
             print("[log_transition_noise] mean: %.2f std: %.2f" % (slds.log_transition_noise.mean().item(),
                                                                    slds.log_transition_noise.std().item()))
             print("[observation matrix.abs] mean: %.2f std: %.2f" % (slds.observation_matrix.abs().mean().item(),
