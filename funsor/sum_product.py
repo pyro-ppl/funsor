@@ -46,15 +46,28 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
     """
     Performs partial sum-product contraction of a collection of factors.
 
-    :return: a list of partially contracted Funsors.
+    :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
+    :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
+    :param factors: A collection of funsors.
+    :type factors: tuple or list
+    :param frozenset eliminate: A set of free variables to eliminate,
+        including both sum variables and product variables.
+    :param plates: A collection of plates or mapping from markov dimension to
+        ``step`` dict that maps previous to current variable name.
+    :type plates: frozenset or dict
+    :return: A list of partially contracted Funsors.
     :rtype: list
     """
-    assert callable(sum_op)
-    assert callable(prod_op)
+    assert isinstance(sum_op, AssociativeOp)
+    assert isinstance(prod_op, AssociativeOp)
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
+    if isinstance(plates, frozenset):
+        steps = {plate: {} for plate in plates}
+    else:
+        steps, plates = plates, frozenset(plates)
     sum_vars = eliminate - plates
 
     var_to_ordinal = {}
@@ -78,13 +91,16 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
             f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf & eliminate))
+                for plate in sorted(leaf & eliminate, key=lambda p: len(steps[p])):
+                    f = sequential_sum_product(sum_op, prod_op, f, plate, steps[plate])
+                results.append(f)
             else:
                 new_plates = frozenset().union(
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
-                f = f.reduce(prod_op, leaf - new_plates)
+                for plate in sorted(leaf - new_plates, key=lambda p: len(steps[p])):
+                    f = sequential_sum_product(sum_op, prod_op, f, plate, steps[plate])
                 ordinal_to_factors[new_plates].append(f)
 
     return results
@@ -94,7 +110,16 @@ def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozense
     """
     Performs sum-product contraction of a collection of factors.
 
-    :return: a single contracted Funsor.
+    :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
+    :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
+    :param factors: A collection of funsors.
+    :type factors: tuple or list
+    :param frozenset eliminate: A set of free variables to eliminate,
+        including both sum variables and product variables.
+    :param plates: A collection of plates or mapping from markov dimension to
+        ``step`` dict that maps previous to current variable name.
+    :type plates: frozenset or dict
+    :return: A single contracted Funsor.
     :rtype: :class:`~funsor.terms.Funsor`
     """
     factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates)
@@ -247,8 +272,11 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     assert isinstance(step, dict)
     assert all(isinstance(k, str) for k in step.keys())
     assert all(isinstance(v, str) for v in step.values())
-    if time not in trans.inputs:
-        return trans  # edge case of a single time step
+
+    if not step:  # trivial case of non-time-dependent factors
+        return trans.reduce(prod_op, frozenset({time}))
+    if time not in trans.inputs:  # edge case of a single time step
+        return trans
 
     step = OrderedDict(sorted(step.items()))
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))

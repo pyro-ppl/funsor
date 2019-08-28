@@ -104,7 +104,7 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
         Pradhan, N., Rush, A., and Goodman, N.  Tensor Variable Elimination for
         Plated Factor Graphs, 2019
     """
-    plates = kwargs.pop('plates', '')
+    plates = frozenset(kwargs.pop('plates', ''))
     if not plates:
         return naive_einsum(eqn, *terms, **kwargs)
 
@@ -122,15 +122,15 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
     assert len(output.split(',')) == 1
     input_dims = frozenset(d for inp in inputs for d in inp)
     output_dims = frozenset(d for d in output)
-    plate_dims = frozenset(plates) - output_dims
-    reduce_vars = input_dims - output_dims - frozenset(plates)
+    plate_dims = plates - output_dims
+    reduce_vars = input_dims - output_dims - plates
 
-    output_plates = output_dims & frozenset(plates)
+    output_plates = output_dims & plates
     if not all(output_plates.issubset(inp) for inp in inputs):
         raise NotImplementedError("TODO")
 
     eliminate = plate_dims | reduce_vars
-    return sum_product(sum_op, prod_op, terms, eliminate, frozenset(plates))
+    return sum_product(sum_op, prod_op, terms, eliminate, plates)
 
 
 def einsum(eqn, *terms, **kwargs):
