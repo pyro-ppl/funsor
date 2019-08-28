@@ -90,7 +90,7 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
 
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.add, ops.mul), (ops.logaddexp, ops.add)])
 def test_sum_product_time_1(sum_op, prod_op):
-    inputs = ['a', 'abt', 'bt']
+    inputs = ['a', 'abt', 'bt']  # init, trans, obs
     sizes = {'a': 2, 'b': 2, 't': 5}
     factors = [random_tensor(OrderedDict((d, bint(sizes[d])) for d in ds)) for ds in inputs]
     eliminate = frozenset('bt')
@@ -98,11 +98,30 @@ def test_sum_product_time_1(sum_op, prod_op):
 
     actual = sum_product(sum_op, prod_op, factors, eliminate, plates)
 
-    f, g, h = factors
-    gh = prod_op(g, h)
-    gh_t = sequential_sum_product(sum_op, prod_op, gh, 't', plates['t'])
-    fgh = prod_op(f, gh_t)
-    expected = fgh.reduce(sum_op, 'b')
+    x, y, z = factors
+    yz = prod_op(y, z)
+    yz_t = sequential_sum_product(sum_op, prod_op, yz, 't', plates['t'])
+    yz_tb = yz_t.reduce(sum_op, 'b')
+    expected = prod_op(x, yz_tb)
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.add, ops.mul), (ops.logaddexp, ops.add)])
+def test_sum_product_time_2(sum_op, prod_op):
+    inputs = ['a', 'abt', 'btic', 'ic']  # init, trans, obs, bias
+    sizes = {'a': 2, 'b': 2, 'c': 3, 't': 5, 'i': 4}
+    factors = [random_tensor(OrderedDict((d, bint(sizes[d])) for d in ds)) for ds in inputs]
+    eliminate = frozenset('bcti')
+    plates = {'t': {'a': 'b'}, 'i': {}}
+
+    actual = sum_product(sum_op, prod_op, factors, eliminate, plates)
+
+    w, x, y, z = factors
+    yz = prod_op(y, z).reduce(sum_op, 'c').reduce(prod_op, 'i')
+    xyz = prod_op(x, yz)
+    xyz_t = sequential_sum_product(sum_op, prod_op, xyz, 't', plates['t'])
+    xyz_tb = xyz_t.reduce(sum_op, 'b')
+    expected = prod_op(w, xyz_tb)
     assert_close(actual, expected)
 
 
