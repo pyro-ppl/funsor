@@ -104,9 +104,12 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
         Pradhan, N., Rush, A., and Goodman, N.  Tensor Variable Elimination for
         Plated Factor Graphs, 2019
     """
-    plates = frozenset(kwargs.pop('plates', ''))
+    plates = kwargs.pop('plates', {})
     if not plates:
         return naive_einsum(eqn, *terms, **kwargs)
+    if isinstance(plates, (str, list, tuple, set, frozenset)):
+        plates = {plate: {} for plate in plates}
+    assert isinstance(plates, dict)
 
     backend = kwargs.pop('backend', 'torch')
     if backend in BACKEND_OPS:
@@ -122,10 +125,10 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
     assert len(output.split(',')) == 1
     input_dims = frozenset(d for inp in inputs for d in inp)
     output_dims = frozenset(d for d in output)
-    plate_dims = plates - output_dims
-    reduce_vars = input_dims - output_dims - plates
+    plate_dims = frozenset(plates) - output_dims
+    reduce_vars = input_dims - output_dims - frozenset(plates)
 
-    output_plates = output_dims & plates
+    output_plates = output_dims & frozenset(plates)
     if not all(output_plates.issubset(inp) for inp in inputs):
         raise NotImplementedError("TODO")
 
@@ -139,10 +142,11 @@ def einsum(eqn, *terms, **kwargs):
 
     :param str equation: An einsum equation.
     :param funsor.terms.Funsor \*terms: One or more operands.
-    :param set plates: Optional keyword argument denoting which funsor
+    :param plates: Optional keyword argument denoting which funsor
         dimensions are plate dimensions. Among all input dimensions (from
         terms): dimensions in plates but not in outputs are product-reduced;
         dimensions in neither plates nor outputs are sum-reduced.
+    :type plates: str, list, tuple, set, frozenset, or dict
     """
     with interpretation(reflect):
         naive_ast = naive_plated_einsum(eqn, *terms, **kwargs)

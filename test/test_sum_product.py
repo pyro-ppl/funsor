@@ -76,7 +76,7 @@ def test_partition(inputs, dims, expected_num_components):
 def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     inputs = inputs.split(',')
     factors = [random_tensor(OrderedDict((d, bint(2)) for d in ds)) for ds in inputs]
-    plates = frozenset(plates)
+    plates = {plate: {} for plate in plates}
     vars1 = frozenset(vars1)
     vars2 = frozenset(vars2)
 
@@ -85,6 +85,24 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     actual = reduce(prod_op, factors2)
 
     expected = sum_product(sum_op, prod_op, factors, vars1 | vars2, plates)
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.add, ops.mul), (ops.logaddexp, ops.add)])
+def test_sum_product_time_1(sum_op, prod_op):
+    inputs = ['a', 'abt', 'bt']
+    sizes = {'a': 2, 'b': 2, 't': 5}
+    factors = [random_tensor(OrderedDict((d, bint(sizes[d])) for d in ds)) for ds in inputs]
+    eliminate = frozenset('bt')
+    plates = {'t': {'a': 'b'}}
+
+    actual = sum_product(sum_op, prod_op, factors, eliminate, plates)
+
+    f, g, h = factors
+    gh = prod_op(g, h)
+    gh_t = sequential_sum_product(sum_op, prod_op, gh, 't', plates['t'])
+    fgh = prod_op(f, gh_t)
+    expected = fgh.reduce(sum_op, 'b')
     assert_close(actual, expected)
 
 

@@ -12,6 +12,9 @@ from funsor.torch import Tensor, align_tensor
 
 
 def _partition(terms, sum_vars):
+    """
+    Connected components decomposition on a bipartite graph.
+    """
     # Construct a bipartite graph between terms and the vars
     neighbors = OrderedDict([(t, []) for t in terms])
     for term in terms:
@@ -42,7 +45,7 @@ def _partition(terms, sum_vars):
     return components
 
 
-def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
+def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates={}):
     """
     Performs partial sum-product contraction of a collection of factors.
 
@@ -52,8 +55,9 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
     :type factors: tuple or list
     :param frozenset eliminate: A set of free variables to eliminate,
         including both sum variables and product variables.
-    :param plates: A collection of plates or mapping from markov dimension to
+    :param dict plates: A collection mapping from Markov variables to
         ``step`` dict that maps previous to current variable name.
+        Plates are passed as trivial Markov variables with empty ``step``.
     :type plates: frozenset or dict
     :return: A list of partially contracted Funsors.
     :rtype: list
@@ -63,11 +67,8 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
-    assert isinstance(plates, frozenset)
-    if isinstance(plates, frozenset):
-        steps = {plate: {} for plate in plates}
-    else:
-        steps, plates = plates, frozenset(plates)
+    assert isinstance(plates, dict)
+    steps, plates = plates, frozenset(plates)
     sum_vars = eliminate - plates
 
     var_to_ordinal = {}
@@ -106,7 +107,7 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
     return results
 
 
-def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
+def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates={}):
     """
     Performs sum-product contraction of a collection of factors.
 
@@ -116,9 +117,9 @@ def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozense
     :type factors: tuple or list
     :param frozenset eliminate: A set of free variables to eliminate,
         including both sum variables and product variables.
-    :param plates: A collection of plates or mapping from markov dimension to
+    :param dict plates: A collection mapping from Markov variables to
         ``step`` dict that maps previous to current variable name.
-    :type plates: frozenset or dict
+        Plates are passed as trivial Markov variables with empty ``step``.
     :return: A single contracted Funsor.
     :rtype: :class:`~funsor.terms.Funsor`
     """
