@@ -197,7 +197,7 @@ def main(args):
                 fine_observation_matrix=args.fom, moment_matching_lag=args.moment_matching_lag,
                 eval_moment_matching_lag=args.eval_moment_matching_lag)
 
-    if args['load']:
+    if args.load:
         if exists('slds.torch'):
             print('Loading model from slds.torch...')
             slds.load_state_dict(torch.load('slds.torch'))
@@ -247,7 +247,7 @@ def main(args):
                                                                                   slds.log_obs_noise.min().item(),
                                                                                   slds.log_obs_noise.max().item()))
 
-    if args['save']:
+    if args.save:
         torch.save(slds.state_dict(), 'slds.torch')
 
 
