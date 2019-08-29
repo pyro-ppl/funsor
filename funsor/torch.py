@@ -20,7 +20,6 @@ from funsor.terms import (
     Lambda,
     Number,
     Slice,
-    Subs,
     Variable,
     eager,
     substitute,
@@ -202,7 +201,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
                 inputs[k] = d
             data = self.data[tuple(slices)] if slices else self.data
             result = Tensor(data, inputs, self.dtype)
-            return Subs(result, tuple(subs.items()))
+            return result.eager_subs(tuple(subs.items()))
 
         # materialize after checking for renaming case
         subs = OrderedDict((k, materialize(v)) for k, v in subs.items())
