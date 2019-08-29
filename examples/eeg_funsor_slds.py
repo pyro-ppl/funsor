@@ -14,11 +14,13 @@ import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.pyro.convert import matrix_and_mvn_to_funsor, mvn_to_funsor, funsor_to_cat_and_mvn
 
+from logger import get_logger
 
-def download_data():
-    if not exists("eeg.dat"):
+
+def download_data(data_dir):
+    if not exists(data_dir + "eeg.dat"):
         url = "http://archive.ics.uci.edu/ml/machine-learning-databases/00264/EEG%20Eye%20State.arff"
-        with open("eeg.dat", "wb") as f:
+        with open(data_dir + "eeg.dat", "wb") as f:
             f.write(urlopen(url).read())
 
 
@@ -162,17 +164,19 @@ class SLDS(nn.Module):
         return mse, torch.tensor(np.array(test_LLs))
 
 
-def main(args):
-    assert args.device in ['cpu', 'gpu']
-    print(args)
+def main(**args):
+    log_file = 'eeg.mml_{}.emml_{}.log'.format(args['moment_matching_lag'], args['eval_moment_matching_lag'])
+    log = get_logger(args['log_dir'], log_file, use_local_logger=False)
 
-    download_data()
-    data = np.loadtxt('eeg.dat', delimiter=',', skiprows=19)
-    print("[raw data shape] ", data.shape)
+    log(args)
+
+    download_data(args['data_dir'])
+    data = np.loadtxt(args['data_dir'] + 'eeg.dat', delimiter=',', skiprows=19)
+    log("[raw data shape] {}".format(data.shape))
     data = data[::10, :]
-    print("[data shape after thinning] ", data.shape)
-    data = data[0:700, :]
-    print("[data shape after subselection] ", data.shape)
+    log("[data shape after thinning] {}".format(data.shape))
+    data = data[0:400, :]
+    log("[data shape after subselection] {}".format(data.shape))
 
     labels = data[:, -1].tolist()
     labels = [int(l) for l in labels]
@@ -183,37 +187,33 @@ def main(args):
     data_std = data.std(0)
     data /= data_std
 
-    hidden_dim = args.hidden_dim
+    hidden_dim = args['hidden_dim']
     T, obs_dim = data.shape
 
     N_test = 200
     N_train = T - N_test
 
-    print("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
-    print("N_train: {}  N_test: {}".format(N_train, N_test))
+    log("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
+    log("N_train: {}  N_test: {}".format(N_train, N_test))
 
-    slds = SLDS(num_components=args.num_components, hidden_dim=hidden_dim, obs_dim=obs_dim,
-                fine_observation_noise=args.fon, fine_transition_noise=args.ftn,
-                fine_observation_matrix=args.fom, moment_matching_lag=args.moment_matching_lag,
-                eval_moment_matching_lag=args.eval_moment_matching_lag)
+    slds = SLDS(num_components=args['num_components'], hidden_dim=hidden_dim, obs_dim=obs_dim,
+                fine_observation_noise=args['fon'], fine_transition_noise=args['ftn'],
+                fine_observation_matrix=args['fom'], fine_transition_matrix=args['ftm'],
+                moment_matching_lag=args['moment_matching_lag'],
+                eval_moment_matching_lag=args['eval_moment_matching_lag'])
 
-    if args.load:
+    if args['load']:
         if exists('slds.torch'):
-            print('Loading model from slds.torch...')
+            log('Loading model from slds.torch...')
             slds.load_state_dict(torch.load('slds.torch'))
 
-    if args.device == 'gpu':
-        torch.set_default_tensor_type(torch.cuda.FloatTensor)
-        data = data.cuda()
-        slds.cuda()
-
-    adam = torch.optim.Adam(slds.parameters(), lr=args.learning_rate, amsgrad=True)
+    adam = torch.optim.Adam(slds.parameters(), lr=args['learning_rate'], amsgrad=True)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[50, 150], gamma=0.2)
     ts = [time.time()]
 
     report_frequency = 10
 
-    for step in range(args.num_steps):
+    for step in range(args['num_steps']):
         nll = -slds.log_prob(data[0:N_train, :]) / N_train
         nll.backward()
 
@@ -224,47 +224,50 @@ def main(args):
         ts.append(time.time())
         step_dt = ts[-1] - ts[-2]
 
-        if step % report_frequency == 0 or step == args.num_steps - 1:
+        if step % report_frequency == 0 or step == args['num_steps'] - 1:
             predicted_mse, LLs = slds.filter_and_predict(data[0:N_train + N_test, :])
             predicted_mse = predicted_mse[-N_test:].mean().item()
             test_ll = LLs[-N_test:].mean().item()
-            print("[step %03d]  training nll: %.4f   test mse: %.4f  test LL: %.4f \t\t (step_dt: %.2f)" % (step,
-                  nll.item(), predicted_mse, test_ll, step_dt))
+            log("[step %03d]  training nll: %.4f   test mse: %.4f  test LL: %.4f \t\t (step_dt: %.2f)" % (step,
+                nll.item(), predicted_mse, test_ll, step_dt))
 
-        if step % 20 == 0 and args.verbose:
-            print("[transition logits] mean: %.2f std: %.2f" % (slds.transition_logits.mean().item(),
-                                                                slds.transition_logits.std().item()))
-            print("[transition logits]\n", slds.transition_logits.data.numpy())
-            print("[transition matrix.abs] mean: %.2f std: %.2f" % (slds.transition_matrix.abs().mean().item(),
-                                                                    slds.transition_matrix.abs().std().item()))
-            print("[transition matrix]\n", slds.transition_matrix.data.numpy())
-            print("[log_transition_noise] mean: %.2f std: %.2f" % (slds.log_transition_noise.mean().item(),
-                                                                   slds.log_transition_noise.std().item()))
-            print("[observation matrix.abs] mean: %.2f std: %.2f" % (slds.observation_matrix.abs().mean().item(),
-                                                                     slds.observation_matrix.abs().std().item()))
-            print("[log_obs_noise] mean: %.2f std: %.2f  min: %.2f  max: %.2f" % (slds.log_obs_noise.mean().item(),
-                                                                                  slds.log_obs_noise.std().item(),
-                                                                                  slds.log_obs_noise.min().item(),
-                                                                                  slds.log_obs_noise.max().item()))
+        if step % 20 == 0 and args['verbose']:
+            log("[transition logits] mean: %.2f std: %.2f" % (slds.transition_logits.mean().item(),
+                                                              slds.transition_logits.std().item()))
+            log("[transition logits]\n", slds.transition_logits.data.numpy())
+            log("[transition matrix.abs] mean: %.2f std: %.2f" % (slds.transition_matrix.abs().mean().item(),
+                                                                  slds.transition_matrix.abs().std().item()))
+            log("[transition matrix]\n", slds.transition_matrix.data.numpy())
+            log("[log_transition_noise] mean: %.2f std: %.2f" % (slds.log_transition_noise.mean().item(),
+                                                                 slds.log_transition_noise.std().item()))
+            log("[observation matrix.abs] mean: %.2f std: %.2f" % (slds.observation_matrix.abs().mean().item(),
+                                                                   slds.observation_matrix.abs().std().item()))
+            log("[log_obs_noise] mean: %.2f std: %.2f  min: %.2f  max: %.2f" % (slds.log_obs_noise.mean().item(),
+                                                                                slds.log_obs_noise.std().item(),
+                                                                                slds.log_obs_noise.min().item(),
+                                                                                slds.log_obs_noise.max().item()))
 
-    if args.save:
+    if args['save']:
         torch.save(slds.state_dict(), 'slds.torch')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
-    parser.add_argument("-n", "--num-steps", default=2000, type=int)
+    parser.add_argument("-n", "--num-steps", default=50, type=int)
     parser.add_argument("-hd", "--hidden-dim", default=4, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.15, type=float)
     parser.add_argument("-mml", "--moment-matching-lag", default=1, type=int)
     parser.add_argument("-emml", "--eval-moment-matching-lag", default=2, type=int)
-    parser.add_argument("-d", "--device", default="cpu", type=str)
     parser.add_argument("-v", "--verbose", action='store_true')
+    parser.add_argument('-ld', '--log-dir', type=str, default="./")
+    parser.add_argument('-dd', '--data-dir', type=str, default="./")
     parser.add_argument("--fon", action='store_true')
+    parser.add_argument("--ftm", action='store_true')
     parser.add_argument("--fom", action='store_true')
     parser.add_argument("--ftn", action='store_true')
     parser.add_argument("--load", action='store_true')
     parser.add_argument("--save", action='store_true')
     args = parser.parse_args()
-    main(args)
+
+    main(**vars(args))
