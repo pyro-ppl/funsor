@@ -12,7 +12,7 @@ from collections import OrderedDict
 import funsor
 import funsor.distributions as dist
 import funsor.ops as ops
-from funsor.pyro.convert import matrix_and_mvn_to_funsor, mvn_to_funsor
+from funsor.pyro.convert import matrix_and_mvn_to_funsor, mvn_to_funsor, funsor_to_cat_and_mvn
 
 
 def download_data():
@@ -30,10 +30,13 @@ def clip(params, clip=10.0):
 class SLDS(nn.Module):
     def __init__(self, num_components, hidden_dim, obs_dim,
                  fine_transition_noise=False, fine_observation_matrix=False,
-                 fine_observation_noise=False):
+                 fine_observation_noise=False,
+                 moment_matching_lag=2):
         self.num_components = num_components
         self.hidden_dim = hidden_dim
         self.obs_dim = obs_dim
+        self.moment_matching_lag = moment_matching_lag
+        assert moment_matching_lag > 0
         super(SLDS, self).__init__()
         self.transition_logits = nn.Parameter(0.1 * torch.randn(num_components, num_components))
         transition_matrix = torch.eye(hidden_dim) + 0.05 * torch.randn(num_components, hidden_dim, hidden_dim)
@@ -55,7 +58,7 @@ class SLDS(nn.Module):
         self.x_init_mvn = mvn_to_funsor(x_init_mvn, real_inputs=OrderedDict([('x_0', funsor.reals(self.hidden_dim))]))
 
     @funsor.interpreter.interpretation(funsor.terms.moment_matching)
-    def log_prob(self, data):
+    def log_prob(self, data, filtering=False):
         trans_logits = self.transition_logits - self.transition_logits.logsumexp(dim=-1, keepdim=True)
         trans_probs = funsor.Tensor(trans_logits, OrderedDict([("s", funsor.bint(self.num_components))]))
 
@@ -69,35 +72,44 @@ class SLDS(nn.Module):
 
         log_prob = funsor.Number(0.)
 
-        s_curr = funsor.Tensor(torch.tensor(0), dtype=self.num_components)
-        x_curr = None
+        s_vars = {0: funsor.Tensor(torch.tensor(0), dtype=self.num_components)}
+        x_vars = {0: None}
+        filtering_distributions = []
 
         for t, y in enumerate(data):
-            s_prev = s_curr
-            x_prev = x_curr
-
             s_curr = funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components))
-            log_prob += dist.Categorical(trans_probs(s=s_prev), value=s_curr)
-
             x_curr = funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim))
+            s_vars[t + 1] = s_curr
+            x_vars[t + 1] = x_curr
+
+            log_prob += dist.Categorical(trans_probs(s=s_vars[t]), value=s_curr)
+
             if t == 0:
                 log_prob += self.x_init_mvn(value=x_curr)
             else:
-                log_prob += x_trans_dist(s=s_curr, x=x_prev, y=x_curr)
+                log_prob += x_trans_dist(s=s_curr, x=x_vars[t], y=x_curr)
 
-            if t > 0:
-                log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_prev.name, x_prev.name]))
+            if t > self.moment_matching_lag - 1:
+                log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_vars[t - self.moment_matching_lag + 1].name,
+                                                                     x_vars[t - self.moment_matching_lag + 1].name]))
+            if filtering and t > 0:
+                reduce_vars = ["s_{}".format(t - s - 1) for s in range(self.moment_matching_lag - 1)]
+                reduce_vars += ["x_{}".format(t - s - 1) for s in range(self.moment_matching_lag - 1)]
+                reduce_vars = frozenset(reduce_vars)
+                filtering_distributions.append(funsor_to_cat_and_mvn(log_prob.reduce(ops.logaddexp, reduce_vars),
+                                                                     0, ("s_{}".format(t),)))
 
             log_prob += y_dist(s=s_curr, x=x_curr, y=y)
 
-        assert set(log_prob.inputs) == {"s_{}".format(t), "x_{}".format(t)}
-        log_prob = log_prob.reduce(ops.logaddexp)
+        # mop-up
+        T = data.shape[0]
+        for t in range(self.moment_matching_lag):
+            log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_vars[T - self.moment_matching_lag + t + 1].name,
+                                                                 x_vars[T - self.moment_matching_lag + t + 1].name]))
+
         assert not log_prob.inputs, 'free variables remain'
 
-        return log_prob.data
-
-    def filter(self, value):
-        raise NotImplementedError
+        return log_prob.data, filtering_distributions
 
 
 def main(args):
@@ -106,8 +118,17 @@ def main(args):
 
     download_data()
     data = np.loadtxt('eeg.dat', delimiter=',', skiprows=19)
-    # labels = data[:, -1]
-    data = data[1000:1250, :]
+    data = data[1000:1800, :]
+    labels = data[:, -1].tolist()
+    labels = [int(l) for l in labels]
+
+    first_one = None
+    last_one = None
+    for k, x in enumerate(labels):
+        if x == 1 and first_one is None:
+            first_one = k
+        if last_one is None and first_one is not None and x == 0:
+            last_one = k
 
     data = torch.tensor(data[:, :-1]).float()
     data_mean = data.mean(0)
@@ -126,7 +147,7 @@ def main(args):
 
     slds = SLDS(num_components=args.num_components, hidden_dim=hidden_dim, obs_dim=obs_dim,
                 fine_observation_noise=args.fon, fine_transition_noise=args.ftn,
-                fine_observation_matrix=args.fom)
+                fine_observation_matrix=args.fom, moment_matching_lag=args.moment_matching_lag)
 
     if 0:
         if exists('slds.torch'):
@@ -152,8 +173,18 @@ def main(args):
                 return loss
             nll = opt.step(closure)
         else:
-            nll = -slds.log_prob(data[0:N_train, :]) / N_train
+            filtering = True if step % 50 == 0 else False
+            nll, filtering_dists = slds.log_prob(data[0:N_train, :], filtering=filtering)
+            nll = -nll / N_train
             nll.backward()
+            if filtering:
+                filtering_dists = [np.argmax(fl[0].logits.data.numpy()) for fl in filtering_dists]
+                print("labels[0:first_one]", labels[0:first_one])
+                print("filtering_dists[0:first_one]", filtering_dists[0:first_one])
+                print("labels[first_one:last_one]", labels[first_one:last_one])
+                print("filtering_dists[first_one:last_one]", filtering_dists[first_one:last_one])
+                print("labels[last_one:]", labels[last_one:])
+                print("filtering_dists[last_one:]", filtering_dists[last_one:])
 
         # clip(params, clip=args.clip)
         # opt.zero_grad()
@@ -190,9 +221,10 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-n", "--num-steps", default=2000, type=int)
-    parser.add_argument("-hd", "--hidden-dim", default=7, type=int)
+    parser.add_argument("-hd", "--hidden-dim", default=8, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
-    parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)
+    parser.add_argument("-lr", "--learning-rate", default=0.20, type=float)
+    parser.add_argument("-mml", "--moment-matching-lag", default=1, type=int)
     parser.add_argument("-c", "--clip", default=1.0, type=float)
     parser.add_argument("-d", "--device", default="cpu", type=str)
     parser.add_argument("-v", "--verbose", action='store_true')
