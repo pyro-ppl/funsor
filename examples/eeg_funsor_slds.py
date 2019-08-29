@@ -25,7 +25,7 @@ def download_data():
 class SLDS(nn.Module):
     def __init__(self, num_components, hidden_dim, obs_dim,
                  fine_transition_noise=False, fine_observation_matrix=False,
-                 fine_observation_noise=False,
+                 fine_observation_noise=False, fine_transition_matrix=True,
                  moment_matching_lag=2, eval_moment_matching_lag=3):
         self.num_components = num_components
         self.hidden_dim = hidden_dim
@@ -34,9 +34,14 @@ class SLDS(nn.Module):
         self.eval_moment_matching_lag = eval_moment_matching_lag
         assert moment_matching_lag > 0
         assert eval_moment_matching_lag > 0
+        assert fine_transition_noise or fine_observation_matrix or fine_observation_noise or fine_transition_matrix, \
+            "The continuous dynamics need to be coupled to the discrete dynamics in at least one way"
         super(SLDS, self).__init__()
         self.transition_logits = nn.Parameter(0.1 * torch.randn(num_components, num_components))
-        transition_matrix = torch.eye(hidden_dim) + 0.05 * torch.randn(num_components, hidden_dim, hidden_dim)
+        if fine_transition_matrix:
+            transition_matrix = torch.eye(hidden_dim) + 0.05 * torch.randn(num_components, hidden_dim, hidden_dim)
+        else:
+            transition_matrix = torch.eye(hidden_dim) + 0.05 * torch.randn(hidden_dim, hidden_dim)
         self.transition_matrix = nn.Parameter(transition_matrix)
         if fine_transition_noise:
             self.log_transition_noise = nn.Parameter(0.1 * torch.randn(num_components, hidden_dim))
@@ -163,17 +168,14 @@ def main(args):
 
     download_data()
     data = np.loadtxt('eeg.dat', delimiter=',', skiprows=19)
-    data = data[1000:1500, :]
+    print("[raw data shape] ", data.shape)
+    data = data[::10, :]
+    print("[data shape after thinning] ", data.shape)
+    data = data[0:700, :]
+    print("[data shape after subselection] ", data.shape)
+
     labels = data[:, -1].tolist()
     labels = [int(l) for l in labels]
-
-    first_one = None
-    last_one = None
-    for k, x in enumerate(labels):
-        if x == 1 and first_one is None:
-            first_one = k
-        if last_one is None and first_one is not None and x == 0:
-            last_one = k
 
     data = torch.tensor(data[:, :-1]).float()
     data_mean = data.mean(0)
@@ -184,7 +186,7 @@ def main(args):
     hidden_dim = args.hidden_dim
     T, obs_dim = data.shape
 
-    N_test = 100
+    N_test = 200
     N_train = T - N_test
 
     print("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
@@ -195,7 +197,7 @@ def main(args):
                 fine_observation_matrix=args.fom, moment_matching_lag=args.moment_matching_lag,
                 eval_moment_matching_lag=args.eval_moment_matching_lag)
 
-    if 0:
+    if args['load']:
         if exists('slds.torch'):
             print('Loading model from slds.torch...')
             slds.load_state_dict(torch.load('slds.torch'))
@@ -206,37 +208,18 @@ def main(args):
         slds.cuda()
 
     adam = torch.optim.Adam(slds.parameters(), lr=args.learning_rate, amsgrad=True)
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[20, 40, 80], gamma=0.2)
-    opt = torch.optim.LBFGS(slds.parameters(), lr=args.learning_rate)  # line_search_fn='strong_wolfe')
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[50, 150], gamma=0.2)
     ts = [time.time()]
 
-    report_frequency = 5
+    report_frequency = 10
 
     for step in range(args.num_steps):
-        if step > 9999:
-            def closure():
-                opt.zero_grad()
-                loss = -slds.log_prob(data[0:N_train, :]) / N_train
-                loss.backward(retain_graph=True)
-                return loss
-            nll = opt.step(closure)
-        else:
-            nll = -slds.log_prob(data[0:N_train, :]) / N_train
-            nll.backward()
-            """
-            if 0:
-                print("labels[0:first_one]", labels[0:first_one])
-                print("filtering_dists[0:first_one]", filtering_dists[0:first_one])
-                print("labels[first_one:last_one]", labels[first_one:last_one])
-                print("filtering_dists[first_one:last_one]", filtering_dists[first_one:last_one])
-                print("labels[last_one:]", labels[last_one:])
-                print("filtering_dists[last_one:]", filtering_dists[last_one:])
-            """
+        nll = -slds.log_prob(data[0:N_train, :]) / N_train
+        nll.backward()
 
-        # opt.zero_grad()
-
-            adam.step()  # scheduler.step()
-            adam.zero_grad()
+        adam.step()
+        scheduler.step()
+        adam.zero_grad()
 
         ts.append(time.time())
         step_dt = ts[-1] - ts[-2]
@@ -264,13 +247,14 @@ def main(args):
                                                                                   slds.log_obs_noise.min().item(),
                                                                                   slds.log_obs_noise.max().item()))
 
-    # torch.save(slds.state_dict(), 'slds.torch')
+    if args['save']:
+        torch.save(slds.state_dict(), 'slds.torch')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-n", "--num-steps", default=2000, type=int)
-    parser.add_argument("-hd", "--hidden-dim", default=5, type=int)
+    parser.add_argument("-hd", "--hidden-dim", default=4, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.15, type=float)
     parser.add_argument("-mml", "--moment-matching-lag", default=1, type=int)
@@ -280,5 +264,7 @@ if __name__ == '__main__':
     parser.add_argument("--fon", action='store_true')
     parser.add_argument("--fom", action='store_true')
     parser.add_argument("--ftn", action='store_true')
+    parser.add_argument("--load", action='store_true')
+    parser.add_argument("--save", action='store_true')
     args = parser.parse_args()
     main(args)
