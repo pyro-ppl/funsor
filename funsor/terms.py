@@ -1089,6 +1089,9 @@ class Stack(Funsor):
             # Rename the stacking dimension.
             components = self.components
             return Stack(components, index.name)
+        elif isinstance(index, Slice):
+            components = self.components[index.slice]
+            return Stack(components, index.name)
         else:
             raise NotImplementedError('TODO support advanced indexing in Stack')
 

@@ -293,6 +293,17 @@ def test_stack_subs():
     assert f(x=0, i='j') is Stack((Number(0), Number(0), y * z), 'j')
 
 
+@pytest.mark.parametrize("start,stop", [(0, 1), (0, 2), (0, 10), (1, 2), (1, 10), (2, 10)])
+@pytest.mark.parametrize("step", [1, 2, 5, 10])
+def test_stack_slice(start, stop, step):
+    xs = tuple(map(Number, range(10)))
+    actual = Stack(xs, 'i')(i=Slice('j', start, stop, step, dtype=10))
+    expected = Stack(xs[start: stop: step], 'j')
+    assert type(actual) == type(expected)
+    assert actual.name == expected.name
+    assert actual.components == expected.components
+
+
 def test_align_simple():
     x = Variable('x', reals())
     y = Variable('y', reals())
