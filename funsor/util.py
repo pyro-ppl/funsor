@@ -1,6 +1,7 @@
 import functools
 import inspect
 import re
+from collections import Hashable
 
 
 class lazy_property(object):
@@ -39,3 +40,13 @@ def getargspec(fn):
         kwargs = None
         defaults = ()  # Ignore defaults.
     return args, vargs, kwargs, defaults
+
+
+@functools.singledispatch
+def force_hashable(x):
+    return id(x)
+
+
+@force_hashable.register(Hashable)
+def _force_hashable(x):
+    return x

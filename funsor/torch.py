@@ -13,7 +13,20 @@ from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, eager, substitute, to_data, to_funsor
+from funsor.terms import (
+    Binary,
+    Funsor,
+    FunsorMeta,
+    Lambda,
+    Number,
+    Slice,
+    Subs,
+    Variable,
+    eager,
+    substitute,
+    to_data,
+    to_funsor
+)
 from funsor.util import getargspec
 
 
@@ -168,11 +181,28 @@ class Tensor(Funsor, metaclass=TensorMeta):
         if not subs:
             return self
 
-        # special case: renaming
-        # must be handled to ensure proper cons hashing
-        if all(isinstance(v, Variable) and v.name not in self.inputs for v in subs.values()):
-            renamed_inputs = OrderedDict((subs[k].name if k in subs else k, self.inputs[k]) for k in self.inputs)
-            return Tensor(self.data, renamed_inputs, self.dtype)
+        # Handle renaming to enable cons hashing, and
+        # handle slicing to avoid copying data.
+        if any(isinstance(v, (Variable, Slice)) for v in subs.values()):
+            slices = None
+            inputs = OrderedDict()
+            for i, (k, d) in enumerate(self.inputs.items()):
+                if k in subs:
+                    v = subs[k]
+                    if isinstance(v, Variable):
+                        del subs[k]
+                        k = v.name
+                    elif isinstance(v, Slice):
+                        del subs[k]
+                        k = v.name
+                        d = v.inputs[v.name]
+                        if slices is None:
+                            slices = [slice(None)] * self.data.dim()
+                        slices[i] = v.slice
+                inputs[k] = d
+            data = self.data[tuple(slices)] if slices else self.data
+            result = Tensor(data, inputs, self.dtype)
+            return Subs(result, tuple(subs.items()))
 
         # materialize after checking for renaming case
         subs = OrderedDict((k, materialize(v)) for k, v in subs.items())

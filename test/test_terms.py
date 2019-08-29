@@ -9,7 +9,7 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Independent, Lambda, Number, Stack, Variable, sequential, to_data, to_funsor
+from funsor.terms import Binary, Independent, Lambda, Number, Slice, Stack, Variable, sequential, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
@@ -47,6 +47,9 @@ def test_cons_hash():
     assert Number(0, 3) is Number(0, 3)
     assert Number(0.) is Number(0.)
     assert Number(0.) is not Number(0, 3)
+    assert Slice('x', 10) is Slice('x', 10)
+    assert Slice('x', 10) is Slice('x', 0, 10)
+    assert Slice('x', 10, 10) is not Slice('x', 0, 10)
 
 
 @pytest.mark.parametrize('expr', [

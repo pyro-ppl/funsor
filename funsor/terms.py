@@ -3,7 +3,7 @@ import itertools
 import math
 import numbers
 import re
-from collections import Hashable, OrderedDict
+from collections import OrderedDict
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
@@ -14,7 +14,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec
+from funsor.util import force_hashable, getargspec
 
 
 def substitute(expr, subs):
@@ -70,7 +70,7 @@ def reflect(cls, *args):
     Construct a funsor, populate ``._ast_values``, and cons hash.
     This is the only interpretation allowed to construct funsors.
     """
-    cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+    cache_key = tuple(map(force_hashable, args))
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
@@ -953,6 +953,52 @@ def eager_binary_number_number(op, lhs, rhs):
     return Number(data, dtype)
 
 
+class SliceMeta(FunsorMeta):
+    """
+    Wrapper to fill in ``start``, ``stop``, ``step``, ``dtype`` following
+    Python conventions.
+    """
+    def __call__(cls, name, *args, **kwargs):
+        start = 0
+        step = 1
+        dtype = None
+        if len(args) == 1:
+            stop = args[0]
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 2:
+            start, stop = args
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 3:
+            start, stop, step = args
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 4:
+            start, stop, step, dtype = args
+        else:
+            raise ValueError
+        if step <= 0:
+            raise ValueError
+        return super().__call__(name, start, stop, step, dtype)
+
+
+class Slice(Funsor, metaclass=SliceMeta):
+    """
+    Symbolic representation of a Python :py:class:`slice` object.
+    """
+    def __init__(self, name, start, stop, step, dtype):
+        assert isinstance(name, str)
+        assert start is None or isinstance(start, int)
+        assert stop is None or isinstance(stop, int)
+        assert step is None or isinstance(step, int)
+        assert isinstance(dtype, int)
+        size = max(0, (stop + step - 1 - start) // step)
+        inputs = OrderedDict([(name, bint(size))])
+        output = bint(dtype)
+        fresh = frozenset({"name"})
+        super().__init__(inputs, output, fresh)
+        self.name = name
+        self.slice = slice(start, stop, step)
+
+
 class Align(Funsor):
     """
     Lazy call to ``.align(...)``.
@@ -1208,6 +1254,7 @@ __all__ = [
     'Number',
     'Reduce',
     'Stack',
+    'Slice',
     'Subs',
     'Unary',
     'Variable',
