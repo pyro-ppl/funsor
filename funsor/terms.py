@@ -1058,8 +1058,8 @@ class Stack(Funsor):
     """
     Stack of funsors along a new input dimension.
 
-    :param tuple parts: A tuple of Funsors of homogenous output domain.
     :param str name: The name of the new input variable along which to stack.
+    :param tuple parts: A tuple of Funsors of homogenous output domain.
     """
     def __init__(self, name, parts):
         assert isinstance(name, str)
