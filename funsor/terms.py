@@ -3,7 +3,7 @@ import itertools
 import math
 import numbers
 import re
-from collections import OrderedDict
+from collections import Hashable, OrderedDict
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
@@ -14,7 +14,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import force_hashable, getargspec
+from funsor.util import getargspec
 
 
 def substitute(expr, subs):
@@ -70,7 +70,7 @@ def reflect(cls, *args):
     Construct a funsor, populate ``._ast_values``, and cons hash.
     This is the only interpretation allowed to construct funsors.
     """
-    cache_key = tuple(map(force_hashable, args))
+    cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
