@@ -34,6 +34,10 @@ class SLDS(nn.Module):
         self.obs_dim = obs_dim
         self.moment_matching_lag = moment_matching_lag
         self.eval_moment_matching_lag = eval_moment_matching_lag
+        self.fine_transition_noise = fine_transition_noise
+        self.fine_observation_matrix = fine_observation_matrix
+        self.fine_observation_noise = fine_observation_noise
+        self.fine_transition_matrix = fine_transition_matrix
         assert moment_matching_lag > 0
         assert eval_moment_matching_lag > 0
         assert fine_transition_noise or fine_observation_matrix or fine_observation_noise or fine_transition_matrix, \
@@ -70,8 +74,10 @@ class SLDS(nn.Module):
         obs_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.obs_dim),
                                                          self.log_obs_noise.exp().diag_embed())
 
-        x_trans_dist = matrix_and_mvn_to_funsor(self.transition_matrix, trans_mvn, ("s",), "x", "y")
-        y_dist = matrix_and_mvn_to_funsor(self.observation_matrix, obs_mvn, ("s",), "x", "y")
+        event_dims = ("s",) if self.fine_transition_matrix or self.fine_transition_noise else ()
+        x_trans_dist = matrix_and_mvn_to_funsor(self.transition_matrix, trans_mvn, event_dims, "x", "y")
+        event_dims = ("s",) if self.fine_observation_matrix or self.fine_observation_noise else ()
+        y_dist = matrix_and_mvn_to_funsor(self.observation_matrix, obs_mvn, event_dims, "x", "y")
 
         return trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist
 
@@ -82,7 +88,7 @@ class SLDS(nn.Module):
         log_prob = funsor.Number(0.)
 
         s_vars = {-1: funsor.Tensor(torch.tensor(0), dtype=self.num_components)}
-        x_vars = {-1: None}
+        x_vars = {}
 
         for t, y in enumerate(data):
             s_vars[t] = funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components))
@@ -146,8 +152,8 @@ class SLDS(nn.Module):
                 reduction = log_prob.reduce(ops.logaddexp, frozenset(reduce_vars))
                 filtering_distributions.append(funsor_to_cat_and_mvn(reduction, 0, ("s_{}".format(t),)))
 
-                reduction = reduction - reduction.reduce(ops.logaddexp)
-                test_LLs.append((y_dist(s=s_vars[t], x=x_vars[t], y=y) + reduction).reduce(ops.logaddexp).data.item())
+                _log_prob = log_prob - log_prob.reduce(ops.logaddexp)
+                test_LLs.append((y_dist(s=s_vars[t], x=x_vars[t], y=y) + _log_prob).reduce(ops.logaddexp).data.item())
 
             log_prob += y_dist(s=s_vars[t], x=x_vars[t], y=y)
 
@@ -165,17 +171,21 @@ class SLDS(nn.Module):
 
 
 def main(**args):
-    log_file = 'eeg.mml_{}.emml_{}.log'.format(args['moment_matching_lag'], args['eval_moment_matching_lag'])
+    log_file = 'eeg.hd_{}.lr_{:.3f}.mml_{}.emml_{}.ftm_{}.ftn_{}.fom_{}.fon_{}.seed_{}.log'
+    log_file = log_file.format(args['hidden_dim'], args['learning_rate'],
+                               args['moment_matching_lag'], args['eval_moment_matching_lag'],
+                               args['ftm'], args['ftn'], args['fom'], args['fon'], args['seed'])
     log = get_logger(args['log_dir'], log_file, use_local_logger=False)
 
     log(args)
+    torch.manual_seed(args['seed'])
 
     download_data(args['data_dir'])
     data = np.loadtxt(args['data_dir'] + 'eeg.dat', delimiter=',', skiprows=19)
     log("[raw data shape] {}".format(data.shape))
     data = data[::10, :]
     log("[data shape after thinning] {}".format(data.shape))
-    data = data[0:400, :]
+    data = data[0:200, :]
     log("[data shape after subselection] {}".format(data.shape))
 
     labels = data[:, -1].tolist()
@@ -190,7 +200,7 @@ def main(**args):
     hidden_dim = args['hidden_dim']
     T, obs_dim = data.shape
 
-    N_test = 200
+    N_test = 100
     N_train = T - N_test
 
     log("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
@@ -211,7 +221,7 @@ def main(**args):
     scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[50, 150], gamma=0.2)
     ts = [time.time()]
 
-    report_frequency = 10
+    report_frequency = 2
 
     for step in range(args['num_steps']):
         nll = -slds.log_prob(data[0:N_train, :]) / N_train
@@ -228,8 +238,17 @@ def main(**args):
             predicted_mse, LLs = slds.filter_and_predict(data[0:N_train + N_test, :])
             predicted_mse = predicted_mse[-N_test:].mean().item()
             test_ll = LLs[-N_test:].mean().item()
-            log("[step %03d]  training nll: %.4f   test mse: %.4f  test LL: %.4f \t\t (step_dt: %.2f)" % (step,
-                nll.item(), predicted_mse, test_ll, step_dt))
+
+            slds.eval_moment_matching_lag = 10
+            predicted_mse2, LLs2 = slds.filter_and_predict(data[0:N_train + N_test, :])
+            predicted_mse2 = predicted_mse2[-N_test:].mean().item()
+            test_ll2 = LLs2[-N_test:].mean().item()
+            slds.eval_moment_matching_lag = args['eval_moment_matching_lag']
+
+            log("[step %03d]  training nll: %.4f   test mse: %.6f  test LL: %.6f  test mse: %.6f  test LL: %.6f \t\t (step_dt: %.2f)" % (step,
+                nll.item(), predicted_mse, test_ll, predicted_mse2, test_ll2, step_dt))
+            #log("[step %03d]  training nll: %.4f   test mse: %.4f  test LL: %.4f \t\t (step_dt: %.2f)" % (step,
+            #    nll.item(), predicted_mse, test_ll, step_dt))
 
         if step % 20 == 0 and args['verbose']:
             log("[transition logits] mean: %.2f std: %.2f" % (slds.transition_logits.mean().item(),
@@ -253,7 +272,8 @@ def main(**args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
-    parser.add_argument("-n", "--num-steps", default=50, type=int)
+    parser.add_argument("-n", "--num-steps", default=250, type=int)
+    parser.add_argument("-s", "--seed", default=0, type=int)
     parser.add_argument("-hd", "--hidden-dim", default=4, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.15, type=float)
