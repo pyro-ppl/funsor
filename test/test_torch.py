@@ -7,7 +7,7 @@ import torch
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.terms import Lambda, Number, Variable
+from funsor.terms import Lambda, Number, Slice, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torch_stack, torch_tensordot
 
@@ -96,6 +96,34 @@ def test_advanced_indexing_shape():
     check_funsor(x(n, k=m), {'j': bint(J), 'n': bint(N)}, reals())
     check_funsor(x(n, m), {'m': bint(M), 'n': bint(N)}, reals())
     check_funsor(x(n, m, k=m), {'m': bint(M), 'n': bint(N)}, reals())
+
+
+def test_slice_simple():
+    t = torch.randn(3, 4, 5)
+    f = Tensor(t)["i", "j"]
+    assert_close(f, f(i=Slice("i", 3)))
+    assert_close(f, f(j=Slice("j", 4)))
+    assert_close(f, f(i=Slice("i", 3), j=Slice("j", 4)))
+    assert_close(f, f(i=Slice("i", 3), j="j"))
+    assert_close(f, f(i="i", j=Slice("j", 4)))
+
+
+@pytest.mark.parametrize("stop", [0, 1, 2, 10])
+def test_slice_1(stop):
+    t = torch.randn(10, 2)
+    actual = Tensor(t)["i"](i=Slice("j", stop, dtype=10))
+    expected = Tensor(t[:stop])["j"]
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("start", [0, 1, 2, 10])
+@pytest.mark.parametrize("stop", [0, 1, 2, 10])
+@pytest.mark.parametrize("step", [1, 2, 5, 10])
+def test_slice_2(start, stop, step):
+    t = torch.randn(10, 2)
+    actual = Tensor(t)["i"](i=Slice("j", start, stop, step, dtype=10))
+    expected = Tensor(t[start: stop: step])["j"]
+    assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])

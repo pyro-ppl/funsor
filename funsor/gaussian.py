@@ -10,7 +10,20 @@ from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate, integrator
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Subs, Unary, Variable, eager, reflect, to_funsor
+from funsor.terms import (
+    Align,
+    Binary,
+    Funsor,
+    FunsorMeta,
+    Number,
+    Slice,
+    Subs,
+    Unary,
+    Variable,
+    eager,
+    reflect,
+    to_funsor
+)
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -338,9 +351,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # Constants and Variables are eagerly substituted;
         # everything else is lazily substituted.
         lazy_subs = tuple((k, v) for k, v in subs
-                          if not isinstance(v, (Number, Tensor, Variable)))
+                          if not isinstance(v, (Number, Tensor, Variable, Slice)))
         var_subs = tuple((k, v) for k, v in subs if isinstance(v, Variable))
-        int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
+        int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor, Slice))
                          if v.dtype != 'real')
         real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
                           if v.dtype == 'real')

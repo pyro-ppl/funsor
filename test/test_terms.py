@@ -9,7 +9,7 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Independent, Lambda, Number, Stack, Variable, sequential, to_data, to_funsor
+from funsor.terms import Binary, Independent, Lambda, Number, Slice, Stack, Variable, sequential, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
@@ -47,6 +47,9 @@ def test_cons_hash():
     assert Number(0, 3) is Number(0, 3)
     assert Number(0.) is Number(0.)
     assert Number(0.) is not Number(0, 3)
+    assert Slice('x', 10) is Slice('x', 10)
+    assert Slice('x', 10) is Slice('x', 0, 10)
+    assert Slice('x', 10, 10) is not Slice('x', 0, 10)
 
 
 @pytest.mark.parametrize('expr', [
@@ -288,6 +291,17 @@ def test_stack_subs():
     assert f(x=0, y=x, i=Number(2, 3)) is x * z
     assert f(x=0, i=j) is Stack((Number(0), Number(0), y * z), 'j')
     assert f(x=0, i='j') is Stack((Number(0), Number(0), y * z), 'j')
+
+
+@pytest.mark.parametrize("start,stop", [(0, 1), (0, 2), (0, 10), (1, 2), (1, 10), (2, 10)])
+@pytest.mark.parametrize("step", [1, 2, 5, 10])
+def test_stack_slice(start, stop, step):
+    xs = tuple(map(Number, range(10)))
+    actual = Stack(xs, 'i')(i=Slice('j', start, stop, step, dtype=10))
+    expected = Stack(xs[start: stop: step], 'j')
+    assert type(actual) == type(expected)
+    assert actual.name == expected.name
+    assert actual.components == expected.components
 
 
 def test_align_simple():
