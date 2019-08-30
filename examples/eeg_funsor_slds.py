@@ -1,3 +1,7 @@
+import matplotlib
+matplotlib.use('Agg')  # noqa: E402
+import matplotlib.pyplot as plt
+
 import argparse
 from os.path import exists
 from urllib.request import urlopen
@@ -28,21 +32,24 @@ class SLDS(nn.Module):
     def __init__(self, num_components, hidden_dim, obs_dim,
                  fine_transition_noise=False, fine_observation_matrix=False,
                  fine_observation_noise=False, fine_transition_matrix=True,
-                 moment_matching_lag=2, eval_moment_matching_lag=3):
+                 moment_matching_lag=2):
+
         self.num_components = num_components
         self.hidden_dim = hidden_dim
         self.obs_dim = obs_dim
         self.moment_matching_lag = moment_matching_lag
-        self.eval_moment_matching_lag = eval_moment_matching_lag
         self.fine_transition_noise = fine_transition_noise
         self.fine_observation_matrix = fine_observation_matrix
         self.fine_observation_noise = fine_observation_noise
         self.fine_transition_matrix = fine_transition_matrix
+
         assert moment_matching_lag > 0
-        assert eval_moment_matching_lag > 0
         assert fine_transition_noise or fine_observation_matrix or fine_observation_noise or fine_transition_matrix, \
-            "The continuous dynamics need to be coupled to the discrete dynamics in at least one way"
+            "The continuous dynamics need to be coupled to the discrete dynamics in at least one way [use at " + \
+            "least one of --ftn --ftm --fon --fom]"
+
         super(SLDS, self).__init__()
+
         self.transition_logits = nn.Parameter(0.1 * torch.randn(num_components, num_components))
         if fine_transition_matrix:
             transition_matrix = torch.eye(hidden_dim) + 0.05 * torch.randn(num_components, hidden_dim, hidden_dim)
@@ -107,7 +114,6 @@ class SLDS(nn.Module):
 
             log_prob += y_dist(s=s_vars[t], x=x_vars[t], y=y)
 
-        # mop-up
         T = data.shape[0]
         for t in range(self.moment_matching_lag):
             log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_vars[T - self.moment_matching_lag + t].name,
@@ -119,7 +125,7 @@ class SLDS(nn.Module):
 
     @torch.no_grad()
     @funsor.interpreter.interpretation(funsor.terms.moment_matching)
-    def filter_and_predict(self, data):
+    def filter_and_predict(self, data, smoothing=False):
         trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist = self.get_tensors_and_dists()
 
         log_prob = funsor.Number(0.)
@@ -127,7 +133,7 @@ class SLDS(nn.Module):
         s_vars = {-1: funsor.Tensor(torch.tensor(0), dtype=self.num_components)}
         x_vars = {-1: None}
 
-        filtering_distributions = []
+        predictive_dists, filtering_dists = [], []
         test_LLs = []
 
         for t, y in enumerate(data):
@@ -141,39 +147,78 @@ class SLDS(nn.Module):
             else:
                 log_prob += x_trans_dist(s=s_vars[t], x=x_vars[t - 1], y=x_vars[t])
 
-            if t > self.eval_moment_matching_lag - 1:
-                log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_vars[t - self.eval_moment_matching_lag].name,
-                                                                     x_vars[t - self.eval_moment_matching_lag].name]))
-
-            # filter and compute test LL
             if t > 0:
-                srange = range(min(self.eval_moment_matching_lag - 1, t))
-                reduce_vars = ["s_{}".format(t - s - 1) for s in srange] + ["x_{}".format(t - s - 1) for s in srange]
-                reduction = log_prob.reduce(ops.logaddexp, frozenset(reduce_vars))
-                filtering_distributions.append(funsor_to_cat_and_mvn(reduction, 0, ("s_{}".format(t),)))
+                log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_vars[t - 1].name, x_vars[t - 1].name]))
 
+            # do 1-step prediction and compute test LL
+            if t > 0:
+                predictive_dists.append((log_prob, funsor_to_cat_and_mvn(log_prob, 0, ("s_{}".format(t),))))
                 _log_prob = log_prob - log_prob.reduce(ops.logaddexp)
                 test_LLs.append((y_dist(s=s_vars[t], x=x_vars[t], y=y) + _log_prob).reduce(ops.logaddexp).data.item())
 
             log_prob += y_dist(s=s_vars[t], x=x_vars[t], y=y)
 
-        # compute test MSE
-        means = torch.stack([fd[1].mean for fd in filtering_distributions])  # T-1 2 xdim
+            # save filtering dists for forward-backward smoothing
+            if smoothing:
+                filtering_dists.append(log_prob)
+
+        # do the forward-backward recursion using previously computed ingredients
+        if smoothing:
+            smoothing_dists = [filtering_dists[-1]]
+            log_prob = funsor.Number(0.)
+            T = data.size(0)
+
+            s_vars = {t: funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components)) for t in range(T)}
+            x_vars = {t: funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim)) for t in range(T)}
+
+            for t in reversed(range(T - 1)):
+                smoothing_dist = smoothing_dists[-1]
+                pred_dist = predictive_dists[t][0]
+                integral = smoothing_dist - pred_dist
+                integral += dist.Categorical(trans_probs(s=s_vars[t]), value=s_vars[t + 1])
+                integral += x_trans_dist(s=s_vars[t], x=x_vars[t], y=x_vars[t + 1])
+                integral = integral.reduce(ops.logaddexp, frozenset([s_vars[t + 1].name, x_vars[t + 1].name]))
+                smoothing_dists.append(filtering_dists[t] + integral)
+
+        # compute predictive test MSE
+        means = torch.stack([d[1][1].mean for d in predictive_dists])  # T-1 2 xdim
         means = torch.matmul(means.unsqueeze(-2), self.observation_matrix).squeeze(-2)  # T-1 2 ydim
 
-        probs = torch.stack([fd[0].logits for fd in filtering_distributions]).exp()
+        probs = torch.stack([d[1][0].logits for d in predictive_dists]).exp()
         probs = probs / probs.sum(-1, keepdim=True)  # T-1 2
 
-        means = (probs.unsqueeze(-1) * means).sum(-2)  # T-1 ydim
-        mse = (means - data[1:, :]).pow(2.0).mean(-1)
+        predictive_means = (probs.unsqueeze(-1) * means).sum(-2)  # T-1 ydim
+        pred_mean_init = torch.zeros(1, predictive_means.size(-1))
+        predictive_means = torch.cat([pred_mean_init, predictive_means], dim=-2)  # T ydim
 
-        return mse, torch.tensor(np.array(test_LLs))
+        predictive_mse = (predictive_means - data).pow(2.0).mean(-1)
+
+        # print("pred mean\n", means[:, 0].data.numpy())
+
+        if smoothing:
+            # compute smoothed mean function
+            smoothing_dists = [funsor_to_cat_and_mvn(d, 0, ("s_{}".format(t),))
+                               for t, d in enumerate(reversed(smoothing_dists))]
+            means = torch.stack([d[1].mean for d in smoothing_dists])  # T 2 xdim
+            means = torch.matmul(means.unsqueeze(-2), self.observation_matrix).squeeze(-2)  # T 2 ydim
+
+            probs = torch.stack([d[0].logits for d in smoothing_dists]).exp()
+            probs = probs / probs.sum(-1, keepdim=True)  # T 2
+
+            smoothing_means = (probs.unsqueeze(-1) * means).sum(-2)  # T ydim
+
+            # smoothing_mse = (means[1:, :] - data[1:, :]).pow(2.0).mean(-1)
+            # print("mse: %.4f" % mse.mean().item(), "sm_mse: %.4f" % smoothing_mse.mean().item())
+
+            return predictive_mse, torch.tensor(np.array(test_LLs)), predictive_means, smoothing_means
+        else:
+            return predictive_mse, torch.tensor(np.array(test_LLs))
 
 
 def main(**args):
-    log_file = 'eeg.hd_{}.lr_{:.3f}.mml_{}.emml_{}.ftm_{}.ftn_{}.fom_{}.fon_{}.seed_{}.log'
+    log_file = 'eeg.hd_{}.lr_{:.3f}.mml_{}.b1_{:.2f}.ftm_{}.ftn_{}.fom_{}.fon_{}.seed_{}.log'
     log_file = log_file.format(args['hidden_dim'], args['learning_rate'],
-                               args['moment_matching_lag'], args['eval_moment_matching_lag'],
+                               args['moment_matching_lag'], args['beta1'],
                                args['ftm'], args['ftn'], args['fom'], args['fon'], args['seed'])
     log = get_logger(args['log_dir'], log_file, use_local_logger=False)
 
@@ -185,7 +230,7 @@ def main(**args):
     log("[raw data shape] {}".format(data.shape))
     data = data[::10, :]
     log("[data shape after thinning] {}".format(data.shape))
-    data = data[0:200, :]
+    data = data[0:500, :]
     log("[data shape after subselection] {}".format(data.shape))
 
     labels = data[:, -1].tolist()
@@ -209,19 +254,18 @@ def main(**args):
     slds = SLDS(num_components=args['num_components'], hidden_dim=hidden_dim, obs_dim=obs_dim,
                 fine_observation_noise=args['fon'], fine_transition_noise=args['ftn'],
                 fine_observation_matrix=args['fom'], fine_transition_matrix=args['ftm'],
-                moment_matching_lag=args['moment_matching_lag'],
-                eval_moment_matching_lag=args['eval_moment_matching_lag'])
+                moment_matching_lag=args['moment_matching_lag'])
 
     if args['load']:
         if exists('slds.torch'):
             log('Loading model from slds.torch...')
             slds.load_state_dict(torch.load('slds.torch'))
 
-    adam = torch.optim.Adam(slds.parameters(), lr=args['learning_rate'], amsgrad=True)
+    adam = torch.optim.Adam(slds.parameters(), lr=args['learning_rate'], betas=(args['beta1'], 0.999), amsgrad=True)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[50, 150], gamma=0.2)
     ts = [time.time()]
 
-    report_frequency = 2
+    report_frequency = 5
 
     for step in range(args['num_steps']):
         nll = -slds.log_prob(data[0:N_train, :]) / N_train
@@ -239,16 +283,8 @@ def main(**args):
             predicted_mse = predicted_mse[-N_test:].mean().item()
             test_ll = LLs[-N_test:].mean().item()
 
-            slds.eval_moment_matching_lag = 10
-            predicted_mse2, LLs2 = slds.filter_and_predict(data[0:N_train + N_test, :])
-            predicted_mse2 = predicted_mse2[-N_test:].mean().item()
-            test_ll2 = LLs2[-N_test:].mean().item()
-            slds.eval_moment_matching_lag = args['eval_moment_matching_lag']
-
-            log("[step %03d]  training nll: %.4f   test mse: %.6f  test LL: %.6f  test mse: %.6f  test LL: %.6f \t\t (step_dt: %.2f)" % (step,
-                nll.item(), predicted_mse, test_ll, predicted_mse2, test_ll2, step_dt))
-            #log("[step %03d]  training nll: %.4f   test mse: %.4f  test LL: %.4f \t\t (step_dt: %.2f)" % (step,
-            #    nll.item(), predicted_mse, test_ll, step_dt))
+            log("[step %03d]  training nll: %.4f   test mse: %.4f  test LL: %.4f \t\t (step_dt: %.2f)" % (step,
+                nll.item(), predicted_mse, test_ll, step_dt))
 
         if step % 20 == 0 and args['verbose']:
             log("[transition logits] mean: %.2f std: %.2f" % (slds.transition_logits.mean().item(),
@@ -256,7 +292,7 @@ def main(**args):
             log("[transition logits]\n", slds.transition_logits.data.numpy())
             log("[transition matrix.abs] mean: %.2f std: %.2f" % (slds.transition_matrix.abs().mean().item(),
                                                                   slds.transition_matrix.abs().std().item()))
-            log("[transition matrix]\n", slds.transition_matrix.data.numpy())
+            # log("[transition matrix]\n", slds.transition_matrix.data.numpy())
             log("[log_transition_noise] mean: %.2f std: %.2f" % (slds.log_transition_noise.mean().item(),
                                                                  slds.log_transition_noise.std().item()))
             log("[observation matrix.abs] mean: %.2f std: %.2f" % (slds.observation_matrix.abs().mean().item(),
@@ -269,19 +305,36 @@ def main(**args):
     if args['save']:
         torch.save(slds.state_dict(), 'slds.torch')
 
+    if args['plot']:
+        predicted_mse, LLs, pred_means, smooth_means = slds.filter_and_predict(data[0:N_train + N_test, :],
+                                                                               smoothing=True)
+
+        f, axes = plt.subplots(15, 1, figsize=(12, 18), sharex=True)
+        T = data.size(0)
+
+        for which, ax in enumerate(axes[:-1]):
+            ax.plot(np.arange(T), data[:, which], 'ko', markersize=1)
+            ax.plot(np.arange(T), pred_means[:, which], ls='dotted', color='b')
+            ax.plot(np.arange(T), smooth_means[:, which], ls='solid', color='r')
+
+        axes[-1].plot(np.arange(T), labels)
+
+        plt.savefig('eeg.pdf')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
-    parser.add_argument("-n", "--num-steps", default=250, type=int)
+    parser.add_argument("-n", "--num-steps", default=30, type=int)
     parser.add_argument("-s", "--seed", default=0, type=int)
-    parser.add_argument("-hd", "--hidden-dim", default=4, type=int)
+    parser.add_argument("-hd", "--hidden-dim", default=5, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.15, type=float)
+    parser.add_argument("-b1", "--beta1", default=0.50, type=float)
     parser.add_argument("-mml", "--moment-matching-lag", default=1, type=int)
-    parser.add_argument("-emml", "--eval-moment-matching-lag", default=2, type=int)
     parser.add_argument("-v", "--verbose", action='store_true')
     parser.add_argument('-ld', '--log-dir', type=str, default="./")
     parser.add_argument('-dd', '--data-dir', type=str, default="./")
+    parser.add_argument("--plot", action='store_true')
     parser.add_argument("--fon", action='store_true')
     parser.add_argument("--ftm", action='store_true')
     parser.add_argument("--fom", action='store_true')
