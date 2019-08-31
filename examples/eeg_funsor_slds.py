@@ -6,12 +6,12 @@ import argparse
 from os.path import exists
 from urllib.request import urlopen
 import time
+from collections import OrderedDict
+import uuid
 
 import numpy as np
 import torch
 import torch.nn as nn
-
-from collections import OrderedDict
 
 import funsor
 import funsor.distributions as dist
@@ -32,7 +32,7 @@ class SLDS(nn.Module):
     def __init__(self, num_components, hidden_dim, obs_dim,
                  fine_transition_noise=False, fine_observation_matrix=False,
                  fine_observation_noise=False, fine_transition_matrix=True,
-                 moment_matching_lag=2):
+                 moment_matching_lag=1):
 
         self.num_components = num_components
         self.hidden_dim = hidden_dim
@@ -152,7 +152,7 @@ class SLDS(nn.Module):
 
             # do 1-step prediction and compute test LL
             if t > 0:
-                predictive_x_dists.append((log_prob, funsor_to_cat_and_mvn(log_prob, 0, ("s_{}".format(t),))))
+                predictive_x_dists.append(log_prob)
                 _log_prob = log_prob - log_prob.reduce(ops.logaddexp)
                 predictive_y_dist = y_dist(s=s_vars[t], x=x_vars[t]) + _log_prob
                 test_LLs.append(predictive_y_dist(y=y).reduce(ops.logaddexp).data.item())
@@ -168,16 +168,13 @@ class SLDS(nn.Module):
         # do the forward-backward recursion using previously computed ingredients
         if smoothing:
             smoothing_dists = [filtering_dists[-1]]
-            log_prob = funsor.Number(0.)
             T = data.size(0)
 
             s_vars = {t: funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components)) for t in range(T)}
             x_vars = {t: funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim)) for t in range(T)}
 
             for t in reversed(range(T - 1)):
-                smoothing_dist = smoothing_dists[-1]
-                pred_dist = predictive_x_dists[t][0]
-                integral = smoothing_dist - pred_dist
+                integral = smoothing_dists[-1] - predictive_x_dists[t]
                 integral += dist.Categorical(trans_probs(s=s_vars[t]), value=s_vars[t + 1])
                 integral += x_trans_dist(s=s_vars[t], x=x_vars[t], y=x_vars[t + 1])
                 integral = integral.reduce(ops.logaddexp, frozenset([s_vars[t + 1].name, x_vars[t + 1].name]))
@@ -218,42 +215,54 @@ class SLDS(nn.Module):
 
 
 def main(**args):
-    log_file = 'eeg.hd_{}.lr_{:.3f}.mml_{}.b1_{:.2f}.ftm_{}.ftn_{}.fom_{}.fon_{}.seed_{}.log'
-    log_file = log_file.format(args['hidden_dim'], args['learning_rate'],
-                               args['moment_matching_lag'], args['beta1'],
-                               args['ftm'], args['ftn'], args['fom'], args['fon'], args['seed'])
-    log = get_logger(args['log_dir'], log_file, use_local_logger=False)
+    assert args['motif'] in ['I', 'II', 'III']
+    if args['motif'] == 'I':
+        args['ftm'], args['ftn'], args['fom'], args['fon'] = 1, 1, 0, 0
+    elif args['motif'] == 'II':
+        args['ftm'], args['ftn'], args['fom'], args['fon'] = 0, 0, 1, 1
+    elif args['motif'] == 'III':
+        args['ftm'], args['ftn'], args['fom'], args['fon'] = 1, 1, 1, 1
 
+    log_file = 'eeg.motif_{}.hd_{}.lr_{:.2f}.mml_{}.b1_{:.2f}.ftm_{}.ftn_{}.fom_{}.fon_{}.seed_{}.{}.log'
+    log_file = log_file.format(args['motif'], args['hidden_dim'], args['learning_rate'],
+                               args['moment_matching_lag'], args['beta1'],
+                               args['ftm'], args['ftn'], args['fom'], args['fon'],
+                               args['seed'], str(uuid.uuid4())[0:4])
+    log = get_logger(args['log_dir'], log_file, use_local_logger=False)
     log(args)
-    torch.manual_seed(args['seed'])
 
     download_data(args['data_dir'])
     data = np.loadtxt(args['data_dir'] + 'eeg.dat', delimiter=',', skiprows=19)
     log("[raw data shape] {}".format(data.shape))
     data = data[::20, :]
     log("[data shape after thinning] {}".format(data.shape))
-    data = data[0:400, :]
+    data = data[0:749, :]
     log("[data shape after subselection] {}".format(data.shape))
 
-    labels = data[:, -1].tolist()
-    labels = [int(l) for l in labels]
-
+    eye_state = [int(l) for l in data[:, -1].tolist()]
     data = torch.tensor(data[:, :-1]).float()
-    data_mean = data.mean(0)
+
+    T, obs_dim = data.shape
+    N_eval = 50
+    N_test = 199
+    N_train = T - N_test - N_eval
+
+    np.random.seed(0)
+    rand_perm = np.random.permutation(N_eval + N_test)
+    eval_indices = rand_perm[0:N_eval]
+    test_indices = rand_perm[N_eval:]
+
+    data_mean = data[0:N_train, :].mean(0)
     data -= data_mean
-    data_std = data.std(0)
+    data_std = data[0:N_train, :].std(0)
     data /= data_std
 
-    hidden_dim = args['hidden_dim']
-    T, obs_dim = data.shape
-
-    N_test = 100
-    N_train = T - N_test
-
     log("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
-    log("N_train: {}  N_test: {}".format(N_train, N_test))
+    log("N_train: {}  N_eval: {}  N_test: {}".format(N_train, N_eval, N_test))
 
-    slds = SLDS(num_components=args['num_components'], hidden_dim=hidden_dim, obs_dim=obs_dim,
+    torch.manual_seed(args['seed'])
+
+    slds = SLDS(num_components=args['num_components'], hidden_dim=args['hidden_dim'], obs_dim=obs_dim,
                 fine_observation_noise=args['fon'], fine_transition_noise=args['ftn'],
                 fine_observation_matrix=args['fom'], fine_transition_matrix=args['ftm'],
                 moment_matching_lag=args['moment_matching_lag'])
@@ -264,29 +273,34 @@ def main(**args):
             slds.load_state_dict(torch.load('slds.torch'))
 
     adam = torch.optim.Adam(slds.parameters(), lr=args['learning_rate'], betas=(args['beta1'], 0.999), amsgrad=True)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[5, 40], gamma=0.2)
+    scheduler = torch.optim.lr_scheduler.ExponentialLR(adam, gamma=args['gamma'])
     ts = [time.time()]
 
-    report_frequency = 5
+    report_frequency = 1
 
     for step in range(args['num_steps']):
         nll = -slds.log_prob(data[0:N_train, :]) / N_train
         nll.backward()
 
+        if step == 5:
+            scheduler.base_lrs[0] *= 0.20
+
         adam.step()
         scheduler.step()
         adam.zero_grad()
 
-        ts.append(time.time())
-        step_dt = ts[-1] - ts[-2]
-
         if step % report_frequency == 0 or step == args['num_steps'] - 1:
-            predicted_mse, LLs = slds.filter_and_predict(data[0:N_train + N_test, :])
-            predicted_mse = predicted_mse[-N_test:].mean().item()
-            test_ll = LLs[-N_test:].mean().item()
+            step_dt = ts[-1] - ts[-2] if step > 0 else 0.0
+            pred_mse, pred_LLs = slds.filter_and_predict(data[0:N_train + N_eval + N_test, :])
+            eval_mse = pred_mse[eval_indices].mean().item()
+            test_mse = pred_mse[test_indices].mean().item()
+            eval_ll = pred_LLs[eval_indices].mean().item()
+            test_ll = pred_LLs[test_indices].mean().item()
 
-            log("[step %03d]  training nll: %.4f   test mse: %.4f  test LL: %.4f \t\t (step_dt: %.2f)" % (step,
-                nll.item(), predicted_mse, test_ll, step_dt))
+            stats = "[step %03d] train_nll: %.5f eval_mse: %.5f eval_ll: %.5f test_mse: %.5f test_ll: %.5f\t(dt: %.2f)"
+            log(stats % (step, nll.item(), eval_mse, eval_ll, test_mse, test_ll, step_dt))
+
+        ts.append(time.time())
 
         if step % 20 == 0 and args['verbose']:
             log("[transition logits] mean: %.2f std: %.2f" % (slds.transition_logits.mean().item(),
@@ -334,7 +348,7 @@ def main(**args):
             ax.set_ylabel("$y_{%d}$" % (which + 1), fontsize=20)
             ax.tick_params(axis='both', which='major', labelsize=14)
 
-        axes[-1].plot(to_seconds * np.arange(T), labels, 'k', ls='solid')
+        axes[-1].plot(to_seconds * np.arange(T), eye_state, 'k', ls='solid')
         axes[-1].plot(to_seconds * np.arange(T), smooth_probs, 'r', ls='solid')
         axes[-1].set_xlabel("Time (s)", fontsize=20)
         axes[-1].set_ylabel("Eye state", fontsize=20)
@@ -346,13 +360,15 @@ def main(**args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
-    parser.add_argument("-n", "--num-steps", default=15, type=int)
+    parser.add_argument("-n", "--num-steps", default=100, type=int)
     parser.add_argument("-s", "--seed", default=0, type=int)
+    parser.add_argument("-m", "--motif", default="I", type=str)
     parser.add_argument("-hd", "--hidden-dim", default=5, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
-    parser.add_argument("-lr", "--learning-rate", default=0.15, type=float)
+    parser.add_argument("-lr", "--learning-rate", default=0.5, type=float)
     parser.add_argument("-b1", "--beta1", default=0.50, type=float)
-    parser.add_argument("-mml", "--moment-matching-lag", default=1, type=int)
+    parser.add_argument("-g", "--gamma", default=0.99, type=float)
+    parser.add_argument("-mml", "--moment-matching-lag", default=2, type=int)
     parser.add_argument("-v", "--verbose", action='store_true')
     parser.add_argument('-ld', '--log-dir', type=str, default="./")
     parser.add_argument('-dd', '--data-dir', type=str, default="./")
