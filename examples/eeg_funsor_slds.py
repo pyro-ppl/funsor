@@ -154,8 +154,9 @@ class SLDS(nn.Module):
             if t > 0:
                 predictive_x_dists.append((log_prob, funsor_to_cat_and_mvn(log_prob, 0, ("s_{}".format(t),))))
                 _log_prob = log_prob - log_prob.reduce(ops.logaddexp)
-                test_LLs.append((y_dist(s=s_vars[t], x=x_vars[t], y=y) + _log_prob).reduce(ops.logaddexp).data.item())
-                predictive_y_dist = (y_dist(s=s_vars[t], x=x_vars[t]) + _log_prob).reduce(ops.logaddexp, "x_{}".format(t))
+                predictive_y_dist = y_dist(s=s_vars[t], x=x_vars[t]) + _log_prob
+                test_LLs.append(predictive_y_dist(y=y).reduce(ops.logaddexp).data.item())
+                predictive_y_dist = predictive_y_dist.reduce(ops.logaddexp, "x_{}".format(t))
                 predictive_y_dists.append(funsor_to_cat_and_mvn(predictive_y_dist, 0, ("s_{}".format(t),)))
 
             log_prob += y_dist(s=s_vars[t], x=x_vars[t], y=y)
@@ -208,8 +209,10 @@ class SLDS(nn.Module):
             probs = probs / probs.sum(-1, keepdim=True)  # T 2
 
             smoothing_means = (probs.unsqueeze(-1) * means).sum(-2)  # T ydim
+            smoothing_probs = probs[:, 1]
 
-            return predictive_mse, torch.tensor(np.array(test_LLs)), predictive_means, predictive_vars, smoothing_means
+            return predictive_mse, torch.tensor(np.array(test_LLs)), predictive_means, predictive_vars, \
+                smoothing_means, smoothing_probs
         else:
             return predictive_mse, torch.tensor(np.array(test_LLs))
 
@@ -229,7 +232,7 @@ def main(**args):
     log("[raw data shape] {}".format(data.shape))
     data = data[::20, :]
     log("[data shape after thinning] {}".format(data.shape))
-    data = data[0:500, :]
+    data = data[0:400, :]
     log("[data shape after subselection] {}".format(data.shape))
 
     labels = data[:, -1].tolist()
@@ -244,7 +247,7 @@ def main(**args):
     hidden_dim = args['hidden_dim']
     T, obs_dim = data.shape
 
-    N_test = 200
+    N_test = 100
     N_train = T - N_test
 
     log("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
@@ -261,7 +264,7 @@ def main(**args):
             slds.load_state_dict(torch.load('slds.torch'))
 
     adam = torch.optim.Adam(slds.parameters(), lr=args['learning_rate'], betas=(args['beta1'], 0.999), amsgrad=True)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[50, 150], gamma=0.2)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(adam, milestones=[5, 40], gamma=0.2)
     ts = [time.time()]
 
     report_frequency = 5
@@ -305,18 +308,20 @@ def main(**args):
         torch.save(slds.state_dict(), 'slds.torch')
 
     if args['plot']:
-        predicted_mse, LLs, pred_means, pred_vars, smooth_means = \
+        predicted_mse, LLs, pred_means, pred_vars, smooth_means, smooth_probs = \
             slds.filter_and_predict(data[0:N_train + N_test, :], smoothing=True)
 
         pred_means = pred_means.data.numpy()
         pred_stds = pred_vars.sqrt().data.numpy()
         smooth_means = smooth_means.data.numpy()
+        smooth_probs = smooth_probs.data.numpy()
 
         f, axes = plt.subplots(4, 1, figsize=(12, 8), sharex=True)
         T = data.size(0)
 
-        for which, ax in enumerate(axes[:3]):
-            ax.plot(np.arange(T), data[:, which], 'ko', markersize=1)
+        for k, ax in enumerate(axes[:-1]):
+            which = [0, 4, 10][k]
+            ax.plot(np.arange(T), data[:, which], 'ko', markersize=2)
             ax.plot(np.arange(N_train), smooth_means[:N_train, which], ls='solid', color='r')
 
             ax.plot(N_train + np.arange(N_test), pred_means[-N_test:, which], ls='solid', color='b')
@@ -324,9 +329,16 @@ def main(**args):
                             pred_means[-N_test:, which] - 1.645 * pred_stds[-N_test:, which],
                             pred_means[-N_test:, which] + 1.645 * pred_stds[-N_test:, which],
                             color='lightblue')
+            ax.set_ylabel("$y_{%d}$" % (which + 1), fontsize=20)
+            ax.tick_params(axis='both', which='major', labelsize=14)
 
-        axes[-1].plot(np.arange(T), labels)
+        axes[-1].plot(np.arange(T), labels, 'k', ls='solid')
+        axes[-1].plot(np.arange(T), smooth_probs, 'r', ls='solid')
+        axes[-1].set_xlabel("time", fontsize=20)
+        axes[-1].set_ylabel("Eye state", fontsize=20)
+        axes[-1].tick_params(axis='both', which='major', labelsize=14)
 
+        plt.tight_layout(pad=0.7)
         plt.savefig('eeg.pdf')
 
 
