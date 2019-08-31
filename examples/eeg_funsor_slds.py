@@ -133,7 +133,7 @@ class SLDS(nn.Module):
         s_vars = {-1: funsor.Tensor(torch.tensor(0), dtype=self.num_components)}
         x_vars = {-1: None}
 
-        predictive_dists, filtering_dists = [], []
+        predictive_x_dists, predictive_y_dists, filtering_dists = [], [], []
         test_LLs = []
 
         for t, y in enumerate(data):
@@ -152,9 +152,11 @@ class SLDS(nn.Module):
 
             # do 1-step prediction and compute test LL
             if t > 0:
-                predictive_dists.append((log_prob, funsor_to_cat_and_mvn(log_prob, 0, ("s_{}".format(t),))))
+                predictive_x_dists.append((log_prob, funsor_to_cat_and_mvn(log_prob, 0, ("s_{}".format(t),))))
                 _log_prob = log_prob - log_prob.reduce(ops.logaddexp)
                 test_LLs.append((y_dist(s=s_vars[t], x=x_vars[t], y=y) + _log_prob).reduce(ops.logaddexp).data.item())
+                predictive_y_dist = (y_dist(s=s_vars[t], x=x_vars[t]) + _log_prob).reduce(ops.logaddexp, "x_{}".format(t))
+                predictive_y_dists.append(funsor_to_cat_and_mvn(predictive_y_dist, 0, ("s_{}".format(t),)))
 
             log_prob += y_dist(s=s_vars[t], x=x_vars[t], y=y)
 
@@ -173,27 +175,27 @@ class SLDS(nn.Module):
 
             for t in reversed(range(T - 1)):
                 smoothing_dist = smoothing_dists[-1]
-                pred_dist = predictive_dists[t][0]
+                pred_dist = predictive_x_dists[t][0]
                 integral = smoothing_dist - pred_dist
                 integral += dist.Categorical(trans_probs(s=s_vars[t]), value=s_vars[t + 1])
                 integral += x_trans_dist(s=s_vars[t], x=x_vars[t], y=x_vars[t + 1])
                 integral = integral.reduce(ops.logaddexp, frozenset([s_vars[t + 1].name, x_vars[t + 1].name]))
                 smoothing_dists.append(filtering_dists[t] + integral)
 
-        # compute predictive test MSE
-        means = torch.stack([d[1][1].mean for d in predictive_dists])  # T-1 2 xdim
-        means = torch.matmul(means.unsqueeze(-2), self.observation_matrix).squeeze(-2)  # T-1 2 ydim
+        # compute predictive test MSE and predictive variances
+        probs = torch.stack([d[0].logits for d in predictive_y_dists]).exp()
+        probs = (probs / probs.sum(-1, keepdim=True)).unsqueeze(-1)  # T-1 2 1
 
-        probs = torch.stack([d[1][0].logits for d in predictive_dists]).exp()
-        probs = probs / probs.sum(-1, keepdim=True)  # T-1 2
+        predictive_means = torch.stack([d[1].mean for d in predictive_y_dists])  # T-1 2 ydim
+        predictive_vars = torch.stack([d[1].covariance_matrix.diagonal(dim1=-1, dim2=-2) for d in predictive_y_dists])
 
-        predictive_means = (probs.unsqueeze(-1) * means).sum(-2)  # T-1 ydim
-        pred_mean_init = torch.zeros(1, predictive_means.size(-1))
-        predictive_means = torch.cat([pred_mean_init, predictive_means], dim=-2)  # T ydim
+        predictive_vars = (predictive_vars * probs).sum(-2)  # T-1 ydim
+        predictive_vars += (predictive_means.pow(2.0) * probs).sum(-2)  # T-1 ydim
 
-        predictive_mse = (predictive_means - data).pow(2.0).mean(-1)
+        predictive_means = (predictive_means * probs).sum(-2)  # T-1 ydim
+        predictive_vars -= predictive_means
 
-        # print("pred mean\n", means[:, 0].data.numpy())
+        predictive_mse = (predictive_means - data[1:, :]).pow(2.0).mean(-1)
 
         if smoothing:
             # compute smoothed mean function
@@ -207,10 +209,7 @@ class SLDS(nn.Module):
 
             smoothing_means = (probs.unsqueeze(-1) * means).sum(-2)  # T ydim
 
-            # smoothing_mse = (means[1:, :] - data[1:, :]).pow(2.0).mean(-1)
-            # print("mse: %.4f" % mse.mean().item(), "sm_mse: %.4f" % smoothing_mse.mean().item())
-
-            return predictive_mse, torch.tensor(np.array(test_LLs)), predictive_means, smoothing_means
+            return predictive_mse, torch.tensor(np.array(test_LLs)), predictive_means, predictive_vars, smoothing_means
         else:
             return predictive_mse, torch.tensor(np.array(test_LLs))
 
@@ -228,7 +227,7 @@ def main(**args):
     download_data(args['data_dir'])
     data = np.loadtxt(args['data_dir'] + 'eeg.dat', delimiter=',', skiprows=19)
     log("[raw data shape] {}".format(data.shape))
-    data = data[::10, :]
+    data = data[::20, :]
     log("[data shape after thinning] {}".format(data.shape))
     data = data[0:500, :]
     log("[data shape after subselection] {}".format(data.shape))
@@ -245,7 +244,7 @@ def main(**args):
     hidden_dim = args['hidden_dim']
     T, obs_dim = data.shape
 
-    N_test = 100
+    N_test = 200
     N_train = T - N_test
 
     log("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
@@ -306,16 +305,25 @@ def main(**args):
         torch.save(slds.state_dict(), 'slds.torch')
 
     if args['plot']:
-        predicted_mse, LLs, pred_means, smooth_means = slds.filter_and_predict(data[0:N_train + N_test, :],
-                                                                               smoothing=True)
+        predicted_mse, LLs, pred_means, pred_vars, smooth_means = \
+            slds.filter_and_predict(data[0:N_train + N_test, :], smoothing=True)
 
-        f, axes = plt.subplots(15, 1, figsize=(12, 18), sharex=True)
+        pred_means = pred_means.data.numpy()
+        pred_stds = pred_vars.sqrt().data.numpy()
+        smooth_means = smooth_means.data.numpy()
+
+        f, axes = plt.subplots(4, 1, figsize=(12, 8), sharex=True)
         T = data.size(0)
 
-        for which, ax in enumerate(axes[:-1]):
+        for which, ax in enumerate(axes[:3]):
             ax.plot(np.arange(T), data[:, which], 'ko', markersize=1)
-            ax.plot(np.arange(T), pred_means[:, which], ls='dotted', color='b')
-            ax.plot(np.arange(T), smooth_means[:, which], ls='solid', color='r')
+            ax.plot(np.arange(N_train), smooth_means[:N_train, which], ls='solid', color='r')
+
+            ax.plot(N_train + np.arange(N_test), pred_means[-N_test:, which], ls='solid', color='b')
+            ax.fill_between(N_train + np.arange(N_test),
+                            pred_means[-N_test:, which] - 1.645 * pred_stds[-N_test:, which],
+                            pred_means[-N_test:, which] + 1.645 * pred_stds[-N_test:, which],
+                            color='lightblue')
 
         axes[-1].plot(np.arange(T), labels)
 
@@ -324,7 +332,7 @@ def main(**args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
-    parser.add_argument("-n", "--num-steps", default=30, type=int)
+    parser.add_argument("-n", "--num-steps", default=15, type=int)
     parser.add_argument("-s", "--seed", default=0, type=int)
     parser.add_argument("-hd", "--hidden-dim", default=5, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
