@@ -318,23 +318,25 @@ def main(**args):
 
         f, axes = plt.subplots(4, 1, figsize=(12, 8), sharex=True)
         T = data.size(0)
+        to_seconds = 117.0 / T
 
         for k, ax in enumerate(axes[:-1]):
             which = [0, 4, 10][k]
-            ax.plot(np.arange(T), data[:, which], 'ko', markersize=2)
-            ax.plot(np.arange(N_train), smooth_means[:N_train, which], ls='solid', color='r')
+            ax.plot(to_seconds * np.arange(T), data[:, which], 'ko', markersize=2)
+            ax.plot(to_seconds * np.arange(N_train), smooth_means[:N_train, which], ls='solid', color='r')
 
-            ax.plot(N_train + np.arange(N_test), pred_means[-N_test:, which], ls='solid', color='b')
-            ax.fill_between(N_train + np.arange(N_test),
+            ax.plot(to_seconds * (N_train + np.arange(N_test)),
+                    pred_means[-N_test:, which], ls='solid', color='b')
+            ax.fill_between(to_seconds * (N_train + np.arange(N_test)),
                             pred_means[-N_test:, which] - 1.645 * pred_stds[-N_test:, which],
                             pred_means[-N_test:, which] + 1.645 * pred_stds[-N_test:, which],
                             color='lightblue')
             ax.set_ylabel("$y_{%d}$" % (which + 1), fontsize=20)
             ax.tick_params(axis='both', which='major', labelsize=14)
 
-        axes[-1].plot(np.arange(T), labels, 'k', ls='solid')
-        axes[-1].plot(np.arange(T), smooth_probs, 'r', ls='solid')
-        axes[-1].set_xlabel("time", fontsize=20)
+        axes[-1].plot(to_seconds * np.arange(T), labels, 'k', ls='solid')
+        axes[-1].plot(to_seconds * np.arange(T), smooth_probs, 'r', ls='solid')
+        axes[-1].set_xlabel("Time (s)", fontsize=20)
         axes[-1].set_ylabel("Eye state", fontsize=20)
         axes[-1].tick_params(axis='both', which='major', labelsize=14)
 
