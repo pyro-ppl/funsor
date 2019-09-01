@@ -1145,8 +1145,11 @@ def eager_cat_homogeneous(name, *parts):
 
 @dispatch(str, Variadic[Stack])
 def eager_cat_homogeneous(name, *parts):
-    parts = sum((p.parts for p in parts), ())
-    return Stack(name, parts)
+    if all(p.name == name for p in parts):
+        parts = sum((p.parts for p in parts), ())
+        return Stack(name, parts)
+
+    return None  # defer to default implementation
 
 
 class Lambda(Funsor):
