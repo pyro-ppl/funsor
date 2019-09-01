@@ -8,6 +8,8 @@ from pyro.distributions.torch_distribution import MaskedDistribution
 from funsor.domains import bint, reals
 from funsor.pyro.convert import (
     dist_to_funsor,
+    funsor_to_cat_and_mvn,
+    funsor_to_mvn,
     funsor_to_tensor,
     matrix_and_mvn_to_funsor,
     mvn_to_funsor,
@@ -99,6 +101,51 @@ def test_matrix_and_mvn_to_funsor(batch_shape, event_shape, x_size, y_size):
     expected_log_prob = tensor_to_funsor(
         xy_mvn.log_prob(xy) + y_mvn.log_prob(y - y_pred), tuple(int_inputs))
     assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize("real_size", [1, 2, 3])
+@pytest.mark.parametrize("event_shape", EVENT_SHAPES, ids=str)
+@pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
+def test_funsor_to_mvn(batch_shape, event_shape, real_size):
+    expected = random_mvn(batch_shape + event_shape, real_size)
+    event_dims = tuple("abc"[:len(event_shape)])
+    ndims = len(expected.batch_shape)
+
+    funsor_ = dist_to_funsor(expected, event_dims)(value="value")
+    assert isinstance(funsor_, Funsor)
+
+    actual = funsor_to_mvn(funsor_, ndims, event_dims)
+    assert isinstance(actual, dist.MultivariateNormal)
+    assert actual.batch_shape == expected.batch_shape
+    assert_close(actual.loc, expected.loc, atol=1e-4, rtol=None)
+    assert_close(actual.precision_matrix,
+                 expected.precision_matrix, atol=1e-4, rtol=None)
+
+
+@pytest.mark.parametrize("int_size", [2, 3])
+@pytest.mark.parametrize("real_size", [1, 2, 3])
+@pytest.mark.parametrize("event_shape", EVENT_SHAPES, ids=str)
+@pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
+def test_funsor_to_cat_and_mvn(batch_shape, event_shape, int_size, real_size):
+    logits = torch.randn(batch_shape + event_shape + (int_size,))
+    expected_cat = dist.Categorical(logits=logits)
+    expected_mvn = random_mvn(batch_shape + event_shape + (int_size,), real_size)
+    event_dims = tuple("abc"[:len(event_shape)]) + ("component",)
+    ndims = len(expected_cat.batch_shape)
+
+    funsor_ = (tensor_to_funsor(logits, event_dims) +
+               dist_to_funsor(expected_mvn, event_dims)(value="value"))
+    assert isinstance(funsor_, Funsor)
+
+    actual_cat, actual_mvn = funsor_to_cat_and_mvn(funsor_, ndims, event_dims)
+    assert isinstance(actual_cat, dist.Categorical)
+    assert isinstance(actual_mvn, dist.MultivariateNormal)
+    assert actual_cat.batch_shape == expected_cat.batch_shape
+    assert actual_mvn.batch_shape == expected_mvn.batch_shape
+    assert_close(actual_cat.logits, expected_cat.logits, atol=1e-4, rtol=None)
+    assert_close(actual_mvn.loc, expected_mvn.loc, atol=1e-4, rtol=None)
+    assert_close(actual_mvn.precision_matrix,
+                 expected_mvn.precision_matrix, atol=1e-4, rtol=None)
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)

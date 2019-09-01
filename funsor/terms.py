@@ -34,11 +34,7 @@ def substitute(expr, subs):
         return interpreter.reinterpret(expr)
 
 
-def alpha_convert(expr):
-    alpha_subs = {name: interpreter.gensym(name + "__BOUND")
-                  for name in expr.bound if "__BOUND" not in name}
-    if not alpha_subs:
-        return expr
+def alpha_substitute(expr, alpha_subs):
 
     new_values = []
     for v in expr._ast_values:
@@ -56,6 +52,16 @@ def alpha_convert(expr):
             v = OrderedDict([(alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v.items()])
         new_values.append(v)
 
+    return tuple(new_values)
+
+
+def alpha_convert(expr):
+    alpha_subs = {name: interpreter.gensym(name + "__BOUND")
+                  for name in expr.bound if "__BOUND" not in name}
+    if not alpha_subs:
+        return expr
+
+    new_values = alpha_substitute(expr, alpha_subs)
     return reflect(type(expr), *new_values)
 
 
@@ -991,6 +997,52 @@ def eager_binary_number_number(op, lhs, rhs):
     return Number(data, dtype)
 
 
+class SliceMeta(FunsorMeta):
+    """
+    Wrapper to fill in ``start``, ``stop``, ``step``, ``dtype`` following
+    Python conventions.
+    """
+    def __call__(cls, name, *args, **kwargs):
+        start = 0
+        step = 1
+        dtype = None
+        if len(args) == 1:
+            stop = args[0]
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 2:
+            start, stop = args
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 3:
+            start, stop, step = args
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 4:
+            start, stop, step, dtype = args
+        else:
+            raise ValueError
+        if step <= 0:
+            raise ValueError
+        return super().__call__(name, start, stop, step, dtype)
+
+
+class Slice(Funsor, metaclass=SliceMeta):
+    """
+    Symbolic representation of a Python :py:class:`slice` object.
+    """
+    def __init__(self, name, start, stop, step, dtype):
+        assert isinstance(name, str)
+        assert start is None or isinstance(start, int)
+        assert stop is None or isinstance(stop, int)
+        assert step is None or isinstance(step, int)
+        assert isinstance(dtype, int)
+        size = max(0, (stop + step - 1 - start) // step)
+        inputs = OrderedDict([(name, bint(size))])
+        output = bint(dtype)
+        fresh = frozenset({"name"})
+        super().__init__(inputs, output, fresh)
+        self.name = name
+        self.slice = slice(start, stop, step)
+
+
 class Align(Funsor):
     """
     Lazy call to ``.align(...)``.
@@ -1080,6 +1132,9 @@ class Stack(Funsor):
         elif isinstance(index, Variable):
             # Rename the stacking dimension.
             components = self.components
+            return Stack(components, index.name)
+        elif isinstance(index, Slice):
+            components = self.components[index.slice]
             return Stack(components, index.name)
         else:
             raise NotImplementedError('TODO support advanced indexing in Stack')
@@ -1246,6 +1301,7 @@ __all__ = [
     'Number',
     'Reduce',
     'Stack',
+    'Slice',
     'Subs',
     'Unary',
     'Variable',

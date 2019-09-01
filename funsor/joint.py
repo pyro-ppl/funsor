@@ -2,12 +2,14 @@ import functools
 from collections import OrderedDict
 from functools import reduce
 
+import torch
+
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 import funsor.terms
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.gaussian import Gaussian, cholesky_solve, cholesky_inverse
+from funsor.gaussian import Gaussian, cholesky_inverse, cholesky_solve
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, NegOp, SubOp
@@ -159,7 +161,8 @@ class Joint(Funsor, metaclass=JointMeta):
             new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
 
             int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
-            probs = (discrete - new_discrete).exp()
+            probs = (discrete - new_discrete.clamp_finite()).exp()
+
             old_loc = Tensor(cholesky_solve(gaussian.info_vec.unsqueeze(-1),
                                             gaussian._precision_chol).squeeze(-1),
                              int_inputs)
@@ -169,6 +172,12 @@ class Joint(Funsor, metaclass=JointMeta):
             outers = Tensor(diff.data.unsqueeze(-1) * diff.data.unsqueeze(-2), diff.inputs)
             new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
                        (probs * outers).reduce(ops.add, approx_vars))
+
+            # Numerically stabilize by adding bogus precision to empty components.
+            total = probs.reduce(ops.add, approx_vars)
+            mask = (total.data == 0).to(total.data.dtype).unsqueeze(-1).unsqueeze(-1)
+            new_cov.data += mask * torch.eye(new_cov.data.size(-1))
+
             new_precision = Tensor(cholesky_inverse(new_cov.data.cholesky()), new_cov.inputs)
             new_info_vec = new_precision.data.matmul(new_loc.data.unsqueeze(-1)).squeeze(-1)
             new_inputs = new_loc.inputs.copy()

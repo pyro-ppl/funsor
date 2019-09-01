@@ -13,7 +13,19 @@ from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, eager, substitute, to_data, to_funsor
+from funsor.terms import (
+    Binary,
+    Funsor,
+    FunsorMeta,
+    Lambda,
+    Number,
+    Slice,
+    Variable,
+    eager,
+    substitute,
+    to_data,
+    to_funsor
+)
 from funsor.util import getargspec
 
 
@@ -139,6 +151,11 @@ class Tensor(Funsor, metaclass=TensorMeta):
     def item(self):
         return self.data.item()
 
+    def clamp_finite(self):
+        finfo = torch.finfo(self.data.dtype)
+        data = self.data.clamp(min=finfo.min, max=finfo.max)
+        return Tensor(data, self.inputs, self.dtype)
+
     @property
     def requires_grad(self):
         return self.data.requires_grad
@@ -158,10 +175,36 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = {k: materialize(to_funsor(v, self.inputs[k]))
-                for k, v in subs if k in self.inputs}
+        subs = OrderedDict((k, to_funsor(v, self.inputs[k]))
+                           for k, v in subs if k in self.inputs)
         if not subs:
             return self
+
+        # Handle renaming to enable cons hashing, and
+        # handle slicing to avoid copying data.
+        if any(isinstance(v, (Variable, Slice)) for v in subs.values()):
+            slices = None
+            inputs = OrderedDict()
+            for i, (k, d) in enumerate(self.inputs.items()):
+                if k in subs:
+                    v = subs[k]
+                    if isinstance(v, Variable):
+                        del subs[k]
+                        k = v.name
+                    elif isinstance(v, Slice):
+                        del subs[k]
+                        k = v.name
+                        d = v.inputs[v.name]
+                        if slices is None:
+                            slices = [slice(None)] * self.data.dim()
+                        slices[i] = v.slice
+                inputs[k] = d
+            data = self.data[tuple(slices)] if slices else self.data
+            result = Tensor(data, inputs, self.dtype)
+            return result.eager_subs(tuple(subs.items()))
+
+        # materialize after checking for renaming case
+        subs = OrderedDict((k, materialize(v)) for k, v in subs.items())
 
         # Compute result shapes.
         inputs = OrderedDict()
@@ -746,7 +789,7 @@ def _exp(x):
 
 @ops.log.register(torch.Tensor)
 def _log(x):
-    if x.dtype in (torch.uint8, torch.long):
+    if x.dtype in (torch.bool, torch.uint8, torch.long):
         x = x.float()
     return x.log()
 

@@ -7,7 +7,7 @@ from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian
 from funsor.joint import Joint
 from funsor.ops import UNITS, AssociativeOp
-from funsor.terms import Funsor, Number
+from funsor.terms import Funsor, Number, Slice
 from funsor.torch import Tensor, align_tensor
 
 
@@ -164,33 +164,6 @@ def Cat(parts, name):
         return result
 
     raise NotImplementedError("TODO")
-
-
-# TODO Promote this to a first class funsor, enabling zero-copy slicing.
-def Slice(name, *args):
-    start = 0
-    step = 1
-    bound = None
-    if len(args) == 1:
-        stop = args[0]
-        bound = stop
-    elif len(args) == 2:
-        start, stop = args
-        bound = stop
-    elif len(args) == 3:
-        start, stop, step = args
-        bound = stop
-    elif len(args) == 4:
-        start, stop, step, bound = args
-    else:
-        raise ValueError
-    if step <= 0:
-        raise ValueError
-    # FIXME triggers tensor op
-    # TODO move this logic up into funsor.torch.arange?
-    data = torch.arange(start, stop, step)
-    inputs = OrderedDict([(name, bint(len(data)))])
-    return Tensor(data, inputs, dtype=bound)
 
 
 def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):

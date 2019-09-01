@@ -12,6 +12,20 @@ from funsor.terms import Funsor, reflect
 from funsor.torch import Tensor
 
 
+BACKEND_OPS = {
+    "torch": (ops.add, ops.mul),
+    "pyro.ops.einsum.torch_log": (ops.logaddexp, ops.add),
+    "pyro.ops.einsum.torch_marginal": (ops.logaddexp, ops.add),
+    "pyro.ops.einsum.torch_map": (ops.max, ops.add),
+    "pyro.ops.einsum.torch_sample": (ops.logaddexp, ops.add),
+}
+
+BACKEND_ADJOINT_OPS = {
+    "pyro.ops.einsum.torch_marginal": (ops.logaddexp, ops.add),
+    "pyro.ops.einsum.torch_map": (ops.max, ops.add),
+}
+
+
 def _make_base_lhs(prod_op, arg, reduced_vars, normalized=False):
     if not all(isinstance(d.dtype, int) for d in arg.inputs.values()):
         raise NotImplementedError("TODO implement continuous base lhss")
@@ -38,10 +52,8 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     assert "plates" not in kwargs
 
     backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
-        sum_op, prod_op = ops.logaddexp, ops.add
+    if backend in BACKEND_OPS:
+        sum_op, prod_op = BACKEND_OPS[backend]
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
@@ -69,10 +81,8 @@ def naive_einsum(eqn, *terms, **kwargs):
     Implements standard variable elimination.
     """
     backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
-        sum_op, prod_op = ops.logaddexp, ops.add
+    if backend in BACKEND_OPS:
+        sum_op, prod_op = BACKEND_OPS[backend]
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
@@ -99,10 +109,8 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
         return naive_einsum(eqn, *terms, **kwargs)
 
     backend = kwargs.pop('backend', 'torch')
-    if backend == 'torch':
-        sum_op, prod_op = ops.add, ops.mul
-    elif backend in ('pyro.ops.einsum.torch_log', 'pyro.ops.einsum.torch_marginal'):
-        sum_op, prod_op = ops.logaddexp, ops.add
+    if backend in BACKEND_OPS:
+        sum_op, prod_op = BACKEND_OPS[backend]
     else:
         raise ValueError("{} backend not implemented".format(backend))
 
