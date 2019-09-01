@@ -236,6 +236,12 @@ PRODUCT_INVERSES = {
 }
 
 
+PRODUCT_ROOTS = {
+    mul: pow,
+    add: truediv,
+}
+
+
 __all__ = [
     'AddOp',
     'AssociativeOp',
@@ -244,6 +250,7 @@ __all__ = [
     'NegOp',
     'Op',
     'PRODUCT_INVERSES',
+    'PRODUCT_ROOTS',
     'UNITS',
     'SubOp',
     'abs',

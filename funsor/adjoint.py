@@ -73,7 +73,7 @@ class AdjointTape(object):
 
         target_adjs = {}
         for v in targets:
-            target_adjs[v] = adjoint_values[v] / multiplicities[v]  # TODO use correct op here with bin_op
+            target_adjs[v] = ops.PRODUCT_ROOTS[bin_op](adjoint_values[v], multiplicities[v])
             if not isinstance(v, Variable):
                 target_adjs[v] = bin_op(target_adjs[v], v)
 
@@ -88,6 +88,11 @@ def _fail_default(*args):
 adjoint_ops = KeyedRegistry(default=_fail_default)
 
 
+@adjoint_ops.register(Variable, AssociativeOp, AssociativeOp, Funsor, str, object)
+def adjont_variable(adj_redop, adj_binop, out_adj, name, dtype):
+    return {name: out_adj}
+
+
 @adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     out = Tensor(data, inputs, dtype)
@@ -95,6 +100,7 @@ def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     in_adjs = {}
     for (k, v) in inputs:
         in_adj = adj_binop(out_adj, out).reduce(adj_redop, all_vars - {k})
+        # in_adj = in_adj.argreduce(adj_redop, k)
         in_adjs[Variable(k, v)] = in_adj
     return in_adjs
 
@@ -104,6 +110,7 @@ def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
     assert op is adj_redop or (adj_redop, op) in ops.DISTRIBUTIVE_OPS
 
     if (adj_redop, op) in ops.DISTRIBUTIVE_OPS:
+        # XXX this is typed more like argreduce
         lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
         lhs_adj = op(out_adj, rhs).reduce(adj_redop, lhs_reduced_vars)
 

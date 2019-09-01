@@ -1,3 +1,4 @@
+from collections import OrderedDict
 from functools import reduce
 
 import opt_einsum
@@ -7,12 +8,13 @@ from pyro.ops.contract import einsum as pyro_einsum
 from pyro.ops.einsum.adjoint import require_backward as pyro_require_backward
 
 import funsor
+import funsor.ops as ops
 from funsor.adjoint import AdjointTape
-from funsor.domains import bint
+from funsor.domains import bint, reals
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Variable, lazy, to_funsor
-from funsor.testing import assert_close, make_einsum_example, make_plated_hmm_einsum, xfail_param
+from funsor.terms import Binary, Number, Variable, lazy, to_funsor
+from funsor.testing import assert_close, make_einsum_example, make_plated_hmm_einsum, random_tensor, xfail_param
 
 
 EINSUM_EXAMPLES = [
@@ -210,3 +212,34 @@ def test_adjoint_involution(equation, plates, backend):
     actual = tape2.adjoint(sum_op, prod_op, bwd_expr, (fwd_expr,))
 
     assert_close(actual[fwd_expr], fwd_expr)
+
+
+ADJOINT_BINARY_TESTS = [
+    ('a * x', {'x': 'a'}),
+    ('b * x', {'x': 'b'}),
+    ('c * x', {'x': 'c'}),
+    ('a * x + b', {'x': 'a'}),
+    ('x + y', {'x': '1.', 'y': '1.'}),
+    ('x * y', {'x': '1. * y', 'y': '1. * x'}),
+    ('a * x + b * (y + z + c) + d', {'x': 'a', 'y': 'b', 'z': 'b'}),
+]
+
+@pytest.mark.parametrize('expr,expected_adjoint_exprs', ADJOINT_BINARY_TESTS)
+def test_adjoint_binary_only(expr, expected_adjoint_exprs):
+
+    x, y, z = [Variable(n, reals()) for n in ('x', 'y', 'z')]
+    a, b, c, d = [random_tensor(OrderedDict(inputs))
+                  for inputs in ({'i': bint(2)}, {'j': bint(3)}, {'i': bint(2), 'j': bint(3)}, {})]
+    locals_ = locals()
+
+    expected_adjoints = OrderedDict((eval(k, locals_), to_funsor(eval(v, locals_)))
+                                    for k, v in expected_adjoint_exprs.items())
+
+    with interpretation(lazy), AdjointTape() as tape:
+        fwd_expr = eval(expr, locals_)
+
+    actual_adjoints = tape.adjoint(ops.add, ops.mul, fwd_expr, list(expected_adjoints.keys()))
+
+    assert list(actual_adjoints.keys()) == list(expected_adjoints.keys())
+    for actual, expected in zip(actual_adjoints.values(), expected_adjoints.values()):
+        assert_close(actual, expected)
