@@ -45,6 +45,12 @@ def _partition(terms, sum_vars):
     return components
 
 
+def _markov_products(sum_op, prod_op, f, plates, steps):
+    for plate in sorted(plates, key=lambda p: len(steps[p])):
+        f = sequential_sum_product(sum_op, prod_op, f, plate, steps[plate])
+    return f
+
+
 def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates={}):
     """
     Performs partial sum-product contraction of a collection of factors.
@@ -56,7 +62,7 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
     :param frozenset eliminate: A set of free variables to eliminate,
         including both sum variables and product variables.
     :param dict plates: A collection mapping from Markov variables to
-        ``step`` dict that maps previous to current variable name.
+        ``step`` dicts that map previous to current variable name.
         Plates are passed as trivial Markov variables with empty ``step``.
     :type plates: frozenset or dict
     :return: A list of partially contracted Funsors.
@@ -71,13 +77,18 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
     steps, plates = plates, frozenset(plates)
     sum_vars = eliminate - plates
 
-    var_to_ordinal = {}
+    var_to_ordinal = defaultdict(frozenset)
     ordinal_to_factors = defaultdict(list)
     for f in factors:
         ordinal = plates.intersection(f.inputs)
         ordinal_to_factors[ordinal].append(f)
         for var in sum_vars.intersection(f.inputs):
             var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+    # FIXME is this right?
+    for plate, step in steps.items():
+        for prev, curr in step.items():
+            var_to_ordinal[prev] -= frozenset([plate])
+            var_to_ordinal[curr] -= frozenset([plate])
 
     ordinal_to_vars = defaultdict(set)
     for var, ordinal in var_to_ordinal.items():
@@ -92,16 +103,14 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
             f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
-                for plate in sorted(leaf & eliminate, key=lambda p: len(steps[p])):
-                    f = sequential_sum_product(sum_op, prod_op, f, plate, steps[plate])
+                f = _markov_products(sum_op, prod_op, f, leaf & eliminate, steps)
                 results.append(f)
             else:
                 new_plates = frozenset().union(
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
-                for plate in sorted(leaf - new_plates, key=lambda p: len(steps[p])):
-                    f = sequential_sum_product(sum_op, prod_op, f, plate, steps[plate])
+                f = _markov_products(sum_op, prod_op, f, leaf - new_plates, steps)
                 ordinal_to_factors[new_plates].append(f)
 
     return results
