@@ -340,7 +340,7 @@ class PyroOptim(object):
             optim.step()
 
 
-# We wrap the two most commonly used PyTorch optimizers.
+# We wrap some commonly used PyTorch optimizers.
 class Adam(PyroOptim):
     TorchOptimizer = torch.optim.Adam
 
