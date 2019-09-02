@@ -108,6 +108,34 @@ def test_generate_data_plate(backend):
 
 
 @pytest.mark.parametrize("jit", [False, True], ids=["py", "jit"])
+@pytest.mark.parametrize("backend,optim_name", [
+    ("pyro", "Adam"),
+    ("pyro", "ClippedAdam"),
+    ("minipyro", "Adam"),
+    ("funsor", "Adam"),
+    ("funsor", "ClippedAdam"),
+])
+def test_optimizer(backend, optim_name, jit):
+
+    def model(data):
+        p = pyro.param("p", torch.tensor(0.5))
+        pyro.sample("x", dist.Bernoulli(p), obs=data)
+
+    def guide(data):
+        pass
+
+    data = torch.tensor(0.)
+    with pyro_backend(backend):
+        pyro.get_param_store().clear()
+        Elbo = infer.JitTrace_ELBO if jit else infer.Trace_ELBO
+        elbo = Elbo(ignore_jit_warnings=True)
+        optimizer = getattr(optim, optim_name)({"lr": 1e-6})
+        inference = infer.SVI(model, guide, optimizer, elbo)
+        for i in range(2):
+            inference.step(data)
+
+
+@pytest.mark.parametrize("jit", [False, True], ids=["py", "jit"])
 @pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_nonempty_model_empty_guide_ok(backend, jit):
 
