@@ -8,6 +8,7 @@ from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
 from multipledispatch import dispatch
+from multipledispatch.variadic import isvariadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
@@ -185,6 +186,7 @@ class FunsorMeta(type):
     def __getitem__(cls, arg_types):
         if not isinstance(arg_types, tuple):
             arg_types = (arg_types,)
+        assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
         if arg_types not in cls._type_cache:
             assert not cls._ast_types, "cannot subscript a subscripted type {}".format(cls)
             assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
