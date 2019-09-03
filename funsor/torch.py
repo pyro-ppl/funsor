@@ -7,6 +7,7 @@ import opt_einsum
 import torch
 from contextlib2 import contextmanager
 from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.contract import Contract, contractor
@@ -507,6 +508,28 @@ def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
                                list(inputs), backend=backend)
     dtype = find_domain(prod_op, lhs.output, rhs.output).dtype
     return Tensor(data, inputs, dtype)
+
+
+@dispatch(str, Variadic[Tensor])
+def eager_cat_homogeneous(name, *parts):
+    assert parts
+    output = parts[0].output
+    inputs = OrderedDict()
+    for part in parts:
+        assert part.output == output
+        assert name in part.inputs
+        inputs.update(part.inputs)
+
+    tensors = []
+    for part in parts:
+        inputs[name] = part.inputs[name]  # typically a smaller bint
+        shape = tuple(d.size for d in inputs.values()) + output.shape
+        tensors.append(align_tensor(inputs, part).expand(shape))
+
+    dim = tuple(inputs).index(name)
+    tensor = torch.cat(tensors, dim=dim)
+    inputs[name] = bint(tensor.size(dim))
+    return Tensor(tensor, inputs, dtype=output.dtype)
 
 
 def arange(name, size):

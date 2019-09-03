@@ -7,7 +7,7 @@ import torch
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.terms import Lambda, Number, Slice, Variable
+from funsor.terms import Cat, Lambda, Number, Slice, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torch_stack, torch_tensordot
 
@@ -231,7 +231,7 @@ def unary_eval(symbol, x):
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b')])
 @pytest.mark.parametrize('symbol', [
-    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
+    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p', 'sigmoid',
 ])
 def test_unary(symbol, dims):
     sizes = {'a': 3, 'b': 4}
@@ -695,3 +695,39 @@ def test_stack(n, shape, dim):
     actual = torch_stack(tuple(Tensor(t) for t in tensors), dim=dim)
     expected = Tensor(torch.stack(tensors, dim=dim))
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('output', [bint(2), reals(), reals(4), reals(2, 3)], ids=str)
+def test_cat_simple(output):
+    x = random_tensor(OrderedDict([
+        ('i', bint(2)),
+    ]), output)
+    y = random_tensor(OrderedDict([
+        ('i', bint(3)),
+        ('j', bint(4)),
+    ]), output)
+    z = random_tensor(OrderedDict([
+        ('i', bint(5)),
+        ('k', bint(6)),
+    ]), output)
+
+    assert Cat('i', (x,)) is x
+    assert Cat('i', (y,)) is y
+    assert Cat('i', (z,)) is z
+
+    xy = Cat('i', (x, y))
+    assert isinstance(xy, Tensor)
+    assert xy.inputs == OrderedDict([
+        ('i', bint(2 + 3)),
+        ('j', bint(4)),
+    ])
+    assert xy.output == output
+
+    xyz = Cat('i', (x, y, z))
+    assert isinstance(xyz, Tensor)
+    assert xyz.inputs == OrderedDict([
+        ('i', bint(2 + 3 + 5)),
+        ('j', bint(4)),
+        ('k', bint(6)),
+    ])
+    assert xy.output == output

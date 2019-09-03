@@ -9,7 +9,19 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Independent, Lambda, Number, Slice, Stack, Variable, sequential, to_data, to_funsor
+from funsor.terms import (
+    Binary,
+    Cat,
+    Independent,
+    Lambda,
+    Number,
+    Slice,
+    Stack,
+    Variable,
+    sequential,
+    to_data,
+    to_funsor
+)
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
 
@@ -110,7 +122,7 @@ def unary_eval(symbol, x):
 
 @pytest.mark.parametrize('data', [0, 0.5, 1])
 @pytest.mark.parametrize('symbol', [
-    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
+    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p', 'sigmoid',
 ])
 def test_unary(symbol, data):
     dtype = 'real'
@@ -259,7 +271,7 @@ def test_stack_simple():
     y = Number(1.)
     z = Number(4.)
 
-    xyz = Stack((x, y, z), 'i')
+    xyz = Stack('i', (x, y, z))
     check_funsor(xyz, {'i': bint(3)}, reals())
 
     assert xyz(i=Number(0, 3)) is x
@@ -274,34 +286,48 @@ def test_stack_subs():
     z = Variable('z', reals())
     j = Variable('j', bint(3))
 
-    f = Stack((Number(0), x, y * z), 'i')
+    f = Stack('i', (Number(0), x, y * z))
     check_funsor(f, {'i': bint(3), 'x': reals(), 'y': reals(), 'z': reals()},
                  reals())
 
     assert f(i=Number(0, 3)) is Number(0)
     assert f(i=Number(1, 3)) is x
     assert f(i=Number(2, 3)) is y * z
-    assert f(i=j) is Stack((Number(0), x, y * z), 'j')
-    assert f(i='j') is Stack((Number(0), x, y * z), 'j')
+    assert f(i=j) is Stack('j', (Number(0), x, y * z))
+    assert f(i='j') is Stack('j', (Number(0), x, y * z))
     assert f.reduce(ops.add, 'i') is Number(0) + x + (y * z)
 
-    assert f(x=0) is Stack((Number(0), Number(0), y * z), 'i')
-    assert f(y=x) is Stack((Number(0), x, x * z), 'i')
-    assert f(x=0, y=x) is Stack((Number(0), Number(0), x * z), 'i')
+    assert f(x=0) is Stack('i', (Number(0), Number(0), y * z))
+    assert f(y=x) is Stack('i', (Number(0), x, x * z))
+    assert f(x=0, y=x) is Stack('i', (Number(0), Number(0), x * z))
     assert f(x=0, y=x, i=Number(2, 3)) is x * z
-    assert f(x=0, i=j) is Stack((Number(0), Number(0), y * z), 'j')
-    assert f(x=0, i='j') is Stack((Number(0), Number(0), y * z), 'j')
+    assert f(x=0, i=j) is Stack('j', (Number(0), Number(0), y * z))
+    assert f(x=0, i='j') is Stack('j', (Number(0), Number(0), y * z))
 
 
 @pytest.mark.parametrize("start,stop", [(0, 1), (0, 2), (0, 10), (1, 2), (1, 10), (2, 10)])
 @pytest.mark.parametrize("step", [1, 2, 5, 10])
 def test_stack_slice(start, stop, step):
     xs = tuple(map(Number, range(10)))
-    actual = Stack(xs, 'i')(i=Slice('j', start, stop, step, dtype=10))
-    expected = Stack(xs[start: stop: step], 'j')
+    actual = Stack('i', xs)(i=Slice('j', start, stop, step, dtype=10))
+    expected = Stack('j', xs[start: stop: step])
     assert type(actual) == type(expected)
     assert actual.name == expected.name
-    assert actual.components == expected.components
+    assert actual.parts == expected.parts
+
+
+def test_cat_simple():
+    x = Stack('i', (Number(0), Number(1), Number(2)))
+    y = Stack('i', (Number(3), Number(4)))
+
+    assert Cat('i', (x,)) is x
+    assert Cat('i', (y,)) is y
+
+    xy = Cat('i', (x, y))
+    assert xy.inputs == OrderedDict(i=bint(5))
+    assert xy.name == 'i'
+    for i in range(5):
+        assert xy(i=i) is Number(i)
 
 
 def test_align_simple():
