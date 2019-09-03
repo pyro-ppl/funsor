@@ -3,6 +3,7 @@ import itertools
 import math
 import numbers
 import re
+import typing
 from collections import Hashable, OrderedDict
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
@@ -75,7 +76,11 @@ def reflect(cls, *args):
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
-    cls_specific = (cls._ast_origin if cls._ast_types else cls)[tuple(map(type, args))]
+    arg_types = tuple(typing.Tuple[tuple(map(type, arg))]
+                      if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
+                      else type(arg) for arg in args)
+    # arg_types = tuple(map(type, args))
+    cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
     result = super(FunsorMeta, cls_specific).__call__(*args)
     result._ast_values = args
 
@@ -159,19 +164,19 @@ class FunsorMeta(type):
     """
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
-        if not hasattr(cls, "_ast_types"):
-            cls._ast_types = ()
-        if cls._ast_types:
+        if not hasattr(cls, "__args__"):
+            cls.__args__ = ()
+        if cls.__args__:
             base, = bases
-            cls._ast_origin = base
+            cls.__origin__ = base
         else:
             cls._ast_fields = getargspec(cls.__init__)[0][1:]
             cls._cons_cache = WeakValueDictionary()
             cls._type_cache = WeakValueDictionary()
 
     def __call__(cls, *args, **kwargs):
-        if cls._ast_types:
-            cls = cls._ast_origin
+        if cls.__args__:
+            cls = cls.__origin__
 
         # Convert kwargs to args.
         if kwargs:
@@ -188,33 +193,52 @@ class FunsorMeta(type):
             arg_types = (arg_types,)
         assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
         if arg_types not in cls._type_cache:
-            assert not cls._ast_types, "cannot subscript a subscripted type {}".format(cls)
+            assert not cls.__args__, "cannot subscript a subscripted type {}".format(cls)
             assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
-            new_name = cls.__name__ + "[{}]".format(", ".join(t.__name__ for t in arg_types))
+            new_name = cls.__name__ + "[{}]".format(", ".join(
+                t.__name__ if hasattr(t, "__name__") else str(t) for t in arg_types))  # Tuple doesn't have __name__
             new_dct = cls.__dict__.copy()
-            new_dct.update({"_ast_types": arg_types})
+            new_dct.update({"__args__": arg_types})
             # type(cls) to handle FunsorMeta subclasses
             cls._type_cache[arg_types] = type(cls)(new_name, (cls,), new_dct)
         return cls._type_cache[arg_types]
 
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
         if not isinstance(subcls, FunsorMeta):
-            return super(FunsorMeta, getattr(cls, "_ast_origin", cls)).__subclasscheck__(subcls)
-        elif cls._ast_types and subcls._ast_types:
+            return super(FunsorMeta, getattr(cls, "__origin__", cls)).__subclasscheck__(subcls)
+        elif cls.__args__ and subcls.__args__:
             return subcls is cls or \
-                (super(FunsorMeta, cls._ast_origin).__subclasscheck__(subcls._ast_origin) and
-                 len(cls._ast_types) == len(subcls._ast_types) and
-                 all(issubclass(subcls_param, param)
-                     for subcls_param, param in zip(subcls._ast_types, cls._ast_types)))
-        elif not cls._ast_types and subcls._ast_types:
-            return super(FunsorMeta, cls).__subclasscheck__(subcls._ast_origin)
-        elif cls._ast_types and not subcls._ast_types:
+                (super(FunsorMeta, cls.__origin__).__subclasscheck__(subcls.__origin__) and
+                 len(cls.__args__) == len(subcls.__args__) and
+                 all(_issubclass_tuple(subcls_param, param)
+                     for subcls_param, param in zip(subcls.__args__, cls.__args__)))
+        elif not cls.__args__ and subcls.__args__:
+            return super(FunsorMeta, cls).__subclasscheck__(subcls.__origin__)
+        elif cls.__args__ and not subcls.__args__:
             # issubclass(Number, Number[int, int]) == False
             # issubclass(SubclassOfNumber, Number[int, int]) == True
-            return cls._ast_origin is not subcls and super(FunsorMeta, cls._ast_origin).__subclasscheck__(subcls)
-        elif not cls._ast_types and not subcls._ast_types:
+            return cls.__origin__ is not subcls and super(FunsorMeta, cls.__origin__).__subclasscheck__(subcls)
+        elif not cls.__args__ and not subcls.__args__:
             return super(FunsorMeta, cls).__subclasscheck__(subcls)
         raise TypeError("could not unify: {}, {}".format(cls, subcls))
+
+
+def _issubclass_tuple(subcls, cls):
+    """
+    utility for pattern matching with tuple subexpressions
+    """
+    subcls_is_tuple = hasattr(cls, "__origin__") and subcls.__origin__ is tuple
+    cls_is_tuple = hasattr(cls, "__origin__") and cls.__origin__ is tuple
+    if not subcls_is_tuple and not cls_is_tuple:
+        return issubclass(subcls, cls)
+    elif subcls_is_tuple and not cls_is_tuple:
+        return False
+    elif not subcls_is_tuple and cls_is_tuple:
+        return False
+    elif subcls_is_tuple and cls_is_tuple:
+        return not cls.__args__ or \
+            (len(subcls.__args__) == len(cls.__args__) and
+             all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__)))
 
 
 class Funsor(object, metaclass=FunsorMeta):
