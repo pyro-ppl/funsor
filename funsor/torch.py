@@ -6,13 +6,25 @@ from functools import reduce
 import torch
 from contextlib2 import contextmanager
 from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.ops import GetitemOp, Op
-from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, \
-    eager, substitute, to_data, to_funsor
+from funsor.terms import (
+    Binary,
+    Funsor,
+    FunsorMeta,
+    Lambda,
+    Number,
+    Slice,
+    Variable,
+    eager,
+    substitute,
+    to_data,
+    to_funsor
+)
 from funsor.util import getargspec
 
 
@@ -167,11 +179,28 @@ class Tensor(Funsor, metaclass=TensorMeta):
         if not subs:
             return self
 
-        # special case: renaming
-        # must be handled to ensure proper cons hashing
-        if all(isinstance(v, Variable) and v.name not in self.inputs for v in subs.values()):
-            renamed_inputs = OrderedDict((subs[k].name if k in subs else k, self.inputs[k]) for k in self.inputs)
-            return Tensor(self.data, renamed_inputs, self.dtype)
+        # Handle renaming to enable cons hashing, and
+        # handle slicing to avoid copying data.
+        if any(isinstance(v, (Variable, Slice)) for v in subs.values()):
+            slices = None
+            inputs = OrderedDict()
+            for i, (k, d) in enumerate(self.inputs.items()):
+                if k in subs:
+                    v = subs[k]
+                    if isinstance(v, Variable):
+                        del subs[k]
+                        k = v.name
+                    elif isinstance(v, Slice):
+                        del subs[k]
+                        k = v.name
+                        d = v.inputs[v.name]
+                        if slices is None:
+                            slices = [slice(None)] * self.data.dim()
+                        slices[i] = v.slice
+                inputs[k] = d
+            data = self.data[tuple(slices)] if slices else self.data
+            result = Tensor(data, inputs, self.dtype)
+            return result.eager_subs(tuple(subs.items()))
 
         # materialize after checking for renaming case
         subs = OrderedDict((k, materialize(v)) for k, v in subs.items())
@@ -457,6 +486,28 @@ def eager_lambda(var, expr):
         data = data.reshape(shape[:dim] + (1,) + shape[dim:])
         data = data.expand(shape[:dim] + (var.dtype,) + shape[dim:])
     return Tensor(data, inputs, expr.dtype)
+
+
+@dispatch(str, Variadic[Tensor])
+def eager_cat_homogeneous(name, *parts):
+    assert parts
+    output = parts[0].output
+    inputs = OrderedDict()
+    for part in parts:
+        assert part.output == output
+        assert name in part.inputs
+        inputs.update(part.inputs)
+
+    tensors = []
+    for part in parts:
+        inputs[name] = part.inputs[name]  # typically a smaller bint
+        shape = tuple(d.size for d in inputs.values()) + output.shape
+        tensors.append(align_tensor(inputs, part).expand(shape))
+
+    dim = tuple(inputs).index(name)
+    tensor = torch.cat(tensors, dim=dim)
+    inputs[name] = bint(tensor.size(dim))
+    return Tensor(tensor, inputs, dtype=output.dtype)
 
 
 def arange(name, size):

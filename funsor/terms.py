@@ -8,6 +8,7 @@ from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
 from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
@@ -482,6 +483,9 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def log1p(self):
         return Unary(ops.log1p, self)
+
+    def sigmoid(self):
+        return Unary(ops.sigmoid, self)
 
     # The following reductions are treated as Unary ops because they
     # reduce over output shape while preserving all inputs.
@@ -991,6 +995,52 @@ def eager_binary_number_number(op, lhs, rhs):
     return Number(data, dtype)
 
 
+class SliceMeta(FunsorMeta):
+    """
+    Wrapper to fill in ``start``, ``stop``, ``step``, ``dtype`` following
+    Python conventions.
+    """
+    def __call__(cls, name, *args, **kwargs):
+        start = 0
+        step = 1
+        dtype = None
+        if len(args) == 1:
+            stop = args[0]
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 2:
+            start, stop = args
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 3:
+            start, stop, step = args
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 4:
+            start, stop, step, dtype = args
+        else:
+            raise ValueError
+        if step <= 0:
+            raise ValueError
+        return super().__call__(name, start, stop, step, dtype)
+
+
+class Slice(Funsor, metaclass=SliceMeta):
+    """
+    Symbolic representation of a Python :py:class:`slice` object.
+    """
+    def __init__(self, name, start, stop, step, dtype):
+        assert isinstance(name, str)
+        assert start is None or isinstance(start, int)
+        assert stop is None or isinstance(stop, int)
+        assert step is None or isinstance(step, int)
+        assert isinstance(dtype, int)
+        size = max(0, (stop + step - 1 - start) // step)
+        inputs = OrderedDict([(name, bint(size))])
+        output = bint(dtype)
+        fresh = frozenset({"name"})
+        super().__init__(inputs, output, fresh)
+        self.name = name
+        self.slice = slice(start, stop, step)
+
+
 class Align(Funsor):
     """
     Lazy call to ``.align(...)``.
@@ -1049,50 +1099,98 @@ class Stack(Funsor):
     """
     Stack of funsors along a new input dimension.
 
-    :param tuple components: A tuple of Funsors.
-    :param str name: The name of the new leftmost dimension.
+    :param str name: The name of the new input variable along which to stack.
+    :param tuple parts: A tuple of Funsors of homogenous output domain.
     """
-    def __init__(self, components, name):
-        assert isinstance(components, tuple)
-        assert components
-        assert not any(name in x.inputs for x in components)
-        assert len(set(x.output for x in components)) == 1
-        output = components[0].output
-        domain = bint(len(components))
+    def __init__(self, name, parts):
+        assert isinstance(name, str)
+        assert isinstance(parts, tuple)
+        assert parts
+        assert not any(name in x.inputs for x in parts)
+        assert len(set(x.output for x in parts)) == 1
+        output = parts[0].output
+        domain = bint(len(parts))
         inputs = OrderedDict([(name, domain)])
-        for x in components:
+        for x in parts:
             inputs.update(x.inputs)
         fresh = frozenset({name})
-        super(Stack, self).__init__(inputs, output, fresh)
-        self.components = components
+        super().__init__(inputs, output, fresh)
         self.name = name
+        self.parts = parts
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple) and len(subs) == 1 and subs[0][0] == self.name
         index = subs[0][1]
 
         # Try to eagerly select an index.
-        assert index.output == bint(len(self.components))
+        assert index.output == bint(len(self.parts))
 
         if isinstance(index, Number):
-            # Select a single component.
-            return self.components[index.data]
+            # Select a single part.
+            return self.parts[index.data]
         elif isinstance(index, Variable):
             # Rename the stacking dimension.
-            components = self.components
-            return Stack(components, index.name)
+            parts = self.parts
+            return Stack(index.name, parts)
+        elif isinstance(index, Slice):
+            parts = self.parts[index.slice]
+            return Stack(index.name, parts)
         else:
             raise NotImplementedError('TODO support advanced indexing in Stack')
 
     def eager_reduce(self, op, reduced_vars):
-        components = self.components
+        parts = self.parts
         if self.name in reduced_vars:
             reduced_vars -= frozenset([self.name])
             if reduced_vars:
-                components = tuple(x.reduce(op, reduced_vars) for x in components)
-            return reduce(op, components)
-        components = tuple(x.reduce(op, reduced_vars) for x in components)
-        return Stack(components, self.name)
+                parts = tuple(x.reduce(op, reduced_vars) for x in parts)
+            return reduce(op, parts)
+        parts = tuple(x.reduce(op, reduced_vars) for x in parts)
+        return Stack(self.name, parts)
+
+
+class Cat(Funsor):
+    """
+    Concatenate funsors along an existing input dimension.
+
+    :param str name: The name of the input variable along which to concatenate.
+    :param tuple parts: A tuple of Funsors of homogenous output domain.
+    """
+    def __init__(self, name, parts):
+        assert isinstance(name, str)
+        assert isinstance(parts, tuple)
+        assert parts
+        assert all(name in x.inputs for x in parts)
+        assert len(set(x.output for x in parts)) == 1
+        output = parts[0].output
+        inputs = OrderedDict()
+        for x in parts:
+            inputs.update(x.inputs)
+        inputs[name] = bint(sum(x.inputs[name].size for x in parts))
+        super().__init__(inputs, output)
+        self.name = name
+        self.parts = parts
+
+
+@eager.register(Cat, str, tuple)
+def eager_cat(name, parts):
+    if len(parts) == 1:
+        return parts[0]
+    return eager_cat_homogeneous(name, *parts)
+
+
+@dispatch(str, Variadic[Funsor])
+def eager_cat_homogeneous(name, *parts):
+    return None  # defer to default implementation
+
+
+@dispatch(str, Variadic[Stack])
+def eager_cat_homogeneous(name, *parts):
+    if all(p.name == name for p in parts):
+        parts = sum((p.parts for p in parts), ())
+        return Stack(name, parts)
+
+    return None  # defer to default implementation
 
 
 class Lambda(Funsor):
@@ -1243,14 +1341,21 @@ def _reciprocal(x):
     return Unary(ops.reciprocal, x)
 
 
+@ops.sigmoid.register(Funsor)
+def _sigmoid(x):
+    return Unary(ops.sigmoid, x)
+
+
 __all__ = [
     'Binary',
+    'Cat',
     'Funsor',
     'Independent',
     'Lambda',
     'Number',
     'Reduce',
     'Stack',
+    'Slice',
     'Subs',
     'Unary',
     'Variable',

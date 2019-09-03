@@ -18,6 +18,7 @@ from collections import OrderedDict, namedtuple
 
 import torch
 from pyro.distributions import validation_enabled
+from pyro.optim.clipped_adam import ClippedAdam as _ClippedAdam
 
 import funsor
 
@@ -326,10 +327,10 @@ def plate(name, size, dim):
     return PlateMessenger(fn=None, name=name, size=size, dim=dim)
 
 
-# This is a thin wrapper around the `torch.optim.Adam` class that
+# This is a thin wrapper around the `torch.optim.Optimizer` class that
 # dynamically generates optimizers for dynamically generated parameters.
 # See http://docs.pyro.ai/en/0.3.1/optimization.html
-class Adam(object):
+class PyroOptim(object):
     def __init__(self, optim_args):
         self.optim_args = optim_args
         # Each parameter will get its own optimizer, which we keep track
@@ -345,10 +346,19 @@ class Adam(object):
             # If we've never seen this parameter before, construct
             # an Adam optimizer and keep track of it.
             else:
-                optim = torch.optim.Adam([param], **self.optim_args)
+                optim = self.TorchOptimizer([param], **self.optim_args)
                 self.optim_objs[param] = optim
             # Take a gradient step for the parameter param.
             optim.step()
+
+
+# We wrap some commonly used PyTorch optimizers.
+class Adam(PyroOptim):
+    TorchOptimizer = torch.optim.Adam
+
+
+class ClippedAdam(PyroOptim):
+    TorchOptimizer = _ClippedAdam
 
 
 # This is a unified interface for stochastic variational inference in Pyro.

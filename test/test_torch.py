@@ -8,7 +8,7 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Lambda, Number, Variable, lazy
+from funsor.terms import Cat, Lambda, Number, Slice, Variable, lazy
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torch_stack, torch_tensordot
 
@@ -97,6 +97,34 @@ def test_advanced_indexing_shape():
     check_funsor(x(n, k=m), {'j': bint(J), 'n': bint(N)}, reals())
     check_funsor(x(n, m), {'m': bint(M), 'n': bint(N)}, reals())
     check_funsor(x(n, m, k=m), {'m': bint(M), 'n': bint(N)}, reals())
+
+
+def test_slice_simple():
+    t = torch.randn(3, 4, 5)
+    f = Tensor(t)["i", "j"]
+    assert_close(f, f(i=Slice("i", 3)))
+    assert_close(f, f(j=Slice("j", 4)))
+    assert_close(f, f(i=Slice("i", 3), j=Slice("j", 4)))
+    assert_close(f, f(i=Slice("i", 3), j="j"))
+    assert_close(f, f(i="i", j=Slice("j", 4)))
+
+
+@pytest.mark.parametrize("stop", [0, 1, 2, 10])
+def test_slice_1(stop):
+    t = torch.randn(10, 2)
+    actual = Tensor(t)["i"](i=Slice("j", stop, dtype=10))
+    expected = Tensor(t[:stop])["j"]
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("start", [0, 1, 2, 10])
+@pytest.mark.parametrize("stop", [0, 1, 2, 10])
+@pytest.mark.parametrize("step", [1, 2, 5, 10])
+def test_slice_2(start, stop, step):
+    t = torch.randn(10, 2)
+    actual = Tensor(t)["i"](i=Slice("j", start, stop, step, dtype=10))
+    expected = Tensor(t[start: stop: step])["j"]
+    assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
@@ -205,7 +233,7 @@ def unary_eval(symbol, x):
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b')])
 @pytest.mark.parametrize('symbol', [
-    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p',
+    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p', 'sigmoid',
 ])
 def test_unary(symbol, dims):
     sizes = {'a': 3, 'b': 4}
@@ -669,3 +697,39 @@ def test_stack(n, shape, dim):
     actual = torch_stack(tuple(Tensor(t) for t in tensors), dim=dim)
     expected = Tensor(torch.stack(tensors, dim=dim))
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('output', [bint(2), reals(), reals(4), reals(2, 3)], ids=str)
+def test_cat_simple(output):
+    x = random_tensor(OrderedDict([
+        ('i', bint(2)),
+    ]), output)
+    y = random_tensor(OrderedDict([
+        ('i', bint(3)),
+        ('j', bint(4)),
+    ]), output)
+    z = random_tensor(OrderedDict([
+        ('i', bint(5)),
+        ('k', bint(6)),
+    ]), output)
+
+    assert Cat('i', (x,)) is x
+    assert Cat('i', (y,)) is y
+    assert Cat('i', (z,)) is z
+
+    xy = Cat('i', (x, y))
+    assert isinstance(xy, Tensor)
+    assert xy.inputs == OrderedDict([
+        ('i', bint(2 + 3)),
+        ('j', bint(4)),
+    ])
+    assert xy.output == output
+
+    xyz = Cat('i', (x, y, z))
+    assert isinstance(xyz, Tensor)
+    assert xyz.inputs == OrderedDict([
+        ('i', bint(2 + 3 + 5)),
+        ('j', bint(4)),
+        ('k', bint(6)),
+    ])
+    assert xy.output == output

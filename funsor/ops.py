@@ -175,6 +175,11 @@ def log1p(x):
 
 
 @Op
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+
+@Op
 def pow(x, y):
     return x ** y
 
@@ -281,6 +286,7 @@ __all__ = [
     'pow',
     'safediv',
     'safesub',
+    'sigmoid',
     'sqrt',
     'sub',
     'truediv',

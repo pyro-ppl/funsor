@@ -470,6 +470,25 @@ def eager_mvn(loc, scale_tril, value):
     return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
 
 
+class Poisson(Distribution):
+    dist_class = dist.Poisson
+
+    @staticmethod
+    def _fill_defaults(rate, value='value'):
+        rate = to_funsor(rate)
+        assert rate.dtype == "real"
+        value = to_funsor(value, reals())
+        return rate, value
+
+    def __init__(self, rate, value=None):
+        super().__init__(rate, value)
+
+
+@eager.register(Poisson, Tensor, Tensor)
+def eager_poisson(rate, value):
+    return Poisson.eager_log_prob(rate=rate, value=value)
+
+
 __all__ = [
     'Bernoulli',
     'BernoulliLogits',
@@ -484,4 +503,5 @@ __all__ = [
     'Multinomial',
     'MultivariateNormal',
     'Normal',
+    'Poisson',
 ]

@@ -487,3 +487,29 @@ def test_mvn_gaussian(batch_shape):
     check_funsor(actual, inputs, reals())
 
     assert_close(actual, expected, atol=1e-3, rtol=1e-4)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('syntax', ['eager', 'lazy'])
+def test_poisson_probs_density(batch_shape, syntax):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.torch.function(reals(), reals(), reals())
+    def poisson(rate, value):
+        return torch.distributions.Poisson(rate).log_prob(value)
+
+    check_funsor(poisson, {'rate': reals(), 'value': reals()}, reals())
+
+    rate = Tensor(torch.rand(batch_shape), inputs)
+    value = Tensor(torch.randn(batch_shape).exp().round(), inputs)
+    expected = poisson(rate, value)
+    check_funsor(expected, inputs, reals())
+
+    d = Variable('value', reals())
+    if syntax == 'eager':
+        actual = dist.Poisson(rate, value)
+    elif syntax == 'lazy':
+        actual = dist.Poisson(rate, d)(value=value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)

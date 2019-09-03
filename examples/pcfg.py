@@ -17,7 +17,7 @@ def Uniform(components):
     if size == 1:
         return components[0]
     var = Variable('v', bint(size))
-    return (Stack(components, var.name).reduce(ops.logaddexp, var.name)
+    return (Stack(var.name, components).reduce(ops.logaddexp, var.name)
             - math.log(size))
 
 
