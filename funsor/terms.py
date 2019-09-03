@@ -289,10 +289,10 @@ class Funsor(object, metaclass=FunsorMeta):
         return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_values)))
 
     def __str__(self):
-        return '{}({})'.format(type(self).__name__, ', '.join(map(str, self._ast_values)))
+        return '{}({})'.format(type(self).__origin__.__name__, ', '.join(map(str, self._ast_values)))
 
     def _pretty(self, lines, indent=0):
-        lines.append((indent, type(self).__name__))
+        lines.append((indent, type(self).__origin__.__name__))
         for arg in self._ast_values:
             if isinstance(arg, Funsor):
                 arg._pretty(lines, indent + 1)
