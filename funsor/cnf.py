@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from functools import reduce
+from typing import Tuple
 
 from multipledispatch.variadic import Variadic
 
@@ -62,6 +63,11 @@ class Contraction(Funsor):
         self.terms = terms
         self.reduced_vars = reduced_vars
         self.is_affine = self._is_affine()
+
+        if len(terms) == 2 and \
+                isinstance(terms[1], Tensor) and \
+                isinstance(terms[0], Gaussian):
+            raise ValueError
 
     def _is_affine(self):
         for t in self.terms:
@@ -166,6 +172,7 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 ##########################################
 
 GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
+GaussianMixture = Contraction[AssociativeOp, ops.AddOp, frozenset, Tuple[Tensor, Gaussian]]
 
 
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
@@ -174,11 +181,23 @@ def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_va
     ordering = {MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
     new_terms = tuple(
         v for i, v in sorted(enumerate(terms),
-                             key=lambda t: (ordering.get(type(t[1]), -1), t[0]))
+                             key=lambda t: (ordering.get(type(t[1]).__origin__, -1), t[0]))
     )
     if any(v is not vv for v, vv in zip(terms, new_terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
     return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GaussianMixture, GROUND_TERMS)
+def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, other):
+    return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
+                       reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GaussianMixture)
+def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mixture):
+    return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
+                       reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
 
 
 @normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
