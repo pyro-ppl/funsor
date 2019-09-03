@@ -5,7 +5,7 @@ from funsor.cnf import Contraction
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import sum_product
-from funsor.terms import Funsor, normalize
+from funsor.terms import Funsor, lazy
 
 
 BACKEND_OPS = {
@@ -114,6 +114,6 @@ def einsum(eqn, *terms, **kwargs):
         terms): dimensions in plates but not in outputs are product-reduced;
         dimensions in neither plates nor outputs are sum-reduced.
     """
-    with interpretation(normalize):
+    with interpretation(lazy):
         naive_ast = naive_plated_einsum(eqn, *terms, **kwargs)
     return apply_optimizer(naive_ast)

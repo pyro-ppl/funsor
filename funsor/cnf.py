@@ -68,7 +68,8 @@ class Contraction(Funsor):
             if not isinstance(t, (Number, Tensor, Variable, Contraction)):
                 return False
             if isinstance(t, Contraction):
-                if not (self.bin_op, t.bin_op) in DISTRIBUTIVE_OPS and t.is_affine:
+                if not ((t.bin_op, self.bin_op) in DISTRIBUTIVE_OPS or (self.bin_op, t.bin_op) in DISTRIBUTIVE_OPS) \
+                        and t.is_affine:
                     return False
 
         if self.bin_op is ops.add and self.red_op is not anyop:
@@ -218,18 +219,9 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
         if not isinstance(v, Contraction):
             continue
 
-        if v.red_op is anyop and (v.bin_op, bin_op) in DISTRIBUTIVE_OPS:
-            # a * e * (b + c + d) -> (a * e * b) + (a * e * c) + (a * e * d)
-            new_terms = tuple(
-                Contraction(v.red_op, bin_op, v.reduced_vars, *(terms[:i] + (vt,) + terms[i+1:]))
-                for vt in v.terms)
-            return Contraction(red_op, v.bin_op, reduced_vars, *new_terms)
-
-        if (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
-            new_terms = terms[:i] + (Contraction(v.red_op, v.bin_op, frozenset(), *v.terms),) + terms[i+1:]
-            return Contraction(v.red_op, bin_op, v.reduced_vars, *new_terms).reduce(red_op, reduced_vars)
-
-        if v.red_op in (red_op, anyop) and bin_op in (v.bin_op, anyop):
+        # fuse operations without distributing
+        if (v.red_op is anyop and bin_op is v.bin_op) or \
+                (bin_op is anyop and v.red_op in (red_op, anyop)):
             red_op = v.red_op if red_op is anyop else red_op
             bin_op = v.bin_op if bin_op is anyop else bin_op
             new_terms = terms[:i] + v.terms + terms[i+1:]

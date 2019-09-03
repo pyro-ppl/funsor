@@ -42,10 +42,7 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
     assert isinstance(transformed_expr, Contraction)
     check_funsor(transformed_expr, expr.inputs, expr.output)
 
-    if plates:
-        assert all(isinstance(v, (Number, Tensor, Contraction)) for v in transformed_expr.terms)
-    else:
-        assert all(isinstance(v, (Number, Tensor)) for v in transformed_expr.terms)
+    assert all(isinstance(v, (Number, Tensor, Contraction)) for v in transformed_expr.terms)
 
     with interpretation(normalize):
         transformed_expr2 = reinterpret(transformed_expr)

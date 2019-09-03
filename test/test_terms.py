@@ -164,10 +164,6 @@ def test_reduce_all(op, use_normalize):
     if op is ops.logaddexp:
         pytest.skip()
 
-    # don't use normalize within sequential
-    if use_normalize:
-        pytest.skip()
-
     with interpretation(sequential):
         f = x * y + z
         dtype = f.dtype
@@ -201,11 +197,6 @@ def test_reduce_subset(op, reduced_vars, use_normalize):
     dtype = f.dtype
     check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
     if op is ops.logaddexp:
-        pytest.skip()
-
-    # don't use normalize within sequential - distributivity blows up this expression
-    # TODO fix this by balancing expression trees in normalize/optimize
-    if use_normalize:
         pytest.skip()
 
     with interpretation(sequential):

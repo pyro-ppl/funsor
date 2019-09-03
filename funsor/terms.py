@@ -145,6 +145,8 @@ def sequential(cls, *args):
     result = sequential.dispatch(cls, *args)
     if result is None:
         result = eager.dispatch(cls, *args)
+    if result is None and interpreter._NORMALIZE:
+        result = normalize.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result

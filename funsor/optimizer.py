@@ -6,7 +6,49 @@ from opt_einsum.paths import greedy
 import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, anyop
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Funsor, eager
+from funsor.terms import Funsor, eager, lazy, normalize
+
+
+@interpreter.dispatched_interpretation
+def unfold(cls, *args):
+    result = unfold.dispatch(cls, *args)
+    if result is None:
+        result = normalize.dispatch(cls, *args)
+    if result is None:
+        result = lazy(cls, *args)  # lazy or reflect?
+    return result
+
+
+@unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
+def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
+
+    for i, v in enumerate(terms):
+
+        if not isinstance(v, Contraction):
+            continue
+
+        if v.red_op is anyop and (v.bin_op, bin_op) in DISTRIBUTIVE_OPS:
+            # a * e * (b + c + d) -> (a * e * b) + (a * e * c) + (a * e * d)
+            new_terms = tuple(
+                Contraction(v.red_op, bin_op, v.reduced_vars, *(terms[:i] + (vt,) + terms[i+1:]))
+                for vt in v.terms)
+            return Contraction(red_op, v.bin_op, reduced_vars, *new_terms)
+
+        if (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
+            new_terms = terms[:i] + (Contraction(v.red_op, v.bin_op, frozenset(), *v.terms),) + terms[i+1:]
+            return Contraction(v.red_op, bin_op, v.reduced_vars, *new_terms).reduce(red_op, reduced_vars)
+
+        if v.red_op in (red_op, anyop) and bin_op in (v.bin_op, anyop):
+            red_op = v.red_op if red_op is anyop else red_op
+            bin_op = v.bin_op if bin_op is anyop else bin_op
+            new_terms = terms[:i] + v.terms + terms[i+1:]
+            return Contraction(red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms)
+
+    return None
+
+
+unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])(
+    lambda r, b, v, *ts: unfold(Contraction, r, b, v, tuple(ts)))
 
 
 @interpreter.dispatched_interpretation
@@ -91,5 +133,8 @@ def apply_optimizer(x):
             result = cls(*args)
         return result
 
+    with interpreter.interpretation(unfold):
+        expr = interpreter.reinterpret(x)
+
     with interpreter.interpretation(nested_optimize_interpreter):
-        return interpreter.reinterpret(x)
+        return interpreter.reinterpret(expr)

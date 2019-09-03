@@ -401,15 +401,10 @@ def eager_normal(loc, scale, value):
     int_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype != 'real')
     assert not any(v.shape for v in real_inputs.values())
 
-    const, coeffs = to_funsor(torch.tensor(0.)), OrderedDict((k, Number(0.)) for k in real_inputs)
-    for t in affine.terms:
-        if isinstance(t, (Number, Tensor)):
-            const += t
-        elif isinstance(t, Variable):
-            coeffs[t.name] += 1.
-        elif isinstance(t, Contraction):
-            v, c = t.terms if isinstance(t.terms[0], Variable) else reversed(t.terms)
-            coeffs[v.name] += c
+    const = affine(**{k: 0. for k, v in real_inputs.items()})
+    coeffs = OrderedDict()
+    for c in real_inputs.keys():
+        coeffs[c] = affine(**{k: 1. if c == k else 0. for k in real_inputs.keys()}) - const
 
     tensors = [const] + list(coeffs.values())
     inputs, tensors = align_tensors(*tensors)
