@@ -241,7 +241,7 @@ def _issubclass_tuple(subcls, cls):
         return issubclass(subcls, cls)
     if not cls.__args__:
         return True
-    if len(subcls.__args__) != len(cls.__args__):
+    if not subcls.__args__ or len(subcls.__args__) != len(cls.__args__):
         return False
     for a, b in zip(subcls.__args__, cls.__args__):
         if not _issubclass_tuple(a, b):
