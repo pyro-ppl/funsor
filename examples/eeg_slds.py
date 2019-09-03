@@ -17,7 +17,6 @@ from os.path import exists
 from urllib.request import urlopen
 import time
 from collections import OrderedDict
-import uuid
 
 import numpy as np
 import torch
@@ -83,7 +82,7 @@ class SLDS(nn.Module):
         else:
             self.log_obs_noise = nn.Parameter(0.1 * torch.randn(obs_dim))
 
-        # this is the prior distribution p(x_0) over the continuous latent at the initial time step t=0
+        # define the prior distribution p(x_0) over the continuous latent at the initial time step t=0
         x_init_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.hidden_dim), torch.eye(self.hidden_dim))
         self.x_init_mvn = mvn_to_funsor(x_init_mvn, real_inputs=OrderedDict([('x_0', funsor.reals(self.hidden_dim))]))
 
@@ -105,7 +104,7 @@ class SLDS(nn.Module):
 
         return trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist
 
-    # compute the marginal log probabbility of the observed data using a moment-matching approximation
+    # compute the marginal log probability of the observed data using a moment-matching approximation
     @funsor.interpreter.interpretation(funsor.terms.moment_matching)
     def log_prob(self, data):
         trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist = self.get_tensors_and_dists()
@@ -249,14 +248,14 @@ def main(**args):
     data = torch.tensor(data[:, :-1]).float()
 
     T, obs_dim = data.shape
-    N_eval = 149
+    N_val = 149
     N_test = 200
-    N_train = T - N_test - N_eval
+    N_train = T - N_test - N_val
 
     np.random.seed(0)
-    rand_perm = np.random.permutation(N_eval + N_test)
-    eval_indices = rand_perm[0:N_eval]
-    test_indices = rand_perm[N_eval:]
+    rand_perm = np.random.permutation(N_val + N_test)
+    val_indices = rand_perm[0:N_val]
+    test_indices = rand_perm[N_val:]
 
     data_mean = data[0:N_train, :].mean(0)
     data -= data_mean
@@ -264,7 +263,7 @@ def main(**args):
     data /= data_std
 
     print("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
-    print("N_train: {}  N_eval: {}  N_test: {}".format(N_train, N_eval, N_test))
+    print("N_train: {}  N_val: {}  N_test: {}".format(N_train, N_val, N_test))
 
     torch.manual_seed(args['seed'])
 
@@ -292,14 +291,14 @@ def main(**args):
 
         if step % report_frequency == 0 or step == args['num_steps'] - 1:
             step_dt = ts[-1] - ts[-2] if step > 0 else 0.0
-            pred_mse, pred_LLs = slds.filter_and_predict(data[0:N_train + N_eval + N_test, :])
-            eval_mse = pred_mse[eval_indices].mean().item()
+            pred_mse, pred_LLs = slds.filter_and_predict(data[0:N_train + N_val + N_test, :])
+            val_mse = pred_mse[val_indices].mean().item()
             test_mse = pred_mse[test_indices].mean().item()
-            eval_ll = pred_LLs[eval_indices].mean().item()
+            val_ll = pred_LLs[val_indices].mean().item()
             test_ll = pred_LLs[test_indices].mean().item()
 
-            stats = "[step %03d] train_nll: %.5f eval_mse: %.5f eval_ll: %.5f test_mse: %.5f test_ll: %.5f\t(dt: %.2f)"
-            print(stats % (step, nll.item(), eval_mse, eval_ll, test_mse, test_ll, step_dt))
+            stats = "[step %03d] train_nll: %.5f val_mse: %.5f val_ll: %.5f test_mse: %.5f test_ll: %.5f\t(dt: %.2f)"
+            print(stats % (step, nll.item(), val_mse, val_ll, test_mse, test_ll, step_dt))
 
         ts.append(time.time())
 
@@ -314,7 +313,7 @@ def main(**args):
 
         f, axes = plt.subplots(4, 1, figsize=(12, 8), sharex=True)
         T = data.size(0)
-        N_valtest = N_eval + N_test
+        N_valtest = N_val + N_test
         to_seconds = 117.0 / T
 
         for k, ax in enumerate(axes[:-1]):
