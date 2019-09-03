@@ -233,8 +233,8 @@ def _issubclass_tuple(subcls, cls):
     """
     utility for pattern matching with tuple subexpressions
     """
-    subcls_is_tuple = hasattr(cls, "__origin__") and subcls.__origin__ is tuple
-    cls_is_tuple = hasattr(cls, "__origin__") and cls.__origin__ is tuple
+    subcls_is_tuple = hasattr(cls, "__origin__") and subcls.__origin__ in (tuple, typing.Tuple)
+    cls_is_tuple = hasattr(cls, "__origin__") and cls.__origin__ in (tuple, typing.Tuple)
     if subcls_is_tuple != cls_is_tuple:
         return False
     if not cls_is_tuple:
