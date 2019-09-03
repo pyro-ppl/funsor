@@ -30,7 +30,7 @@ class AdjointTape(object):
     def __call__(self, cls, *args):
         with interpretation(self._old_interpretation):
             result = cls(*args)
-        if cls in (Reduce, Contraction, Binary, Tensor):  # TODO make generic
+        if issubclass(cls, (Reduce, Contraction, Binary, Tensor)):  # TODO make generic
             self.tape.append((result, cls, args))
         return result
 

@@ -1,4 +1,5 @@
 import itertools
+import typing
 from collections import OrderedDict
 from functools import reduce
 
@@ -11,9 +12,11 @@ from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
 from funsor.terms import (
     Cat,
+    Funsor,
     Independent,
     Lambda,
     Number,
+    Reduce,
     Slice,
     Stack,
     Variable,
@@ -344,3 +347,42 @@ def test_align_simple():
     for k, v in f.inputs.items():
         assert g.inputs[k] == v
     assert f(x=1, y=2, z=3) == g(x=1, y=2, z=3)
+
+
+@pytest.mark.parametrize("subcls_expr,cls_expr", [
+    ("Reduce", "Reduce"),
+    ("Reduce[ops.AssociativeOp, Funsor, frozenset]", "Funsor"),
+    ("Reduce[ops.AssociativeOp, Funsor, frozenset]", "Reduce"),
+    ("Reduce[ops.AssociativeOp, Funsor, frozenset]", "Reduce[ops.Op, Funsor, frozenset]"),
+    ("Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
+     "Reduce[ops.Op, Funsor, frozenset]"),
+    ("Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
+     "Reduce[ops.AssociativeOp, Reduce, frozenset]"),
+    ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack"),
+    ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack[str, tuple]"),
+])
+def test_parametric_subclass(subcls_expr, cls_expr):
+    subcls = eval(subcls_expr)
+    cls = eval(cls_expr)
+    assert issubclass(cls, (Funsor, Reduce)) and not issubclass(subcls, typing.Tuple)  # appease flake8
+    assert issubclass(subcls, cls)
+
+
+@pytest.mark.parametrize("subcls_expr,cls_expr", [
+    ("Funsor", "Reduce[ops.AssociativeOp, Funsor, frozenset]"),
+    ("Reduce", "Reduce[ops.AssociativeOp, Funsor, frozenset]"),
+    ("Reduce[ops.Op, Funsor, frozenset]", "Reduce[ops.AssociativeOp, Funsor, frozenset]"),
+    ("Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
+     "Reduce[ops.Op, Variable, frozenset]"),
+    ("Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
+     "Reduce[ops.AssociativeOp, Reduce[ops.AddOp, Funsor, frozenset], frozenset]"),
+    ("Stack", "Stack[str, typing.Tuple[Number, Number, Number]]"),
+    ("Stack[str, tuple]", "Stack[str, typing.Tuple[Number, Number, Number]]"),
+    ("Stack[str, typing.Tuple[Number, Number]]", "Stack[str, typing.Tuple[Number, Reduce]]"),
+    ("Stack[str, typing.Tuple[Number, Reduce]]", "Stack[str, typing.Tuple[Number, Number]]"),
+])
+def test_not_parametric_subclass(subcls_expr, cls_expr):
+    subcls = eval(subcls_expr)
+    cls = eval(cls_expr)
+    assert issubclass(cls, (Funsor, Reduce)) and not issubclass(subcls, typing.Tuple)  # appease flake8
+    assert not issubclass(subcls, cls)
