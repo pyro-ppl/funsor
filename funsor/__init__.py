@@ -20,7 +20,6 @@ from . import (
     minipyro,
     montecarlo,
     ops,
-    pattern,
     sum_product,
     terms,
     torch
@@ -58,7 +57,6 @@ __all__ = [
     'montecarlo',
     'of_shape',
     'ops',
-    'pattern',
     'reals',
     'reinterpret',
     'sum_product',
