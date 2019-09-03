@@ -1,3 +1,13 @@
+"""
+We use a switching linear dynamical system [1] to model a EEG time series dataset.
+For inference we use a moment-matching approximation enabled by
+`funsor.interpreter.interpretation(funsor.terms.moment_matching)`.
+
+References
+
+[1] Anderson, B., and J. Moore. "Optimal filtering. Prentice-Hall, Englewood Cliffs." New Jersey (1979).
+"""
+
 import matplotlib
 matplotlib.use('Agg')  # noqa: E402
 import matplotlib.pyplot as plt
@@ -27,10 +37,15 @@ def download_data():
 
 
 class SLDS(nn.Module):
-    def __init__(self, num_components, hidden_dim, obs_dim,
-                 fine_transition_noise=False, fine_observation_matrix=False,
-                 fine_observation_noise=False, fine_transition_matrix=True,
-                 moment_matching_lag=1):
+    def __init__(self,
+                 num_components,   # the number of switching states K
+                 hidden_dim,       # the dimension of the continuous latent space
+                 obs_dim,          # the dimension of the continuous outputs
+                 fine_transition_matrix=True,    # controls whether the transition matrix depends on s_t
+                 fine_transition_noise=False,    # controls whether the transition noise depends on s_t
+                 fine_observation_matrix=False,  # controls whether the observation matrix depends on s_t
+                 fine_observation_noise=False,   # controls whether the observation noise depends on s_t
+                 moment_matching_lag=1):         # controls the expense of the moment matching approximation
 
         self.num_components = num_components
         self.hidden_dim = hidden_dim
@@ -44,10 +59,11 @@ class SLDS(nn.Module):
         assert moment_matching_lag > 0
         assert fine_transition_noise or fine_observation_matrix or fine_observation_noise or fine_transition_matrix, \
             "The continuous dynamics need to be coupled to the discrete dynamics in at least one way [use at " + \
-            "least one of --ftn --ftm --fon --fom]"
+            "least one of the arguments --ftn --ftm --fon --fom]"
 
         super(SLDS, self).__init__()
 
+        # initialize the various parameters of the model
         self.transition_logits = nn.Parameter(0.1 * torch.randn(num_components, num_components))
         if fine_transition_matrix:
             transition_matrix = torch.eye(hidden_dim) + 0.05 * torch.randn(num_components, hidden_dim, hidden_dim)
@@ -67,9 +83,12 @@ class SLDS(nn.Module):
         else:
             self.log_obs_noise = nn.Parameter(0.1 * torch.randn(obs_dim))
 
+        # this is the prior distribution p(x_0) over the continuous latent at the initial time step t=0
         x_init_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.hidden_dim), torch.eye(self.hidden_dim))
         self.x_init_mvn = mvn_to_funsor(x_init_mvn, real_inputs=OrderedDict([('x_0', funsor.reals(self.hidden_dim))]))
 
+    # we construct the various funsors used to compute the marginal log probability and other model quantities.
+    # these funsors depend on the various model parameters.
     def get_tensors_and_dists(self):
         trans_logits = self.transition_logits - self.transition_logits.logsumexp(dim=-1, keepdim=True)
         trans_probs = funsor.Tensor(trans_logits, OrderedDict([("s", funsor.bint(self.num_components))]))
@@ -86,6 +105,7 @@ class SLDS(nn.Module):
 
         return trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist
 
+    # compute the marginal log probabbility of the observed data using a moment-matching approximation
     @funsor.interpreter.interpretation(funsor.terms.moment_matching)
     def log_prob(self, data):
         trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist = self.get_tensors_and_dists()
@@ -101,15 +121,19 @@ class SLDS(nn.Module):
 
             log_prob += dist.Categorical(trans_probs(s=s_vars[t - 1]), value=s_vars[t])
 
+            # incorporate the prior term p(x_t | x_{t-1})
             if t == 0:
                 log_prob += self.x_init_mvn(value=x_vars[t])
             else:
                 log_prob += x_trans_dist(s=s_vars[t], x=x_vars[t - 1], y=x_vars[t])
 
+            # do a moment-matching reduction. at this point log_prob depends on (moment_matching_lag + 1)-many
+            # pairs of free variables.
             if t > self.moment_matching_lag - 1:
                 log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_vars[t - self.moment_matching_lag].name,
                                                                      x_vars[t - self.moment_matching_lag].name]))
 
+            # incorporate the observation p(y_t | x_t, s_t)
             log_prob += y_dist(s=s_vars[t], x=x_vars[t], y=y)
 
         T = data.shape[0]
@@ -121,6 +145,8 @@ class SLDS(nn.Module):
 
         return log_prob.data
 
+    # do filtering, prediction, and smoothing using a moment-matching approximation.
+    # here we implicitly use a moment matching lag of L = 1.
     @torch.no_grad()
     @funsor.interpreter.interpretation(funsor.terms.moment_matching)
     def filter_and_predict(self, data, smoothing=False):
