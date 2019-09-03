@@ -24,11 +24,15 @@ _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
 _GENSYM_COUNTER = 0
 
 
+def _get_name(cls):
+    return getattr(cls, '__origin__', cls).__name__
+
+
 if _DEBUG:
     def interpret(cls, *args):
         global _STACK_SIZE
         indent = '  ' * _STACK_SIZE
-        typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
+        typenames = [_get_name(cls)] + [_get_name(type(arg)) for arg in args]
         print(indent + ' '.join(typenames))
 
         _STACK_SIZE += 1
@@ -40,7 +44,7 @@ if _DEBUG:
         if _DEBUG > 1:
             result_str = re.sub('\n', '\n          ' + indent, str(result))
         else:
-            result_str = type(result).__name__
+            result_str = _get_name(type(result))
         print(indent + '-> ' + result_str)
         return result
 else:

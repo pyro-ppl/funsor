@@ -72,7 +72,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         self.params = params
 
     def __repr__(self):
-        return '{}({})'.format(type(self).__name__,
+        return '{}({})'.format(type(self).__origin__.__name__,
                                ', '.join('{}={}'.format(*kv) for kv in self.params))
 
     def eager_reduce(self, op, reduced_vars):

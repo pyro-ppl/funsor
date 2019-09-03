@@ -286,7 +286,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return id(self)
 
     def __repr__(self):
-        return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_values)))
+        return '{}({})'.format(type(self).__origin__.__name__, ', '.join(map(repr, self._ast_values)))
 
     def __str__(self):
         return '{}({})'.format(type(self).__origin__.__name__, ', '.join(map(str, self._ast_values)))
@@ -431,7 +431,7 @@ class Funsor(object, metaclass=FunsorMeta):
         assert isinstance(sample_inputs, OrderedDict)
         if sampled_vars.isdisjoint(self.inputs):
             return self
-        raise ValueError("Cannot sample from a {}".format(type(self).__name__))
+        raise ValueError("Cannot sample from a {}".format(type(self).__origin__.__name__))
 
     def align(self, names):
         """
