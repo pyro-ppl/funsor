@@ -24,9 +24,9 @@ from pyro.distributions.util import broadcast_shape
 
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian, cholesky_solve
+from funsor.gaussian import Gaussian, align_tensors, cholesky_solve
 from funsor.joint import Joint
-from funsor.terms import Independent
+from funsor.terms import Funsor, Independent, Variable, eager
 from funsor.torch import Tensor
 
 # Conversion functions use fixed names for Pyro batch dims, but
@@ -210,6 +210,57 @@ def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
     return cat, mvn
 
 
+class AffineNormal(Funsor):
+    """
+    Represents a conditional diagonal normal distribution over a random
+    variable ``Y`` whose mean is an affine function of a random variable ``X``.
+    The likelihood of ``X`` is thus::
+
+        AffineNormal(matrix, loc, scale).condition(y).log_density(x)
+
+    which is equivalent to::
+
+        Normal(x @ matrix + loc, scale).to_event(1).log_prob(y)
+
+    :param torch.Tensor matrix: A transformation from ``X`` to ``Y``.
+        Should have rightmost shape ``(x_dim, y_dim)``.
+    :param torch.Tensor loc: A constant offset for ``Y``'s mean.
+        Should have output shape ``(y_dim,)``.
+    :param torch.Tensor scale: Standard deviation for ``Y``.
+        Should have output shape ``(y_dim,)``.
+    """
+    def __init__(self, matrix, loc, scale, value_x, value_y):
+        inputs = OrderedDict()
+        for f in (matrix, loc, scale, value_x, value_y):
+            inputs.update(f.inputs)
+        output = reals()
+        super().__init__(inputs, output)
+        self.matrix = matrix
+        self.loc = loc
+        self.scale = scale
+        self.value_x = value_x
+        self.value_y = value_y
+
+
+@eager.register(AffineNormal, Tensor, Tensor, Tensor, Funsor, Tensor)
+def eager_affine_normal(matrix, loc, scale, value_x, value_y):
+    tensors = (matrix, loc, scale, value_y)
+    int_inputs, tensors = align_tensors(*tensors)
+    matrix, loc, scale, value_y = tensors
+
+    assert value_y.size(-1) == loc.size(-1)
+    prec_sqrt = matrix / scale.unsqueeze(-2)
+    precision = prec_sqrt.matmul(prec_sqrt.transpose(-1, -2))
+    delta = (value_y - loc) / scale
+    info_vec = prec_sqrt.matmul(delta.unsqueeze(-1)).squeeze(-1)
+    log_normalizer = (-0.5 * loc.size(-1) * math.log(2 * math.pi)
+                      - 0.5 * delta.pow(2).sum(-1) - scale.log().sum(-1))
+    inputs = int_inputs.copy()
+    inputs["_x"] = value_x.output
+    x_dist = Tensor(log_normalizer, int_inputs) + Gaussian(info_vec, precision, inputs)
+    return x_dist(_x=value_x)
+
+
 def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_name="value_y"):
     """
     Convert a noisy affine function to a Gaussian. The noisy affine function is
@@ -232,10 +283,21 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
         bint inputs.
     :rtype: funsor.terms.Funsor
     """
-    assert isinstance(mvn, torch.distributions.MultivariateNormal)
+    assert (isinstance(mvn, torch.distributions.MultivariateNormal) or
+            (isinstance(mvn, torch.distributions.Independent) and
+             isinstance(mvn.base_dist, torch.distributions.Normal)))
     assert isinstance(matrix, torch.Tensor)
     x_size, y_size = matrix.shape[-2:]
     assert mvn.event_shape == (y_size,)
+
+    # Handle diagonal normal distributions as an efficient special case.
+    if isinstance(mvn, torch.distributions.Independent):
+        return AffineNormal(tensor_to_funsor(matrix, event_dims, 2),
+                            tensor_to_funsor(mvn.base_dist.loc, event_dims, 1),
+                            tensor_to_funsor(mvn.base_dist.scale, event_dims, 1),
+                            Variable(x_name, reals(x_size)),
+                            Variable(y_name, reals(y_size)))
+
     info_vec = cholesky_solve(mvn.loc.unsqueeze(-1), mvn.scale_tril).squeeze(-1)
     log_prob = (-0.5 * y_size * math.log(2 * math.pi)
                 - mvn.scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
