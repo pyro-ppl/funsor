@@ -96,13 +96,15 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
     if approx_vars and not exact_vars:
         discrete += gaussian.log_normalizer
         new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
+        new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
         num_elements = reduce(ops.mul, [
             gaussian.inputs[k].num_elements for k in approx_vars.difference(discrete.inputs)], 1)
         if num_elements != 1:
             new_discrete -= math.log(num_elements)
 
         int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
-        probs = (discrete - new_discrete).exp()
+        probs = (discrete - new_discrete.clamp_finite()).exp()
+
         old_loc = Tensor(cholesky_solve(gaussian.info_vec.unsqueeze(-1),
                                         gaussian._precision_chol).squeeze(-1),
                          int_inputs)
@@ -112,12 +114,19 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
         outers = Tensor(diff.data.unsqueeze(-1) * diff.data.unsqueeze(-2), diff.inputs)
         new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
                    (probs * outers).reduce(ops.add, approx_vars))
+
+        # Numerically stabilize by adding bogus precision to empty components.
+        total = probs.reduce(ops.add, approx_vars)
+        mask = (total.data == 0).to(total.data.dtype).unsqueeze(-1).unsqueeze(-1)
+        new_cov.data += mask * torch.eye(new_cov.data.size(-1))
+
         new_precision = Tensor(cholesky_inverse(new_cov.data.cholesky()), new_cov.inputs)
         new_info_vec = new_precision.data.matmul(new_loc.data.unsqueeze(-1)).squeeze(-1)
         new_inputs = new_loc.inputs.copy()
         new_inputs.update((k, d) for k, d in gaussian.inputs.items() if d.dtype == 'real')
-        new_gaussian = Gaussian(new_info_vec.data, new_precision.data, new_inputs)
+        new_gaussian = Gaussian(new_info_vec, new_precision.data, new_inputs)
         new_discrete -= new_gaussian.log_normalizer
+
         return new_discrete + new_gaussian
 
     return None
