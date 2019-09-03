@@ -13,7 +13,7 @@ from funsor.adjoint import AdjointTape
 from funsor.domains import bint, reals
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation
-from funsor.terms import Binary, Number, Variable, lazy, to_funsor
+from funsor.terms import Binary, Variable, lazy, to_funsor
 from funsor.testing import assert_close, make_einsum_example, make_plated_hmm_einsum, random_tensor, xfail_param
 
 
@@ -223,6 +223,7 @@ ADJOINT_BINARY_TESTS = [
     ('x * y', {'x': '1. * y', 'y': '1. * x'}),
     ('a * x + b * (y + z + c) + d', {'x': 'a', 'y': 'b', 'z': 'b'}),
 ]
+
 
 @pytest.mark.parametrize('expr,expected_adjoint_exprs', ADJOINT_BINARY_TESTS)
 def test_adjoint_binary_only(expr, expected_adjoint_exprs):

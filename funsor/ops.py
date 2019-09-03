@@ -237,7 +237,7 @@ PRODUCT_INVERSES = {
 
 
 PRODUCT_ROOTS = {
-    mul: pow,
+    mul: lambda a, b: pow(a, reciprocal(b)),
     add: truediv,
 }
 

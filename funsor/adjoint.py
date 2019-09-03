@@ -110,7 +110,6 @@ def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
     assert op is adj_redop or (adj_redop, op) in ops.DISTRIBUTIVE_OPS
 
     if (adj_redop, op) in ops.DISTRIBUTIVE_OPS:
-        # XXX this is typed more like argreduce
         lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
         lhs_adj = op(out_adj, rhs).reduce(adj_redop, lhs_reduced_vars)
 
