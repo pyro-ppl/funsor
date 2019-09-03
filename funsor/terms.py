@@ -78,6 +78,7 @@ def reflect(cls, *args):
 
     arg_types = tuple(typing.Tuple[tuple(map(type, arg))]
                       if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
+                      else typing.Tuple if (type(arg) is tuple and not arg)
                       else type(arg) for arg in args)
     cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
     result = super(FunsorMeta, cls_specific).__call__(*args)
@@ -193,6 +194,8 @@ class FunsorMeta(type):
         assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
         # TODO add support for nested union types (i.e. remove the following assertion)
         assert not any(isinstance(arg_type, tuple) for arg_type in arg_types), "nested union types not supported"
+        # switch tuple to typing.Tuple
+        arg_types = tuple(typing.Tuple if arg_type is tuple else arg_type for arg_type in arg_types)
         if arg_types not in cls._type_cache:
             assert not cls.__args__, "cannot subscript a subscripted type {}".format(cls)
             assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
