@@ -208,23 +208,25 @@ class FunsorMeta(type):
         return cls._type_cache[arg_types]
 
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
+        if cls is subcls:
+            return True
         if not isinstance(subcls, FunsorMeta):
             return super(FunsorMeta, getattr(cls, "__origin__", cls)).__subclasscheck__(subcls)
-        elif cls.__args__ and subcls.__args__:
-            return subcls is cls or \
-                (super(FunsorMeta, cls.__origin__).__subclasscheck__(subcls.__origin__) and
-                 len(cls.__args__) == len(subcls.__args__) and
-                 all(_issubclass_tuple(subcls_param, param)
-                     for subcls_param, param in zip(subcls.__args__, cls.__args__)))
-        elif not cls.__args__ and subcls.__args__:
-            return super(FunsorMeta, cls).__subclasscheck__(subcls.__origin__)
-        elif cls.__args__ and not subcls.__args__:
-            # issubclass(Number, Number[int, int]) == False
-            # issubclass(SubclassOfNumber, Number[int, int]) == True
-            return cls.__origin__ is not subcls and super(FunsorMeta, cls.__origin__).__subclasscheck__(subcls)
-        elif not cls.__args__ and not subcls.__args__:
-            return super(FunsorMeta, cls).__subclasscheck__(subcls)
-        raise TypeError("could not unify: {}, {}".format(cls, subcls))
+
+        cls_origin = getattr(cls, "__origin__", cls)
+        subcls_origin = getattr(subcls, "__origin__", subcls)
+        if not super(FunsorMeta, cls_origin).__subclasscheck__(subcls_origin):
+            return False
+
+        if cls.__args__:
+            if not subcls.__args__:
+                return False
+            if len(cls.__args__) != len(subcls.__args__):
+                return False
+            for subcls_param, param in zip(subcls.__args__, cls.__args__):
+                if not _issubclass_tuple(subcls_param, param):
+                    return False
+        return True
 
 
 def _issubclass_tuple(subcls, cls):
@@ -233,14 +235,18 @@ def _issubclass_tuple(subcls, cls):
     """
     subcls_is_tuple = hasattr(cls, "__origin__") and subcls.__origin__ is tuple
     cls_is_tuple = hasattr(cls, "__origin__") and cls.__origin__ is tuple
-    if not subcls_is_tuple and not cls_is_tuple:
-        return issubclass(subcls, cls)
-    elif subcls_is_tuple and cls_is_tuple:
-        return not cls.__args__ or \
-            (len(subcls.__args__) == len(cls.__args__) and
-             all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__)))
-    else:
+    if subcls_is_tuple != cls_is_tuple:
         return False
+    if not cls_is_tuple:
+        return issubclass(subcls, cls)
+    if not cls.__args__:
+        return True
+    if len(subcls.__args__) != len(cls.__args__):
+        return False
+    for a, b in zip(subcls.__args__, cls.__args__):
+        if not _issubclass_tuple(a, b):
+            return False
+    return True
 
 
 class Funsor(object, metaclass=FunsorMeta):
