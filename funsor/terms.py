@@ -446,6 +446,9 @@ class Funsor(object, metaclass=FunsorMeta):
     def log1p(self):
         return Unary(ops.log1p, self)
 
+    def sigmoid(self):
+        return Unary(ops.sigmoid, self)
+
     # The following reductions are treated as Unary ops because they
     # reduce over output shape while preserving all inputs.
     # To reduce over inputs, instead call .reduce(op, reduced_vars).
@@ -1293,6 +1296,11 @@ def _log(x):
 @ops.log1p.register(Funsor)
 def _log1p(x):
     return Unary(ops.log1p, x)
+
+
+@ops.sigmoid.register(Funsor)
+def _sigmoid(x):
+    return Unary(ops.sigmoid, x)
 
 
 __all__ = [
