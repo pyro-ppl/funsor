@@ -191,6 +191,8 @@ class FunsorMeta(type):
         if not isinstance(arg_types, tuple):
             arg_types = (arg_types,)
         assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
+        # TODO add support for nested union types (i.e. remove the following assertion)
+        assert not any(isinstance(arg_type, tuple) for arg_type in arg_types), "nested union types not supported"
         if arg_types not in cls._type_cache:
             assert not cls.__args__, "cannot subscript a subscripted type {}".format(cls)
             assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
