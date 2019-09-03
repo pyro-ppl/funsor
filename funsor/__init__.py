@@ -1,7 +1,7 @@
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
-from funsor.terms import Funsor, Independent, Lambda, Number, Slice, Variable, of_shape, to_data, to_funsor
+from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.torch import Tensor, arange
 
 from . import (
@@ -27,6 +27,7 @@ from . import (
 )
 
 __all__ = [
+    'Cat',
     'Domain',
     'Funsor',
     'Independent',
@@ -34,6 +35,7 @@ __all__ = [
     'Lambda',
     'Number',
     'Slice',
+    'Stack',
     'Tensor',
     'Variable',
     'adjoint',
