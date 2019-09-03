@@ -79,7 +79,6 @@ def reflect(cls, *args):
     arg_types = tuple(typing.Tuple[tuple(map(type, arg))]
                       if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
                       else type(arg) for arg in args)
-    # arg_types = tuple(map(type, args))
     cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
     result = super(FunsorMeta, cls_specific).__call__(*args)
     result._ast_values = args
