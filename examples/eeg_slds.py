@@ -240,19 +240,22 @@ class SLDS(nn.Module):
 
 
 def main(**args):
-    # download and pre-process data
-    download_data()
-    data = np.loadtxt('eeg.dat', delimiter=',', skiprows=19)
-    print("[raw data shape] {}".format(data.shape))
-    data = data[::20, :]
-    print("[data shape after thinning] {}".format(data.shape))
-
-    eye_state = [int(l) for l in data[:, -1].tolist()]
-    data = torch.tensor(data[:, :-1]).float()
+    # download and pre-process EEG data if not in test mode
+    if not args['test']:
+        download_data()
+        N_val, N_test = 149, 200
+        data = np.loadtxt('eeg.dat', delimiter=',', skiprows=19)
+        print("[raw data shape] {}".format(data.shape))
+        data = data[::20, :]
+        print("[data shape after thinning] {}".format(data.shape))
+        eye_state = [int(l) for l in data[:, -1].tolist()]
+        data = torch.tensor(data[:, :-1]).float()
+    # in test mode (for continuous integration on github) so create fake data
+    else:
+        data = torch.randn(10, 3)
+        N_val, N_test = 2, 2
 
     T, obs_dim = data.shape
-    N_val = 149
-    N_test = 200
     N_train = T - N_test - N_val
 
     np.random.seed(0)
@@ -360,6 +363,7 @@ if __name__ == '__main__':
     parser.add_argument("--ftm", action='store_true')
     parser.add_argument("--fom", action='store_true')
     parser.add_argument("--ftn", action='store_true')
+    parser.add_argument("--test", action='store_true')
     args = parser.parse_args()
 
     main(**vars(args))
