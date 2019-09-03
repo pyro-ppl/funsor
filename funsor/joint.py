@@ -3,7 +3,8 @@ from collections import OrderedDict
 from functools import reduce
 
 import torch
-from multipledispatch.variadic import Variadic, dispatch
+from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, anyop
@@ -53,7 +54,7 @@ def eager_cat_homogeneous(name, *parts):
             if any(isinstance(t, MultiDelta) for t in part.terms):
                 raise NotImplementedError("TODO")
             discrete, gaussian = part.terms[0], part.terms[1]
-            discrete = align_tensor(int_inputs, part.discrete).expand(shape)
+            discrete = align_tensor(int_inputs, discrete).expand(shape)
         discretes.append(discrete)
         info_vec, precision = align_gaussian(inputs, gaussian)
         info_vecs.append(info_vec.expand(shape + (-1,)))
