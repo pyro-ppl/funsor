@@ -28,6 +28,7 @@ import funsor.ops as ops
 from funsor.pyro.convert import matrix_and_mvn_to_funsor, mvn_to_funsor, funsor_to_cat_and_mvn
 
 
+# download dataset from UCI archive
 def download_data():
     if not exists("eeg.dat"):
         url = "http://archive.ics.uci.edu/ml/machine-learning-databases/00264/EEG%20Eye%20State.arff"
@@ -140,6 +141,7 @@ class SLDS(nn.Module):
             log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_vars[T - self.moment_matching_lag + t].name,
                                                                  x_vars[T - self.moment_matching_lag + t].name]))
 
+        # assert that we've reduced all the free variables in log_prob
         assert not log_prob.inputs, 'unexpected free variables remain'
 
         return log_prob.data
@@ -238,6 +240,7 @@ class SLDS(nn.Module):
 
 
 def main(**args):
+    # download and pre-process data
     download_data()
     data = np.loadtxt('eeg.dat', delimiter=',', skiprows=19)
     print("[raw data shape] {}".format(data.shape))
@@ -278,6 +281,7 @@ def main(**args):
 
     report_frequency = 5
 
+    # training loop
     for step in range(args['num_steps']):
         nll = -slds.log_prob(data[0:N_train, :]) / N_train
         nll.backward()
@@ -302,6 +306,7 @@ def main(**args):
 
         ts.append(time.time())
 
+    # plot predictions and smoothed means
     if args['plot']:
         predicted_mse, LLs, pred_means, pred_vars, smooth_means, smooth_probs = \
             slds.filter_and_predict(data, smoothing=True)
@@ -342,7 +347,7 @@ def main(**args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
-    parser.add_argument("-n", "--num-steps", default=50, type=int)
+    parser.add_argument("-n", "--num-steps", default=100, type=int)
     parser.add_argument("-s", "--seed", default=15, type=int)
     parser.add_argument("-hd", "--hidden-dim", default=5, type=int)
     parser.add_argument("-k", "--num-components", default=2, type=int)
