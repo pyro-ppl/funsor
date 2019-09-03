@@ -231,14 +231,12 @@ def _issubclass_tuple(subcls, cls):
     cls_is_tuple = hasattr(cls, "__origin__") and cls.__origin__ is tuple
     if not subcls_is_tuple and not cls_is_tuple:
         return issubclass(subcls, cls)
-    elif subcls_is_tuple and not cls_is_tuple:
-        return False
-    elif not subcls_is_tuple and cls_is_tuple:
-        return False
     elif subcls_is_tuple and cls_is_tuple:
         return not cls.__args__ or \
             (len(subcls.__args__) == len(cls.__args__) and
              all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__)))
+    else:
+        return False
 
 
 class Funsor(object, metaclass=FunsorMeta):
