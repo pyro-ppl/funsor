@@ -54,7 +54,7 @@ class Distribution(object):
             assert any(isinstance(t, funsor.delta.MultiDelta) for t in delta.terms)
             delta = [t for t in delta.terms if isinstance(t, funsor.delta.MultiDelta)][0]
         assert isinstance(delta, funsor.delta.MultiDelta)
-        return delta.terms[0][1]
+        return delta.terms[0][1][0]
 
     # Similar to torch.distributions.Distribution.expand().
     def expand_inputs(self, name, size):

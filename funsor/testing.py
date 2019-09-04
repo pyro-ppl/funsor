@@ -57,11 +57,12 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     elif isinstance(actual, MultiDelta):
         assert frozenset(n for n, p in actual.terms) == frozenset(n for n, p in expected.terms)
         actual = actual.align(tuple(n for n, p in expected.terms))
-        assert_close(actual.log_density, expected.log_density)
-        for (actual_name, actual_point), (expected_name, expected_point) in \
+        for (actual_name, (actual_point, actual_log_density)), \
+                (expected_name, (expected_point, expected_log_density)) in \
                 zip(actual.terms, expected.terms):
             assert actual_name == expected_name
             assert_close(actual_point, expected_point, atol=atol, rtol=rtol)
+            assert_close(actual_log_density, expected_log_density, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
         assert_close(actual.info_vec, expected.info_vec, atol=atol, rtol=rtol)
         assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)

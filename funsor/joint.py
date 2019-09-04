@@ -139,7 +139,7 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
                    and t.fresh.intersection(reduced_vars, integrand.inputs)]
     if log_measure.bin_op is ops.add and log_measure.red_op in (ops.logaddexp, anyop) and delta_terms:
         for delta in delta_terms:
-            integrand = integrand(**{name: point for name, point in delta.terms
+            integrand = integrand(**{name: point for name, (point, log_density) in delta.terms
                                      if name in reduced_vars.intersection(integrand.inputs)})
     return normalize_integrate(log_measure, integrand, reduced_vars)
 
