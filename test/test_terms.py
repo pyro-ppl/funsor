@@ -21,6 +21,7 @@ from funsor.terms import (
     Slice,
     Stack,
     Variable,
+    reflect,
     sequential,
     to_data,
     to_funsor
@@ -236,6 +237,12 @@ def test_reduce_syntactic_sugar():
     assert x.reduce(ops.add, "i") is expected
     assert x.reduce(ops.add, {"i"}) is expected
     assert x.reduce(ops.add, frozenset(["i"])) is expected
+
+
+def test_reduce_alpha_rename():
+    with interpretation(reflect):
+        x = Stack("i", (Number(1), Number(2))).reduce(ops.add, "i")
+    x * x
 
 
 @pytest.mark.parametrize('base_shape', [(), (4,), (3, 2)], ids=str)
