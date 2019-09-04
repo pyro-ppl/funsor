@@ -415,6 +415,9 @@ class Funsor(object, metaclass=FunsorMeta):
         elif isinstance(reduced_vars, str):
             # A single name means "reduce over this one variable".
             reduced_vars = frozenset([reduced_vars])
+        elif isinstance(reduced_vars, set):
+            # Support set syntax because it is less verbose.
+            reduced_vars = frozenset(reduced_vars)
         assert isinstance(reduced_vars, frozenset), reduced_vars
         if not reduced_vars:
             return self

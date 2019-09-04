@@ -232,6 +232,15 @@ def test_reduce_subset(op, reduced_vars, use_normalize):
         assert actual is f
 
 
+def test_reduce_syntactic_sugar():
+    x = Stack("i", (Number(1), Number(2), Number(3)))
+    expected = Number(1 + 2 + 3)
+    assert x.reduce(ops.add) is expected
+    assert x.reduce(ops.add, "i") is expected
+    assert x.reduce(ops.add, {"i"}) is expected
+    assert x.reduce(ops.add, frozenset(["i"])) is expected
+
+
 @pytest.mark.parametrize('base_shape', [(), (4,), (3, 2)], ids=str)
 def test_lambda(base_shape):
     z = Variable('z', reals(*base_shape))
