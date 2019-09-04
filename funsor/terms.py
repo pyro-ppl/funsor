@@ -295,22 +295,10 @@ class Funsor(object, metaclass=FunsorMeta):
     def __str__(self):
         return '{}({})'.format(type(self).__name__, ', '.join(map(str, self._ast_values)))
 
-    def _pretty(self, lines, indent=0):
-        lines.append((indent, type(self).__name__))
-        for arg in self._ast_values:
-            if isinstance(arg, Funsor):
-                arg._pretty(lines, indent + 1)
-            elif type(arg) is tuple and all(isinstance(x, Funsor) for x in arg):
-                lines.append((indent + 1, 'tuple'))
-                for x in arg:
-                    x._pretty(lines, indent + 2)
-            else:
-                lines.append((indent + 1, re.sub('\n\\s*', ' ', str(arg))))
-
-    def pretty(self):
+    def pretty(self, maxlen=40):
         lines = []
-        self._pretty(lines)
-        return '\n'.join('|   ' * indent + text for indent, text in lines)
+        _pretty(self, lines, maxlen)
+        return '\n'.join(u'\u2502 ' * indent + text for indent, text in lines)
 
     def __contains__(self, item):
         raise TypeError
@@ -662,6 +650,34 @@ class Funsor(object, metaclass=FunsorMeta):
                 part = to_funsor(part, bint(result.output.shape[offset]))
                 result = Binary(GetitemOp(offset), result, part)
         return result
+
+
+@singledispatch
+def _pretty(arg, lines, maxlen, indent=0):
+    line = re.sub('\n\\s*', ' ', str(arg))
+    if len(line) > maxlen:
+        line = line[:maxlen] + "..."
+    lines.append((indent, line))
+
+
+@_pretty.register(Funsor)
+def _(arg, lines, maxlen, indent=0):
+    lines.append((indent, type(arg).__name__))
+    for arg in arg._ast_values:
+        _pretty(arg, lines, maxlen, indent + 1)
+
+
+@_pretty.register(tuple)
+def _(arg, lines, maxlen, indent=0):
+    lines.append((indent, type(arg).__name__))
+    for item in arg:
+        _pretty(item, lines, maxlen, indent + 1)
+
+
+@_pretty.register(str)
+@_pretty.register(Domain)
+def _(arg, lines, maxlen, indent=0):
+    lines.append((indent, repr(arg)))
 
 
 interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
