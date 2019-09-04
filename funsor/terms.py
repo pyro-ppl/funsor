@@ -16,7 +16,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec
+from funsor.util import getargspec, lazy_property
 
 
 def substitute(expr, subs):
@@ -199,12 +199,10 @@ class FunsorMeta(type):
         if arg_types not in cls._type_cache:
             assert not cls.__args__, "cannot subscript a subscripted type {}".format(cls)
             assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
-            new_name = cls.__name__ + "[{}]".format(", ".join(
-                t.__name__ if hasattr(t, "__name__") else str(t) for t in arg_types))  # Tuple doesn't have __name__
             new_dct = cls.__dict__.copy()
             new_dct.update({"__args__": arg_types})
             # type(cls) to handle FunsorMeta subclasses
-            cls._type_cache[arg_types] = type(cls)(new_name, (cls,), new_dct)
+            cls._type_cache[arg_types] = type(cls)(cls.__name__, (cls,), new_dct)
         return cls._type_cache[arg_types]
 
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
@@ -227,6 +225,12 @@ class FunsorMeta(type):
                 if not _issubclass_tuple(subcls_param, param):
                     return False
         return True
+
+    @lazy_property
+    def classname(cls):
+        return cls.__name__ + "[{}]".format(", ".join(
+            str(getattr(t, "classname", t))  # Tuple doesn't have __name__
+            for t in cls.__args__))
 
 
 def _issubclass_tuple(subcls, cls):
