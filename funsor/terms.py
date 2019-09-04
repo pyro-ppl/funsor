@@ -100,21 +100,11 @@ def reflect(cls, *args):
 @dispatched_interpretation
 def normalize(cls, *args):
 
-    # # cons-cache results of normalization. Simplifies stack traces.
-    # cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in (cls,) + args)
-    # if cache_key in normalize._cache:
-    #     return normalize._cache[cache_key]
-
     result = normalize.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
 
-    # normalize._cache[cache_key] = result
     return result
-
-
-# cons-cache results of normalization
-normalize._cache = WeakValueDictionary()
 
 
 @dispatched_interpretation
@@ -123,8 +113,6 @@ def lazy(cls, *args):
     Substitute eagerly but perform ops lazily.
     """
     result = lazy.dispatch(cls, *args)
-    # if result is None and interpreter._NORMALIZE:
-    #     result = normalize.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
