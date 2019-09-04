@@ -223,12 +223,14 @@ class AffineNormal(Funsor):
 
         Normal(x @ matrix + loc, scale).to_event(1).log_prob(y)
 
-    :param torch.Tensor matrix: A transformation from ``X`` to ``Y``.
+    :param ~funsor.terms.Funsor matrix: A transformation from ``X`` to ``Y``.
         Should have rightmost shape ``(x_dim, y_dim)``.
-    :param torch.Tensor loc: A constant offset for ``Y``'s mean.
+    :param ~funsor.terms.Funsor loc: A constant offset for ``Y``'s mean.
         Should have output shape ``(y_dim,)``.
-    :param torch.Tensor scale: Standard deviation for ``Y``.
+    :param ~funsor.terms.Funsor scale: Standard deviation for ``Y``.
         Should have output shape ``(y_dim,)``.
+    :param ~funsor.terms.Funsor value_x: A value ``X``.
+    :param ~funsor.terms.Funsor value_y: A value ``Y``.
     """
     def __init__(self, matrix, loc, scale, value_x, value_y):
         inputs = OrderedDict()
@@ -291,8 +293,10 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
     real vector ``y` given real vector ``x``.
 
     :param torch.Tensor matrix: A matrix with rightmost shape ``(x_size, y_size)``.
-    :param torch.distributions.MultivariateNormal mvn: A multivariate normal
-        distribution with ``event_shape == (y_size,)``.
+    :param mvn: A multivariate normal distribution with
+        ``event_shape == (y_size,)``.
+    :type mvn: torch.distributions.MultivariateNormal or
+        torch.distributions.Independent of torch.distributions.Normal
     :param tuple event_dims: A tuple of names for rightmost dimensions.
         These will be assigned to ``result.inputs`` of type ``bint``.
     :param str x_name: The name of the ``x`` random variable.
