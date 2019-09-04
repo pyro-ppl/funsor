@@ -64,11 +64,6 @@ class Contraction(Funsor):
         self.reduced_vars = reduced_vars
         self.is_affine = self._is_affine()
 
-        if len(terms) == 2 and \
-                isinstance(terms[1], Tensor) and \
-                isinstance(terms[0], Gaussian):
-            raise ValueError
-
     def _is_affine(self):
         for t in self.terms:
             if not isinstance(t, (Number, Tensor, Variable, Contraction)):
@@ -172,7 +167,9 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 ##########################################
 
 GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
-GaussianMixture = Contraction[AssociativeOp, ops.AddOp, frozenset, Tuple[Tensor, Gaussian]]
+# TODO define with nested union
+GAUSSIAN_MIXTURE = (Contraction[AssociativeOp, ops.AddOp, frozenset, Tuple[Tensor, Gaussian]],
+                    Contraction[AssociativeOp, ops.AddOp, frozenset, Tuple[Number, Gaussian]])
 
 
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
@@ -188,13 +185,13 @@ def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_va
     return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
 
 
-@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GaussianMixture, GROUND_TERMS)
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GAUSSIAN_MIXTURE, GROUND_TERMS)
 def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, other):
     return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
                        reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
 
 
-@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GaussianMixture)
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GAUSSIAN_MIXTURE)
 def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mixture):
     return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
                        reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
