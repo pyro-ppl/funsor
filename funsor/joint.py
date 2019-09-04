@@ -7,26 +7,17 @@ from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.cnf import Contraction, anyop
+from funsor.cnf import Contraction, GAUSSIAN_MIXTURE, anyop
 from funsor.delta import MultiDelta
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
 from funsor.integrate import Integrate
-from funsor.ops import AssociativeOp, SubOp
-from funsor.terms import Binary, Funsor, Number, Reduce, Unary, eager, moment_matching, normalize
+from funsor.ops import AssociativeOp
+from funsor.terms import Funsor, Number, Reduce, Unary, eager, moment_matching, normalize
 from funsor.torch import Tensor, align_tensor
 
 
-@eager.register(Binary, SubOp, MultiDelta, Gaussian)
-def eager_add_delta_funsor(op, lhs, rhs):
-    if lhs.fresh.intersection(rhs.inputs):
-        rhs = rhs(**{name: point for name, point in lhs.terms if name in rhs.inputs})
-        return op(lhs, rhs)
-
-    return None  # defer to default implementation
-
-
-@dispatch(str, Variadic[Gaussian, Contraction])
+@dispatch(str, Variadic[(Gaussian,) + GAUSSIAN_MIXTURE])
 def eager_cat_homogeneous(name, *parts):
     assert parts
     output = parts[0].output
@@ -50,11 +41,11 @@ def eager_cat_homogeneous(name, *parts):
         if isinstance(part, Gaussian):
             discrete = None
             gaussian = part
-        elif isinstance(part, Contraction):
-            if any(isinstance(t, MultiDelta) for t in part.terms):
-                raise NotImplementedError("TODO")
+        elif issubclass(type(part), GAUSSIAN_MIXTURE):  # TODO figure out why isinstance isn't working
             discrete, gaussian = part.terms[0], part.terms[1]
             discrete = align_tensor(int_inputs, discrete).expand(shape)
+        else:
+            raise ValueError
         discretes.append(discrete)
         info_vec, precision = align_gaussian(inputs, gaussian)
         info_vecs.append(info_vec.expand(shape + (-1,)))

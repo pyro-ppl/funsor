@@ -6,7 +6,7 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-from funsor.delta import Delta
+from funsor.delta import Delta, MultiDelta
 from funsor.domains import reals
 from funsor.integrate import Integrate
 from funsor.ops import AddOp, NegOp, SubOp
@@ -566,7 +566,7 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
 
 
 @eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
-@eager.register(Binary, SubOp, (Funsor, Align), Gaussian)
+@eager.register(Binary, SubOp, (Funsor, Align, MultiDelta), Gaussian)
 def eager_sub(op, lhs, rhs):
     return lhs + -rhs
 
