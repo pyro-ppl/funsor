@@ -146,6 +146,11 @@ def test_matrix_and_mvn_to_funsor_diag(batch_shape, x_size, y_size):
     expected_like = expected(value_y=y)
     assert_close(actual_like, expected_like, atol=1e-4, rtol=1e-4)
 
+    x = tensor_to_funsor(torch.randn(batch_shape + (x_size,)), (), 1)
+    actual_norm = actual_like(value_x=x)
+    expected_norm = expected_like(value_x=x)
+    assert_close(actual_norm, expected_norm, atol=1e-4, rtol=1e-4)
+
 
 @pytest.mark.parametrize("real_size", [1, 2, 3])
 @pytest.mark.parametrize("event_shape", EVENT_SHAPES, ids=str)
