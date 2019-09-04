@@ -85,6 +85,7 @@ class SLDS(nn.Module):
     # we construct the various funsors used to compute the marginal log probability and other model quantities.
     # these funsors depend on the various model parameters.
     def get_tensors_and_dists(self):
+        # normalize the transition probabilities
         trans_logits = self.transition_logits - self.transition_logits.logsumexp(dim=-1, keepdim=True)
         trans_probs = funsor.Tensor(trans_logits, OrderedDict([("s", funsor.bint(self.num_components))]))
 
@@ -111,9 +112,11 @@ class SLDS(nn.Module):
         x_vars = {}
 
         for t, y in enumerate(data):
+            # construct free variables for s_t and x_t
             s_vars[t] = funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components))
             x_vars[t] = funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim))
 
+            # incorporate the discrete switching dynamics
             log_prob += dist.Categorical(trans_probs(s=s_vars[t - 1]), value=s_vars[t])
 
             # incorporate the prior term p(x_t | x_{t-1})
@@ -132,6 +135,7 @@ class SLDS(nn.Module):
             log_prob += y_dist(s=s_vars[t], x=x_vars[t], y=y)
 
         T = data.shape[0]
+        # reduce any remaining free variables
         for t in range(self.moment_matching_lag):
             log_prob = log_prob.reduce(ops.logaddexp, frozenset([s_vars[T - self.moment_matching_lag + t].name,
                                                                  x_vars[T - self.moment_matching_lag + t].name]))
@@ -139,10 +143,12 @@ class SLDS(nn.Module):
         # assert that we've reduced all the free variables in log_prob
         assert not log_prob.inputs, 'unexpected free variables remain'
 
+        # return the PyTorch tensor behind log_prob (which we can directly differentiate)
         return log_prob.data
 
     # do filtering, prediction, and smoothing using a moment-matching approximation.
-    # here we implicitly use a moment matching lag of L = 1.
+    # here we implicitly use a moment matching lag of L = 1. the general logic follows
+    # the logic in the log_prob method.
     @torch.no_grad()
     @funsor.interpreter.interpretation(funsor.terms.moment_matching)
     def filter_and_predict(self, data, smoothing=False):
@@ -185,14 +191,23 @@ class SLDS(nn.Module):
             if smoothing:
                 filtering_dists.append(log_prob)
 
-        # do the forward-backward recursion using previously computed ingredients
+        # do the backward recursion using previously computed ingredients
         if smoothing:
+            # seed the backward recursion with the filtering distribution at t=T
             smoothing_dists = [filtering_dists[-1]]
             T = data.size(0)
 
             s_vars = {t: funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components)) for t in range(T)}
             x_vars = {t: funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim)) for t in range(T)}
 
+            # do the backward recursion.
+            # let p[t|t-1] be the predictive distribution at time step t.
+            # let p[t|t] be the filtering distribution at time step t.
+            # let f[t] denote the prior (transition) density at time step t.
+            # then the smoothing distribution p[t|T] at time step t is
+            # given by the following recursion.
+            # p[t-1|T] = p[t-1|t-1] <p[t|T] f[t] / p[t|t-1]>
+            # where <...> denotes integration of the latent variables at time step t.
             for t in reversed(range(T - 1)):
                 integral = smoothing_dists[-1] - predictive_x_dists[t]
                 integral += dist.Categorical(trans_probs(s=s_vars[t]), value=s_vars[t + 1])
@@ -268,11 +283,13 @@ def main(**args):
 
     torch.manual_seed(args['seed'])
 
+    # set up model
     slds = SLDS(num_components=args['num_components'], hidden_dim=args['hidden_dim'], obs_dim=obs_dim,
                 fine_observation_noise=args['fon'], fine_transition_noise=args['ftn'],
                 fine_observation_matrix=args['fom'], fine_transition_matrix=args['ftm'],
                 moment_matching_lag=args['moment_matching_lag'])
 
+    # set up optimizer
     adam = torch.optim.Adam(slds.parameters(), lr=args['learning_rate'], betas=(args['beta1'], 0.999), amsgrad=True)
     scheduler = torch.optim.lr_scheduler.ExponentialLR(adam, gamma=args['gamma'])
     ts = [time.time()]
@@ -306,6 +323,7 @@ def main(**args):
 
     # plot predictions and smoothed means
     if args['plot']:
+        assert not args['test']
         predicted_mse, LLs, pred_means, pred_vars, smooth_means, smooth_probs = \
             slds.filter_and_predict(data, smoothing=True)
 
