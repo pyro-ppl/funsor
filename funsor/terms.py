@@ -960,26 +960,6 @@ def eager_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
 
 
-@eager.register(Binary, AssociativeOp, Reduce, (Funsor, Reduce))
-def eager_distribute_reduce_other(op, red, other):
-    if (red.op, op) in ops.DISTRIBUTIVE_OPS:
-        # Use distributive law.
-        arg = op(red.arg, other)
-        return arg.reduce(red.op, red.reduced_vars)
-
-    return None  # defer to default implementation
-
-
-@eager.register(Binary, AssociativeOp, Funsor, Reduce)
-def eager_distribute_other_reduce(op, other, red):
-    if (red.op, op) in ops.DISTRIBUTIVE_OPS:
-        # Use distributive law.
-        arg = op(other, red.arg)
-        return arg.reduce(red.op, red.reduced_vars)
-
-    return None  # defer to default implementation
-
-
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
@@ -1166,10 +1146,6 @@ def eager_binary_funsor_align(op, lhs, rhs):
 @eager.register(Binary, Op, Align, Align)
 def eager_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
-
-
-eager.register(Binary, AssociativeOp, Reduce, Align)(eager_distribute_reduce_other)
-eager.register(Binary, AssociativeOp, Align, Reduce)(eager_distribute_other_reduce)
 
 
 class Stack(Funsor):

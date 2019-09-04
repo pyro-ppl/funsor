@@ -261,6 +261,11 @@ def reduce_funsor(op, arg, reduced_vars):
     return Contraction(op, anyop, reduced_vars, arg)
 
 
+@normalize.register(Unary, ops.NegOp, (Variable, Contraction[ops.AssociativeOp, ops.MulOp, frozenset, tuple]))
+def unary_neg_variable(op, arg):
+    return arg * -1
+
+
 #######################################################################
 # Distributing Unary transformations (Subs, log, exp, neg, reciprocal)
 #######################################################################
@@ -306,12 +311,8 @@ def unary_log_exp(op, arg):
     return arg.arg
 
 
-@normalize.register(Unary, ops.NegOp, (Variable, Contraction[ops.AssociativeOp, ops.MulOp, frozenset, tuple]))
-def unary_neg_variable(op, arg):
-    return arg * -1
-
-
 @normalize.register(Unary, ops.ReciprocalOp, Contraction[AnyOp, ops.MulOp, frozenset, tuple])
+@normalize.register(Unary, ops.NegOp, Contraction[AnyOp, ops.AddOp, frozenset, tuple])
 def unary_contract(op, arg):
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
 
@@ -334,8 +335,3 @@ def unary_transform_log(op, arg):
 def unary_transform_exp(op, arg):
     new_terms = tuple(v.exp() for v in arg.terms)
     return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
-
-
-@normalize.register(Unary, ops.NegOp, Contraction[AnyOp, ops.AddOp, frozenset, tuple])
-def unary_contract(op, arg):
-    return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))

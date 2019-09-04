@@ -2,7 +2,6 @@ import math
 from collections import OrderedDict
 
 import funsor.ops as ops
-import funsor.terms
 from funsor.domains import Domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import debug_logged
@@ -14,7 +13,6 @@ from funsor.terms import (
     Funsor,
     FunsorMeta,
     Number,
-    Reduce,
     Subs,
     Unary,
     Variable,
@@ -189,12 +187,6 @@ class MultiDelta(Funsor, metaclass=MultiDeltaMeta):
         if sampled_vars <= self.fresh:
             return self
         raise NotImplementedError("TODO implement sample for particle indices")
-
-
-eager.register(Binary, AddOp, MultiDelta, Reduce)(
-    funsor.terms.eager_distribute_other_reduce)
-eager.register(Binary, AddOp, Reduce, MultiDelta)(
-    funsor.terms.eager_distribute_reduce_other)
 
 
 @eager.register(Binary, AddOp, MultiDelta, MultiDelta)
