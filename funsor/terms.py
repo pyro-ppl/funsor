@@ -16,7 +16,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, lazy_classproperty
+from funsor.util import getargspec, lazy_property
 
 
 def substitute(expr, subs):
@@ -226,6 +226,12 @@ class FunsorMeta(type):
                     return False
         return True
 
+    @lazy_property
+    def classname(cls):
+        return cls.__name__ + "[{}]".format(", ".join(
+            str(getattr(t, "classname", t))  # Tuple doesn't have __name__
+            for t in cls.__args__))
+
 
 def _issubclass_tuple(subcls, cls):
     """
@@ -275,12 +281,6 @@ class Funsor(object, metaclass=FunsorMeta):
         self.output = output
         self.fresh = fresh
         self.bound = bound
-
-    @lazy_classproperty
-    def classname(cls):
-        return cls.__name__ + "[{}]".format(", ".join(
-            str(getattr(t, "classname", t))  # Tuple doesn't have __name__
-            for t in cls.__args__))
 
     @property
     def dtype(self):

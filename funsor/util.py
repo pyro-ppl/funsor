@@ -16,17 +16,6 @@ class lazy_property(object):
         return value
 
 
-class lazy_classproperty(object):
-    def __init__(self, fn):
-        self.fn = fn
-        functools.update_wrapper(self, fn)
-
-    def __get__(self, obj, owner):
-        value = self.fn(owner)
-        setattr(owner, self.fn.__name__, value)
-        return value
-
-
 def getargspec(fn):
     """
     Similar to Python 2's :py:func:`inspect.getargspec` but:
