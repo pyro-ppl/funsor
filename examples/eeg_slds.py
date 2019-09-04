@@ -7,11 +7,6 @@ References
 
 [1] Anderson, B., and J. Moore. "Optimal filtering. Prentice-Hall, Englewood Cliffs." New Jersey (1979).
 """
-
-import matplotlib
-matplotlib.use('Agg')  # noqa: E402
-import matplotlib.pyplot as plt
-
 import argparse
 from os.path import exists
 from urllib.request import urlopen
@@ -318,6 +313,10 @@ def main(**args):
         pred_stds = pred_vars.sqrt().data.numpy()
         smooth_means = smooth_means.data.numpy()
         smooth_probs = smooth_probs.data.numpy()
+
+        import matplotlib
+        matplotlib.use('Agg')  # noqa: E402
+        import matplotlib.pyplot as plt
 
         f, axes = plt.subplots(4, 1, figsize=(12, 8), sharex=True)
         T = data.size(0)
