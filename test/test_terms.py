@@ -364,6 +364,8 @@ def test_align_simple():
 def test_parametric_subclass(subcls_expr, cls_expr):
     subcls = eval(subcls_expr)
     cls = eval(cls_expr)
+    print(subcls.classname)
+    print(cls.classname)
     assert issubclass(cls, (Funsor, Reduce)) and not issubclass(subcls, typing.Tuple)  # appease flake8
     assert issubclass(subcls, cls)
 
@@ -384,5 +386,7 @@ def test_parametric_subclass(subcls_expr, cls_expr):
 def test_not_parametric_subclass(subcls_expr, cls_expr):
     subcls = eval(subcls_expr)
     cls = eval(cls_expr)
+    print(subcls.classname)
+    print(cls.classname)
     assert issubclass(cls, (Funsor, Reduce)) and not issubclass(subcls, typing.Tuple)  # appease flake8
     assert not issubclass(subcls, cls)

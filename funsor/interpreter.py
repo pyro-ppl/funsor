@@ -25,11 +25,18 @@ _NORMALIZE = int(os.environ.get("FUNSOR_NORMALIZE", 0))
 _GENSYM_COUNTER = 0
 
 
+def _classname(cls):
+    return getattr(cls, "classname", cls.__name__)
+
+
 if _DEBUG:
     def interpret(cls, *args):
         global _STACK_SIZE
         indent = '  ' * _STACK_SIZE
-        typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
+        if _DEBUG > 1:
+            typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
+        else:
+            typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
         print(indent + ' '.join(typenames))
 
         _STACK_SIZE += 1
