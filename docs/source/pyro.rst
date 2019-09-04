@@ -27,6 +27,5 @@ Conversion Utilities
 ====================
 .. automodule:: funsor.pyro.convert
     :members:
-    :undoc-members:
     :show-inheritance:
     :member-order: bysource
