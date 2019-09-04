@@ -903,21 +903,6 @@ class Binary(Funsor):
             return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
-    def eager_reduce(self, op, reduced_vars):
-        if op is self.op:
-            lhs = self.lhs.reduce(op, reduced_vars)
-            rhs = self.rhs.reduce(op, reduced_vars)
-            return op(lhs, rhs)
-        return interpreter.debug_logged(super(Binary, self).eager_reduce)(op, reduced_vars)
-
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        if self.op is ops.logaddexp:
-            # Sample mixture components independently.
-            lhs = self.lhs.unscaled_sample(sampled_vars, sample_inputs)
-            rhs = self.rhs.unscaled_sample(sampled_vars, sample_inputs)
-            return Binary(ops.logaddexp, lhs, rhs)
-        raise TypeError("Cannot sample from Binary({}, ...)".format(self.op))
-
 
 class Reduce(Funsor):
     """
@@ -939,20 +924,6 @@ class Reduce(Funsor):
     def __repr__(self):
         return 'Reduce({}, {}, {})'.format(
             self.op.__name__, self.arg, self.reduced_vars)
-
-    def eager_reduce(self, op, reduced_vars):
-        if op is self.op:
-            # Eagerly fuse reductions.
-            assert isinstance(reduced_vars, frozenset)
-            reduced_vars = reduced_vars.intersection(self.inputs) | self.reduced_vars
-            return Reduce(op, self.arg, reduced_vars)
-        return super(Reduce, self).eager_reduce(op, reduced_vars)
-
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        if self.op is ops.logaddexp:
-            arg = self.arg.unscaled_sample(sampled_vars, sample_inputs)
-            return Reduce(ops.logaddexp, arg, self.reduced_vars)
-        raise TypeError("Cannot sample from Reduce({}, ...)".format(self.op))
 
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
