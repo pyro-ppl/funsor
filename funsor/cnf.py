@@ -298,52 +298,44 @@ def binary_divide(op, lhs, rhs):
     return lhs * Unary(ops.reciprocal, rhs)
 
 
-@normalize.register(Unary, ops.TransformOp, Unary)
+@normalize.register(Unary, ops.ExpOp, Unary[ops.LogOp, Funsor])
+@normalize.register(Unary, ops.LogOp, Unary[ops.ExpOp, Funsor])
+@normalize.register(Unary, ops.NegOp, Unary[ops.NegOp, Funsor])
+@normalize.register(Unary, ops.ReciprocalOp, Unary[ops.ReciprocalOp, Funsor])
 def unary_log_exp(op, arg):
-    if op is ops.log and arg.op is ops.exp:
-        return arg.arg
-    if op is ops.exp and arg.op is ops.log:
-        return arg.arg
-    return None
+    return arg.arg
 
 
-@normalize.register(Unary, ops.NegOp, Variable)
+@normalize.register(Unary, ops.NegOp, (Variable, Contraction[ops.AssociativeOp, ops.MulOp, frozenset, tuple]))
 def unary_neg_variable(op, arg):
     return arg * -1
 
 
-@normalize.register(Unary, ops.ReciprocalOp, Contraction)
+@normalize.register(Unary, ops.ReciprocalOp, Contraction[AnyOp, ops.MulOp, frozenset, tuple])
 def unary_contract(op, arg):
-    if arg.bin_op is ops.mul and arg.red_op is anyop:
-        return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
-    return None  # raise NotImplementedError("TODO")
+    return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
 
 
-@normalize.register(Unary, ops.TransformOp, Contraction)
-def unary_transform(op, arg):
-    if op is ops.log:
-        if arg.bin_op in (ops.mul, anyop) and arg.red_op in (anyop, ops.add):
-            new_terms = tuple(v.log() for v in arg.terms)
-            return Contraction(ops.logaddexp, ops.add, arg.reduced_vars, *new_terms)
-    elif op is ops.exp:
-        if arg.bin_op in (ops.add, anyop) and arg.red_op in (anyop, ops.logaddexp):
-            new_terms = tuple(v.exp() for v in arg.terms)
-            return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
-
-    return None
+@normalize.register(Unary, ops.LogOp, (
+    Contraction[ops.AddOp, AnyOp, frozenset, tuple],
+    Contraction[ops.AddOp, ops.MulOp, frozenset, tuple],
+    Contraction[AnyOp, ops.MulOp, frozenset, tuple]
+))
+def unary_transform_log(op, arg):
+    new_terms = tuple(v.log() for v in arg.terms)
+    return Contraction(ops.logaddexp, ops.add, arg.reduced_vars, *new_terms)
 
 
-@normalize.register(Unary, ops.NegOp, Contraction)
+@normalize.register(Unary, ops.ExpOp, (
+    Contraction[ops.LogAddExpOp, AnyOp, frozenset, tuple],
+    Contraction[ops.LogAddExpOp, ops.AddOp, frozenset, tuple],
+    Contraction[AnyOp, ops.AddOp, frozenset, tuple]
+))
+def unary_transform_exp(op, arg):
+    new_terms = tuple(v.exp() for v in arg.terms)
+    return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
+
+
+@normalize.register(Unary, ops.NegOp, Contraction[AnyOp, ops.AddOp, frozenset, tuple])
 def unary_contract(op, arg):
-    if arg.bin_op is ops.add and arg.red_op is anyop:
-        return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
-    if arg.bin_op is ops.mul:
-        return arg * -1
-    return None
-
-
-@normalize.register(Unary, ops.NegOp, Unary)
-def unary_neg_neg(op, arg):
-    if arg.op is ops.neg:
-        return arg.arg
-    return None
+    return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))

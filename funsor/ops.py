@@ -65,6 +65,10 @@ class MulOp(AssociativeOp):
     pass
 
 
+class LogAddExpOp(AssociativeOp):
+    pass
+
+
 class SubOp(Op):
     pass
 
@@ -145,7 +149,11 @@ def sqrt(x):
     return np.sqrt(x)
 
 
-@TransformOp
+class ExpOp(TransformOp):
+    pass
+
+
+@ExpOp
 def exp(x):
     return np.exp(x)
 
@@ -155,7 +163,11 @@ def log_abs_det_jacobian(x, y):
     return add(x)
 
 
-@TransformOp
+class LogOp(TransformOp):
+    pass
+
+
+@LogOp
 def log(x):
     return np.log(x)
 
@@ -202,7 +214,7 @@ def max(x, y):
     return _builtin_max(x, y)
 
 
-@AssociativeOp
+@LogAddExpOp
 def logaddexp(x, y):
     shift = max(x, y)
     return log(exp(x - shift) + exp(y - shift)) + shift
@@ -257,7 +269,10 @@ __all__ = [
     'AddOp',
     'AssociativeOp',
     'DISTRIBUTIVE_OPS',
+    'ExpOp',
     'GetitemOp',
+    'LogAddExpOp',
+    'LogOp',
     'NegOp',
     'Op',
     'PRODUCT_INVERSES',
