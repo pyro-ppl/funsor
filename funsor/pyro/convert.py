@@ -25,6 +25,7 @@ from pyro.distributions.util import broadcast_shape
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian, align_tensors, cholesky_solve
+from funsor.interpreter import gensym
 from funsor.joint import Joint
 from funsor.terms import Funsor, Independent, Variable, eager
 from funsor.torch import Tensor
@@ -242,6 +243,22 @@ class AffineNormal(Funsor):
         self.value_y = value_y
 
 
+@eager.register(AffineNormal, Tensor, Tensor, Tensor, Tensor, (Funsor, Tensor))
+def eager_affine_normal(matrix, loc, scale, value_x, value_y):
+    tensors = (matrix, loc, scale, value_x)
+    int_inputs, tensors = align_tensors(*tensors)
+    matrix, loc, scale, value_x = tensors
+
+    loc = loc + value_x.unsqueeze(-2).matmul(matrix).squeeze(-2)
+    i_name = gensym("i")
+    y_name = gensym("y")
+    int_inputs[i_name] = bint(value_y.output.shape[0])
+    loc = Tensor(loc, int_inputs)
+    scale = Tensor(scale, int_inputs)
+    y_dist = Independent(Normal(loc, scale, y_name), y_name, i_name)
+    return y_dist(**{y_name: value_y})
+
+
 @eager.register(AffineNormal, Tensor, Tensor, Tensor, Funsor, Tensor)
 def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     tensors = (matrix, loc, scale, value_y)
@@ -256,9 +273,10 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     log_normalizer = (-0.5 * loc.size(-1) * math.log(2 * math.pi)
                       - 0.5 * delta.pow(2).sum(-1) - scale.log().sum(-1))
     inputs = int_inputs.copy()
-    inputs["_x"] = value_x.output
+    x_name = gensym("x")
+    inputs[x_name] = value_x.output
     x_dist = Tensor(log_normalizer, int_inputs) + Gaussian(info_vec, precision, inputs)
-    return x_dist(_x=value_x)
+    return x_dist(**{x_name: value_x})
 
 
 def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_name="value_y"):
