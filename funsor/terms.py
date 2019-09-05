@@ -132,6 +132,24 @@ def eager(cls, *args):
 
 
 @dispatched_interpretation
+def eager_or_die(cls, *args):
+    """
+    Eagerly execute ops with known implementations.
+    Disallows lazy :class:`Subs` , :class:`Unary` , :class:`Binary` , and
+    :class:`Reduce` .
+
+    :raises: :py:class:`NotImplementedError` no pattern is found.
+    """
+    result = eager.dispatch(cls, *args)
+    if result is None:
+        if cls in (Subs, Unary, Binary, Reduce):
+            raise NotImplementedError("Missing pattern for {}({})".format(
+                cls.__name__, ", ".join(map(str, args))))
+        result = reflect(cls, *args)
+    return result
+
+
+@dispatched_interpretation
 def sequential(cls, *args):
     """
     Eagerly execute ops with known implementations; additonally execute
@@ -218,8 +236,6 @@ class FunsorMeta(type):
         if not isinstance(arg_types, tuple):
             arg_types = (arg_types,)
         assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
-        # TODO add support for nested union types (i.e. remove the following assertion)
-        assert not any(isinstance(arg_type, tuple) for arg_type in arg_types), "nested union types not supported"
         # switch tuple to typing.Tuple
         arg_types = tuple(typing.Tuple if arg_type is tuple else arg_type for arg_type in arg_types)
         if arg_types not in cls._type_cache:
@@ -263,7 +279,18 @@ def _issubclass_tuple(subcls, cls):
     """
     utility for pattern matching with tuple subexpressions
     """
-    subcls_is_tuple = hasattr(cls, "__origin__") and (subcls.__origin__ or subcls) in (tuple, typing.Tuple)
+    # so much boilerplate...
+    cls_is_union = hasattr(cls, "__origin__") and (cls.__origin__ or cls) is typing.Union
+    if isinstance(cls, tuple) or cls_is_union:
+        return any(_issubclass_tuple(subcls, option)
+                   for option in (getattr(cls, "__args__", []) if cls_is_union else cls))
+
+    subcls_is_union = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) is typing.Union
+    if isinstance(subcls, tuple) or subcls_is_union:
+        return any(_issubclass_tuple(option, cls)
+                   for option in (getattr(subcls, "__args__", []) if subcls_is_union else subcls))
+
+    subcls_is_tuple = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) in (tuple, typing.Tuple)
     cls_is_tuple = hasattr(cls, "__origin__") and (cls.__origin__ or cls) in (tuple, typing.Tuple)
     if subcls_is_tuple != cls_is_tuple:
         return False
@@ -273,10 +300,8 @@ def _issubclass_tuple(subcls, cls):
         return True
     if not subcls.__args__ or len(subcls.__args__) != len(cls.__args__):
         return False
-    for a, b in zip(subcls.__args__, cls.__args__):
-        if not _issubclass_tuple(a, b):
-            return False
-    return True
+
+    return all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__))
 
 
 class Funsor(object, metaclass=FunsorMeta):
@@ -1395,6 +1420,7 @@ __all__ = [
     'Unary',
     'Variable',
     'eager',
+    'eager_or_die',
     'lazy',
     'moment_matching',
     'of_shape',

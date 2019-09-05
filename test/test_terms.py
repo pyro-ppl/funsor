@@ -21,6 +21,7 @@ from funsor.terms import (
     Stack,
     Variable,
     eager,
+    eager_or_die,
     sequential,
     to_data,
     to_funsor
@@ -79,6 +80,31 @@ def test_cons_hash():
 def test_reinterpret(expr):
     x = eval(expr)
     assert funsor.reinterpret(x) is x
+
+
+@pytest.mark.parametrize("expr", [
+    "Variable('x', reals())",
+    "Number(1)",
+    "Number(1).log()",
+    "Number(1) + Number(2)",
+    "Stack('t', (Number(1), Number(2)))",
+    "Stack('t', (Number(1), Number(2))).reduce(ops.add, 't')",
+])
+def test_eager_or_die_ok(expr):
+    with interpretation(eager_or_die):
+        eval(expr)
+
+
+@pytest.mark.parametrize("expr", [
+    "Variable('x', reals()).log()",
+    "Number(1) / Variable('x', reals())",
+    "Variable('x', reals()) ** Number(2)",
+    "Stack('t', (Number(1), Variable('x', reals()))).reduce(ops.logaddexp, 't')",
+])
+def test_eager_or_die_error(expr):
+    with interpretation(eager_or_die):
+        with pytest.raises(NotImplementedError):
+            eval(expr)
 
 
 @pytest.mark.parametrize('domain', [bint(3), reals()])
@@ -366,6 +392,11 @@ def test_align_simple():
      "Reduce[ops.AssociativeOp, Reduce, frozenset]"),
     ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack"),
     ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack[str, tuple]"),
+    # Unions
+    ("Reduce[ops.AssociativeOp, (Number, Stack[str, (tuple, typing.Tuple[Number, Number])]), frozenset]", "Funsor"),
+    ("Reduce[ops.AssociativeOp, (Number, Stack), frozenset]", "Reduce[ops.Op, Funsor, frozenset]"),
+    ("Reduce[ops.AssociativeOp, (Stack, Reduce[ops.AssociativeOp, (Number, Stack), frozenset]), frozenset]",
+     "Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]"),
 ])
 def test_parametric_subclass(subcls_expr, cls_expr):
     subcls = eval(subcls_expr)
@@ -388,6 +419,11 @@ def test_parametric_subclass(subcls_expr, cls_expr):
     ("Stack[str, tuple]", "Stack[str, typing.Tuple[Number, Number, Number]]"),
     ("Stack[str, typing.Tuple[Number, Number]]", "Stack[str, typing.Tuple[Number, Reduce]]"),
     ("Stack[str, typing.Tuple[Number, Reduce]]", "Stack[str, typing.Tuple[Number, Number]]"),
+    # Unions
+    ("Funsor", "Reduce[ops.AssociativeOp, (Number, Funsor), frozenset]"),
+    ("Reduce[ops.Op, Funsor, frozenset]", "Reduce[ops.AssociativeOp, (Number, Stack), frozenset]"),
+    ("Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]",
+     "Reduce[ops.AssociativeOp, (Stack[str, tuple], Reduce[ops.AssociativeOp, (Cat, Stack), frozenset]), frozenset]"),
 ])
 def test_not_parametric_subclass(subcls_expr, cls_expr):
     subcls = eval(subcls_expr)
