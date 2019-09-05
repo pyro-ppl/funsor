@@ -15,7 +15,7 @@ from funsor.sum_product import (
     sequential_sum_product,
     sum_product
 )
-from funsor.terms import Variable, moment_matching, reflect
+from funsor.terms import Variable, eager_or_die, moment_matching, reflect
 from funsor.testing import assert_close, random_gaussian, random_tensor
 from funsor.torch import Tensor
 
@@ -228,7 +228,8 @@ def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
     # Each time step only a single sensor observes x,
     # and each sensor has a different bias.
     sensor_id = Tensor(torch.arange(num_steps) % 2, OrderedDict(time=bint(num_steps)), dtype=2)
-    factor = trans + obs(bias=bias[sensor_id]) + bias_dist
+    with interpretation(eager_or_die):
+        factor = trans + obs(bias=bias[sensor_id]) + bias_dist
     assert set(factor.inputs) == {"time", "bias", "x_prev", "x_curr"}
 
     result = sequential_sum_product(ops.logaddexp, ops.add, factor, "time", {"x_prev": "x_curr"})
