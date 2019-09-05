@@ -869,6 +869,13 @@ def eager_unary(op, arg):
     return interpreter.debug_logged(arg.eager_unary)(op)
 
 
+@eager.register(Unary, AssociativeOp, Funsor)
+def eager_unary(op, arg):
+    if not arg.output.shape:
+        return arg
+    return interpreter.debug_logged(arg.eager_unary)(op)
+
+
 _INFIX = {
     ops.add: '+',
     ops.sub: '-',
