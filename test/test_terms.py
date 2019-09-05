@@ -21,6 +21,7 @@ from funsor.terms import (
     Slice,
     Stack,
     Variable,
+    eager_or_die,
     sequential,
     to_data,
     to_funsor
@@ -79,6 +80,31 @@ def test_cons_hash():
 def test_reinterpret(expr):
     x = eval(expr)
     assert funsor.reinterpret(x) is x
+
+
+@pytest.mark.parametrize("expr", [
+    "Variable('x', reals())",
+    "Number(1)",
+    "Number(1).log()",
+    "Number(1) + Number(2)",
+    "Stack('t', (Number(1), Number(2)))",
+    "Stack('t', (Number(1), Number(2))).reduce(ops.add, 't')",
+])
+def test_eager_or_die_ok(expr):
+    with interpretation(eager_or_die):
+        eval(expr)
+
+
+@pytest.mark.parametrize("expr", [
+    "Variable('x', reals()).log()",
+    "Number(1) / Variable('x', reals())",
+    "Variable('x', reals()) ** Number(2)",
+    "Stack('t', (Number(1), Variable('x', reals()))).reduce(ops.logaddexp, 't')",
+])
+def test_eager_or_die_error(expr):
+    with interpretation(eager_or_die):
+        with pytest.raises(NotImplementedError):
+            eval(expr)
 
 
 @pytest.mark.parametrize('domain', [bint(3), reals()])
