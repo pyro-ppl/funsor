@@ -1359,10 +1359,19 @@ class Independent(Funsor):
         return Independent(fn, self.reals_var, self.bint_var)
 
     def eager_subs(self, subs):
+        # Handle simple renaming to preserve Independent.
+        subs = OrderedDict(subs)
+        new_reals_var = subs.get(self.reals_var)
+        if isinstance(new_reals_var, Variable):
+            del subs[self.reals_var]
+            fn = self.fn(**{self.reals_var_bound: new_reals_var.name})
+            return Independent(fn, new_reals_var.name, self.bint_var)(**subs)
+
+        # Otherwise convert to a Reduce.
         fn_subs = tuple((self.reals_var_bound, v[self.bint_var])
                         if k == self.reals_var
                         else (k, v)
-                        for k, v in subs)
+                        for k, v in subs.items())
         new_fn = substitute(self.fn, fn_subs)
         new_fn = new_fn.reduce(ops.add, self.bint_var)
         return new_fn

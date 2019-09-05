@@ -303,6 +303,10 @@ def test_independent():
     data = random_tensor(OrderedDict(), x.output)
     assert_close(actual(data), expected(data), atol=1e-5, rtol=1e-5)
 
+    renamed = actual(x='y')
+    assert isinstance(renamed, Independent)
+    assert_close(renamed(y=data), expected(x=data), atol=1e-5, rtol=1e-5)
+
 
 def test_stack_simple():
     x = Number(0.)
