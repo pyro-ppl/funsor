@@ -71,12 +71,8 @@ def eager_cat_homogeneous(name, *parts):
 # patterns for joint integration
 #################################
 
-@moment_matching.register(Contraction, AssociativeOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
+@moment_matching.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
 def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
-    # TODO update to match master's Joint.moment_matching_reduce
-
-    if red_op is not ops.logaddexp:
-        return None
 
     approx_vars = frozenset(k for k in reduced_vars if k in gaussian.inputs
                             and gaussian.inputs[k].dtype != 'real')
