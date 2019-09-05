@@ -27,7 +27,8 @@ def substitute(expr, subs):
     @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
     def subs_interpreter(cls, *args):
         expr = cls(*args)
-        fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
+        fresh_subs = tuple((k, to_funsor(v, expr.inputs[k]))
+                           for k, v in subs if k in expr.fresh)
         if fresh_subs:
             expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
         return expr
@@ -786,8 +787,7 @@ class Variable(Funsor):
 
     def eager_subs(self, subs):
         assert len(subs) == 1 and subs[0][0] == self.name
-        v = subs[0][1]
-        return v if isinstance(v, Funsor) else to_funsor(v, self.output)
+        return subs[0][1]
 
 
 @dispatch(str, Domain)
@@ -1359,12 +1359,11 @@ class Independent(Funsor):
         return Independent(fn, self.reals_var, self.bint_var)
 
     def eager_subs(self, subs):
-        subs = tuple((self.reals_var_bound,
-                      to_funsor(v, self.inputs[k])[self.bint_var])
-                     if k == self.reals_var
-                     else (k, v)
-                     for k, v in subs)
-        new_fn = substitute(self.fn, subs)
+        fn_subs = tuple((self.reals_var_bound, v[self.bint_var])
+                        if k == self.reals_var
+                        else (k, v)
+                        for k, v in subs)
+        new_fn = substitute(self.fn, fn_subs)
         new_fn = new_fn.reduce(ops.add, self.bint_var)
         return new_fn
 
