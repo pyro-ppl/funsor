@@ -255,6 +255,7 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     i_name = gensym("i")
     y_name = gensym("y")
     int_inputs[i_name] = bint(value_y.output.shape[0])
+    loc, scale = torch.broadcast_tensors(loc, scale)
     loc = Tensor(loc, int_inputs)
     scale = Tensor(scale, int_inputs)
     y_dist = Independent(Normal(loc, scale, y_name), y_name, i_name)
@@ -274,6 +275,8 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     info_vec = prec_sqrt.matmul(delta.unsqueeze(-1)).squeeze(-1)
     log_normalizer = (-0.5 * loc.size(-1) * math.log(2 * math.pi)
                       - 0.5 * delta.pow(2).sum(-1) - scale.log().sum(-1))
+    precision = precision.expand(info_vec.shape + (-1,))
+    log_normalizer = log_normalizer.expand(info_vec.shape[:-1])
     inputs = int_inputs.copy()
     x_name = gensym("x")
     inputs[x_name] = value_x.output
