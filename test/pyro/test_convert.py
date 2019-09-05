@@ -72,16 +72,30 @@ def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
     assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
 
 
-@pytest.mark.parametrize("x_size", [1, 2, 3])
-@pytest.mark.parametrize("y_size", [1, 2, 3])
-@pytest.mark.parametrize("shape", EVENT_SHAPES, ids=str)
-def test_affine_normal(shape, x_size, y_size):
-    int_inputs = OrderedDict(zip("abcdef", map(bint, shape)))
-    matrix = random_tensor(int_inputs, reals(x_size, y_size))
-    loc = random_tensor(int_inputs, reals(y_size))
-    scale = random_tensor(int_inputs, reals(y_size)).exp()
-    value_x = random_tensor(int_inputs, reals(x_size))
-    value_y = random_tensor(int_inputs, reals(y_size))
+@pytest.mark.parametrize("x_size", [1, 2])
+@pytest.mark.parametrize("y_size", [1, 3])
+@pytest.mark.parametrize("matrix_shape,loc_shape,scale_shape,x_shape,y_shape", [
+    ((), (), (), (), ()),
+    ((4,), (4,), (4,), (4,), (4,)),
+    ((4, 5), (4, 5), (4, 5), (4, 5), (4, 5)),
+    ((4,), (), (), (), ()),
+    ((), (4,), (), (), ()),
+    ((), (), (4,), (), ()),
+    ((), (), (), (4,), ()),
+    ((), (), (), (), (4,)),
+], ids=str)
+def test_affine_normal(matrix_shape, loc_shape, scale_shape, x_shape, y_shape,
+                       x_size, y_size):
+
+    def _rand(batch_shape, *event_shape):
+        inputs = OrderedDict(zip("abcdef", map(bint, reversed(batch_shape))))
+        return random_tensor(inputs, reals(*event_shape))
+
+    matrix = _rand(matrix_shape, x_size, y_size)
+    loc = _rand(loc_shape, y_size)
+    scale = _rand(scale_shape, y_size).exp()
+    value_x = _rand(x_shape, x_size)
+    value_y = _rand(y_shape, y_size)
 
     f = AffineNormal(matrix, loc, scale,
                      Variable("x", reals(x_size)),
