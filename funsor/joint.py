@@ -1,13 +1,14 @@
 import math
 from collections import OrderedDict
 from functools import reduce
+from typing import Union
 
 import torch
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.cnf import Contraction, GAUSSIAN_MIXTURE, anyop
+from funsor.cnf import Contraction, GaussianMixture, AnyOp
 from funsor.delta import MultiDelta
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
@@ -17,7 +18,7 @@ from funsor.terms import Funsor, Number, Reduce, Unary, eager, moment_matching, 
 from funsor.torch import Tensor, align_tensor
 
 
-@dispatch(str, Variadic[(Gaussian,) + GAUSSIAN_MIXTURE])
+@dispatch(str, Variadic[(Gaussian, GaussianMixture)])
 def eager_cat_homogeneous(name, *parts):
     assert parts
     output = parts[0].output
@@ -41,7 +42,7 @@ def eager_cat_homogeneous(name, *parts):
         if isinstance(part, Gaussian):
             discrete = None
             gaussian = part
-        elif issubclass(type(part), GAUSSIAN_MIXTURE):  # TODO figure out why isinstance isn't working
+        elif issubclass(type(part), GaussianMixture):  # TODO figure out why isinstance isn't working
             discrete, gaussian = part.terms[0], part.terms[1]
             discrete = align_tensor(int_inputs, discrete).expand(shape)
         else:
@@ -133,31 +134,29 @@ def normalize_integrate(log_measure, integrand, reduced_vars):
     return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
 
 
-@normalize.register(Integrate, Contraction, Funsor, frozenset)
+@normalize.register(Integrate,
+                    Contraction[Union[AnyOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple], Funsor, frozenset)
 def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
     delta_terms = [t for t in log_measure.terms if isinstance(t, MultiDelta)
                    and t.fresh.intersection(reduced_vars, integrand.inputs)]
-    if log_measure.bin_op is ops.add and log_measure.red_op in (ops.logaddexp, anyop) and delta_terms:
-        for delta in delta_terms:
-            integrand = integrand(**{name: point for name, (point, log_density) in delta.terms
-                                     if name in reduced_vars.intersection(integrand.inputs)})
+    for delta in delta_terms:
+        integrand = integrand(**{name: point for name, (point, log_density) in delta.terms
+                                 if name in reduced_vars.intersection(integrand.inputs)})
     return normalize_integrate(log_measure, integrand, reduced_vars)
 
 
-@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Unary, Funsor)
+@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset,
+                Unary[ops.ExpOp, Union[MultiDelta, Gaussian, Number, Tensor]], Funsor)
 def eager_contraction_binary(red_op, bin_op, reduced_vars, lhs, rhs):
-    if lhs.op is ops.exp and \
-            isinstance(lhs.arg, (MultiDelta, Gaussian, Number, Tensor)) and \
-            reduced_vars <= lhs.arg.fresh.intersection(rhs.inputs):
+    if reduced_vars <= lhs.arg.fresh.intersection(rhs.inputs):
         return eager.dispatch(Integrate, lhs.arg, rhs, reduced_vars)
     return eager(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
 
 
-@eager.register(Reduce, ops.AddOp, Unary, frozenset)
+@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, MultiDelta]], frozenset)
 def eager_reduce_exp(op, arg, reduced_vars):
-    if arg.op is ops.exp and isinstance(arg.arg, (Gaussian, Tensor, MultiDelta)):
-        # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
-        log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
-        if log_result is not normalize(Reduce, ops.logaddexp, arg.arg, reduced_vars):
-            return log_result.exp()
+    # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
+    log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
+    if log_result is not normalize(Reduce, ops.logaddexp, arg.arg, reduced_vars):
+        return log_result.exp()
     return None

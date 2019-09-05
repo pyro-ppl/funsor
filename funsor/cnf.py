@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from functools import reduce
-from typing import Tuple
+from typing import Tuple, Union
 
 from multipledispatch.variadic import Variadic
 
@@ -168,8 +168,7 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 
 GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
 # TODO define with nested union
-GAUSSIAN_MIXTURE = (Contraction[AssociativeOp, ops.AddOp, frozenset, Tuple[Tensor, Gaussian]],
-                    Contraction[AssociativeOp, ops.AddOp, frozenset, Tuple[Number, Gaussian]])
+GaussianMixture = Contraction[AssociativeOp, ops.AddOp, frozenset, Tuple[Union[Tensor, Number], Gaussian]]
 
 
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
@@ -185,13 +184,13 @@ def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_va
     return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
 
 
-@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GAUSSIAN_MIXTURE, GROUND_TERMS)
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GaussianMixture, GROUND_TERMS)
 def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, other):
     return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
                        reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
 
 
-@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GAUSSIAN_MIXTURE)
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GaussianMixture)
 def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mixture):
     return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
                        reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
@@ -317,21 +316,15 @@ def unary_contract(op, arg):
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
 
 
-@normalize.register(Unary, ops.LogOp, (
-    Contraction[ops.AddOp, AnyOp, frozenset, tuple],
-    Contraction[ops.AddOp, ops.MulOp, frozenset, tuple],
-    Contraction[AnyOp, ops.MulOp, frozenset, tuple]
-))
+@normalize.register(Unary, ops.LogOp,
+                    Contraction[Union[ops.AddOp, AnyOp], Union[ops.MulOp, AnyOp], frozenset, tuple])
 def unary_transform_log(op, arg):
     new_terms = tuple(v.log() for v in arg.terms)
     return Contraction(ops.logaddexp, ops.add, arg.reduced_vars, *new_terms)
 
 
-@normalize.register(Unary, ops.ExpOp, (
-    Contraction[ops.LogAddExpOp, AnyOp, frozenset, tuple],
-    Contraction[ops.LogAddExpOp, ops.AddOp, frozenset, tuple],
-    Contraction[AnyOp, ops.AddOp, frozenset, tuple]
-))
+@normalize.register(Unary, ops.ExpOp,
+                    Contraction[Union[ops.LogAddExpOp, AnyOp], Union[ops.AddOp, AnyOp], frozenset, tuple])
 def unary_transform_exp(op, arg):
     new_terms = tuple(v.exp() for v in arg.terms)
     return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
