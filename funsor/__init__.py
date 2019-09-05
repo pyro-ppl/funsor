@@ -1,7 +1,7 @@
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
-from funsor.terms import Funsor, Independent, Lambda, Number, Variable, of_shape, to_data, to_funsor
+from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.torch import Tensor, arange
 
 from . import (
@@ -20,19 +20,21 @@ from . import (
     minipyro,
     montecarlo,
     ops,
-    pattern,
     sum_product,
     terms,
     torch
 )
 
 __all__ = [
+    'Cat',
     'Domain',
     'Funsor',
     'Independent',
     'Integrate',
     'Lambda',
     'Number',
+    'Slice',
+    'Stack',
     'Tensor',
     'Variable',
     'adjoint',
@@ -55,7 +57,6 @@ __all__ = [
     'montecarlo',
     'of_shape',
     'ops',
-    'pattern',
     'reals',
     'reinterpret',
     'sum_product',

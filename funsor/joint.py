@@ -3,13 +3,15 @@ from collections import OrderedDict
 from functools import reduce
 
 import torch
+from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 import funsor.terms
 from funsor.delta import Delta
-from funsor.domains import reals
-from funsor.gaussian import Gaussian, cholesky_inverse, cholesky_solve
+from funsor.domains import bint, reals
+from funsor.gaussian import Gaussian, align_gaussian, cholesky_inverse, cholesky_solve
 from funsor.integrate import Integrate, integrator
 from funsor.montecarlo import monte_carlo
 from funsor.ops import AddOp, NegOp, SubOp
@@ -27,7 +29,7 @@ from funsor.terms import (
     eager,
     to_funsor
 )
-from funsor.torch import Tensor, arange
+from funsor.torch import Tensor, align_tensor, arange
 
 
 class JointMeta(FunsorMeta):
@@ -258,6 +260,55 @@ def eager_independent(joint, reals_var, bint_var):
             return Joint(deltas, discrete, gaussian)
 
     return None  # defer to default implementation
+
+
+@dispatch(str, Variadic[Gaussian, Joint])
+def eager_cat_homogeneous(name, *parts):
+    assert parts
+    output = parts[0].output
+    inputs = OrderedDict()
+    for part in parts:
+        assert part.output == output
+        assert name in part.inputs
+        inputs.update(part.inputs)
+
+    int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != "real")
+    real_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype == "real")
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+    discretes = []
+    info_vecs = []
+    precisions = []
+    for part in parts:
+        inputs[name] = part.inputs[name]  # typically a smaller bint
+        int_inputs[name] = inputs[name]
+        shape = tuple(d.size for d in int_inputs.values())
+        if isinstance(part, Gaussian):
+            discrete = None
+            gaussian = part
+        elif isinstance(part, Joint):
+            if part.deltas:
+                raise NotImplementedError("TODO")
+            discrete = align_tensor(int_inputs, part.discrete).expand(shape)
+            gaussian = part.gaussian
+        discretes.append(discrete)
+        info_vec, precision = align_gaussian(inputs, gaussian)
+        info_vecs.append(info_vec.expand(shape + (-1,)))
+        precisions.append(precision.expand(shape + (-1, -1)))
+
+    dim = tuple(inputs).index(name)
+    info_vec = torch.cat(info_vecs, dim=dim)
+    precision = torch.cat(precisions, dim=dim)
+    inputs[name] = bint(info_vec.size(dim))
+    int_inputs[name] = inputs[name]
+    result = Gaussian(info_vec, precision, inputs)
+    if any(d is not None for d in discretes):
+        for i, d in enumerate(discretes):
+            if d is None:
+                discretes[i] = info_vecs[i].new_zeros(info_vecs[i].shape[:-1])
+        discrete = torch.cat(discretes, dim=dim)
+        result += Tensor(discrete, int_inputs)
+    return result
 
 
 ################################################################################

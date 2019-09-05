@@ -1,14 +1,8 @@
 from collections import OrderedDict, defaultdict
 from functools import reduce
 
-import torch
-
-from funsor.domains import bint
-from funsor.gaussian import Gaussian, align_gaussian
-from funsor.joint import Joint
 from funsor.ops import UNITS, AssociativeOp
-from funsor.terms import Funsor, Number
-from funsor.torch import Tensor, align_tensor
+from funsor.terms import Cat, Funsor, Number, Slice
 
 
 def _partition(terms, sum_vars):
@@ -101,98 +95,6 @@ def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozense
     return reduce(prod_op, factors, Number(UNITS[prod_op]))
 
 
-# TODO Promote this to a first class funsor and move this logic
-# into eager_cat for Tensor.
-def Cat(parts, name):
-    if len(parts) == 1:
-        return parts[0]
-    if len(set(part.output for part in parts)) > 1:
-        raise NotImplementedError("TODO")
-    inputs = OrderedDict()
-    for x in parts:
-        inputs.update(x.inputs)
-
-    if all(isinstance(part, Tensor) for part in parts):
-        tensors = []
-        for part in parts:
-            inputs[name] = part.inputs[name]  # typically a smaller bint
-            shape = tuple(d.size for d in inputs.values())
-            tensors.append(align_tensor(inputs, part).expand(shape))
-
-        dim = tuple(inputs).index(name)
-        tensor = torch.cat(tensors, dim=dim)
-        inputs[name] = bint(tensor.size(dim))
-        return Tensor(tensor, inputs, dtype=parts[0].dtype)
-
-    if all(isinstance(part, (Gaussian, Joint)) for part in parts):
-        int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != "real")
-        real_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype == "real")
-        inputs = int_inputs.copy()
-        inputs.update(real_inputs)
-        discretes = []
-        info_vecs = []
-        precisions = []
-        for part in parts:
-            inputs[name] = part.inputs[name]  # typically a smaller bint
-            int_inputs[name] = inputs[name]
-            shape = tuple(d.size for d in int_inputs.values())
-            if isinstance(part, Gaussian):
-                discrete = None
-                gaussian = part
-            elif isinstance(part, Joint):
-                if part.deltas:
-                    raise NotImplementedError("TODO")
-                discrete = align_tensor(int_inputs, part.discrete).expand(shape)
-                gaussian = part.gaussian
-            discretes.append(discrete)
-            info_vec, precision = align_gaussian(inputs, gaussian)
-            info_vecs.append(info_vec.expand(shape + (-1,)))
-            precisions.append(precision.expand(shape + (-1, -1)))
-
-        dim = tuple(inputs).index(name)
-        info_vec = torch.cat(info_vecs, dim=dim)
-        precision = torch.cat(precisions, dim=dim)
-        inputs[name] = bint(info_vec.size(dim))
-        int_inputs[name] = inputs[name]
-        result = Gaussian(info_vec, precision, inputs)
-        if any(d is not None for d in discretes):
-            for i, d in enumerate(discretes):
-                if d is None:
-                    discretes[i] = info_vecs[i].new_zeros(info_vecs[i].shape[:-1])
-            discrete = torch.cat(discretes, dim=dim)
-            result += Tensor(discrete, int_inputs)
-        return result
-
-    raise NotImplementedError("TODO")
-
-
-# TODO Promote this to a first class funsor, enabling zero-copy slicing.
-def Slice(name, *args):
-    start = 0
-    step = 1
-    bound = None
-    if len(args) == 1:
-        stop = args[0]
-        bound = stop
-    elif len(args) == 2:
-        start, stop = args
-        bound = stop
-    elif len(args) == 3:
-        start, stop, step = args
-        bound = stop
-    elif len(args) == 4:
-        start, stop, step, bound = args
-    else:
-        raise ValueError
-    if step <= 0:
-        raise ValueError
-    # FIXME triggers tensor op
-    # TODO move this logic up into funsor.torch.arange?
-    data = torch.arange(start, stop, step)
-    inputs = OrderedDict([(name, bint(len(data)))])
-    return Tensor(data, inputs, dtype=bound)
-
-
 def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
@@ -266,6 +168,6 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
         contracted = prod_op(x, y).reduce(sum_op, drop)
         if duration > even_duration:
             extra = trans(**{time: Slice(time, duration - 1, duration)})
-            contracted = Cat((contracted, extra), time)
+            contracted = Cat(time, (contracted, extra))
         trans = contracted
     return trans(**{time: 0})
