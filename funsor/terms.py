@@ -114,6 +114,24 @@ def eager(cls, *args):
 
 
 @dispatched_interpretation
+def eager_or_die(cls, *args):
+    """
+    Eagerly execute ops with known implementations.
+    Disallows lazy :class:`Subs` , :class:`Unary` , :class:`Binary` , and
+    :class:`Reduce` .
+
+    :raises: :py:class:`NotImplementedError` no pattern is found.
+    """
+    result = eager.dispatch(cls, *args)
+    if result is None:
+        if cls in (Subs, Unary, Binary, Reduce):
+            raise NotImplementedError("Missing pattern for {}({})".format(
+                cls.__name__, ", ".join(map(str, args))))
+        result = reflect(cls, *args)
+    return result
+
+
+@dispatched_interpretation
 def sequential(cls, *args):
     """
     Eagerly execute ops with known implementations; additonally execute
@@ -851,13 +869,6 @@ def eager_unary(op, arg):
     return interpreter.debug_logged(arg.eager_unary)(op)
 
 
-@eager.register(Unary, AssociativeOp, Funsor)
-def eager_unary(op, arg):
-    if not arg.output.shape:
-        return arg
-    return interpreter.debug_logged(arg.eager_unary)(op)
-
-
 _INFIX = {
     ops.add: '+',
     ops.sub: '-',
@@ -1417,6 +1428,7 @@ __all__ = [
     'Unary',
     'Variable',
     'eager',
+    'eager_or_die',
     'lazy',
     'moment_matching',
     'of_shape',
