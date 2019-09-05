@@ -51,6 +51,7 @@ def test_optimized_einsum(equation, backend, einsum_impl):
 
 
 @pytest.mark.parametrize("eqn1,eqn2", [
+    ("a,ab->b", "bc->"),
     ("ab,bc,cd->d", "de,ef,fg->"),
 ])
 @pytest.mark.parametrize("optimize1", [False, True])

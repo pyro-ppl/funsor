@@ -198,7 +198,6 @@ def test_reduce_all(op, use_normalize):
     assert actual == expected
 
 
-@pytest.mark.parametrize('use_normalize', [True, False])
 @pytest.mark.parametrize('reduced_vars', [
     reduced_vars
     for num_reduced in range(3 + 1)
@@ -206,7 +205,7 @@ def test_reduce_all(op, use_normalize):
 ])
 @pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
                          ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
-def test_reduce_subset(op, reduced_vars, use_normalize):
+def test_reduce_subset(op, reduced_vars):
     reduced_vars = frozenset(reduced_vars)
     x = Variable('x', bint(2))
     y = Variable('y', bint(3))
@@ -219,8 +218,6 @@ def test_reduce_subset(op, reduced_vars, use_normalize):
 
     with interpretation(sequential):
         actual = f.reduce(op, reduced_vars)
-
-    with interpretation(eager if use_normalize else sequential):
         expected = f
         for v in [x, y, z]:
             if v.name in reduced_vars:
