@@ -66,7 +66,7 @@ def cholesky_inverse(u):
     """
     Like :func:`torch.cholesky_inverse` but supports batching and gradients.
     """
-    if u.dim() == 2:
+    if u.dim() == 2 and not u.requires_grad:
         return u.cholesky_inverse()
     return cholesky_solve(torch.eye(u.size(-1)).expand(u.size()), u)
 
