@@ -23,6 +23,7 @@ def substitute(expr, subs):
     if isinstance(subs, (dict, OrderedDict)):
         subs = tuple(subs.items())
     assert isinstance(subs, tuple)
+    assert all(isinstance(v, Funsor) for k, v in subs)
 
     @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
     def subs_interpreter(cls, *args):
@@ -48,7 +49,7 @@ def _alpha_mangle(expr):
         return expr
 
     ast_values = expr._alpha_convert(alpha_subs)
-    return reflect(type(expr), *ast_values, alpha_mangle=False)
+    return reflect(type(expr), *ast_values)
 
 
 def reflect(cls, *args, **kwargs):
@@ -69,8 +70,7 @@ def reflect(cls, *args, **kwargs):
     result._ast_values = args
 
     # alpha-convert eagerly upon binding any variable
-    if kwargs.pop("alpha_mangle", True):
-        result = _alpha_mangle(result)
+    result = _alpha_mangle(result)
 
     cls._cons_cache[cache_key] = result
     return result
@@ -779,8 +779,7 @@ class Variable(Funsor):
 
     def eager_subs(self, subs):
         assert len(subs) == 1 and subs[0][0] == self.name
-        v = subs[0][1]
-        return v if isinstance(v, Funsor) else to_funsor(v, self.output)
+        return subs[0][1]
 
 
 @dispatch(str, Domain)
@@ -814,8 +813,10 @@ class Subs(Funsor):
         return 'Subs({}, {})'.format(self.arg, self.subs)
 
     def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.subs[k].output)
+                      for k, v in alpha_subs.items()}
         arg, subs = super()._alpha_convert(alpha_subs)
-        subs = tuple((alpha_subs.get(k, k), v) for k, v in subs)
+        subs = tuple((str(alpha_subs.get(k, k)), v) for k, v in subs)
         return arg, subs
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
@@ -949,8 +950,10 @@ class Reduce(Funsor):
             self.op.__name__, self.arg, self.reduced_vars)
 
     def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.arg.inputs[k])
+                      for k, v in alpha_subs.items()}
         op, arg, reduced_vars = super()._alpha_convert(alpha_subs)
-        reduced_vars = frozenset(alpha_subs.get(k, k) for k in reduced_vars)
+        reduced_vars = frozenset(str(alpha_subs.get(k, k)) for k in reduced_vars)
         return op, arg, reduced_vars
 
     def eager_reduce(self, op, reduced_vars):
@@ -1304,6 +1307,11 @@ class Lambda(Funsor):
         self.var = var
         self.expr = expr
 
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.var.inputs[k])
+                      for k, v in alpha_subs.items()}
+        return super()._alpha_convert(alpha_subs)
+
 
 @eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
 def eager_getitem_lambda(op, lhs, rhs):
@@ -1353,9 +1361,11 @@ class Independent(Funsor):
         self.diag_var = diag_var
 
     def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.fn.inputs[k])
+                      for k, v in alpha_subs.items()}
         fn, reals_var, bint_var, diag_var = super()._alpha_convert(alpha_subs)
-        bint_var = alpha_subs.get(bint_var, bint_var)
-        diag_var = alpha_subs.get(diag_var, diag_var)
+        bint_var = str(alpha_subs.get(bint_var, bint_var))
+        diag_var = str(alpha_subs.get(diag_var, diag_var))
         return fn, reals_var, bint_var, diag_var
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
@@ -1368,7 +1378,7 @@ class Independent(Funsor):
 
     def eager_subs(self, subs):
         assert len(subs) == 1 and subs[0][0] == self.reals_var
-        value = to_funsor(subs[0][1], self.inputs[self.reals_var])
+        value = subs[0][1]
 
         # Handle simple renaming to preserve Independent.
         if isinstance(value, Variable):

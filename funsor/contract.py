@@ -3,7 +3,7 @@ from collections import OrderedDict
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.terms import Funsor, eager
+from funsor.terms import Funsor, eager, to_funsor
 
 
 def _simplify_contract(fn, sum_op, prod_op, lhs, rhs, reduced_vars):
@@ -60,8 +60,10 @@ class Contract(Funsor):
         self.reduced_vars = reduced_vars
 
     def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.lhs.inputs.get(k, self.rhs.inputs.get(k)))
+                      for k, v in alpha_subs.items()}
         sum_op, prod_op, lhs, rhs, reduced_vars = super()._alpha_convert(alpha_subs)
-        reduced_vars = frozenset(alpha_subs.get(k, k) for k in reduced_vars)
+        reduced_vars = frozenset(str(alpha_subs.get(k, k)) for k in reduced_vars)
         return sum_op, prod_op, lhs, rhs, reduced_vars
 
 
