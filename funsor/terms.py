@@ -36,38 +36,22 @@ def substitute(expr, subs):
         return interpreter.reinterpret(expr)
 
 
-def alpha_substitute(expr, alpha_subs):
+def _alpha_mangle(expr):
+    """
+    Rename bound variables in expr to avoid conflict with any free variables.
 
-    new_values = []
-    for v in expr._ast_values:
-        v = substitute(v, alpha_subs)
-        if isinstance(v, str) and v not in expr.fresh:
-            v = alpha_subs.get(v, v)
-        elif isinstance(v, frozenset):
-            swapped = v & frozenset(alpha_subs.keys())
-            v |= frozenset(alpha_subs[k] for k in swapped)
-            v -= swapped
-        elif isinstance(v, tuple) and isinstance(v[0], tuple) and len(v[0]) == 2 and \
-                isinstance(v[0][0], str) and isinstance(v[0][1], Funsor):
-            v = tuple((alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v)
-        elif isinstance(v, OrderedDict):  # XXX is this case ever actually triggered?
-            v = OrderedDict([(alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v.items()])
-        new_values.append(v)
-
-    return tuple(new_values)
-
-
-def alpha_convert(expr):
+    FIXME this does not avoid conflict with other bound variables.
+    """
     alpha_subs = {name: interpreter.gensym(name + "__BOUND")
                   for name in expr.bound if "__BOUND" not in name}
     if not alpha_subs:
         return expr
 
-    new_values = alpha_substitute(expr, alpha_subs)
-    return reflect(type(expr), *new_values)
+    ast_values = expr._alpha_convert(alpha_subs)
+    return reflect(type(expr), *ast_values, alpha_mangle=False)
 
 
-def reflect(cls, *args):
+def reflect(cls, *args, **kwargs):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
     This is the only interpretation allowed to construct funsors.
@@ -85,7 +69,8 @@ def reflect(cls, *args):
     result._ast_values = args
 
     # alpha-convert eagerly upon binding any variable
-    result = alpha_convert(result)
+    if kwargs.pop("alpha_mangle", True):
+        result = _alpha_mangle(result)
 
     cls._cons_cache[cache_key] = result
     return result
@@ -327,6 +312,26 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def __contains__(self, item):
         raise TypeError
+
+    def _alpha_convert(self, alpha_subs):
+        """
+        Rename bound variables while preserving all free variables.
+        """
+        ast_values = []
+        for v in self._ast_values:
+            v = substitute(v, alpha_subs)
+            if isinstance(v, str) and v not in self.fresh:
+                v = alpha_subs.get(v, v)
+            elif isinstance(v, frozenset):
+                swapped = v & frozenset(alpha_subs.keys())
+                v |= frozenset(alpha_subs[k] for k in swapped)
+                v -= swapped
+            elif isinstance(v, tuple) and isinstance(v[0], tuple) and len(v[0]) == 2 and \
+                    isinstance(v[0][0], str) and isinstance(v[0][1], Funsor):
+                v = tuple((alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v)
+            ast_values.append(v)
+
+        return tuple(ast_values)
 
     def __call__(self, *args, **kwargs):
         """
