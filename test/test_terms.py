@@ -307,6 +307,11 @@ def test_independent():
     assert isinstance(renamed, Independent)
     assert_close(renamed(y=data), expected(x=data), atol=1e-5, rtol=1e-5)
 
+    # Ensure it's ok for .reals_var and .diag_var to be the same.
+    renamed = actual(x='x_i')
+    assert isinstance(renamed, Independent)
+    assert_close(renamed(x_i=data), expected(x=data), atol=1e-5, rtol=1e-5)
+
 
 def test_stack_simple():
     x = Number(0.)
