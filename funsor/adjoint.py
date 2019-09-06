@@ -8,17 +8,17 @@ from funsor.contract import Contract
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Funsor, Reduce, Variable, alpha_substitute, lazy, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Variable, lazy, to_funsor
 from funsor.torch import Tensor
 
 
-def _alpha_deconvert(expr):
+def _alpha_unmangle(expr):
     alpha_subs = {name: name.split("__BOUND")[0]
                   for name in expr.bound if "__BOUND" in name}
     if not alpha_subs:
         return tuple(expr._ast_values)
 
-    return alpha_substitute(expr, alpha_subs)
+    return expr._alpha_convert(alpha_subs)
 
 
 class AdjointTape(object):
@@ -63,8 +63,8 @@ class AdjointTape(object):
             # reverse the effects of alpha-renaming
             with interpretation(lazy):
                 other_subs = {name: name.split("__BOUND")[0] for name in output.inputs if "__BOUND" in name}
-                inputs = _alpha_deconvert(fn(*inputs)(**other_subs))
-                output = type(output)(*_alpha_deconvert(output(**other_subs)))
+                inputs = _alpha_unmangle(fn(*inputs)(**other_subs))
+                output = type(output)(*_alpha_unmangle(output(**other_subs)))
 
             in_adjs = adjoint_ops(fn, red_op, bin_op, adjoint_values[output], *inputs)
             for v, adjv in in_adjs.items():

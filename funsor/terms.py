@@ -23,6 +23,7 @@ def substitute(expr, subs):
     if isinstance(subs, (dict, OrderedDict)):
         subs = tuple(subs.items())
     assert isinstance(subs, tuple)
+    assert all(isinstance(v, Funsor) for k, v in subs)
 
     @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
     def subs_interpreter(cls, *args):
@@ -36,38 +37,22 @@ def substitute(expr, subs):
         return interpreter.reinterpret(expr)
 
 
-def alpha_substitute(expr, alpha_subs):
+def _alpha_mangle(expr):
+    """
+    Rename bound variables in expr to avoid conflict with any free variables.
 
-    new_values = []
-    for v in expr._ast_values:
-        v = substitute(v, alpha_subs)
-        if isinstance(v, str) and v not in expr.fresh:
-            v = alpha_subs.get(v, v)
-        elif isinstance(v, frozenset):
-            swapped = v & frozenset(alpha_subs.keys())
-            v |= frozenset(alpha_subs[k] for k in swapped)
-            v -= swapped
-        elif isinstance(v, tuple) and isinstance(v[0], tuple) and len(v[0]) == 2 and \
-                isinstance(v[0][0], str) and isinstance(v[0][1], Funsor):
-            v = tuple((alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v)
-        elif isinstance(v, OrderedDict):  # XXX is this case ever actually triggered?
-            v = OrderedDict([(alpha_subs[k] if k in alpha_subs else k, vv) for k, vv in v.items()])
-        new_values.append(v)
-
-    return tuple(new_values)
-
-
-def alpha_convert(expr):
+    FIXME this does not avoid conflict with other bound variables.
+    """
     alpha_subs = {name: interpreter.gensym(name + "__BOUND")
                   for name in expr.bound if "__BOUND" not in name}
     if not alpha_subs:
         return expr
 
-    new_values = alpha_substitute(expr, alpha_subs)
-    return reflect(type(expr), *new_values)
+    ast_values = expr._alpha_convert(alpha_subs)
+    return reflect(type(expr), *ast_values)
 
 
-def reflect(cls, *args):
+def reflect(cls, *args, **kwargs):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
     This is the only interpretation allowed to construct funsors.
@@ -85,7 +70,7 @@ def reflect(cls, *args):
     result._ast_values = args
 
     # alpha-convert eagerly upon binding any variable
-    result = alpha_convert(result)
+    result = _alpha_mangle(result)
 
     cls._cons_cache[cache_key] = result
     return result
@@ -327,6 +312,15 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def __contains__(self, item):
         raise TypeError
+
+    def _alpha_convert(self, alpha_subs):
+        """
+        Rename bound variables while preserving all free variables.
+        """
+        # Substitute all funsor values.
+        # Subclasses must handle string conversion.
+        assert self.bound.issuperset(alpha_subs)
+        return tuple(substitute(v, alpha_subs) for v in self._ast_values)
 
     def __call__(self, *args, **kwargs):
         """
@@ -786,8 +780,7 @@ class Variable(Funsor):
 
     def eager_subs(self, subs):
         assert len(subs) == 1 and subs[0][0] == self.name
-        v = subs[0][1]
-        return v if isinstance(v, Funsor) else to_funsor(v, self.output)
+        return subs[0][1]
 
 
 @dispatch(str, Domain)
@@ -819,6 +812,13 @@ class Subs(Funsor):
 
     def __repr__(self):
         return 'Subs({}, {})'.format(self.arg, self.subs)
+
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.subs[k].output)
+                      for k, v in alpha_subs.items()}
+        arg, subs = super()._alpha_convert(alpha_subs)
+        subs = tuple((str(alpha_subs.get(k, k)), v) for k, v in subs)
+        return arg, subs
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if any(k in sample_inputs for k, v in self.subs.items()):
@@ -949,6 +949,13 @@ class Reduce(Funsor):
     def __repr__(self):
         return 'Reduce({}, {}, {})'.format(
             self.op.__name__, self.arg, self.reduced_vars)
+
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.arg.inputs[k])
+                      for k, v in alpha_subs.items()}
+        op, arg, reduced_vars = super()._alpha_convert(alpha_subs)
+        reduced_vars = frozenset(str(alpha_subs.get(k, k)) for k in reduced_vars)
+        return op, arg, reduced_vars
 
     def eager_reduce(self, op, reduced_vars):
         if op is self.op:
@@ -1301,6 +1308,11 @@ class Lambda(Funsor):
         self.var = var
         self.expr = expr
 
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.var.inputs[k])
+                      for k, v in alpha_subs.items()}
+        return super()._alpha_convert(alpha_subs)
+
 
 @eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
 def eager_getitem_lambda(op, lhs, rhs):
@@ -1350,6 +1362,13 @@ class Independent(Funsor):
         self.bint_var = bint_var
         self.reals_var_bound = reals_var_bound
 
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.fn.inputs[k])
+                      for k, v in alpha_subs.items()}
+        fn, reals_var, bint_var = super()._alpha_convert(alpha_subs)
+        bint_var = str(alpha_subs.get(bint_var, bint_var))
+        return fn, reals_var, bint_var
+
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
             raise NotImplementedError('TODO alpha-convert')
@@ -1359,8 +1378,7 @@ class Independent(Funsor):
         return Independent(fn, self.reals_var, self.bint_var)
 
     def eager_subs(self, subs):
-        subs = tuple((self.reals_var_bound,
-                      to_funsor(v, self.inputs[k])[self.bint_var])
+        subs = tuple((self.reals_var_bound, v[self.bint_var])
                      if k == self.reals_var
                      else (k, v)
                      for k, v in subs)
