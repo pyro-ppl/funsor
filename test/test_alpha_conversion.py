@@ -72,17 +72,18 @@ def test_slice_lambda():
 
 
 def test_subs_independent():
-    f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    f = Variable('x_i', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
 
-    actual = Independent(f, 'x', 'i')
+    actual = Independent(f, 'x', 'i', 'x_i')
     assert 'i' not in actual.inputs
+    assert 'x_i' not in actual.inputs
 
     y = Variable('y', reals(3, 4, 5))
     fsub = y + (0. * random_tensor(OrderedDict(i=bint(7))))
     actual = actual(x=fsub)
     assert actual.inputs['i'] == bint(7)
 
-    expected = f(x=y['i']).reduce(ops.add, 'i')
+    expected = f(x_i=y['i']).reduce(ops.add, 'i')
 
     data = random_tensor(OrderedDict(i=bint(7)), y.output)
     assert_close(actual(y=data), expected(y=data))
@@ -90,7 +91,7 @@ def test_subs_independent():
 
 @pytest.mark.xfail(reason="Independent not quite compatible with sample")
 def test_sample_independent():
-    f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
-    actual = Independent(f, 'x', 'i')
+    f = Variable('x_i', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    actual = Independent(f, 'x', 'i', 'x_i')
     assert actual.sample('i')
     assert actual.sample('j', {'i': 2})

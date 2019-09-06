@@ -1207,7 +1207,7 @@ class Stack(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple) and len(subs) == 1 and subs[0][0] == self.name
-        index = subs[0][1]
+        index = to_funsor(subs[0][1], self.inputs[self.name])
 
         # Try to eagerly select an index.
         assert index.output == bint(len(self.parts))
@@ -1316,63 +1316,65 @@ class Independent(Funsor):
 
     This is equivalent to substitution followed by reduction::
 
-        f = ...
-        assert f.inputs['x'] == reals(4, 5)
+        f = ...  # a batched distribution
+        assert f.inputs['x_i'] == reals(4, 5)
         assert f.inputs['i'] == bint(3)
 
-        g = Independent(f, 'x', 'i')
+        g = Independent(f, 'x', 'i', 'x_i')
         assert g.inputs['x'] == reals(3, 4, 5)
+        assert 'x_i' not in g.inputs
         assert 'i' not in g.inputs
 
         x = Variable('x', reals(3, 4, 5))
-        g == f(x=x['i']).reduce(ops.logaddexp, 'i')
+        g == f(x_i=x['i']).reduce(ops.logaddexp, 'i')
     """
-    def __init__(self, fn, reals_var, bint_var):
+    def __init__(self, fn, reals_var, bint_var, diag_var):
         assert isinstance(fn, Funsor)
         assert isinstance(reals_var, str)
-        for k in fn.inputs:
-            if k == reals_var or k.startswith(reals_var + "__BOUND"):
-                reals_var_bound = k
-                break
-        assert reals_var_bound in fn.inputs
-        assert fn.inputs[reals_var_bound].dtype == 'real'
         assert isinstance(bint_var, str)
         assert bint_var in fn.inputs
         assert isinstance(fn.inputs[bint_var].dtype, int)
+        assert isinstance(diag_var, str)
+        assert diag_var in fn.inputs
+        assert fn.inputs[diag_var].dtype == 'real'
         inputs = fn.inputs.copy()
-        shape = (inputs.pop(bint_var).dtype,) + inputs.pop(reals_var_bound).shape
+        shape = (inputs.pop(bint_var).dtype,) + inputs.pop(diag_var).shape
+        assert reals_var not in inputs
         inputs[reals_var] = reals(*shape)
         fresh = frozenset({reals_var})
-        bound = frozenset({bint_var, reals_var_bound})
+        bound = frozenset({bint_var, diag_var})
         super(Independent, self).__init__(inputs, fn.output, fresh, bound)
         self.fn = fn
         self.reals_var = reals_var
         self.bint_var = bint_var
-        self.reals_var_bound = reals_var_bound
+        self.diag_var = diag_var
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
             raise NotImplementedError('TODO alpha-convert')
-        sampled_vars = frozenset(self.reals_var_bound if v == self.reals_var else v
+        sampled_vars = frozenset(self.diag_var if v == self.reals_var else v
                                  for v in sampled_vars)
         fn = self.fn.unscaled_sample(sampled_vars, sample_inputs)
-        return Independent(fn, self.reals_var, self.bint_var)
+        return Independent(fn, self.reals_var, self.bint_var, self.diag_var)
 
     def eager_subs(self, subs):
-        subs = tuple((self.reals_var_bound,
-                      to_funsor(v, self.inputs[k])[self.bint_var])
-                     if k == self.reals_var
-                     else (k, v)
-                     for k, v in subs)
-        new_fn = substitute(self.fn, subs)
-        new_fn = new_fn.reduce(ops.add, self.bint_var)
-        return new_fn
+        assert len(subs) == 1 and subs[0][0] == self.reals_var
+        value = to_funsor(subs[0][1], self.inputs[self.reals_var])
+
+        # Handle simple renaming to preserve Independent.
+        if isinstance(value, Variable):
+            return Independent(self.fn, value.name, self.bint_var, self.diag_var)
+
+        # Otherwise convert to a Reduce.
+        result = Subs(self.fn, ((self.diag_var, value[self.bint_var]),))
+        result = result.reduce(ops.add, self.bint_var)
+        return result
 
 
-@eager.register(Independent, Funsor, str, str)
-def eager_independent_trivial(fn, reals_var, bint_var):
+@eager.register(Independent, Funsor, str, str, str)
+def eager_independent_trivial(fn, reals_var, bint_var, diag_var):
     # compare to Independent.eager_subs
-    if not any(k.startswith(reals_var + "__BOUND") or k == reals_var for k in fn.inputs):
+    if diag_var not in fn.inputs:
         return fn.reduce(ops.add, bint_var)
     return None
 

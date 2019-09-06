@@ -245,11 +245,11 @@ def eager_joint(deltas, discrete, gaussian):
     return None  # defer to default implementation
 
 
-@eager.register(Independent, Joint, str, str)
-def eager_independent(joint, reals_var, bint_var):
+@eager.register(Independent, Joint, str, str, str)
+def eager_independent(joint, reals_var, bint_var, diag_var):
     for i, delta in enumerate(joint.deltas):
-        if delta.name == reals_var or delta.name.startswith(reals_var + "__BOUND"):
-            delta = Independent(delta, reals_var, bint_var)
+        if delta.name == diag_var:
+            delta = Independent(delta, reals_var, bint_var, diag_var)
             deltas = joint.deltas[:i] + (delta,) + joint.deltas[1+i:]
             discrete = joint.discrete
             if bint_var in discrete.inputs:

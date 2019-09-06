@@ -56,8 +56,8 @@ def main(args):
         # Lazily sample from the guide.
         loc, scale = encode(data)
         q = funsor.Independent(
-            dist.Normal(loc['i'], scale['i'], value='z'),
-            'z', 'i')
+            dist.Normal(loc['i'], scale['i'], value='z_i'),
+            'z', 'i', 'z_i')
 
         # Evaluate the model likelihood at the lazy value z.
         probs = decode('z')

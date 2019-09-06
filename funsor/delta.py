@@ -122,9 +122,9 @@ eager.register(Binary, AddOp, Reduce, Delta)(
     funsor.terms.eager_distribute_reduce_other)
 
 
-@eager.register(Independent, Delta, str, str)
-def eager_independent(delta, reals_var, bint_var):
-    if delta.name == reals_var or delta.name.startswith(reals_var + "__BOUND"):
+@eager.register(Independent, Delta, str, str, str)
+def eager_independent(delta, reals_var, bint_var, diag_var):
+    if delta.name == diag_var:
         i = Variable(bint_var, delta.inputs[bint_var])
         point = Lambda(i, delta.point)
         if bint_var in delta.log_density.inputs:
