@@ -1214,7 +1214,7 @@ class Stack(Funsor):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple) and len(subs) == 1 and subs[0][0] == self.name
-        index = to_funsor(subs[0][1], self.inputs[self.name])
+        index = subs[0][1]
 
         # Try to eagerly select an index.
         assert index.output == bint(len(self.parts))
