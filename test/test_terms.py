@@ -66,6 +66,7 @@ def test_cons_hash():
     assert Slice('x', 10) is Slice('x', 10)
     assert Slice('x', 10) is Slice('x', 0, 10)
     assert Slice('x', 10, 10) is not Slice('x', 0, 10)
+    assert Slice('x', 2, 10, 1) is Slice('x', 2, 10)
 
 
 @pytest.mark.parametrize('expr', [
@@ -262,6 +263,20 @@ def test_reduce_syntactic_sugar():
     assert x.reduce(ops.add, "i") is expected
     assert x.reduce(ops.add, {"i"}) is expected
     assert x.reduce(ops.add, frozenset(["i"])) is expected
+
+
+def test_slice():
+    t_slice = Slice("t", 10)
+
+    s_slice = t_slice(t="s")
+    assert isinstance(s_slice, Slice)
+    assert s_slice.slice == t_slice.slice
+    assert s_slice(s="t") is t_slice
+
+    assert t_slice(t=0) is Number(0, 10)
+    assert t_slice(t=1) is Number(1, 10)
+    assert t_slice(t=2) is Number(2, 10)
+    assert t_slice(t=t_slice) is t_slice
 
 
 @pytest.mark.parametrize('base_shape', [(), (4,), (3, 2)], ids=str)
