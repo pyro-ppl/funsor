@@ -1236,6 +1236,16 @@ class Stack(Funsor):
         return Stack(self.name, parts)
 
 
+@eager.register(Stack, str, tuple)
+def eager_stack(name, parts):
+    return eager_stack_homogeneous(name, *parts)
+
+
+@dispatch(str, Variadic[Funsor])
+def eager_stack_homogeneous(name, *parts):
+    return None  # defer to default implementation
+
+
 class Cat(Funsor):
     """
     Concatenate funsors along an existing input dimension.

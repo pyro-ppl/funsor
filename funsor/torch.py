@@ -511,6 +511,24 @@ def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
 
 
 @dispatch(str, Variadic[Tensor])
+def eager_stack_homogeneous(name, *parts):
+    assert parts
+    output = parts[0].output
+    part_inputs = OrderedDict()
+    for part in parts:
+        assert part.output == output
+        assert name not in part.inputs
+        part_inputs.update(part.inputs)
+
+    shape = tuple(d.size for d in part_inputs.values()) + output.shape
+    data = torch.stack([align_tensor(part_inputs, part).expand(shape)
+                        for part in parts])
+    inputs = OrderedDict([(name, bint(len(parts)))])
+    inputs.update(part_inputs)
+    return Tensor(data, inputs, dtype=output.dtype)
+
+
+@dispatch(str, Variadic[Tensor])
 def eager_cat_homogeneous(name, *parts):
     assert parts
     output = parts[0].output
