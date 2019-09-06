@@ -59,6 +59,11 @@ class Contract(Funsor):
         self.rhs = rhs
         self.reduced_vars = reduced_vars
 
+    def _alpha_convert(self, alpha_subs):
+        sum_op, prod_op, lhs, rhs, reduced_vars = super()._alpha_convert(alpha_subs)
+        reduced_vars = frozenset(alpha_subs.get(k, k) for k in reduced_vars)
+        return sum_op, prod_op, lhs, rhs, reduced_vars
+
 
 @eager.register(Contract, ops.AssociativeOp, ops.AssociativeOp, Funsor, Funsor, frozenset)
 @contractor
