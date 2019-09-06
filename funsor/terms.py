@@ -1113,6 +1113,7 @@ class SliceMeta(FunsorMeta):
             raise ValueError
         if step <= 0:
             raise ValueError
+        stop = min(dtype, max(start, stop))
         return super().__call__(name, start, stop, step, dtype)
 
 
@@ -1122,17 +1123,38 @@ class Slice(Funsor, metaclass=SliceMeta):
     """
     def __init__(self, name, start, stop, step, dtype):
         assert isinstance(name, str)
-        assert start is None or isinstance(start, int)
-        assert stop is None or isinstance(stop, int)
-        assert step is None or isinstance(step, int)
+        assert isinstance(start, int) and start >= 0
+        assert isinstance(stop, int) and stop >= start
+        assert isinstance(step, int) and step > 0
         assert isinstance(dtype, int)
         size = max(0, (stop + step - 1 - start) // step)
         inputs = OrderedDict([(name, bint(size))])
         output = bint(dtype)
-        fresh = frozenset({"name"})
+        fresh = frozenset({name})
         super().__init__(inputs, output, fresh)
         self.name = name
         self.slice = slice(start, stop, step)
+
+    def eager_subs(self, subs):
+        assert len(subs) == 1 and subs[0][0] == self.name
+        index = subs[0][1]
+
+        if isinstance(index, Variable):
+            name = index.name
+            return Slice(name, self.slice.start, self.slice.stop, self.slice.step)
+        elif isinstance(index, Number):
+            data = self.slice.start + self.slice.step * index.data
+            return Number(data, self.output.dtype)
+        elif type(index).__name__ == "Tensor":  # avoid importing funsor.torch.Tensor
+            data = self.slice.start + self.slice.step * index.data
+            return type(index)(data, index.inputs, self.output.dtype)
+        elif isinstance(index, Slice):
+            name = index.name
+            start = self.slice.start + self.slice.step * index.slice.start
+            step = self.slice.step * index.slice.step
+            return Slice(name, start, self.slice.stop, step)
+        else:
+            raise NotImplementedError('TODO support substitution of {} into Slice'.format(type(index)))
 
 
 class Align(Funsor):

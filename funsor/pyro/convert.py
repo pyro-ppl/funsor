@@ -233,6 +233,9 @@ class AffineNormal(Funsor):
     :param ~funsor.terms.Funsor value_y: A value ``Y``.
     """
     def __init__(self, matrix, loc, scale, value_x, value_y):
+        assert len(matrix.output.shape) == 2
+        assert value_x.output == reals(matrix.output.shape[0])
+        assert value_y.output == reals(matrix.output.shape[1])
         inputs = OrderedDict()
         for f in (matrix, loc, scale, value_x, value_y):
             inputs.update(f.inputs)
@@ -247,6 +250,9 @@ class AffineNormal(Funsor):
 
 @eager.register(AffineNormal, Tensor, Tensor, Tensor, Tensor, (Funsor, Tensor))
 def eager_affine_normal(matrix, loc, scale, value_x, value_y):
+    assert len(matrix.output.shape) == 2
+    assert value_x.output == reals(matrix.output.shape[0])
+    assert value_y.output == reals(matrix.output.shape[1])
     tensors = (matrix, loc, scale, value_x)
     int_inputs, tensors = align_tensors(*tensors)
     matrix, loc, scale, value_x = tensors
@@ -265,6 +271,9 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
 
 @eager.register(AffineNormal, Tensor, Tensor, Tensor, Funsor, Tensor)
 def eager_affine_normal(matrix, loc, scale, value_x, value_y):
+    assert len(matrix.output.shape) == 2
+    assert value_x.output == reals(matrix.output.shape[0])
+    assert value_y.output == reals(matrix.output.shape[1])
     tensors = (matrix, loc, scale, value_y)
     int_inputs, tensors = align_tensors(*tensors)
     matrix, loc, scale, value_y = tensors
