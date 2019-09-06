@@ -39,13 +39,18 @@ def naive_cholesky_inverse(u):
     ]).reshape(shape)
 
 
+@pytest.mark.parametrize("requires_grad", [False, True])
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
-def test_cholesky_inverse(batch_shape, size):
+def test_cholesky_inverse(batch_shape, size, requires_grad):
     x = torch.randn(batch_shape + (size, size))
     x = x.transpose(-1, -2).matmul(x)
     u = x.cholesky()
+    if requires_grad:
+        u.requires_grad_()
     assert_close(cholesky_inverse(u), naive_cholesky_inverse(u))
+    if requires_grad:
+        cholesky_inverse(u).sum().backward()
 
 
 def test_block_vector():
