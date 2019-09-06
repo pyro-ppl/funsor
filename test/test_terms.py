@@ -287,21 +287,30 @@ def test_lambda(base_shape):
 
 
 def test_independent():
-    f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
-    assert f.inputs['x'] == reals(4, 5)
+    f = Variable('x_i', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    assert f.inputs['x_i'] == reals(4, 5)
     assert f.inputs['i'] == bint(3)
 
-    actual = Independent(f, 'x', 'i')
+    actual = Independent(f, 'x', 'i', 'x_i')
     assert actual.inputs['x'] == reals(3, 4, 5)
     assert 'i' not in actual.inputs
 
     x = Variable('x', reals(3, 4, 5))
-    expected = f(x=x['i']).reduce(ops.add, 'i')
+    expected = f(x_i=x['i']).reduce(ops.add, 'i')
     assert actual.inputs == expected.inputs
     assert actual.output == expected.output
 
     data = random_tensor(OrderedDict(), x.output)
     assert_close(actual(data), expected(data), atol=1e-5, rtol=1e-5)
+
+    renamed = actual(x='y')
+    assert isinstance(renamed, Independent)
+    assert_close(renamed(y=data), expected(x=data), atol=1e-5, rtol=1e-5)
+
+    # Ensure it's ok for .reals_var and .diag_var to be the same.
+    renamed = actual(x='x_i')
+    assert isinstance(renamed, Independent)
+    assert_close(renamed(x_i=data), expected(x=data), atol=1e-5, rtol=1e-5)
 
 
 def test_stack_simple():

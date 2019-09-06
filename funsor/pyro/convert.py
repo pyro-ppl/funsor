@@ -254,11 +254,12 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     loc = loc + value_x.unsqueeze(-2).matmul(matrix).squeeze(-2)
     i_name = gensym("i")
     y_name = gensym("y")
+    y_i_name = gensym("y_i")
     int_inputs[i_name] = bint(value_y.output.shape[0])
     loc, scale = torch.broadcast_tensors(loc, scale)
     loc = Tensor(loc, int_inputs)
     scale = Tensor(scale, int_inputs)
-    y_dist = Independent(Normal(loc, scale, y_name), y_name, i_name)
+    y_dist = Independent(Normal(loc, scale, y_i_name), y_name, i_name, y_i_name)
     return y_dist(**{y_name: value_y})
 
 
@@ -370,7 +371,7 @@ def _independent_to_funsor(pyro_dist, event_inputs=()):
                         for i in range(pyro_dist.reinterpreted_batch_ndims))
     result = dist_to_funsor(pyro_dist.base_dist, event_inputs + event_names)
     for name in reversed(event_names):
-        result = Independent(result, "value", name)
+        result = Independent(result, "value", name, "value")
     return result
 
 
