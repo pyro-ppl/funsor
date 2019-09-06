@@ -1353,9 +1353,10 @@ class Independent(Funsor):
         self.diag_var = diag_var
 
     def _alpha_convert(self, alpha_subs):
-        fn, reals_var, bint_var = super()._alpha_convert(alpha_subs)
+        fn, reals_var, bint_var, diag_var = super()._alpha_convert(alpha_subs)
         bint_var = alpha_subs.get(bint_var, bint_var)
-        return fn, reals_var, bint_var
+        diag_var = alpha_subs.get(diag_var, diag_var)
+        return fn, reals_var, bint_var, diag_var
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
