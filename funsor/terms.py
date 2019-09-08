@@ -271,6 +271,10 @@ class Funsor(object, metaclass=FunsorMeta):
     hashable ``*args`` and no optional ``**kwargs`` so as to support cons
     hashing.
 
+    Derived classes with ``.fresh`` variables must implement an
+    :meth:`eager_subs` method. Derived classes with ``.bound`` variables must
+    implement an :meth:`_alpha_convert` method.
+
     :param OrderedDict inputs: A mapping from input name to domain.
         This can be viewed as a typed context or a mapping from
         free variables to domains.
@@ -326,17 +330,11 @@ class Funsor(object, metaclass=FunsorMeta):
         """
         Partially evaluates this funsor by substituting dimensions.
         """
-        # Eagerly restrict to this funsor's inputs and convert to_funsor().
+        # Eagerly restrict to this funsor's inputs.
         subs = OrderedDict(zip(self.inputs, args))
         for k in self.inputs:
             if k in kwargs:
                 subs[k] = kwargs[k]
-        for k, v in subs.items():
-            v = to_funsor(v, self.inputs[k])
-            if v.output != self.inputs[k]:
-                raise ValueError("Expected substitution of {} to have type {}, but got {}"
-                                 .format(repr(k), v.output, self.inputs[k]))
-            subs[k] = v
         return Subs(self, tuple(subs.items()))
 
     def __bool__(self):
@@ -788,7 +786,17 @@ def to_funsor(name, output):
     return Variable(name, output)
 
 
-class Subs(Funsor):
+class SubsMeta(FunsorMeta):
+    """
+    Wrapper to call :func:`to_funsor` and check types.
+    """
+    def __call__(cls, arg, subs):
+        subs = tuple((k, to_funsor(v, arg.inputs[k]))
+                     for k, v in subs if k in arg.inputs)
+        return super().__call__(arg, subs)
+
+
+class Subs(Funsor, metaclass=SubsMeta):
     """
     Lazy substitution of the form ``x(u=y, v=z)``.
     """
@@ -1143,7 +1151,7 @@ class Slice(Funsor, metaclass=SliceMeta):
 
         if isinstance(index, Variable):
             name = index.name
-            return Slice(name, self.slice.start, self.slice.stop, self.slice.step)
+            return Slice(name, self.slice.start, self.slice.stop, self.slice.step, self.dtype)
         elif isinstance(index, Number):
             data = self.slice.start + self.slice.step * index.data
             return Number(data, self.output.dtype)
@@ -1154,7 +1162,7 @@ class Slice(Funsor, metaclass=SliceMeta):
             name = index.name
             start = self.slice.start + self.slice.step * index.slice.start
             step = self.slice.step * index.slice.step
-            return Slice(name, start, self.slice.stop, step)
+            return Slice(name, start, self.slice.stop, step, self.dtype)
         else:
             raise NotImplementedError('TODO support substitution of {} into Slice'.format(type(index)))
 
@@ -1372,7 +1380,7 @@ class Lambda(Funsor):
         shape = (var.dtype,) + expr.output.shape
         output = Domain(shape, expr.dtype)
         fresh = frozenset()
-        bound = frozenset({var.name})  # TODO make sure this is correct
+        bound = frozenset({var.name})
         super(Lambda, self).__init__(inputs, output, fresh, bound)
         self.var = var
         self.expr = expr

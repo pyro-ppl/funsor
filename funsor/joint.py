@@ -279,9 +279,6 @@ def eager_cat_homogeneous(name, part_name, *parts):
     discretes = []
     info_vecs = []
     precisions = []
-    if part_name != name:
-        del inputs[name]
-        del int_inputs[name]
     for part in parts:
         inputs[part_name] = part.inputs[part_name]
         int_inputs[part_name] = inputs[part_name]

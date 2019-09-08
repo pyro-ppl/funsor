@@ -539,8 +539,6 @@ def eager_cat_homogeneous(name, part_name, *parts):
         inputs.update(part.inputs)
 
     tensors = []
-    if part_name != name:
-        del inputs[name]
     for part in parts:
         inputs[part_name] = part.inputs[part_name]
         shape = tuple(d.size for d in inputs.values()) + output.shape
