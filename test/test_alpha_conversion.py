@@ -5,7 +5,7 @@ import pytest
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.interpreter import gensym, interpretation
-from funsor.terms import Independent, Lambda, Slice, Variable, reflect
+from funsor.terms import Cat, Independent, Lambda, Number, Slice, Stack, Variable, reflect
 from funsor.testing import assert_close, check_funsor, random_tensor
 
 
@@ -53,6 +53,14 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
 def test_lazy_subs_type_clash():
     with interpretation(reflect):
         Slice('t', 3)(t=Slice('t', 2, dtype=3)).reduce(ops.add)
+
+
+def test_cat():
+    with interpretation(reflect):
+        x = Stack("t", (Number(1), Number(2)))
+        y = Stack("t", (Number(4), Number(8), Number(16)))
+        xy = Cat("t", (x, y))
+        xy.reduce(ops.add)
 
 
 def test_subs_lambda():
