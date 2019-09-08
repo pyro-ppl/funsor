@@ -805,7 +805,7 @@ class Subs(Funsor):
         for key, value in subs:
             inputs.update(value.inputs)
         fresh = frozenset()
-        bound = frozenset(key for key, value in subs if key not in inputs)
+        bound = frozenset(key for key, value in subs)
         super(Subs, self).__init__(inputs, arg.output, fresh, bound)
         self.arg = arg
         self.subs = OrderedDict(subs)
@@ -814,9 +814,11 @@ class Subs(Funsor):
         return 'Subs({}, {})'.format(self.arg, self.subs)
 
     def _alpha_convert(self, alpha_subs):
+        assert self.bound.issuperset(alpha_subs)
         alpha_subs = {k: to_funsor(v, self.subs[k].output)
                       for k, v in alpha_subs.items()}
-        arg, subs = super()._alpha_convert(alpha_subs)
+        arg, subs = self._ast_values
+        arg = substitute(arg, alpha_subs)
         subs = tuple((str(alpha_subs.get(k, k)), v) for k, v in subs)
         return arg, subs
 
