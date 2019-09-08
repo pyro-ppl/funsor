@@ -55,11 +55,12 @@ def test_lazy_subs_type_clash():
         Slice('t', 3)(t=Slice('t', 2, dtype=3)).reduce(ops.add)
 
 
-def test_cat():
+@pytest.mark.parametrize("name", ["s", "t"])
+def test_cat(name):
     with interpretation(reflect):
         x = Stack("t", (Number(1), Number(2)))
         y = Stack("t", (Number(4), Number(8), Number(16)))
-        xy = Cat("t", (x, y))
+        xy = Cat(name, (x, y), "t")
         xy.reduce(ops.add)
 
 

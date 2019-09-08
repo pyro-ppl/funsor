@@ -1317,10 +1317,11 @@ class Cat(Funsor, metaclass=CatMeta):
         self.part_name = part_name
 
     def _alpha_convert(self, alpha_subs):
-        assert len(alpha_subs) == 1 and self.name in alpha_subs
+        assert len(alpha_subs) == 1
         part_name = alpha_subs[self.part_name]
         parts = tuple(
-            substitute(p, {self.part_name: to_funsor(part_name, p.inputs[self.name])})
+            substitute(p, {self.part_name:
+                           to_funsor(part_name, p.inputs[self.part_name])})
             for p in self.parts)
         return self.name, parts, part_name
 
