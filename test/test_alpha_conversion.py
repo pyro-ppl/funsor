@@ -5,7 +5,7 @@ import pytest
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.interpreter import gensym, interpretation
-from funsor.terms import Independent, Lambda, Variable, reflect
+from funsor.terms import Independent, Lambda, Slice, Variable, reflect
 from funsor.testing import assert_close, check_funsor, random_tensor
 
 
@@ -48,6 +48,11 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
         ops.add, frozenset(lhs_subs.values()) | frozenset(rhs_subs.values()))
 
     assert_close(actual, expected)
+
+
+def test_lazy_subs_type_clash():
+    with interpretation(reflect):
+        Slice('t', 3)(t=Slice('t', 2, dtype=3)).reduce(ops.add)
 
 
 def test_subs_lambda():
