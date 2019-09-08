@@ -1277,47 +1277,81 @@ def eager_stack_homogeneous(name, *parts):
     return None  # defer to default implementation
 
 
-class Cat(Funsor):
+class CatMeta(FunsorMeta):
+    """
+    Wrapper to fill in default value for ``part_name``.
+    """
+    def __call__(cls, name, parts, part_name=None):
+        if part_name is None:
+            part_name = name
+        return super().__call__(name, parts, part_name)
+
+
+class Cat(Funsor, metaclass=CatMeta):
     """
     Concatenate funsors along an existing input dimension.
 
     :param str name: The name of the input variable along which to concatenate.
     :param tuple parts: A tuple of Funsors of homogenous output domain.
     """
-    def __init__(self, name, parts):
+    def __init__(self, name, parts, part_name=None):
         assert isinstance(name, str)
         assert isinstance(parts, tuple)
+        assert isinstance(part_name, str)
         assert parts
-        assert all(name in x.inputs for x in parts)
+        assert all(part_name in x.inputs for x in parts)
+        if part_name != name:
+            assert not any(name in x.inputs for x in parts)
         assert len(set(x.output for x in parts)) == 1
         output = parts[0].output
         inputs = OrderedDict()
         for x in parts:
             inputs.update(x.inputs)
-        inputs[name] = bint(sum(x.inputs[name].size for x in parts))
-        super().__init__(inputs, output)
+        del inputs[part_name]
+        inputs[name] = bint(sum(x.inputs[part_name].size for x in parts))
+        fresh = frozenset({name})
+        bound = frozenset({part_name})
+        super().__init__(inputs, output, fresh, bound)
         self.name = name
         self.parts = parts
+        self.part_name = part_name
+
+    def _alpha_convert(self, alpha_subs):
+        assert len(alpha_subs) == 1 and self.name in alpha_subs
+        part_name = alpha_subs[self.part_name]
+        parts = tuple(
+            substitute(p, {self.part_name: to_funsor(part_name, p.inputs[self.name])})
+            for p in self.parts)
+        return self.name, parts, part_name
+
+    def eager_subs(self, subs):
+        assert len(subs) == 1 and subs[0][0] == self.name
+        value = subs[0][1]
+
+        if isinstance(value, Variable):
+            return Cat(value.name, self.parts, self.part_name)
+        elif isinstance(value, Number):
+            n = value.data
+            for part in self.parts:
+                size = part.inputs[self.part_name].size
+                if n < size:
+                    return part(**{self.part_name: n})
+                n -= size
+            assert False
+        else:
+            raise NotImplementedError("TODO implement Cat.eager_subs for {}"
+                                      .format(type(value)))
 
 
-@eager.register(Cat, str, tuple)
-def eager_cat(name, parts):
+@eager.register(Cat, str, tuple, str)
+def eager_cat(name, parts, part_name):
     if len(parts) == 1:
-        return parts[0]
-    return eager_cat_homogeneous(name, *parts)
+        return parts[0](**{part_name: name})
+    return eager_cat_homogeneous(name, part_name, *parts)
 
 
-@dispatch(str, Variadic[Funsor])
-def eager_cat_homogeneous(name, *parts):
-    return None  # defer to default implementation
-
-
-@dispatch(str, Variadic[Stack])
-def eager_cat_homogeneous(name, *parts):
-    if all(p.name == name for p in parts):
-        parts = sum((p.parts for p in parts), ())
-        return Stack(name, parts)
-
+@dispatch(str, str, Variadic[Funsor])
+def eager_cat_homogeneous(name, part_name, *parts):
     return None  # defer to default implementation
 
 

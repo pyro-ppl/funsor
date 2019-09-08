@@ -262,14 +262,14 @@ def eager_independent(joint, reals_var, bint_var, diag_var):
     return None  # defer to default implementation
 
 
-@dispatch(str, Variadic[Gaussian, Joint])
-def eager_cat_homogeneous(name, *parts):
+@dispatch(str, str, Variadic[Gaussian, Joint])
+def eager_cat_homogeneous(name, part_name, *parts):
     assert parts
     output = parts[0].output
-    inputs = OrderedDict()
+    inputs = OrderedDict([(part_name, None)])
     for part in parts:
         assert part.output == output
-        assert name in part.inputs
+        assert part_name in part.inputs
         inputs.update(part.inputs)
 
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != "real")
@@ -279,9 +279,12 @@ def eager_cat_homogeneous(name, *parts):
     discretes = []
     info_vecs = []
     precisions = []
+    if part_name != name:
+        del inputs[name]
+        del int_inputs[name]
     for part in parts:
-        inputs[name] = part.inputs[name]  # typically a smaller bint
-        int_inputs[name] = inputs[name]
+        inputs[part_name] = part.inputs[part_name]
+        int_inputs[part_name] = inputs[part_name]
         shape = tuple(d.size for d in int_inputs.values())
         if isinstance(part, Gaussian):
             discrete = None
@@ -295,8 +298,11 @@ def eager_cat_homogeneous(name, *parts):
         info_vec, precision = align_gaussian(inputs, gaussian)
         info_vecs.append(info_vec.expand(shape + (-1,)))
         precisions.append(precision.expand(shape + (-1, -1)))
+    if part_name != name:
+        del inputs[part_name]
+        del int_inputs[part_name]
 
-    dim = tuple(inputs).index(name)
+    dim = 0
     info_vec = torch.cat(info_vecs, dim=dim)
     precision = torch.cat(precisions, dim=dim)
     inputs[name] = bint(info_vec.size(dim))
