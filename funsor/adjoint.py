@@ -8,7 +8,7 @@ from funsor.cnf import Contraction, anyop
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Funsor, Reduce, Variable, alpha_substitute, normalize, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Variable, alpha_substitute, lazy, to_funsor
 from funsor.torch import Tensor
 
 
@@ -61,7 +61,7 @@ class AdjointTape(object):
                     continue
 
             # reverse the effects of alpha-renaming
-            with interpretation(normalize):  # lazy):
+            with interpretation(lazy):
                 other_subs = {name: name.split("__BOUND")[0] for name in output.inputs if "__BOUND" in name}
                 fn, inputs = _alpha_deconvert(fn(*inputs)(**other_subs))
                 otype, oinputs = _alpha_deconvert(output(**other_subs))
@@ -141,6 +141,7 @@ def adjoint_contract_unary(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduc
 @adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
                       AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs):
+    assert sum_op is anyop or (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
     lhs_adj = Contraction(sum_op if sum_op is not anyop else adj_redop, prod_op, lhs_reduced_vars, out_adj, rhs)
