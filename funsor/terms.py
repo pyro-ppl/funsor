@@ -271,6 +271,10 @@ class Funsor(object, metaclass=FunsorMeta):
     hashable ``*args`` and no optional ``**kwargs`` so as to support cons
     hashing.
 
+    Derived classes with ``.fresh`` variables must implement an
+    :meth:`eager_subs` method. Derived classes with ``.bound`` variables must
+    implement an :meth:`_alpha_convert` method.
+
     :param OrderedDict inputs: A mapping from input name to domain.
         This can be viewed as a typed context or a mapping from
         free variables to domains.
@@ -326,17 +330,11 @@ class Funsor(object, metaclass=FunsorMeta):
         """
         Partially evaluates this funsor by substituting dimensions.
         """
-        # Eagerly restrict to this funsor's inputs and convert to_funsor().
+        # Eagerly restrict to this funsor's inputs.
         subs = OrderedDict(zip(self.inputs, args))
         for k in self.inputs:
             if k in kwargs:
                 subs[k] = kwargs[k]
-        for k, v in subs.items():
-            v = to_funsor(v, self.inputs[k])
-            if v.output != self.inputs[k]:
-                raise ValueError("Expected substitution of {} to have type {}, but got {}"
-                                 .format(repr(k), v.output, self.inputs[k]))
-            subs[k] = v
         return Subs(self, tuple(subs.items()))
 
     def __bool__(self):
@@ -788,7 +786,17 @@ def to_funsor(name, output):
     return Variable(name, output)
 
 
-class Subs(Funsor):
+class SubsMeta(FunsorMeta):
+    """
+    Wrapper to call :func:`to_funsor` and check types.
+    """
+    def __call__(cls, arg, subs):
+        subs = tuple((k, to_funsor(v, arg.inputs[k]))
+                     for k, v in subs if k in arg.inputs)
+        return super().__call__(arg, subs)
+
+
+class Subs(Funsor, metaclass=SubsMeta):
     """
     Lazy substitution of the form ``x(u=y, v=z)``.
     """
@@ -805,7 +813,7 @@ class Subs(Funsor):
         for key, value in subs:
             inputs.update(value.inputs)
         fresh = frozenset()
-        bound = frozenset(key for key, value in subs if key not in inputs)
+        bound = frozenset(key for key, value in subs)
         super(Subs, self).__init__(inputs, arg.output, fresh, bound)
         self.arg = arg
         self.subs = OrderedDict(subs)
@@ -814,9 +822,11 @@ class Subs(Funsor):
         return 'Subs({}, {})'.format(self.arg, self.subs)
 
     def _alpha_convert(self, alpha_subs):
+        assert self.bound.issuperset(alpha_subs)
         alpha_subs = {k: to_funsor(v, self.subs[k].output)
                       for k, v in alpha_subs.items()}
-        arg, subs = super()._alpha_convert(alpha_subs)
+        arg, subs = self._ast_values
+        arg = substitute(arg, alpha_subs)
         subs = tuple((str(alpha_subs.get(k, k)), v) for k, v in subs)
         return arg, subs
 
@@ -1141,7 +1151,7 @@ class Slice(Funsor, metaclass=SliceMeta):
 
         if isinstance(index, Variable):
             name = index.name
-            return Slice(name, self.slice.start, self.slice.stop, self.slice.step)
+            return Slice(name, self.slice.start, self.slice.stop, self.slice.step, self.dtype)
         elif isinstance(index, Number):
             data = self.slice.start + self.slice.step * index.data
             return Number(data, self.output.dtype)
@@ -1152,7 +1162,7 @@ class Slice(Funsor, metaclass=SliceMeta):
             name = index.name
             start = self.slice.start + self.slice.step * index.slice.start
             step = self.slice.step * index.slice.step
-            return Slice(name, start, self.slice.stop, step)
+            return Slice(name, start, self.slice.stop, step, self.dtype)
         else:
             raise NotImplementedError('TODO support substitution of {} into Slice'.format(type(index)))
 
@@ -1275,47 +1285,82 @@ def eager_stack_homogeneous(name, *parts):
     return None  # defer to default implementation
 
 
-class Cat(Funsor):
+class CatMeta(FunsorMeta):
+    """
+    Wrapper to fill in default value for ``part_name``.
+    """
+    def __call__(cls, name, parts, part_name=None):
+        if part_name is None:
+            part_name = name
+        return super().__call__(name, parts, part_name)
+
+
+class Cat(Funsor, metaclass=CatMeta):
     """
     Concatenate funsors along an existing input dimension.
 
     :param str name: The name of the input variable along which to concatenate.
     :param tuple parts: A tuple of Funsors of homogenous output domain.
     """
-    def __init__(self, name, parts):
+    def __init__(self, name, parts, part_name=None):
         assert isinstance(name, str)
         assert isinstance(parts, tuple)
+        assert isinstance(part_name, str)
         assert parts
-        assert all(name in x.inputs for x in parts)
+        assert all(part_name in x.inputs for x in parts)
+        if part_name != name:
+            assert not any(name in x.inputs for x in parts)
         assert len(set(x.output for x in parts)) == 1
         output = parts[0].output
         inputs = OrderedDict()
         for x in parts:
             inputs.update(x.inputs)
-        inputs[name] = bint(sum(x.inputs[name].size for x in parts))
-        super().__init__(inputs, output)
+        del inputs[part_name]
+        inputs[name] = bint(sum(x.inputs[part_name].size for x in parts))
+        fresh = frozenset({name})
+        bound = frozenset({part_name})
+        super().__init__(inputs, output, fresh, bound)
         self.name = name
         self.parts = parts
+        self.part_name = part_name
+
+    def _alpha_convert(self, alpha_subs):
+        assert len(alpha_subs) == 1
+        part_name = alpha_subs[self.part_name]
+        parts = tuple(
+            substitute(p, {self.part_name:
+                           to_funsor(part_name, p.inputs[self.part_name])})
+            for p in self.parts)
+        return self.name, parts, part_name
+
+    def eager_subs(self, subs):
+        assert len(subs) == 1 and subs[0][0] == self.name
+        value = subs[0][1]
+
+        if isinstance(value, Variable):
+            return Cat(value.name, self.parts, self.part_name)
+        elif isinstance(value, Number):
+            n = value.data
+            for part in self.parts:
+                size = part.inputs[self.part_name].size
+                if n < size:
+                    return part(**{self.part_name: n})
+                n -= size
+            assert False
+        else:
+            raise NotImplementedError("TODO implement Cat.eager_subs for {}"
+                                      .format(type(value)))
 
 
-@eager.register(Cat, str, tuple)
-def eager_cat(name, parts):
+@eager.register(Cat, str, tuple, str)
+def eager_cat(name, parts, part_name):
     if len(parts) == 1:
-        return parts[0]
-    return eager_cat_homogeneous(name, *parts)
+        return parts[0](**{part_name: name})
+    return eager_cat_homogeneous(name, part_name, *parts)
 
 
-@dispatch(str, Variadic[Funsor])
-def eager_cat_homogeneous(name, *parts):
-    return None  # defer to default implementation
-
-
-@dispatch(str, Variadic[Stack])
-def eager_cat_homogeneous(name, *parts):
-    if all(p.name == name for p in parts):
-        parts = sum((p.parts for p in parts), ())
-        return Stack(name, parts)
-
+@dispatch(str, str, Variadic[Funsor])
+def eager_cat_homogeneous(name, part_name, *parts):
     return None  # defer to default implementation
 
 
@@ -1335,7 +1380,7 @@ class Lambda(Funsor):
         shape = (var.dtype,) + expr.output.shape
         output = Domain(shape, expr.dtype)
         fresh = frozenset()
-        bound = frozenset({var.name})  # TODO make sure this is correct
+        bound = frozenset({var.name})
         super(Lambda, self).__init__(inputs, output, fresh, bound)
         self.var = var
         self.expr = expr

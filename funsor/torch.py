@@ -528,23 +528,25 @@ def eager_stack_homogeneous(name, *parts):
     return Tensor(data, inputs, dtype=output.dtype)
 
 
-@dispatch(str, Variadic[Tensor])
-def eager_cat_homogeneous(name, *parts):
+@dispatch(str, str, Variadic[Tensor])
+def eager_cat_homogeneous(name, part_name, *parts):
     assert parts
     output = parts[0].output
-    inputs = OrderedDict()
+    inputs = OrderedDict([(part_name, None)])
     for part in parts:
         assert part.output == output
-        assert name in part.inputs
+        assert part_name in part.inputs
         inputs.update(part.inputs)
 
     tensors = []
     for part in parts:
-        inputs[name] = part.inputs[name]  # typically a smaller bint
+        inputs[part_name] = part.inputs[part_name]
         shape = tuple(d.size for d in inputs.values()) + output.shape
         tensors.append(align_tensor(inputs, part).expand(shape))
+    if part_name != name:
+        del inputs[part_name]
 
-    dim = tuple(inputs).index(name)
+    dim = 0
     tensor = torch.cat(tensors, dim=dim)
     inputs[name] = bint(tensor.size(dim))
     return Tensor(tensor, inputs, dtype=output.dtype)
