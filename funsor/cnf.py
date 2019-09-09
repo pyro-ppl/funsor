@@ -167,8 +167,8 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 ##########################################
 
 GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
-# TODO define with nested union
-GaussianMixture = Contraction[AssociativeOp, ops.AddOp, frozenset, Tuple[Union[Tensor, Number], Gaussian]]
+GaussianMixture = Contraction[Union[ops.LogAddExpOp, AnyOp], ops.AddOp, frozenset,
+                              Tuple[Union[Tensor, Number], Gaussian]]
 
 
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)

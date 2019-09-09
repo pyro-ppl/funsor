@@ -14,7 +14,7 @@ from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
 from funsor.integrate import Integrate
 from funsor.ops import AssociativeOp
-from funsor.terms import Funsor, Number, Reduce, Unary, eager, moment_matching, normalize
+from funsor.terms import Funsor, Number, Reduce, Unary, Variable, eager, moment_matching, normalize
 from funsor.torch import Tensor, align_tensor
 
 
@@ -142,11 +142,20 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset,
-                Unary[ops.ExpOp, Union[MultiDelta, Gaussian, Number, Tensor]], Funsor)
-def eager_contraction_binary(red_op, bin_op, reduced_vars, lhs, rhs):
-    if reduced_vars <= lhs.arg.fresh.intersection(rhs.inputs):
-        return eager.dispatch(Integrate, lhs.arg, rhs, reduced_vars)
-    return eager(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
+                Unary[ops.ExpOp, Union[MultiDelta, Gaussian, Number, Tensor]],
+                (Variable, MultiDelta, Gaussian, Number, Tensor, GaussianMixture))
+def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
+
+    if reduced_vars - reduced_vars.intersection(lhs.inputs, rhs.inputs):
+        result = eager.dispatch(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
+        if result is not None:
+            return result
+
+    result = eager.dispatch(Integrate, lhs.log(), rhs, reduced_vars)
+    if result is not None:
+        return result
+
+    return None
 
 
 @eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, MultiDelta]], frozenset)
