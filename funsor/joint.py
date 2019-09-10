@@ -68,8 +68,13 @@ def eager_cat_homogeneous(name, *parts):
 
 
 #################################
-# patterns for joint integration
+# patterns for moment-matching
 #################################
+
+@moment_matching.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[object])
+def moment_matching_contract_default(*args):
+    return None
+
 
 @moment_matching.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
 def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
@@ -120,10 +125,9 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
     return None
 
 
-@moment_matching.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[object])
-def moment_matching_contract_default(*args):
-    return None
-
+####################################################
+# Patterns for normalizing and evaluating Integrate
+####################################################
 
 @normalize.register(Integrate, Funsor, Funsor, frozenset)
 def normalize_integrate(log_measure, integrand, reduced_vars):
