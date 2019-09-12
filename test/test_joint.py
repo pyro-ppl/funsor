@@ -297,6 +297,7 @@ def test_reduce_moment_matching_shape(interp):
                  joint.reduce(ops.logaddexp, real_vars | reduced_vars))
 
 
+@pytest.mark.xfail(reason="missing pattern")
 def test_reduce_moment_matching_moments():
     x = Variable('x', reals(2))
     gaussian = random_gaussian(OrderedDict(
