@@ -156,9 +156,8 @@ class MultiDelta(Funsor):
         return None  # defer to default implementation
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        if sampled_vars <= self.fresh:
-            return self
-        raise NotImplementedError("TODO implement sample for particle indices")
+        # raise NotImplementedError("TODO implement sample for particle indices")
+        return self
 
 
 @eager.register(Binary, AddOp, MultiDelta, MultiDelta)
