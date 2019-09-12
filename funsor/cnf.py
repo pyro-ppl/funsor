@@ -1,11 +1,13 @@
 from collections import OrderedDict
 from functools import reduce
-from typing import Union
+from typing import Tuple, Union
 
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
+from funsor.delta import MultiDelta
 from funsor.domains import find_domain
+from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
 from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, \
@@ -173,6 +175,36 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 ##########################################
 # Normalizing Contractions
 ##########################################
+
+GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
+GaussianMixture = Contraction[Union[ops.LogAddExpOp, AnyOp], ops.AddOp, frozenset,
+                              Tuple[Union[Tensor, Number], Gaussian]]
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
+def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_vars, *terms):
+    # when bin_op is commutative, put terms into a canonical order for pattern matching
+    ordering = {MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
+    new_terms = tuple(
+        v for i, v in sorted(enumerate(terms),
+                             key=lambda t: (ordering.get(type(t[1]).__origin__, -1), t[0]))
+    )
+    if any(v is not vv for v, vv in zip(terms, new_terms)):
+        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
+    return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GaussianMixture, GROUND_TERMS)
+def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, other):
+    return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
+                       reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GaussianMixture)
+def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mixture):
+    return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
+                       reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
+
 
 @normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
 def normalize_contraction_generic_args(red_op, bin_op, reduced_vars, *terms):
