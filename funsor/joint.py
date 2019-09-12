@@ -1,14 +1,14 @@
 import math
 from collections import OrderedDict
 from functools import reduce
-from typing import Union
+from typing import Tuple, Union
 
 import torch
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.cnf import Contraction, GaussianMixture, AnyOp
+from funsor.cnf import Contraction, AnyOp, anyop
 from funsor.delta import MultiDelta
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
@@ -16,58 +16,6 @@ from funsor.integrate import Integrate
 from funsor.ops import AssociativeOp
 from funsor.terms import Funsor, Number, Reduce, Unary, Variable, eager, moment_matching, normalize
 from funsor.torch import Tensor, align_tensor
-
-
-@dispatch(str, str, Variadic[(Gaussian, GaussianMixture)])
-def eager_cat_homogeneous(name, part_name, *parts):
-    assert parts
-    output = parts[0].output
-    inputs = OrderedDict([(part_name, None)])
-    for part in parts:
-        assert part.output == output
-        assert part_name in part.inputs
-        inputs.update(part.inputs)
-
-    int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != "real")
-    real_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype == "real")
-    inputs = int_inputs.copy()
-    inputs.update(real_inputs)
-    discretes = []
-    info_vecs = []
-    precisions = []
-    for part in parts:
-        inputs[part_name] = part.inputs[part_name]
-        int_inputs[part_name] = inputs[part_name]
-        shape = tuple(d.size for d in int_inputs.values())
-        if isinstance(part, Gaussian):
-            discrete = None
-            gaussian = part
-        elif issubclass(type(part), GaussianMixture):  # TODO figure out why isinstance isn't working
-            discrete, gaussian = part.terms[0], part.terms[1]
-            discrete = align_tensor(int_inputs, discrete).expand(shape)
-        else:
-            raise ValueError
-        discretes.append(discrete)
-        info_vec, precision = align_gaussian(inputs, gaussian)
-        info_vecs.append(info_vec.expand(shape + (-1,)))
-        precisions.append(precision.expand(shape + (-1, -1)))
-    if part_name != name:
-        del inputs[part_name]
-        del int_inputs[part_name]
-
-    dim = 0
-    info_vec = torch.cat(info_vecs, dim=dim)
-    precision = torch.cat(precisions, dim=dim)
-    inputs[name] = bint(info_vec.size(dim))
-    int_inputs[name] = inputs[name]
-    result = Gaussian(info_vec, precision, inputs)
-    if any(d is not None for d in discretes):
-        for i, d in enumerate(discretes):
-            if d is None:
-                discretes[i] = info_vecs[i].new_zeros(info_vecs[i].shape[:-1])
-        discrete = torch.cat(discretes, dim=dim)
-        result += Tensor(discrete, int_inputs)
-    return result
 
 
 #################################
@@ -128,6 +76,92 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
     return None
 
 
+######################################################
+# Patterns corresponding to the old Joint normal form
+######################################################
+
+GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
+GaussianMixture = Contraction[Union[ops.LogAddExpOp, AnyOp], ops.AddOp, frozenset,
+                              Tuple[Union[Tensor, Number], Gaussian]]
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
+def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_vars, *terms):
+    # when bin_op is commutative, put terms into a canonical order for pattern matching
+    ordering = {MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
+    new_terms = tuple(
+        v for i, v in sorted(enumerate(terms),
+                             key=lambda t: (ordering.get(type(t[1]).__origin__, -1), t[0]))
+    )
+    if any(v is not vv for v, vv in zip(terms, new_terms)):
+        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
+    return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GaussianMixture, GROUND_TERMS)
+def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, other):
+    return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
+                       reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
+
+
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GaussianMixture)
+def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mixture):
+    return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
+                       reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
+
+
+@dispatch(str, str, Variadic[(Gaussian, GaussianMixture)])
+def eager_cat_homogeneous(name, part_name, *parts):
+    assert parts
+    output = parts[0].output
+    inputs = OrderedDict([(part_name, None)])
+    for part in parts:
+        assert part.output == output
+        assert part_name in part.inputs
+        inputs.update(part.inputs)
+
+    int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != "real")
+    real_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype == "real")
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+    discretes = []
+    info_vecs = []
+    precisions = []
+    for part in parts:
+        inputs[part_name] = part.inputs[part_name]
+        int_inputs[part_name] = inputs[part_name]
+        shape = tuple(d.size for d in int_inputs.values())
+        if isinstance(part, Gaussian):
+            discrete = None
+            gaussian = part
+        elif issubclass(type(part), GaussianMixture):  # TODO figure out why isinstance isn't working
+            discrete, gaussian = part.terms[0], part.terms[1]
+            discrete = align_tensor(int_inputs, discrete).expand(shape)
+        else:
+            raise ValueError
+        discretes.append(discrete)
+        info_vec, precision = align_gaussian(inputs, gaussian)
+        info_vecs.append(info_vec.expand(shape + (-1,)))
+        precisions.append(precision.expand(shape + (-1, -1)))
+    if part_name != name:
+        del inputs[part_name]
+        del int_inputs[part_name]
+
+    dim = 0
+    info_vec = torch.cat(info_vecs, dim=dim)
+    precision = torch.cat(precisions, dim=dim)
+    inputs[name] = bint(info_vec.size(dim))
+    int_inputs[name] = inputs[name]
+    result = Gaussian(info_vec, precision, inputs)
+    if any(d is not None for d in discretes):
+        for i, d in enumerate(discretes):
+            if d is None:
+                discretes[i] = info_vecs[i].new_zeros(info_vecs[i].shape[:-1])
+        discrete = torch.cat(discretes, dim=dim)
+        result += Tensor(discrete, int_inputs)
+    return result
+
+
 ####################################################
 # Patterns for normalizing and evaluating Integrate
 ####################################################
@@ -149,8 +183,8 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset,
-                Unary[ops.ExpOp, Union[MultiDelta, Gaussian, Number, Tensor]],
-                (Variable, MultiDelta, Gaussian, Number, Tensor, GaussianMixture))
+                Unary[ops.ExpOp, Union[GROUND_TERMS]],
+                (Variable, GaussianMixture) + GROUND_TERMS)
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
 
     if reduced_vars - reduced_vars.intersection(lhs.inputs, rhs.inputs):
@@ -165,7 +199,7 @@ def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs
     return None
 
 
-@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, MultiDelta]], frozenset)
+@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[GROUND_TERMS]], frozenset)
 def eager_reduce_exp(op, arg, reduced_vars):
     # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
     log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
