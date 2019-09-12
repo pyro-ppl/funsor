@@ -104,8 +104,7 @@ class MultiDelta(Funsor):
         new_terms = terms.copy()
         log_density = to_funsor(0., self.output)
         for name, value in subs:
-            if isinstance(value, (str, Variable)):
-                value = to_funsor(value, self.output)
+            if isinstance(value, Variable):
                 new_terms[value.name] = new_terms.pop(name)
                 continue
 

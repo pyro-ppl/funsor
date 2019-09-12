@@ -233,6 +233,9 @@ class AffineNormal(Funsor):
     :param ~funsor.terms.Funsor value_y: A value ``Y``.
     """
     def __init__(self, matrix, loc, scale, value_x, value_y):
+        assert len(matrix.output.shape) == 2
+        assert value_x.output == reals(matrix.output.shape[0])
+        assert value_y.output == reals(matrix.output.shape[1])
         inputs = OrderedDict()
         for f in (matrix, loc, scale, value_x, value_y):
             inputs.update(f.inputs)
@@ -247,6 +250,9 @@ class AffineNormal(Funsor):
 
 @eager.register(AffineNormal, Tensor, Tensor, Tensor, Tensor, (Funsor, Tensor))
 def eager_affine_normal(matrix, loc, scale, value_x, value_y):
+    assert len(matrix.output.shape) == 2
+    assert value_x.output == reals(matrix.output.shape[0])
+    assert value_y.output == reals(matrix.output.shape[1])
     tensors = (matrix, loc, scale, value_x)
     int_inputs, tensors = align_tensors(*tensors)
     matrix, loc, scale, value_x = tensors
@@ -254,15 +260,20 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     loc = loc + value_x.unsqueeze(-2).matmul(matrix).squeeze(-2)
     i_name = gensym("i")
     y_name = gensym("y")
+    y_i_name = gensym("y_i")
     int_inputs[i_name] = bint(value_y.output.shape[0])
+    loc, scale = torch.broadcast_tensors(loc, scale)
     loc = Tensor(loc, int_inputs)
     scale = Tensor(scale, int_inputs)
-    y_dist = Independent(Normal(loc, scale, y_name), y_name, i_name)
+    y_dist = Independent(Normal(loc, scale, y_i_name), y_name, i_name, y_i_name)
     return y_dist(**{y_name: value_y})
 
 
 @eager.register(AffineNormal, Tensor, Tensor, Tensor, Funsor, Tensor)
 def eager_affine_normal(matrix, loc, scale, value_x, value_y):
+    assert len(matrix.output.shape) == 2
+    assert value_x.output == reals(matrix.output.shape[0])
+    assert value_y.output == reals(matrix.output.shape[1])
     tensors = (matrix, loc, scale, value_y)
     int_inputs, tensors = align_tensors(*tensors)
     matrix, loc, scale, value_y = tensors
@@ -274,6 +285,8 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     info_vec = prec_sqrt.matmul(delta.unsqueeze(-1)).squeeze(-1)
     log_normalizer = (-0.5 * loc.size(-1) * math.log(2 * math.pi)
                       - 0.5 * delta.pow(2).sum(-1) - scale.log().sum(-1))
+    precision = precision.expand(info_vec.shape + (-1,))
+    log_normalizer = log_normalizer.expand(info_vec.shape[:-1])
     inputs = int_inputs.copy()
     x_name = gensym("x")
     inputs[x_name] = value_x.output
@@ -367,7 +380,7 @@ def _independent_to_funsor(pyro_dist, event_inputs=()):
                         for i in range(pyro_dist.reinterpreted_batch_ndims))
     result = dist_to_funsor(pyro_dist.base_dist, event_inputs + event_names)
     for name in reversed(event_names):
-        result = Independent(result, "value", name)
+        result = Independent(result, "value", name, "value")
     return result
 
 

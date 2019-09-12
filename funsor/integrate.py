@@ -22,6 +22,11 @@ class Integrate(Funsor):
         self.integrand = integrand
         self.reduced_vars = reduced_vars
 
+    def _alpha_convert(self, alpha_subs):
+        log_measure, integrand, reduced_vars = super()._alpha_convert(alpha_subs)
+        reduced_vars = frozenset(alpha_subs.get(k, k) for k in reduced_vars)
+        return log_measure, integrand, reduced_vars
+
 
 __all__ = [
     'Integrate',

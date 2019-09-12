@@ -424,9 +424,9 @@ def test_normal_affine(expr):
 def test_normal_independent():
     loc = random_tensor(OrderedDict(), reals(2))
     scale = random_tensor(OrderedDict(), reals(2)).exp()
-    fn = dist.Normal(loc['i'], scale['i'], value='z')
-    assert fn.inputs['z'] == reals()
-    d = Independent(fn, 'z', 'i')
+    fn = dist.Normal(loc['i'], scale['i'], value='z_i')
+    assert fn.inputs['z_i'] == reals()
+    d = Independent(fn, 'z', 'i', 'z_i')
     assert d.inputs['z'] == reals(2)
     sample = d.sample(frozenset(['z']))
     assert isinstance(sample, Independent)

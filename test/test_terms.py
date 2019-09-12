@@ -66,6 +66,7 @@ def test_cons_hash():
     assert Slice('x', 10) is Slice('x', 10)
     assert Slice('x', 10) is Slice('x', 0, 10)
     assert Slice('x', 10, 10) is not Slice('x', 0, 10)
+    assert Slice('x', 2, 10, 1) is Slice('x', 2, 10)
 
 
 @pytest.mark.parametrize('expr', [
@@ -264,6 +265,20 @@ def test_reduce_syntactic_sugar():
     assert x.reduce(ops.add, frozenset(["i"])) is expected
 
 
+def test_slice():
+    t_slice = Slice("t", 10)
+
+    s_slice = t_slice(t="s")
+    assert isinstance(s_slice, Slice)
+    assert s_slice.slice == t_slice.slice
+    assert s_slice(s="t") is t_slice
+
+    assert t_slice(t=0) is Number(0, 10)
+    assert t_slice(t=1) is Number(1, 10)
+    assert t_slice(t=2) is Number(2, 10)
+    assert t_slice(t=t_slice) is t_slice
+
+
 @pytest.mark.parametrize('base_shape', [(), (4,), (3, 2)], ids=str)
 def test_lambda(base_shape):
     z = Variable('z', reals(*base_shape))
@@ -287,21 +302,30 @@ def test_lambda(base_shape):
 
 
 def test_independent():
-    f = Variable('x', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
-    assert f.inputs['x'] == reals(4, 5)
+    f = Variable('x_i', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    assert f.inputs['x_i'] == reals(4, 5)
     assert f.inputs['i'] == bint(3)
 
-    actual = Independent(f, 'x', 'i')
+    actual = Independent(f, 'x', 'i', 'x_i')
     assert actual.inputs['x'] == reals(3, 4, 5)
     assert 'i' not in actual.inputs
 
     x = Variable('x', reals(3, 4, 5))
-    expected = f(x=x['i']).reduce(ops.add, 'i')
+    expected = f(x_i=x['i']).reduce(ops.add, 'i')
     assert actual.inputs == expected.inputs
     assert actual.output == expected.output
 
     data = random_tensor(OrderedDict(), x.output)
     assert_close(actual(data), expected(data), atol=1e-5, rtol=1e-5)
+
+    renamed = actual(x='y')
+    assert isinstance(renamed, Independent)
+    assert_close(renamed(y=data), expected(x=data), atol=1e-5, rtol=1e-5)
+
+    # Ensure it's ok for .reals_var and .diag_var to be the same.
+    renamed = actual(x='x_i')
+    assert isinstance(renamed, Independent)
+    assert_close(renamed(x_i=data), expected(x=data), atol=1e-5, rtol=1e-5)
 
 
 def test_stack_simple():

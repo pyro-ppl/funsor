@@ -10,7 +10,8 @@ from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
-from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize
+from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, \
+    eager, normalize, to_funsor
 from funsor.torch import Tensor
 
 
@@ -92,6 +93,15 @@ class Contraction(Funsor):
         if not names == tuple(result.inputs):
             return Align(result, names)  # raise NotImplementedError("TODO align all terms")
         return result
+
+    def _alpha_convert(self, alpha_subs):
+        reduced_vars = frozenset(alpha_subs.get(k, k) for k in self.reduced_vars)
+        bound_types = {}
+        for term in self.terms:
+            bound_types.update({k: term.inputs[k] for k in self.bound.intersection(term.inputs)})
+        alpha_subs = {k: to_funsor(v, bound_types[k]) for k, v in alpha_subs.items()}
+        red_op, bin_op, _, terms = super()._alpha_convert(alpha_subs)
+        return red_op, bin_op, reduced_vars, terms
 
 
 @recursion_reinterpret.register(Contraction)
