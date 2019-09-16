@@ -109,7 +109,7 @@ def eager(cls, *args):
     Eagerly execute ops with known implementations.
     """
     result = eager.dispatch(cls, *args)
-    if result is None and interpreter._NORMALIZE:
+    if result is None:
         result = normalize.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
@@ -143,7 +143,7 @@ def sequential(cls, *args):
     result = sequential.dispatch(cls, *args)
     if result is None:
         result = eager.dispatch(cls, *args)
-    if result is None and interpreter._NORMALIZE:
+    if result is None:
         result = normalize.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
@@ -159,7 +159,7 @@ def moment_matching(cls, *args):
     result = moment_matching.dispatch(cls, *args)
     if result is None:
         result = eager.dispatch(cls, *args)
-    if result is None and interpreter._NORMALIZE:
+    if result is None:
         result = normalize.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)

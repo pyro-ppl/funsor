@@ -17,7 +17,6 @@ format: FORCE
 
 test: lint FORCE
 	pytest -v -n auto test/
-	FUNSOR_NORMALIZE=1 pytest -v test/test_cnf.py
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py

@@ -46,7 +46,7 @@ def eager_cat_homogeneous(name, part_name, *parts):
             discrete, gaussian = part.terms[0], part.terms[1]
             discrete = align_tensor(int_inputs, discrete).expand(shape)
         else:
-            raise ValueError
+            raise NotImplementedError("TODO")
         discretes.append(discrete)
         info_vec, precision = align_gaussian(inputs, gaussian)
         info_vecs.append(info_vec.expand(shape + (-1,)))
