@@ -5,7 +5,7 @@ import torch
 from torch.distributions import constraints
 
 from funsor.cnf import Contraction
-from funsor.delta import MultiDelta
+from funsor.delta import Delta
 from funsor.domains import bint
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
@@ -69,7 +69,7 @@ class FunsorDistribution(dist.TorchDistribution):
         delta = self.funsor_dist.sample(frozenset({"value"}), sample_inputs)
         if isinstance(delta, Contraction):
             delta = delta.terms[0]
-        assert isinstance(delta, MultiDelta)
+        assert isinstance(delta, Delta)
         return delta
 
     @torch.no_grad()

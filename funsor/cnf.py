@@ -5,7 +5,7 @@ from typing import Tuple, Union
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.delta import MultiDelta
+from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
@@ -176,7 +176,7 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 # Normalizing Contractions
 ##########################################
 
-GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
+GROUND_TERMS = (Delta, Gaussian, Number, Tensor)
 GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
                               Tuple[Union[Tensor, Number], Gaussian]]
 
@@ -184,7 +184,7 @@ GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozens
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
 def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_vars, *terms):
     # when bin_op is commutative, put terms into a canonical order for pattern matching
-    ordering = {MultiDelta: 1, Number: 2, Tensor: 3, Gaussian: 4}
+    ordering = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
     new_terms = tuple(
         v for i, v in sorted(enumerate(terms),
                              key=lambda t: (ordering.get(type(t[1]).__origin__, -1), t[0]))

@@ -9,7 +9,7 @@ from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, NullOp
-from funsor.delta import MultiDelta
+from funsor.delta import Delta
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
 from funsor.integrate import Integrate
@@ -140,7 +140,7 @@ def normalize_integrate(log_measure, integrand, reduced_vars):
 @normalize.register(Integrate,
                     Contraction[Union[NullOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple], Funsor, frozenset)
 def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
-    delta_terms = [t for t in log_measure.terms if isinstance(t, MultiDelta)
+    delta_terms = [t for t in log_measure.terms if isinstance(t, Delta)
                    and t.fresh.intersection(reduced_vars, integrand.inputs)]
     for delta in delta_terms:
         integrand = integrand(**{name: point for name, (point, log_density) in delta.terms
@@ -149,8 +149,8 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset,
-                Unary[ops.ExpOp, Union[MultiDelta, Gaussian, Number, Tensor]],
-                (Variable, MultiDelta, Gaussian, Number, Tensor, GaussianMixture))
+                Unary[ops.ExpOp, Union[Delta, Gaussian, Number, Tensor]],
+                (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture))
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
 
     if reduced_vars - reduced_vars.intersection(lhs.inputs, rhs.inputs):
@@ -165,7 +165,7 @@ def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs
     return None
 
 
-@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, MultiDelta]], frozenset)
+@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, Delta]], frozenset)
 def eager_reduce_exp(op, arg, reduced_vars):
     # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
     log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)

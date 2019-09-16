@@ -8,7 +8,7 @@ from torch.autograd import grad
 import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.delta import MultiDelta
+from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.integrate import Integrate
 from funsor.montecarlo import monte_carlo_interpretation
@@ -45,7 +45,7 @@ def test_tensor_shape(sample_inputs, batch_inputs, event_inputs):
             print('sampled_vars: {}'.format(', '.join(sampled_vars)))
             y = x.sample(sampled_vars, sample_inputs)
             if num_sampled == len(event_inputs):
-                assert isinstance(y, (MultiDelta, Contraction))
+                assert isinstance(y, (Delta, Contraction))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:
@@ -86,7 +86,7 @@ def test_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
                 xfail = True
                 continue
             if num_sampled == len(event_inputs):
-                assert isinstance(y, (MultiDelta, Contraction))
+                assert isinstance(y, (Delta, Contraction))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:
@@ -133,7 +133,7 @@ def test_transformed_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
                 xfail = True
                 continue
             if num_sampled == len(event_inputs):
-                assert isinstance(y, (MultiDelta, Contraction))
+                assert isinstance(y, (Delta, Contraction))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:

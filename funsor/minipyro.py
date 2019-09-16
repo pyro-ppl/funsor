@@ -51,9 +51,9 @@ class Distribution(object):
             delta = dist.sample(frozenset(['value']), sample_inputs=self.sample_inputs)
         if isinstance(delta, funsor.cnf.Contraction):
             assert len(delta.terms) == 2
-            assert any(isinstance(t, funsor.delta.MultiDelta) for t in delta.terms)
-            delta = [t for t in delta.terms if isinstance(t, funsor.delta.MultiDelta)][0]
-        assert isinstance(delta, funsor.delta.MultiDelta)
+            assert any(isinstance(t, funsor.delta.Delta) for t in delta.terms)
+            delta = [t for t in delta.terms if isinstance(t, funsor.delta.Delta)][0]
+        assert isinstance(delta, funsor.delta.Delta)
         return delta.terms[0][1][0]
 
     # Similar to torch.distributions.Distribution.expand().

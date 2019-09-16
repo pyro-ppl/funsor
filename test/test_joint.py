@@ -6,7 +6,7 @@ import torch
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.delta import Delta, MultiDelta
+from funsor.delta import Delta, Delta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
@@ -24,7 +24,7 @@ def id_from_inputs(inputs):
 
 
 SMOKE_TESTS = [
-    ('dx + dy', MultiDelta),
+    ('dx + dy', Delta),
     ('dx + g', Contraction),
     ('dy + g', Contraction),
     ('g + dx', Contraction),
@@ -44,7 +44,7 @@ SMOKE_TESTS = [
     ('t - g', Contraction),
     ('g + g', Gaussian),
     ('-(g + g)', Gaussian),
-    ('(dx + dy)(i=i0)', MultiDelta),
+    ('(dx + dy)(i=i0)', Delta),
     ('(dx + g)(i=i0)', Contraction),
     ('(dy + g)(i=i0)', Contraction),
     ('(g + dx)(i=i0)', Contraction),
@@ -91,10 +91,10 @@ SMOKE_TESTS = [
 @pytest.mark.parametrize('expr,expected_type', SMOKE_TESTS)
 def test_smoke(expr, expected_type):
     dx = Delta('x', Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2))])))
-    assert isinstance(dx, MultiDelta)
+    assert isinstance(dx, Delta)
 
     dy = Delta('y', Tensor(torch.randn(3, 4), OrderedDict([('j', bint(3))])))
-    assert isinstance(dy, MultiDelta)
+    assert isinstance(dy, Delta)
 
     t = Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
     assert isinstance(t, Tensor)
@@ -160,7 +160,7 @@ def test_reduce_logaddexp_deltas_lazy():
     a = Delta('a', Tensor(torch.randn(3, 2), OrderedDict(i=bint(3))))
     b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
     x = a + b
-    assert isinstance(x, MultiDelta)
+    assert isinstance(x, Delta)
     assert set(x.inputs) == {'a', 'b', 'i'}
 
     y = x.reduce(ops.logaddexp, 'i')

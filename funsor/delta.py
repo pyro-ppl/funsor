@@ -10,6 +10,7 @@ from funsor.terms import (
     Align,
     Binary,
     Funsor,
+    FunsorMeta,
     Number,
     Subs,
     Unary,
@@ -17,12 +18,6 @@ from funsor.terms import (
     eager,
     to_funsor
 )
-
-
-def Delta(name, point, log_density=0):
-    """Syntactic sugar for MultiDelta"""
-    point, log_density = to_funsor(point), to_funsor(log_density)
-    return MultiDelta(((name, (point, log_density)),))
 
 
 def solve(expr, value):
@@ -67,7 +62,21 @@ def solve_unary(op, arg, y):
     return name, point, log_density
 
 
-class MultiDelta(Funsor):
+class DeltaMeta(FunsorMeta):
+    """
+    Makes Delta less of a pain to use by supporting Delta(name, point, log_density)
+    """
+    def __call__(cls, *args):
+        if len(args) > 1:
+            assert len(args) == 2 or len(args) == 3
+            assert isinstance(args[0], str) and isinstance(args[1], Funsor)
+            args = args + (Number(0.),) if len(args) == 2 else args
+            args = (((args[0], (to_funsor(args[1]), to_funsor(args[2]))),),)
+        assert isinstance(args[0], tuple)
+        return super().__call__(args[0])
+
+
+class Delta(Funsor, metaclass=DeltaMeta):
     """
     Normalized delta distribution binding multiple variables.
     """
@@ -87,7 +96,7 @@ class MultiDelta(Funsor):
         output = reals()
         fresh = frozenset(name for name, term in terms)
         bound = frozenset()
-        super(MultiDelta, self).__init__(inputs, output, fresh, bound)
+        super(Delta, self).__init__(inputs, output, fresh, bound)
         self.terms = terms
 
     def align(self, names):
@@ -97,7 +106,7 @@ class MultiDelta(Funsor):
             return self
 
         new_terms = sorted(self.terms, key=lambda t: names.index(t[0]))
-        return MultiDelta(new_terms)
+        return Delta(new_terms)
 
     def eager_subs(self, subs):
         terms = OrderedDict(self.terms)
@@ -122,7 +131,7 @@ class MultiDelta(Funsor):
             old_point, old_point_density = new_terms.pop(name)
             new_terms[new_name] = (new_point, old_point_density + point_log_density)
 
-        return MultiDelta(tuple(new_terms.items())) + log_density if new_terms else log_density
+        return Delta(tuple(new_terms.items())) + log_density if new_terms else log_density
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
@@ -147,7 +156,7 @@ class MultiDelta(Funsor):
                 else:
                     result_terms.append((name, (point, log_density)))
 
-            result = MultiDelta(tuple(result_terms)) + scale if result_terms else scale
+            result = Delta(tuple(result_terms)) + scale if result_terms else scale
             return result.reduce(op, reduced_vars - self.fresh)
 
         if op is ops.add:
@@ -160,7 +169,7 @@ class MultiDelta(Funsor):
         return self
 
 
-@eager.register(Binary, AddOp, MultiDelta, MultiDelta)
+@eager.register(Binary, AddOp, Delta, Delta)
 def eager_add_multidelta(op, lhs, rhs):
     if lhs.fresh.intersection(rhs.inputs):
         return eager_add_delta_funsor(op, lhs, rhs)
@@ -168,10 +177,10 @@ def eager_add_multidelta(op, lhs, rhs):
     if rhs.fresh.intersection(lhs.inputs):
         return eager_add_funsor_delta(op, lhs, rhs)
 
-    return MultiDelta(lhs.terms + rhs.terms)
+    return Delta(lhs.terms + rhs.terms)
 
 
-@eager.register(Binary, (AddOp, SubOp), MultiDelta, (Funsor, Align))
+@eager.register(Binary, (AddOp, SubOp), Delta, (Funsor, Align))
 def eager_add_delta_funsor(op, lhs, rhs):
     if lhs.fresh.intersection(rhs.inputs):
         rhs = rhs(**{name: point for name, (point, log_density) in lhs.terms if name in rhs.inputs})
@@ -180,7 +189,7 @@ def eager_add_delta_funsor(op, lhs, rhs):
     return None  # defer to default implementation
 
 
-@eager.register(Binary, AddOp, (Funsor, Align), MultiDelta)
+@eager.register(Binary, AddOp, (Funsor, Align), Delta)
 def eager_add_funsor_delta(op, lhs, rhs):
     if rhs.fresh.intersection(lhs.inputs):
         lhs = lhs(**{name: point for name, (point, log_density) in rhs.terms if name in lhs.inputs})
@@ -189,7 +198,7 @@ def eager_add_funsor_delta(op, lhs, rhs):
     return None
 
 
-@eager.register(Integrate, MultiDelta, Funsor, frozenset)
+@eager.register(Integrate, Delta, Funsor, frozenset)
 def eager_integrate(delta, integrand, reduced_vars):
     if not reduced_vars & delta.fresh:
         return None
@@ -203,6 +212,5 @@ def eager_integrate(delta, integrand, reduced_vars):
 
 __all__ = [
     'Delta',
-    'MultiDelta',
     'solve',
 ]
