@@ -587,8 +587,8 @@ def eager_integrate(log_measure, integrand, reduced_vars):
         data = loc * log_measure.log_normalizer.data.exp().unsqueeze(-1)
         data = data.reshape(loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
-        return Tensor(data, inputs)
-
+        result = Tensor(data, inputs)
+        return result.reduce(ops.add, reduced_vars - real_vars)
     return None  # defer to default implementation
 
 
