@@ -4,7 +4,7 @@ import torch
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.cnf import Contraction, anyop
+from funsor.cnf import Contraction, nullop
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
@@ -140,12 +140,12 @@ def adjoint_contract_unary(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduc
 @adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
                       AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs):
-    assert sum_op is anyop or (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
+    assert sum_op is nullop or (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
-    lhs_adj = Contraction(sum_op if sum_op is not anyop else adj_redop, prod_op, lhs_reduced_vars, out_adj, rhs)
+    lhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop, prod_op, lhs_reduced_vars, out_adj, rhs)
 
     rhs_reduced_vars = frozenset(lhs.inputs) - frozenset(rhs.inputs)
-    rhs_adj = Contraction(sum_op if sum_op is not anyop else adj_redop, prod_op, rhs_reduced_vars, out_adj, lhs)
+    rhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop, prod_op, rhs_reduced_vars, out_adj, lhs)
 
     return {lhs: lhs_adj, rhs: rhs_adj}

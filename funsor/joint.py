@@ -8,7 +8,7 @@ from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.cnf import Contraction, GaussianMixture, AnyOp
+from funsor.cnf import Contraction, GaussianMixture, NullOp
 from funsor.delta import MultiDelta
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
@@ -138,7 +138,7 @@ def normalize_integrate(log_measure, integrand, reduced_vars):
 
 
 @normalize.register(Integrate,
-                    Contraction[Union[AnyOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple], Funsor, frozenset)
+                    Contraction[Union[NullOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple], Funsor, frozenset)
 def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
     delta_terms = [t for t in log_measure.terms if isinstance(t, MultiDelta)
                    and t.fresh.intersection(reduced_vars, integrand.inputs)]

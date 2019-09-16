@@ -15,13 +15,13 @@ from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Var
 from funsor.torch import Tensor
 
 
-class AnyOp(AssociativeOp):
+class NullOp(AssociativeOp):
     """Placeholder associative op that unifies with any other op"""
     pass
 
 
-@AnyOp
-def anyop(x, y):
+@NullOp
+def nullop(x, y):
     raise ValueError("should never actually evaluate this!")
 
 
@@ -38,10 +38,10 @@ class Contraction(Funsor):
         assert all(isinstance(v, str) for v in reduced_vars)
         assert isinstance(terms, tuple) and len(terms) > 0
 
-        assert not (isinstance(red_op, AnyOp) and isinstance(bin_op, AnyOp))
-        if isinstance(red_op, AnyOp):
+        assert not (isinstance(red_op, NullOp) and isinstance(bin_op, NullOp))
+        if isinstance(red_op, NullOp):
             assert not reduced_vars
-        elif isinstance(bin_op, AnyOp):
+        elif isinstance(bin_op, NullOp):
             assert len(terms) == 1
         else:
             assert reduced_vars and len(terms) > 1
@@ -51,7 +51,7 @@ class Contraction(Funsor):
         for v in terms:
             inputs.update((k, d) for k, d in v.inputs.items() if k not in reduced_vars)
 
-        if bin_op is anyop:
+        if bin_op is nullop:
             output = terms[0].output
         else:
             output = reduce(lambda lhs, rhs: find_domain(bin_op, lhs, rhs),
@@ -74,13 +74,13 @@ class Contraction(Funsor):
                         and t.is_affine:
                     return False
 
-        if self.bin_op is ops.add and self.red_op is not anyop:
+        if self.bin_op is ops.add and self.red_op is not nullop:
             return sum(1 for k, v in self.inputs.items() if v.dtype == 'real') == \
                 sum(sum(1 for k, v in t.inputs.items() if v.dtype == 'real') for t in self.terms)
         return True
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        if self.red_op in (ops.logaddexp, anyop) and self.bin_op in (ops.logaddexp, ops.add, anyop):
+        if self.red_op in (ops.logaddexp, nullop) and self.bin_op in (ops.logaddexp, ops.add, nullop):
             new_terms = tuple(v.unscaled_sample(sampled_vars.intersection(v.inputs), sample_inputs) for v in self.terms)
             return Contraction(self.red_op, self.bin_op, self.reduced_vars, *new_terms)
         raise TypeError("Cannot sample through ops ({}, {})".format(self.red_op, self.bin_op))
@@ -124,7 +124,7 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
             frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms if vv is not v))
         if unique_vars:
             result = v.reduce(red_op, unique_vars)
-            if result is not normalize(Contraction, red_op, anyop, unique_vars, (v,)):
+            if result is not normalize(Contraction, red_op, nullop, unique_vars, (v,)):
                 terms[i] = result
                 reduced_vars -= unique_vars
                 leaf_reduced = True
@@ -177,7 +177,7 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 ##########################################
 
 GROUND_TERMS = (MultiDelta, Gaussian, Number, Tensor)
-GaussianMixture = Contraction[Union[ops.LogAddExpOp, AnyOp], ops.AddOp, frozenset,
+GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
                               Tuple[Union[Tensor, Number], Gaussian]]
 
 
@@ -196,13 +196,13 @@ def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_va
 
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GaussianMixture, GROUND_TERMS)
 def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, other):
-    return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
+    return Contraction(mixture.red_op if red_op is nullop else red_op, bin_op,
                        reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
 
 
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GaussianMixture)
 def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mixture):
-    return Contraction(mixture.red_op if red_op is anyop else red_op, bin_op,
+    return Contraction(mixture.red_op if red_op is nullop else red_op, bin_op,
                        reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
 
 
@@ -211,7 +211,7 @@ def normalize_contraction_generic_args(red_op, bin_op, reduced_vars, *terms):
     return normalize(Contraction, red_op, bin_op, reduced_vars, tuple(terms))
 
 
-@normalize.register(Contraction, AnyOp, AnyOp, frozenset, Funsor)
+@normalize.register(Contraction, NullOp, NullOp, frozenset, Funsor)
 def normalize_trivial(red_op, bin_op, reduced_vars, term):
     assert not reduced_vars
     return term
@@ -220,13 +220,13 @@ def normalize_trivial(red_op, bin_op, reduced_vars, term):
 @normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
 
-    if not reduced_vars and red_op is not anyop:
-        return Contraction(anyop, bin_op, reduced_vars, *terms)
+    if not reduced_vars and red_op is not nullop:
+        return Contraction(nullop, bin_op, reduced_vars, *terms)
 
-    if len(terms) == 1 and bin_op is not anyop:
-        return Contraction(red_op, anyop, reduced_vars, *terms)
+    if len(terms) == 1 and bin_op is not nullop:
+        return Contraction(red_op, nullop, reduced_vars, *terms)
 
-    if red_op is anyop and bin_op is anyop:
+    if red_op is nullop and bin_op is nullop:
         return terms[0]
 
     if red_op is bin_op:
@@ -245,10 +245,10 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
             continue
 
         # fuse operations without distributing
-        if (v.red_op is anyop and bin_op is v.bin_op) or \
-                (bin_op is anyop and v.red_op in (red_op, anyop)):
-            red_op = v.red_op if red_op is anyop else red_op
-            bin_op = v.bin_op if bin_op is anyop else bin_op
+        if (v.red_op is nullop and bin_op is v.bin_op) or \
+                (bin_op is nullop and v.red_op in (red_op, nullop)):
+            red_op = v.red_op if red_op is nullop else red_op
+            bin_op = v.bin_op if bin_op is nullop else bin_op
             new_terms = terms[:i] + v.terms + terms[i+1:]
             return Contraction(red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms)
 
@@ -262,12 +262,12 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
 
 @normalize.register(Binary, AssociativeOp, Funsor, Funsor)
 def binary_to_contract(op, lhs, rhs):
-    return Contraction(anyop, op, frozenset(), lhs, rhs)
+    return Contraction(nullop, op, frozenset(), lhs, rhs)
 
 
 @normalize.register(Reduce, AssociativeOp, Funsor, frozenset)
 def reduce_funsor(op, arg, reduced_vars):
-    return Contraction(op, anyop, reduced_vars, arg)
+    return Contraction(op, nullop, reduced_vars, arg)
 
 
 @normalize.register(Unary, ops.NegOp, (Variable, Contraction[ops.AssociativeOp, ops.MulOp, frozenset, tuple]))
@@ -320,21 +320,21 @@ def unary_log_exp(op, arg):
     return arg.arg
 
 
-@normalize.register(Unary, ops.ReciprocalOp, Contraction[AnyOp, ops.MulOp, frozenset, tuple])
-@normalize.register(Unary, ops.NegOp, Contraction[AnyOp, ops.AddOp, frozenset, tuple])
+@normalize.register(Unary, ops.ReciprocalOp, Contraction[NullOp, ops.MulOp, frozenset, tuple])
+@normalize.register(Unary, ops.NegOp, Contraction[NullOp, ops.AddOp, frozenset, tuple])
 def unary_contract(op, arg):
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
 
 
 @normalize.register(Unary, ops.LogOp,
-                    Contraction[Union[ops.AddOp, AnyOp], Union[ops.MulOp, AnyOp], frozenset, tuple])
+                    Contraction[Union[ops.AddOp, NullOp], Union[ops.MulOp, NullOp], frozenset, tuple])
 def unary_transform_log(op, arg):
     new_terms = tuple(v.log() for v in arg.terms)
     return Contraction(ops.logaddexp, ops.add, arg.reduced_vars, *new_terms)
 
 
 @normalize.register(Unary, ops.ExpOp,
-                    Contraction[Union[ops.LogAddExpOp, AnyOp], Union[ops.AddOp, AnyOp], frozenset, tuple])
+                    Contraction[Union[ops.LogAddExpOp, NullOp], Union[ops.AddOp, NullOp], frozenset, tuple])
 def unary_transform_exp(op, arg):
     new_terms = tuple(v.exp() for v in arg.terms)
     return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
