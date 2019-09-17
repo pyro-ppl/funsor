@@ -7,7 +7,7 @@ from pyro.distributions.util import broadcast_shape
 
 import funsor.delta
 import funsor.ops as ops
-from funsor.affine import Affine
+from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
 from funsor.interpreter import interpretation
@@ -389,17 +389,24 @@ def eager_normal(loc, scale, value):
     return Normal(loc, scale, 'value')(value=value)
 
 
-@eager.register(Normal, (Variable, Affine), Tensor, (Variable, Affine))
-@eager.register(Normal, (Variable, Affine), Tensor, Tensor)
-@eager.register(Normal, Tensor, Tensor, (Variable, Affine))
+@eager.register(Normal, (Variable, Contraction), Tensor, (Variable, Contraction))
+@eager.register(Normal, (Variable, Contraction), Tensor, Tensor)
+@eager.register(Normal, Tensor, Tensor, (Variable, Contraction))
 def eager_normal(loc, scale, value):
     affine = (loc - value) / scale
-    assert isinstance(affine, Affine)
+    if not affine.is_affine:
+        return None
+
     real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
     int_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype != 'real')
     assert not any(v.shape for v in real_inputs.values())
 
-    tensors = [affine.const] + [c for v, c in affine.coeffs.items()]
+    const = affine(**{k: 0. for k, v in real_inputs.items()})
+    coeffs = OrderedDict()
+    for c in real_inputs.keys():
+        coeffs[c] = affine(**{k: 1. if c == k else 0. for k in real_inputs.keys()}) - const
+
+    tensors = [const] + list(coeffs.values())
     inputs, tensors = align_tensors(*tensors)
     tensors = torch.broadcast_tensors(*tensors)
     const, coeffs = tensors[0], tensors[1:]

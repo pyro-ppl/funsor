@@ -57,6 +57,12 @@ def reflect(cls, *args, **kwargs):
     Construct a funsor, populate ``._ast_values``, and cons hash.
     This is the only interpretation allowed to construct funsors.
     """
+    if len(args) > len(cls._ast_fields):
+        # handle varargs
+        new_args = tuple(args[:len(cls._ast_fields) - 1]) + (args[len(cls._ast_fields) - 1 - len(args):],)
+        assert len(new_args) == len(cls._ast_fields)
+        _, args = args, new_args
+
     cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
@@ -77,6 +83,16 @@ def reflect(cls, *args, **kwargs):
 
 
 @dispatched_interpretation
+def normalize(cls, *args):
+
+    result = normalize.dispatch(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
+
+    return result
+
+
+@dispatched_interpretation
 def lazy(cls, *args):
     """
     Substitute eagerly but perform ops lazily.
@@ -93,6 +109,8 @@ def eager(cls, *args):
     Eagerly execute ops with known implementations.
     """
     result = eager.dispatch(cls, *args)
+    if result is None:
+        result = normalize.dispatch(cls, *args)
     if result is None:
         result = reflect(cls, *args)
     return result
@@ -124,7 +142,11 @@ def sequential(cls, *args):
     """
     result = sequential.dispatch(cls, *args)
     if result is None:
-        result = eager(cls, *args)
+        result = eager.dispatch(cls, *args)
+    if result is None:
+        result = normalize.dispatch(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
     return result
 
 
@@ -136,7 +158,11 @@ def moment_matching(cls, *args):
     """
     result = moment_matching.dispatch(cls, *args)
     if result is None:
-        result = eager(cls, *args)
+        result = eager.dispatch(cls, *args)
+    if result is None:
+        result = normalize.dispatch(cls, *args)
+    if result is None:
+        result = reflect(cls, *args)
     return result
 
 
@@ -923,21 +949,6 @@ class Binary(Funsor):
             return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
-    def eager_reduce(self, op, reduced_vars):
-        if op is self.op:
-            lhs = self.lhs.reduce(op, reduced_vars)
-            rhs = self.rhs.reduce(op, reduced_vars)
-            return op(lhs, rhs)
-        return interpreter.debug_logged(super(Binary, self).eager_reduce)(op, reduced_vars)
-
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        if self.op is ops.logaddexp:
-            # Sample mixture components independently.
-            lhs = self.lhs.unscaled_sample(sampled_vars, sample_inputs)
-            rhs = self.rhs.unscaled_sample(sampled_vars, sample_inputs)
-            return Binary(ops.logaddexp, lhs, rhs)
-        raise TypeError("Cannot sample from Binary({}, ...)".format(self.op))
-
 
 class Reduce(Funsor):
     """
@@ -967,44 +978,10 @@ class Reduce(Funsor):
         reduced_vars = frozenset(str(alpha_subs.get(k, k)) for k in reduced_vars)
         return op, arg, reduced_vars
 
-    def eager_reduce(self, op, reduced_vars):
-        if op is self.op:
-            # Eagerly fuse reductions.
-            assert isinstance(reduced_vars, frozenset)
-            reduced_vars = reduced_vars.intersection(self.inputs) | self.reduced_vars
-            return Reduce(op, self.arg, reduced_vars)
-        return super(Reduce, self).eager_reduce(op, reduced_vars)
-
-    def unscaled_sample(self, sampled_vars, sample_inputs=None):
-        if self.op is ops.logaddexp:
-            arg = self.arg.unscaled_sample(sampled_vars, sample_inputs)
-            return Reduce(ops.logaddexp, arg, self.reduced_vars)
-        raise TypeError("Cannot sample from Reduce({}, ...)".format(self.op))
-
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
-
-
-@eager.register(Binary, AssociativeOp, Reduce, (Funsor, Reduce))
-def eager_distribute_reduce_other(op, red, other):
-    if (red.op, op) in ops.DISTRIBUTIVE_OPS:
-        # Use distributive law.
-        arg = op(red.arg, other)
-        return arg.reduce(red.op, red.reduced_vars)
-
-    return None  # defer to default implementation
-
-
-@eager.register(Binary, AssociativeOp, Funsor, Reduce)
-def eager_distribute_other_reduce(op, other, red):
-    if (red.op, op) in ops.DISTRIBUTIVE_OPS:
-        # Use distributive law.
-        arg = op(other, red.arg)
-        return arg.reduce(red.op, red.reduced_vars)
-
-    return None  # defer to default implementation
 
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
@@ -1215,10 +1192,6 @@ def eager_binary_funsor_align(op, lhs, rhs):
 @eager.register(Binary, Op, Align, Align)
 def eager_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
-
-
-eager.register(Binary, AssociativeOp, Reduce, Align)(eager_distribute_reduce_other)
-eager.register(Binary, AssociativeOp, Align, Reduce)(eager_distribute_other_reduce)
 
 
 class Stack(Funsor):
@@ -1520,6 +1493,11 @@ def _log(x):
 @ops.log1p.register(Funsor)
 def _log1p(x):
     return Unary(ops.log1p, x)
+
+
+@ops.reciprocal.register(Funsor)
+def _reciprocal(x):
+    return Unary(ops.reciprocal, x)
 
 
 @ops.sigmoid.register(Funsor)

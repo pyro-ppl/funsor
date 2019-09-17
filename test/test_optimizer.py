@@ -10,7 +10,7 @@ from funsor.domains import bint
 from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
-from funsor.terms import Variable, lazy
+from funsor.terms import Variable, normalize, reflect
 from funsor.testing import assert_close, make_chain_einsum, make_einsum_example, make_hmm_einsum, make_plated_hmm_einsum
 from funsor.torch import Tensor
 
@@ -28,14 +28,14 @@ OPTIMIZED_EINSUM_EXAMPLES = [
 ])
 @pytest.mark.parametrize("einsum_impl", [
     naive_einsum,
-    # naive_contract_einsum,  # XXX not working, probably issue with canonicalization
+    naive_contract_einsum,
 ])
 def test_optimized_einsum(equation, backend, einsum_impl):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = pyro_einsum(equation, *operands, backend=backend)[0]
-    with interpretation(lazy):
+    with interpretation(normalize):
         naive_ast = einsum_impl(equation, *funsor_operands, backend=backend)
-        optimized_ast = apply_optimizer(naive_ast)
+    optimized_ast = apply_optimizer(naive_ast)
     actual = reinterpret(optimized_ast)  # eager by default
 
     assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
@@ -51,6 +51,7 @@ def test_optimized_einsum(equation, backend, einsum_impl):
 
 
 @pytest.mark.parametrize("eqn1,eqn2", [
+    ("a,ab->b", "bc->"),
     ("ab,bc,cd->d", "de,ef,fg->"),
 ])
 @pytest.mark.parametrize("optimize1", [False, True])
@@ -72,7 +73,7 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, ein
     expected2 = pyro_einsum(outputs1[0] + "," + eqn2, *([expected1] + operands2),
                             backend=backend2, modulo_total=True)[0]
 
-    with interpretation(lazy):
+    with interpretation(normalize):
         funsor_operands1 = [
             Categorical(probs=Tensor(
                 operand,
@@ -82,9 +83,11 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, ein
         ]
 
         output1_naive = einsum_impl(eqn1, *funsor_operands1, backend=backend1)
-        output1 = apply_optimizer(output1_naive) if optimize1 else output1_naive
+        with interpretation(reflect):
+            output1 = apply_optimizer(output1_naive) if optimize1 else output1_naive
         output2_naive = einsum_impl(outputs1[0] + "," + eqn2, *([output1] + funsor_operands2), backend=backend2)
-        output2 = apply_optimizer(output2_naive) if optimize2 else output2_naive
+        with interpretation(reflect):
+            output2 = apply_optimizer(output2_naive) if optimize2 else output2_naive
 
     actual1 = reinterpret(output1)
     actual2 = reinterpret(output2)
