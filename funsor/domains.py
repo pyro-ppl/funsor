@@ -6,7 +6,7 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-from funsor.util import lazy_property, to_python
+from funsor.util import lazy_property, quote
 
 
 class Domain(namedtuple('Domain', ['shape', 'dtype'])):
@@ -53,7 +53,7 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
         return self.dtype
 
 
-@to_python.register(Domain)
+@quote.register(Domain)
 def _(arg, indent, out):
     out.append((indent, repr(arg)))
 

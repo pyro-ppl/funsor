@@ -41,14 +41,14 @@ def getargspec(fn):
     return args, vargs, kwargs, defaults
 
 
-def to_python(arg):
+def quote(arg):
     """
     Serialize an object to text that can be parsed by Python.
 
     This is useful to save intermediate funsors to add to tests.
     """
     out = []
-    to_python_inplace(arg, 0, out)
+    quote_inplace(arg, 0, out)
     lines = []
     for indent, line in out:
         if indent + len(line) >= 80:
@@ -62,7 +62,7 @@ def pretty(arg, maxlen=40):
     Pretty print an expression. This is useful for debugging.
     """
     out = []
-    to_python_inplace(arg, 0, out)
+    quote_inplace(arg, 0, out)
     fill = u'   \u2502' * 100
     lines = []
     for indent, line in out:
@@ -73,30 +73,30 @@ def pretty(arg, maxlen=40):
 
 
 @functools.singledispatch
-def to_python_inplace(arg, indent, out):
+def quote_inplace(arg, indent, out):
     line = re.sub('\n\\s*', ' ', repr(arg))
     out.append((indent, line))
 
 
-to_python.inplace = to_python_inplace
-to_python.register = to_python_inplace.register
+quote.inplace = quote_inplace
+quote.register = quote_inplace.register
 
 
-@to_python.register(tuple)
+@quote.register(tuple)
 def _(arg, indent, out):
     if not arg:
         out.append((indent, "()"))
         return
     for value in arg[:1]:
         temp = []
-        to_python.inplace(value, indent + 1, temp)
+        quote.inplace(value, indent + 1, temp)
         i, line = temp[0]
         temp[0] = i - 1, "(" + line
         out.extend(temp)
         i, line = out[-1]
         out[-1] = i, line + ','
     for value in arg[1:]:
-        to_python.inplace(value, indent + 1, out)
+        quote.inplace(value, indent + 1, out)
         i, line = out[-1]
         out[-1] = i, line + ','
     i, line = out[-1]

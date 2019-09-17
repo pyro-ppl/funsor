@@ -25,7 +25,7 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec, to_python
+from funsor.util import getargspec, quote
 
 
 @contextmanager
@@ -35,7 +35,7 @@ def ignore_jit_warnings():
         yield
 
 
-@to_python.register(torch.Tensor)
+@quote.register(torch.Tensor)
 def _(x, indent, out):
     """
     Work around PyTorch not supporting reproducible repr.
@@ -607,13 +607,13 @@ class Function(Funsor):
                                        str(self.output), str(self.args))
 
 
-@to_python.register(Function)
+@quote.register(Function)
 def _(arg, indent, out):
     out.append((indent, f"Function({arg.fn.__name__},"))
-    to_python.inplace(arg.output, indent + 1, out)
+    quote.inplace(arg.output, indent + 1, out)
     i, line = out[-1]
     out[-1] = i, line + ","
-    to_python.inplace(arg.args, indent + 1, out)
+    quote.inplace(arg.args, indent + 1, out)
     i, line = out[-1]
     out[-1] = i, line + ")"
 

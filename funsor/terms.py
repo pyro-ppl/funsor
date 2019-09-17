@@ -15,7 +15,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, lazy_property, pretty, to_python
+from funsor.util import getargspec, lazy_property, pretty, quote
 
 
 def substitute(expr, subs):
@@ -334,8 +334,8 @@ class Funsor(object, metaclass=FunsorMeta):
     def __str__(self):
         return '{}({})'.format(type(self).__name__, ', '.join(map(str, self._ast_values)))
 
-    def to_python(self):
-        return to_python(self)
+    def quote(self):
+        return quote(self)
 
     def pretty(self, maxlen=40):
         return pretty(self, maxlen=maxlen)
@@ -695,18 +695,18 @@ class Funsor(object, metaclass=FunsorMeta):
         return result
 
 
-@to_python.register(Funsor)
+@quote.register(Funsor)
 def _(arg, indent, out):
     name = type(arg).__name__
     if type(arg).__module__ == 'funsor.distributions':
         name = 'dist.' + name
     out.append((indent, name + "("))
     for value in arg._ast_values[:-1]:
-        to_python.inplace(value, indent + 1, out)
+        quote.inplace(value, indent + 1, out)
         i, line = out[-1]
         out[-1] = i, line + ","
     for value in arg._ast_values[-1:]:
-        to_python.inplace(value, indent + 1, out)
+        quote.inplace(value, indent + 1, out)
         i, line = out[-1]
         out[-1] = i, line + ")"
 
@@ -1462,24 +1462,24 @@ def of_shape(*shape):
 ################################################################################
 
 
-@to_python.register(Variable)
-@to_python.register(Number)
-@to_python.register(Slice)
+@quote.register(Variable)
+@quote.register(Number)
+@quote.register(Slice)
 def _(arg, indent, out):
     out.append((indent, repr(arg)))
 
 
-@to_python.register(Unary)
-@to_python.register(Binary)
-@to_python.register(Reduce)
+@quote.register(Unary)
+@quote.register(Binary)
+@quote.register(Reduce)
 def _(arg, indent, out):
     out.append((indent, f"{type(arg).__name__}({repr(arg.op)},"))
     for value in arg._ast_values[1:-1]:
-        to_python.inplace(value, indent + 1, out)
+        quote.inplace(value, indent + 1, out)
         i, line = out[-1]
         out[-1] = i, line + ","
     for value in arg._ast_values[-1:]:
-        to_python.inplace(value, indent + 1, out)
+        quote.inplace(value, indent + 1, out)
         i, line = out[-1]
         out[-1] = i, line + ")"
 
