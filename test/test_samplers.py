@@ -7,10 +7,10 @@ from torch.autograd import grad
 
 import funsor.distributions as dist
 import funsor.ops as ops
-from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.integrate import Integrate
+from funsor.joint import Joint
 from funsor.montecarlo import monte_carlo_interpretation
 from funsor.terms import Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
@@ -45,7 +45,7 @@ def test_tensor_shape(sample_inputs, batch_inputs, event_inputs):
             print('sampled_vars: {}'.format(', '.join(sampled_vars)))
             y = x.sample(sampled_vars, sample_inputs)
             if num_sampled == len(event_inputs):
-                assert isinstance(y, (Delta, Contraction))
+                assert isinstance(y, (Delta, Joint))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:
@@ -86,7 +86,7 @@ def test_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
                 xfail = True
                 continue
             if num_sampled == len(event_inputs):
-                assert isinstance(y, (Delta, Contraction))
+                assert isinstance(y, (Delta, Joint))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:
@@ -133,7 +133,7 @@ def test_transformed_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
                 xfail = True
                 continue
             if num_sampled == len(event_inputs):
-                assert isinstance(y, (Delta, Contraction))
+                assert isinstance(y, (Delta, Joint))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:
@@ -165,7 +165,7 @@ def test_joint_shape(sample_inputs, int_event_inputs, real_event_inputs):
     event_inputs = OrderedDict(event_inputs)
     t = random_tensor(discrete_inputs)
     g = random_gaussian(gaussian_inputs)
-    x = t + g  # Joint(discrete=t, gaussian=g)
+    x = Joint(discrete=t, gaussian=g)
 
     xfail = False
     for num_sampled in range(len(event_inputs)):

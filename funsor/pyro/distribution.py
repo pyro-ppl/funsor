@@ -4,10 +4,10 @@ import pyro.distributions as dist
 import torch
 from torch.distributions import constraints
 
-from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import bint
 from funsor.interpreter import interpretation, reinterpret
+from funsor.joint import Joint
 from funsor.optimizer import apply_optimizer
 from funsor.pyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
 from funsor.terms import Funsor, lazy
@@ -67,9 +67,8 @@ class FunsorDistribution(dist.TorchDistribution):
                 if shape[dim] > 1:
                     sample_inputs[DIM_TO_NAME[dim]] = bint(shape[dim])
         delta = self.funsor_dist.sample(frozenset({"value"}), sample_inputs)
-        if isinstance(delta, Contraction):
-            assert len([d for d in delta.terms if isinstance(d, Delta)]) == 1
-            delta = delta.terms[0]
+        if isinstance(delta, Joint):
+            delta, = delta.deltas
         assert isinstance(delta, Delta)
         return delta
 
@@ -77,14 +76,14 @@ class FunsorDistribution(dist.TorchDistribution):
     def sample(self, sample_shape=torch.Size()):
         delta = self._sample_delta(sample_shape)
         ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
-        value = funsor_to_tensor(delta.terms[0][1][0], ndims=ndims)
+        value = funsor_to_tensor(delta.point, ndims=ndims)
         return value.detach()
 
     def rsample(self, sample_shape=torch.Size()):
         delta = self._sample_delta(sample_shape)
-        assert not delta.log_density.requires_grad, "distribution is not fully reparametrized"
+        assert not delta.log_prob.requires_grad, "distribution is not fully reparametrized"
         ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
-        value = funsor_to_tensor(delta.terms[0][1][0], ndims=ndims)
+        value = funsor_to_tensor(delta.point, ndims=ndims)
         return value
 
     def expand(self, batch_shape, _instance=None):

@@ -28,33 +28,22 @@ import funsor
 # torch Distributions are samplers. This class is a compatibility wrapper
 # between the two. It is used only internally in the sample() function.
 class Distribution(object):
-    def __init__(self, funsor_dist, sample_inputs=None):
+    def __init__(self, funsor_dist):
         assert isinstance(funsor_dist, funsor.Funsor)
-        assert not sample_inputs or all(isinstance(inp.dtype, int) for inp in sample_inputs.values())
         self.funsor_dist = funsor_dist
         self.output = self.funsor_dist.inputs["value"]
-        self.sample_inputs = sample_inputs
 
     def log_prob(self, value):
-        result = self.funsor_dist(value=value)
-        if self.sample_inputs:
-            result = result + funsor.torch.Tensor(
-                torch.zeros(*(size.dtype for size in self.sample_inputs.values())),
-                self.sample_inputs
-            )
-        return result
+        return self.funsor_dist(value=value)
 
     # Draw a sample.
     def __call__(self):
         with funsor.interpreter.interpretation(funsor.terms.eager):
             dist = self.funsor_dist(value='value')
-            delta = dist.sample(frozenset(['value']), sample_inputs=self.sample_inputs)
-        if isinstance(delta, funsor.cnf.Contraction):
-            assert len(delta.terms) == 2
-            assert any(isinstance(t, funsor.delta.Delta) for t in delta.terms)
-            delta = [t for t in delta.terms if isinstance(t, funsor.delta.Delta)][0]
-        assert isinstance(delta, funsor.delta.Delta)
-        return delta.terms[0][1][0]
+            delta = dist.sample(frozenset(['value']))
+        if isinstance(delta, funsor.joint.Joint):
+            delta, = delta.deltas
+        return delta.point
 
     # Similar to torch.distributions.Distribution.expand().
     def expand_inputs(self, name, size):
@@ -62,9 +51,8 @@ class Distribution(object):
             assert self.funsor_dist.inputs[name] == funsor.bint(int(size))
             return self
         inputs = OrderedDict([(name, funsor.bint(int(size)))])
-        if self.sample_inputs:
-            inputs.update(self.sample_inputs)
-        return Distribution(self.funsor_dist, sample_inputs=inputs)
+        funsor_dist = self.funsor_dist + funsor.torch.Tensor(torch.zeros(size), inputs)
+        return Distribution(funsor_dist)
 
 
 # Pyro keeps track of two kinds of global state:

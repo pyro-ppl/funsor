@@ -7,9 +7,9 @@ import torch
 
 import funsor
 import funsor.distributions as dist
-from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import bint, reals
+from funsor.joint import Joint
 from funsor.terms import Independent, Variable
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import Tensor
@@ -343,7 +343,7 @@ def test_normal_gaussian_1(batch_shape):
     check_funsor(expected, inputs, reals())
 
     g = dist.Normal(loc, scale, 'value')
-    assert isinstance(g, Contraction)
+    assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
 
@@ -364,7 +364,7 @@ def test_normal_gaussian_2(batch_shape):
     check_funsor(expected, inputs, reals())
 
     g = dist.Normal(Variable('value', reals()), scale, loc)
-    assert isinstance(g, Contraction)
+    assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
 
@@ -385,7 +385,7 @@ def test_normal_gaussian_3(batch_shape):
     check_funsor(expected, inputs, reals())
 
     g = dist.Normal(Variable('loc', reals()), scale, 'value')
-    assert isinstance(g, Contraction)
+    assert isinstance(g, Joint)
     actual = g(loc=loc, value=value)
     check_funsor(actual, inputs, reals())
 
@@ -414,11 +414,11 @@ def test_normal_affine(expr):
     expected = dist.Normal(x, scale, y)
     actual = eval(expr)
 
-    assert isinstance(actual, Contraction)
+    assert isinstance(actual, Joint)
     assert dict(actual.inputs) == dict(expected.inputs), (actual.inputs, expected.inputs)
 
-    for ta, te in zip(actual.terms, expected.terms):
-        assert_close(ta.align(tuple(te.inputs)), te)
+    assert_close(actual.gaussian.align(tuple(expected.gaussian.inputs)), expected.gaussian)
+    assert_close(actual.discrete.align(tuple(expected.discrete.inputs)), expected.discrete)
 
 
 def test_normal_independent():
@@ -429,7 +429,7 @@ def test_normal_independent():
     d = Independent(fn, 'z', 'i', 'z_i')
     assert d.inputs['z'] == reals(2)
     sample = d.sample(frozenset(['z']))
-    assert isinstance(sample, Contraction)
+    assert isinstance(sample, Joint)
     assert sample.inputs['z'] == reals(2)
 
 
@@ -481,7 +481,7 @@ def test_mvn_gaussian(batch_shape):
     check_funsor(expected, inputs, reals())
 
     g = dist.MultivariateNormal(loc, scale_tril, 'value')
-    assert isinstance(g, Contraction)
+    assert isinstance(g, Joint)
     actual = g(value=value)
     check_funsor(actual, inputs, reals())
 

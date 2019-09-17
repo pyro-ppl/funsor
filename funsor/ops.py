@@ -61,23 +61,11 @@ class AddOp(AssociativeOp):
     pass
 
 
-class MulOp(AssociativeOp):
-    pass
-
-
-class LogAddExpOp(AssociativeOp):
-    pass
-
-
 class SubOp(Op):
     pass
 
 
 class NegOp(Op):
-    pass
-
-
-class DivOp(Op):
     pass
 
 
@@ -120,11 +108,11 @@ lt = Op(operator.lt)
 ne = Op(operator.ne)
 neg = NegOp(operator.neg)
 sub = SubOp(operator.sub)
-truediv = DivOp(operator.truediv)
+truediv = Op(operator.truediv)
 
 add = AddOp(operator.add)
 and_ = AssociativeOp(operator.and_)
-mul = MulOp(operator.mul)
+mul = AssociativeOp(operator.mul)
 or_ = AssociativeOp(operator.or_)
 xor = AssociativeOp(operator.xor)
 
@@ -149,11 +137,7 @@ def sqrt(x):
     return np.sqrt(x)
 
 
-class ExpOp(TransformOp):
-    pass
-
-
-@ExpOp
+@TransformOp
 def exp(x):
     return np.exp(x)
 
@@ -163,11 +147,7 @@ def log_abs_det_jacobian(x, y):
     return add(x)
 
 
-class LogOp(TransformOp):
-    pass
-
-
-@LogOp
+@TransformOp
 def log(x):
     return np.log(x)
 
@@ -214,29 +194,25 @@ def max(x, y):
     return _builtin_max(x, y)
 
 
-@LogAddExpOp
+@AssociativeOp
 def logaddexp(x, y):
     shift = max(x, y)
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
-@SubOp
+@Op
 def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
 
 
-@DivOp
+@Op
 def safediv(x, y):
     if isinstance(y, Number):
         return truediv(x, y)
 
 
-class ReciprocalOp(Op):
-    pass
-
-
-@ReciprocalOp
+@Op
 def reciprocal(x):
     if isinstance(x, Number):
         return 1. / x
@@ -269,16 +245,12 @@ __all__ = [
     'AddOp',
     'AssociativeOp',
     'DISTRIBUTIVE_OPS',
-    'ExpOp',
     'GetitemOp',
-    'LogAddExpOp',
-    'LogOp',
     'NegOp',
     'Op',
     'PRODUCT_INVERSES',
-    'ReciprocalOp',
-    'SubOp',
     'UNITS',
+    'SubOp',
     'abs',
     'add',
     'and_',

@@ -1,11 +1,15 @@
+from collections import OrderedDict
 from functools import reduce
 
+import torch
+
 import funsor.ops as ops
-from funsor.cnf import Contraction
-from funsor.interpreter import interpretation
-from funsor.optimizer import apply_optimizer
+from funsor.contract import Contract
+from funsor.interpreter import interpretation, reinterpret
+from funsor.optimizer import Finitary, apply_optimizer, optimize
 from funsor.sum_product import sum_product
-from funsor.terms import Funsor, lazy
+from funsor.terms import Funsor, reflect
+from funsor.torch import Tensor
 
 
 BACKEND_OPS = {
@@ -20,6 +24,25 @@ BACKEND_ADJOINT_OPS = {
     "pyro.ops.einsum.torch_marginal": (ops.logaddexp, ops.add),
     "pyro.ops.einsum.torch_map": (ops.max, ops.add),
 }
+
+
+def _make_base_lhs(prod_op, arg, reduced_vars, normalized=False):
+    if not all(isinstance(d.dtype, int) for d in arg.inputs.values()):
+        raise NotImplementedError("TODO implement continuous base lhss")
+
+    if prod_op not in (ops.add, ops.mul):
+        raise NotImplementedError("{} not supported product op".format(prod_op))
+
+    make_unit = torch.ones if prod_op is ops.mul else torch.zeros
+
+    sizes = OrderedDict(set((var, dtype) for var, dtype in arg.inputs.items()))
+    terms = tuple(
+        Tensor(make_unit((d.dtype,)) / float(d.dtype), OrderedDict([(var, d)]))
+        if normalized else
+        Tensor(make_unit((d.dtype,)), OrderedDict([(var, d)]))
+        for var, d in sizes.items() if var in reduced_vars
+    )
+    return Finitary(prod_op, terms) if len(terms) > 1 else terms[0]
 
 
 def naive_contract_einsum(eqn, *terms, **kwargs):
@@ -43,7 +66,14 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     input_dims = frozenset(d for inp in inputs for d in inp)
     output_dims = frozenset(d for d in output)
     reduced_vars = input_dims - output_dims
-    return Contraction(sum_op, prod_op, reduced_vars, *terms)
+
+    with interpretation(optimize):
+        rhs = Finitary(prod_op, tuple(terms))
+        lhs = _make_base_lhs(prod_op, rhs, reduced_vars, normalized=False)
+        assert frozenset(lhs.inputs) == reduced_vars
+        result = Contract(sum_op, prod_op, lhs, rhs, reduced_vars)
+
+    return reinterpret(result)
 
 
 def naive_einsum(eqn, *terms, **kwargs):
@@ -114,6 +144,7 @@ def einsum(eqn, *terms, **kwargs):
         terms): dimensions in plates but not in outputs are product-reduced;
         dimensions in neither plates nor outputs are sum-reduced.
     """
-    with interpretation(lazy):
+    with interpretation(reflect):
         naive_ast = naive_plated_einsum(eqn, *terms, **kwargs)
-    return apply_optimizer(naive_ast)
+        optimized_ast = apply_optimizer(naive_ast)
+    return reinterpret(optimized_ast)  # eager by default

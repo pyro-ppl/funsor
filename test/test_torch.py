@@ -7,8 +7,7 @@ import torch
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.interpreter import interpretation
-from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
+from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torch_stack, torch_tensordot
 
@@ -189,10 +188,9 @@ def test_advanced_indexing_lazy(output_shape):
     ]))
     u = Variable('u', bint(2))
     v = Variable('v', bint(3))
-    with interpretation(lazy):
-        i = Number(1, 2) - u
-        j = Number(2, 3) - v
-        k = u + v
+    i = Number(1, 2) - u
+    j = Number(2, 3) - v
+    k = u + v
 
     expected_data = torch.empty((2, 3) + output_shape)
     i_data = funsor.torch.materialize(i).data

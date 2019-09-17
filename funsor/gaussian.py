@@ -6,9 +6,9 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-from funsor.delta import Delta, Delta
+from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.integrate import Integrate
+from funsor.integrate import Integrate, integrator
 from funsor.ops import AddOp, NegOp, SubOp
 from funsor.terms import (
     Align,
@@ -566,7 +566,7 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
 
 
 @eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
-@eager.register(Binary, SubOp, (Funsor, Align, Delta), Gaussian)
+@eager.register(Binary, SubOp, (Funsor, Align), Gaussian)
 def eager_sub(op, lhs, rhs):
     return lhs + -rhs
 
@@ -579,19 +579,22 @@ def eager_neg(op, arg):
 
 
 @eager.register(Integrate, Gaussian, Variable, frozenset)
+@integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
-    if real_vars == frozenset([integrand.name]):
+    if real_vars:
+        assert real_vars == frozenset([integrand.name])
         loc = cholesky_solve(log_measure.info_vec.unsqueeze(-1), log_measure._precision_chol).squeeze(-1)
         data = loc * log_measure.log_normalizer.data.exp().unsqueeze(-1)
         data = data.reshape(loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
-        result = Tensor(data, inputs)
-        return result.reduce(ops.add, reduced_vars - real_vars)
+        return Tensor(data, inputs)
+
     return None  # defer to default implementation
 
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
+@integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars:

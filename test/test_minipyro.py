@@ -85,8 +85,7 @@ def test_generate_data(backend):
         return x
 
     with pyro_backend(backend):
-        data = model()
-        data = data.data
+        data = model().data
         assert data.shape == ()
 
 

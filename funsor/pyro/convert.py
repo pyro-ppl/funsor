@@ -22,12 +22,11 @@ import torch.distributions as dist
 from pyro.distributions.torch_distribution import MaskedDistribution
 from pyro.distributions.util import broadcast_shape
 
-from funsor.cnf import Contraction
-from funsor.delta import Delta
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian, align_tensors, cholesky_solve
 from funsor.interpreter import gensym
+from funsor.joint import Joint
 from funsor.terms import Funsor, Independent, Variable, eager
 from funsor.torch import Tensor
 
@@ -166,8 +165,8 @@ def funsor_to_mvn(gaussian, ndims, event_inputs=()):
     :rtype: pyro.distributions.MultivariateNormal
     """
     assert sum(1 for d in gaussian.inputs.values() if d.dtype == "real") == 1
-    if isinstance(gaussian, Contraction):
-        gaussian = [v for v in gaussian.terms if isinstance(v, Gaussian)][0]
+    if isinstance(gaussian, Joint):
+        gaussian = gaussian.gaussian
     assert isinstance(gaussian, Gaussian)
 
     precision = gaussian.precision
@@ -196,12 +195,12 @@ def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
         :class:`~pyro.distributions.MultivariateNormal` with rightmost batch
         dimension ranging over mixture components.
     """
-    assert isinstance(funsor_, Contraction), funsor_
+    assert isinstance(funsor_, Joint), funsor_
     assert sum(1 for d in funsor_.inputs.values() if d.dtype == "real") == 1
     assert event_inputs, "no components name found"
-    assert not any(isinstance(v, Delta) for v in funsor_.terms)
-    discrete = [v for v in funsor_.terms if isinstance(v, Tensor)][0]
-    gaussian = [v for v in funsor_.terms if isinstance(v, Gaussian)][0]
+    assert not funsor_.deltas
+    discrete = funsor_.discrete
+    gaussian = funsor_.gaussian
     assert isinstance(discrete, Tensor)
     assert isinstance(gaussian, Gaussian)
 
