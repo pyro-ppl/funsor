@@ -200,7 +200,7 @@ def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
     assert sum(1 for d in funsor_.inputs.values() if d.dtype == "real") == 1
     assert event_inputs, "no components name found"
     assert not any(isinstance(v, Delta) for v in funsor_.terms)
-    discrete = [v for v in funsor_.terms if isinstance(v, Tensor)][0]  # funsor_.discrete
+    discrete = [v for v in funsor_.terms if isinstance(v, Tensor)][0]
     gaussian = [v for v in funsor_.terms if isinstance(v, Gaussian)][0]
     assert isinstance(discrete, Tensor)
     assert isinstance(gaussian, Gaussian)
