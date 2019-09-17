@@ -429,8 +429,7 @@ def test_normal_independent():
     d = Independent(fn, 'z', 'i', 'z_i')
     assert d.inputs['z'] == reals(2)
     sample = d.sample(frozenset(['z']))
-    assert isinstance(sample, Independent)
-    assert isinstance(sample.fn, Contraction)
+    assert isinstance(sample, Contraction)
     assert sample.inputs['z'] == reals(2)
 
 
