@@ -11,6 +11,8 @@ from funsor.terms import (
     Binary,
     Funsor,
     FunsorMeta,
+    Independent,
+    Lambda,
     Number,
     Subs,
     Unary,
@@ -194,6 +196,22 @@ def eager_add_funsor_delta(op, lhs, rhs):
     if rhs.fresh.intersection(lhs.inputs):
         lhs = lhs(**{name: point for name, (point, log_density) in rhs.terms if name in lhs.inputs})
         return op(lhs, rhs)
+
+    return None
+
+
+@eager.register(Independent, Delta, str, str, str)
+def eager_independent_delta(delta, reals_var, bint_var, diag_var):
+    for i, (name, (point, log_density)) in enumerate(delta.terms):
+        if name == diag_var:
+            bv = Variable(bint_var, delta.inputs[bint_var])
+            point = Lambda(bv, point)
+            if bint_var in log_density.inputs:
+                log_density = log_density.reduce(ops.add, bint_var)
+            else:
+                log_density = log_density * delta.inputs[bint_var].dtype
+            new_terms = delta.terms[:i] + ((reals_var, (point, log_density)),) + delta.terms[i+1:]
+            return Delta(new_terms)
 
     return None
 

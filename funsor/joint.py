@@ -1,7 +1,7 @@
 import math
 from collections import OrderedDict
 from functools import reduce
-from typing import Union
+from typing import Tuple, Union
 
 import torch
 from multipledispatch import dispatch
@@ -14,7 +14,7 @@ from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
 from funsor.integrate import Integrate
 from funsor.ops import AssociativeOp
-from funsor.terms import Funsor, Number, Reduce, Unary, Variable, eager, moment_matching, normalize
+from funsor.terms import Funsor, Independent, Number, Reduce, Unary, Variable, eager, moment_matching, normalize
 from funsor.torch import Tensor, align_tensor
 
 
@@ -172,3 +172,16 @@ def eager_reduce_exp(op, arg, reduced_vars):
     if log_result is not normalize(Reduce, ops.logaddexp, arg.arg, reduced_vars):
         return log_result.exp()
     return None
+
+
+@eager.register(Independent,
+                (Contraction[NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor], Gaussian]],
+                 Contraction[NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor, Gaussian]]]),
+                str, str, str)
+def eager_independent_joint(joint, reals_var, bint_var, diag_var):
+    if diag_var not in joint.inputs:
+        return None
+
+    delta = Independent(joint.terms[0], reals_var, bint_var, diag_var)
+    new_terms = (delta,) + tuple(t.reduce(ops.add, bint_var) for t in joint.terms[1:])
+    return reduce(joint.bin_op, new_terms)
