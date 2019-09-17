@@ -25,7 +25,7 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec
+from funsor.util import getargspec, to_python
 
 
 @contextmanager
@@ -33,6 +33,14 @@ def ignore_jit_warnings():
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
         yield
+
+
+@to_python.register(torch.Tensor)
+def _(x, indent, out):
+    """
+    Work around PyTorch not supporting reproducible repr.
+    """
+    out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
 
 
 def align_tensor(new_inputs, x):
@@ -599,6 +607,17 @@ class Function(Funsor):
                                        str(self.output), str(self.args))
 
 
+@to_python.register(Function)
+def _(arg, indent, out):
+    out.append((indent, f"Function({arg.fn.__name__},"))
+    to_python.inplace(arg.output, indent + 1, out)
+    i, line = out[-1]
+    out[-1] = i, line + ","
+    to_python.inplace(arg.args, indent + 1, out)
+    i, line = out[-1]
+    out[-1] = i, line + ")"
+
+
 @eager.register(Function, object, Domain, tuple)
 def eager_function(fn, output, args):
     if not all(isinstance(arg, (Number, Tensor)) for arg in args):
@@ -623,7 +642,7 @@ def _nested_function(fn, args, output):
         result = []
         for i, output_i in enumerate(output):
             fn_i = functools.partial(_select, fn, i)
-            fn_i.__name__ = "{}_{}".format(fn_i, i)
+            fn_i.__name__ = f"{fn.__name__}_{i}"
             result.append(_nested_function(fn_i, args, output_i))
         return LazyTuple(result)
     raise ValueError("Invalid output: {}".format(output))

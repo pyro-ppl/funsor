@@ -3,6 +3,7 @@ from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
 from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.torch import Tensor, arange
+from funsor.util import pretty, to_python
 
 from . import (
     adjoint,
@@ -55,11 +56,13 @@ __all__ = [
     'montecarlo',
     'of_shape',
     'ops',
+    'pretty',
     'reals',
     'reinterpret',
     'sum_product',
     'terms',
     'to_data',
     'to_funsor',
+    'to_python',
     'torch',
 ]

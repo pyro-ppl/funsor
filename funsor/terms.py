@@ -2,7 +2,6 @@ import functools
 import itertools
 import math
 import numbers
-import re
 import typing
 from collections import Hashable, OrderedDict
 from functools import reduce, singledispatch
@@ -16,7 +15,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, lazy_property
+from funsor.util import getargspec, lazy_property, pretty, to_python
 
 
 def substitute(expr, subs):
@@ -335,10 +334,11 @@ class Funsor(object, metaclass=FunsorMeta):
     def __str__(self):
         return '{}({})'.format(type(self).__name__, ', '.join(map(str, self._ast_values)))
 
+    def to_python(self):
+        return to_python(self)
+
     def pretty(self, maxlen=40):
-        lines = []
-        _pretty(self, lines, maxlen)
-        return '\n'.join(u'\u2502 ' * indent + text for indent, text in lines)
+        return pretty(self, maxlen=maxlen)
 
     def __contains__(self, item):
         raise TypeError
@@ -695,32 +695,20 @@ class Funsor(object, metaclass=FunsorMeta):
         return result
 
 
-@singledispatch
-def _pretty(arg, lines, maxlen, indent=0):
-    line = re.sub('\n\\s*', ' ', str(arg))
-    if len(line) > maxlen:
-        line = line[:maxlen] + "..."
-    lines.append((indent, line))
-
-
-@_pretty.register(Funsor)
-def _(arg, lines, maxlen, indent=0):
-    lines.append((indent, type(arg).__name__))
-    for arg in arg._ast_values:
-        _pretty(arg, lines, maxlen, indent + 1)
-
-
-@_pretty.register(tuple)
-def _(arg, lines, maxlen, indent=0):
-    lines.append((indent, type(arg).__name__))
-    for item in arg:
-        _pretty(item, lines, maxlen, indent + 1)
-
-
-@_pretty.register(str)
-@_pretty.register(Domain)
-def _(arg, lines, maxlen, indent=0):
-    lines.append((indent, repr(arg)))
+@to_python.register(Funsor)
+def _(arg, indent, out):
+    name = type(arg).__name__
+    if type(arg).__module__ == 'funsor.distributions':
+        name = 'dist.' + name
+    out.append((indent, name + "("))
+    for value in arg._ast_values[:-1]:
+        to_python.inplace(value, indent + 1, out)
+        i, line = out[-1]
+        out[-1] = i, line + ","
+    for value in arg._ast_values[-1:]:
+        to_python.inplace(value, indent + 1, out)
+        i, line = out[-1]
+        out[-1] = i, line + ")"
 
 
 interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
@@ -1122,6 +1110,9 @@ class Slice(Funsor, metaclass=SliceMeta):
         self.name = name
         self.slice = slice(start, stop, step)
 
+    def __repr__(self):
+        return "Slice({})".format(", ".join(map(repr, self._ast_values)))
+
     def eager_subs(self, subs):
         assert len(subs) == 1 and subs[0][0] == self.name
         index = subs[0][1]
@@ -1469,6 +1460,29 @@ def of_shape(*shape):
 ################################################################################
 # Register Ops
 ################################################################################
+
+
+@to_python.register(Variable)
+@to_python.register(Number)
+@to_python.register(Slice)
+def _(arg, indent, out):
+    out.append((indent, repr(arg)))
+
+
+@to_python.register(Unary)
+@to_python.register(Binary)
+@to_python.register(Reduce)
+def _(arg, indent, out):
+    out.append((indent, f"{type(arg).__name__}({repr(arg.op)},"))
+    for value in arg._ast_values[1:-1]:
+        to_python.inplace(value, indent + 1, out)
+        i, line = out[-1]
+        out[-1] = i, line + ","
+    for value in arg._ast_values[-1:]:
+        to_python.inplace(value, indent + 1, out)
+        i, line = out[-1]
+        out[-1] = i, line + ")"
+
 
 @ops.abs.register(Funsor)
 def _abs(x):
