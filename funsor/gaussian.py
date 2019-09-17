@@ -582,7 +582,6 @@ def eager_neg(op, arg):
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars == frozenset([integrand.name]):
-        # assert real_vars == frozenset([integrand.name])
         loc = cholesky_solve(log_measure.info_vec.unsqueeze(-1), log_measure._precision_chol).squeeze(-1)
         data = loc * log_measure.log_normalizer.data.exp().unsqueeze(-1)
         data = data.reshape(loc.shape[:-1] + integrand.output.shape)

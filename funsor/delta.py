@@ -84,7 +84,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
     """
     def __init__(self, terms):
         assert isinstance(terms, tuple) and len(terms) > 0
-        inputs = OrderedDict()  # log_density.inputs.copy()
+        inputs = OrderedDict()
         for name, (point, log_density) in terms:
             assert isinstance(name, str)
             assert isinstance(point, Funsor)
@@ -113,7 +113,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
     def eager_subs(self, subs):
         terms = OrderedDict(self.terms)
         new_terms = terms.copy()
-        log_density = to_funsor(0., self.output)
+        log_density = Number(0)
         for name, value in subs:
             if isinstance(value, Variable):
                 new_terms[value.name] = new_terms.pop(name)

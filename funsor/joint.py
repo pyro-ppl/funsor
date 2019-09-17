@@ -179,7 +179,7 @@ def eager_reduce_exp(op, arg, reduced_vars):
                  Contraction[NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor, Gaussian]]]),
                 str, str, str)
 def eager_independent_joint(joint, reals_var, bint_var, diag_var):
-    if diag_var not in joint.inputs:
+    if diag_var not in joint.terms[0].fresh:
         return None
 
     delta = Independent(joint.terms[0], reals_var, bint_var, diag_var)

@@ -15,7 +15,7 @@ def unfold(cls, *args):
     if result is None:
         result = normalize.dispatch(cls, *args)
     if result is None:
-        result = lazy(cls, *args)  # lazy or reflect?
+        result = lazy(cls, *args)
     return result
 
 
@@ -70,7 +70,7 @@ optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor)
 def eager_contract_base(red_op, bin_op, reduced_vars, *terms):
-    return None  # eager.dispatch(Contraction, red_op, bin_op, reduced_vars, *terms)
+    return None
 
 
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)

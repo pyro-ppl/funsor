@@ -68,6 +68,7 @@ class FunsorDistribution(dist.TorchDistribution):
                     sample_inputs[DIM_TO_NAME[dim]] = bint(shape[dim])
         delta = self.funsor_dist.sample(frozenset({"value"}), sample_inputs)
         if isinstance(delta, Contraction):
+            assert len(delta.terms) == 1
             delta = delta.terms[0]
         assert isinstance(delta, Delta)
         return delta

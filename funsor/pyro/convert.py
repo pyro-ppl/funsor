@@ -23,6 +23,7 @@ from pyro.distributions.torch_distribution import MaskedDistribution
 from pyro.distributions.util import broadcast_shape
 
 from funsor.cnf import Contraction
+from funsor.delta import Delta
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian, align_tensors, cholesky_solve
@@ -198,7 +199,7 @@ def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
     assert isinstance(funsor_, Contraction), funsor_
     assert sum(1 for d in funsor_.inputs.values() if d.dtype == "real") == 1
     assert event_inputs, "no components name found"
-    # assert not funsor_.deltas
+    assert not any(isinstance(v, Delta) for v in funsor_.terms)
     discrete = [v for v in funsor_.terms if isinstance(v, Tensor)][0]  # funsor_.discrete
     gaussian = [v for v in funsor_.terms if isinstance(v, Gaussian)][0]
     assert isinstance(discrete, Tensor)
