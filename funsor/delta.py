@@ -167,7 +167,6 @@ class Delta(Funsor, metaclass=DeltaMeta):
         return None  # defer to default implementation
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        # raise NotImplementedError("TODO implement sample for particle indices")
         return self
 
 
