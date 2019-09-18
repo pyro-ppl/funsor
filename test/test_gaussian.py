@@ -282,10 +282,19 @@ def test_eager_subs_variable():
 
     g2 = g1(x='z')
     assert set(g2.inputs) == {'i', 'y', 'z'}
+    assert g2.info_vec is g1.info_vec
+    assert g2.precision is g1.precision
 
     g2 = g1(x='y', y='x')
     assert set(g2.inputs) == {'i', 'x', 'y'}
     assert g2.inputs['x'] == reals(2)
+    assert g2.info_vec is g1.info_vec
+    assert g2.precision is g1.precision
+
+    g2 = g1(i='j')
+    assert set(g2.inputs) == {'j', 'x', 'y'}
+    assert g2.info_vec is g1.info_vec
+    assert g2.precision is g1.precision
 
 
 @pytest.mark.parametrize('int_inputs', [
