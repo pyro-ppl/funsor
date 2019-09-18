@@ -1,7 +1,9 @@
 import math
 
+import pytest
 import torch
 
+import funsor
 import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.cnf import Contraction
@@ -12,6 +14,7 @@ from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo
 from funsor.pyro.convert import AffineNormal
 from funsor.terms import Binary, Independent, Number, Reduce, Slice, Stack, Subs, Variable, reflect
+from funsor.testing import xfail_param
 from funsor.torch import Function, Tensor
 
 num_origins = 2
@@ -22,7 +25,15 @@ def bounded_exp(x, bound):
     return (x - math.log(bound)).sigmoid() * bound
 
 
+call_count = 0
+
+
+@funsor.torch.function(reals(2 * num_origins * num_destins),
+                       (reals(num_origins, num_destins, 2),
+                        reals(num_origins, num_destins)))
 def unpack_gate_rate(gate_rate):
+    global call_count
+    call_count += 1
     batch_shape = gate_rate.shape[:-1]
     event_shape = (2, num_origins, num_destins)
     gate, rate = gate_rate.reshape(batch_shape + event_shape).unbind(-3)
@@ -31,21 +42,22 @@ def unpack_gate_rate(gate_rate):
     return gate, rate
 
 
-def unpack_gate_rate_0(gate_rate):
-    return unpack_gate_rate(gate_rate)[0]
+unpack_gate_rate_0 = unpack_gate_rate[0].fn
+unpack_gate_rate_1 = unpack_gate_rate[1].fn
 
 
-def unpack_gate_rate_1(gate_rate):
-    return unpack_gate_rate(gate_rate)[1]
+@pytest.mark.parametrize('analytic_kl', [
+    False,
+    xfail_param(True, reason="missing pattern"),
+], ids=['monte-carlo-kl', 'analytic-kl'])
+def test_bart(analytic_kl):
+    global call_count
+    call_count = 0
 
-
-def test_bart():
     with interpretation(reflect):
         q = Independent(
          Independent(
-          Contraction(
-           ops.nullop,
-           ops.add,
+          Contraction(ops.nullop, ops.add,
            frozenset(),
            (Tensor(
              torch.tensor([[-0.6077086925506592, -1.1546266078948975, -0.7021151781082153, -0.5303535461425781, -0.6365622282028198, -1.2423288822174072, -0.9941254258155823, -0.6287292242050171], [-0.6987162828445435, -1.0875964164733887, -0.7337473630905151, -0.4713417589664459, -0.6674002408981323, -1.2478348016738892, -0.8939017057418823, -0.5238542556762695]], dtype=torch.float32),  # noqa
@@ -241,9 +253,15 @@ def test_bart():
           frozenset({'gated_b17'})),
          frozenset({'time_b18', 'origin_b20', 'destin_b19'}))
 
+    if analytic_kl:
+        exact_part = funsor.Integrate(q, p_prior - q, frozenset(["gate_rate_t"]))
+        with interpretation(monte_carlo):
+            approx_part = funsor.Integrate(q, p_likelihood, frozenset(["gate_rate_t"]))
+        elbo = exact_part + approx_part
+    else:
         p = p_prior + p_likelihood
-        pq = p - q
+        with interpretation(monte_carlo):
+            elbo = Integrate(q, p - q, frozenset(["gate_rate_t"]))
 
-    with interpretation(monte_carlo):
-        elbo = Integrate(q, pq, frozenset(['gate_rate_t']))
-        assert isinstance(elbo, Tensor)
+    assert isinstance(elbo, Tensor), elbo.pretty()
+    assert call_count == 1
