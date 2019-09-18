@@ -25,7 +25,11 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec
+from funsor.util import getargspec, quote
+
+
+def _nameof(fn):
+    return getattr(fn, '__name__', type(fn).__name__)
 
 
 @contextmanager
@@ -33,6 +37,14 @@ def ignore_jit_warnings():
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
         yield
+
+
+@quote.register(torch.Tensor)
+def _(x, indent, out):
+    """
+    Work around PyTorch not supporting reproducible repr.
+    """
+    out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
 
 
 def align_tensor(new_inputs, x):
@@ -579,6 +591,7 @@ class Function(Funsor):
     """
     def __init__(self, fn, output, args):
         assert callable(fn)
+        assert not isinstance(fn, Function)
         assert isinstance(args, tuple)
         inputs = OrderedDict()
         for arg in args:
@@ -589,14 +602,23 @@ class Function(Funsor):
         self.args = args
 
     def __repr__(self):
-        name = getattr(self.fn, '__name__', type(self.fn).__name__)
-        return '{}({}, {}, {})'.format(type(self).__name__, name,
+        return '{}({}, {}, {})'.format(type(self).__name__, _nameof(self.fn),
                                        repr(self.output), repr(self.args))
 
     def __str__(self):
-        name = getattr(self.fn, '__name__', type(self.fn).__name__)
-        return '{}({}, {}, {})'.format(type(self).__name__, name,
+        return '{}({}, {}, {})'.format(type(self).__name__, _nameof(self.fn),
                                        str(self.output), str(self.args))
+
+
+@quote.register(Function)
+def _(arg, indent, out):
+    out.append((indent, f"Function({_nameof(arg.fn)},"))
+    quote.inplace(arg.output, indent + 1, out)
+    i, line = out[-1]
+    out[-1] = i, line + ","
+    quote.inplace(arg.args, indent + 1, out)
+    i, line = out[-1]
+    out[-1] = i, line + ")"
 
 
 @eager.register(Function, object, Domain, tuple)
@@ -623,7 +645,7 @@ def _nested_function(fn, args, output):
         result = []
         for i, output_i in enumerate(output):
             fn_i = functools.partial(_select, fn, i)
-            fn_i.__name__ = "{}_{}".format(fn_i, i)
+            fn_i.__name__ = f"{_nameof(fn)}_{i}"
             result.append(_nested_function(fn_i, args, output_i))
         return LazyTuple(result)
     raise ValueError("Invalid output: {}".format(output))
@@ -645,7 +667,7 @@ class _Memoized(object):
 
     @property
     def __name__(self):
-        return self.fn.__name__
+        return _nameof(self.fn)
 
 
 def _function(inputs, output, fn):

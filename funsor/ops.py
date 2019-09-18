@@ -19,7 +19,7 @@ class Op(Dispatcher):
             self.add(default_signature, fn)
 
     def __repr__(self):
-        return self.__name__
+        return "ops." + self.__name__
 
     def __str__(self):
         return self.__name__
@@ -79,6 +79,16 @@ class NegOp(Op):
 
 class DivOp(Op):
     pass
+
+
+class NullOp(AssociativeOp):
+    """Placeholder associative op that unifies with any other op"""
+    pass
+
+
+@NullOp
+def nullop(x, y):
+    raise ValueError("should never actually evaluate this!")
 
 
 class GetitemMeta(type):

@@ -9,20 +9,9 @@ from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpreter import recursion_reinterpret
-from funsor.ops import AssociativeOp, DISTRIBUTIVE_OPS
-from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, \
-    eager, normalize, to_funsor
+from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
+from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize, to_funsor
 from funsor.torch import Tensor
-
-
-class NullOp(AssociativeOp):
-    """Placeholder associative op that unifies with any other op"""
-    pass
-
-
-@NullOp
-def nullop(x, y):
-    raise ValueError("should never actually evaluate this!")
 
 
 class Contraction(Funsor):

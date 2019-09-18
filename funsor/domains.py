@@ -6,7 +6,7 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-from funsor.util import lazy_property
+from funsor.util import lazy_property, quote
 
 
 class Domain(namedtuple('Domain', ['shape', 'dtype'])):
@@ -51,6 +51,11 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     def size(self):
         assert isinstance(self.dtype, int)
         return self.dtype
+
+
+@quote.register(Domain)
+def _(arg, indent, out):
+    out.append((indent, repr(arg)))
 
 
 def reals(*shape):

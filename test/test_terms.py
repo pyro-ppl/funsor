@@ -8,9 +8,11 @@ import pytest
 
 import funsor
 import funsor.ops as ops
+from funsor.cnf import Contraction
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
 from funsor.terms import (
+    Binary,
     Cat,
     Funsor,
     Independent,
@@ -19,15 +21,23 @@ from funsor.terms import (
     Reduce,
     Slice,
     Stack,
+    Subs,
     Variable,
+    eager,
     eager_or_die,
+    lazy,
     normalize,
+    reflect,
     sequential,
     to_data,
     to_funsor
 )
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH
+
+assert Binary  # flake8
+assert Subs  # flake8
+assert Contraction  # flake8
 
 np.seterr(all='ignore')
 
@@ -67,6 +77,32 @@ def test_cons_hash():
     assert Slice('x', 10) is Slice('x', 0, 10)
     assert Slice('x', 10, 10) is not Slice('x', 0, 10)
     assert Slice('x', 2, 10, 1) is Slice('x', 2, 10)
+
+
+def check_quote(x):
+    s = funsor.quote(x)
+    assert isinstance(s, str)
+    y = eval(s)
+    assert x is y
+
+
+@pytest.mark.parametrize('interp', [reflect, lazy, normalize, eager], ids=lambda i: i.__name__)
+def test_quote(interp):
+    with interpretation(interp):
+        x = Variable('x', bint(8))
+        check_quote(x)
+
+        y = Variable('y', reals(8, 3, 3))
+        check_quote(y)
+        check_quote(y[x])
+
+        z = Stack('i', (Number(0), Variable('z', reals())))
+        check_quote(z)
+        check_quote(z(i=0))
+        check_quote(z(i=Slice('i', 0, 1, 1, 2)))
+        check_quote(z.reduce(ops.add, 'i'))
+        check_quote(Cat('i', (z, z, z)))
+        check_quote(Lambda(Variable('i', bint(2)), z))
 
 
 @pytest.mark.parametrize('expr', [
