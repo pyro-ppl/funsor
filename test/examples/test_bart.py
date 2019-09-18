@@ -2,7 +2,6 @@ import math
 
 import torch
 
-import funsor
 import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.cnf import Contraction
