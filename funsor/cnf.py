@@ -12,6 +12,7 @@ from funsor.interpreter import recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
 from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize, to_funsor
 from funsor.torch import Tensor
+from funsor.util import quote
 
 
 class Contraction(Funsor):
@@ -91,6 +92,18 @@ class Contraction(Funsor):
         alpha_subs = {k: to_funsor(v, bound_types[k]) for k, v in alpha_subs.items()}
         red_op, bin_op, _, terms = super()._alpha_convert(alpha_subs)
         return red_op, bin_op, reduced_vars, terms
+
+
+@quote.register(Contraction)
+def _(arg, indent, out):
+    line = f"{type(arg).__name__}({repr(arg.red_op)}, {repr(arg.bin_op)},"
+    out.append((indent, line))
+    quote.inplace(arg.reduced_vars, indent + 1, out)
+    i, line = out[-1]
+    out[-1] = i, line + ","
+    quote.inplace(arg.terms, indent + 1, out)
+    i, line = out[-1]
+    out[-1] = i, line + ")"
 
 
 @recursion_reinterpret.register(Contraction)
