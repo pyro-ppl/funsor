@@ -99,6 +99,8 @@ def test_quote(interp):
         check_quote(z(i=0))
         check_quote(z(i=Slice('i', 0, 1, 1, 2)))
         check_quote(z.reduce(ops.add, 'i'))
+        check_quote(Cat('i', (z, z, z)))
+        check_quote(Lambda(Variable('i', bint(2)), z))
 
 
 @pytest.mark.parametrize('expr', [

@@ -1465,15 +1465,19 @@ def of_shape(*shape):
 @quote.register(Variable)
 @quote.register(Number)
 @quote.register(Slice)
-def _(arg, indent, out):
+def quote_inplace_oneline(arg, indent, out):
     out.append((indent, repr(arg)))
 
 
 @quote.register(Unary)
 @quote.register(Binary)
 @quote.register(Reduce)
-def _(arg, indent, out):
-    out.append((indent, f"{type(arg).__name__}({repr(arg.op)},"))
+@quote.register(Stack)
+@quote.register(Cat)
+@quote.register(Lambda)
+def quote_inplace_first_arg_on_first_line(arg, indent, out):
+    line = f"{type(arg).__name__}({repr(arg._ast_values[0])},"
+    out.append((indent, line))
     for value in arg._ast_values[1:-1]:
         quote.inplace(value, indent + 1, out)
         i, line = out[-1]

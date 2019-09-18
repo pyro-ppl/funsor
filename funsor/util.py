@@ -48,7 +48,7 @@ def quote(arg):
     This is useful to save intermediate funsors to add to tests.
     """
     out = []
-    quote_inplace(arg, 0, out)
+    _quote_inplace(arg, 0, out)
     lines = []
     for indent, line in out:
         if indent + len(line) >= 80:
@@ -62,7 +62,7 @@ def pretty(arg, maxlen=40):
     Pretty print an expression. This is useful for debugging.
     """
     out = []
-    quote_inplace(arg, 0, out)
+    _quote_inplace(arg, 0, out)
     fill = u'   \u2502' * 100
     lines = []
     for indent, line in out:
@@ -73,13 +73,13 @@ def pretty(arg, maxlen=40):
 
 
 @functools.singledispatch
-def quote_inplace(arg, indent, out):
+def _quote_inplace(arg, indent, out):
     line = re.sub('\n\\s*', ' ', repr(arg))
     out.append((indent, line))
 
 
-quote.inplace = quote_inplace
-quote.register = quote_inplace.register
+quote.inplace = _quote_inplace
+quote.register = _quote_inplace.register
 
 
 @quote.register(tuple)
