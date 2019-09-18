@@ -1,6 +1,5 @@
 import math
 
-import pytest
 import torch
 
 import funsor
@@ -13,7 +12,7 @@ from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo
 from funsor.pyro.convert import AffineNormal
-from funsor.terms import Binary, Independent, Number, Reduce, Slice, Stack, Subs, Variable, eager, reflect
+from funsor.terms import Binary, Independent, Number, Reduce, Slice, Stack, Subs, Variable, reflect
 from funsor.torch import Function, Tensor
 
 num_origins = 2
@@ -40,9 +39,7 @@ unpack_gate_rate_0 = unpack_gate_rate[0]
 unpack_gate_rate_1 = unpack_gate_rate[1]
 
 
-@pytest.mark.parametrize('interp', [eager, monte_carlo],
-                         ids=lambda i: i.__name__)
-def test_bart(interp):
+def test_bart():
     with interpretation(reflect):
         q = Independent(
          Independent(
@@ -247,5 +244,5 @@ def test_bart(interp):
         p = p_prior + p_likelihood
         pq = p - q
 
-    with interpretation(interp):
+    with interpretation(monte_carlo):
         Integrate(q, pq, frozenset(['gate_rate_t']))
