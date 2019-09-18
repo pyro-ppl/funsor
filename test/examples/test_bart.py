@@ -23,9 +23,6 @@ def bounded_exp(x, bound):
     return (x - math.log(bound)).sigmoid() * bound
 
 
-@funsor.torch.function(reals(2 * num_origins * num_destins),
-                       (reals(num_origins, num_destins, 2),
-                        reals(num_origins, num_destins)))
 def unpack_gate_rate(gate_rate):
     batch_shape = gate_rate.shape[:-1]
     event_shape = (2, num_origins, num_destins)
@@ -35,8 +32,12 @@ def unpack_gate_rate(gate_rate):
     return gate, rate
 
 
-unpack_gate_rate_0 = unpack_gate_rate[0]
-unpack_gate_rate_1 = unpack_gate_rate[1]
+def unpack_gate_rate_0(gate_rate):
+    return unpack_gate_rate(gate_rate)[0]
+
+
+def unpack_gate_rate_1(gate_rate):
+    return unpack_gate_rate(gate_rate)[1]
 
 
 def test_bart():

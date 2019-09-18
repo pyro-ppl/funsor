@@ -587,6 +587,7 @@ class Function(Funsor):
     """
     def __init__(self, fn, output, args):
         assert callable(fn)
+        assert not isinstance(fn, Function)
         assert isinstance(args, tuple)
         inputs = OrderedDict()
         for arg in args:
