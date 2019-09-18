@@ -3,17 +3,15 @@ import warnings
 from collections import OrderedDict
 from functools import reduce
 
-import opt_einsum
 import torch
 from contextlib2 import contextmanager
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.ops import AssociativeOp, GetitemOp, Op
+from funsor.ops import GetitemOp, Op
 from funsor.terms import (
     Binary,
     Funsor,
@@ -490,43 +488,43 @@ def eager_lambda(var, expr):
     return Tensor(data, inputs, expr.dtype)
 
 
-@eager.register(Contract, AssociativeOp, AssociativeOp, Tensor, Tensor, frozenset)
-@contractor
-def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
-    if (sum_op, prod_op) == (ops.add, ops.mul):
-        backend = "torch"
-    elif (sum_op, prod_op) == (ops.logaddexp, ops.add):
-        backend = "pyro.ops.einsum.torch_log"
-    else:
-        return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)
-
-    inputs = OrderedDict((k, d) for t in (lhs, rhs)
-                         for k, d in t.inputs.items() if k not in reduced_vars)
-
-    data = opt_einsum.contract(lhs.data, list(lhs.inputs),
-                               rhs.data, list(rhs.inputs),
-                               list(inputs), backend=backend)
-    dtype = find_domain(prod_op, lhs.output, rhs.output).dtype
-    return Tensor(data, inputs, dtype)
-
-
 @dispatch(str, Variadic[Tensor])
-def eager_cat_homogeneous(name, *parts):
+def eager_stack_homogeneous(name, *parts):
     assert parts
     output = parts[0].output
-    inputs = OrderedDict()
+    part_inputs = OrderedDict()
     for part in parts:
         assert part.output == output
-        assert name in part.inputs
+        assert name not in part.inputs
+        part_inputs.update(part.inputs)
+
+    shape = tuple(d.size for d in part_inputs.values()) + output.shape
+    data = torch.stack([align_tensor(part_inputs, part).expand(shape)
+                        for part in parts])
+    inputs = OrderedDict([(name, bint(len(parts)))])
+    inputs.update(part_inputs)
+    return Tensor(data, inputs, dtype=output.dtype)
+
+
+@dispatch(str, str, Variadic[Tensor])
+def eager_cat_homogeneous(name, part_name, *parts):
+    assert parts
+    output = parts[0].output
+    inputs = OrderedDict([(part_name, None)])
+    for part in parts:
+        assert part.output == output
+        assert part_name in part.inputs
         inputs.update(part.inputs)
 
     tensors = []
     for part in parts:
-        inputs[name] = part.inputs[name]  # typically a smaller bint
+        inputs[part_name] = part.inputs[part_name]
         shape = tuple(d.size for d in inputs.values()) + output.shape
         tensors.append(align_tensor(inputs, part).expand(shape))
+    if part_name != name:
+        del inputs[part_name]
 
-    dim = tuple(inputs).index(name)
+    dim = 0
     tensor = torch.cat(tensors, dim=dim)
     inputs[name] = bint(tensor.size(dim))
     return Tensor(tensor, inputs, dtype=output.dtype)
@@ -866,8 +864,7 @@ def _max(x, y):
 
 @ops.reciprocal.register(torch.Tensor)
 def _reciprocal(x):
-    result = x.reciprocal()
-    result.clamp_(max=torch.finfo(result.dtype).max)
+    result = x.reciprocal().clamp(max=torch.finfo(x.dtype).max)
     return result
 
 

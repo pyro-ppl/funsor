@@ -4,21 +4,21 @@ import torch
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.contract import Contract
+from funsor.cnf import Contraction, nullop
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Funsor, Reduce, Variable, alpha_substitute, lazy, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Variable, lazy, to_funsor
 from funsor.torch import Tensor
 
 
-def _alpha_deconvert(expr):
+def _alpha_unmangle(expr):
     alpha_subs = {name: name.split("__BOUND")[0]
                   for name in expr.bound if "__BOUND" in name}
     if not alpha_subs:
         return tuple(expr._ast_values)
 
-    return alpha_substitute(expr, alpha_subs)
+    return expr._alpha_convert(alpha_subs)
 
 
 class AdjointTape(object):
@@ -28,9 +28,9 @@ class AdjointTape(object):
         self._old_interpretation = None
 
     def __call__(self, cls, *args):
-        result = cls(*args) if self._old_interpretation is None \
-            else self._old_interpretation(cls, *args)
-        if issubclass(cls, (Reduce, Contract, Binary, Tensor)):  # TODO make generic
+        with interpretation(self._old_interpretation):
+            result = cls(*args)
+        if issubclass(cls, (Reduce, Contraction, Binary, Tensor)):  # TODO make generic
             self.tape.append((result, cls, args))
         return result
 
@@ -63,8 +63,8 @@ class AdjointTape(object):
             # reverse the effects of alpha-renaming
             with interpretation(lazy):
                 other_subs = {name: name.split("__BOUND")[0] for name in output.inputs if "__BOUND" in name}
-                inputs = _alpha_deconvert(fn(*inputs)(**other_subs))
-                output = type(output)(*_alpha_deconvert(output(**other_subs)))
+                inputs = _alpha_unmangle(fn(*inputs)(**other_subs))
+                output = type(output)(*_alpha_unmangle(output(**other_subs)))
 
             in_adjs = adjoint_ops(fn, red_op, bin_op, adjoint_values[output], *inputs)
             for v, adjv in in_adjs.items():
@@ -124,14 +124,28 @@ def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
         return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
 
 
-@adjoint_ops.register(Contract, AssociativeOp, AssociativeOp, Funsor,
-                      AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
-def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, lhs, rhs, reduced_vars):
+@adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
+                      AssociativeOp, AssociativeOp, frozenset, Funsor)
+def adjoint_contract_unary(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, arg):
+    return adjoint_reduce(adj_redop, adj_binop, out_adj, sum_op, arg, reduced_vars)
+
+
+@adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
+                      AssociativeOp, AssociativeOp, frozenset, tuple)
+def adjoint_contract_unary(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, terms):
+    assert len(terms) == 1 or len(terms) == 2
+    return adjoint_ops(Contraction, adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, *terms)
+
+
+@adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
+                      AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
+def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs):
+    assert sum_op is nullop or (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
 
     lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
-    lhs_adj = Contract(sum_op, prod_op, out_adj, rhs, lhs_reduced_vars)
+    lhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop, prod_op, lhs_reduced_vars, out_adj, rhs)
 
     rhs_reduced_vars = frozenset(lhs.inputs) - frozenset(rhs.inputs)
-    rhs_adj = Contract(sum_op, prod_op, out_adj, lhs, rhs_reduced_vars)
+    rhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop, prod_op, rhs_reduced_vars, out_adj, lhs)
 
     return {lhs: lhs_adj, rhs: rhs_adj}

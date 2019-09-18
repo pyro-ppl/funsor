@@ -6,12 +6,10 @@ import pytest
 import torch
 
 import funsor.ops as ops
+from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse, cholesky_solve
 from funsor.integrate import Integrate
-from funsor.interpreter import interpretation
-from funsor.joint import Joint
-from funsor.montecarlo import monte_carlo, monte_carlo_interpretation
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
 from funsor.torch import Tensor
@@ -39,13 +37,18 @@ def naive_cholesky_inverse(u):
     ]).reshape(shape)
 
 
+@pytest.mark.parametrize("requires_grad", [False, True])
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
-def test_cholesky_inverse(batch_shape, size):
+def test_cholesky_inverse(batch_shape, size, requires_grad):
     x = torch.randn(batch_shape + (size, size))
     x = x.transpose(-1, -2).matmul(x)
     u = x.cholesky()
+    if requires_grad:
+        u.requires_grad_()
     assert_close(cholesky_inverse(u), naive_cholesky_inverse(u))
+    if requires_grad:
+        cholesky_inverse(u).sum().backward()
 
 
 def test_block_vector():
@@ -120,13 +123,13 @@ def test_block_matrix_batched(batch_shape):
 
 @pytest.mark.parametrize('expr,expected_type', [
     ('-g1', Gaussian),
-    ('g1 + 1', Joint),
-    ('g1 - 1', Joint),
-    ('1 + g1', Joint),
-    ('g1 + shift', Joint),
-    ('g1 + shift', Joint),
-    ('shift + g1', Joint),
-    ('shift - g1', Joint),
+    ('g1 + 1', Contraction),
+    ('g1 - 1', Contraction),
+    ('1 + g1', Contraction),
+    ('g1 + shift', Contraction),
+    ('g1 + shift', Contraction),
+    ('shift + g1', Contraction),
+    ('shift - g1', Contraction),
     ('g1 + g1', Gaussian),
     ('(g1 + g2 + g2) - g2', Gaussian),
     ('g1(i=i0)', Gaussian),
@@ -139,8 +142,8 @@ def test_block_matrix_batched(batch_shape):
     ('(g1 + g2)(x=x0, y=y0)', Tensor),
     ('(g2 + g1)(x=x0, y=y0)', Tensor),
     ('g1.reduce(ops.logaddexp, "x")', Tensor),
-    ('(g1 + g2).reduce(ops.logaddexp, "x")', Joint),
-    ('(g1 + g2).reduce(ops.logaddexp, "y")', Joint),
+    ('(g1 + g2).reduce(ops.logaddexp, "x")', Contraction),
+    ('(g1 + g2).reduce(ops.logaddexp, "y")', Contraction),
     ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
 ])
 def test_smoke(expr, expected_type):
@@ -431,9 +434,9 @@ def test_integrate_variable(int_inputs, real_inputs):
     integrand = reduce(ops.add, [Variable(k, d) for k, d in real_inputs.items()])
     reduced_vars = frozenset(real_inputs)
 
-    with monte_carlo_interpretation(particle=bint(100000)):
-        approx = Integrate(log_measure, integrand, reduced_vars)
-        assert isinstance(approx, Tensor)
+    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(100000)))
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {'particle'})
+    assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
     assert isinstance(exact, Tensor)
@@ -462,9 +465,9 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     integrand = random_gaussian(inputs)
     reduced_vars = frozenset(real_inputs)
 
-    with monte_carlo_interpretation(particle=bint(10000)):
-        approx = Integrate(log_measure, integrand, reduced_vars)
-        assert isinstance(approx, Tensor)
+    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(10000)))
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {'particle'})
+    assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
     assert isinstance(exact, Tensor)
@@ -477,7 +480,7 @@ def test_mc_plate_gaussian():
                            (('loc', reals()),)) + torch.tensor(-0.9189)
     integrand = Gaussian(torch.randn((100, 1)) + 3., torch.ones((100, 1, 1)),
                          (('data', bint(100)), ('loc', reals())))
-    with interpretation(monte_carlo):
-        res = Integrate(log_measure, integrand, frozenset({'loc'}))
-        res = res.reduce(ops.mul, frozenset({'data'}))
-        assert not torch.isinf(res).any()
+
+    res = Integrate(log_measure.sample(frozenset({'loc'})), integrand, frozenset({'loc'}))
+    res = res.reduce(ops.mul, frozenset({'data'}))
+    assert not torch.isinf(res).any()

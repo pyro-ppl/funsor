@@ -1,275 +1,31 @@
-import functools
+import math
 from collections import OrderedDict
 from functools import reduce
+from typing import Tuple, Union
 
 import torch
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
-import funsor.interpreter as interpreter
 import funsor.ops as ops
-import funsor.terms
+from funsor.cnf import Contraction, GaussianMixture, NullOp
 from funsor.delta import Delta
-from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian, align_gaussian, cholesky_inverse, cholesky_solve
-from funsor.integrate import Integrate, integrator
-from funsor.montecarlo import monte_carlo
-from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import (
-    Align,
-    Binary,
-    Funsor,
-    FunsorMeta,
-    Independent,
-    Number,
-    Reduce,
-    Subs,
-    Unary,
-    Variable,
-    eager,
-    to_funsor
-)
-from funsor.torch import Tensor, align_tensor, arange
+from funsor.domains import bint
+from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
+from funsor.integrate import Integrate
+from funsor.ops import AssociativeOp
+from funsor.terms import Funsor, Independent, Number, Reduce, Unary, Variable, eager, moment_matching, normalize
+from funsor.torch import Tensor, align_tensor
 
 
-class JointMeta(FunsorMeta):
-    """
-    Wrapper to fill in defaults and convert to funsor.
-    """
-    def __call__(cls, deltas=(), discrete=0, gaussian=0):
-        discrete = to_funsor(discrete)
-        gaussian = to_funsor(gaussian)
-        return super(JointMeta, cls).__call__(deltas, discrete, gaussian)
-
-
-class Joint(Funsor, metaclass=JointMeta):
-    """
-    Normal form for a joint log probability density funsor.
-
-    The primary purpose of Joint is to handle substitution of
-    :class:`~funsor.delta.Delta` funsors into other funsors.
-
-    Joint is closed under Bayesian fusion, i.e. under ``ops.add`` operations.
-    Joint is not closed under mixtures, i.e. ``ops.logaddexp`` operations,
-    hence mixtures will be represented as lazy ``ops.logaddexp`` of Joints.
-
-    :param tuple deltas: A possibly-empty tuple of degenerate distributions
-        represented as :class:`~funsor.delta.Delta` funsors.
-    :param Funsor discrete: A joint discrete log mass function represented as
-        a :class:`~funsor.terms.Number` or `~funsor.terms.Tensor`.
-    :param Funsor gaussian: An optional joint multivariate normal distribution
-        a represented as :class:`~funsor.gaussian.Gaussian` or ``Number(0)`` if
-        absent.
-    """
-    def __init__(self, deltas, discrete, gaussian):
-        assert isinstance(deltas, tuple)
-        assert isinstance(discrete, (Number, Tensor))
-        assert discrete.output == reals()
-        assert gaussian is Number(0) or isinstance(gaussian, Gaussian)
-        inputs = OrderedDict()
-        for x in deltas:
-            assert isinstance(x, Delta)
-            assert x.name not in inputs
-            assert x.name not in discrete.inputs
-            assert x.name not in gaussian.inputs
-            inputs.update(x.inputs)
-        inputs.update(discrete.inputs)
-        inputs.update(gaussian.inputs)
-        output = reals()
-        super(Joint, self).__init__(inputs, output)
-        self.deltas = deltas
-        self.discrete = discrete
-        self.gaussian = gaussian
-
-    def align(self, names):
-        if not self.deltas:
-            discrete = self.discrete.align(tuple(k for k in names if k in self.discrete.inputs))
-            gaussian = self.gaussian.align(tuple(k for k in names if k in self.gaussian.inputs))
-            result = discrete + gaussian
-            if tuple(result.inputs) == names:
-                return result
-        return super(Joint, self).align(names)
-
-    def eager_reduce(self, op, reduced_vars):
-        if op is ops.logaddexp:
-            # Keep mixture parameters lazy.
-            mixture_vars = frozenset(k for k, d in self.gaussian.inputs.items() if d.dtype != 'real')
-            mixture_vars = mixture_vars.union(*(x.point.inputs for x in self.deltas))
-            lazy_vars = reduced_vars & mixture_vars
-            reduced_vars -= lazy_vars
-
-            # Integrate out degenerate variables, i.e. drop selected delta.
-            deltas = []
-            remaining_vars = set(reduced_vars)
-            for d in self.deltas:
-                if d.name in reduced_vars:
-                    remaining_vars.remove(d.name)
-                else:
-                    deltas.append(d)
-            deltas = tuple(deltas)
-            reduced_vars = frozenset(remaining_vars)
-
-            # Integrate out delayed discrete variables.
-            discrete_vars = reduced_vars.intersection(self.discrete.inputs)
-            discrete = self.discrete.reduce(op, discrete_vars)
-            reduced_vars -= discrete_vars
-
-            # Integrate out delayed gaussian variables.
-            gaussian_vars = reduced_vars.intersection(self.gaussian.inputs)
-            gaussian = self.gaussian.reduce(ops.logaddexp, gaussian_vars)
-            reduced_vars -= gaussian_vars
-
-            # Scale to account for remaining reduced_vars that were inputs to dropped deltas.
-            eager_result = Joint(deltas, discrete)
-            if gaussian is not Number(0):
-                eager_result += gaussian
-            reduced_vars |= lazy_vars.difference(eager_result.inputs)
-            lazy_vars = lazy_vars.intersection(eager_result.inputs)
-            if reduced_vars:
-                eager_result += ops.log(reduce(ops.mul, [self.inputs[v].dtype for v in reduced_vars]))
-
-            # Return a value only if progress has been made.
-            if eager_result is self:
-                return None  # defer to default implementation
-            else:
-                return eager_result.reduce(ops.logaddexp, lazy_vars)
-
-        if op is ops.add:
-            terms = list(self.deltas) + [self.discrete, self.gaussian]
-            for i, term in enumerate(terms):
-                terms[i] = term.reduce(ops.add, reduced_vars.intersection(term.inputs))
-            return reduce(ops.add, terms)
-
-        return None  # defer to default implementation
-
-    def moment_matching_reduce(self, op, reduced_vars):
-        if not reduced_vars:
-            return self
-        if op is ops.logaddexp:
-            if not all(reduced_vars.isdisjoint(d.inputs) for d in self.deltas):
-                raise NotImplementedError('TODO handle moment_matching with Deltas')
-            lazy_vars = frozenset().union(*(d.inputs for d in self.deltas)).intersection(reduced_vars)
-            approx_vars = frozenset(k for k in reduced_vars - lazy_vars
-                                    if self.inputs[k].dtype != 'real'
-                                    if k in self.gaussian.inputs)
-            exact_vars = reduced_vars - lazy_vars - approx_vars
-            if exact_vars:
-                return self.eager_reduce(op, exact_vars).reduce(op, approx_vars | lazy_vars)
-
-            # Moment-matching approximation.
-            assert approx_vars and not exact_vars
-            gaussian = self.gaussian
-            discrete = self.discrete + gaussian.log_normalizer
-            new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
-
-            int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
-            probs = (discrete - new_discrete.clamp_finite()).exp()
-
-            old_loc = Tensor(cholesky_solve(gaussian.info_vec.unsqueeze(-1),
-                                            gaussian._precision_chol).squeeze(-1),
-                             int_inputs)
-            new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
-            old_cov = Tensor(cholesky_inverse(gaussian._precision_chol), int_inputs)
-            diff = old_loc - new_loc
-            outers = Tensor(diff.data.unsqueeze(-1) * diff.data.unsqueeze(-2), diff.inputs)
-            new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
-                       (probs * outers).reduce(ops.add, approx_vars))
-
-            # Numerically stabilize by adding bogus precision to empty components.
-            total = probs.reduce(ops.add, approx_vars)
-            mask = (total.data == 0).to(total.data.dtype).unsqueeze(-1).unsqueeze(-1)
-            new_cov.data += mask * torch.eye(new_cov.data.size(-1))
-
-            new_precision = Tensor(cholesky_inverse(new_cov.data.cholesky()), new_cov.inputs)
-            new_info_vec = new_precision.data.matmul(new_loc.data.unsqueeze(-1)).squeeze(-1)
-            new_inputs = new_loc.inputs.copy()
-            new_inputs.update((k, d) for k, d in self.gaussian.inputs.items() if d.dtype == 'real')
-            new_gaussian = Gaussian(new_info_vec, new_precision.data, new_inputs)
-            new_discrete -= new_gaussian.log_normalizer
-
-            result = Joint(self.deltas, new_discrete, new_gaussian)
-            return result.reduce(ops.logaddexp, lazy_vars)
-
-        return None  # defer to default implementation
-
-    def unscaled_sample(self, sampled_vars, sample_inputs):
-        discrete_vars = sampled_vars.intersection(self.discrete.inputs)
-        gaussian_vars = frozenset(k for k, v in self.gaussian.inputs.items()
-                                  if k in sampled_vars if v.dtype == 'real')
-        result = self
-        if discrete_vars:
-            discrete = result.discrete.unscaled_sample(discrete_vars, sample_inputs)
-            result = Joint(result.deltas, gaussian=result.gaussian) + discrete
-        if gaussian_vars:
-            # Draw an expanded sample.
-            gaussian_sample_inputs = sample_inputs.copy()
-            for k, d in self.inputs.items():
-                if k not in result.gaussian.inputs and d.dtype != 'real':
-                    gaussian_sample_inputs[k] = d
-            gaussian = result.gaussian.unscaled_sample(gaussian_vars, gaussian_sample_inputs)
-            result = Joint(result.deltas, result.discrete) + gaussian
-        return result
-
-
-@eager.register(Joint, tuple, Funsor, Funsor)
-def eager_joint(deltas, discrete, gaussian):
-
-    if not isinstance(gaussian, (Number, Tensor, Gaussian)):
-        return Joint(deltas, discrete) + gaussian
-
-    if any(not isinstance(d, Delta) for d in deltas):
-        new_deltas = []
-        for d in deltas:
-            if isinstance(d, Delta):
-                new_deltas.append(d)
-            elif isinstance(d, (Number, Tensor)):
-                discrete += d
-            else:
-                raise ValueError("Invalid component for Joint: {}".format(d))
-        return Joint(tuple(new_deltas), discrete) + gaussian
-
-    if isinstance(gaussian, (Number, Tensor)) and gaussian is not Number(0):
-        discrete += gaussian
-        return Joint(deltas, discrete, Number(0))
-
-    # Demote a Joint to a simpler elementary funsor.
-    if not deltas:
-        if gaussian is Number(0):
-            return discrete
-        elif discrete is Number(0):
-            return gaussian
-    elif len(deltas) == 1:
-        if discrete is Number(0) and gaussian is Number(0):
-            return deltas[0]
-
-    return None  # defer to default implementation
-
-
-@eager.register(Independent, Joint, str, str)
-def eager_independent(joint, reals_var, bint_var):
-    for i, delta in enumerate(joint.deltas):
-        if delta.name == reals_var or delta.name.startswith(reals_var + "__BOUND"):
-            delta = Independent(delta, reals_var, bint_var)
-            deltas = joint.deltas[:i] + (delta,) + joint.deltas[1+i:]
-            discrete = joint.discrete
-            if bint_var in discrete.inputs:
-                discrete = discrete.reduce(ops.add, bint_var)
-            gaussian = joint.gaussian
-            if bint_var in gaussian.inputs:
-                gaussian = gaussian.reduce(ops.add, bint_var)
-            return Joint(deltas, discrete, gaussian)
-
-    return None  # defer to default implementation
-
-
-@dispatch(str, Variadic[Gaussian, Joint])
-def eager_cat_homogeneous(name, *parts):
+@dispatch(str, str, Variadic[(Gaussian, GaussianMixture)])
+def eager_cat_homogeneous(name, part_name, *parts):
     assert parts
     output = parts[0].output
-    inputs = OrderedDict()
+    inputs = OrderedDict([(part_name, None)])
     for part in parts:
         assert part.output == output
-        assert name in part.inputs
+        assert part_name in part.inputs
         inputs.update(part.inputs)
 
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != "real")
@@ -280,23 +36,26 @@ def eager_cat_homogeneous(name, *parts):
     info_vecs = []
     precisions = []
     for part in parts:
-        inputs[name] = part.inputs[name]  # typically a smaller bint
-        int_inputs[name] = inputs[name]
+        inputs[part_name] = part.inputs[part_name]
+        int_inputs[part_name] = inputs[part_name]
         shape = tuple(d.size for d in int_inputs.values())
         if isinstance(part, Gaussian):
             discrete = None
             gaussian = part
-        elif isinstance(part, Joint):
-            if part.deltas:
-                raise NotImplementedError("TODO")
-            discrete = align_tensor(int_inputs, part.discrete).expand(shape)
-            gaussian = part.gaussian
+        elif issubclass(type(part), GaussianMixture):  # TODO figure out why isinstance isn't working
+            discrete, gaussian = part.terms[0], part.terms[1]
+            discrete = align_tensor(int_inputs, discrete).expand(shape)
+        else:
+            raise NotImplementedError("TODO")
         discretes.append(discrete)
         info_vec, precision = align_gaussian(inputs, gaussian)
         info_vecs.append(info_vec.expand(shape + (-1,)))
         precisions.append(precision.expand(shape + (-1, -1)))
+    if part_name != name:
+        del inputs[part_name]
+        del int_inputs[part_name]
 
-    dim = tuple(inputs).index(name)
+    dim = 0
     info_vec = torch.cat(info_vecs, dim=dim)
     precision = torch.cat(precisions, dim=dim)
     inputs[name] = bint(info_vec.size(dim))
@@ -311,224 +70,118 @@ def eager_cat_homogeneous(name, *parts):
     return result
 
 
-################################################################################
-# Patterns to update a Joint with other funsors
-################################################################################
+#################################
+# patterns for moment-matching
+#################################
 
-@eager.register(Binary, AddOp, Joint, Joint)
-def eager_add(op, joint, other):
-    # Fuse two joint distributions.
-    for d in other.deltas:
-        joint += d
-    joint += other.discrete
-    joint += other.gaussian
-    return joint
+@moment_matching.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[object])
+def moment_matching_contract_default(*args):
+    return None
 
 
-@eager.register(Binary, AddOp, Joint, Delta)
-def eager_add(op, joint, delta):
-    # Update with a degenerate distribution, typically a monte carlo sample.
-    if delta.name in joint.inputs:
-        joint = Subs(joint, ((delta.name, delta.point),))
-        if not isinstance(joint, Joint):
-            return joint + delta
-    for d in joint.deltas:
-        if d.name in delta.inputs:
-            delta = Subs(delta, ((d.name, d.point),))
-    deltas = joint.deltas + (delta,)
-    return Joint(deltas, joint.discrete, joint.gaussian)
+@moment_matching.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
+def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
+
+    approx_vars = frozenset(k for k in reduced_vars if k in gaussian.inputs
+                            and gaussian.inputs[k].dtype != 'real')
+    exact_vars = reduced_vars - approx_vars
+
+    if exact_vars and approx_vars:
+        return Contraction(red_op, bin_op, exact_vars, discrete, gaussian).reduce(red_op, approx_vars)
+
+    if approx_vars and not exact_vars:
+        discrete += gaussian.log_normalizer
+        new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
+        new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
+        num_elements = reduce(ops.mul, [
+            gaussian.inputs[k].num_elements for k in approx_vars.difference(discrete.inputs)], 1)
+        if num_elements != 1:
+            new_discrete -= math.log(num_elements)
+
+        int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
+        probs = (discrete - new_discrete.clamp_finite()).exp()
+
+        old_loc = Tensor(cholesky_solve(gaussian.info_vec.unsqueeze(-1),
+                                        gaussian._precision_chol).squeeze(-1),
+                         int_inputs)
+        new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
+        old_cov = Tensor(cholesky_inverse(gaussian._precision_chol), int_inputs)
+        diff = old_loc - new_loc
+        outers = Tensor(diff.data.unsqueeze(-1) * diff.data.unsqueeze(-2), diff.inputs)
+        new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
+                   (probs * outers).reduce(ops.add, approx_vars))
+
+        # Numerically stabilize by adding bogus precision to empty components.
+        total = probs.reduce(ops.add, approx_vars)
+        mask = (total.data == 0).to(total.data.dtype).unsqueeze(-1).unsqueeze(-1)
+        new_cov.data += mask * torch.eye(new_cov.data.size(-1))
+
+        new_precision = Tensor(cholesky_inverse(new_cov.data.cholesky()), new_cov.inputs)
+        new_info_vec = new_precision.data.matmul(new_loc.data.unsqueeze(-1)).squeeze(-1)
+        new_inputs = new_loc.inputs.copy()
+        new_inputs.update((k, d) for k, d in gaussian.inputs.items() if d.dtype == 'real')
+        new_gaussian = Gaussian(new_info_vec, new_precision.data, new_inputs)
+        new_discrete -= new_gaussian.log_normalizer
+
+        return new_discrete + new_gaussian
+
+    return None
 
 
-@eager.register(Binary, AddOp, Joint, (Number, Tensor))
-def eager_add(op, joint, other):
-    # Update with a delayed discrete random variable.
-    subs = tuple((d.name, d.point) for d in joint.deltas if d in other.inputs)
-    if subs:
-        return joint + Subs(other, subs)
-    return Joint(joint.deltas, joint.discrete + other, joint.gaussian)
+####################################################
+# Patterns for normalizing and evaluating Integrate
+####################################################
+
+@normalize.register(Integrate, Funsor, Funsor, frozenset)
+def normalize_integrate(log_measure, integrand, reduced_vars):
+    return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
 
 
-@eager.register(Binary, AddOp, Joint, Gaussian)
-def eager_add(op, joint, other):
-    # Update with a delayed gaussian random variable.
-    subs = tuple((d.name, d.point) for d in joint.deltas if d.name in other.inputs)
-    if subs:
-        other = Subs(other, subs)
-    if joint.gaussian is not Number(0):
-        other = joint.gaussian + other
-    if not isinstance(other, Gaussian):
-        return Joint(joint.deltas, joint.discrete) + other
-    return Joint(joint.deltas, joint.discrete, other)
+@normalize.register(Integrate,
+                    Contraction[Union[NullOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple], Funsor, frozenset)
+def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
+    delta_terms = [t for t in log_measure.terms if isinstance(t, Delta)
+                   and t.fresh.intersection(reduced_vars, integrand.inputs)]
+    for delta in delta_terms:
+        integrand = integrand(**{name: point for name, (point, log_density) in delta.terms
+                                 if name in reduced_vars.intersection(integrand.inputs)})
+    return normalize_integrate(log_measure, integrand, reduced_vars)
 
 
-eager.register(Binary, AddOp, Reduce, Joint)(
-    funsor.terms.eager_distribute_reduce_other)
+@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset,
+                Unary[ops.ExpOp, Union[Delta, Gaussian, Number, Tensor]],
+                (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture))
+def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
+
+    if reduced_vars - reduced_vars.intersection(lhs.inputs, rhs.inputs):
+        result = eager.dispatch(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
+        if result is not None:
+            return result
+
+    result = eager.dispatch(Integrate, lhs.log(), rhs, reduced_vars)
+    if result is not None:
+        return result
+
+    return None
 
 
-@eager.register(Binary, AddOp, (Funsor, Align, Delta), Joint)
-def eager_add(op, other, joint):
-    return joint + other
+@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, Delta]], frozenset)
+def eager_reduce_exp(op, arg, reduced_vars):
+    # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
+    log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
+    if log_result is not normalize(Reduce, ops.logaddexp, arg.arg, reduced_vars):
+        return log_result.exp()
+    return None
 
 
-################################################################################
-# Patterns to create a Joint from elementary funsors
-################################################################################
+@eager.register(Independent,
+                (Contraction[NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor], Gaussian]],
+                 Contraction[NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor, Gaussian]]]),
+                str, str, str)
+def eager_independent_joint(joint, reals_var, bint_var, diag_var):
+    if diag_var not in joint.terms[0].fresh:
+        return None
 
-@eager.register(Binary, AddOp, Delta, Delta)
-def eager_add(op, lhs, rhs):
-    if lhs.name == rhs.name:
-        raise NotImplementedError
-    if rhs.name in lhs.inputs:
-        assert lhs.name not in rhs.inputs
-        lhs = lhs(**{rhs.name: rhs.point})
-    elif lhs.name in rhs.inputs:
-        rhs = rhs(**{lhs.name: lhs.point})
-    return Joint(deltas=(lhs, rhs))
-
-
-@eager.register(Binary, AddOp, Delta, (Number, Tensor, Gaussian))
-def eager_add(op, delta, other):
-    if delta.name in other.inputs:
-        other = Subs(other, ((delta.name, delta.point),))
-        assert isinstance(other, (Number, Tensor, Gaussian))
-    if isinstance(other, (Number, Tensor)):
-        return Joint((delta,), discrete=other)
-    else:
-        return Joint((delta,), gaussian=other)
-
-
-@eager.register(Binary, AddOp, (Number, Tensor, Gaussian), Delta)
-def eager_add(op, other, delta):
-    return delta + other
-
-
-@eager.register(Binary, AddOp, Gaussian, (Number, Tensor))
-def eager_add(op, gaussian, discrete):
-    return Joint(discrete=discrete, gaussian=gaussian)
-
-
-@eager.register(Binary, AddOp, (Number, Tensor), Gaussian)
-def eager_add(op, discrete, gaussian):
-    return Joint(discrete=discrete, gaussian=gaussian)
-
-
-################################################################################
-# Patterns to compute Radon-Nikodym derivatives
-################################################################################
-
-@eager.register(Binary, SubOp, Joint, (Funsor, Align, Gaussian, Joint))
-def eager_sub(op, joint, other):
-    return joint + -other
-
-
-@eager.register(Binary, SubOp, (Funsor, Align), Joint)
-def eager_sub(op, other, joint):
-    return -joint + other
-
-
-@eager.register(Binary, SubOp, Delta, (Number, Tensor, Gaussian, Joint))
-@eager.register(Binary, SubOp, (Number, Tensor), Gaussian)
-@eager.register(Binary, SubOp, Gaussian, (Number, Tensor, Joint))
-def eager_sub(op, lhs, rhs):
-    return lhs + -rhs
-
-
-@eager.register(Unary, NegOp, Joint)
-def eager_neg(op, joint):
-    if joint.deltas:
-        raise ValueError("Cannot negate deltas")
-    discrete = -joint.discrete
-    gaussian = -joint.gaussian
-    return Joint(discrete=discrete, gaussian=gaussian)
-
-
-################################################################################
-# Patterns for integration
-################################################################################
-
-def _simplify_integrate(fn, joint, integrand, reduced_vars):
-    if any(d.name in reduced_vars for d in joint.deltas):
-        subs = tuple((d.name, d.point) for d in joint.deltas if d.name in reduced_vars)
-        deltas = tuple(d for d in joint.deltas if d.name not in reduced_vars)
-        log_measure = Joint(deltas, joint.discrete, joint.gaussian)
-        integrand = Subs(integrand, subs)
-        reduced_vars = reduced_vars - frozenset(name for name, point in subs)
-        return Integrate(log_measure, integrand, reduced_vars)
-
-    return fn(joint, integrand, reduced_vars)
-
-
-def _joint_integrator(fn):
-    """
-    Decorator for Integrate(Joint(...), ...) patterns.
-    """
-    fn = interpreter.debug_logged(fn)
-    return integrator(functools.partial(_simplify_integrate, fn))
-
-
-@eager.register(Integrate, Joint, Funsor, frozenset)
-@_joint_integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
-    return None  # defer to default implementation
-
-
-@eager.register(Integrate, Joint, Delta, frozenset)
-@_joint_integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
-    raise NotImplementedError('TODO')
-
-
-@eager.register(Integrate, Joint, Tensor, frozenset)
-@_joint_integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
-    raise NotImplementedError('TODO')
-
-
-@eager.register(Integrate, Joint, Gaussian, frozenset)
-@_joint_integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
-    raise NotImplementedError('TODO')
-
-
-@eager.register(Integrate, Joint, Joint, frozenset)
-@_joint_integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
-    raise NotImplementedError('TODO')
-
-
-@eager.register(Integrate, Joint, Variable, frozenset)
-@integrator
-def eager_integrate(log_measure, integrand, reduced_vars):
-    name = integrand.name
-    assert reduced_vars == frozenset([name])
-    if any(d.name == name for d in log_measure.deltas):
-        deltas = tuple(d for d in log_measure.deltas if d.name != name)
-        log_norm = Joint(deltas, log_measure.discrete, log_measure.gaussian)
-        for d in log_measure.deltas:
-            if d.name == name:
-                mean = d.point
-                break
-        return mean * log_norm.exp()
-    elif name in log_measure.discrete.inputs:
-        integrand = arange(name, integrand.inputs[name].dtype)
-        return Integrate(log_measure, integrand, reduced_vars)
-    else:
-        assert name in log_measure.gaussian.inputs
-        gaussian = Integrate(log_measure.gaussian, integrand, reduced_vars)
-        return Joint(log_measure.deltas, log_measure.discrete).exp() * gaussian
-
-
-@monte_carlo.register(Integrate, Joint, Funsor, frozenset)
-@integrator
-def monte_carlo_integrate(log_measure, integrand, reduced_vars):
-    sampled_log_measure = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
-    if sampled_log_measure is not log_measure:
-        reduced_vars = reduced_vars | frozenset(monte_carlo.sample_inputs)
-        return Integrate(sampled_log_measure, integrand, reduced_vars)
-
-    return None  # defer to default implementation
-
-
-__all__ = [
-    'Joint',
-]
+    delta = Independent(joint.terms[0], reals_var, bint_var, diag_var)
+    new_terms = (delta,) + tuple(t.reduce(ops.add, bint_var) for t in joint.terms[1:])
+    return reduce(joint.bin_op, new_terms)

@@ -7,7 +7,8 @@ import torch
 import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.terms import Cat, Lambda, Number, Slice, Variable
+from funsor.interpreter import interpretation
+from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
 from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torch_stack, torch_tensordot
 
@@ -188,9 +189,10 @@ def test_advanced_indexing_lazy(output_shape):
     ]))
     u = Variable('u', bint(2))
     v = Variable('v', bint(3))
-    i = Number(1, 2) - u
-    j = Number(2, 3) - v
-    k = u + v
+    with interpretation(lazy):
+        i = Number(1, 2) - u
+        j = Number(2, 3) - v
+        k = u + v
 
     expected_data = torch.empty((2, 3) + output_shape)
     i_data = funsor.torch.materialize(i).data
@@ -690,11 +692,56 @@ def test_tensordot(x_shape, xy_shape, y_shape):
     ((2, 3), -2),
     ((2, 3), -3),
 ], ids=str)
-def test_stack(n, shape, dim):
+def test_torch_stack(n, shape, dim):
     tensors = [torch.randn(shape) for _ in range(n)]
     actual = torch_stack(tuple(Tensor(t) for t in tensors), dim=dim)
     expected = Tensor(torch.stack(tensors, dim=dim))
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('output', [bint(2), reals(), reals(4), reals(2, 3)], ids=str)
+def test_funsor_stack(output):
+    x = random_tensor(OrderedDict([
+        ('i', bint(2)),
+    ]), output)
+    y = random_tensor(OrderedDict([
+        ('j', bint(3)),
+    ]), output)
+    z = random_tensor(OrderedDict([
+        ('i', bint(2)),
+        ('k', bint(4)),
+    ]), output)
+
+    xy = Stack('t', (x, y))
+    assert isinstance(xy, Tensor)
+    assert xy.inputs == OrderedDict([
+        ('t', bint(2)),
+        ('i', bint(2)),
+        ('j', bint(3)),
+    ])
+    assert xy.output == output
+    for j in range(3):
+        assert_close(xy(t=0, j=j), x)
+    for i in range(2):
+        assert_close(xy(t=1, i=i), y)
+
+    xyz = Stack('t', (x, y, z))
+    assert isinstance(xyz, Tensor)
+    assert xyz.inputs == OrderedDict([
+        ('t', bint(3)),
+        ('i', bint(2)),
+        ('j', bint(3)),
+        ('k', bint(4)),
+    ])
+    assert xy.output == output
+    for j in range(3):
+        for k in range(4):
+            assert_close(xyz(t=0, j=j, k=k), x)
+    for i in range(2):
+        for k in range(4):
+            assert_close(xyz(t=1, i=i, k=k), y)
+    for j in range(3):
+        assert_close(xyz(t=2, j=j), z)
 
 
 @pytest.mark.parametrize('output', [bint(2), reals(), reals(4), reals(2, 3)], ids=str)
