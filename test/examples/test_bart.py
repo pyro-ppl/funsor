@@ -245,4 +245,5 @@ def test_bart():
         pq = p - q
 
     with interpretation(monte_carlo):
-        Integrate(q, pq, frozenset(['gate_rate_t']))
+        elbo = Integrate(q, pq, frozenset(['gate_rate_t']))
+        assert isinstance(elbo, Tensor)

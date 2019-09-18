@@ -8,6 +8,7 @@ import pytest
 
 import funsor
 import funsor.ops as ops
+from funsor.cnf import Contraction
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation
 from funsor.terms import (
@@ -36,6 +37,7 @@ from funsor.torch import REDUCE_OP_TO_TORCH
 
 assert Binary  # flake8
 assert Subs  # flake8
+assert Contraction  # flake8
 
 np.seterr(all='ignore')
 
@@ -84,7 +86,7 @@ def check_quote(x):
     assert x is y
 
 
-@pytest.mark.parametrize('interp', [reflect, lazy, eager], ids=lambda i: i.__name__)
+@pytest.mark.parametrize('interp', [reflect, lazy, normalize, eager], ids=lambda i: i.__name__)
 def test_quote(interp):
     with interpretation(interp):
         x = Variable('x', bint(8))
