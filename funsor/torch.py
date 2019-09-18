@@ -28,6 +28,10 @@ from funsor.terms import (
 from funsor.util import getargspec, quote
 
 
+def _nameof(fn):
+    return getattr(fn, '__name__', type(fn).__name__)
+
+
 @contextmanager
 def ignore_jit_warnings():
     with warnings.catch_warnings():
@@ -598,19 +602,17 @@ class Function(Funsor):
         self.args = args
 
     def __repr__(self):
-        name = getattr(self.fn, '__name__', type(self.fn).__name__)
-        return '{}({}, {}, {})'.format(type(self).__name__, name,
+        return '{}({}, {}, {})'.format(type(self).__name__, _nameof(self.fn),
                                        repr(self.output), repr(self.args))
 
     def __str__(self):
-        name = getattr(self.fn, '__name__', type(self.fn).__name__)
-        return '{}({}, {}, {})'.format(type(self).__name__, name,
+        return '{}({}, {}, {})'.format(type(self).__name__, _nameof(self.fn),
                                        str(self.output), str(self.args))
 
 
 @quote.register(Function)
 def _(arg, indent, out):
-    out.append((indent, f"Function({arg.fn.__name__},"))
+    out.append((indent, f"Function({_nameof(arg.fn)},"))
     quote.inplace(arg.output, indent + 1, out)
     i, line = out[-1]
     out[-1] = i, line + ","
@@ -643,7 +645,7 @@ def _nested_function(fn, args, output):
         result = []
         for i, output_i in enumerate(output):
             fn_i = functools.partial(_select, fn, i)
-            fn_i.__name__ = f"{fn.__name__}_{i}"
+            fn_i.__name__ = f"{_nameof(fn)}_{i}"
             result.append(_nested_function(fn_i, args, output_i))
         return LazyTuple(result)
     raise ValueError("Invalid output: {}".format(output))
@@ -665,7 +667,7 @@ class _Memoized(object):
 
     @property
     def __name__(self):
-        return self.fn.__name__
+        return _nameof(self.fn)
 
 
 def _function(inputs, output, fn):
