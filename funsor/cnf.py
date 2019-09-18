@@ -98,6 +98,9 @@ class Contraction(Funsor):
 def _(arg, indent, out):
     line = f"{type(arg).__name__}({repr(arg.red_op)}, {repr(arg.bin_op)},"
     out.append((indent, line))
+    quote.inplace(arg.reduced_vars, indent + 1, out)
+    i, line = out[-1]
+    out[-1] = i, line + ","
     quote.inplace(arg.terms, indent + 1, out)
     i, line = out[-1]
     out[-1] = i, line + ")"
