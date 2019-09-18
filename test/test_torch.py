@@ -13,6 +13,17 @@ from funsor.testing import assert_close, assert_equiv, check_funsor, random_tens
 from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torch_stack, torch_tensordot
 
 
+@pytest.mark.parametrize('output_shape', [(), (2,), (3, 2)], ids=str)
+@pytest.mark.parametrize('inputs', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')], ids=str)
+def test_quote(output_shape, inputs):
+    sizes = {'a': 4, 'b': 5, 'c': 6}
+    inputs = OrderedDict((k, bint(sizes[k])) for k in inputs)
+    x = random_tensor(inputs, reals(*output_shape))
+    s = funsor.quote(x)
+    assert isinstance(s, str)
+    assert_close(eval(s), x)
+
+
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
 @pytest.mark.parametrize('dtype', [torch.float, torch.long, torch.uint8, torch.bool])
 def test_to_funsor(shape, dtype):

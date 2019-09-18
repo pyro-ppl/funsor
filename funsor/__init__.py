@@ -57,12 +57,12 @@ __all__ = [
     'of_shape',
     'ops',
     'pretty',
+    'quote',
     'reals',
     'reinterpret',
     'sum_product',
     'terms',
     'to_data',
     'to_funsor',
-    'quote',
     'torch',
 ]
