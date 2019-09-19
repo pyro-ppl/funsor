@@ -451,23 +451,107 @@ def eager_mvn(loc, scale_tril, value):
 
 
 # Create a Gaussian from a ground observation.
-@eager.register(MultivariateNormal, Tensor, Tensor, Variable)
-@eager.register(MultivariateNormal, Variable, Tensor, Tensor)
+@eager.register(MultivariateNormal, (Variable, Contraction), Tensor, (Variable, Contraction))
+@eager.register(MultivariateNormal, (Variable, Contraction), Tensor, Tensor)
+@eager.register(MultivariateNormal, Tensor, Tensor, (Variable, Contraction))
 def eager_mvn(loc, scale_tril, value):
-    if isinstance(loc, Variable):
-        loc, value = value, loc
+    affine = loc - value
+    const, coeffs = affine.extract_affine()
+    if not isinstance(const, Tensor):
+        return None  # lazy
+    if not all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values()):
+        return None  # lazy
 
-    dim, = loc.output.shape
-    inputs, (loc, scale_tril) = align_tensors(loc, scale_tril)
-    inputs.update(value.inputs)
-    int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
+    # Dovetail to avoid variable name collision in einsum.
+    keep = {k: k for k in ',->.'}
+    equations1 = [''.join(keep.get(c, chr(ord(c) * 2)))
+                  for _, eqn in coeffs.values() for c in eqn]
+    equations2 = [''.join(keep.get(c, chr(ord(c) * 2 + 1)))
+                  for _, eqn in coeffs.values() for c in eqn]
 
-    precision = cholesky_inverse(scale_tril)
+    real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
+    int_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype != 'real')
+    assert len(real_inputs) == len(coeffs)
+
+    tensors = [scale_tril, const] + [coeffs[k] for k in real_inputs]
+    inputs, tensors = align_tensors(*tensors)
+    scale_tril, const, coeffs = tensors[0], tensors[1], tensors[2:]
+
+    # Incorporate scale_tril before broadcasting.
+    prec_sqrt = cholesky_inverse(scale_tril)
+    for i in range(len(coeffs)):
+        coeff = tensors[1 + i]
+        inputs1, output1 = equations1[i].split('->')
+        inputs12, _ = inputs1.split(',')
+        inputs2, output2 = equations2[i].split('->')
+        inputs22, _ = inputs2.split(',')
+        coeff = torch.einsum(
+            f'...{input11},...{output1}{output2}->...{input21}',
+            coeff, prec_sqrt)
+        tensors[1 + i] = coeff
+
+    tensors = torch.broadcast_tensors(*tensors)
+    scale_tril, const, coeffs = tensors[0], tensors[1], tensors[2:]
+    batch_shape = const.shape
+    dim = sum(d.num_elements for d in real_inputs.values())
+
+    loc = BlockVector(batch_shape + (dim,))
+    loc[..., 0] = -const / coeffs[0]  # FIXME consider directly constructing info_vec
+
+    precision = BlockMatrix(batch_shape + (dim, dim))
+    offset1 = 0
+    for i1, (v1, c1) in enumerate(zip(real_inputs, coeffs)):
+        slice1 = slice(offset1, offset1 + real_inputs[v1].num_elements)
+        input11, input12 = equations1[i1]  # FIXME
+        offset2 = 0
+        for i2, (v2, c2) in enumerate(zip(real_inputs, coeffs)):
+            slice2 = slice(offset2, offset2 + real_inputs[v2].num_elements)
+            input21, input22 = equations2[i2]  # FIXME
+            precision[..., slice1, slice2] = torch.einsum(
+                f'...{input11}{input12},...{input21}{input22}->...{input12}{input22}', c1, c2)
+            offset2 = slice2.stop
+        offset1 = slice1.stop
+
+    loc = loc.as_tensor()
+    precision = precision.as_tensor()
     info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
+
     log_prob = (-0.5 * dim * math.log(2 * math.pi)
                 - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
                 - 0.5 * (loc * info_vec).sum(-1))
-    return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
+    return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, affine.inputs)
+
+    # --------------
+    # OLD VERSION
+    # dim, = affine.output.shape
+    # inputs, (loc, scale_tril) = align_tensors(loc, scale_tril)
+    # inputs.update(value.inputs)
+    # int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
+    # 
+    # precision = cholesky_inverse(scale_tril)
+    # info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
+    # log_prob = (-0.5 * dim * math.log(2 * math.pi)
+    #             - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+    #             - 0.5 * (loc * info_vec).sum(-1))
+    # return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
+
+    # --------------
+    # FUTURE VERSION that defers to Gaussian(value=Contraction(...)).
+    #
+    # dim, = affine.output.shape
+    # int_inputs = scale_tril.inputs
+    # scale_tril = scale_tril.data
+    # inputs = int_inputs.copy()
+    # value_name = gensym("value")
+    # inputs[value_name] = affine.output
+    # int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
+    #
+    # precision = cholesky_inverse(scale_tril)
+    # info_vec = scale_tril.new_zeros(scale_tril.shape[:-1])
+    # log_prob = (-0.5 * dim * math.log(2 * math.pi)
+    #             - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1))
+    # mvn = Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
+    # return mvn(value=affine)
 
 
 class Poisson(Distribution):

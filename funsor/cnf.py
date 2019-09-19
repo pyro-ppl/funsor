@@ -93,6 +93,26 @@ class Contraction(Funsor):
         red_op, bin_op, _, terms = super()._alpha_convert(alpha_subs)
         return red_op, bin_op, reduced_vars, terms
 
+    def extract_affine(self):
+        """
+        Tries to return a pair ``(const, coeffs)`` where const is a funsor with
+        no real inputs and ``coeffs`` is an OrderedDict mapping Variable to a
+        ``(coefficient, eqn)`` pair in einsum form, i.e. satisfying::
+
+            affine = expected.extract_affine()
+            actual = sum(torch_einsum(eqn, coeff, var)
+                         for var, (coeff, eqn) in affine.items())
+            assert_close(actual, expected)
+
+        If any real input appears nonlinearly, this returns None.
+        """
+        const = affine(**{k: 0. for k, v in real_inputs.items()})
+        coeffs = OrderedDict()
+        for c in real_inputs.keys():
+            # TODO adapt this univariate code to multivariate setting.
+            # coeffs[c] = affine(**{k: 1. if c == k else 0. for k in real_inputs.keys()}) - const
+        raise NotImplementedError("TODO")
+
 
 @quote.register(Contraction)
 def _(arg, indent, out):
