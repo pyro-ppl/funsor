@@ -11,7 +11,7 @@ from multipledispatch.variadic import Variadic
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.ops import GetitemOp, Op
+from funsor.ops import GetitemOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
     Funsor,
@@ -19,6 +19,7 @@ from funsor.terms import (
     Lambda,
     Number,
     Slice,
+    Unary,
     Variable,
     eager,
     substitute,
@@ -427,6 +428,15 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
 
     data = op(lhs_data, rhs_data)
     return Tensor(data, inputs, dtype)
+
+
+@eager.register(Unary, ReshapeOp, Tensor)
+def eager_reshape_tensor(op, arg):
+    if arg.shape == op.shape:
+        return arg
+    batch_shape = arg.data.shape[:arg.data.dim() - len(arg.shape)]
+    data = arg.data.reshape(batch_shape + op.shape)
+    return Tensor(data, arg.inputs, arg.dtype)
 
 
 @eager.register(Binary, GetitemOp, Tensor, Number)
