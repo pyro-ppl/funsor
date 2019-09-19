@@ -88,6 +88,8 @@ def find_domain(op, *domains):
         shape = domains[0].shape
         if op is ops.log or op is ops.exp:
             dtype = 'real'
+        elif isinstance(op, ops.ReshapeOp):
+            shape = op.shape
         return Domain(shape, dtype)
 
     lhs, rhs = domains
