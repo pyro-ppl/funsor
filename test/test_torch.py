@@ -352,6 +352,31 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     check_funsor(actual, inputs, reals(), expected_data)
 
 
+@pytest.mark.parametrize("batch_shape", [(), (5,), (4, 3)])
+@pytest.mark.parametrize("old_shape,new_shape", [
+    ((), ()),
+    ((), (1,)),
+    ((2,), (2, 1)),
+    ((2,), (1, 2)),
+    ((6,), (2, 3)),
+    ((6,), (2, 1, 3)),
+    ((2, 3, 2), (3, 2, 2)),
+    ((2, 3, 2), (2, 2, 3)),
+])
+def test_reshape(batch_shape, old_shape, new_shape):
+    inputs = OrderedDict(zip("abc", map(bint, batch_shape)))
+    old = random_tensor(inputs, reals(*old_shape))
+    assert old.reshape(old.shape) is old
+
+    new = old.reshape(new_shape)
+    assert new.inputs == inputs
+    assert new.shape == new_shape
+    assert new.dtype == old.dtype
+
+    old2 = new.reshape(old_shape)
+    assert_close(old2, old)
+
+
 def test_getitem_number_0_inputs():
     data = torch.randn((5, 4, 3, 2))
     x = Tensor(data)
