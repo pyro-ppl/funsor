@@ -91,6 +91,28 @@ def nullop(x, y):
     raise ValueError("should never actually evaluate this!")
 
 
+class ReshapeMeta(type):
+    _cache = {}
+
+    def __call__(cls, shape):
+        shape = tuple(shape)
+        try:
+            return ReshapeMeta._cache[shape]
+        except KeyError:
+            instance = super().__call__(shape)
+            ReshapeMeta._cache[shape] = instance
+            return instance
+
+
+class ReshapeOp(Op, metaclass=ReshapeMeta):
+    def __init__(self, shape):
+        self.shape = shape
+        super().__init__(self._default)
+
+    def _default(self, x):
+        return x.reshape(self.shape)
+
+
 class GetitemMeta(type):
     _cache = {}
 
@@ -288,6 +310,7 @@ __all__ = [
     'PRODUCT_INVERSES',
     'ReciprocalOp',
     'SubOp',
+    'ReshapeOp',
     'UNITS',
     'abs',
     'add',
