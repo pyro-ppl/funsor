@@ -322,6 +322,26 @@ def test_binary_broadcast(inputs1, inputs2, output_shape1, output_shape2):
     assert_close(actual_block, expected_block)
 
 
+@pytest.mark.parametrize('output_shape2', [(2,), (2, 5), (4, 2, 5)], ids=str)
+@pytest.mark.parametrize('output_shape1', [(2,), (3, 2), (4, 3, 2)], ids=str)
+@pytest.mark.parametrize('inputs2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')], ids=str)
+@pytest.mark.parametrize('inputs1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')], ids=str)
+def test_matmul(inputs1, inputs2, output_shape1, output_shape2):
+    sizes = {'a': 6, 'b': 7, 'c': 8}
+    inputs1 = OrderedDict((k, bint(sizes[k])) for k in inputs1)
+    inputs2 = OrderedDict((k, bint(sizes[k])) for k in inputs2)
+    x1 = random_tensor(inputs1, reals(*output_shape1))
+    x2 = random_tensor(inputs1, reals(*output_shape2))
+
+    actual = x1 @ x2
+    assert actual.output == find_domain(ops.matmul, x1.output, x2.output)
+
+    block = {'a': 1, 'b': 2, 'c': 3}
+    actual_block = actual(**block)
+    expected_block = Tensor(x1(**block).data @ x2(**block).data)
+    assert_close(actual_block, expected_block)
+
+
 @pytest.mark.parametrize('scalar', [0.5])
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
 @pytest.mark.parametrize('symbol', BINARY_OPS)

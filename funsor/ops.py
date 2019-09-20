@@ -65,6 +65,10 @@ class MulOp(AssociativeOp):
     pass
 
 
+class MatmulOp(AssociativeOp):
+    pass
+
+
 class LogAddExpOp(AssociativeOp):
     pass
 
@@ -157,6 +161,7 @@ truediv = DivOp(operator.truediv)
 add = AddOp(operator.add)
 and_ = AssociativeOp(operator.and_)
 mul = MulOp(operator.mul)
+matmul = MatmulOp(operator.matmul)
 or_ = AssociativeOp(operator.or_)
 xor = AssociativeOp(operator.xor)
 
@@ -325,6 +330,7 @@ __all__ = [
     'log',
     'log1p',
     'lt',
+    'matmul',
     'max',
     'min',
     'mul',

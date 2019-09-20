@@ -620,6 +620,12 @@ class Funsor(object, metaclass=FunsorMeta):
     def __rtruediv__(self, other):
         return Binary(ops.truediv, to_funsor(other), self)
 
+    def __matmul__(self, other):
+        return Binary(ops.matmul, self, to_funsor(other))
+
+    def __rmatmul__(self, other):
+        return Binary(ops.matmul, to_funsor(other), self)
+
     def __pow__(self, other):
         return Binary(ops.pow, self, to_funsor(other))
 
