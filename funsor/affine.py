@@ -8,6 +8,11 @@ from funsor.terms import Lambda, Variable, bint
 from funsor.torch import Tensor
 
 
+# FIXME change this to a sound but incomplete test using pattern matching.
+def is_affine(fn):
+    return True
+
+
 def extract_affine(fn):
     """
     Extracts an affine representation of a funsor, which is exact for affine

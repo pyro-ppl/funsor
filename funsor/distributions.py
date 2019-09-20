@@ -7,7 +7,7 @@ from pyro.distributions.util import broadcast_shape
 
 import funsor.delta
 import funsor.ops as ops
-from funsor.affine import extract_affine
+from funsor.affine import extract_affine, is_affine
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
@@ -456,8 +456,12 @@ def eager_mvn(loc, scale_tril, value):
 @eager.register(MultivariateNormal, (Variable, Contraction), Tensor, Tensor)
 @eager.register(MultivariateNormal, Tensor, Tensor, (Variable, Contraction))
 def eager_mvn(loc, scale_tril, value):
+    assert len(loc.shape) == 1
+    assert len(scale_tril.shape) == 2
+    assert value.output == loc.output
+
     affine = loc - value
-    if not isinstance(affine, Contraction):
+    if not is_affine(affine):
         return None  # lazy
 
     const, coeffs = extract_affine(affine)
@@ -467,10 +471,10 @@ def eager_mvn(loc, scale_tril, value):
         return None  # lazy
 
     # Dovetail to avoid variable name collision in einsum.
-    equations1 = [''.join(c if c in ',->' else chr(ord(c) * 2))
-                  for _, eqn in coeffs.values() for c in eqn]
-    equations2 = [''.join(c if c in ',->' else chr(ord(c) * 2 + 1))
-                  for _, eqn in coeffs.values() for c in eqn]
+    equations1 = [''.join(c if c in ',->' else chr(ord(c) * 2 - ord('a')) for c in eqn)
+                  for _, eqn in coeffs.values()]
+    equations2 = [''.join(c if c in ',->' else chr(ord(c) * 2 - ord('a') + 1) for c in eqn)
+                  for _, eqn in coeffs.values()]
 
     real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
     assert tuple(real_inputs) == tuple(coeffs)
@@ -491,28 +495,30 @@ def eager_mvn(loc, scale_tril, value):
     batch_shape = const.shape
     dim = sum(d.num_elements for d in real_inputs.values())
 
-    loc = BlockVector(batch_shape + (dim,))
-    loc[..., 0] = -const / coeffs[0]  # FIXME consider directly constructing info_vec
-
+    info_vec = BlockVector(batch_shape + (dim,))
     precision = BlockMatrix(batch_shape + (dim, dim))
     offset1 = 0
     for i1, (v1, c1) in enumerate(zip(real_inputs, coeffs)):
         slice1 = slice(offset1, offset1 + real_inputs[v1].num_elements)
-        input11, input12 = equations1[i1].split('->')[0].split(',')
+        inputs1, output1 = equations1[i1].split('->')
+        input11, input12 = inputs1.split(',')[0]
+        input112 = input11[len(input11) // 2:]
+        info_vec[..., slice1] = torch.einsum(
+            f'...{input11},...{output1}->...{input12}', c1, const)
+
         offset2 = 0
         for i2, (v2, c2) in enumerate(zip(real_inputs, coeffs)):
             slice2 = slice(offset2, offset2 + real_inputs[v2].num_elements)
-            input21, input22 = equations2[i2].split('->')[0].split(',')
+            input21 = equations2[i2].split(',')[0]
+            input212 = input21[len(input21) // 2:]
             precision[..., slice1, slice2] = torch.einsum(
-                f'...{input11}{input12},...{input21}{input22}->...{input12}{input22}',
-                c1, c2)
+                f'...{input11},...{input21}->...{input112}{input212}', c1, c2)
+
             offset2 = slice2.stop
         offset1 = slice1.stop
 
-    loc = loc.as_tensor()
+    info_vec = info_vec.as_tensor()
     precision = precision.as_tensor()
-    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
-
     log_prob = (-0.5 * dim * math.log(2 * math.pi)
                 - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
                 - 0.5 * (loc * info_vec).sum(-1))
