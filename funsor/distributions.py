@@ -501,19 +501,16 @@ def eager_mvn(loc, scale_tril, value):
     for i1, (v1, c1) in enumerate(zip(real_inputs, coeffs)):
         slice1 = slice(offset1, offset1 + real_inputs[v1].num_elements)
         inputs1, output1 = equations1[i1].split('->')
-        input11, input12 = inputs1.split(',')[0]
-        input112 = input11[len(input11) // 2:]
+        input11, input12 = inputs1.split(',')
         info_vec[..., slice1] = torch.einsum(
             f'...{input11},...{output1}->...{input12}', c1, const)
-
         offset2 = 0
         for i2, (v2, c2) in enumerate(zip(real_inputs, coeffs)):
             slice2 = slice(offset2, offset2 + real_inputs[v2].num_elements)
-            input21 = equations2[i2].split(',')[0]
-            input212 = input21[len(input21) // 2:]
+            inputs2, output2 = equations2[i2].split('->')
+            input21, input22 = inputs2.split(',')
             precision[..., slice1, slice2] = torch.einsum(
-                f'...{input11},...{input21}->...{input112}{input212}', c1, c2)
-
+                f'...{input11},...{input21}->...{input12}{input22}', c1, c2)
             offset2 = slice2.stop
         offset1 = slice1.stop
 
