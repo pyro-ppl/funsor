@@ -7,6 +7,7 @@ from pyro.distributions.util import broadcast_shape
 
 import funsor.delta
 import funsor.ops as ops
+from funsor.affine import extract_affine
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
@@ -461,7 +462,7 @@ def eager_mvn(loc, scale_tril, value):
     if not isinstance(affine, Contraction):
         return None  # lazy
 
-    const, coeffs = affine.extract_affine()
+    const, coeffs = extract_affine(affine)
     if not isinstance(const, Tensor):
         return None  # lazy
     if not all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values()):
