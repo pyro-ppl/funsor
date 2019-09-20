@@ -368,8 +368,7 @@ def eager_normal(loc, scale, value):
     if isinstance(loc, Variable):
         loc, value = value, loc
 
-    inputs, (loc, scale) = align_tensors(loc, scale)
-    loc, scale = torch.broadcast_tensors(loc, scale)
+    inputs, (loc, scale) = align_tensors(loc, scale, expand=True)
     inputs.update(value.inputs)
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
@@ -407,8 +406,7 @@ def eager_normal(loc, scale, value):
         coeffs[c] = affine(**{k: 1. if c == k else 0. for k in real_inputs.keys()}) - const
 
     tensors = [const] + list(coeffs.values())
-    inputs, tensors = align_tensors(*tensors)
-    tensors = torch.broadcast_tensors(*tensors)
+    inputs, tensors = align_tensors(*tensors, expand=True)
     const, coeffs = tensors[0], tensors[1:]
 
     dim = sum(d.num_elements for d in real_inputs.values())
