@@ -784,6 +784,7 @@ def eager_einsum(equation, operands):
             symbol = next(get_symbol)
             while symbol in symbols:
                 symbol = next(get_symbol)
+            symbols.add(symbol)
             new_symbols[k] = symbol
 
         # Manually broadcast using einsum symbols.

@@ -675,7 +675,7 @@ def test_align():
                 assert x(i=i, j=j, k=k) == y(i=i, j=j, k=k)
 
 
-@pytest.mark.parametrize('equation', [
+EINSUM_EXAMPLES = [
     'a->a',
     'a,a->a',
     'a,b->',
@@ -689,7 +689,10 @@ def test_align():
     'ab,ba->ab',
     'ab,ba->ba',
     'ab,bc->ac',
-])
+]
+
+
+@pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 def test_einsum(equation):
     sizes = dict(a=2, b=3, c=4)
     inputs, outputs = equation.split('->')
@@ -698,6 +701,28 @@ def test_einsum(equation):
     funsors = [Tensor(x) for x in tensors]
     expected = Tensor(torch.einsum(equation, *tensors))
     actual = Einsum(equation, tuple(funsors))
+    assert_close(actual, expected, atol=1e-5, rtol=None)
+
+
+@pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
+@pytest.mark.parametrize('batch1', ['', 'i', 'j', 'ij'])
+@pytest.mark.parametrize('batch2', ['', 'i', 'j', 'ij'])
+def test_batched_einsum(equation, batch1, batch2):
+    inputs, output = equation.split('->')
+    inputs = inputs.split(',')
+
+    sizes = dict(a=2, b=3, c=4, i=5, j=6)
+    batch1 = OrderedDict([(k, bint(sizes[k])) for k in batch1])
+    batch2 = OrderedDict([(k, bint(sizes[k])) for k in batch2])
+    funsors = [random_tensor(batch, reals(*(sizes[d] for d in dims)))
+               for batch, dims in zip([batch1, batch2], inputs)]
+    actual = Einsum(equation, tuple(funsors))
+
+    _equation = ','.join('...' + i for i in inputs) + '->...' + output
+    inputs, tensors = align_tensors(*funsors)
+    batch = tuple(v.size for v in inputs.values())
+    tensors = [x.expand(batch + f.shape) for (x, f) in zip(tensors, funsors)]
+    expected = Tensor(torch.einsum(_equation, tensors), inputs)
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
