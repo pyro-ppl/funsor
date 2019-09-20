@@ -1,6 +1,6 @@
 from collections import OrderedDict
 
-from funsor.terms import Funsor
+from funsor.terms import Funsor, to_funsor
 
 
 class Integrate(Funsor):
@@ -23,8 +23,11 @@ class Integrate(Funsor):
         self.reduced_vars = reduced_vars
 
     def _alpha_convert(self, alpha_subs):
-        log_measure, integrand, reduced_vars = super()._alpha_convert(alpha_subs)
-        reduced_vars = frozenset(alpha_subs.get(k, k) for k in reduced_vars)
+        reduced_vars = frozenset(alpha_subs.get(k, k) for k in self.reduced_vars)
+        bound_types = self.log_measure.inputs.copy()
+        bound_types.update(self.integrand.inputs)
+        alpha_subs = {k: to_funsor(v, bound_types[k]) for k, v in alpha_subs.items()}
+        log_measure, integrand, _ = super()._alpha_convert(alpha_subs)
         return log_measure, integrand, reduced_vars
 
 
