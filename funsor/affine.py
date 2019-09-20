@@ -13,14 +13,13 @@ def extract_affine(fn):
     Extracts an affine representation of a funsor, which is exact for affine
     funsors and approximate otherwise. For affine funsors this satisfies::
 
-        x = Contraction(...)
-        assert x.is_affine
-        const, coeffs = x.extract_affine()
+        x = ...
+        const, coeffs = extract_affine(x)
         y = sum(Einsum(eqn, (coeff, Variable(var, coeff.output)))
                 for var, (coeff, eqn) in coeffs.items())
         assert_close(y, x)
 
-    :param Funsor fn: A funsor.
+    :param Funsor fn: A funsor assumed to be affine (this is not checked).
     :return: A pair ``(const, coeffs)`` where const is a funsor with no real
         inputs and ``coeffs`` is an OrderedDict mapping input name to a
         ``(coefficient, eqn)`` pair in einsum form.
