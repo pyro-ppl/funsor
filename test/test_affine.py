@@ -3,11 +3,12 @@ from collections import OrderedDict
 import pytest
 import torch
 
+from funsor.affine import extract_affine
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.terms import Number, Variable
-from funsor.testing import check_funsor
-from funsor.torch import Tensor
+from funsor.testing import assert_close, check_funsor, random_tensor
+from funsor.torch import Einsum, Tensor
 
 SMOKE_TESTS = [
     ('t+x', Contraction),
@@ -75,3 +76,39 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     assert isinstance(result, expected_type)
     check_funsor(result, expected_inputs, expected_output)
     assert result.is_affine
+
+
+@pytest.mark.parametrize('expr', [
+    "Variable('x', reals()) + 0.5",
+    "Variable('x', reals(2)) + Variable('y', reals(2))",
+    "Variable('x', reals(2)) + torch.ones(2)",
+    "Variable('x', reals(2)) * torch.randn(2)",
+    "Variable('x', reals(2)) * torch.randn(2) + torch.ones(2)",
+    "Einsum('abcd,ac->bd', (Tensor(torch.randn(2, 3, 4, 5)), "
+    "                       Variable('x', reals(2, 4))))",
+])
+def test_extract_affine(expr):
+    x = eval(expr)
+    assert isinstance(x, (Contraction, Einsum))
+
+    const, coeffs = extract_affine(x)
+    assert isinstance(const, Tensor)
+    assert const.shape == x.shape
+    assert list(coeffs) == list(x.inputs)
+    for name, (coeff, eqn) in coeffs.items():
+        assert isinstance(name, str)
+        assert isinstance(coeff, Tensor)
+        assert isinstance(eqn, str)
+
+    real_inputs = OrderedDict((k, d) for k, d in x.inputs.items()
+                              if d.dtype == 'real')
+    int_inputs = OrderedDict((k, d) for k, d in x.inputs.items()
+                             if d.dtype != 'real')
+    subs = {k: random_tensor(int_inputs, d) for k, d in real_inputs.items()}
+    expected = x(**subs)
+    assert isinstance(expected, Tensor)
+
+    actual = const + sum(Einsum(eqn, (coeff, subs[k]))
+                         for k, (coeff, eqn) in coeffs.items())
+    assert isinstance(actual, Tensor)
+    assert_close(actual, expected)

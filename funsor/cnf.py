@@ -33,6 +33,8 @@ from funsor.util import quote
 class Contraction(Funsor):
     """
     Declarative representation of a finitary sum-product operation
+
+    :ivar bool is_affine: Whether this contraction is affine.
     """
     def __init__(self, red_op, bin_op, reduced_vars, terms):
         terms = (terms,) if isinstance(terms, Funsor) else terms
@@ -110,8 +112,8 @@ class Contraction(Funsor):
 
     def extract_affine(self):
         """
-        Tries to return a pair ``(const, coeffs)`` where const is a funsor with
-        no real inputs and ``coeffs`` is an OrderedDict mapping input name to a
+        Returns a pair ``(const, coeffs)`` where const is a funsor with no real
+        inputs and ``coeffs`` is an OrderedDict mapping input name to a
         ``(coefficient, eqn)`` pair in einsum form, i.e. satisfying::
 
             x = Contraction(...)
@@ -120,6 +122,8 @@ class Contraction(Funsor):
             y = sum(Einsum(eqn, (coeff, Variable(var, coeff.output)))
                     for var, (coeff, eqn) in coeffs.items())
             assert_close(y, x)
+
+        This only works for affine funsors. Check with :ivar:`.is_affine`
         """
         assert self.is_affine
         real_inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype == 'real')

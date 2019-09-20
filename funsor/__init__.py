@@ -7,6 +7,7 @@ from funsor.util import pretty, quote
 
 from . import (
     adjoint,
+    affine,
     cnf,
     delta,
     distributions,
@@ -38,6 +39,7 @@ __all__ = [
     'Tensor',
     'Variable',
     'adjoint',
+    'affine',
     'arange',
     'backward',
     'bint',
