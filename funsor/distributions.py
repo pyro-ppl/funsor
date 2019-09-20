@@ -10,7 +10,7 @@ import funsor.ops as ops
 from funsor.affine import extract_affine
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.interpreter import interpretation
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
@@ -369,8 +369,7 @@ def eager_normal(loc, scale, value):
     if isinstance(loc, Variable):
         loc, value = value, loc
 
-    inputs, (loc, scale) = align_tensors(loc, scale)
-    loc, scale = torch.broadcast_tensors(loc, scale)
+    inputs, (loc, scale) = align_tensors(loc, scale, expand=True)
     inputs.update(value.inputs)
     int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
 
@@ -408,8 +407,7 @@ def eager_normal(loc, scale, value):
         coeffs[c] = affine(**{k: 1. if c == k else 0. for k in real_inputs.keys()}) - const
 
     tensors = [const] + list(coeffs.values())
-    inputs, tensors = align_tensors(*tensors)
-    tensors = torch.broadcast_tensors(*tensors)
+    inputs, tensors = align_tensors(*tensors, expand=True)
     const, coeffs = tensors[0], tensors[1:]
 
     dim = sum(d.num_elements for d in real_inputs.values())
@@ -469,30 +467,26 @@ def eager_mvn(loc, scale_tril, value):
         return None  # lazy
 
     # Dovetail to avoid variable name collision in einsum.
-    equations1 = [''.join(c if c in '.,->' else chr(ord(c) * 2))
+    equations1 = [''.join(c if c in ',->' else chr(ord(c) * 2))
                   for _, eqn in coeffs.values() for c in eqn]
-    equations2 = [''.join(c if c in '.,->' else chr(ord(c) * 2 + 1))
+    equations2 = [''.join(c if c in ',->' else chr(ord(c) * 2 + 1))
                   for _, eqn in coeffs.values() for c in eqn]
 
     real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
-    assert len(real_inputs) == len(coeffs)
-    tensors = [coeffs[k] for k in real_inputs] + [const, scale_tril]
-    inputs, tensors = align_tensors(*tensors)
+    assert tuple(real_inputs) == tuple(coeffs)
 
     # Incorporate scale_tril before broadcasting.
-    scale_tril = tensors[-1]
-    prec_sqrt = cholesky_inverse(scale_tril)  # FIXME is transpose correct?
-    for i in range(len(coeffs)):
-        coeff = tensors[i]
-        inputs1, output1 = equations1[i].split('->')
-        input11, _ = inputs1.split(',')
-        inputs2, output2 = equations2[i].split('->')
-        input21, _ = inputs2.split(',')
-        coeff = torch.einsum(f'...{input11},...{output1}{output2}->...{input21}',
-                             coeff, prec_sqrt)
-        tensors[i] = coeff
+    eye = torch.eye(scale_tril.data.size(-1)).expand(scale_tril.data.shape)
+    prec_sqrt = Tensor(eye.triangular_solve(scale_tril.data, upper=False).solution,
+                       scale_tril.inputs)
+    tensors = []
+    for k, (coeff, eqn) in coeffs.items():
+        shape = real_inputs[k].shape
+        size = real_inputs[k].num_elements
+        tensors.append((prec_sqrt @ coeff.reshape((size, size))).reshape(shape + shape))
 
-    tensors = torch.broadcast_tensors(*tensors)
+    tensors.extend([const, scale_tril])
+    inputs, tensors = align_tensors(*tensors, expand=True)
     coeffs, const, scale_tril = tensors[:-2], tensors[-2], tensors[-1]
     batch_shape = const.shape
     dim = sum(d.num_elements for d in real_inputs.values())

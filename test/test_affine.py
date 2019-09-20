@@ -80,6 +80,7 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 
 @pytest.mark.parametrize('expr', [
     "Variable('x', reals()) + 0.5",
+    "Variable('x', reals(2, 3)) + Variable('y', reals(2, 3))",
     "Variable('x', reals(2)) + Variable('y', reals(2))",
     "Variable('x', reals(2)) + torch.ones(2)",
     "Variable('x', reals(2)) * torch.randn(2)",
