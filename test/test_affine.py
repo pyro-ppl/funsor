@@ -84,8 +84,11 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     "Variable('x', reals(2)) + torch.ones(2)",
     "Variable('x', reals(2)) * torch.randn(2)",
     "Variable('x', reals(2)) * torch.randn(2) + torch.ones(2)",
-    "Einsum('abcd,ac->bd', (Tensor(torch.randn(2, 3, 4, 5)), "
-    "                       Variable('x', reals(2, 4))))",
+    "Einsum('abcd,ac->bd',"
+    " (Tensor(torch.randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
+    "Tensor(torch.randn(3, 5)) + Einsum('abcd,ac->bd',"
+    " (Tensor(torch.randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
+    "Variable('x', reals(2, 8))[0] + torch.randn(8)",
 ])
 def test_extract_affine(expr):
     x = eval(expr)

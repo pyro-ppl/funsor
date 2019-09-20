@@ -10,10 +10,8 @@ from funsor.torch import Tensor
 
 def extract_affine(fn):
     """
-    Returns a pair ``(const, coeffs)`` where const is a funsor with no real
-    inputs and ``coeffs`` is an OrderedDict mapping input name to a
-    ``(coefficient, eqn)`` pair in einsum form. For funsors that are affine,
-    this satisfies::
+    Extracts an affine representation of a funsor, which is exact for affine
+    funsors and approximate otherwise. For affine funsors this satisfies::
 
         x = Contraction(...)
         assert x.is_affine
@@ -22,14 +20,20 @@ def extract_affine(fn):
                 for var, (coeff, eqn) in coeffs.items())
         assert_close(y, x)
 
-    :param Funsor fn:
+    :param Funsor fn: A funsor.
+    :return: A pair ``(const, coeffs)`` where const is a funsor with no real
+        inputs and ``coeffs`` is an OrderedDict mapping input name to a
+        ``(coefficient, eqn)`` pair in einsum form.
+    :rtype: tuple
     """
-    # Avoid adding these dependencies to funsor core.
+    # Determine constant part by evaluating fn at zero.
     real_inputs = OrderedDict((k, v) for k, v in fn.inputs.items() if v.dtype == 'real')
-    coeffs = OrderedDict()
     zeros = {k: Tensor(torch.zeros(v.shape)) for k, v in real_inputs.items()}
     const = fn(**zeros)
+
+    # Determine linear coefficients by evaluating fn on basis vectors.
     name = gensym('probe')
+    coeffs = OrderedDict()
     for k, v in real_inputs.items():
         dim = v.num_elements
         var = Variable(name, bint(dim))
@@ -39,6 +43,6 @@ def extract_affine(fn):
         inputs1 = ''.join(map(opt_einsum.get_symbol, range(len(coeff.shape))))
         inputs2 = inputs1[:len(v.shape)]
         output = inputs1[len(v.shape):]
-        eqn = f"{inputs1},{inputs2}->{output}"
+        eqn = f'{inputs1},{inputs2}->{output}'
         coeffs[k] = coeff, eqn
     return const, coeffs
