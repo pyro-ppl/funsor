@@ -499,20 +499,24 @@ def eager_mvn(loc, scale_tril, value):
     precision = BlockMatrix(batch_shape + (dim, dim))
     offset1 = 0
     for i1, (v1, c1) in enumerate(zip(real_inputs, coeffs)):
-        slice1 = slice(offset1, offset1 + real_inputs[v1].num_elements)
+        size1 = real_inputs[v1].num_elements
+        slice1 = slice(offset1, offset1 + size1)
         inputs1, output1 = equations1[i1].split('->')
         input11, input12 = inputs1.split(',')
         info_vec[..., slice1] = torch.einsum(
-            f'...{input11},...{output1}->...{input12}', c1, const)
+            f'...{input11},...{output1}->...{input12}', c1, const) \
+            .reshape(batch_shape + (size1,))
         offset2 = 0
         for i2, (v2, c2) in enumerate(zip(real_inputs, coeffs)):
-            slice2 = slice(offset2, offset2 + real_inputs[v2].num_elements)
+            size2 = real_inputs[v2].num_elements
+            slice2 = slice(offset2, offset2 + size2)
             inputs2, output2 = equations2[i2].split('->')
             input21, input22 = inputs2.split(',')
             precision[..., slice1, slice2] = torch.einsum(
-                f'...{input11},...{input21}->...{input12}{input22}', c1, c2)
-            offset2 = slice2.stop
-        offset1 = slice1.stop
+                f'...{input11},...{input21}->...{input12}{input22}', c1, c2) \
+                .reshape(batch_shape + (size1, size2))
+            offset2 += size2
+        offset1 += size1
 
     info_vec = info_vec.as_tensor()
     precision = precision.as_tensor()
