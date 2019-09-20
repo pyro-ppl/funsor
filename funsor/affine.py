@@ -19,7 +19,12 @@ def extract_affine(fn):
                 for var, (coeff, eqn) in coeffs.items())
         assert_close(y, x)
 
-    :param Funsor fn: A funsor assumed to be affine (this is not checked).
+    The affine approximation is computed by ev evaluating ``fn`` at
+    zero and each basis vector. To improve performance, users may want to run
+    under the :func:`~funsor.memoize.memoize` interpretation.
+
+    :param Funsor fn: A funsor assumed to be affine wrt the (add,mul) semiring.
+       The affine assumption is not checked.
     :return: A pair ``(const, coeffs)`` where const is a funsor with no real
         inputs and ``coeffs`` is an OrderedDict mapping input name to a
         ``(coefficient, eqn)`` pair in einsum form.
