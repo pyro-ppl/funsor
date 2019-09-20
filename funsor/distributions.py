@@ -484,7 +484,6 @@ def eager_mvn(loc, scale_tril, value):
     prec_sqrt = Tensor(eye.triangular_solve(scale_tril.data, upper=False).solution,
                        scale_tril.inputs)
     tensors = []
-    d1 = const.output
     for k, (coeff, eqn) in coeffs.items():
         shape = (prec_sqrt.shape[-1], real_inputs[k].num_elements)
         tensors.append((prec_sqrt @ coeff.reshape(shape)).reshape(coeff.shape))

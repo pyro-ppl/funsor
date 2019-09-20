@@ -7,12 +7,13 @@ import torch
 
 import funsor
 import funsor.distributions as dist
-from funsor.cnf import Contraction
+from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import bint, reals
-from funsor.terms import Independent, Variable
+from funsor.interpreter import interpretation, reinterpret
+from funsor.terms import Independent, Variable, lazy
 from funsor.testing import assert_close, check_funsor, random_tensor
-from funsor.torch import Tensor
+from funsor.torch import Einsum, Tensor
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
@@ -398,7 +399,6 @@ NORMAL_AFFINE_TESTS = [
     'dist.Normal(x - y, scale, 0)',
     'dist.Normal(0, scale, y - x)',
     'dist.Normal(2 * x - y, scale, x)',
-    # TODO should we expect these to work without correction terms?
     'dist.Normal(0, 1, (x - y) / scale) - scale.log()',
     'dist.Normal(2 * y, 2 * scale, 2 * x) + math.log(2)',
 ]
@@ -486,6 +486,59 @@ def test_mvn_gaussian(batch_shape):
     check_funsor(actual, inputs, reals())
 
     assert_close(actual, expected, atol=1e-3, rtol=1e-4)
+
+
+def _check_mvn_affine(d1, data):
+    d2 = reinterpret(d1)
+    assert issubclass(type(d2), GaussianMixture)
+    actual = d2(**data)
+    expected = d1(**data)
+    assert_close(actual, expected)
+
+
+def test_mvn_affine_1():
+    x = Variable('x', reals(2))
+    data = dict(x=Tensor(torch.randn(2)))
+    with interpretation(lazy):
+        d = dist.MultivariateNormal(Tensor(torch.zeros(2)),
+                                    Tensor(torch.eye(2)),
+                                    2 * x + 1)
+    _check_mvn_affine(d, data)
+
+
+def test_mvn_affine_2():
+    x = Variable('x', reals(2))
+    y = Variable('y', reals(2))
+    data = dict(x=Tensor(torch.randn(2)), y=Tensor(torch.randn(2)))
+    with interpretation(lazy):
+        d = dist.MultivariateNormal(Tensor(torch.zeros(2)),
+                                    Tensor(torch.eye(2)),
+                                    x - y)
+    _check_mvn_affine(d, data)
+
+
+def test_mvn_affine_3():
+    x = Variable('x', reals(2))
+    y = Variable('y', reals(3))
+    m = Tensor(torch.randn(2, 3))
+    data = dict(x=Tensor(torch.randn(2)), y=Tensor(torch.randn(3)))
+    with interpretation(lazy):
+        d = dist.MultivariateNormal(Tensor(torch.zeros(3)),
+                                    Tensor(torch.eye(3)),
+                                    x @ m - y)
+    _check_mvn_affine(d, data)
+
+
+def test_mvn_affine_4():
+    c = Tensor(torch.randn(3, 2, 2))
+    x = Variable('x', reals(2, 2))
+    y = Variable('y', reals())
+    data = dict(x=Tensor(torch.randn(2)), y=Tensor(torch.randn(3)))
+    with interpretation(lazy):
+        d = dist.MultivariateNormal(Tensor(torch.zeros(3)),
+                                    Tensor(torch.eye(3)),
+                                    Einsum("abc,bc->a", c, x) + y)
+    _check_mvn_affine(d, data)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
