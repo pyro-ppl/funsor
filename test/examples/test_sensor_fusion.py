@@ -3,6 +3,7 @@ from collections import OrderedDict
 import pytest
 import torch
 
+import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
@@ -13,8 +14,48 @@ from funsor.testing import random_mvn
 from funsor.torch import Tensor
 
 
+# This version constructs factors using funsor.distributions.
+def test_distributions():
+    data = Tensor(torch.randn(2, 2), OrderedDict([("time", bint(2))]))
+
+    bias = Variable("bias", reals(2))
+    bias_dist = dist_to_funsor(random_mvn((), 2))(value=bias)
+
+    prev = Variable("prev", reals(3))
+    curr = Variable("curr", reals(3))
+    trans_mat = Tensor(torch.randn(3, 3))
+    trans_mvn = random_mvn((), 3)
+    trans_dist = dist.MultivariateNormal(
+        loc=trans_mvn.loc,
+        scale_tril=trans_mvn.scale_tril,
+        value=curr - prev @ trans_mat)
+
+    state = Variable("state", reals(3))
+    obs = Variable("obs", reals(2))
+    obs_mat = Tensor(torch.randn(3, 2))
+    obs_mvn = random_mvn((), 2)
+    obs_dist = dist.MultivariateNormal(
+        loc=obs_mvn.loc,
+        scale_tril=obs_mvn.scale_tril,
+        value=state @ obs_mat + bias - obs)
+
+    log_prob = 0
+    log_prob += bias_dist
+
+    state_0 = Variable("state_0", reals(3))
+    log_prob += obs_dist(state=state_0, obs=data(time=0))
+
+    state_1 = Variable("state_1", reals(3))
+    log_prob += trans_dist(prev=state_0, curr=state_1)
+    log_prob += obs_dist(state=state_1, obs=data(time=1))
+
+    log_prob = log_prob.reduce(ops.logaddexp)
+    assert isinstance(log_prob, Tensor), log_prob.pretty()
+
+
+# This version constructs factors using funsor.pyro.convert.
 @pytest.mark.xfail(reason="missing pattern")
-def test_end_to_end():
+def test_pyro_convert():
     data = Tensor(torch.randn(2, 2), OrderedDict([("time", bint(2))]))
 
     bias_dist = dist_to_funsor(random_mvn((), 2))
@@ -44,7 +85,7 @@ def test_end_to_end():
 
 @pytest.mark.xfail(reason="missing pattern")
 def test_affine_subs():
-    # This was recorded from test_end_to_end.
+    # This was recorded from test_pyro_convert.
     x = Subs(
      Gaussian(
       torch.tensor([1.3027106523513794, 1.4167094230651855, -0.9750942587852478, 0.5321089029312134, -0.9039931297302246], dtype=torch.float32),  # noqa
