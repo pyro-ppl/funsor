@@ -53,6 +53,7 @@ class TransformOp(Op):
         raise NotImplementedError
 
 
+# FIXME Most code assumes this is an AssociativeCommutativeOp.
 class AssociativeOp(Op):
     pass
 
@@ -65,7 +66,7 @@ class MulOp(AssociativeOp):
     pass
 
 
-class MatmulOp(AssociativeOp):
+class MatmulOp(Op):  # Associtive but not commutative.
     pass
 
 

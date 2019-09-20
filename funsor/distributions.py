@@ -484,15 +484,15 @@ def eager_mvn(loc, scale_tril, value):
     prec_sqrt = Tensor(eye.triangular_solve(scale_tril.data, upper=False).solution,
                        scale_tril.inputs)
     tensors = []
+    d1 = const.output
     for k, (coeff, eqn) in coeffs.items():
-        shape = real_inputs[k].shape
-        size = real_inputs[k].num_elements
-        tensors.append((prec_sqrt @ coeff.reshape((size, size))).reshape(shape + shape))
+        shape = (prec_sqrt.shape[-1], real_inputs[k].num_elements)
+        tensors.append((prec_sqrt @ coeff.reshape(shape)).reshape(coeff.shape))
 
     tensors.extend([const, scale_tril])
-    inputs, tensors = align_tensors(*tensors, expand=True)
+    int_inputs, tensors = align_tensors(*tensors, expand=True)
     coeffs, const, scale_tril = tensors[:-2], tensors[-2], tensors[-1]
-    batch_shape = const.shape
+    batch_shape = const.shape[:-1]
     dim = sum(d.num_elements for d in real_inputs.values())
 
     info_vec = BlockVector(batch_shape + (dim,))
@@ -518,8 +518,9 @@ def eager_mvn(loc, scale_tril, value):
     precision = precision.as_tensor()
     log_prob = (-0.5 * dim * math.log(2 * math.pi)
                 - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
-                - 0.5 * (loc * info_vec).sum(-1))
-    int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
+                - 0.5 * const.pow(2).reshape(batch_shape + (-1,)).sum(-1))
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
     return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
 
 

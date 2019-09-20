@@ -15,25 +15,26 @@ from funsor.torch import Tensor
 
 
 # This version constructs factors using funsor.distributions.
-def test_distributions():
-    data = Tensor(torch.randn(2, 2), OrderedDict([("time", bint(2))]))
+@pytest.mark.parametrize('state_dim,obs_dim', [(3, 2), (2, 3)])
+def test_distributions(state_dim, obs_dim):
+    data = Tensor(torch.randn(2, obs_dim))["time"]
 
-    bias = Variable("bias", reals(2))
-    bias_dist = dist_to_funsor(random_mvn((), 2))(value=bias)
+    bias = Variable("bias", reals(obs_dim))
+    bias_dist = dist_to_funsor(random_mvn((), obs_dim))(value=bias)
 
-    prev = Variable("prev", reals(3))
-    curr = Variable("curr", reals(3))
-    trans_mat = Tensor(torch.randn(3, 3))
-    trans_mvn = random_mvn((), 3)
+    prev = Variable("prev", reals(state_dim))
+    curr = Variable("curr", reals(state_dim))
+    trans_mat = Tensor(torch.eye(state_dim) + 0.1 * torch.randn(state_dim, state_dim))
+    trans_mvn = random_mvn((), state_dim)
     trans_dist = dist.MultivariateNormal(
         loc=trans_mvn.loc,
         scale_tril=trans_mvn.scale_tril,
         value=curr - prev @ trans_mat)
 
-    state = Variable("state", reals(3))
-    obs = Variable("obs", reals(2))
-    obs_mat = Tensor(torch.randn(3, 2))
-    obs_mvn = random_mvn((), 2)
+    state = Variable("state", reals(state_dim))
+    obs = Variable("obs", reals(obs_dim))
+    obs_mat = Tensor(torch.randn(state_dim, obs_dim))
+    obs_mvn = random_mvn((), obs_dim)
     obs_dist = dist.MultivariateNormal(
         loc=obs_mvn.loc,
         scale_tril=obs_mvn.scale_tril,
@@ -42,10 +43,10 @@ def test_distributions():
     log_prob = 0
     log_prob += bias_dist
 
-    state_0 = Variable("state_0", reals(3))
+    state_0 = Variable("state_0", reals(state_dim))
     log_prob += obs_dist(state=state_0, obs=data(time=0))
 
-    state_1 = Variable("state_1", reals(3))
+    state_1 = Variable("state_1", reals(state_dim))
     log_prob += trans_dist(prev=state_0, curr=state_1)
     log_prob += obs_dist(state=state_1, obs=data(time=1))
 
