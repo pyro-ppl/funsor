@@ -488,8 +488,9 @@ def eager_mvn(loc, scale_tril, value):
     for k, (coeff, eqn) in coeffs.items():
         shape = (prec_sqrt.shape[-1], real_inputs[k].num_elements)
         tensors.append((prec_sqrt @ coeff.reshape(shape)).reshape(coeff.shape))
+    tensors.append((prec_sqrt @ const.reshape((-1,))).reshape(const.shape))
+    tensors.append(scale_tril)
 
-    tensors.extend([const, scale_tril])
     int_inputs, tensors = align_tensors(*tensors, expand=True)
     coeffs, const, scale_tril = tensors[:-2], tensors[-2], tensors[-1]
     batch_shape = const.shape[:-1]
