@@ -84,30 +84,30 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     "Variable('x', reals(2)) + torch.ones(2)",
     "Variable('x', reals(2)) * torch.randn(2)",
     "Variable('x', reals(2)) * torch.randn(2) + torch.ones(2)",
+    "Variable('x', reals(2)) + Tensor(torch.randn(3, 2), OrderedDict(i=bint(3)))",
     "Einsum('abcd,ac->bd',"
     " (Tensor(torch.randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
     "Tensor(torch.randn(3, 5)) + Einsum('abcd,ac->bd',"
     " (Tensor(torch.randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
     "Variable('x', reals(2, 8))[0] + torch.randn(8)",
+    "Variable('x', reals(2, 8))[Variable('i', bint(2))] / 4 - 3.5",
 ])
 def test_extract_affine(expr):
     x = eval(expr)
     assert isinstance(x, (Contraction, Einsum))
+    real_inputs = OrderedDict((k, d) for k, d in x.inputs.items()
+                              if d.dtype == 'real')
 
     const, coeffs = extract_affine(x)
     assert isinstance(const, Tensor)
     assert const.shape == x.shape
-    assert list(coeffs) == list(x.inputs)
+    assert list(coeffs) == list(real_inputs)
     for name, (coeff, eqn) in coeffs.items():
         assert isinstance(name, str)
         assert isinstance(coeff, Tensor)
         assert isinstance(eqn, str)
 
-    real_inputs = OrderedDict((k, d) for k, d in x.inputs.items()
-                              if d.dtype == 'real')
-    int_inputs = OrderedDict((k, d) for k, d in x.inputs.items()
-                             if d.dtype != 'real')
-    subs = {k: random_tensor(int_inputs, d) for k, d in real_inputs.items()}
+    subs = {k: random_tensor(OrderedDict(), d) for k, d in real_inputs.items()}
     expected = x(**subs)
     assert isinstance(expected, Tensor)
 
