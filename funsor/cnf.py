@@ -8,11 +8,24 @@ from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import find_domain
+from funsor.domains import bint, find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
-from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize, to_funsor
+from funsor.terms import (
+    Align,
+    Binary,
+    Funsor,
+    Lambda,
+    Number,
+    Reduce,
+    Subs,
+    Unary,
+    Variable,
+    eager,
+    normalize,
+    to_funsor
+)
 from funsor.torch import Tensor
 from funsor.util import quote
 
@@ -98,17 +111,18 @@ class Contraction(Funsor):
     def extract_affine(self):
         """
         Tries to return a pair ``(const, coeffs)`` where const is a funsor with
-        no real inputs and ``coeffs`` is an OrderedDict mapping Variable to a
+        no real inputs and ``coeffs`` is an OrderedDict mapping input name to a
         ``(coefficient, eqn)`` pair in einsum form, i.e. satisfying::
 
-            assert expected.is_affine
-            affine = expected.extract_affine()
-            actual = sum(torch_einsum(eqn, coeff, var)
-                         for var, (coeff, eqn) in affine.items())
-            assert_close(actual, expected)
+            x = Contraction(...)
+            assert x.is_affine
+            const, coeffs = x.extract_affine()
+            y = sum(Einsum(eqn, (coeff, Variable(var, coeff.output)))
+                    for var, (coeff, eqn) in coeffs.items())
+            assert_close(y, x)
         """
         assert self.is_affine
-        real_inputs = OrderedDict((k, v) for k, v in self.inputs if v.dtype == 'real')
+        real_inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype == 'real')
         coeffs = OrderedDict()
         zeros = {k: Tensor(torch.zeros(v.shape)) for k, v in real_inputs.items()}
         const = self(**zeros)
@@ -117,11 +131,13 @@ class Contraction(Funsor):
             dim = v.num_elements
             var = Variable(name, bint(dim))
             subs = zeros.copy()
-            subs[k] = Tensor(torch.eye(dim).reshape(dim, *v.shape), ((name, var.output,)))
-            coeff = Lambda(var, self(**subs) - const).reshape(TODO)
-            symbols = ''.join(map(opt_einsum.get_symbol, range(1 + len(v.shape))))
-            eqn = f"...{symbols},...{symbols[1:]}->TODO"
-            coeffs[k] = TODO
+            subs[k] = Tensor(torch.eye(dim).reshape((dim,) + v.shape))[var]
+            coeff = Lambda(var, self(**subs) - const).reshape(v.shape + const.shape)
+            inputs1 = ''.join(map(opt_einsum.get_symbol, range(len(coeff.shape))))
+            inputs2 = inputs1[:len(v.shape)]
+            output = inputs1[len(v.shape):]
+            eqn = f"...{inputs1},...{inputs2}->...{output}"
+            coeffs[k] = coeff, eqn
         return const, coeffs
 
 
