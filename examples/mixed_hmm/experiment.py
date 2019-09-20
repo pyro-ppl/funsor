@@ -35,7 +35,8 @@ def aic_num_parameters(model, guide=None):
 def run_expt(args):
 
     data_dir = args["folder"]
-    dataset = "seal"  # args["dataset"]
+    dataset = args["dataset"]
+    assert dataset == "seal", "shark not working"
     seed = args["seed"]
     optim = args["optim"]
     lr = args["learnrate"]
@@ -56,62 +57,36 @@ def run_expt(args):
     num_parameters = aic_num_parameters(model, guide)
 
     losses = []
-    # SGD
+
+    loss_fn = TraceEnum_ELBO(max_plate_nesting=2).differentiable_loss
+    with pyro.poutine.trace(param_only=True) as param_capture:
+        loss_fn(model, guide)
+    params = [site["value"].unconstrained() for site in param_capture.trace.nodes.values()]
     if optim == "sgd":
-        loss_fn = TraceEnum_ELBO(max_plate_nesting=2).differentiable_loss
-        with pyro.poutine.trace(param_only=True) as param_capture:
-            loss_fn(model, guide)
-        params = [site["value"].unconstrained() for site in param_capture.trace.nodes.values()]
         optimizer = torch.optim.Adam(params, lr=lr)
+    elif optim == "lbfgs":
+        optimizer = torch.optim.LBFGS(params, lr=lr)
+    else:
+        raise ValueError("{} not supported optimizer".format(optim))
 
-        if schedule:
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=schedule, gamma=0.5)
-            schedule_step_loss = False
-        else:
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
-            schedule_step_loss = True
+    if schedule:
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=schedule, gamma=0.5)
+        schedule_step_loss = False
+    else:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
+        schedule_step_loss = True
 
-        for t in range(timesteps):
-
+    for t in range(timesteps):
+        def closure():
             optimizer.zero_grad()
             loss = loss_fn(model, guide)
             loss.backward()
-            optimizer.step()
-            scheduler.step(loss.item() if schedule_step_loss else t)
-            losses.append(loss.item())
-
-            print("Loss: {}, AIC[{}]: ".format(loss.item(), t),
-                  2. * loss + 2. * num_parameters)
-
-    # LBFGS
-    elif optim == "lbfgs":
-        loss_fn = TraceEnum_ELBO(max_plate_nesting=2).differentiable_loss
-        with pyro.poutine.trace(param_only=True) as param_capture:
-            loss_fn(model, guide)
-        params = [site["value"].unconstrained() for site in param_capture.trace.nodes.values()]
-        optimizer = torch.optim.LBFGS(params, lr=lr)
-
-        if schedule:
-            scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=schedule, gamma=0.5)
-            schedule_step_loss = False
-        else:
-            schedule_step_loss = True
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
-
-        for t in range(timesteps):
-            def closure():
-                optimizer.zero_grad()
-                loss = loss_fn(model, guide)
-                loss.backward()
-                return loss
-            loss = optimizer.step(closure)
-            scheduler.step(loss.item() if schedule_step_loss else t)
-            losses.append(loss.item())
-            print("Loss: {}, AIC[{}]: ".format(loss.item(), t),
-                  2. * loss + 2. * num_parameters)
-
-    else:
-        raise ValueError("{} not supported optimizer".format(optim))
+            return loss
+        loss = optimizer.step(closure)
+        scheduler.step(loss.item() if schedule_step_loss else t)
+        losses.append(loss.item())
+        print("Loss: {}, AIC[{}]: ".format(loss.item(), t),
+              2. * loss + 2. * num_parameters)
 
     aic_final = 2. * losses[-1] + 2. * num_parameters
     print("AIC final: {}".format(aic_final))
