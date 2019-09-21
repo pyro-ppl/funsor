@@ -18,8 +18,6 @@ from funsor.util import quote
 class Contraction(Funsor):
     """
     Declarative representation of a finitary sum-product operation
-
-    :ivar bool is_affine: Whether this contraction is affine.
     """
     def __init__(self, red_op, bin_op, reduced_vars, terms):
         terms = (terms,) if isinstance(terms, Funsor) else terms
