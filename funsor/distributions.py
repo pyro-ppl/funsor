@@ -459,19 +459,24 @@ def eager_mvn(loc, scale_tril, value):
     assert len(loc.shape) == 1
     assert len(scale_tril.shape) == 2
     assert value.output == loc.output
+    if not is_affine(loc) or not is_affine(value):
+        return None  # lazy
 
+    # Extract an affine representation.
     eye = torch.eye(scale_tril.data.size(-1)).expand(scale_tril.data.shape)
     prec_sqrt = Tensor(eye.triangular_solve(scale_tril.data, upper=False).solution,
                        scale_tril.inputs)
     affine = prec_sqrt @ (loc - value)
-    if not is_affine(affine):
-        return None  # lazy
-
     const, coeffs = extract_affine(affine)
     if not isinstance(const, Tensor):
         return None  # lazy
     if not all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values()):
         return None  # lazy
+    scale_diag = Tensor(scale_tril.data.diagonal(dim1=-1, dim2=-2),
+                        scale_tril.inputs)
+    log_prob = (-0.5 * scale_diag.shape[-1] * math.log(2 * math.pi)
+                - scale_diag.log().sum() - 0.5 * (const ** 2).sum())
+    print(f"log_prob = {log_prob}")
 
     # Dovetail to avoid variable name collision in einsum.
     equations1 = [''.join(c if c in ',->' else chr(ord(c) * 2 - ord('a')) for c in eqn)
@@ -482,11 +487,12 @@ def eager_mvn(loc, scale_tril, value):
     real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
     assert tuple(real_inputs) == tuple(coeffs)
 
-    tensors = [coeff for coeff, _ in coeffs.values()] + [const, scale_tril]
-    int_inputs, tensors = align_tensors(*tensors, expand=True)
-    coeffs, const, scale_tril = tensors[:-2], tensors[-2], tensors[-1]
-    batch_shape = const.shape[:-1]
+    # Align and broadcast tensors.
+    tensors = [coeff for coeff, _ in coeffs.values()] + [const, scale_diag]
+    inputs, tensors = align_tensors(*tensors, expand=True)
+    coeffs, const, scale_diag = tensors[:-2], tensors[-2], tensors[-1]
     dim = sum(d.num_elements for d in real_inputs.values())
+    batch_shape = const.shape[:-1]
 
     info_vec = BlockVector(batch_shape + (dim,))
     precision = BlockMatrix(batch_shape + (dim, dim))
@@ -515,12 +521,8 @@ def eager_mvn(loc, scale_tril, value):
 
     info_vec = info_vec.as_tensor()
     precision = precision.as_tensor()
-    log_prob = (-0.5 * scale_tril.size(-1) * math.log(2 * math.pi)
-                - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
-                - 0.5 * const.pow(2).reshape(batch_shape + (-1,)).sum(-1))
-    inputs = int_inputs.copy()
     inputs.update(real_inputs)
-    return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
+    return log_prob + Gaussian(info_vec, precision, inputs)
 
 
 class Poisson(Distribution):
