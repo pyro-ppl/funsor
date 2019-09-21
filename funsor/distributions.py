@@ -481,13 +481,14 @@ def eager_mvn(loc, scale_tril, value):
 
     # Incorporate scale_tril before broadcasting.
     eye = torch.eye(scale_tril.data.size(-1)).expand(scale_tril.data.shape)
-    prec_sqrt = Tensor(eye.triangular_solve(scale_tril.data, upper=False).solution,
+    prec_sqrt = Tensor(eye.triangular_solve(scale_tril.data, upper=False)
+                          .solution.transpose(-1, -2),
                        scale_tril.inputs)
     tensors = []
     for k, (coeff, eqn) in coeffs.items():
-        shape = (prec_sqrt.shape[-1], real_inputs[k].num_elements)
-        tensors.append((prec_sqrt @ coeff.reshape(shape)).reshape(coeff.shape))
-    tensors.append((prec_sqrt @ const.reshape((-1,))).reshape(const.shape))
+        shape = (real_inputs[k].num_elements, prec_sqrt.shape[-1])
+        tensors.append((coeff.reshape(shape) @ prec_sqrt).reshape(coeff.shape))
+    tensors.append((const.reshape((-1,)) @ prec_sqrt).reshape(const.shape))
     tensors.append(scale_tril)
 
     int_inputs, tensors = align_tensors(*tensors, expand=True)
@@ -503,6 +504,7 @@ def eager_mvn(loc, scale_tril, value):
         slice1 = slice(offset1, offset1 + size1)
         inputs1, output1 = equations1[i1].split('->')
         input11, input12 = inputs1.split(',')
+        assert input11 == input12 + output1
         info_vec[..., slice1] = torch.einsum(
             f'...{input11},...{output1}->...{input12}', c1, const) \
             .reshape(batch_shape + (size1,))
@@ -512,15 +514,16 @@ def eager_mvn(loc, scale_tril, value):
             slice2 = slice(offset2, offset2 + size2)
             inputs2, output2 = equations2[i2].split('->')
             input21, input22 = inputs2.split(',')
+            assert input21 == input22 + output2
             precision[..., slice1, slice2] = torch.einsum(
-                f'...{input11},...{input21}->...{input12}{input22}', c1, c2) \
+                f'...{input11},...{input22}{output1}->...{input12}{input22}', c1, c2) \
                 .reshape(batch_shape + (size1, size2))
             offset2 += size2
         offset1 += size1
 
     info_vec = info_vec.as_tensor()
     precision = precision.as_tensor()
-    log_prob = (-0.5 * dim * math.log(2 * math.pi)
+    log_prob = (-0.5 * scale_tril.size(-1) * math.log(2 * math.pi)
                 - scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
                 - 0.5 * const.pow(2).reshape(batch_shape + (-1,)).sum(-1))
     inputs = int_inputs.copy()
