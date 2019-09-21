@@ -470,10 +470,6 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
             shape = shape[:cut] + (1,) * (lhs_dim - rhs_dim) + shape[cut:]
             rhs_data = rhs_data.reshape(shape)
 
-    print(f"lhs.data.shape = {lhs.data.shape}")
-    print(f"rhs.data.shape = {rhs.data.shape}")
-    print(f"lhs_data.shape = {lhs_data.shape}")
-    print(f"rhs_data.shape = {rhs_data.shape}")
     data = op(lhs_data, rhs_data)
     if len(lhs.shape) == 1:
         data = data.squeeze(-2)
