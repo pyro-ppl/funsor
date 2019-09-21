@@ -460,7 +460,10 @@ def eager_mvn(loc, scale_tril, value):
     assert len(scale_tril.shape) == 2
     assert value.output == loc.output
 
-    affine = loc - value
+    eye = torch.eye(scale_tril.data.size(-1)).expand(scale_tril.data.shape)
+    prec_sqrt = Tensor(eye.triangular_solve(scale_tril.data, upper=False).solution,
+                       scale_tril.inputs)
+    affine = prec_sqrt @ (loc - value)
     if not is_affine(affine):
         return None  # lazy
 
@@ -479,18 +482,7 @@ def eager_mvn(loc, scale_tril, value):
     real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
     assert tuple(real_inputs) == tuple(coeffs)
 
-    # Incorporate scale_tril before broadcasting.
-    eye = torch.eye(scale_tril.data.size(-1)).expand(scale_tril.data.shape)
-    prec_sqrt = Tensor(eye.triangular_solve(scale_tril.data, upper=False)
-                          .solution.transpose(-1, -2),
-                       scale_tril.inputs)
-    tensors = []
-    for k, (coeff, eqn) in coeffs.items():
-        shape = (real_inputs[k].num_elements, prec_sqrt.shape[-1])
-        tensors.append((coeff.reshape(shape) @ prec_sqrt).reshape(coeff.shape))
-    tensors.append((const.reshape((-1,)) @ prec_sqrt).reshape(const.shape))
-    tensors.append(scale_tril)
-
+    tensors = [coeff for coeff, _ in coeffs.values()] + [const, scale_tril]
     int_inputs, tensors = align_tensors(*tensors, expand=True)
     coeffs, const, scale_tril = tensors[:-2], tensors[-2], tensors[-1]
     batch_shape = const.shape[:-1]
