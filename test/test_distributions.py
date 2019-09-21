@@ -11,8 +11,9 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.interpreter import interpretation, reinterpret
+from funsor.pyro.convert import dist_to_funsor
 from funsor.terms import Independent, Variable, lazy
-from funsor.testing import assert_close, check_funsor, random_tensor
+from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor
 from funsor.torch import Einsum, Tensor
 
 
@@ -489,6 +490,7 @@ def test_mvn_gaussian(batch_shape):
 
 
 def _check_mvn_affine(d1, data):
+    assert isinstance(d1, dist.MultivariateNormal)
     d2 = reinterpret(d1)
     assert issubclass(type(d2), GaussianMixture)
     actual = d2(**data)
@@ -496,33 +498,12 @@ def _check_mvn_affine(d1, data):
     assert_close(actual, expected)
 
 
-def test_mvn_affine_mul():
+def test_mvn_affine_one_var():
     x = Variable('x', reals(2))
     data = dict(x=Tensor(torch.randn(2)))
     with interpretation(lazy):
-        d = dist.MultivariateNormal(Tensor(torch.zeros(2)),
-                                    Tensor(torch.eye(2)),
-                                    x * 2)
-    _check_mvn_affine(d, data)
-
-
-def test_mvn_affine_add():
-    x = Variable('x', reals(2))
-    data = dict(x=Tensor(torch.randn(2)))
-    with interpretation(lazy):
-        d = dist.MultivariateNormal(Tensor(torch.zeros(2)),
-                                    Tensor(torch.eye(2)),
-                                    x + 1)
-    _check_mvn_affine(d, data)
-
-
-def test_mvn_affine_affine():
-    x = Variable('x', reals(2))
-    data = dict(x=Tensor(torch.randn(2)))
-    with interpretation(lazy):
-        d = dist.MultivariateNormal(Tensor(torch.zeros(2)),
-                                    Tensor(torch.eye(2)),
-                                    2 * x + 1)
+        d = dist_to_funsor(random_mvn((), 2))
+        d = d(value=2 * x + 1)
     _check_mvn_affine(d, data)
 
 
@@ -531,9 +512,8 @@ def test_mvn_affine_two_vars():
     y = Variable('y', reals(2))
     data = dict(x=Tensor(torch.randn(2)), y=Tensor(torch.randn(2)))
     with interpretation(lazy):
-        d = dist.MultivariateNormal(Tensor(torch.zeros(2)),
-                                    Tensor(torch.eye(2)),
-                                    x - y)
+        d = dist_to_funsor(random_mvn((), 2))
+        d = d(value=x - y)
     _check_mvn_affine(d, data)
 
 
@@ -543,9 +523,8 @@ def test_mvn_affine_matmul():
     m = Tensor(torch.randn(2, 3))
     data = dict(x=Tensor(torch.randn(2)), y=Tensor(torch.randn(3)))
     with interpretation(lazy):
-        d = dist.MultivariateNormal(Tensor(torch.zeros(3)),
-                                    Tensor(torch.eye(3)),
-                                    x @ m - y)
+        d = dist_to_funsor(random_mvn((), 3))
+        d = d(value=x @ m - y)
     _check_mvn_affine(d, data)
 
 
@@ -555,9 +534,8 @@ def test_mvn_affine_einsum():
     y = Variable('y', reals())
     data = dict(x=Tensor(torch.randn(2, 2)), y=Tensor(torch.randn(())))
     with interpretation(lazy):
-        d = dist.MultivariateNormal(Tensor(torch.zeros(3)),
-                                    Tensor(torch.eye(3)),
-                                    Einsum("abc,bc->a", c, x) + y)
+        d = dist_to_funsor(random_mvn((), 3))
+        d = d(value=Einsum("abc,bc->a", c, x) + y)
     _check_mvn_affine(d, data)
 
 
@@ -565,9 +543,8 @@ def test_mvn_affine_getitem():
     x = Variable('x', reals(2, 2))
     data = dict(x=Tensor(torch.randn(2, 2)))
     with interpretation(lazy):
-        d = dist.MultivariateNormal(Tensor(torch.zeros(2)),
-                                    Tensor(torch.eye(2)),
-                                    x[0] - x[1])
+        d = dist_to_funsor(random_mvn((), 2))
+        d = d(value=x[0] - x[1])
     _check_mvn_affine(d, data)
 
 
@@ -576,9 +553,8 @@ def test_mvn_affine_reshape():
     y = Variable('y', reals(4))
     data = dict(x=Tensor(torch.randn(2, 2)), y=Tensor(torch.randn(4)))
     with interpretation(lazy):
-        d = dist.MultivariateNormal(Tensor(torch.zeros(4)),
-                                    Tensor(torch.eye(4)),
-                                    x.reshape((4,)) - y)
+        d = dist_to_funsor(random_mvn((), 4))
+        d = d(value=x.reshape((4,)) - y)
     _check_mvn_affine(d, data)
 
 

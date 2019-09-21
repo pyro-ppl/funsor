@@ -488,7 +488,7 @@ def eager_mvn(loc, scale_tril, value):
     assert tuple(real_inputs) == tuple(coeffs)
 
     # Align and broadcast tensors.
-    neg_const = - const
+    neg_const = -const
     tensors = [neg_const] + [coeff for coeff, _ in coeffs.values()]
     inputs, tensors = align_tensors(*tensors, expand=True)
     neg_const, coeffs = tensors[0], tensors[1:]
