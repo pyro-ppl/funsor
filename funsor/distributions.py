@@ -472,11 +472,11 @@ def eager_mvn(loc, scale_tril, value):
         return None  # lazy
     if not all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values()):
         return None  # lazy
-    scale_diag = Tensor(scale_tril.data.diagonal(dim1=-1, dim2=-2),
-                        scale_tril.inputs)
-    log_prob = (-0.5 * scale_diag.shape[-1] * math.log(2 * math.pi)
+
+    # Compute log_prob using funsors.
+    scale_diag = Tensor(scale_tril.data.diagonal(dim1=-1, dim2=-2), scale_tril.inputs)
+    log_prob = (-0.5 * scale_diag.shape[0] * math.log(2 * math.pi)
                 - scale_diag.log().sum() - 0.5 * (const ** 2).sum())
-    print(f"log_prob = {log_prob}")
 
     # Dovetail to avoid variable name collision in einsum.
     equations1 = [''.join(c if c in ',->' else chr(ord(c) * 2 - ord('a')) for c in eqn)
@@ -488,11 +488,12 @@ def eager_mvn(loc, scale_tril, value):
     assert tuple(real_inputs) == tuple(coeffs)
 
     # Align and broadcast tensors.
-    tensors = [coeff for coeff, _ in coeffs.values()] + [const, scale_diag]
+    neg_const = - const
+    tensors = [neg_const] + [coeff for coeff, _ in coeffs.values()]
     inputs, tensors = align_tensors(*tensors, expand=True)
-    coeffs, const, scale_diag = tensors[:-2], tensors[-2], tensors[-1]
+    neg_const, coeffs = tensors[0], tensors[1:]
     dim = sum(d.num_elements for d in real_inputs.values())
-    batch_shape = const.shape[:-1]
+    batch_shape = neg_const.shape[:-1]
 
     info_vec = BlockVector(batch_shape + (dim,))
     precision = BlockMatrix(batch_shape + (dim, dim))
@@ -504,7 +505,7 @@ def eager_mvn(loc, scale_tril, value):
         input11, input12 = inputs1.split(',')
         assert input11 == input12 + output1
         info_vec[..., slice1] = torch.einsum(
-            f'...{input11},...{output1}->...{input12}', c1, const) \
+            f'...{input11},...{output1}->...{input12}', c1, neg_const) \
             .reshape(batch_shape + (size1,))
         offset2 = 0
         for i2, (v2, c2) in enumerate(zip(real_inputs, coeffs)):

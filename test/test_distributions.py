@@ -496,6 +496,26 @@ def _check_mvn_affine(d1, data):
     assert_close(actual, expected)
 
 
+def test_mvn_affine_mul():
+    x = Variable('x', reals(2))
+    data = dict(x=Tensor(torch.randn(2)))
+    with interpretation(lazy):
+        d = dist.MultivariateNormal(Tensor(torch.zeros(2)),
+                                    Tensor(torch.eye(2)),
+                                    x * 2)
+    _check_mvn_affine(d, data)
+
+
+def test_mvn_affine_add():
+    x = Variable('x', reals(2))
+    data = dict(x=Tensor(torch.randn(2)))
+    with interpretation(lazy):
+        d = dist.MultivariateNormal(Tensor(torch.zeros(2)),
+                                    Tensor(torch.eye(2)),
+                                    x + 1)
+    _check_mvn_affine(d, data)
+
+
 def test_mvn_affine_affine():
     x = Variable('x', reals(2))
     data = dict(x=Tensor(torch.randn(2)))
