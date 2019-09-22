@@ -250,7 +250,11 @@ def model_simple(config):
     observations = config["observations"]
 
     # initialize gamma to uniform
-    gamma = torch.zeros((N_state, N_state))
+    gamma = Tensor(
+        torch.zeros((N_state, N_state)),
+        OrderedDict([("y_prev", bint(N_state))]),  # , ("y_curr", bint(N_state))]),
+        reals(N_state),  # reals()
+    )
 
     N_c = config["sizes"]["group"]
     with pyro.plate("group", N_c, dim=-1):
