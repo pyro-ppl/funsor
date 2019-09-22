@@ -288,9 +288,6 @@ def model_simple(config):
         else:
             eps_g = to_funsor(0.)
 
-        # add group-level random effect to gamma
-        gamma = gamma + eps_g
-
         N_s = config["sizes"]["individual"]
 
         # TODO replace mask with site-specific masks via .mask()
@@ -310,10 +307,10 @@ def model_simple(config):
             else:
                 eps_i = to_funsor(0.)
 
-            # add individual-level random effect to gamma
-            gamma = gamma + eps_i
+            # add group-level and individual-level random effects to gamma
+            gamma = gamma + eps_g + eps_i
 
-            # y = torch.tensor(0).long()
+            # initialize y in a single state for now
             y = Number(0, bint(config["sizes"]["state"]))
 
             N_t = config["sizes"]["timesteps"]
