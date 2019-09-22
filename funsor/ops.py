@@ -53,6 +53,7 @@ class TransformOp(Op):
         raise NotImplementedError
 
 
+# FIXME Most code assumes this is an AssociativeCommutativeOp.
 class AssociativeOp(Op):
     pass
 
@@ -62,6 +63,10 @@ class AddOp(AssociativeOp):
 
 
 class MulOp(AssociativeOp):
+    pass
+
+
+class MatmulOp(Op):  # Associtive but not commutative.
     pass
 
 
@@ -89,6 +94,28 @@ class NullOp(AssociativeOp):
 @NullOp
 def nullop(x, y):
     raise ValueError("should never actually evaluate this!")
+
+
+class ReshapeMeta(type):
+    _cache = {}
+
+    def __call__(cls, shape):
+        shape = tuple(shape)
+        try:
+            return ReshapeMeta._cache[shape]
+        except KeyError:
+            instance = super().__call__(shape)
+            ReshapeMeta._cache[shape] = instance
+            return instance
+
+
+class ReshapeOp(Op, metaclass=ReshapeMeta):
+    def __init__(self, shape):
+        self.shape = shape
+        super().__init__(self._default)
+
+    def _default(self, x):
+        return x.reshape(self.shape)
 
 
 class GetitemMeta(type):
@@ -135,6 +162,7 @@ truediv = DivOp(operator.truediv)
 add = AddOp(operator.add)
 and_ = AssociativeOp(operator.and_)
 mul = MulOp(operator.mul)
+matmul = MatmulOp(operator.matmul)
 or_ = AssociativeOp(operator.or_)
 xor = AssociativeOp(operator.xor)
 
@@ -288,6 +316,7 @@ __all__ = [
     'PRODUCT_INVERSES',
     'ReciprocalOp',
     'SubOp',
+    'ReshapeOp',
     'UNITS',
     'abs',
     'add',
@@ -302,6 +331,7 @@ __all__ = [
     'log',
     'log1p',
     'lt',
+    'matmul',
     'max',
     'min',
     'mul',

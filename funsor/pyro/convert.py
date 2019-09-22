@@ -254,16 +254,13 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     assert len(matrix.output.shape) == 2
     assert value_x.output == reals(matrix.output.shape[0])
     assert value_y.output == reals(matrix.output.shape[1])
-    tensors = (matrix, loc, scale, value_x)
-    int_inputs, tensors = align_tensors(*tensors)
-    matrix, loc, scale, value_x = tensors
+    loc += value_x @ matrix
+    int_inputs, (loc, scale) = align_tensors(loc, scale, expand=True)
 
-    loc = loc + value_x.unsqueeze(-2).matmul(matrix).squeeze(-2)
     i_name = gensym("i")
     y_name = gensym("y")
     y_i_name = gensym("y_i")
     int_inputs[i_name] = bint(value_y.output.shape[0])
-    loc, scale = torch.broadcast_tensors(loc, scale)
     loc = Tensor(loc, int_inputs)
     scale = Tensor(scale, int_inputs)
     y_dist = Independent(Normal(loc, scale, y_i_name), y_name, i_name, y_i_name)

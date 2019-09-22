@@ -88,6 +88,8 @@ def find_domain(op, *domains):
         shape = domains[0].shape
         if op is ops.log or op is ops.exp:
             dtype = 'real'
+        elif isinstance(op, ops.ReshapeOp):
+            shape = op.shape
         return Domain(shape, dtype)
 
     lhs, rhs = domains
@@ -95,6 +97,18 @@ def find_domain(op, *domains):
         dtype = lhs.dtype
         shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
         return Domain(shape, dtype)
+    elif op == ops.matmul:
+        assert lhs.shape and rhs.shape
+        if len(rhs.shape) == 1:
+            assert lhs.shape[-1] == rhs.shape[-1]
+            shape = lhs.shape[:-1]
+        elif len(lhs.shape) == 1:
+            assert lhs.shape[-1] == rhs.shape[-2]
+            shape = rhs.shape[:-2] + rhs.shape[-1:]
+        else:
+            assert lhs.shape[-1] == rhs.shape[-2]
+            shape = broadcast_shape(lhs.shape[:-1], rhs.shape[:-2] + (1,)) + rhs.shape[-1:]
+        return Domain(shape, 'real')
 
     if lhs.dtype == 'real' or rhs.dtype == 'real':
         dtype = 'real'

@@ -7,6 +7,7 @@ from funsor.util import pretty, quote
 
 from . import (
     adjoint,
+    affine,
     cnf,
     delta,
     distributions,
@@ -19,9 +20,11 @@ from . import (
     memoize,
     minipyro,
     montecarlo,
+    numpy,
     ops,
     sum_product,
     terms,
+    testing,
     torch
 )
 
@@ -38,6 +41,7 @@ __all__ = [
     'Tensor',
     'Variable',
     'adjoint',
+    'affine',
     'arange',
     'backward',
     'bint',
@@ -54,6 +58,7 @@ __all__ = [
     'memoize',
     'minipyro',
     'montecarlo',
+    'numpy',
     'of_shape',
     'ops',
     'pretty',
@@ -62,6 +67,7 @@ __all__ = [
     'reinterpret',
     'sum_product',
     'terms',
+    'testing',
     'to_data',
     'to_funsor',
     'torch',

@@ -325,6 +325,10 @@ class Funsor(object, metaclass=FunsorMeta):
     def dtype(self):
         return self.output.dtype
 
+    @property
+    def shape(self):
+        return self.output.shape
+
     def __hash__(self):
         return id(self)
 
@@ -564,6 +568,9 @@ class Funsor(object, metaclass=FunsorMeta):
     def sigmoid(self):
         return Unary(ops.sigmoid, self)
 
+    def reshape(self, shape):
+        return Unary(ops.ReshapeOp(shape), self)
+
     # The following reductions are treated as Unary ops because they
     # reduce over output shape while preserving all inputs.
     # To reduce over inputs, instead call .reduce(op, reduced_vars).
@@ -612,6 +619,12 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def __rtruediv__(self, other):
         return Binary(ops.truediv, to_funsor(other), self)
+
+    def __matmul__(self, other):
+        return Binary(ops.matmul, self, to_funsor(other))
+
+    def __rmatmul__(self, other):
+        return Binary(ops.matmul, to_funsor(other), self)
 
     def __pow__(self, other):
         return Binary(ops.pow, self, to_funsor(other))
