@@ -333,7 +333,7 @@ def model_simple(config):
                 )
                 pyro.sample("step_{}".format(t),
                             step_dist,
-                            obs=observations["step"][..., t])
+                            obs=observations["step"](t=t))
 
                 # observation 2: step angle
                 angle_dist = dist.VonMises(
@@ -341,7 +341,7 @@ def model_simple(config):
                 )
                 pyro.sample("angle_{}".format(t),
                             angle_dist,
-                            obs=observations["angle"][..., t])
+                            obs=observations["angle"](t=t))
 
                 # observation 3: dive activity
                 omega_dist = dist.Beta(
@@ -349,4 +349,4 @@ def model_simple(config):
                 )
                 pyro.sample("omega_{}".format(t),
                             omega_dist,
-                            obs=observations["omega"][..., t])
+                            obs=observations["omega"](t=t))
