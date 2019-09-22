@@ -267,8 +267,8 @@ def model_simple(config):
     # initialize gamma to uniform
     gamma = Tensor(
         torch.zeros((N_state, N_state)),
-        OrderedDict([("y_prev", bint(N_state))]),  # , ("y_curr", bint(N_state))]),
-        reals(N_state),  # reals()
+        OrderedDict([("y_prev", bint(N_state))]),
+        reals(N_state),
     )
 
     N_c = config["sizes"]["group"]
@@ -279,11 +279,10 @@ def model_simple(config):
             # group-level discrete effect
             e_g = pyro.sample("e_g", dist.Categorical(**params["e_g"]))
 
-            # TODO use positional index or use non-y name
             eps_g = params["theta_g"]["theta"](e_g=e_g)
 
         elif config["group"]["random"] == "continuous":
-            # TODO use Independent() here and shape like matrix
+            # TODO use Independent() here?
             eps_g = pyro.sample("eps_g", dist.Normal(**params["eps_g"]).to_event(1),
                                 )  # infer={"num_samples": 10})
         else:
@@ -305,7 +304,7 @@ def model_simple(config):
                 eps_i = params["theta_i"]["theta"](e_i=e_i)
 
             elif config["individual"]["random"] == "continuous":
-                # TODO use Independent() here and shape like matrix
+                # TODO use Independent() here?
                 eps_i = pyro.sample("eps_i", dist.Normal(**params["eps_i"]).to_event(1),
                                     )  # infer={"num_samples": 10})
             else:
