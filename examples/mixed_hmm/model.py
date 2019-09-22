@@ -216,6 +216,23 @@ def initialize_model_params(config):
     return params
 
 
+def initialize_observations(config):
+    """
+    Convert raw observation tensors into funsor.torch.Tensors
+    """
+    batch_inputs = OrderedDict([
+        ("i", config["sizes"]["individual"]),
+        ("g", config["sizes"]["group"]),
+        ("t", config["sizes"]["timesteps"]),
+    ])
+
+    observations = {}
+    for name, data in config["observations"].items():
+        observations[name] = Tensor(data, batch_inputs)
+
+    return observations
+
+
 def guide_simple(config):
     """generic mean-field guide for continuous random effects"""
     params = initialize_guide_params(config)
@@ -245,7 +262,7 @@ def model_simple(config):
     N_state = config["sizes"]["state"]
 
     params = initialize_model_params(config)
-    observations = config["observations"]
+    observations = initialize_observations(config)
 
     # initialize gamma to uniform
     gamma = Tensor(
