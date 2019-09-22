@@ -4,8 +4,6 @@ import torch
 from torch.distributions import constraints
 
 import pyro
-# import pyro.distributions as dist
-# from pyro import poutine
 
 import funsor.distributions as dist
 from funsor.domains import bint, reals
@@ -29,16 +27,16 @@ def initialize_guide_params(config):
         params["eps_g"]["loc"] = Tensor(
             pyro.param("loc_group",
                        lambda: torch.zeros((N_state, N_state))),
-            OrderedDict([("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
         params["eps_g"]["scale"] = Tensor(
             pyro.param("scale_group",
                        lambda: torch.ones((N_state, N_state)),
                        constraint=constraints.positive),
-            OrderedDict([("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
     # initialize individual-level random effect parameters
@@ -48,16 +46,16 @@ def initialize_guide_params(config):
         params["eps_i"]["loc"] = Tensor(
             pyro.param("loc_individual",
                        lambda: torch.zeros((N_c, N_state, N_state))),
-            OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
         params["eps_i"]["scale"] = Tensor(
             pyro.param("scale_individual",
                        lambda: torch.ones((N_c, N_state, N_state)),
                        constraint=constraints.positive),
-            OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
     return params
@@ -84,22 +82,22 @@ def initialize_model_params(config):
     N_v = config["sizes"]["random"]
     N_state = config["sizes"]["state"]
 
-    # initialize group-level random effect parameterss
+    # initialize group-level random effect parameters
     if config["group"]["random"] == "discrete":
 
         params["e_g"]["probs"] = Tensor(
             pyro.param("probs_e_g",
                        lambda: torch.randn((N_v,)).abs(),
                        constraint=constraints.simplex),
-            OrderedDict(),  # TODO is this the input shape expected by Categorical?
-            reals(N_v)  # TODO is this the output shape expected by Categorical?
+            OrderedDict(),
+            reals(N_v)
         )
 
         params["eps_g"]["theta"] = Tensor(
             pyro.param("theta_g",
                        lambda: torch.randn((N_v, N_state, N_state))),
-            OrderedDict([("e_g", bint(N_v)), ("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("e_g", bint(N_v)), ("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
     elif config["group"]["random"] == "continuous":
@@ -107,14 +105,14 @@ def initialize_model_params(config):
         # note these are prior values, trainable versions live in guide
         params["eps_g"]["loc"] = Tensor(
             torch.zeros((N_state, N_state)),
-            OrderedDict([("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
         params["eps_g"]["scale"] = Tensor(
             torch.ones((N_state, N_state)),
-            OrderedDict([("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
     # initialize individual-level random effect parameters
@@ -126,28 +124,28 @@ def initialize_model_params(config):
                        lambda: torch.randn((N_c, N_v,)).abs(),
                        constraint=constraints.simplex),
             OrderedDict([("g", bint(N_c))]),  # different value per group
-            reals(N_v)  # TODO is this the output shape expected by Categorical?
+            reals(N_v)
         )
 
         params["eps_i"]["theta"] = Tensor(
             pyro.param("theta_i",
                        lambda: torch.randn((N_c, N_v, N_state, N_state))),
-            OrderedDict([("g", bint(N_c), "e_i", bint(N_v)), ("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("g", bint(N_c), "e_i", bint(N_v)), ("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
     elif config["individual"]["random"] == "continuous":
 
         params["eps_i"]["loc"] = Tensor(
             torch.zeros((N_c, N_state, N_state)),
-            OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
         params["eps_i"]["scale"] = Tensor(
             torch.ones((N_c, N_state, N_state)),
-            OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state)), ("y_curr", bint(N_state))]),
-            reals()
+            OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
+            reals(N_state)
         )
 
     # initialize likelihood parameters
@@ -156,7 +154,7 @@ def initialize_model_params(config):
         pyro.param("step_zi_param",
                    lambda: torch.ones((N_state, 2))),
         OrderedDict([("y_curr", bint(N_state))]),
-        reals(2),  # TODO is this the output shape expected by Categorical?
+        reals(2),
     )
 
     params["step"]["concentration"] = Tensor(
