@@ -122,7 +122,7 @@ def initialize_model_params(config):
         params["eps_i"]["theta"] = Tensor(
             pyro.param("theta_i",
                        lambda: torch.randn((N_c, N_v, N_state, N_state))),
-            OrderedDict([("g", bint(N_c), "e_i", bint(N_v)), ("y_prev", bint(N_state))]),
+            OrderedDict([("g", bint(N_c)), ("e_i", bint(N_v)), ("y_prev", bint(N_state))]),
         )
 
     elif config["individual"]["random"] == "continuous":
@@ -277,7 +277,7 @@ def model_sequential(config):
 
         log_prob.append(e_g_dist)
 
-        eps_g = params["theta_g"]["theta"](e_g=e_g)
+        eps_g = params["eps_g"]["theta"](e_g=e_g)
 
     elif config["group"]["random"] == "continuous":
         eps_g = Variable("eps_g", reals(N_state))
@@ -304,7 +304,7 @@ def model_sequential(config):
 
         log_prob.append(e_i_dist)
 
-        eps_i = (plate_i + plate_g + params["theta_i"]["theta"](e_i=e_i))
+        eps_i = (plate_i + plate_g + params["eps_i"]["theta"](e_i=e_i))
 
     elif config["individual"]["random"] == "continuous":
         eps_i = Variable("eps_i", reals(N_state))
