@@ -48,7 +48,7 @@ def sequential_loss_fn(model, guide):
         loss = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
     loss = apply_optimizer(loss)
     assert not loss.inputs
-    return loss.data
+    return -loss.data
 
 
 def parallel_loss_fn(model, guide):
@@ -66,7 +66,7 @@ def parallel_loss_fn(model, guide):
         loss = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
     loss = apply_optimizer(loss)
     assert not loss.inputs
-    return loss.data
+    return -loss.data
 
 
 def run_expt(args):
