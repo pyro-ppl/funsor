@@ -337,8 +337,7 @@ def model_simple(config):
         y = Variable("y_{}".format(t), reals(N_state))
         with interpretation(eager):
             y_dist = plate_g + plate_i + dist.Categorical(
-                # XXX does this argument (logits) exist?
-                logits=gamma_y  # probs=gamma_y.exp()
+                probs=gamma_y.exp()  # XXX normalize these?
             )(value=y)
 
         log_prob.append(y_dist)
