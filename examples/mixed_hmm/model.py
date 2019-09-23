@@ -367,3 +367,120 @@ def model_sequential(config):
         log_prob.append(omega_dist)
 
     return log_prob
+
+
+def model_parallel(config):
+    """
+    Simpler version of generic model with no zero-inflation
+    """
+
+    # MISSING = config["MISSING"]  # used for masking and zero-inflation
+    N_state = config["sizes"]["state"]
+
+    params = initialize_model_params(config)
+    observations = initialize_observations(config)
+
+    # initialize gamma to uniform
+    gamma = Tensor(
+        torch.zeros((N_state, N_state)),
+        OrderedDict([("y_prev", bint(N_state))]),
+    )
+
+    N_v = config["sizes"]["random"]
+    N_c = config["sizes"]["group"]
+    log_prob = []  # Tensor(torch.tensor(0.), OrderedDict())
+
+    # with pyro.plate("group", N_c, dim=-1):
+    plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", bint(N_c))]))
+
+    # group-level random effects
+    if config["group"]["random"] == "discrete":
+        # group-level discrete effect
+        e_g = Variable("e_g", bint(N_v))
+        with interpretation(eager):
+            e_g_dist = plate_g + dist.Categorical(**params["e_g"])(value=e_g)
+
+        log_prob.append(e_g_dist)
+
+        eps_g = params["eps_g"]["theta"](e_g=e_g)
+
+    elif config["group"]["random"] == "continuous":
+        eps_g = Variable("eps_g", reals(N_state))
+        with interpretation(eager):
+            eps_g_dist = plate_g + dist.Normal(**params["eps_g"])(value=eps_g)
+
+        log_prob.append(eps_g_dist)
+    else:
+        eps_g = to_funsor(0.)
+
+    N_s = config["sizes"]["individual"]
+
+    # TODO replace mask with site-specific masks via .mask()
+    # with pyro.plate("individual", N_s, dim=-2):  # , poutine.mask(mask=config["individual"]["mask"]):
+    plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", bint(N_s))]))
+    # individual-level random effects
+    if config["individual"]["random"] == "discrete":
+        # individual-level discrete effect
+        e_i = Variable("e_i", bint(N_v))
+        with interpretation(eager):
+            e_i_dist = plate_g + plate_i + dist.Categorical(
+                **params["e_i"]
+            )(value=e_i)
+
+        log_prob.append(e_i_dist)
+
+        eps_i = (plate_i + plate_g + params["eps_i"]["theta"](e_i=e_i))
+
+    elif config["individual"]["random"] == "continuous":
+        eps_i = Variable("eps_i", reals(N_state))
+        with interpretation(eager):
+            eps_i_dist = plate_g + plate_i + dist.Normal(**params["eps_i"])(value=eps_i)
+
+        log_prob.append(eps_i_dist)
+    else:
+        eps_i = to_funsor(0.)
+
+    # add group-level and individual-level random effects to gamma
+    # XXX should the terms get materialize()-d?
+    with interpretation(eager):
+        gamma = gamma + eps_g + eps_i
+
+    # initialize y in a single state for now
+    # y = Number(0, config["sizes"]["state"])
+
+    N_state = config["sizes"]["state"]
+    # TODO replace with site-specific masks via .mask()
+    # with poutine.mask(mask=config["timestep"]["mask"][..., t]):
+
+    # we've accounted for all effects, now actually compute gamma_y
+    gamma_y = gamma(y_prev="y(t=1)")
+
+    y = Variable("y", bint(N_state))
+    with interpretation(eager):
+        y_dist = plate_g + plate_i + dist.Categorical(
+            probs=gamma_y.exp()  # XXX normalize these?
+        )(value=y)
+
+    # observation 1: step size
+    with interpretation(eager):
+        step_dist = plate_g + plate_i + dist.Gamma(
+            **{k: v(y_curr=y) for k, v in params["step"].items()}
+        )(value=observations["step"])
+
+    # observation 2: step angle
+    with interpretation(eager):
+        angle_dist = plate_g + plate_i + dist.VonMises(
+            **{k: v(y_curr=y) for k, v in params["angle"].items()}
+        )(value=observations["angle"])
+
+    # observation 3: dive activity
+    with interpretation(eager):
+        omega_dist = plate_g + plate_i + dist.Beta(
+            **{k: v(y_curr=y) for k, v in params["omega"].items()}
+        )(value=observations["omega"])
+
+    with interpretation(eager):
+        # construct the term for parallel scan reduction
+        log_prob.insert(0, y_dist + step_dist + angle_dist + omega_dist)
+
+    return log_prob

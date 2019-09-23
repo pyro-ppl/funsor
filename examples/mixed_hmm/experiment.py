@@ -12,11 +12,11 @@ import pyro.poutine as poutine
 import funsor.ops as ops
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
-from funsor.sum_product import sum_product
+from funsor.sum_product import sequential_sum_product, sum_product
 from funsor.terms import lazy
 
 
-from model import model_sequential, guide_sequential
+from model import model_sequential, model_parallel, guide_sequential
 from seal_data import prepare_seal
 
 
@@ -37,6 +37,36 @@ def aic_num_parameters(model, guide=None):
         guide()
 
     return sum(_size(node["value"]) for node in param_capture.trace.nodes.values())
+
+
+def sequential_loss_fn(model, guide):
+    # XXX ignore guide for now
+    with interpretation(lazy):
+        factors = model()
+        plates = frozenset(['g', 'i'])
+        eliminate = frozenset().union(*(f.inputs for f in factors))
+        loss = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
+    loss = apply_optimizer(loss)
+    assert not loss.inputs
+    return loss.data
+
+
+def parallel_loss_fn(model, guide):
+    # XXX ignore guide for now
+    factors = model()
+    t_term, factors = factors[0], factors[1:]
+    result = sequential_sum_product(ops.logaddexp, ops.add,
+                                    t_term, "t", {"y": "y(t=1)"})
+    result = result.reduce(ops.logaddexp, "y(t=1)")
+    factors = [result] + factors
+
+    plates = frozenset(['g', 'i'])
+    eliminate = frozenset().union(*(f.inputs for f in factors))
+    with interpretation(lazy):
+        loss = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
+    loss = apply_optimizer(loss)
+    assert not loss.inputs
+    return loss.data
 
 
 def run_expt(args):
@@ -63,8 +93,11 @@ def run_expt(args):
     if not args["parallel"]:
         model = functools.partial(model_sequential, config)  # for JITing
         guide = functools.partial(guide_sequential, config)
+        loss_fn = sequential_loss_fn
     else:
-        raise NotImplementedError("TODO")
+        model = functools.partial(model_parallel, config)  # for JITing
+        guide = functools.partial(guide_sequential, config)
+        loss_fn = parallel_loss_fn
 
     # count the number of parameters once
     num_parameters = aic_num_parameters(model, guide)
@@ -74,17 +107,6 @@ def run_expt(args):
     # TODO support continuous random effects with monte carlo
     assert random_effects["group"] != "continuous"
     assert random_effects["individual"] != "continuous"
-
-    def loss_fn(model, guide):
-        # XXX ignore guide for now
-        with interpretation(lazy):
-            factors = model()
-            plates = frozenset(['g', 'i'])
-            eliminate = frozenset().union(*(f.inputs for f in factors))
-            loss = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
-        loss = apply_optimizer(loss)
-        assert not loss.inputs
-        return loss.data
 
     with pyro.poutine.trace(param_only=True) as param_capture:
         loss_fn(model, guide)
