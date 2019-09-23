@@ -187,7 +187,7 @@ def initialize_model_params(config):
         OrderedDict([("y_curr", bint(N_state))]),
     )
 
-    params["omega"]["cencentration1"] = Tensor(
+    params["omega"]["concentration1"] = Tensor(
         pyro.param("omega_param_concentration1",
                    lambda: torch.randn((N_state,)).abs(),
                    constraint=constraints.positive),
@@ -202,19 +202,19 @@ def initialize_observations(config):
     Convert raw observation tensors into funsor.torch.Tensors
     """
     batch_inputs = OrderedDict([
-        ("i", config["sizes"]["individual"]),
-        ("g", config["sizes"]["group"]),
-        ("t", config["sizes"]["timesteps"]),
+        ("i", bint(config["sizes"]["individual"])),
+        ("g", bint(config["sizes"]["group"])),
+        ("t", bint(config["sizes"]["timesteps"])),
     ])
 
     observations = {}
     for name, data in config["observations"].items():
-        observations[name] = Tensor(data, batch_inputs)
+        observations[name] = Tensor(data[..., :config["sizes"]["timesteps"]], batch_inputs)
 
     return observations
 
 
-def guide_simple(config):
+def guide_sequential(config):
     """generic mean-field guide for continuous random effects"""
     params = initialize_guide_params(config)
 
@@ -244,7 +244,7 @@ def guide_simple(config):
     return log_prob
 
 
-def model_simple(config):
+def model_sequential(config):
     """
     Simpler version of generic model with no zero-inflation
     """
@@ -292,7 +292,7 @@ def model_simple(config):
 
     # TODO replace mask with site-specific masks via .mask()
     # with pyro.plate("individual", N_s, dim=-2):  # , poutine.mask(mask=config["individual"]["mask"]):
-    plate_i = Tensor(torch.zeros(N_c), OrderedDict([("i", bint(N_s))]))
+    plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", bint(N_s))]))
     # individual-level random effects
     if config["individual"]["random"] == "discrete":
         # individual-level discrete effect
@@ -321,7 +321,7 @@ def model_simple(config):
         gamma = gamma + eps_g + eps_i
 
     # initialize y in a single state for now
-    y = Number(0, bint(config["sizes"]["state"]))
+    y = Number(0, config["sizes"]["state"])
 
     N_t = config["sizes"]["timesteps"]
     N_state = config["sizes"]["state"]
@@ -334,7 +334,7 @@ def model_simple(config):
         # we've accounted for all effects, now actually compute gamma_y
         gamma_y = gamma_t(y_prev=y)
 
-        y = Variable("y_{}".format(t), reals(N_state))
+        y = Variable("y_{}".format(t), bint(N_state))
         with interpretation(eager):
             y_dist = plate_g + plate_i + dist.Categorical(
                 probs=gamma_y.exp()  # XXX normalize these?

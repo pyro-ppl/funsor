@@ -8,7 +8,6 @@ import torch
 
 import pyro
 import pyro.poutine as poutine
-from pyro.infer import TraceEnum_ELBO
 
 import funsor.ops as ops
 from funsor.interpreter import interpretation
@@ -17,7 +16,7 @@ from funsor.sum_product import sum_product
 from funsor.terms import lazy
 
 
-from model import model_generic, guide_generic
+from model import model_sequential, guide_sequential
 from seal_data import prepare_seal
 
 
@@ -34,7 +33,8 @@ def aic_num_parameters(model, guide=None):
         return s
 
     with poutine.block(), poutine.trace(param_only=True) as param_capture:
-        TraceEnum_ELBO(max_plate_nesting=2).differentiable_loss(model, guide)
+        model()
+        guide()
 
     return sum(_size(node["value"]) for node in param_capture.trace.nodes.values())
 
@@ -56,9 +56,15 @@ def run_expt(args):
 
     filename = os.path.join(data_dir, "prep_seal_data.csv")
     config = prepare_seal(filename, random_effects)
+    if args["smoke"]:
+        timesteps = 1
+        config["sizes"]["timesteps"] = 3
 
-    model = functools.partial(model_generic, config)  # for JITing
-    guide = functools.partial(guide_generic, config)
+    if not args["parallel"]:
+        model = functools.partial(model_sequential, config)  # for JITing
+        guide = functools.partial(guide_sequential, config)
+    else:
+        raise NotImplementedError("TODO")
 
     # count the number of parameters once
     num_parameters = aic_num_parameters(model, guide)
@@ -74,9 +80,11 @@ def run_expt(args):
         with interpretation(lazy):
             factors = model()
             plates = frozenset(['g', 'i'])
-            eliminate = frozenset().union(*(f.inputs for f in factors)) - plates
-            loss = sum_product(ops.logaddexp, ops.add, model(), eliminate, plates)
-        return apply_optimizer(loss).data
+            eliminate = frozenset().union(*(f.inputs for f in factors))
+            loss = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
+        loss = apply_optimizer(loss)
+        assert not loss.inputs
+        return loss.data
 
     with pyro.poutine.trace(param_only=True) as param_capture:
         loss_fn(model, guide)
@@ -131,6 +139,7 @@ def run_expt(args):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--dataset", default="seal", type=str)
     parser.add_argument("-g", "--group", default="none", type=str)
     parser.add_argument("-i", "--individual", default="none", type=str)
     parser.add_argument("-f", "--folder", default="./", type=str)
@@ -139,6 +148,8 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--timesteps", default=1000, type=int)
     parser.add_argument("-r", "--resultsdir", default="./results", type=str)
     parser.add_argument("-s", "--seed", default=101, type=int)
+    parser.add_argument("--parallel", action="store_true")
+    parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--schedule", default="", type=str)
     parser.add_argument('--validation', action='store_true')
     args = parser.parse_args()

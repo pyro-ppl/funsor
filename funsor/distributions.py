@@ -555,7 +555,7 @@ class Gamma(Distribution):
         rate = to_funsor(rate)
         assert rate.dtype == "real"
         value = to_funsor(value, reals())
-        return rate, value
+        return concentration, rate, value
 
     def __init__(self, concentration, rate, value=None):
         super().__init__(concentration, rate, value)
@@ -576,7 +576,7 @@ class VonMises(Distribution):
         loc = to_funsor(loc)
         assert loc.dtype == "real"
         value = to_funsor(value, reals())
-        return loc, value
+        return concentration, loc, value
 
     def __init__(self, concentration, loc, value=None):
         super().__init__(concentration, loc, value)
