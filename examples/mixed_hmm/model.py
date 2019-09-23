@@ -8,7 +8,7 @@ import pyro
 import funsor.distributions as dist
 from funsor.domains import bint, reals
 from funsor.interpreter import interpretation
-from funsor.terms import Number, Variable, eager, lazy, to_funsor
+from funsor.terms import Number, Variable, eager, to_funsor
 from funsor.torch import Tensor
 
 
@@ -214,7 +214,6 @@ def initialize_observations(config):
     return observations
 
 
-@interpretation(lazy)
 def guide_simple(config):
     """generic mean-field guide for continuous random effects"""
     params = initialize_guide_params(config)
@@ -245,7 +244,6 @@ def guide_simple(config):
     return log_prob
 
 
-@interpretation(lazy)
 def model_simple(config):
     """
     Simpler version of generic model with no zero-inflation
@@ -265,7 +263,7 @@ def model_simple(config):
 
     N_v = config["sizes"]["random"]
     N_c = config["sizes"]["group"]
-    log_prob = Tensor(torch.tensor(0.), OrderedDict())
+    log_prob = []  # Tensor(torch.tensor(0.), OrderedDict())
 
     # with pyro.plate("group", N_c, dim=-1):
     plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", bint(N_c))]))
@@ -277,7 +275,7 @@ def model_simple(config):
         with interpretation(eager):
             e_g_dist = plate_g + dist.Categorical(**params["e_g"])(value=e_g)
 
-        log_prob += e_g_dist
+        log_prob.append(e_g_dist)
 
         eps_g = params["theta_g"]["theta"](e_g=e_g)
 
@@ -286,7 +284,7 @@ def model_simple(config):
         with interpretation(eager):
             eps_g_dist = plate_g + dist.Normal(**params["eps_g"])(value=eps_g)
 
-        log_prob += eps_g_dist
+        log_prob.append(eps_g_dist)
     else:
         eps_g = to_funsor(0.)
 
@@ -304,7 +302,7 @@ def model_simple(config):
                 **params["e_i"]
             )(value=e_i)
 
-        log_prob += e_i_dist
+        log_prob.append(e_i_dist)
 
         eps_i = (plate_i + plate_g + params["theta_i"]["theta"](e_i=e_i))
 
@@ -313,7 +311,7 @@ def model_simple(config):
         with interpretation(eager):
             eps_i_dist = plate_g + plate_i + dist.Normal(**params["eps_i"])(value=eps_i)
 
-        log_prob += eps_i_dist
+        log_prob.append(eps_i_dist)
     else:
         eps_i = to_funsor(0.)
 
@@ -339,10 +337,11 @@ def model_simple(config):
         y = Variable("y_{}".format(t), reals(N_state))
         with interpretation(eager):
             y_dist = plate_g + plate_i + dist.Categorical(
+                # XXX does this argument (logits) exist?
                 logits=gamma_y  # probs=gamma_y.exp()
             )(value=y)
 
-        log_prob += y_dist
+        log_prob.append(y_dist)
 
         # observation 1: step size
         with interpretation(eager):
@@ -350,7 +349,7 @@ def model_simple(config):
                 **{k: v(y_curr=y) for k, v in params["step"].items()}
             )(value=observations["step"](t=t))
 
-        log_prob += step_dist
+        log_prob.append(step_dist)
 
         # observation 2: step angle
         with interpretation(eager):
@@ -358,7 +357,7 @@ def model_simple(config):
                 **{k: v(y_curr=y) for k, v in params["angle"].items()}
             )(value=observations["angle"](t=t))
 
-        log_prob += angle_dist
+        log_prob.append(angle_dist)
 
         # observation 3: dive activity
         with interpretation(eager):
@@ -366,6 +365,6 @@ def model_simple(config):
                 **{k: v(y_curr=y) for k, v in params["omega"].items()}
             )(value=observations["omega"](t=t))
 
-        log_prob += omega_dist
+        log_prob.append(omega_dist)
 
     return log_prob

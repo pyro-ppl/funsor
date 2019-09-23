@@ -10,6 +10,13 @@ import pyro
 import pyro.poutine as poutine
 from pyro.infer import TraceEnum_ELBO
 
+import funsor.ops as ops
+from funsor.interpreter import interpretation
+from funsor.optimizer import apply_optimizer
+from funsor.sum_product import sum_product
+from funsor.terms import lazy
+
+
 from model import model_generic, guide_generic
 from seal_data import prepare_seal
 
@@ -58,7 +65,19 @@ def run_expt(args):
 
     losses = []
 
-    loss_fn = TraceEnum_ELBO(max_plate_nesting=2).differentiable_loss
+    # TODO support continuous random effects with monte carlo
+    assert random_effects["group"] != "continuous"
+    assert random_effects["individual"] != "continuous"
+
+    def loss_fn(model, guide):
+        # XXX ignore guide for now
+        with interpretation(lazy):
+            factors = model()
+            plates = frozenset(['g', 'i'])
+            eliminate = frozenset().union(*(f.inputs for f in factors)) - plates
+            loss = sum_product(ops.logaddexp, ops.add, model(), eliminate, plates)
+        return apply_optimizer(loss).data
+
     with pyro.poutine.trace(param_only=True) as param_capture:
         loss_fn(model, guide)
     params = [site["value"].unconstrained() for site in param_capture.trace.nodes.values()]
