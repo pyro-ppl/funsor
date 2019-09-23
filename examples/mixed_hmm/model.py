@@ -7,7 +7,8 @@ import pyro
 
 import funsor.distributions as dist
 from funsor.domains import bint, reals
-from funsor.terms import Number, to_funsor
+from funsor.interpreter import interpretation
+from funsor.terms import Number, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor
 
 
@@ -28,7 +29,6 @@ def initialize_guide_params(config):
             pyro.param("loc_group",
                        lambda: torch.zeros((N_state, N_state))),
             OrderedDict([("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
         params["eps_g"]["scale"] = Tensor(
@@ -36,7 +36,6 @@ def initialize_guide_params(config):
                        lambda: torch.ones((N_state, N_state)),
                        constraint=constraints.positive),
             OrderedDict([("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
     # initialize individual-level random effect parameters
@@ -47,7 +46,6 @@ def initialize_guide_params(config):
             pyro.param("loc_individual",
                        lambda: torch.zeros((N_c, N_state, N_state))),
             OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
         params["eps_i"]["scale"] = Tensor(
@@ -55,7 +53,6 @@ def initialize_guide_params(config):
                        lambda: torch.ones((N_c, N_state, N_state)),
                        constraint=constraints.positive),
             OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
     return params
@@ -90,14 +87,12 @@ def initialize_model_params(config):
                        lambda: torch.randn((N_v,)).abs(),
                        constraint=constraints.simplex),
             OrderedDict(),
-            reals(N_v)
         )
 
         params["eps_g"]["theta"] = Tensor(
             pyro.param("theta_g",
                        lambda: torch.randn((N_v, N_state, N_state))),
             OrderedDict([("e_g", bint(N_v)), ("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
     elif config["group"]["random"] == "continuous":
@@ -106,13 +101,11 @@ def initialize_model_params(config):
         params["eps_g"]["loc"] = Tensor(
             torch.zeros((N_state, N_state)),
             OrderedDict([("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
         params["eps_g"]["scale"] = Tensor(
             torch.ones((N_state, N_state)),
             OrderedDict([("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
     # initialize individual-level random effect parameters
@@ -124,14 +117,12 @@ def initialize_model_params(config):
                        lambda: torch.randn((N_c, N_v,)).abs(),
                        constraint=constraints.simplex),
             OrderedDict([("g", bint(N_c))]),  # different value per group
-            reals(N_v)
         )
 
         params["eps_i"]["theta"] = Tensor(
             pyro.param("theta_i",
                        lambda: torch.randn((N_c, N_v, N_state, N_state))),
             OrderedDict([("g", bint(N_c), "e_i", bint(N_v)), ("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
     elif config["individual"]["random"] == "continuous":
@@ -139,13 +130,11 @@ def initialize_model_params(config):
         params["eps_i"]["loc"] = Tensor(
             torch.zeros((N_c, N_state, N_state)),
             OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
         params["eps_i"]["scale"] = Tensor(
             torch.ones((N_c, N_state, N_state)),
             OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
-            reals(N_state)
         )
 
     # initialize likelihood parameters
@@ -154,7 +143,6 @@ def initialize_model_params(config):
         pyro.param("step_zi_param",
                    lambda: torch.ones((N_state, 2))),
         OrderedDict([("y_curr", bint(N_state))]),
-        reals(2),
     )
 
     params["step"]["concentration"] = Tensor(
@@ -162,7 +150,6 @@ def initialize_model_params(config):
                    lambda: torch.randn((N_state,)).abs(),
                    constraint=constraints.positive),
         OrderedDict([("y_curr", bint(N_state))]),
-        reals()
     )
 
     params["step"]["rate"] = Tensor(
@@ -170,7 +157,6 @@ def initialize_model_params(config):
                    lambda: torch.randn((N_state,)).abs(),
                    constraint=constraints.positive),
         OrderedDict([("y_curr", bint(N_state))]),
-        reals()
     )
 
     # observation 2: step angle (angle ~ VonMises)
@@ -179,14 +165,12 @@ def initialize_model_params(config):
                    lambda: torch.randn((N_state,)).abs(),
                    constraint=constraints.positive),
         OrderedDict([("y_curr", bint(N_state))]),
-        reals()
     )
 
     params["angle"]["loc"] = Tensor(
         pyro.param("angle_param_loc",
                    lambda: torch.randn((N_state,)).abs()),
         OrderedDict([("y_curr", bint(N_state))]),
-        reals()
     )
 
     # observation 3: dive activity (omega ~ Beta)
@@ -194,7 +178,6 @@ def initialize_model_params(config):
         pyro.param("omega_zi_param",
                    lambda: torch.ones((N_state, 2))),
         OrderedDict([("y_curr", bint(N_state))]),
-        reals(2)
     )
 
     params["omega"]["concentration0"] = Tensor(
@@ -202,7 +185,6 @@ def initialize_model_params(config):
                    lambda: torch.randn((N_state,)).abs(),
                    constraint=constraints.positive),
         OrderedDict([("y_curr", bint(N_state))]),
-        reals()
     )
 
     params["omega"]["cencentration1"] = Tensor(
@@ -210,7 +192,6 @@ def initialize_model_params(config):
                    lambda: torch.randn((N_state,)).abs(),
                    constraint=constraints.positive),
         OrderedDict([("y_curr", bint(N_state))]),
-        reals()
     )
 
     return params
@@ -233,6 +214,7 @@ def initialize_observations(config):
     return observations
 
 
+@interpretation(lazy)
 def guide_simple(config):
     """generic mean-field guide for continuous random effects"""
     params = initialize_guide_params(config)
@@ -253,6 +235,7 @@ def guide_simple(config):
                             )  # infer={"num_samples": 10})
 
 
+@interpretation(lazy)
 def model_simple(config):
     """
     Simpler version of generic model with no zero-inflation
@@ -268,82 +251,111 @@ def model_simple(config):
     gamma = Tensor(
         torch.zeros((N_state, N_state)),
         OrderedDict([("y_prev", bint(N_state))]),
-        reals(N_state),
     )
 
+    N_v = config["sizes"]["random"]
     N_c = config["sizes"]["group"]
-    with pyro.plate("group", N_c, dim=-1):
+    log_prob = Tensor(torch.tensor(0.), OrderedDict())
 
-        # group-level random effects
-        if config["group"]["random"] == "discrete":
-            # group-level discrete effect
-            e_g = pyro.sample("e_g", dist.Categorical(**params["e_g"]))
+    # with pyro.plate("group", N_c, dim=-1):
+    plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", bint(N_c))]))
 
-            eps_g = params["theta_g"]["theta"](e_g=e_g)
+    # group-level random effects
+    if config["group"]["random"] == "discrete":
+        # group-level discrete effect
+        e_g = Variable("e_g", bint(N_v))
+        with interpretation(eager):
+            e_g_dist = plate_g + dist.Categorical(**params["e_g"])(value=e_g)
 
-        elif config["group"]["random"] == "continuous":
-            # TODO use Independent() here?
-            eps_g = pyro.sample("eps_g", dist.Normal(**params["eps_g"]).to_event(1),
-                                )  # infer={"num_samples": 10})
-        else:
-            eps_g = to_funsor(0.)
+        log_prob += e_g_dist
 
-        N_s = config["sizes"]["individual"]
+        eps_g = params["theta_g"]["theta"](e_g=e_g)
 
-        # TODO replace mask with site-specific masks via .mask()
-        with pyro.plate("individual", N_s, dim=-2):  # , poutine.mask(mask=config["individual"]["mask"]):
+    elif config["group"]["random"] == "continuous":
+        eps_g = Variable("eps_g", reals(N_state))
+        with interpretation(eager):
+            eps_g_dist = plate_g + dist.Normal(**params["eps_g"])(value=eps_g)
 
-            # individual-level random effects
-            if config["individual"]["random"] == "discrete":
-                # individual-level discrete effect
-                e_i = pyro.sample("e_i", dist.Categorical(**params["e_i"]))
+        log_prob += eps_g_dist
+    else:
+        eps_g = to_funsor(0.)
 
-                eps_i = params["theta_i"]["theta"](e_i=e_i)
+    N_s = config["sizes"]["individual"]
 
-            elif config["individual"]["random"] == "continuous":
-                # TODO use Independent() here?
-                eps_i = pyro.sample("eps_i", dist.Normal(**params["eps_i"]).to_event(1),
-                                    )  # infer={"num_samples": 10})
-            else:
-                eps_i = to_funsor(0.)
+    # TODO replace mask with site-specific masks via .mask()
+    # with pyro.plate("individual", N_s, dim=-2):  # , poutine.mask(mask=config["individual"]["mask"]):
+    plate_i = Tensor(torch.zeros(N_c), OrderedDict([("i", bint(N_s))]))
+    # individual-level random effects
+    if config["individual"]["random"] == "discrete":
+        # individual-level discrete effect
+        e_i = Variable("e_i", bint(N_v))
+        with interpretation(eager):
+            e_i_dist = plate_g + plate_i + dist.Categorical(
+                **params["e_i"]
+            )(value=e_i)
 
-            # add group-level and individual-level random effects to gamma
-            gamma = gamma + eps_g + eps_i
+        log_prob += e_i_dist
 
-            # initialize y in a single state for now
-            y = Number(0, bint(config["sizes"]["state"]))
+        eps_i = (plate_i + plate_g + params["theta_i"]["theta"](e_i=e_i))
 
-            N_t = config["sizes"]["timesteps"]
-            for t in range(N_t):  # pyro.markov(range(N_t)):
-                # TODO replace with site-specific masks via .mask()
-                # with poutine.mask(mask=config["timestep"]["mask"][..., t]):
+    elif config["individual"]["random"] == "continuous":
+        eps_i = Variable("eps_i", reals(N_state))
+        with interpretation(eager):
+            eps_i_dist = plate_g + plate_i + dist.Normal(**params["eps_i"])(value=eps_i)
 
-                gamma_t = gamma  # per-timestep variable
+        log_prob += eps_i_dist
+    else:
+        eps_i = to_funsor(0.)
 
-                # we've accounted for all effects, now actually compute gamma_y
-                gamma_y = gamma_t(y_prev=y)
-                y = pyro.sample("y_{}".format(t), dist.Categorical(logits=gamma_y))
+    # add group-level and individual-level random effects to gamma
+    # XXX should the terms get materialize()-d?
+    with interpretation(eager):
+        gamma = gamma + eps_g + eps_i
 
-                # observation 1: step size
-                step_dist = dist.Gamma(
-                    **{k: v(y_curr=y) for k, v in params["step"].items()}
-                )
-                pyro.sample("step_{}".format(t),
-                            step_dist,
-                            obs=observations["step"](t=t))
+    # initialize y in a single state for now
+    y = Number(0, bint(config["sizes"]["state"]))
 
-                # observation 2: step angle
-                angle_dist = dist.VonMises(
-                    **{k: v(y_curr=y) for k, v in params["angle"].items()}
-                )
-                pyro.sample("angle_{}".format(t),
-                            angle_dist,
-                            obs=observations["angle"](t=t))
+    N_t = config["sizes"]["timesteps"]
+    N_state = config["sizes"]["state"]
+    for t in range(N_t):  # pyro.markov(range(N_t)):
+        # TODO replace with site-specific masks via .mask()
+        # with poutine.mask(mask=config["timestep"]["mask"][..., t]):
 
-                # observation 3: dive activity
-                omega_dist = dist.Beta(
-                    **{k: v(y_curr=y) for k, v in params["omega"].items()}
-                )
-                pyro.sample("omega_{}".format(t),
-                            omega_dist,
-                            obs=observations["omega"](t=t))
+        gamma_t = gamma  # per-timestep variable
+
+        # we've accounted for all effects, now actually compute gamma_y
+        gamma_y = gamma_t(y_prev=y)
+
+        y = Variable("y_{}".format(t), reals(N_state))
+        with interpretation(eager):
+            y_dist = plate_g + plate_i + dist.Categorical(
+                logits=gamma_y  # probs=gamma_y.exp()
+            )(value=y)
+
+        log_prob += y_dist
+
+        # observation 1: step size
+        with interpretation(eager):
+            step_dist = plate_g + plate_i + dist.Gamma(
+                **{k: v(y_curr=y) for k, v in params["step"].items()}
+            )(value=observations["step"](t=t))
+
+        log_prob += step_dist
+
+        # observation 2: step angle
+        with interpretation(eager):
+            angle_dist = plate_g + plate_i + dist.VonMises(
+                **{k: v(y_curr=y) for k, v in params["angle"].items()}
+            )(value=observations["angle"](t=t))
+
+        log_prob += angle_dist
+
+        # observation 3: dive activity
+        with interpretation(eager):
+            omega_dist = plate_g + plate_i + dist.Beta(
+                **{k: v(y_curr=y) for k, v in params["omega"].items()}
+            )(value=observations["omega"](t=t))
+
+        log_prob += omega_dist
+
+    return log_prob
