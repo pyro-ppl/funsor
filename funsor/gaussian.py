@@ -498,11 +498,13 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return None  # defer to default implementation
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        # Sample only the real variables.
-        sampled_vars = frozenset(k for k, v in self.inputs.items()
-                                 if k in sampled_vars if v.dtype == 'real')
+        sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
+        if any(self.inputs[k].dtype != 'real' for k in sampled_vars):
+            raise ValueError('Sampling from non-normalized Gaussian mixtures is intentionally '
+                             'not implemented. You probably want to normalize. To work around, '
+                             'add a zero Tensor with given inputs.')
 
         # Partition inputs into sample_inputs + int_inputs + real_inputs.
         sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
