@@ -220,19 +220,29 @@ def guide_simple(config):
     params = initialize_guide_params(config)
 
     N_c = config["sizes"]["group"]
-    with pyro.plate("group", N_c, dim=-1):
+    N_s = config["sizes"]["individual"]
 
-        if config["group"]["random"] == "continuous":
-            pyro.sample("eps_g", dist.Normal(**params["eps_g"]).to_event(1),
-                        )  # infer={"num_samples": 10})
+    log_prob = Tensor(torch.tensor(0.), OrderedDict())
 
-        N_s = config["sizes"]["individual"]
-        with pyro.plate("individual", N_s, dim=-2):  # , poutine.mask(mask=config["individual"]["mask"]):
+    plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", bint(N_c))]))
+    plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", bint(N_s))]))
 
-            # individual-level random effects
-            if config["individual"]["random"] == "continuous":
-                pyro.sample("eps_i", dist.Normal(**params["eps_i"]).to_event(1),
-                            )  # infer={"num_samples": 10})
+    if config["group"]["random"] == "continuous":
+        with interpretation(eager):
+            eps_g_dist = plate_g + dist.Normal(**params["eps_g"])(value="eps_g")
+
+        log_prob += eps_g_dist
+
+    # with poutine.mask(mask=config["individual"]["mask"]):
+
+    # individual-level random effects
+    if config["individual"]["random"] == "continuous":
+        with interpretation(eager):
+            eps_i_dist = plate_g + plate_i + dist.Normal(**params["eps_i"])(value="eps_i")
+
+        log_prob += eps_i_dist
+
+    return log_prob
 
 
 @interpretation(lazy)
