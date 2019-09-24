@@ -88,8 +88,8 @@ def test_einsum_adjoint_unary_marginals(einsum_impl, equation, backend):
 
 
 PLATED_EINSUM_EXAMPLES = [
-    ('i->', 'i'),
     (',i->', 'i'),
+    ('i->', 'i'),
     ('ai->', 'i'),
     (',ai,abij->', 'ij'),
     ('a,ai,bij->', 'ij'),

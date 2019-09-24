@@ -6,8 +6,7 @@ from funsor.torch import Tensor, arange
 
 from . import (
     adjoint,
-    affine,
-    contract,
+    cnf,
     delta,
     distributions,
     domains,
@@ -38,11 +37,10 @@ __all__ = [
     'Tensor',
     'Variable',
     'adjoint',
-    'affine',
     'arange',
     'backward',
     'bint',
-    'contract',
+    'cnf',
     'delta',
     'distributions',
     'domains',

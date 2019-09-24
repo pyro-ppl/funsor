@@ -131,7 +131,7 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
     expected = apply_optimizer(expected)
     expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
     expected = expected.align(tuple(actual.inputs.keys()))
-    assert_close(actual, expected, rtol=1e-4 * num_steps)
+    assert_close(actual, expected, rtol=5e-4 * num_steps)
 
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 6)))

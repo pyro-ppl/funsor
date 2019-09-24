@@ -4,7 +4,7 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
-from funsor.interpreter import gensym, interpretation
+from funsor.interpreter import gensym, interpretation, reinterpret
 from funsor.terms import Cat, Independent, Lambda, Number, Slice, Stack, Variable, reflect
 from funsor.testing import assert_close, check_funsor, random_tensor
 
@@ -40,7 +40,7 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
         actual_lhs = lhs.reduce(ops.add, lhs_vars) if lhs_vars else lhs
         actual_rhs = rhs.reduce(ops.add, rhs_vars) if rhs_vars else rhs
 
-    actual = actual_lhs * actual_rhs
+    actual = reinterpret(actual_lhs * actual_rhs)
 
     lhs_subs = {v: gensym(v) for v in lhs_vars}
     rhs_subs = {v: gensym(v) for v in rhs_vars}
