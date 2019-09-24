@@ -149,7 +149,7 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset,
-                Unary[ops.ExpOp, Union[Delta, Gaussian, Number, Tensor]],
+                Unary[ops.ExpOp, Union[GaussianMixture, Delta, Gaussian, Number, Tensor]],
                 (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture))
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
 
@@ -165,12 +165,21 @@ def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs
     return None
 
 
-@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, Delta]], frozenset)
+@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Funsor], frozenset)
 def eager_reduce_exp(op, arg, reduced_vars):
     # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
     log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
     if log_result is not normalize(Reduce, ops.logaddexp, arg.arg, reduced_vars):
         return log_result.exp()
+    return None
+
+
+@eager.register(Integrate, GaussianMixture, Funsor, frozenset)
+def eager_integrate_gaussianmixture(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
+    if reduced_vars <= real_vars:
+        discrete, gaussian = log_measure.terms
+        return discrete.exp() * Integrate(gaussian, integrand, reduced_vars)
     return None
 
 
