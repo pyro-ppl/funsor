@@ -186,15 +186,6 @@ class GaussianHMM(FunsorDistribution):
         super(GaussianHMM, self).__init__(
             funsor_dist, batch_shape, event_shape, dtype, validate_args)
 
-    def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(GaussianHMM, _instance)
-        batch_shape = torch.Size(batch_shape)
-        funsor_dist = self.funsor_dist + tensor_to_funsor(torch.zeros(batch_shape))
-        super(GaussianHMM, new).__init__(
-            funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
-        new.validate_args = self.__dict__.get('_validate_args')
-        return new
-
 
 class GaussianMRF(FunsorDistribution):
     has_rsample = True
@@ -240,15 +231,6 @@ class GaussianMRF(FunsorDistribution):
 
         dtype = "real"
         super(GaussianMRF, self).__init__(funsor_dist, batch_shape, event_shape, dtype, validate_args)
-
-    def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(GaussianMRF, _instance)
-        batch_shape = torch.Size(batch_shape)
-        funsor_dist = self.funsor_dist + tensor_to_funsor(torch.zeros(batch_shape))
-        super(GaussianMRF, new).__init__(
-            funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
-        new.validate_args = self.__dict__.get('_validate_args')
-        return new
 
 
 class SwitchingLinearHMM(FunsorDistribution):
