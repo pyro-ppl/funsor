@@ -58,7 +58,7 @@ def align_tensor(new_inputs, x, expand=False):
     :param funsor.terms.Funsor x: A :class:`Tensor` or
         :class:`~funsor.terms.Number` .
     :param bool expand: If False (default), set result size to 1 for any input
-        of ``x`` not in ``new_inputs``; if True expand to ``new_inputs` size.
+        of ``x`` not in ``new_inputs``; if True expand to ``new_inputs`` size.
     :return: a number or :class:`torch.Tensor` that can be broadcast to other
         tensors with inputs ``new_inputs``.
     :rtype: tuple
