@@ -5,7 +5,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian, cholesky_inverse, cholesky_solve
-from funsor.terms import Funsor, Number, Subs, Unary, Variable, eager, normalize
+from funsor.terms import Funsor, Number, Subs, Unary, Variable, eager, normalize, substitute, to_funsor
 from funsor.torch import Tensor
 
 
@@ -17,6 +17,7 @@ class Integrate(Funsor):
         assert isinstance(log_measure, Funsor)
         assert isinstance(integrand, Funsor)
         assert isinstance(reduced_vars, frozenset)
+        assert all(isinstance(v, str) for v in reduced_vars)
         inputs = OrderedDict((k, d) for term in (log_measure, integrand)
                              for (k, d) in term.inputs.items()
                              if k not in reduced_vars)
@@ -29,8 +30,12 @@ class Integrate(Funsor):
         self.reduced_vars = reduced_vars
 
     def _alpha_convert(self, alpha_subs):
-        log_measure, integrand, reduced_vars = super()._alpha_convert(alpha_subs)
-        reduced_vars = frozenset(alpha_subs.get(k, k) for k in reduced_vars)
+        assert self.bound.issuperset(alpha_subs)
+        reduced_vars = frozenset(alpha_subs.get(k, k) for k in self.reduced_vars)
+        alpha_subs = {k: to_funsor(v, self.integrand.inputs.get(k, self.log_measure.inputs.get(k)))
+                      for k, v in alpha_subs.items()}
+        log_measure = substitute(self.log_measure, alpha_subs)
+        integrand = substitute(self.integrand, alpha_subs)
         return log_measure, integrand, reduced_vars
 
 
