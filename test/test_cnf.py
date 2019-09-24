@@ -1,12 +1,14 @@
 import pytest
+import torch  # noqa F403
 
 from funsor.cnf import Contraction
+from funsor.domains import bint  # noqa F403
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.terms import Number, eager, normalize, reflect
 from funsor.testing import assert_close, check_funsor, make_einsum_example  # , xfail_param
 from funsor.torch import Tensor
-
+from funsor.util import quote
 
 EINSUM_EXAMPLES = [
     ("a,b->", ''),
@@ -54,3 +56,6 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
         expected = reinterpret(expr)
 
     assert_close(actual, expected, rtol=1e-4)
+
+    actual = eval(quote(expected))  # requires torch, bint
+    assert_close(actual, expected)

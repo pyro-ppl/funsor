@@ -3,9 +3,11 @@ from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
 from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.torch import Tensor, arange
+from funsor.util import pretty, quote
 
 from . import (
     adjoint,
+    affine,
     cnf,
     delta,
     distributions,
@@ -18,9 +20,11 @@ from . import (
     memoize,
     minipyro,
     montecarlo,
+    numpy,
     ops,
     sum_product,
     terms,
+    testing,
     torch
 )
 
@@ -37,6 +41,7 @@ __all__ = [
     'Tensor',
     'Variable',
     'adjoint',
+    'affine',
     'arange',
     'backward',
     'bint',
@@ -53,12 +58,16 @@ __all__ = [
     'memoize',
     'minipyro',
     'montecarlo',
+    'numpy',
     'of_shape',
     'ops',
+    'pretty',
+    'quote',
     'reals',
     'reinterpret',
     'sum_product',
     'terms',
+    'testing',
     'to_data',
     'to_funsor',
     'torch',

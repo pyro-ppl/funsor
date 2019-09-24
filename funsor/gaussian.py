@@ -6,24 +6,11 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-from funsor.delta import Delta, Delta
+from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.integrate import Integrate
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.terms import (
-    Align,
-    Binary,
-    Funsor,
-    FunsorMeta,
-    Number,
-    Slice,
-    Subs,
-    Unary,
-    Variable,
-    eager,
-    reflect,
-    to_funsor
-)
+from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
@@ -343,7 +330,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = tuple((k, materialize(to_funsor(v, self.inputs[k])))
+        subs = tuple((k, v if isinstance(v, (Variable, Slice)) else materialize(v))
                      for k, v in subs if k in self.inputs)
         if not subs:
             return self
@@ -511,11 +498,13 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return None  # defer to default implementation
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        # Sample only the real variables.
-        sampled_vars = frozenset(k for k, v in self.inputs.items()
-                                 if k in sampled_vars if v.dtype == 'real')
+        sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
+        if any(self.inputs[k].dtype != 'real' for k in sampled_vars):
+            raise ValueError('Sampling from non-normalized Gaussian mixtures is intentionally '
+                             'not implemented. You probably want to normalize. To work around, '
+                             'add a zero Tensor with given inputs.')
 
         # Partition inputs into sample_inputs + int_inputs + real_inputs.
         sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
