@@ -46,11 +46,13 @@ class DiscreteHMM(FunsorDistribution):
 
         # Construct the joint funsor.
         with interpretation(lazy):
-            time = Variable("time", bint(time_shape[0]))
-            result = MarkovProduct(ops.logaddexp, ops.add,
-                                   trans + obs, time, {"state": "state(time=1)"})
-            result = init + result.reduce(ops.logaddexp, "state(time=1)")
-            funsor_dist = result.reduce(ops.logaddexp, "state")
+            # TODO perform math here once sequential_sum_product has been
+            #   implemented as a first-class funsor.
+            funsor_dist = Variable("value", obs.inputs["value"])  # a bogus value
+            # Until funsor_dist is defined, we save factors for hand-computation in .log_prob().
+            self._init = init
+            self._trans = trans
+            self._obs = obs
 
         super(DiscreteHMM, self).__init__(funsor_dist, batch_shape, event_shape, dtype, validate_args)
 
@@ -58,13 +60,38 @@ class DiscreteHMM(FunsorDistribution):
     def has_rsample(self):
         return self._has_rsample
 
+    # TODO remove this once self.funsor_dist is defined.
+    def log_prob(self, value):
+        if self._validate_args:
+            self._validate_sample(value)
+        ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
+        value = tensor_to_funsor(value, ("time",), event_output=self.event_dim - 1,
+                                 dtype=self.dtype)
+
+        # Compare with pyro.distributions.hmm.DiscreteHMM.log_prob().
+        obs = self._obs(value=value)
+        result = self._trans + obs
+        result = sequential_sum_product(ops.logaddexp, ops.add,
+                                        result, "time", {"state": "state(time=1)"})
+        result = self._init + result.reduce(ops.logaddexp, "state(time=1)")
+        result = result.reduce(ops.logaddexp, "state")
+
+        result = funsor_to_tensor(result, ndims=ndims)
+        return result
+
+    # TODO remove this once self.funsor_dist is defined.
+    def _sample_delta(self, sample_shape):
+        raise NotImplementedError("TODO")
+
     def expand(self, batch_shape, _instance=None):
         new = self._get_checked_instance(DiscreteHMM, _instance)
         batch_shape = torch.Size(batch_shape)
         new._has_rsample = self._has_rsample
-        funsor_dist = self.funsor_dist + tensor_to_funsor(torch.zeros(batch_shape))
+        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
+        new._trans = self._trans
+        new._obs = self._obs
         super(DiscreteHMM, new).__init__(
-            funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
         new.validate_args = self.__dict__.get('_validate_args')
         return new
 
@@ -148,8 +175,10 @@ class GaussianHMM(FunsorDistribution):
 
         # Construct the joint funsor.
         with interpretation(lazy):
+            value = Variable("value", reals(time_shape[0], obs_dim))
+            result = trans + obs(value=value["time"])
             result = MarkovProduct(ops.logaddexp, ops.add,
-                                   trans + obs, "time", {"state": "state(time=1)"})
+                                   result, "time", {"state": "state(time=1)"})
             result = init + result.reduce(ops.logaddexp, "state(time=1)")
             funsor_dist = result.reduce(ops.logaddexp, "state")
 

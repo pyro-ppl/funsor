@@ -49,8 +49,7 @@ class FunsorDistribution(dist.TorchDistribution):
         if self._validate_args:
             self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
-        value = tensor_to_funsor(value, ("time",), event_output=self.event_dim - 1,
-                                 dtype=self.dtype)
+        value = tensor_to_funsor(value, event_output=self.event_dim, dtype=self.dtype)
         log_prob = self.funsor_dist(value=value)
         log_prob = funsor_to_tensor(log_prob, ndims=ndims)
         return log_prob

@@ -184,11 +184,11 @@ class MarkovProductMeta(FunsorMeta):
             assert time in trans.inputs, "please pass Variable(time, ...)"
             time = Variable(time, trans.inputs[time])
         if isinstance(step, dict):
-            step = tuple(sorted(step.items()))
+            step = frozenset(step.items())
         if step_names is None:
-            step_names = tuple(sorted((k, k) for pair in step for k in pair))
+            step_names = frozenset((k, k) for pair in step for k in pair)
         if isinstance(step_names, dict):
-            step_names = tuple(sorted(step_names.items()))
+            step_names = frozenset(step_names.items())
         return super().__call__(sum_op, prod_op, trans, time, step, step_names)
 
 
@@ -211,8 +211,8 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
         assert isinstance(prod_op, AssociativeOp)
         assert isinstance(trans, Funsor)
         assert isinstance(time, Variable)
-        assert isinstance(step, tuple)
-        assert isinstance(step_names, tuple)
+        assert isinstance(step, frozenset)
+        assert isinstance(step_names, frozenset)
         step = dict(step)
         step_names = dict(step_names)
         assert all(isinstance(k, str) for k in step_names.keys())
@@ -236,10 +236,10 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
         assert self.bound.issuperset(alpha_subs)
         time = Variable(alpha_subs.get(self.time.name, self.time.name),
                         self.time.output)
-        step = tuple(sorted((alpha_subs.get(k, k), alpha_subs.get(v, v))
-                            for k, v in self.step.items()))
-        step_names = tuple(sorted((alpha_subs.get(k, k), v)
-                                  for k, v in self.step_names.items()))
+        step = frozenset((alpha_subs.get(k, k), alpha_subs.get(v, v))
+                         for k, v in self.step.items())
+        step_names = frozenset((alpha_subs.get(k, k), v)
+                               for k, v in self.step_names.items())
         alpha_subs = {k: to_funsor(v, self.trans.inputs[k])
                       for k, v in alpha_subs.items()
                       if k in self.trans.inputs}
@@ -252,8 +252,8 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
         rename = {k: v.name for k, v in subs if isinstance(v, Variable)}
         if not rename:
             return None
-        step_names = tuple(sorted((k, rename.get(v, v))
-                                  for k, v in self.step_names.items()))
+        step_names = frozenset((k, rename.get(v, v))
+                               for k, v in self.step_names.items())
         result = MarkovProduct(self.sum_op, self.prod_op,
                                self.trans, self.time, self.step, step_names)
         lazy = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
@@ -274,7 +274,8 @@ def _(arg, indent, out):
     out[-1] = i, line[:-1] + ")"
 
 
-@eager.register(MarkovProduct, AssociativeOp, AssociativeOp, Funsor, Variable, tuple, tuple)
+@eager.register(MarkovProduct, AssociativeOp, AssociativeOp,
+                Funsor, Variable, frozenset, frozenset)
 def eager_markov_product(sum_op, prod_op, trans, time, step, step_names):
     if step:
         result = sequential_sum_product(sum_op, prod_op, trans, time.name, dict(step))
@@ -287,4 +288,4 @@ def eager_markov_product(sum_op, prod_op, trans, time, step, step_names):
     else:
         raise NotImplementedError('https://github.com/pyro-ppl/funsor/issues/233')
 
-    return result.eager_subs(step_names)
+    return Subs(result, step_names)
