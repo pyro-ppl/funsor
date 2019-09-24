@@ -87,7 +87,7 @@ class FunsorDistribution(dist.TorchDistribution):
         new = self._get_checked_instance(type(self), _instance)
         batch_shape = torch.Size(batch_shape)
         funsor_dist = self.funsor_dist + tensor_to_funsor(torch.zeros(batch_shape))
-        FunsorDistribution.__init__(
-            new, funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        super(type(self), new).__init__(
+            funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
         new.validate_args = self.__dict__.get('_validate_args')
         return new
