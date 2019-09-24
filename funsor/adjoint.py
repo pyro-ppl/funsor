@@ -8,7 +8,7 @@ from funsor.cnf import Contraction, nullop
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Funsor, Reduce, Variable, lazy, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Subs, Variable, lazy, to_funsor
 from funsor.torch import Tensor
 
 
@@ -30,7 +30,7 @@ class AdjointTape(object):
     def __call__(self, cls, *args):
         with interpretation(self._old_interpretation):
             result = cls(*args)
-        if issubclass(cls, (Reduce, Contraction, Binary, Tensor)):  # TODO make generic
+        if issubclass(cls, (Reduce, Contraction, Binary, Tensor, Subs)):  # TODO make generic
             self.tape.append((result, cls, args))
         return result
 
@@ -149,3 +149,54 @@ def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_var
     rhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop, prod_op, rhs_reduced_vars, out_adj, lhs)
 
     return {lhs: lhs_adj, rhs: rhs_adj}
+
+
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Funsor, Funsor, tuple)
+def adjoint_subs_slice(adj_redop, adj_binop, out_adj, arg, subs):
+
+    # XXX only handles slice and rename right now
+    assert all(isinstance(v, (str, Variable, Slice)) for k, v in subs)
+
+    # renaming
+    out_adj = Subs(out_adj, tuple((v.name, k) for k, v in subs if isinstance(v, Variable)))
+
+    # unslicing
+    slices = tuple((k, v) for k, v in subs if isinstance(v, Slice))
+    for k, s in slices:
+        out_adj = _unslice(out_adj, k, s, arg.inputs[k].dtype)
+
+    return {arg: arg_adj}
+
+
+def _unslice(x, name, s, end):
+    assert isinstance(x, Funsor)  # XXX Tensor?
+    assert isinstance(name, str)
+    assert isinstance(s, Slice)
+
+    def Zero(inputs):
+        shape = sum(v.shape for v in inputs.values(), ())
+        return Tensor(torch.zeros(shape), inputs)
+
+    # crude version: repeat zeros like x
+    zeros_like_x = Zero(x.inputs.copy())
+
+    # TODO do this in constant number of terms (one x and one zero)
+    center = Cat((x,) + (zeros_like_x,) * (s.step - 1), name)
+
+    # like a reshape, collapses the temporary dimensions
+    # TODO implement a generic Independent
+    center = Independent(center, tile_name, stack_name, stack_name)
+    center = Independent(center, stack_name, name, name)
+
+    remainder_start_inputs = x.inputs.copy()
+    remainder_start_inputs[name] = bint(s.start)
+    remainder_start = Zero(remainder_start_inputs)
+
+    remainder_end_inputs = x.inputs.copy()
+    remainder_end_inputs[name] = bint(end - s.stop)
+    remainder_end = Zero(remainder_end_inputs)
+
+    terms = (remainder_start, center, remainder_end)
+    xc = Cat(terms, name)
+
+    return xc
