@@ -299,21 +299,25 @@ def test_reduce_moment_matching_shape(interp):
 
 def test_reduce_moment_matching_moments():
     x = Variable('x', reals(2))
+    discrete = random_tensor(OrderedDict([('i', bint(2)), ('j', bint(3))]))
     gaussian = random_gaussian(OrderedDict(
         [('i', bint(2)), ('j', bint(3)), ('x', reals(2))]))
+    gaussian -= gaussian.log_normalizer
+    joint = discrete + gaussian
+
     with interpretation(moment_matching):
-        approx = gaussian.reduce(ops.logaddexp, 'j')
+        approx = joint.reduce(ops.logaddexp, 'j')
     with monte_carlo_interpretation(s=bint(100000)):
         actual = Integrate(approx, Number(1.), frozenset(['x']))
-        expected = Integrate(gaussian, Number(1.), frozenset(['j', 'x']))
+        expected = Integrate(joint, Number(1.), frozenset(['j', 'x']))
         assert_close(actual, expected, atol=1e-3, rtol=1e-3)
 
         actual = Integrate(approx, x, frozenset(['x']))
-        expected = Integrate(gaussian, x, frozenset(['j', 'x']))
+        expected = Integrate(joint, x, frozenset(['j', 'x']))
         assert_close(actual, expected, atol=1e-2, rtol=1e-2)
 
         actual = Integrate(approx, x * x, frozenset(['x']))
-        expected = Integrate(gaussian, x * x, frozenset(['j', 'x']))
+        expected = Integrate(joint, x * x, frozenset(['j', 'x']))
         assert_close(actual, expected, atol=1e-2, rtol=1e-2)
 
 
@@ -323,6 +327,7 @@ def test_reduce_moment_matching_finite():
         [('i', bint(6)), ('j', bint(5)), ('k', bint(3))]))
     gaussian = random_gaussian(OrderedDict(
         [('k', bint(3)), ('l', bint(2)), ('y', reals()), ('z', reals(2))]))
+    gaussian -= gaussian.log_normalizer
 
     discrete.data[1:, :] = -float('inf')
     discrete.data[:, 1:] = -float('inf')
