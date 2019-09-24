@@ -101,12 +101,12 @@ def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
-    assert isinstance(time, str)
+    assert isinstance(time, Variable)
     assert isinstance(step, dict)
     assert all(isinstance(k, str) for k in step.keys())
     assert all(isinstance(v, str) for v in step.values())
-    if time not in trans.inputs:
-        return trans  # edge case of a single time step
+    if time.name in trans.inputs:
+        assert time.output == trans.inputs[time.name]
 
     step = OrderedDict(sorted(step.items()))
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
@@ -114,7 +114,8 @@ def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
     curr_to_drop = dict(zip(step.values(), drop))
     drop = frozenset(drop)
 
-    factors = [trans(**{time: t}) for t in range(trans.inputs[time].size)]
+    time, duration = time.name, time.output.size
+    factors = [trans(**{time: t}) for t in range(duration)]
     while len(factors) > 1:
         y = factors.pop()(**prev_to_drop)
         x = factors.pop()(**curr_to_drop)
@@ -131,7 +132,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
         tail_time = 1 + arange("time", trans.inputs["time"].size - 1)
         tail = sequential_sum_product(sum_op, prod_op,
                                       trans(time=tail_time),
-                                      "time", {"prev": "curr"})
+                                      time, {"prev": "curr"})
         return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
            .reduce(sum_op, "drop")
 
@@ -140,19 +141,19 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
     :param ~funsor.terms.Funsor trans: A transition funsor.
-    :param str time: The name of the time input dimension.
+    :param Variable time: The time input dimension.
     :param dict step: A dict mapping previous variables to current variables.
         This can contain multiple pairs of prev->curr variable names.
     """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
-    assert isinstance(time, str)
+    assert isinstance(time, Variable)
     assert isinstance(step, dict)
     assert all(isinstance(k, str) for k in step.keys())
     assert all(isinstance(v, str) for v in step.values())
-    if time not in trans.inputs:
-        return trans  # edge case of a single time step
+    if time.name in trans.inputs:
+        assert time.output == trans.inputs[time.name]
 
     step = OrderedDict(sorted(step.items()))
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
@@ -160,11 +161,9 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     curr_to_drop = dict(zip(step.values(), drop))
     drop = frozenset(drop)
 
-    while trans.inputs[time].size > 1:
-        duration = trans.inputs[time].size
+    time, duration = time.name, time.output.size
+    while duration > 1:
         even_duration = duration // 2 * 2
-        # TODO support syntax
-        # x = trans(time=slice(0, even_duration, 2), ...)
         x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
         y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
         contracted = prod_op(x, y).reduce(sum_op, drop)
@@ -172,6 +171,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
             extra = trans(**{time: Slice(time, duration - 1, duration)})
             contracted = Cat(time, (contracted, extra))
         trans = contracted
+        duration = (duration + 1) // 2
     return trans(**{time: 0})
 
 
@@ -278,7 +278,7 @@ def _(arg, indent, out):
                 Funsor, Variable, frozenset, frozenset)
 def eager_markov_product(sum_op, prod_op, trans, time, step, step_names):
     if step:
-        result = sequential_sum_product(sum_op, prod_op, trans, time.name, dict(step))
+        result = sequential_sum_product(sum_op, prod_op, trans, time, dict(step))
     elif time.name in trans.inputs:
         result = trans.reduce(prod_op, time.name)
     elif prod_op is ops.add:

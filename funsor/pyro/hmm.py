@@ -65,6 +65,7 @@ class DiscreteHMM(FunsorDistribution):
         if self._validate_args:
             self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
+        time = Variable("time", bint(self.event_shape[0]))
         value = tensor_to_funsor(value, ("time",), event_output=self.event_dim - 1,
                                  dtype=self.dtype)
 
@@ -72,7 +73,7 @@ class DiscreteHMM(FunsorDistribution):
         obs = self._obs(value=value)
         result = self._trans + obs
         result = sequential_sum_product(ops.logaddexp, ops.add,
-                                        result, "time", {"state": "state(time=1)"})
+                                        result, time, {"state": "state(time=1)"})
         result = self._init + result.reduce(ops.logaddexp, "state(time=1)")
         result = result.reduce(ops.logaddexp, "state")
 
@@ -238,17 +239,18 @@ class GaussianMRF(FunsorDistribution):
         if self._validate_args:
             self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - 2)
+        time = Variable("time", bint(self.event_shape[0]))
         value = tensor_to_funsor(value, ("time",), 1)
 
         # Compare with pyro.distributions.hmm.GaussianMRF.log_prob().
         logp_oh = self._trans + self._obs(value=value)
         logp_oh = sequential_sum_product(ops.logaddexp, ops.add,
-                                         logp_oh, "time", {"state": "state(time=1)"})
+                                         logp_oh, time, {"state": "state(time=1)"})
         logp_oh += self._init
         logp_oh = logp_oh.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
         logp_h = self._trans + self._obs.reduce(ops.logaddexp, "value")
         logp_h = sequential_sum_product(ops.logaddexp, ops.add,
-                                        logp_h, "time", {"state": "state(time=1)"})
+                                        logp_h, time, {"state": "state(time=1)"})
         logp_h += self._init
         logp_h = logp_h.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
         result = logp_oh - logp_h
@@ -381,12 +383,13 @@ class SwitchingLinearHMM(FunsorDistribution):
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
         ndims = max(len(self.batch_shape), value.dim() - 2)
+        time = Variable("time", bint(self.event_shape[0]))
         value = tensor_to_funsor(value, ("time",), 1)
 
         seq_sum_prod = naive_sequential_sum_product if self.exact else sequential_sum_product
         with interpretation(eager if self.exact else moment_matching):
             result = self._trans + self._obs(value=value)
-            result = seq_sum_prod(ops.logaddexp, ops.add, result, "time",
+            result = seq_sum_prod(ops.logaddexp, ops.add, result, time,
                                   {"class": "class(time=1)", "state": "state(time=1)"})
             result += self._init
             result = result.reduce(
@@ -426,12 +429,13 @@ class SwitchingLinearHMM(FunsorDistribution):
         :rtype: tuple
         """
         ndims = max(len(self.batch_shape), value.dim() - 2)
+        time = Variable("time", bint(self.event_shape[0]))
         value = tensor_to_funsor(value, ("time",), 1)
 
         seq_sum_prod = naive_sequential_sum_product if self.exact else sequential_sum_product
         with interpretation(eager if self.exact else moment_matching):
             logp = self._trans + self._obs(value=value)
-            logp = seq_sum_prod(ops.logaddexp, ops.add, logp, "time",
+            logp = seq_sum_prod(ops.logaddexp, ops.add, logp, time,
                                 {"class": "class(time=1)", "state": "state(time=1)"})
             logp += self._init
             logp = logp.reduce(ops.logaddexp, frozenset(["class", "state"]))
