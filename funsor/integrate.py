@@ -1,11 +1,13 @@
+import functools
 from collections import OrderedDict
+from functools import reduce
 from typing import Union
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian, cholesky_inverse, cholesky_solve
-from funsor.terms import Funsor, Number, Subs, Unary, Variable, eager, normalize
+from funsor.terms import Funsor, Subs, Variable, eager, normalize, substitute, to_funsor
 from funsor.torch import Tensor
 
 
@@ -17,6 +19,7 @@ class Integrate(Funsor):
         assert isinstance(log_measure, Funsor)
         assert isinstance(integrand, Funsor)
         assert isinstance(reduced_vars, frozenset)
+        assert all(isinstance(v, str) for v in reduced_vars)
         inputs = OrderedDict((k, d) for term in (log_measure, integrand)
                              for (k, d) in term.inputs.items()
                              if k not in reduced_vars)
@@ -29,14 +32,34 @@ class Integrate(Funsor):
         self.reduced_vars = reduced_vars
 
     def _alpha_convert(self, alpha_subs):
-        log_measure, integrand, reduced_vars = super()._alpha_convert(alpha_subs)
-        reduced_vars = frozenset(alpha_subs.get(k, k) for k in reduced_vars)
+        assert self.bound.issuperset(alpha_subs)
+        reduced_vars = frozenset(alpha_subs.get(k, k) for k in self.reduced_vars)
+        alpha_subs = {k: to_funsor(v, self.integrand.inputs.get(k, self.log_measure.inputs.get(k)))
+                      for k, v in alpha_subs.items()}
+        log_measure = substitute(self.log_measure, alpha_subs)
+        integrand = substitute(self.integrand, alpha_subs)
         return log_measure, integrand, reduced_vars
 
 
 @normalize.register(Integrate, Funsor, Funsor, frozenset)
 def normalize_integrate(log_measure, integrand, reduced_vars):
-    return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
+    # Reduce free variables that do not appear in both inputs.
+    log_measure_vars = frozenset(log_measure.inputs)
+    integrand_vars = frozenset(integrand.inputs)
+    assert reduced_vars <= log_measure_vars | integrand_vars
+    progress = False
+    if not reduced_vars <= log_measure_vars:
+        integrand = integrand.reduce(ops.add, reduced_vars - log_measure_vars)
+        reduced_vars = reduced_vars & log_measure_vars
+        progress = True
+    if not reduced_vars <= integrand_vars:
+        log_measure = log_measure.reduce(ops.logaddexp, reduced_vars - integrand_vars)
+        reduced_vars = reduced_vars & integrand_vars
+        progress = True
+    if progress:
+        return Integrate(log_measure, integrand, reduced_vars)
+
+    return None  # defer to default implementation
 
 
 @normalize.register(Integrate,
@@ -51,24 +74,51 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
     return normalize_integrate(log_measure, integrand, reduced_vars)
 
 
-@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset,
-                Unary[ops.ExpOp, Union[GaussianMixture, Delta, Gaussian, Number, Tensor]],
-                (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture))
-def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
+# This is a hack to treat normalize as higher priority than eager.
+def integrator(fn):
 
-    if reduced_vars - reduced_vars.intersection(lhs.inputs, rhs.inputs):
-        result = eager.dispatch(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
-        if result is not None:
-            return result
+    @functools.wraps(fn)
+    def wrapped(log_measure, integrand, reduced_vars):
+        if not (reduced_vars.issubset(log_measure.inputs) and
+                reduced_vars.issubset(integrand.inputs)):
+            return None  # normalize
+        return fn(log_measure, integrand, reduced_vars)
 
-    result = eager.dispatch(Integrate, lhs.log(), rhs, reduced_vars)
-    if result is not None:
-        return result
+    return wrapped
 
-    return None
+
+@eager.register(Integrate,
+                (Funsor, Delta, Contraction[ops.NullOp, ops.AddOp, frozenset, tuple]),
+                Contraction[Union[ops.NullOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple], frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    terms = [Integrate(log_measure, term, reduced_vars)
+             for term in integrand.terms]
+    return reduce(ops.add, terms)
+
+
+@eager.register(Integrate,
+                Contraction[Union[ops.NullOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple],
+                Funsor, frozenset)
+@integrator
+def eager_integrate_const(log_measure, integrand, reduced_vars):
+    if reduced_vars:
+        consts, factors = [], []
+        for term in log_measure.terms:
+            (consts if reduced_vars.isdisjoint(term.inputs) else factors).append(term)
+        if consts:
+            sum_vars = log_measure.reduced_vars
+            assert sum_vars.isdisjoint(integrand.inputs)
+            const = reduce(ops.add, consts)
+            log_measure = reduce(ops.add, factors)
+            inner = Integrate(log_measure, integrand, reduced_vars)
+            return Integrate(const, inner, sum_vars)
+
+    return None  # defer to default implementation
 
 
 @eager.register(Integrate, GaussianMixture, Funsor, frozenset)
+@integrator
 def eager_integrate_gaussianmixture(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if reduced_vars <= real_vars:
@@ -78,12 +128,25 @@ def eager_integrate_gaussianmixture(log_measure, integrand, reduced_vars):
 
 
 ########################################
+# Tensor patterns
+########################################
+
+@eager.register(Integrate, Tensor,
+                (Funsor, Contraction[Union[ops.NullOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple]),
+                frozenset)
+@integrator
+def eager_integrate(log_measure, integrand, reduced_vars):
+    return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
+
+
+########################################
 # Delta patterns
 ########################################
 
 @eager.register(Integrate, Delta, Funsor, frozenset)
+@integrator
 def eager_integrate(delta, integrand, reduced_vars):
-    if not reduced_vars & delta.fresh:
+    if delta.fresh.isdisjoint(reduced_vars):
         return None
     subs = tuple((name, point) for name, (point, log_density) in delta.terms
                  if name in reduced_vars)
@@ -98,6 +161,7 @@ def eager_integrate(delta, integrand, reduced_vars):
 ########################################
 
 @eager.register(Integrate, Gaussian, Variable, frozenset)
+@integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars == frozenset([integrand.name]):
@@ -111,6 +175,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
+@integrator
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars:

@@ -2,7 +2,7 @@ from collections import OrderedDict
 
 from contextlib2 import contextmanager
 
-from funsor.integrate import Integrate
+from funsor.integrate import Integrate, integrator
 from funsor.interpreter import dispatched_interpretation, interpretation
 from funsor.terms import Funsor, eager
 
@@ -41,10 +41,16 @@ def monte_carlo_interpretation(**sample_inputs):
 
 
 @monte_carlo.register(Integrate, Funsor, Funsor, frozenset)
+@integrator
 def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    if not (reduced_vars.issubset(log_measure.inputs) and
+            reduced_vars.issubset(integrand.inputs)):
+        return None  # normalize
+
     sample = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
     if sample is log_measure:
         return None  # cannot progress
+
     reduced_vars |= frozenset(monte_carlo.sample_inputs).intersection(sample.inputs)
     return Integrate(sample, integrand, reduced_vars)
 

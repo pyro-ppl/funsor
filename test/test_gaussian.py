@@ -470,8 +470,8 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
-    log_measure = random_gaussian(inputs)
-    integrand = random_gaussian(inputs)
+    log_measure = random_gaussian(inputs) + random_tensor(int_inputs)
+    integrand = random_gaussian(inputs) + random_tensor(int_inputs)
     reduced_vars = frozenset(real_inputs)
 
     sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(10000)))
@@ -479,7 +479,7 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
-    assert isinstance(exact, Tensor)
+    assert isinstance(exact, Tensor), exact.pretty()
     assert_close(approx, exact, atol=0.1, rtol=0.1)
 
 

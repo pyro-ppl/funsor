@@ -13,7 +13,7 @@ from funsor.delta import Delta
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
 from funsor.ops import AssociativeOp
-from funsor.terms import Funsor, Independent, Number, Reduce, Unary, eager, moment_matching, normalize
+from funsor.terms import Independent, Number, eager, moment_matching
 from funsor.torch import Tensor, align_tensor
 
 
@@ -130,16 +130,6 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
 ####################################################
 # Patterns for normalizing
 ####################################################
-
-
-@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Funsor], frozenset)
-def eager_reduce_exp(op, arg, reduced_vars):
-    # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
-    log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
-    if log_result is not normalize(Reduce, ops.logaddexp, arg.arg, reduced_vars):
-        return log_result.exp()
-    return None
-
 
 @eager.register(Independent,
                 (Contraction[ops.NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor], Gaussian]],
