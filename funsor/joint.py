@@ -8,13 +8,12 @@ from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.cnf import Contraction, GaussianMixture, NullOp
+from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian, cholesky_solve, cholesky_inverse
-from funsor.integrate import Integrate
 from funsor.ops import AssociativeOp
-from funsor.terms import Funsor, Independent, Number, Reduce, Unary, Variable, eager, moment_matching, normalize
+from funsor.terms import Funsor, Independent, Number, Reduce, Unary, eager, moment_matching, normalize
 from funsor.torch import Tensor, align_tensor
 
 
@@ -129,43 +128,11 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
 
 
 ####################################################
-# Patterns for normalizing and evaluating Integrate
+# Patterns for normalizing
 ####################################################
 
-@normalize.register(Integrate, Funsor, Funsor, frozenset)
-def normalize_integrate(log_measure, integrand, reduced_vars):
-    return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
 
-
-@normalize.register(Integrate,
-                    Contraction[Union[NullOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple], Funsor, frozenset)
-def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
-    delta_terms = [t for t in log_measure.terms if isinstance(t, Delta)
-                   and t.fresh.intersection(reduced_vars, integrand.inputs)]
-    for delta in delta_terms:
-        integrand = integrand(**{name: point for name, (point, log_density) in delta.terms
-                                 if name in reduced_vars.intersection(integrand.inputs)})
-    return normalize_integrate(log_measure, integrand, reduced_vars)
-
-
-@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset,
-                Unary[ops.ExpOp, Union[Delta, Gaussian, Number, Tensor]],
-                (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture))
-def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
-
-    if reduced_vars - reduced_vars.intersection(lhs.inputs, rhs.inputs):
-        result = eager.dispatch(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
-        if result is not None:
-            return result
-
-    result = eager.dispatch(Integrate, lhs.log(), rhs, reduced_vars)
-    if result is not None:
-        return result
-
-    return None
-
-
-@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, Delta]], frozenset)
+@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Funsor], frozenset)
 def eager_reduce_exp(op, arg, reduced_vars):
     # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
     log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
@@ -175,8 +142,8 @@ def eager_reduce_exp(op, arg, reduced_vars):
 
 
 @eager.register(Independent,
-                (Contraction[NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor], Gaussian]],
-                 Contraction[NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor, Gaussian]]]),
+                (Contraction[ops.NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor], Gaussian]],
+                 Contraction[ops.NullOp, ops.AddOp, frozenset, Tuple[Delta, Union[Number, Tensor, Gaussian]]]),
                 str, str, str)
 def eager_independent_joint(joint, reals_var, bint_var, diag_var):
     if diag_var not in joint.terms[0].fresh:

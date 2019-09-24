@@ -325,6 +325,8 @@ def unary_neg_variable(op, arg):
 
 @normalize.register(Subs, Funsor, tuple)
 def do_fresh_subs(arg, subs):
+    if not subs:
+        return arg
     if all(name in arg.fresh for name, sub in subs):
         return arg.eager_subs(subs)
     return None
@@ -342,7 +344,8 @@ def distribute_subs_contraction(arg, subs):
 @normalize.register(Subs, Subs, tuple)
 def normalize_fuse_subs(arg, subs):
     # a(b)(c) -> a(b(c), c)
-    new_subs = subs + tuple((k, Subs(v, subs)) for k, v in arg.subs)
+    arg_subs = tuple(arg.subs.items()) if isinstance(arg.subs, OrderedDict) else arg.subs
+    new_subs = subs + tuple((k, Subs(v, subs)) for k, v in arg_subs)
     return Subs(arg.arg, new_subs)
 
 
@@ -368,17 +371,3 @@ def unary_log_exp(op, arg):
 @normalize.register(Unary, ops.NegOp, Contraction[NullOp, ops.AddOp, frozenset, tuple])
 def unary_contract(op, arg):
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
-
-
-@normalize.register(Unary, ops.LogOp,
-                    Contraction[Union[ops.AddOp, NullOp], Union[ops.MulOp, NullOp], frozenset, tuple])
-def unary_transform_log(op, arg):
-    new_terms = tuple(v.log() for v in arg.terms)
-    return Contraction(ops.logaddexp, ops.add, arg.reduced_vars, *new_terms)
-
-
-@normalize.register(Unary, ops.ExpOp,
-                    Contraction[Union[ops.LogAddExpOp, NullOp], Union[ops.AddOp, NullOp], frozenset, tuple])
-def unary_transform_exp(op, arg):
-    new_terms = tuple(v.exp() for v in arg.terms)
-    return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
