@@ -371,17 +371,3 @@ def unary_log_exp(op, arg):
 @normalize.register(Unary, ops.NegOp, Contraction[NullOp, ops.AddOp, frozenset, tuple])
 def unary_contract(op, arg):
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
-
-
-# @normalize.register(Unary, ops.LogOp,
-#                     Contraction[Union[ops.AddOp, NullOp], Union[ops.MulOp, NullOp], frozenset, tuple])
-# def unary_transform_log(op, arg):
-#     new_terms = tuple(v.log() for v in arg.terms)
-#     return Contraction(ops.logaddexp, ops.add, arg.reduced_vars, *new_terms)
-#
-#
-# @normalize.register(Unary, ops.ExpOp,
-#                     Contraction[Union[ops.LogAddExpOp, NullOp], Union[ops.AddOp, NullOp], frozenset, tuple])
-# def unary_transform_exp(op, arg):
-#     new_terms = tuple(v.exp() for v in arg.terms)
-#     return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)
