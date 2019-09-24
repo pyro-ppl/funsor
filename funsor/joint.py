@@ -165,7 +165,8 @@ def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs
     return None
 
 
-@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, Delta]], frozenset)
+# @eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Union[Gaussian, Tensor, Delta]], frozenset)
+@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Funsor], frozenset)
 def eager_reduce_exp(op, arg, reduced_vars):
     # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
     log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
