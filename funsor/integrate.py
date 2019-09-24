@@ -5,7 +5,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian, cholesky_inverse, cholesky_solve
-from funsor.terms import Funsor, Number, Subs, Unary, Variable, eager, normalize
+from funsor.terms import Funsor, Number, Subs, Unary, Variable, eager, normalize, substitute, to_funsor
 from funsor.torch import Tensor
 
 
