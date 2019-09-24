@@ -222,54 +222,31 @@ class GaussianMRF(FunsorDistribution):
                                          ("value", reals(obs_dim))]))
 
         # Construct the joint funsor.
+        # Compare with pyro.distributions.hmm.GaussianMRF.log_prob().
         with interpretation(lazy):
-            # TODO perform math here once sequential_sum_product has been
-            #   implemented as a first-class funsor.
-            funsor_dist = Variable("value", obs.inputs["value"])  # a bogus value
-            # Until funsor_dist is defined, we save factors for hand-computation in .log_prob().
-            self._init = init
-            self._trans = trans
-            self._obs = obs
+            time = Variable("time", bint(time_shape[0]))
+            value = Variable("value", reals(time_shape[0], obs_dim))
+            logp_oh = trans + obs(value=value["time"])
+            logp_oh = MarkovProduct(ops.logaddexp, ops.add,
+                                    logp_oh, time, {"state": "state(time=1)"})
+            logp_oh += init
+            logp_oh = logp_oh.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
+            logp_h = trans + obs.reduce(ops.logaddexp, "value")
+            logp_h = MarkovProduct(ops.logaddexp, ops.add,
+                                   logp_h, time, {"state": "state(time=1)"})
+            logp_h += init
+            logp_h = logp_h.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
+            funsor_dist = logp_oh - logp_h
 
         dtype = "real"
         super(GaussianMRF, self).__init__(funsor_dist, batch_shape, event_shape, dtype, validate_args)
 
-    # TODO remove this once self.funsor_dist is defined.
-    def log_prob(self, value):
-        if self._validate_args:
-            self._validate_sample(value)
-        ndims = max(len(self.batch_shape), value.dim() - 2)
-        time = Variable("time", bint(self.event_shape[0]))
-        value = tensor_to_funsor(value, ("time",), 1)
-
-        # Compare with pyro.distributions.hmm.GaussianMRF.log_prob().
-        logp_oh = self._trans + self._obs(value=value)
-        logp_oh = sequential_sum_product(ops.logaddexp, ops.add,
-                                         logp_oh, time, {"state": "state(time=1)"})
-        logp_oh += self._init
-        logp_oh = logp_oh.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
-        logp_h = self._trans + self._obs.reduce(ops.logaddexp, "value")
-        logp_h = sequential_sum_product(ops.logaddexp, ops.add,
-                                        logp_h, time, {"state": "state(time=1)"})
-        logp_h += self._init
-        logp_h = logp_h.reduce(ops.logaddexp, frozenset({"state", "state(time=1)"}))
-        result = logp_oh - logp_h
-
-        result = funsor_to_tensor(result, ndims=ndims)
-        return result
-
-    # TODO remove this once self.funsor_dist is defined.
-    def _sample_delta(self, sample_shape):
-        raise NotImplementedError("TODO")
-
     def expand(self, batch_shape, _instance=None):
         new = self._get_checked_instance(GaussianMRF, _instance)
         batch_shape = torch.Size(batch_shape)
-        new._init = self._init + tensor_to_funsor(torch.zeros(batch_shape))
-        new._trans = self._trans
-        new._obs = self._obs
+        funsor_dist = self.funsor_dist + tensor_to_funsor(torch.zeros(batch_shape))
         super(GaussianMRF, new).__init__(
-            self.funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+            funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
         new.validate_args = self.__dict__.get('_validate_args')
         return new
 
