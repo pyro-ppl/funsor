@@ -57,9 +57,9 @@ Affine
     :show-inheritance:
     :member-order: bysource
 
-Contract
---------
-.. automodule:: funsor.contract
+Contraction
+-----------
+.. automodule:: funsor.cnf
     :members:
     :undoc-members:
     :show-inheritance:

@@ -1,6 +1,7 @@
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
+from funsor.sum_product import MarkovProduct
 from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.torch import Tensor, arange
 from funsor.util import pretty, quote
@@ -35,6 +36,7 @@ __all__ = [
     'Independent',
     'Integrate',
     'Lambda',
+    'MarkovProduct',
     'Number',
     'Slice',
     'Stack',
