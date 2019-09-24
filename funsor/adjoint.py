@@ -5,10 +5,21 @@ import torch
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, nullop
+from funsor.domains import bint
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Funsor, Reduce, Subs, Variable, lazy, to_funsor
+from funsor.terms import (
+    Binary,
+    Cat,
+    Funsor,
+    Reduce,
+    Slice,
+    Subs,
+    Variable,
+    lazy,
+    to_funsor,
+)
 from funsor.torch import Tensor
 
 
@@ -157,43 +168,40 @@ def adjoint_subs_slice(adj_redop, adj_binop, out_adj, arg, subs):
     # XXX only handles slice and rename right now
     assert all(isinstance(v, (str, Variable, Slice)) for k, v in subs)
 
-    # renaming
-    out_adj = Subs(out_adj, tuple((v.name, k) for k, v in subs if isinstance(v, Variable)))
+    # invert renaming
+    renames = tuple((v.name, k) for k, v in subs if isinstance(v, Variable))
+    arg_adj = Subs(out_adj, renames)
 
     # unslicing
     slices = tuple((k, v) for k, v in subs if isinstance(v, Slice))
     for k, s in slices:
-        out_adj = _unslice(out_adj, k, s, arg.inputs[k].dtype)
+        arg_adj = _unslice(arg_adj, k, s, arg.inputs[k].dtype)
 
     return {arg: arg_adj}
 
 
-def _unslice(x, name, s, end):
+def _unslice(x, name, s, orig_size):
     assert isinstance(x, Funsor)  # XXX Tensor?
     assert isinstance(name, str)
     assert isinstance(s, Slice)
 
     def Zero(inputs):
-        shape = sum(v.shape for v in inputs.values(), ())
+        shape = sum([v.shape for v in inputs.values()], ())
         return Tensor(torch.zeros(shape), inputs)
 
     # crude version: repeat zeros like x
-    zeros_like_x = Zero(x.inputs.copy())
-
     # TODO do this in constant number of terms (one x and one zero)
+    zeros_like_x = Zero(x.inputs.copy())
     center = Cat((x,) + (zeros_like_x,) * (s.step - 1), name)
 
-    # like a reshape, collapses the temporary dimensions
-    # TODO implement a generic Independent
-    center = Independent(center, tile_name, stack_name, stack_name)
-    center = Independent(center, stack_name, name, name)
+    # TODO permute center correctly along input name
 
     remainder_start_inputs = x.inputs.copy()
     remainder_start_inputs[name] = bint(s.start)
     remainder_start = Zero(remainder_start_inputs)
 
     remainder_end_inputs = x.inputs.copy()
-    remainder_end_inputs[name] = bint(end - s.stop)
+    remainder_end_inputs[name] = bint(orig_size - s.stop)
     remainder_end = Zero(remainder_end_inputs)
 
     terms = (remainder_start, center, remainder_end)
