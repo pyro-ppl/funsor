@@ -13,7 +13,6 @@ from funsor.terms import (
     Funsor,
     Number,
     Reduce,
-    Slice,
     Subs,
     Variable,
     reflect,
@@ -166,15 +165,12 @@ def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_var
 @adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor), Tensor, tuple)
 def adjoint_subs_slice(adj_redop, adj_binop, out_adj, arg, subs):
 
-    # XXX only handles slice and rename right now
-    assert all(isinstance(v, (Variable, Slice)) for k, v in subs)
-
     # invert renaming
     renames = tuple((v.name, k) for k, v in subs if isinstance(v, Variable))
     out_adj = Subs(out_adj, renames)
 
-    # unslicing
-    slices = tuple((k, v) for k, v in subs if isinstance(v, Slice))
+    # inverting advanced indexing
+    slices = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
 
     # TODO avoid reifying these tensors by using symbolic constants
 
@@ -193,10 +189,8 @@ def adjoint_subs_slice(adj_redop, adj_binop, out_adj, arg, subs):
 
 def _scatter(res, src, subs):
     # inverse of advanced indexing
-    # res = _scatter(res, src, subs) <==> res(**subs) = src
     assert isinstance(res, Tensor)
     assert isinstance(src, Tensor)
-    assert frozenset(src.inputs) <= frozenset(res.inputs)  # no broadcasting in this version
 
     # use advanced indexing logic copied from Tensor.eager_subs:
 

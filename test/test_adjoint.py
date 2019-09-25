@@ -11,7 +11,15 @@ import funsor.ops as ops
 from funsor.adjoint import AdjointTape
 from funsor.domains import bint
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
-from funsor.terms import Slice, Subs, Variable
+from funsor.interpreter import interpretation
+from funsor.optimizer import apply_optimizer
+from funsor.sum_product import (
+    MarkovProduct,
+    naive_sequential_sum_product,
+    sequential_sum_product,
+    sum_product
+)
+from funsor.terms import Slice, Subs, Variable, reflect
 from funsor.testing import assert_close, make_einsum_example, make_plated_hmm_einsum, random_tensor, xfail_param
 
 
@@ -172,7 +180,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
-def test_slice_adjoint():
+def test_slice_adjoint_simple():
 
     inputs = OrderedDict([('i', bint(7)), ('j', bint(5)), ('k', bint(3))])
     x = random_tensor(inputs)
@@ -187,3 +195,58 @@ def test_slice_adjoint():
     expected = torch.autograd.grad(fwd_expr.data.sum(), (x.data,))[0]
     assert actual.data.shape == expected.data.shape
     assert_close(actual.data, expected * x.data)
+
+
+@pytest.mark.parametrize('num_steps', list(range(3, 13)))
+@pytest.mark.parametrize('sum_op,prod_op,state_domain', [
+    (ops.add, ops.mul, bint(2)),
+    (ops.add, ops.mul, bint(3)),
+    # TODO define unit for ops.logaddexp
+    # (ops.logaddexp, ops.add, bint(2)),
+    # (ops.logaddexp, ops.add, bint(3)),
+], ids=str)
+@pytest.mark.parametrize('batch_inputs', [
+    {},
+    {"foo": bint(5)},
+    {"foo": bint(2), "bar": bint(4)},
+], ids=lambda d: ",".join(d.keys()))
+@pytest.mark.parametrize('impl', [
+    sequential_sum_product,
+    naive_sequential_sum_product,
+    MarkovProduct,
+])
+def test_sequential_sum_product_adjoint_discrete(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
+    inputs = OrderedDict(batch_inputs)
+    inputs.update(prev=state_domain, curr=state_domain)
+    inputs["time"] = bint(num_steps)
+    trans = random_tensor(inputs)
+    time = Variable("time", bint(num_steps))
+
+    with AdjointTape() as actual_tape:
+        actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
+    actual_bwd = actual_tape.adjoint(sum_op, prod_op, actual, (trans,))[trans]
+
+    expected_inputs = batch_inputs.copy()
+    expected_inputs.update(prev=state_domain, curr=state_domain)
+    assert dict(actual.inputs) == expected_inputs
+
+    # Check against contract.
+    operands = tuple(trans(time=t, prev="t_{}".format(t), curr="t_{}".format(t+1))
+                     for t in range(num_steps))
+    reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
+    with AdjointTape() as expected_tape:
+        with interpretation(reflect):
+            expected = sum_product(sum_op, prod_op, operands, reduce_vars)
+        expected = apply_optimizer(expected)
+        expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
+        expected = expected.align(tuple(actual.inputs.keys()))
+
+    expected_bwds = expected_tape.adjoint(sum_op, prod_op, expected, operands)
+
+    # check forward pass
+    assert_close(actual, expected, rtol=5e-4 * num_steps)
+
+    # check backward pass
+    for t, operand in enumerate(operands):
+        expected_bwd = expected_bwds[operand]
+        assert_close(actual_bwd(t=t), expected_bwd)
