@@ -26,7 +26,7 @@ from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian, align_tensors, cholesky_solve
+from funsor.gaussian import Gaussian, align_tensors, cholesky_solve, cholesky
 from funsor.interpreter import gensym
 from funsor.terms import Funsor, Independent, Variable, eager
 from funsor.torch import Tensor
@@ -171,7 +171,7 @@ def funsor_to_mvn(gaussian, ndims, event_inputs=()):
     assert isinstance(gaussian, Gaussian)
 
     precision = gaussian.precision
-    loc = gaussian.info_vec.unsqueeze(-1).cholesky_solve(precision.cholesky()).squeeze(-1)
+    loc = cholesky_solve(gaussian.info_vec.unsqueeze(-1), cholesky(precision)).squeeze(-1)
 
     int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != "real")
     loc = Tensor(loc, int_inputs)
