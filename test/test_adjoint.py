@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 import opt_einsum
 import pytest
 import torch
@@ -5,11 +7,12 @@ from pyro.ops.contract import einsum as pyro_einsum
 from pyro.ops.einsum.adjoint import require_backward as pyro_require_backward
 
 import funsor
+import funsor.ops as ops
 from funsor.adjoint import AdjointTape
 from funsor.domains import bint
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
-from funsor.terms import Variable
-from funsor.testing import make_einsum_example, make_plated_hmm_einsum, xfail_param
+from funsor.terms import Slice, Subs, Variable
+from funsor.testing import assert_close, make_einsum_example, make_plated_hmm_einsum, random_tensor, xfail_param
 
 
 EINSUM_EXAMPLES = [
@@ -167,3 +170,20 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
         assert isinstance(actual, funsor.Tensor)
         assert expected.shape == actual.data.shape
         assert torch.allclose(expected, actual.data, atol=1e-7)
+
+
+def test_slice_adjoint():
+
+    inputs = OrderedDict([('i', bint(7)), ('j', bint(5)), ('k', bint(3))])
+    x = random_tensor(inputs)
+    x.data.requires_grad = True
+    s = Slice('i', 0, 7, 2, 7)
+
+    with AdjointTape() as tape:
+        fwd_expr = Subs(x, (('i', s),)).reduce(ops.add)
+
+    actual = tape.adjoint(ops.add, ops.mul, fwd_expr, (x,))[x]
+
+    expected = torch.autograd.grad(fwd_expr.data.sum(), (x.data,))[0]
+    assert actual.data.shape == expected.data.shape
+    assert_close(actual.data, expected * x.data)

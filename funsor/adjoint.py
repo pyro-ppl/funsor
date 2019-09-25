@@ -1,26 +1,26 @@
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 
 import torch
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, nullop
-from funsor.domains import bint
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import (
     Binary,
-    Cat,
     Funsor,
+    Number,
     Reduce,
     Slice,
     Subs,
     Variable,
-    lazy,
+    reflect,
+    substitute,
     to_funsor,
 )
-from funsor.torch import Tensor
+from funsor.torch import Tensor, materialize
 
 
 def _alpha_unmangle(expr):
@@ -72,10 +72,11 @@ class AdjointTape(object):
                     continue
 
             # reverse the effects of alpha-renaming
-            with interpretation(lazy):
-                other_subs = {name: name.split("__BOUND")[0] for name in output.inputs if "__BOUND" in name}
-                inputs = _alpha_unmangle(fn(*inputs)(**other_subs))
-                output = type(output)(*_alpha_unmangle(output(**other_subs)))
+            with interpretation(reflect):
+                other_subs = tuple((name, to_funsor(name.split("__BOUND")[0], domain))
+                                   for name, domain in output.inputs.items() if "__BOUND" in name)
+                inputs = _alpha_unmangle(substitute(fn(*inputs), other_subs))
+                output = type(output)(*_alpha_unmangle(substitute(output, other_subs)))
 
             in_adjs = adjoint_ops(fn, red_op, bin_op, adjoint_values[output], *inputs)
             for v, adjv in in_adjs.items():
@@ -162,49 +163,92 @@ def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_var
     return {lhs: lhs_adj, rhs: rhs_adj}
 
 
-@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Funsor, Funsor, tuple)
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor), Tensor, tuple)
 def adjoint_subs_slice(adj_redop, adj_binop, out_adj, arg, subs):
 
     # XXX only handles slice and rename right now
-    assert all(isinstance(v, (str, Variable, Slice)) for k, v in subs)
+    assert all(isinstance(v, (Variable, Slice)) for k, v in subs)
 
     # invert renaming
     renames = tuple((v.name, k) for k, v in subs if isinstance(v, Variable))
-    arg_adj = Subs(out_adj, renames)
+    out_adj = Subs(out_adj, renames)
 
     # unslicing
     slices = tuple((k, v) for k, v in subs if isinstance(v, Slice))
-    for k, s in slices:
-        arg_adj = _unslice(arg_adj, k, s, arg.inputs[k].dtype)
+
+    # TODO avoid reifying these tensors by using symbolic constants
+
+    # ones for things that weren't sliced away
+    ones_like_out = Tensor(torch.full_like(arg.data, ops.UNITS[adj_binop]),
+                           arg.inputs.copy(), arg.output.dtype)
+    arg_adj = adj_binop(out_adj, Subs(ones_like_out, slices))
+
+    # zeros for things that were sliced away
+    zeros_like_arg = Tensor(torch.full_like(arg.data, ops.UNITS[adj_redop]),
+                            arg.inputs.copy(), arg.output.dtype)
+    arg_adj = _scatter(zeros_like_arg, arg_adj, slices)
 
     return {arg: arg_adj}
 
 
-def _unslice(x, name, s, orig_size):
-    assert isinstance(x, Funsor)  # XXX Tensor?
-    assert isinstance(name, str)
-    assert isinstance(s, Slice)
+def _scatter(res, src, subs):
+    # inverse of advanced indexing
+    # res = _scatter(res, src, subs) <==> res(**subs) = src
+    assert isinstance(res, Tensor)
+    assert isinstance(src, Tensor)
+    assert frozenset(src.inputs) <= frozenset(res.inputs)  # no broadcasting in this version
 
-    def Zero(inputs):
-        shape = sum([v.shape for v in inputs.values()], ())
-        return Tensor(torch.zeros(shape), inputs)
+    # use advanced indexing logic copied from Tensor.eager_subs:
 
-    # crude version: repeat zeros like x
-    # TODO do this in constant number of terms (one x and one zero)
-    zeros_like_x = Zero(x.inputs.copy())
-    center = Cat((x,) + (zeros_like_x,) * (s.step - 1), name)
+    # materialize after checking for renaming case
+    subs = OrderedDict((k, materialize(v)) for k, v in subs)
 
-    # TODO permute center correctly along input name
+    # Compute result shapes.
+    inputs = OrderedDict()
+    for k, domain in res.inputs.items():
+        if False:  # k in subs:
+            inputs.update(subs[k].inputs)
+        else:
+            inputs[k] = domain
 
-    remainder_start_inputs = x.inputs.copy()
-    remainder_start_inputs[name] = bint(s.start)
-    remainder_start = Zero(remainder_start_inputs)
+    # Construct a dict with each input's positional dim,
+    # counting from the right so as to support broadcasting.
+    total_size = len(inputs) + len(res.output.shape)  # Assumes only scalar indices.
+    new_dims = {}
+    for k, domain in inputs.items():
+        assert not domain.shape
+        new_dims[k] = len(new_dims) - total_size
 
-    remainder_end_inputs = x.inputs.copy()
-    remainder_end_inputs[name] = bint(orig_size - s.stop)
-    remainder_end = Zero(remainder_end_inputs)
+    # Use advanced indexing to construct a simultaneous substitution.
+    index = []
+    for k, domain in res.inputs.items():
+        if k in subs:
+            v = subs.get(k)
+            if isinstance(v, Number):
+                index.append(int(v.data))
+            else:
+                # Permute and expand v.data to end up at new_dims.
+                assert isinstance(v, Tensor)
+                v = v.align(tuple(k2 for k2 in inputs if k2 in v.inputs))
+                assert isinstance(v, Tensor)
+                v_shape = [1] * total_size
+                for k2, size in zip(v.inputs, v.data.shape):
+                    v_shape[new_dims[k2]] = size
+                index.append(v.data.reshape(tuple(v_shape)))
+        else:
+            # Construct a [:] slice for this preserved input.
+            offset_from_right = -1 - new_dims[k]
+            index.append(torch.arange(domain.dtype).reshape(
+                (-1,) + (1,) * offset_from_right))
 
-    terms = (remainder_start, center, remainder_end)
-    xc = Cat(terms, name)
+    # Construct a [:] slice for the output.
+    for i, size in enumerate(res.output.shape):
+        offset_from_right = len(res.output.shape) - i - 1
+        index.append(torch.arange(size).reshape(
+            (-1,) + (1,) * offset_from_right))
 
-    return xc
+    # the only difference from Tensor.eager_subs is here:
+    # instead of indexing the rhs (lhs = rhs[index]), we index the lhs (lhs[index] = rhs)
+    data = torch.zeros_like(res.data)
+    data[tuple(index)] = src.data
+    return Tensor(data, inputs, res.dtype)
