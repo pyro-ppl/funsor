@@ -175,7 +175,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
     naive_sequential_sum_product,
-    xfail_param(MarkovProduct, reason="something missing?"),
+    MarkovProduct,
 ])
 def test_sequential_sum_product_adjoint_discrete(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
     # test mostly copied from test_sum_product.py

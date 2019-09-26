@@ -41,10 +41,12 @@ class AdjointTape(object):
         self._old_interpretation = None
 
     def __call__(self, cls, *args):
-        with interpretation(self._old_interpretation):
-            result = cls(*args)
-        if issubclass(cls, (Reduce, Contraction, Binary, Tensor, Subs, Cat)):  # TODO make generic
+        if cls in adjoint_ops:  # atomic op, don't trace internals
+            with interpretation(self._old_interpretation):
+                result = cls(*args)
             self.tape.append((result, cls, args))
+        else:
+            result = self._old_interpretation(cls, *args)
         return result
 
     def __enter__(self):

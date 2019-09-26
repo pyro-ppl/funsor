@@ -32,6 +32,9 @@ class KeyedRegistry(object):
             return self.registry[key](*args, **kwargs)
         return self.default(*args, **kwargs)
 
+    def __contains__(self, key):
+        return key in self.registry
+
 
 __all__ = [
     'KeyedRegistry',
