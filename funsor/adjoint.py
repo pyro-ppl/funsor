@@ -5,6 +5,7 @@ import torch
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, nullop
+from funsor.domains import bint
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
@@ -84,7 +85,7 @@ class AdjointTape(object):
 
         target_adjs = {}
         for v in targets:
-            target_adjs[v] = adjoint_values[v] / multiplicities[v]  # TODO use correct op here with bin_op
+            target_adjs[v] = adjoint_values[v]  # / multiplicities[v]  # TODO use correct op here with bin_op
             if not isinstance(v, Variable):
                 target_adjs[v] = bin_op(target_adjs[v], v)
 
@@ -163,7 +164,9 @@ def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_var
 
 
 @adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor), Tensor, tuple)
-def adjoint_subs_slice(adj_redop, adj_binop, out_adj, arg, subs):
+def adjoint_subs_tensor(adj_redop, adj_binop, out_adj, arg, subs):
+
+    assert all(isinstance(v, Funsor) for k, v in subs)
 
     # invert renaming
     renames = tuple((v.name, k) for k, v in subs if isinstance(v, Variable))
@@ -172,25 +175,26 @@ def adjoint_subs_slice(adj_redop, adj_binop, out_adj, arg, subs):
     # inverting advanced indexing
     slices = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
 
-    # TODO avoid reifying these tensors by using symbolic constants
-
+    # TODO avoid reifying these zero/one tensors by using symbolic constants
     # ones for things that weren't sliced away
-    ones_like_out = Tensor(torch.full_like(arg.data, ops.UNITS[adj_binop]),
-                           arg.inputs.copy(), arg.output.dtype)
-    arg_adj = adj_binop(out_adj, Subs(ones_like_out, slices))
+    ones_like_out = Subs(Tensor(torch.full_like(arg.data, ops.UNITS[adj_binop]),
+                                arg.inputs.copy(), arg.output.dtype),
+                         slices)
+    arg_adj = adj_binop(out_adj, ones_like_out)
 
-    # zeros for things that were sliced away
-    zeros_like_arg = Tensor(torch.full_like(arg.data, ops.UNITS[adj_redop]),
+    # XXX ones? zeros? for things that were sliced away
+    zeros_like_arg = Tensor(torch.full_like(arg.data, ops.UNITS[adj_binop]),
                             arg.inputs.copy(), arg.output.dtype)
-    arg_adj = _scatter(zeros_like_arg, arg_adj, slices)
+    arg_adj = _scatter(arg_adj, zeros_like_arg, slices)
 
     return {arg: arg_adj}
 
 
-def _scatter(res, src, subs):
+def _scatter(src, res, subs):
     # inverse of advanced indexing
     assert isinstance(res, Tensor)
     assert isinstance(src, Tensor)
+    # TODO check types of subs, in case some logic from eager_subs was accidentally left out?
 
     # use advanced indexing logic copied from Tensor.eager_subs:
 
@@ -200,10 +204,7 @@ def _scatter(res, src, subs):
     # Compute result shapes.
     inputs = OrderedDict()
     for k, domain in res.inputs.items():
-        if False:  # k in subs:
-            inputs.update(subs[k].inputs)
-        else:
-            inputs[k] = domain
+        inputs[k] = domain
 
     # Construct a dict with each input's positional dim,
     # counting from the right so as to support broadcasting.
@@ -243,6 +244,15 @@ def _scatter(res, src, subs):
 
     # the only difference from Tensor.eager_subs is here:
     # instead of indexing the rhs (lhs = rhs[index]), we index the lhs (lhs[index] = rhs)
-    data = torch.zeros_like(res.data)
+
+    # unsqueeze to make broadcasting work
+    src_inputs, src_data = src.inputs.copy(), src.data
+    for k, v in res.inputs.items():
+        if k not in src.inputs and isinstance(subs[k], Number):
+            src_inputs[k] = bint(1)
+            src_data = src_data.unsqueeze(-1)
+    src = Tensor(src_data, src_inputs, src.output.dtype).align(tuple(res.inputs.keys()))
+
+    data = res.data
     data[tuple(index)] = src.data
     return Tensor(data, inputs, res.dtype)
