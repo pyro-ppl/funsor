@@ -188,7 +188,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
-@pytest.mark.parametrize('num_steps', [2 ** k for k in [1, 2, 3, 4]])  # list(range(3, 13)))
+@pytest.mark.parametrize('num_steps', list(range(3, 13)))
 @pytest.mark.parametrize('sum_op,prod_op,state_domain', [
     (ops.add, ops.mul, bint(2)),
     (ops.add, ops.mul, bint(3)),
@@ -203,7 +203,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
     naive_sequential_sum_product,
-    MarkovProduct,  # reason="something missing?"),
+    xfail_param(MarkovProduct, reason="something missing?"),
 ])
 def test_sequential_sum_product_adjoint_discrete(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
     # test mostly copied from test_sum_product.py

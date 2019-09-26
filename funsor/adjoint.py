@@ -11,9 +11,11 @@ from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import (
     Binary,
+    Cat,
     Funsor,
     Number,
     Reduce,
+    Slice,
     Subs,
     Variable,
     reflect,
@@ -41,7 +43,7 @@ class AdjointTape(object):
     def __call__(self, cls, *args):
         with interpretation(self._old_interpretation):
             result = cls(*args)
-        if issubclass(cls, (Reduce, Contraction, Binary, Tensor, Subs)):  # TODO make generic
+        if issubclass(cls, (Reduce, Contraction, Binary, Tensor, Subs, Cat)):  # TODO make generic
             self.tape.append((result, cls, args))
         return result
 
@@ -256,3 +258,17 @@ def _scatter(src, res, subs):
     data = res.data
     data[tuple(index)] = src.data
     return Tensor(data, inputs, res.dtype)
+
+
+@adjoint_ops.register(Cat, AssociativeOp, AssociativeOp, Funsor, str, tuple, str)
+def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
+    in_adjs = {}
+    start = 0
+    size = sum(part.inputs[part_name].dtype for part in parts)
+    for i, part in enumerate(parts):
+        if part_name in out_adj.inputs:
+            in_adjs[part] = out_adj(**{name: Slice(name, start, start + part.inputs[part_name].dtype, 1, size)})
+            start += part.inputs[part_name].dtype
+        else:
+            in_adjs[part] = adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], part, part))
+    return in_adjs
