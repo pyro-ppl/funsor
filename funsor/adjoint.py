@@ -60,9 +60,7 @@ class AdjointTape(object):
     def adjoint(self, red_op, bin_op, root, targets):
 
         bin_unit = to_funsor(ops.UNITS[bin_op])
-
         adjoint_values = defaultdict(lambda: bin_unit)
-        multiplicities = defaultdict(lambda: 0)
 
         reached_root = False
         while self.tape:
@@ -82,12 +80,11 @@ class AdjointTape(object):
 
             in_adjs = adjoint_ops(fn, red_op, bin_op, adjoint_values[output], *inputs)
             for v, adjv in in_adjs.items():
-                multiplicities[v] += 1
                 adjoint_values[v] = bin_op(adjoint_values[v], adjv)
 
         target_adjs = {}
         for v in targets:
-            target_adjs[v] = adjoint_values[v]  # / multiplicities[v]  # TODO use correct op here with bin_op
+            target_adjs[v] = adjoint_values[v]
             if not isinstance(v, Variable):
                 target_adjs[v] = bin_op(target_adjs[v], v)
 
@@ -104,13 +101,7 @@ adjoint_ops = KeyedRegistry(default=_fail_default)
 
 @adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
-    out = Tensor(data, inputs, dtype)
-    all_vars = frozenset(k for (k, v) in inputs)
-    in_adjs = {}
-    for (k, v) in inputs:
-        in_adj = adj_binop(out_adj, out).reduce(adj_redop, all_vars - {k})
-        in_adjs[Variable(k, v)] = in_adj
-    return in_adjs
+    return {}
 
 
 @adjoint_ops.register(Binary, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, Funsor)
@@ -165,6 +156,20 @@ def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_var
     return {lhs: lhs_adj, rhs: rhs_adj}
 
 
+@adjoint_ops.register(Cat, AssociativeOp, AssociativeOp, Funsor, str, tuple, str)
+def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
+    in_adjs = {}
+    start = 0
+    size = sum(part.inputs[part_name].dtype for part in parts)
+    for i, part in enumerate(parts):
+        if part_name in out_adj.inputs:
+            in_adjs[part] = out_adj(**{name: Slice(name, start, start + part.inputs[part_name].dtype, 1, size)})
+            start += part.inputs[part_name].dtype
+        else:
+            in_adjs[part] = adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], part, part))
+    return in_adjs
+
+
 @adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor), Tensor, tuple)
 def adjoint_subs_tensor(adj_redop, adj_binop, out_adj, arg, subs):
 
@@ -184,10 +189,10 @@ def adjoint_subs_tensor(adj_redop, adj_binop, out_adj, arg, subs):
                          slices)
     arg_adj = adj_binop(out_adj, ones_like_out)
 
-    # XXX ones? zeros? for things that were sliced away
-    zeros_like_arg = Tensor(torch.full_like(arg.data, ops.UNITS[adj_binop]),
-                            arg.inputs.copy(), arg.output.dtype)
-    arg_adj = _scatter(arg_adj, zeros_like_arg, slices)
+    # ones for things that were sliced away
+    ones_like_arg = Tensor(torch.full_like(arg.data, ops.UNITS[adj_binop]),
+                           arg.inputs.copy(), arg.output.dtype)
+    arg_adj = _scatter(arg_adj, ones_like_arg, slices)
 
     return {arg: arg_adj}
 
@@ -258,17 +263,3 @@ def _scatter(src, res, subs):
     data = res.data
     data[tuple(index)] = src.data
     return Tensor(data, inputs, res.dtype)
-
-
-@adjoint_ops.register(Cat, AssociativeOp, AssociativeOp, Funsor, str, tuple, str)
-def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
-    in_adjs = {}
-    start = 0
-    size = sum(part.inputs[part_name].dtype for part in parts)
-    for i, part in enumerate(parts):
-        if part_name in out_adj.inputs:
-            in_adjs[part] = out_adj(**{name: Slice(name, start, start + part.inputs[part_name].dtype, 1, size)})
-            start += part.inputs[part_name].dtype
-        else:
-            in_adjs[part] = adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], part, part))
-    return in_adjs

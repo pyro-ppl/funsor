@@ -1,6 +1,5 @@
 from collections import OrderedDict
 
-import opt_einsum
 import pytest
 import torch
 from pyro.ops.contract import einsum as pyro_einsum
@@ -74,33 +73,6 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))
-        assert isinstance(actual, funsor.Tensor)
-        assert expected.shape == actual.data.shape
-        assert torch.allclose(expected, actual.data, atol=1e-7)
-
-
-@pytest.mark.skip(reason="not sure if this is correct")
-@pytest.mark.parametrize('einsum_impl', [naive_einsum, einsum])
-@pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', [
-    'pyro.ops.einsum.torch_marginal',
-    xfail_param('pyro.ops.einsum.torch_map', reason="wrong adjoint"),
-])
-def test_einsum_adjoint_unary_marginals(einsum_impl, equation, backend):
-    sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
-
-    with AdjointTape() as tape:  # interpretation(reflect):
-        inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-        equation = ",".join(inputs) + "->"
-        targets = [Variable(k, bint(sizes[k])) for k in set(sizes)]
-        fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
-    actuals = tape.adjoint(sum_op, prod_op, fwd_expr, targets)
-
-    for target in targets:
-        actual = actuals[target]  # / len([t for t in equation if t == target.name])
-
-        expected = opt_einsum.contract(equation + target.name, *operands,
-                                       backend=backend)
         assert isinstance(actual, funsor.Tensor)
         assert expected.shape == actual.data.shape
         assert torch.allclose(expected, actual.data, atol=1e-7)
