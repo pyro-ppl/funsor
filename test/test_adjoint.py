@@ -8,7 +8,7 @@ from pyro.ops.einsum.adjoint import require_backward as pyro_require_backward
 import funsor
 import funsor.ops as ops
 from funsor.adjoint import AdjointTape
-from funsor.domains import bint
+from funsor.domains import bint, reals
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
@@ -24,6 +24,7 @@ from funsor.testing import (
     check_funsor,
     make_einsum_example,
     make_plated_hmm_einsum,
+    random_gaussian,
     random_tensor,
     xfail_param,
 )
@@ -166,6 +167,8 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     (ops.add, ops.mul, bint(3)),
     (ops.logaddexp, ops.add, bint(2)),
     (ops.logaddexp, ops.add, bint(3)),
+    (ops.logaddexp, ops.add, reals()),
+    (ops.logaddexp, ops.add, reals(2)),
 ], ids=str)
 @pytest.mark.parametrize('batch_inputs', [
     {},
@@ -177,12 +180,15 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     naive_sequential_sum_product,
     MarkovProduct,
 ])
-def test_sequential_sum_product_adjoint_discrete(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
+def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
     # test mostly copied from test_sum_product.py
     inputs = OrderedDict(batch_inputs)
     inputs.update(prev=state_domain, curr=state_domain)
     inputs["time"] = bint(num_steps)
-    trans = random_tensor(inputs)
+    if state_domain.dtype == "real":
+        trans = random_gaussian(inputs)
+    else:
+        trans = random_tensor(inputs)
     time = Variable("time", bint(num_steps))
 
     with AdjointTape() as actual_tape:

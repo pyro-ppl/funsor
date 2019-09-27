@@ -6,6 +6,7 @@ import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, nullop
 from funsor.domains import bint
+from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
@@ -265,3 +266,38 @@ def _scatter(src, res, subs):
     data = res.data
     data[tuple(index)] = src.data
     return Tensor(data, inputs, res.dtype)
+
+
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Funsor, Gaussian, tuple)
+def adjoint_subs_gaussian_discrete(adj_redop, adj_binop, out_adj, arg, subs):
+
+    # invert renaming
+    renames = tuple((v.name, k) for k, v in subs if isinstance(v, Variable))
+    out_adj = Subs(out_adj, renames)
+
+    # only handle discrete variable substitutions here
+    # inverting advanced indexing
+    slices = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
+    assert all(arg.inputs[k].dtype != 'real' for k, v in slices)
+    int_inputs = OrderedDict([(k, d) for k, d in arg.inputs.items()
+                              if d.dtype != 'real'])
+
+    tensors = [arg.info_vec, arg.precision]
+    tensor_adjs = []
+    for t in tensors:
+        ft = Tensor(t, int_inputs)
+
+        # TODO avoid reifying these zero/one tensors by using symbolic constants
+        # ones for things that weren't sliced away
+        ones_like_out = Subs(Tensor(torch.full_like(ft.data, ops.UNITS[adj_binop]),
+                                    ft.inputs.copy(), ft.output.dtype),
+                             slices)
+        ft_adj = adj_binop(out_adj, ones_like_out)
+
+        # ones for things that were sliced away
+        ones_like_ft = Tensor(torch.full_like(ft.data, ops.UNITS[adj_binop]),
+                              ft.inputs.copy(), ft.output.dtype)
+        ft_adj = _scatter(ft_adj, ones_like_ft, slices)
+        tensor_adjs.append(ft_adj)
+
+    return Gaussian(tensor_adjs[0].data, tensor_adjs[1].data, arg.inputs.copy())
