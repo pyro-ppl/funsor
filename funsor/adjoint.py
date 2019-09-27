@@ -259,7 +259,7 @@ def _scatter(src, res, subs):
     for k, v in res.inputs.items():
         if k not in src.inputs and isinstance(subs[k], Number):
             src_inputs[k] = bint(1)
-            src_data = src_data.unsqueeze(-1)
+            src_data = src_data.unsqueeze(-1 - len(src.output.shape))
     src = Tensor(src_data, src_inputs, src.output.dtype).align(tuple(res.inputs.keys()))
 
     data = res.data
