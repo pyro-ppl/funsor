@@ -4,7 +4,7 @@ import torch
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.cnf import Contraction, nullop
+from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import bint
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation
@@ -260,7 +260,7 @@ def _scatter(src, res, subs):
     for k, v in res.inputs.items():
         if k not in src.inputs and isinstance(subs[k], Number):
             src_inputs[k] = bint(1)
-            src_data = src_data.unsqueeze(-1)
+            src_data = src_data.unsqueeze(-1 - len(src.output.shape))
     src = Tensor(src_data, src_inputs, src.output.dtype).align(tuple(res.inputs.keys()))
 
     data = res.data
@@ -300,4 +300,14 @@ def adjoint_subs_gaussian_discrete(adj_redop, adj_binop, out_adj, arg, subs):
         ft_adj = _scatter(ft_adj, ones_like_ft, slices)
         tensor_adjs.append(ft_adj)
 
-    return Gaussian(tensor_adjs[0].data, tensor_adjs[1].data, arg.inputs.copy())
+    return {arg: Gaussian(tensor_adjs[0].data, tensor_adjs[1].data, arg.inputs.copy())}
+
+
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor), GaussianMixture, tuple)
+def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, subs):
+
+    t_adjs = tuple(
+        adjoint_ops(Subs, adj_redop, adj_binop, out_adj, t, subs)[t]
+        for t in arg.terms)
+
+    return {arg: Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, t_adjs)}

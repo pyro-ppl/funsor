@@ -353,7 +353,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             if len(inputs) != len(self.inputs):
                 raise ValueError("Variable substitution name conflict")
             var_result = Gaussian(self.info_vec, self.precision, inputs)
-            return Subs(var_result, int_subs + real_subs + lazy_subs)
+            new_subs = int_subs + real_subs + lazy_subs
+            return Subs(var_result, new_subs) if new_subs else var_result
 
         # Next perform any integer substitution, i.e. slicing into a batch.
         if int_subs:
@@ -364,7 +365,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             inputs = funsors[0].inputs.copy()
             inputs.update(real_inputs)
             int_result = Gaussian(funsors[0].data, funsors[1].data, inputs)
-            return Subs(int_result, real_subs + lazy_subs)
+            new_subs = real_subs + lazy_subs
+            return Subs(int_result, new_subs) if new_subs else int_result
 
         # Broadcast all component tensors.
         real_subs = OrderedDict(subs)
