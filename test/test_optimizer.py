@@ -6,7 +6,6 @@ import torch
 
 import funsor
 from funsor.distributions import Categorical
-from funsor.domains import bint
 from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
@@ -47,7 +46,7 @@ def test_optimized_einsum(equation, backend, einsum_impl):
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
-            assert actual.inputs[output_dim].dtype == sizes[output_dim]
+            assert actual.inputs[output_dim] == sizes[output_dim]
 
 
 @pytest.mark.parametrize("eqn1,eqn2", [
@@ -77,8 +76,8 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, ein
         funsor_operands1 = [
             Categorical(probs=Tensor(
                 operand,
-                inputs=OrderedDict([(d, bint(sizes1[d])) for d in inp[:-1]])
-            ))(value=Variable(inp[-1], bint(sizes1[inp[-1]]))).exp()
+                inputs=OrderedDict([(d, sizes1[d]) for d in inp[:-1]])
+            ))(value=Variable(inp[-1], sizes1[inp[-1]])).exp()
             for inp, operand in zip(inputs1, operands1)
         ]
 
@@ -126,4 +125,4 @@ def test_optimized_plated_einsum(equation, plates, backend):
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
-            assert actual.inputs[output_dim].dtype == sizes[output_dim]
+            assert actual.inputs[output_dim] == sizes[output_dim]

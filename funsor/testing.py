@@ -123,21 +123,27 @@ def xfail_param(*args, **kwargs):
     return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
 
 
-def make_einsum_example(equation, fill=None, sizes=(2, 3)):
+def make_einsum_example(equation, fill=None, sizes=(bint(2), bint(3))):
+    """
+    Generate a random gaussian or tensor sum-product problem instance
+    """
     symbols = sorted(set(equation) - set(',->'))
-    sizes = {dim: size for dim, size in zip(symbols, itertools.cycle(sizes))}
+    sizes = {dim: (reals() if size == 'real' else bint(size))
+             if not isinstance(size, Domain) else size
+             for dim, size in zip(symbols, itertools.cycle(sizes))}
     inputs, outputs = equation.split('->')
     inputs = inputs.split(',')
     outputs = outputs.split(',')
-    operands = []
+    funsor_operands, operands = [], []
     for dims in inputs:
-        shape = tuple(sizes[dim] for dim in dims)
-        operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
-        operands[-1]._pyro_dims = dims
-    funsor_operands = [
-        Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
-        for inp, operand in zip(inputs, operands)
-    ]
+        funsor_operand_inputs = OrderedDict([(d, sizes[d]) for d in dims])
+        if not any(d.dtype == 'real' for d in funsor_operand_inputs.values()):
+            funsor_operand = random_tensor(funsor_operand_inputs)
+            funsor_operand.data._pyro_dims = dims
+        else:
+            funsor_operand = random_gaussian(funsor_operand_inputs)
+        funsor_operands.append(funsor_operand)
+        operands.append(funsor_operand.data)
 
     assert equation == \
         ",".join(["".join(operand.inputs.keys()) for operand in funsor_operands]) + "->" + ",".join(outputs)
