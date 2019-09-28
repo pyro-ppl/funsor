@@ -125,7 +125,7 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
 
 OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
     make_plated_hmm_einsum(num_steps, num_obs_plates=b, num_hidden_plates=a)
-    for num_steps in range(20, 50, 6)
+    for num_steps in [20, 30, 50]
     for (a, b) in [(0, 0), (0, 1), (0, 2), (1, 1), (1, 2)]
 ]
 
@@ -193,7 +193,6 @@ def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, sta
 
     with AdjointTape() as actual_tape:
         actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
-    actual_bwd = actual_tape.adjoint(sum_op, prod_op, actual, (trans,))[trans]
 
     expected_inputs = batch_inputs.copy()
     expected_inputs.update(prev=state_domain, curr=state_domain)
@@ -210,10 +209,12 @@ def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, sta
         expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
         expected = expected.align(tuple(actual.inputs.keys()))
 
-    expected_bwds = expected_tape.adjoint(sum_op, prod_op, expected, operands)
-
     # check forward pass (sanity check)
     assert_close(actual, expected, rtol=5e-4 * num_steps)
+
+    # perform backward passes only after the sanity check
+    expected_bwds = expected_tape.adjoint(sum_op, prod_op, expected, operands)
+    actual_bwd = actual_tape.adjoint(sum_op, prod_op, actual, (trans,))[trans]
 
     # check backward pass
     for t, operand in enumerate(operands):

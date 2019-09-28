@@ -140,7 +140,7 @@ def adjoint_contract_unary(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduc
 
 @adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
                       AssociativeOp, AssociativeOp, frozenset, tuple)
-def adjoint_contract_unary(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, terms):
+def adjoint_contract_generic(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, terms):
     assert len(terms) == 1 or len(terms) == 2
     return adjoint_ops(Contraction, adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, *terms)
 
@@ -202,8 +202,6 @@ def adjoint_subs_tensor(adj_redop, adj_binop, out_adj, arg, subs):
 
 def _scatter(src, res, subs):
     # inverse of advanced indexing
-    assert isinstance(res, Tensor)
-    assert isinstance(src, Tensor)
     # TODO check types of subs, in case some logic from eager_subs was accidentally left out?
 
     # use advanced indexing logic copied from Tensor.eager_subs:
@@ -268,7 +266,7 @@ def _scatter(src, res, subs):
     return Tensor(data, inputs, res.dtype)
 
 
-@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Funsor, Gaussian, tuple)
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor), Gaussian, tuple)
 def adjoint_subs_gaussian_discrete(adj_redop, adj_binop, out_adj, arg, subs):
 
     # invert renaming
@@ -303,11 +301,83 @@ def adjoint_subs_gaussian_discrete(adj_redop, adj_binop, out_adj, arg, subs):
     return {arg: Gaussian(tensor_adjs[0].data, tensor_adjs[1].data, arg.inputs.copy())}
 
 
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Gaussian, Gaussian, tuple)
+def adjoint_subs_gaussian_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
+
+    # invert renaming
+    renames = tuple((v.name, k) for k, v in subs if isinstance(v, Variable))
+    out_adj = Subs(out_adj, renames)
+
+    # only handle discrete variable substitutions here
+    # inverting advanced indexing
+    slices = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
+    assert all(arg.inputs[k].dtype != 'real' for k, v in slices)
+
+    # assert frozenset(k for k in arg.inputs if k.dtype == 'real') == \
+    #     frozenset(k for k in out_adj.inputs if k.dtype == 'real')
+
+    int_inputs = OrderedDict([(k, d) for k, d in arg.inputs.items()
+                              if d.dtype != 'real'])
+    int_outputs = OrderedDict([(k, d) for k, d in out_adj.inputs.items()
+                               if d.dtype != 'real'])
+
+    tensor_adjs = []
+    for inp_t, outp_t in zip((arg.info_vec, arg.precision), (out_adj.info_vec, out_adj.precision)):
+        inp_ft = Tensor(inp_t, int_inputs)
+        outp_ft = Tensor(outp_t, int_outputs)
+
+        # TODO avoid reifying these zero/one tensors by using symbolic constants
+        # ones for things that weren't sliced away
+        ones_like_out = Subs(Tensor(torch.full_like(inp_ft.data, ops.UNITS[adj_binop]),
+                                    inp_ft.inputs.copy(), inp_ft.output.dtype),
+                             slices)
+        ft_adj = adj_binop(outp_ft, ones_like_out)
+
+        # ones for things that were sliced away
+        ones_like_ft = Tensor(torch.full_like(inp_ft.data, ops.UNITS[adj_binop]),
+                              inp_ft.inputs.copy(), inp_ft.output.dtype)
+        ft_adj = _scatter(ft_adj, ones_like_ft, slices)
+        tensor_adjs.append(ft_adj)
+
+    return {arg: Gaussian(tensor_adjs[0].data, tensor_adjs[1].data, arg.inputs.copy())}
+
+
 @adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor), GaussianMixture, tuple)
 def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, subs):
 
     t_adjs = tuple(
         adjoint_ops(Subs, adj_redop, adj_binop, out_adj, t, subs)[t]
         for t in arg.terms)
+
+    return {arg: Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, t_adjs)}
+
+
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Gaussian, GaussianMixture, tuple)
+def adjoint_subs_gaussianmixture_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
+
+    t_adjs = tuple(
+        adjoint_ops(Subs, adj_redop, adj_binop, out_adj, t, subs)[t]
+        if isinstance(t, Gaussian) else t
+        for t in arg.terms)
+
+    return {arg: Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, t_adjs)}
+
+
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, GaussianMixture, Gaussian, tuple)
+def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, arg, subs):
+
+    t_adjs = tuple(
+        adjoint_ops(Subs, adj_redop, adj_binop, outp_t, arg, subs)[arg]
+        for outp_t in out_adj.terms)
+
+    return {arg: Contraction(adj_redop, adj_binop, frozenset(), t_adjs)}
+
+
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, GaussianMixture, GaussianMixture, tuple)
+def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, arg, subs):
+
+    t_adjs = tuple(
+        adjoint_ops(Subs, adj_redop, adj_binop, outp_t, inp_t, subs)[inp_t]
+        for inp_t, outp_t in zip(arg.terms, out_adj.terms))
 
     return {arg: Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, t_adjs)}
