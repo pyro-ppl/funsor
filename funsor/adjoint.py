@@ -298,7 +298,8 @@ def adjoint_subs_gaussian_discrete(adj_redop, adj_binop, out_adj, arg, subs):
         ft_adj = _scatter(ft_adj, ones_like_ft, slices)
         tensor_adjs.append(ft_adj)
 
-    return {arg: Gaussian(tensor_adjs[0].data, tensor_adjs[1].data, arg.inputs.copy())}
+    in_adj = Gaussian(tensor_adjs[0].data, tensor_adjs[1].data, arg.inputs.copy())
+    return {arg: in_adj}
 
 
 @adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Gaussian, Gaussian, tuple)
@@ -339,10 +340,11 @@ def adjoint_subs_gaussian_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
         ft_adj = _scatter(ft_adj, ones_like_ft, slices)
         tensor_adjs.append(ft_adj)
 
-    return {arg: Gaussian(tensor_adjs[0].data, tensor_adjs[1].data, arg.inputs.copy())}
+    in_adj = Gaussian(tensor_adjs[0].data, tensor_adjs[1].data, arg.inputs.copy())
+    return {arg: in_adj}
 
 
-@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor), GaussianMixture, tuple)
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor, Gaussian), GaussianMixture, tuple)
 def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, subs):
 
     t_adjs = tuple(
@@ -352,18 +354,8 @@ def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, su
     return {arg: Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, t_adjs)}
 
 
-@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Gaussian, GaussianMixture, tuple)
-def adjoint_subs_gaussianmixture_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
-
-    t_adjs = tuple(
-        adjoint_ops(Subs, adj_redop, adj_binop, out_adj, t, subs)[t]
-        if isinstance(t, Gaussian) else t
-        for t in arg.terms)
-
-    return {arg: Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, t_adjs)}
-
-
-@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, GaussianMixture, Gaussian, tuple)
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, GaussianMixture,
+                      (Number, Tensor, Gaussian, GaussianMixture), tuple)
 def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, arg, subs):
 
     t_adjs = tuple(
@@ -371,13 +363,3 @@ def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, 
         for outp_t in out_adj.terms)
 
     return {arg: Contraction(adj_redop, adj_binop, frozenset(), t_adjs)}
-
-
-@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, GaussianMixture, GaussianMixture, tuple)
-def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, arg, subs):
-
-    t_adjs = tuple(
-        adjoint_ops(Subs, adj_redop, adj_binop, outp_t, inp_t, subs)[inp_t]
-        for inp_t, outp_t in zip(arg.terms, out_adj.terms))
-
-    return {arg: Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, t_adjs)}
