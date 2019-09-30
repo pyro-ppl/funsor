@@ -83,6 +83,8 @@ def run_expt(args):
 
     pyro.enable_validation(args["validation"])
     pyro.set_rng_seed(seed)  # reproducible random effect parameter init
+    if args["cuda"]:
+        torch.set_default_tensor_type(torch.cuda.FloatTensor)
 
     filename = os.path.join(data_dir, "prep_seal_data.csv")
     config = prepare_seal(filename, random_effects)
@@ -99,6 +101,11 @@ def run_expt(args):
         guide = functools.partial(guide_sequential, config)
         loss_fn = parallel_loss_fn
 
+    if args["jit"]:
+        loss_fn = torch.jit.trace(lambda: loss_fn(model, guide), ())
+    else:
+        loss_fn = functools.partial(loss_fn, model, guide)
+
     # count the number of parameters once
     num_parameters = aic_num_parameters(model, guide)
 
@@ -109,7 +116,7 @@ def run_expt(args):
     assert random_effects["individual"] != "continuous"
 
     with pyro.poutine.trace(param_only=True) as param_capture:
-        loss_fn(model, guide)
+        loss_fn()
     params = [site["value"].unconstrained() for site in param_capture.trace.nodes.values()]
     if optim == "sgd":
         optimizer = torch.optim.Adam(params, lr=lr)
@@ -128,7 +135,7 @@ def run_expt(args):
     for t in range(timesteps):
         def closure():
             optimizer.zero_grad()
-            loss = loss_fn(model, guide)
+            loss = loss_fn()
             loss.backward()
             return loss
         loss = optimizer.step(closure)
@@ -170,6 +177,8 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--timesteps", default=1000, type=int)
     parser.add_argument("-r", "--resultsdir", default="./results", type=str)
     parser.add_argument("-s", "--seed", default=101, type=int)
+    parser.add_argument("--jit", action="store_true")
+    parser.add_argument("--cuda", action="store_true")
     parser.add_argument("--parallel", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--schedule", default="", type=str)

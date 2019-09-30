@@ -214,6 +214,49 @@ def initialize_observations(config):
     return observations
 
 
+def initialize_zi_masks(config):
+    """
+    Convert raw zero-inflation masks into funsor.torch.Tensors
+    """
+    batch_inputs = OrderedDict([
+        ("i", bint(config["sizes"]["individual"])),
+        ("g", bint(config["sizes"]["group"])),
+        ("t", bint(config["sizes"]["timesteps"])),
+    ])
+
+    zi_masks = {}
+    for name, data in config["observations"].items():
+        mask = (data[..., :config["sizes"]["timesteps"]] == config["MISSING"]).to(
+            data.dtype)
+        zi_masks[name] = Tensor(1. - mask, batch_inputs)  # , bint(2))
+
+    return zi_masks
+
+
+def initialize_raggedness_masks(config):
+    """
+    Convert raw raggedness tensors into funsor.torch.Tensors
+    """
+    batch_inputs = OrderedDict([
+        ("i", bint(config["sizes"]["individual"])),
+        ("g", bint(config["sizes"]["group"])),
+        ("t", bint(config["sizes"]["timesteps"])),
+    ])
+
+    raggedness_masks = {}
+    for name in ("individual", "timestep"):
+        data = config[name]["mask"]
+        if len(data.shape) < len(batch_inputs):
+            while len(data.shape) < len(batch_inputs):
+                data = data.unsqueeze(-1)
+            data = data.expand(tuple(v.dtype for v in batch_inputs.values()))
+        data = 1. - data.to(config["observations"]["step"].dtype)
+        raggedness_masks[name] = Tensor(data[..., :config["sizes"]["timesteps"]],
+                                        batch_inputs)
+
+    return raggedness_masks
+
+
 def guide_sequential(config):
     """generic mean-field guide for continuous random effects"""
     params = initialize_guide_params(config)
@@ -254,6 +297,8 @@ def model_sequential(config):
 
     params = initialize_model_params(config)
     observations = initialize_observations(config)
+    raggedness_masks = initialize_raggedness_masks(config)
+    zi_masks = initialize_zi_masks(config)
 
     # initialize gamma to uniform
     gamma = Tensor(
@@ -300,7 +345,7 @@ def model_sequential(config):
         with interpretation(eager):
             e_i_dist = plate_g + plate_i + dist.Categorical(
                 **params["e_i"]
-            )(value=e_i)
+            )(value=e_i) * raggedness_masks["individual"](t=0)
 
         log_prob.append(e_i_dist)
 
@@ -379,6 +424,8 @@ def model_parallel(config):
 
     params = initialize_model_params(config)
     observations = initialize_observations(config)
+    raggedness_masks = initialize_raggedness_masks(config)
+    zi_masks = initialize_zi_masks(config)
 
     # initialize gamma to uniform
     gamma = Tensor(
@@ -425,7 +472,7 @@ def model_parallel(config):
         with interpretation(eager):
             e_i_dist = plate_g + plate_i + dist.Categorical(
                 **params["e_i"]
-            )(value=e_i)
+            )(value=e_i) * raggedness_masks["individual"](t=0)
 
         log_prob.append(e_i_dist)
 
@@ -463,9 +510,11 @@ def model_parallel(config):
 
     # observation 1: step size
     with interpretation(eager):
-        step_dist = plate_g + plate_i + dist.Gamma(
+        step_zi = dist.Categorical(probs=params["zi_step"]["zi_param"].exp())(
+            value=Tensor(zi_masks["step"].data, zi_masks["step"].inputs, 2))
+        step_dist = plate_g + plate_i + step_zi + dist.Gamma(
             **{k: v(y_curr=y) for k, v in params["step"].items()}
-        )(value=observations["step"])
+        )(value=observations["step"]) * zi_masks["step"]
 
     # observation 2: step angle
     with interpretation(eager):
@@ -475,12 +524,17 @@ def model_parallel(config):
 
     # observation 3: dive activity
     with interpretation(eager):
-        omega_dist = plate_g + plate_i + dist.Beta(
+        omega_zi = dist.Categorical(probs=params["zi_omega"]["zi_param"].exp())(
+            value=Tensor(zi_masks["omega"].data, zi_masks["omega"].inputs, 2))
+        omega_dist = plate_g + plate_i + omega_zi + dist.Beta(
             **{k: v(y_curr=y) for k, v in params["omega"].items()}
-        )(value=observations["omega"])
+        )(value=observations["omega"]) * zi_masks["omega"]
 
     with interpretation(eager):
         # construct the term for parallel scan reduction
-        log_prob.insert(0, y_dist + step_dist + angle_dist + omega_dist)
+        hmm_factor = y_dist + step_dist + angle_dist + omega_dist
+        hmm_factor = hmm_factor * raggedness_masks["individual"]
+        hmm_factor = hmm_factor * raggedness_masks["timestep"]
+        log_prob.insert(0, hmm_factor)
 
     return log_prob
