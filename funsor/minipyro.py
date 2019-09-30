@@ -214,6 +214,10 @@ class log_joint(Messenger):
             if msg["value"] is None:
                 # Create a delayed sample.
                 msg["value"] = funsor.Variable(msg["name"], msg["fn"].output)
+        elif msg["type"] == "barrier":
+            if self.plates:
+                raise NotImplementedError('plates and barrier cannot yet be combined')
+            raise NotImplementedError('TODO')
 
     def postprocess_message(self, msg):
         if msg["type"] == "sample":
@@ -325,6 +329,28 @@ def param(name, init_value=None, constraint=torch.distributions.constraints.real
 # boilerplate to match the syntax of actual pyro.plate:
 def plate(name, size, dim):
     return PlateMessenger(fn=None, name=name, size=size, dim=dim)
+
+
+def barrier(name, context):
+    """
+    A barrier to enforce eager sampling of a single random variable named
+    ``name``. This samples the random variable and recursively substitutes into
+    ``context`` which is typically ``locals()``. This is not smart enoug to
+    substitute into complex or immutable data structures. Typical usage::
+
+        a = pyro.sample("a", dist.Normal(0, 1))
+        b = pyro.sample("b", dist.Normal(a, 1))
+        c = pyro.sample("c", dist.Normal(b, 1), obs=2.0)
+        pyro.barrier("b", locals())
+        if b > 0:  # branching requires a ground value
+            pyro.sample("d", dist.Normal(b, 1), obs=1.0)
+    """
+    msg = {
+        "type": "barrier",
+        "name": name,
+        "context": context,
+    }
+    apply_stack(msg)
 
 
 # This is a thin wrapper around the `torch.optim.Optimizer` class that
