@@ -161,24 +161,6 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
-# @pytest.mark.parametrize("equation", EINSUM_EXAMPLES)
-# def test_gaussian_adjoint(equation):
-#     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-#     sum_op, prod_op = ops.logaddexp, ops.add
-#     reduced_vars = frozenset(sizes.keys())
-#     plates = frozenset(k for k, d in sizes.items() if d.dtype != 'real')
-#
-#     with AdjointTape() as tape:
-#         fwd_expr = sum_product(sum_op, prod_op, funsor_operands, reduced_vars, plates)
-#     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands, reduced_vars)
-#
-#     for i, v in enumerate(reduced_vars):
-#         actual = actuals[i]
-#         expected = sum_product(sum_op, prod_op, funsor_operands,
-#                                reduced_vars - {v}, plates)
-#         assert_close(actual, expected)
-
-
 @pytest.mark.parametrize('num_steps', list(range(3, 13)))
 @pytest.mark.parametrize('sum_op,prod_op,state_domain', [
     (ops.add, ops.mul, bint(2)),
