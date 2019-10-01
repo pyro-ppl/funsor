@@ -277,8 +277,6 @@ def guide_sequential(config):
 
         log_prob += eps_g_dist
 
-    # with poutine.mask(mask=config["individual"]["mask"]):
-
     # individual-level random effects
     if config["individual"]["random"] == "continuous":
         with interpretation(eager):
@@ -294,7 +292,6 @@ def model_sequential(config):
     Simpler version of generic model with no zero-inflation
     """
 
-    # MISSING = config["MISSING"]  # used for masking and zero-inflation
     N_state = config["sizes"]["state"]
 
     params = initialize_model_params(config)
@@ -310,9 +307,8 @@ def model_sequential(config):
 
     N_v = config["sizes"]["random"]
     N_c = config["sizes"]["group"]
-    log_prob = []  # Tensor(torch.tensor(0.), OrderedDict())
+    log_prob = []
 
-    # with pyro.plate("group", N_c, dim=-1):
     plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", bint(N_c))]))
 
     # group-level random effects
@@ -324,7 +320,7 @@ def model_sequential(config):
 
         log_prob.append(e_g_dist)
 
-        eps_g = params["eps_g"]["theta"](e_g=e_g)
+        eps_g = (plate_g + params["eps_g"]["theta"])(e_g=e_g)
 
     elif config["group"]["random"] == "continuous":
         eps_g = Variable("eps_g", reals(N_state))
@@ -337,8 +333,6 @@ def model_sequential(config):
 
     N_s = config["sizes"]["individual"]
 
-    # TODO replace mask with site-specific masks via .mask()
-    # with pyro.plate("individual", N_s, dim=-2):  # , poutine.mask(mask=config["individual"]["mask"]):
     plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", bint(N_s))]))
     # individual-level random effects
     if config["individual"]["random"] == "discrete":
@@ -363,7 +357,6 @@ def model_sequential(config):
         eps_i = to_funsor(0.)
 
     # add group-level and individual-level random effects to gamma
-    # XXX should the terms get materialize()-d?
     with interpretation(eager):
         gamma = gamma + eps_g + eps_i
 
@@ -372,9 +365,7 @@ def model_sequential(config):
 
     N_t = config["sizes"]["timesteps"]
     N_state = config["sizes"]["state"]
-    for t in range(N_t):  # pyro.markov(range(N_t)):
-        # TODO replace with site-specific masks via .mask()
-        # with poutine.mask(mask=config["timestep"]["mask"][..., t]):
+    for t in range(N_t):
 
         gamma_t = gamma  # per-timestep variable
 
@@ -425,7 +416,6 @@ def model_parallel(config):
     Simpler version of generic model with no zero-inflation
     """
 
-    # MISSING = config["MISSING"]  # used for masking and zero-inflation
     N_state = config["sizes"]["state"]
 
     params = initialize_model_params(config)
@@ -441,9 +431,8 @@ def model_parallel(config):
 
     N_v = config["sizes"]["random"]
     N_c = config["sizes"]["group"]
-    log_prob = []  # Tensor(torch.tensor(0.), OrderedDict())
+    log_prob = []
 
-    # with pyro.plate("group", N_c, dim=-1):
     plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", bint(N_c))]))
 
     # group-level random effects
@@ -468,8 +457,6 @@ def model_parallel(config):
 
     N_s = config["sizes"]["individual"]
 
-    # TODO replace mask with site-specific masks via .mask()
-    # with pyro.plate("individual", N_s, dim=-2):  # , poutine.mask(mask=config["individual"]["mask"]):
     plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", bint(N_s))]))
     # individual-level random effects
     if config["individual"]["random"] == "discrete":
@@ -494,16 +481,10 @@ def model_parallel(config):
         eps_i = to_funsor(0.)
 
     # add group-level and individual-level random effects to gamma
-    # XXX should the terms get materialize()-d?
     with interpretation(eager):
         gamma = gamma + eps_g + eps_i
 
-    # initialize y in a single state for now
-    # y = Number(0, config["sizes"]["state"])
-
     N_state = config["sizes"]["state"]
-    # TODO replace with site-specific masks via .mask()
-    # with poutine.mask(mask=config["timestep"]["mask"][..., t]):
 
     # we've accounted for all effects, now actually compute gamma_y
     gamma_y = gamma(y_prev="y(t=1)")
