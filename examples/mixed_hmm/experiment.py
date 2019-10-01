@@ -77,7 +77,6 @@ def run_expt(args):
     optim = args["optim"]
     lr = args["learnrate"]
     timesteps = args["timesteps"]
-    length = args["length"]
     schedule = [] if not args["schedule"] else [int(i) for i in args["schedule"].split(",")]
     random_effects = {"group": args["group"], "individual": args["individual"]}
 

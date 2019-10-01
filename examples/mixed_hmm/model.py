@@ -141,7 +141,8 @@ def initialize_model_params(config):
     # observation 1: step size (step ~ Gamma)
     params["zi_step"]["zi_param"] = Tensor(
         pyro.param("step_zi_param",
-                   lambda: torch.ones((N_state, 2))),
+                   lambda: torch.ones((N_state, 2)),
+                   constraint=constraints.simplex),
         OrderedDict([("y_curr", bint(N_state))]),
     )
 
@@ -176,7 +177,8 @@ def initialize_model_params(config):
     # observation 3: dive activity (omega ~ Beta)
     params["zi_omega"]["zi_param"] = Tensor(
         pyro.param("omega_zi_param",
-                   lambda: torch.ones((N_state, 2))),
+                   lambda: torch.ones((N_state, 2)),
+                   constraint=constraints.simplex),
         OrderedDict([("y_curr", bint(N_state))]),
     )
 
@@ -382,14 +384,14 @@ def model_sequential(config):
         y = Variable("y_{}".format(t), bint(N_state))
         with interpretation(eager):
             y_dist = plate_g + plate_i + dist.Categorical(
-                probs=gamma_y.exp()  # XXX normalize these?
+                probs=gamma_y.exp() / gamma_y.exp().sum()
             )(value=y)
 
         log_prob.append(y_dist)
 
         # observation 1: step size
         with interpretation(eager):
-            step_zi = dist.Categorical(probs=params["zi_step"]["zi_param"](y_curr=y).exp())(
+            step_zi = dist.Categorical(probs=params["zi_step"]["zi_param"](y_curr=y))(
                 value=Tensor(zi_masks["step"].data, zi_masks["step"].inputs, 2)(t=t))
             step_dist = plate_g + plate_i + step_zi + dist.Gamma(
                 **{k: v(y_curr=y) for k, v in params["step"].items()}
@@ -407,7 +409,7 @@ def model_sequential(config):
 
         # observation 3: dive activity
         with interpretation(eager):
-            omega_zi = dist.Categorical(probs=params["zi_omega"]["zi_param"](y_curr=y).exp())(
+            omega_zi = dist.Categorical(probs=params["zi_omega"]["zi_param"](y_curr=y))(
                 value=Tensor(zi_masks["omega"].data, zi_masks["omega"].inputs, 2)(t=t))
             omega_dist = plate_g + plate_i + omega_zi + dist.Beta(
                 **{k: v(y_curr=y) for k, v in params["omega"].items()}
@@ -509,12 +511,12 @@ def model_parallel(config):
     y = Variable("y", bint(N_state))
     with interpretation(eager):
         y_dist = plate_g + plate_i + dist.Categorical(
-            probs=gamma_y.exp()  # XXX normalize these?
+            probs=gamma_y.exp() / gamma_y.exp().sum()
         )(value=y)
 
     # observation 1: step size
     with interpretation(eager):
-        step_zi = dist.Categorical(probs=params["zi_step"]["zi_param"](y_curr=y).exp())(
+        step_zi = dist.Categorical(probs=params["zi_step"]["zi_param"](y_curr=y))(
             value=Tensor(zi_masks["step"].data, zi_masks["step"].inputs, 2))
         step_dist = plate_g + plate_i + step_zi + dist.Gamma(
             **{k: v(y_curr=y) for k, v in params["step"].items()}
@@ -528,7 +530,7 @@ def model_parallel(config):
 
     # observation 3: dive activity
     with interpretation(eager):
-        omega_zi = dist.Categorical(probs=params["zi_omega"]["zi_param"](y_curr=y).exp())(
+        omega_zi = dist.Categorical(probs=params["zi_omega"]["zi_param"](y_curr=y))(
             value=Tensor(zi_masks["omega"].data, zi_masks["omega"].inputs, 2))
         omega_dist = plate_g + plate_i + omega_zi + dist.Beta(
             **{k: v(y_curr=y) for k, v in params["omega"].items()}
