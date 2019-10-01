@@ -54,16 +54,16 @@ def sequential_loss_fn(model, guide):
 def parallel_loss_fn(model, guide):
     # XXX ignore guide for now
     factors = model()
-    t_term, factors = factors[0], factors[1:]
+    t_term, new_factors = factors[0], factors[1:]
     result = sequential_sum_product(ops.logaddexp, ops.add,
                                     t_term, "t", {"y": "y(t=1)"})
-    result = result.reduce(ops.logaddexp, "y(t=1)")
-    factors = [result] + factors
+    # result = result.reduce(ops.logaddexp, "y(t=1)")
+    new_factors = [result] + new_factors
 
     plates = frozenset(['g', 'i'])
-    eliminate = frozenset().union(*(f.inputs for f in factors))
+    eliminate = frozenset().union(*(f.inputs for f in new_factors))
     with interpretation(lazy):
-        loss = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
+        loss = sum_product(ops.logaddexp, ops.add, new_factors, eliminate, plates)
     loss = apply_optimizer(loss)
     assert not loss.inputs
     return -loss.data

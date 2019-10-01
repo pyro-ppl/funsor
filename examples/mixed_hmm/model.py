@@ -389,9 +389,11 @@ def model_sequential(config):
 
         # observation 1: step size
         with interpretation(eager):
-            step_dist = plate_g + plate_i + dist.Gamma(
+            step_zi = dist.Categorical(probs=params["zi_step"]["zi_param"](y_curr=y).exp())(
+                value=Tensor(zi_masks["step"].data, zi_masks["step"].inputs, 2)(t=t))
+            step_dist = plate_g + plate_i + step_zi + dist.Gamma(
                 **{k: v(y_curr=y) for k, v in params["step"].items()}
-            )(value=observations["step"](t=t))
+            )(value=observations["step"](t=t)) * zi_masks["step"](t=t)
 
         log_prob.append(step_dist)
 
@@ -405,9 +407,11 @@ def model_sequential(config):
 
         # observation 3: dive activity
         with interpretation(eager):
-            omega_dist = plate_g + plate_i + dist.Beta(
+            omega_zi = dist.Categorical(probs=params["zi_omega"]["zi_param"](y_curr=y).exp())(
+                value=Tensor(zi_masks["omega"].data, zi_masks["omega"].inputs, 2)(t=t))
+            omega_dist = plate_g + plate_i + omega_zi + dist.Beta(
                 **{k: v(y_curr=y) for k, v in params["omega"].items()}
-            )(value=observations["omega"](t=t))
+            )(value=observations["omega"](t=t)) * zi_masks["omega"](t=t)
 
         log_prob.append(omega_dist)
 
@@ -510,7 +514,7 @@ def model_parallel(config):
 
     # observation 1: step size
     with interpretation(eager):
-        step_zi = dist.Categorical(probs=params["zi_step"]["zi_param"].exp())(
+        step_zi = dist.Categorical(probs=params["zi_step"]["zi_param"](y_curr=y).exp())(
             value=Tensor(zi_masks["step"].data, zi_masks["step"].inputs, 2))
         step_dist = plate_g + plate_i + step_zi + dist.Gamma(
             **{k: v(y_curr=y) for k, v in params["step"].items()}
@@ -524,7 +528,7 @@ def model_parallel(config):
 
     # observation 3: dive activity
     with interpretation(eager):
-        omega_zi = dist.Categorical(probs=params["zi_omega"]["zi_param"].exp())(
+        omega_zi = dist.Categorical(probs=params["zi_omega"]["zi_param"](y_curr=y).exp())(
             value=Tensor(zi_masks["omega"].data, zi_masks["omega"].inputs, 2))
         omega_dist = plate_g + plate_i + omega_zi + dist.Beta(
             **{k: v(y_curr=y) for k, v in params["omega"].items()}
