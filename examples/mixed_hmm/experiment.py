@@ -12,11 +12,11 @@ import pyro.poutine as poutine
 import funsor.ops as ops
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
-from funsor.sum_product import sequential_sum_product, sum_product
-from funsor.terms import lazy
+from funsor.sum_product import MarkovProduct, naive_sequential_sum_product, sum_product
+from funsor.terms import lazy, to_funsor
 
 
-from model import model_sequential, model_parallel, guide_sequential
+from model import Model, Guide
 from seal_data import prepare_seal
 
 
@@ -39,24 +39,15 @@ def aic_num_parameters(model, guide=None):
     return sum(_size(node["value"]) for node in param_capture.trace.nodes.values())
 
 
-def sequential_loss_fn(model, guide):
-    # XXX ignore guide for now
-    with interpretation(lazy):
-        factors = model()
-        plates = frozenset(['g', 'i'])
-        eliminate = frozenset().union(*(f.inputs for f in factors))
-        loss = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
-    loss = apply_optimizer(loss)
-    assert not loss.inputs
-    return -loss.data
-
-
-def parallel_loss_fn(model, guide):
-    # XXX ignore guide for now
+def parallel_loss_fn(model, guide, parallel=True):
+    # We're doing exact inference, so we don't use the guide here.
     factors = model()
     t_term, new_factors = factors[0], factors[1:]
-    result = sequential_sum_product(ops.logaddexp, ops.add,
-                                    t_term, "t", {"y": "y(t=1)"})
+    t = to_funsor("t", t_term.inputs["t"])
+    if parallel:
+        result = MarkovProduct(ops.logaddexp, ops.add, t_term, t, {"y": "y(t=1)"})
+    else:
+        result = naive_sequential_sum_product(ops.logaddexp, ops.add, t_term, t, {"y": "y(t=1)"})
     new_factors = [result] + new_factors
 
     plates = frozenset(['g', 'i'])
@@ -88,25 +79,20 @@ def run_expt(args):
     filename = os.path.join(data_dir, "prep_seal_data.csv")
     config = prepare_seal(filename, random_effects)
     if args["smoke"]:
-        timesteps = 1
+        timesteps = 2
         config["sizes"]["timesteps"] = 3
 
     if args["length"] > 0:
         config["sizes"]["timesteps"] = args["length"]
 
-    if not args["parallel"]:
-        model = functools.partial(model_sequential, config)  # for JITing
-        guide = functools.partial(guide_sequential, config)
-        loss_fn = sequential_loss_fn
-    else:
-        model = functools.partial(model_parallel, config)  # for JITing
-        guide = functools.partial(guide_sequential, config)
-        loss_fn = parallel_loss_fn
+    model = Model(config)
+    guide = Guide(config)
+    loss_fn = parallel_loss_fn
 
     if args["jit"]:
-        loss_fn = torch.jit.trace(lambda: loss_fn(model, guide), ())
+        loss_fn = torch.jit.trace(lambda: loss_fn(model, guide, args["parallel"]), ())
     else:
-        loss_fn = functools.partial(loss_fn, model, guide)
+        loss_fn = functools.partial(loss_fn, model, guide, args["parallel"])
 
     # count the number of parameters once
     num_parameters = aic_num_parameters(model, guide)
