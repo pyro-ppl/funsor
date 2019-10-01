@@ -7,10 +7,8 @@ from torch.distributions import constraints
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import bint
-from funsor.interpreter import interpretation, reinterpret
-from funsor.optimizer import apply_optimizer
 from funsor.pyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
-from funsor.terms import Funsor, lazy
+from funsor.terms import Funsor
 
 
 class FunsorDistribution(dist.TorchDistribution):
@@ -52,9 +50,7 @@ class FunsorDistribution(dist.TorchDistribution):
             self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
         value = tensor_to_funsor(value, event_output=self.event_dim, dtype=self.dtype)
-        with interpretation(lazy):
-            log_prob = apply_optimizer(self.funsor_dist(value=value))
-        log_prob = reinterpret(log_prob)
+        log_prob = self.funsor_dist(value=value)
         log_prob = funsor_to_tensor(log_prob, ndims=ndims)
         return log_prob
 
@@ -88,4 +84,10 @@ class FunsorDistribution(dist.TorchDistribution):
         return value
 
     def expand(self, batch_shape, _instance=None):
-        raise NotImplementedError("TODO")
+        new = self._get_checked_instance(type(self), _instance)
+        batch_shape = torch.Size(batch_shape)
+        funsor_dist = self.funsor_dist + tensor_to_funsor(torch.zeros(batch_shape))
+        super(type(self), new).__init__(
+            funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
+        new.validate_args = self.__dict__.get('_validate_args')
+        return new

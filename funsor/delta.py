@@ -2,7 +2,6 @@ from collections import OrderedDict
 
 import funsor.ops as ops
 from funsor.domains import Domain, reals
-from funsor.integrate import Integrate
 from funsor.interpreter import debug_logged
 from funsor.ops import AddOp, SubOp, TransformOp
 from funsor.registry import KeyedRegistry
@@ -14,7 +13,6 @@ from funsor.terms import (
     Independent,
     Lambda,
     Number,
-    Subs,
     Unary,
     Variable,
     eager,
@@ -213,18 +211,6 @@ def eager_independent_delta(delta, reals_var, bint_var, diag_var):
             return Delta(new_terms)
 
     return None
-
-
-@eager.register(Integrate, Delta, Funsor, frozenset)
-def eager_integrate(delta, integrand, reduced_vars):
-    if not reduced_vars & delta.fresh:
-        return None
-    subs = tuple((name, point) for name, (point, log_density) in delta.terms
-                 if name in reduced_vars)
-    new_integrand = Subs(integrand, subs)
-    new_log_measure = Subs(delta, subs)
-    result = Integrate(new_log_measure, new_integrand, reduced_vars - delta.fresh)
-    return result
 
 
 __all__ = [

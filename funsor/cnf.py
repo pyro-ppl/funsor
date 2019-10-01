@@ -17,7 +17,12 @@ from funsor.util import quote
 
 class Contraction(Funsor):
     """
-    Declarative representation of a finitary sum-product operation
+    Declarative representation of a finitary sum-product operation.
+
+    After normalization via the :func:`~funsor.terms.normalize` interpretation
+    contractions will canonically order their terms by type::
+
+        Delta, Number, Tensor, Gaussian
     """
     def __init__(self, red_op, bin_op, reduced_vars, terms):
         terms = (terms,) if isinstance(terms, Funsor) else terms
@@ -70,9 +75,46 @@ class Contraction(Funsor):
         return True
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        if self.red_op in (ops.logaddexp, nullop) and self.bin_op in (ops.logaddexp, ops.add, nullop):
-            new_terms = tuple(v.unscaled_sample(sampled_vars.intersection(v.inputs), sample_inputs) for v in self.terms)
-            return Contraction(self.red_op, self.bin_op, self.reduced_vars, *new_terms)
+        sampled_vars = sampled_vars.intersection(self.inputs)
+        if not sampled_vars:
+            return self
+
+        if self.red_op in (ops.logaddexp, nullop):
+            if self.bin_op in (ops.nullop, ops.logaddexp):
+                # Design choice: we sample over logaddexp reductions, but leave logaddexp
+                # binary choices symbolic.
+                terms = [
+                    term.unscaled_sample(sampled_vars.intersection(term.inputs), sample_inputs)
+                    for term in self.terms]
+                return Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
+
+            if self.bin_op is ops.add:
+                # Sample variables greedily in order of the terms in which they appear.
+                for term in self.terms:
+                    greedy_vars = sampled_vars.intersection(term.inputs)
+                    if greedy_vars:
+                        break
+                greedy_terms, terms = [], []
+                for term in self.terms:
+                    (terms if greedy_vars.isdisjoint(term.inputs) else greedy_terms).append(term)
+                if len(greedy_terms) == 1:
+                    term = greedy_terms[0]
+                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs))
+                    result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
+                elif (len(greedy_terms) == 2 and
+                        isinstance(greedy_terms[0], Tensor) and
+                        isinstance(greedy_terms[1], Gaussian)):
+                    discrete, gaussian = greedy_terms
+                    term = discrete + gaussian.log_normalizer
+                    terms.append(gaussian)
+                    terms.append(-gaussian.log_normalizer)
+                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs))
+                    result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
+                else:
+                    raise NotImplementedError('Unhandled case: {}'.format(
+                        ', '.join(str(type(t)) for t in greedy_terms)))
+                return result.unscaled_sample(sampled_vars - greedy_vars, sample_inputs)
+
         raise TypeError("Cannot sample through ops ({}, {})".format(self.red_op, self.bin_op))
 
     def align(self, names):
@@ -178,7 +220,8 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 # Normalizing Contractions
 ##########################################
 
-GROUND_TERMS = (Delta, Gaussian, Number, Tensor)
+ORDERING = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
+GROUND_TERMS = tuple(ORDERING)
 GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
                               Tuple[Union[Tensor, Number], Gaussian]]
 
@@ -186,10 +229,9 @@ GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozens
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
 def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_vars, *terms):
     # when bin_op is commutative, put terms into a canonical order for pattern matching
-    ordering = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
     new_terms = tuple(
         v for i, v in sorted(enumerate(terms),
-                             key=lambda t: (ordering.get(type(t[1]).__origin__, -1), t[0]))
+                             key=lambda t: (ORDERING.get(type(t[1]).__origin__, -1), t[0]))
     )
     if any(v is not vv for v, vv in zip(terms, new_terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
@@ -283,6 +325,8 @@ def unary_neg_variable(op, arg):
 
 @normalize.register(Subs, Funsor, tuple)
 def do_fresh_subs(arg, subs):
+    if not subs:
+        return arg
     if all(name in arg.fresh for name, sub in subs):
         return arg.eager_subs(subs)
     return None
@@ -300,7 +344,8 @@ def distribute_subs_contraction(arg, subs):
 @normalize.register(Subs, Subs, tuple)
 def normalize_fuse_subs(arg, subs):
     # a(b)(c) -> a(b(c), c)
-    new_subs = subs + tuple((k, Subs(v, subs)) for k, v in arg.subs)
+    arg_subs = tuple(arg.subs.items()) if isinstance(arg.subs, OrderedDict) else arg.subs
+    new_subs = subs + tuple((k, Subs(v, subs)) for k, v in arg_subs)
     return Subs(arg.arg, new_subs)
 
 
@@ -326,17 +371,3 @@ def unary_log_exp(op, arg):
 @normalize.register(Unary, ops.NegOp, Contraction[NullOp, ops.AddOp, frozenset, tuple])
 def unary_contract(op, arg):
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
-
-
-@normalize.register(Unary, ops.LogOp,
-                    Contraction[Union[ops.AddOp, NullOp], Union[ops.MulOp, NullOp], frozenset, tuple])
-def unary_transform_log(op, arg):
-    new_terms = tuple(v.log() for v in arg.terms)
-    return Contraction(ops.logaddexp, ops.add, arg.reduced_vars, *new_terms)
-
-
-@normalize.register(Unary, ops.ExpOp,
-                    Contraction[Union[ops.LogAddExpOp, NullOp], Union[ops.AddOp, NullOp], frozenset, tuple])
-def unary_transform_exp(op, arg):
-    new_terms = tuple(v.exp() for v in arg.terms)
-    return Contraction(ops.add, ops.mul, arg.reduced_vars, *new_terms)

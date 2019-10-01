@@ -8,7 +8,6 @@ from pyro.distributions.util import broadcast_shape
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.integrate import Integrate
 from funsor.ops import AddOp, NegOp, SubOp
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
 from funsor.torch import Tensor, align_tensor, align_tensors, materialize
@@ -37,6 +36,16 @@ def _trace_mm(x, y):
     assert x.dim() >= 2
     assert y.dim() >= 2
     return (x * y).sum([-1, -2])
+
+
+def cholesky(u):
+    """
+    Like :func:`torch.cholesky` but uses sqrt for scalar matrices.
+    Works around https://github.com/pytorch/pytorch/issues/24403 often.
+    """
+    if u.size(-1) == 1:
+        return u.sqrt()
+    return u.cholesky()
 
 
 def cholesky_solve(b, u):
@@ -301,7 +310,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     @lazy_property
     def _precision_chol(self):
-        return self.precision.cholesky()
+        return cholesky(self.precision)
 
     @lazy_property
     def log_normalizer(self):
@@ -462,7 +471,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 prec_aa = self.precision[..., a.unsqueeze(-1), a]
                 prec_ba = self.precision[..., b.unsqueeze(-1), a]
                 prec_bb = self.precision[..., b.unsqueeze(-1), b]
-                prec_b = prec_bb.cholesky()
+                prec_b = cholesky(prec_bb)
                 prec_a = prec_ba.triangular_solve(prec_b, upper=False).solution
                 prec_at = prec_a.transpose(-1, -2)
                 precision = prec_aa - prec_at.matmul(prec_a)
@@ -498,11 +507,13 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return None  # defer to default implementation
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
-        # Sample only the real variables.
-        sampled_vars = frozenset(k for k, v in self.inputs.items()
-                                 if k in sampled_vars if v.dtype == 'real')
+        sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
+        if any(self.inputs[k].dtype != 'real' for k in sampled_vars):
+            raise ValueError('Sampling from non-normalized Gaussian mixtures is intentionally '
+                             'not implemented. You probably want to normalize. To work around, '
+                             'add a zero Tensor with given inputs.')
 
         # Partition inputs into sample_inputs + int_inputs + real_inputs.
         sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
@@ -563,50 +574,6 @@ def eager_neg(op, arg):
     info_vec = -arg.info_vec
     precision = -arg.precision
     return Gaussian(info_vec, precision, arg.inputs)
-
-
-@eager.register(Integrate, Gaussian, Variable, frozenset)
-def eager_integrate(log_measure, integrand, reduced_vars):
-    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
-    if real_vars == frozenset([integrand.name]):
-        loc = cholesky_solve(log_measure.info_vec.unsqueeze(-1), log_measure._precision_chol).squeeze(-1)
-        data = loc * log_measure.log_normalizer.data.exp().unsqueeze(-1)
-        data = data.reshape(loc.shape[:-1] + integrand.output.shape)
-        inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
-        result = Tensor(data, inputs)
-        return result.reduce(ops.add, reduced_vars - real_vars)
-    return None  # defer to default implementation
-
-
-@eager.register(Integrate, Gaussian, Gaussian, frozenset)
-def eager_integrate(log_measure, integrand, reduced_vars):
-    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
-    if real_vars:
-
-        lhs_reals = frozenset(k for k, d in log_measure.inputs.items() if d.dtype == 'real')
-        rhs_reals = frozenset(k for k, d in integrand.inputs.items() if d.dtype == 'real')
-        if lhs_reals == real_vars and rhs_reals <= real_vars:
-            inputs = OrderedDict((k, d) for t in (log_measure, integrand)
-                                 for k, d in t.inputs.items())
-            lhs_info_vec, lhs_precision = align_gaussian(inputs, log_measure)
-            rhs_info_vec, rhs_precision = align_gaussian(inputs, integrand)
-            lhs = Gaussian(lhs_info_vec, lhs_precision, inputs)
-
-            # Compute the expectation of a non-normalized quadratic form.
-            # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
-            # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
-            norm = lhs.log_normalizer.data.exp()
-            lhs_cov = cholesky_inverse(lhs._precision_chol)
-            lhs_loc = cholesky_solve(lhs.info_vec.unsqueeze(-1), lhs._precision_chol).squeeze(-1)
-            vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
-            data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
-            inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)
-            result = Tensor(data, inputs)
-            return result.reduce(ops.add, reduced_vars - real_vars)
-
-        raise NotImplementedError('TODO implement partial integration')
-
-    return None  # defer to default implementation
 
 
 __all__ = [
