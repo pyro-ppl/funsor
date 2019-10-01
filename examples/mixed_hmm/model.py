@@ -537,8 +537,8 @@ def model_parallel(config):
     with interpretation(eager):
         # construct the term for parallel scan reduction
         hmm_factor = y_dist + step_dist + angle_dist + omega_dist
-        hmm_factor = hmm_factor * raggedness_masks["individual"]
-        hmm_factor = hmm_factor * raggedness_masks["timestep"]
+        # hmm_factor = hmm_factor * raggedness_masks["individual"]
+        # hmm_factor = hmm_factor * raggedness_masks["timestep"]
         log_prob.insert(0, hmm_factor)
 
     return log_prob

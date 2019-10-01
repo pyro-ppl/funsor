@@ -57,7 +57,6 @@ def parallel_loss_fn(model, guide):
     t_term, new_factors = factors[0], factors[1:]
     result = sequential_sum_product(ops.logaddexp, ops.add,
                                     t_term, "t", {"y": "y(t=1)"})
-    # result = result.reduce(ops.logaddexp, "y(t=1)")
     new_factors = [result] + new_factors
 
     plates = frozenset(['g', 'i'])
@@ -78,6 +77,7 @@ def run_expt(args):
     optim = args["optim"]
     lr = args["learnrate"]
     timesteps = args["timesteps"]
+    length = args["length"]
     schedule = [] if not args["schedule"] else [int(i) for i in args["schedule"].split(",")]
     random_effects = {"group": args["group"], "individual": args["individual"]}
 
@@ -91,6 +91,9 @@ def run_expt(args):
     if args["smoke"]:
         timesteps = 1
         config["sizes"]["timesteps"] = 3
+
+    if args["length"] > 0:
+        config["sizes"]["timesteps"] = args["length"]
 
     if not args["parallel"]:
         model = functools.partial(model_sequential, config)  # for JITing
@@ -177,6 +180,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--timesteps", default=1000, type=int)
     parser.add_argument("-r", "--resultsdir", default="./results", type=str)
     parser.add_argument("-s", "--seed", default=101, type=int)
+    parser.add_argument("-l", "--length", default=-1, type=int)
     parser.add_argument("--jit", action="store_true")
     parser.add_argument("--cuda", action="store_true")
     parser.add_argument("--parallel", action="store_true")
