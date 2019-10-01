@@ -455,7 +455,7 @@ def model_parallel(config):
 
         log_prob.append(e_g_dist)
 
-        eps_g = params["eps_g"]["theta"](e_g=e_g)
+        eps_g = (plate_g + params["eps_g"]["theta"])(e_g=e_g)
 
     elif config["group"]["random"] == "continuous":
         eps_g = Variable("eps_g", reals(N_state))
