@@ -252,7 +252,7 @@ def initialize_raggedness_masks(config):
             while len(data.shape) < len(batch_inputs):
                 data = data.unsqueeze(-1)
             data = data.expand(tuple(v.dtype for v in batch_inputs.values()))
-        data = 1. - data.to(config["observations"]["step"].dtype)
+        data = data.to(config["observations"]["step"].dtype)
         raggedness_masks[name] = Tensor(data[..., :config["sizes"]["timesteps"]],
                                         batch_inputs)
 
@@ -539,8 +539,8 @@ def model_parallel(config):
     with interpretation(eager):
         # construct the term for parallel scan reduction
         hmm_factor = y_dist + step_dist + angle_dist + omega_dist
-        # hmm_factor = hmm_factor * raggedness_masks["individual"]
-        # hmm_factor = hmm_factor * raggedness_masks["timestep"]
+        hmm_factor = hmm_factor * raggedness_masks["individual"]
+        hmm_factor = hmm_factor * raggedness_masks["timestep"]
         log_prob.insert(0, hmm_factor)
 
     return log_prob
