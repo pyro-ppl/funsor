@@ -20,13 +20,14 @@ from funsor.torch import Tensor, Variable
 from funsor.gaussian import Gaussian
 from funsor.sum_product import sequential_sum_product
 
-import matplotlib.pyplot as plt
-
 
 def generate_data(num_frames, num_sensors):
     # simulate biased sensors
     sensors = []
     full_observations = []
+    for _ in range(num_sensors):
+        bias = 0.5 * torch.randn(2)
+        sensors.append(bias)
 
     # simulate all sensor observations
     z = 10 * torch.rand(2)  # initial state
@@ -39,6 +40,7 @@ def generate_data(num_frames, num_sensors):
     full_observations = torch.stack(full_observations)
     assert full_observations.shape == (num_frames, num_sensors, 2)
     full_observations = Tensor(full_observations)["time"]
+    return full_observations, sensors
 
 
 class HMM(nn.Module):
@@ -48,6 +50,7 @@ class HMM(nn.Module):
         self.state_dim = state_dim
 
         # learnable params
+        self.bias_locs = nn.Parameter(torch.zeros(2))
         self.bias_scales = nn.Parameter(torch.ones(2))
         self.transition_param = nn.Parameter(torch.ones(state_dim))
 
@@ -68,7 +71,8 @@ class HMM(nn.Module):
         bias = Variable('bias', reals(num_sensors * 2))
         bias_dist = dist_to_funsor(
             dist.MultivariateNormal(
-                torch.zeros(num_sensors * 2),
+#                 torch.zeros(num_sensors * 2),
+                self.bias_locs.expand(num_sensors, 2).reshape(-1).diag_embed(),
                 self.bias_scales.expand(num_sensors, 2).reshape(-1).diag_embed()
             )
         )(value=bias)
@@ -88,10 +92,10 @@ class HMM(nn.Module):
             scale_tril=Tensor(trans_noise),
             value=curr - prev @ Tensor(transition_matrix))
 
-        # observation
         # free variables that have distributions over them
         state = Variable('state', reals(state_dim))
         obs = Variable("obs", reals(10))
+        # observation
         observation_matrix = Tensor(torch.randn(state_dim, 10))
         value = value = state @ observation_matrix - obs  # this takes us from state to biased obs
         if add_bias:
@@ -120,34 +124,48 @@ class HMM(nn.Module):
         assert isinstance(logp, Tensor) and logp.data.dim() == 0, logp.pretty()
         return logp.data
 
+def plot():
+    import matplotlib.pyplot as plt
+    pass
+
 
 def main(args):
-    params = []
+    print(f'running with bias={not args.no_bias}')
+    torch.manual_seed(1)
     losses = []
     # params.append(transition_matrix)
     model = HMM(args.num_sensors, args.num_sensors*2)
-    optim = Adam(model.parameters(), lr=0.02)
-    data = generate_data(args.frames, args.num_sensors)
+    optim = Adam(model.parameters(), lr=0.1)
+    scheduler = torch.optim.lr_scheduler.StepLR(optim, 100, gamma=0.2)
+    data, biases = generate_data(args.frames, args.num_sensors)
     for i in range(args.num_epochs):
         optim.zero_grad()
-        log_prob = model(data, add_bias=args.bias)
+        log_prob = model(data, add_bias=not args.no_bias)
         loss = -log_prob
         loss.backward()
         losses.append(loss.item())
         if i % 10 == 0:
             print(loss.item())
-#             params.append(model.bias_scales.clone().detach().numpy())
         optim.step()
+        scheduler.step()
+    md = {
+            "bias_locs": model.bias_locs,
+            "bias_scales": model.bias_scales,
+            "losses": losses,
+            "data": data.data,
+            "biases": biases
+         }
     print(f'saving output to: {args.save}')
-    torch.save(losses, args.save)
+    torch.save(md, args.save)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-n", "--num-epochs", default=300, type=int)
-    parser.add_argument("--bias", default=False, action="store_true")
+    parser.add_argument("--no-bias", default=False, action="store_true")
     parser.add_argument("--frames", default=200, type=int)
     parser.add_argument("--save", default="sensor.pkl", type=str)
     parser.add_argument("--num-sensors", default=5, type=int)
+    parser.add_argument("--plot", default=False, action="store_true")
     args = parser.parse_args()
     main(args)
