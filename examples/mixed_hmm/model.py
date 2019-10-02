@@ -7,8 +7,7 @@ import pyro
 
 import funsor.distributions as dist
 from funsor.domains import bint, reals
-from funsor.interpreter import interpretation
-from funsor.terms import Variable, eager, to_funsor
+from funsor.terms import Variable, to_funsor
 from funsor.torch import Tensor
 
 
@@ -67,6 +66,7 @@ class Guide(object):
 
     def __call__(self):
 
+        # calls pyro.param so that params are exposed and constraints applied
         # should not create any new torch.Tensors after __init__
         self.initialize_params()
 
@@ -79,16 +79,12 @@ class Guide(object):
         plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", bint(N_s))]))
 
         if self.config["group"]["random"] == "continuous":
-            with interpretation(eager):
-                eps_g_dist = plate_g + dist.Normal(**self.params["eps_g"])(value="eps_g")
-
+            eps_g_dist = plate_g + dist.Normal(**self.params["eps_g"])(value="eps_g")
             log_prob += eps_g_dist
 
         # individual-level random effects
         if self.config["individual"]["random"] == "continuous":
-            with interpretation(eager):
-                eps_i_dist = plate_g + plate_i + dist.Normal(**self.params["eps_i"])(value="eps_i")
-
+            eps_i_dist = plate_g + plate_i + dist.Normal(**self.params["eps_i"])(value="eps_i")
             log_prob += eps_i_dist
 
         return log_prob
@@ -306,6 +302,7 @@ class Model(object):
 
     def __call__(self):
 
+        # calls pyro.param so that params are exposed and constraints applied
         # should not create any new torch.Tensors after __init__
         self.initialize_params()
 
@@ -327,8 +324,7 @@ class Model(object):
         if self.config["group"]["random"] == "discrete":
             # group-level discrete effect
             e_g = Variable("e_g", bint(N_v))
-            with interpretation(eager):
-                e_g_dist = plate_g + dist.Categorical(**self.params["e_g"])(value=e_g)
+            e_g_dist = plate_g + dist.Categorical(**self.params["e_g"])(value=e_g)
 
             log_prob.append(e_g_dist)
 
@@ -336,8 +332,7 @@ class Model(object):
 
         elif self.config["group"]["random"] == "continuous":
             eps_g = Variable("eps_g", reals(N_state))
-            with interpretation(eager):
-                eps_g_dist = plate_g + dist.Normal(**self.params["eps_g"])(value=eps_g)
+            eps_g_dist = plate_g + dist.Normal(**self.params["eps_g"])(value=eps_g)
 
             log_prob.append(eps_g_dist)
         else:
@@ -350,10 +345,9 @@ class Model(object):
         if self.config["individual"]["random"] == "discrete":
             # individual-level discrete effect
             e_i = Variable("e_i", bint(N_v))
-            with interpretation(eager):
-                e_i_dist = plate_g + plate_i + dist.Categorical(
-                    **self.params["e_i"]
-                )(value=e_i) * self.raggedness_masks["individual"](t=0)
+            e_i_dist = plate_g + plate_i + dist.Categorical(
+                **self.params["e_i"]
+            )(value=e_i) * self.raggedness_masks["individual"](t=0)
 
             log_prob.append(e_i_dist)
 
@@ -361,16 +355,14 @@ class Model(object):
 
         elif self.config["individual"]["random"] == "continuous":
             eps_i = Variable("eps_i", reals(N_state))
-            with interpretation(eager):
-                eps_i_dist = plate_g + plate_i + dist.Normal(**self.params["eps_i"])(value=eps_i)
+            eps_i_dist = plate_g + plate_i + dist.Normal(**self.params["eps_i"])(value=eps_i)
 
             log_prob.append(eps_i_dist)
         else:
             eps_i = to_funsor(0.)
 
         # add group-level and individual-level random effects to gamma
-        with interpretation(eager):
-            gamma = gamma + eps_g + eps_i
+        gamma = gamma + eps_g + eps_i
 
         N_state = self.config["sizes"]["state"]
 
@@ -378,38 +370,33 @@ class Model(object):
         gamma_y = gamma(y_prev="y(t=1)")
 
         y = Variable("y", bint(N_state))
-        with interpretation(eager):
-            y_dist = plate_g + plate_i + dist.Categorical(
-                probs=gamma_y.exp() / gamma_y.exp().sum()
-            )(value=y)
+        y_dist = plate_g + plate_i + dist.Categorical(
+            probs=gamma_y.exp() / gamma_y.exp().sum()
+        )(value=y)
 
         # observation 1: step size
-        with interpretation(eager):
-            step_zi = dist.Categorical(probs=self.params["zi_step"]["zi_param"](y_curr=y))(
-                value=Tensor(self.zi_masks["step"].data, self.zi_masks["step"].inputs, 2))
-            step_dist = plate_g + plate_i + step_zi + dist.Gamma(
-                **{k: v(y_curr=y) for k, v in self.params["step"].items()}
-            )(value=self.observations["step"]) * self.zi_masks["step"]
+        step_zi = dist.Categorical(probs=self.params["zi_step"]["zi_param"](y_curr=y))(
+            value=Tensor(self.zi_masks["step"].data, self.zi_masks["step"].inputs, 2))
+        step_dist = plate_g + plate_i + step_zi + dist.Gamma(
+            **{k: v(y_curr=y) for k, v in self.params["step"].items()}
+        )(value=self.observations["step"]) * self.zi_masks["step"]
 
         # observation 2: step angle
-        with interpretation(eager):
-            angle_dist = plate_g + plate_i + dist.VonMises(
-                **{k: v(y_curr=y) for k, v in self.params["angle"].items()}
-            )(value=self.observations["angle"])
+        angle_dist = plate_g + plate_i + dist.VonMises(
+            **{k: v(y_curr=y) for k, v in self.params["angle"].items()}
+        )(value=self.observations["angle"])
 
         # observation 3: dive activity
-        with interpretation(eager):
-            omega_zi = dist.Categorical(probs=self.params["zi_omega"]["zi_param"](y_curr=y))(
-                value=Tensor(self.zi_masks["omega"].data, self.zi_masks["omega"].inputs, 2))
-            omega_dist = plate_g + plate_i + omega_zi + dist.Beta(
-                **{k: v(y_curr=y) for k, v in self.params["omega"].items()}
-            )(value=self.observations["omega"]) * self.zi_masks["omega"]
+        omega_zi = dist.Categorical(probs=self.params["zi_omega"]["zi_param"](y_curr=y))(
+            value=Tensor(self.zi_masks["omega"].data, self.zi_masks["omega"].inputs, 2))
+        omega_dist = plate_g + plate_i + omega_zi + dist.Beta(
+            **{k: v(y_curr=y) for k, v in self.params["omega"].items()}
+        )(value=self.observations["omega"]) * self.zi_masks["omega"]
 
-        with interpretation(eager):
-            # construct the term for parallel scan reduction
-            hmm_factor = y_dist + step_dist + angle_dist + omega_dist
-            hmm_factor = hmm_factor * self.raggedness_masks["individual"]
-            hmm_factor = hmm_factor * self.raggedness_masks["timestep"]
-            log_prob.insert(0, hmm_factor)
+        # finally, construct the term for parallel scan reduction
+        hmm_factor = y_dist + step_dist + angle_dist + omega_dist
+        hmm_factor = hmm_factor * self.raggedness_masks["individual"]
+        hmm_factor = hmm_factor * self.raggedness_masks["timestep"]
+        log_prob.insert(0, hmm_factor)
 
         return log_prob
