@@ -26,7 +26,7 @@ def generate_data(num_frames, num_sensors):
     sensors = []
     full_observations = []
     for _ in range(num_sensors):
-        bias = 0.5 * torch.randn(2)
+        bias = 5. * torch.randn(2)
         sensors.append(bias)
 
     # simulate all sensor observations
@@ -54,21 +54,25 @@ class HMM(nn.Module):
         self.bias_scales = nn.Parameter(torch.ones(2))
         self.transition_param = nn.Parameter(torch.ones(state_dim))
 
-        self.obs_noise = nn.Parameter(torch.eye(10, 10))
+        self.obs_noise = nn.Parameter(torch.eye(state_dim, self.num_sensors * 2))
 
         self.trans_noise = nn.Parameter(torch.ones(1))
 
     def forward(self, track, add_bias=True):
         num_sensors = self.num_sensors
+        obs_dim = num_sensors * 2
         state_dim = self.state_dim
 
         # reshape the data
         assert isinstance(track, Tensor)
-        data = Tensor(track.data.reshape(-1, self.num_sensors * 2),
+        data = Tensor(track.data.reshape(-1, obs_dim),
                       OrderedDict(time=bint(len(track.data))))
 
         # bias distribution
-        bias = Variable('bias', reals(num_sensors * 2))
+        bias = Variable('bias', reals(obs_dim))
+        assert not torch.isnan(self.bias_locs).any(), "bias locs was nan"
+        assert not torch.isnan(self.bias_scales).any(), "bias scales was nan"
+#         bias_scales = self.bias_scales.expand(num_sensors, 2).reshape(-1).diag_embed()
         bias_dist = dist_to_funsor(
             dist.MultivariateNormal(
 #                 torch.zeros(num_sensors * 2),
@@ -94,15 +98,15 @@ class HMM(nn.Module):
 
         # free variables that have distributions over them
         state = Variable('state', reals(state_dim))
-        obs = Variable("obs", reals(10))
+        obs = Variable("obs", reals(obs_dim))
         # observation
-        observation_matrix = Tensor(torch.randn(state_dim, 10))
+        observation_matrix = Tensor(torch.randn(state_dim, obs_dim))
         value = value = state @ observation_matrix - obs  # this takes us from state to biased obs
         if add_bias:
             value += bias
         self.observation_dist = f_dist.MultivariateNormal(
-            loc=Tensor(torch.zeros(10)),
-            scale_tril=Tensor(self.obs_noise + 0.1 * torch.randn(10, 10)),
+            loc=Tensor(torch.zeros(obs_dim)),
+            scale_tril=Tensor(self.obs_noise + 0.1 * torch.randn(obs_dim, obs_dim)),
             value=value
         )
 
@@ -131,39 +135,44 @@ def plot():
 
 def main(args):
     print(f'running with bias={not args.no_bias}')
-    torch.manual_seed(1)
+    torch.manual_seed(12)
     losses = []
     # params.append(transition_matrix)
     model = HMM(args.num_sensors, args.num_sensors*2)
     optim = Adam(model.parameters(), lr=0.1)
     scheduler = torch.optim.lr_scheduler.StepLR(optim, 100, gamma=0.2)
-    data, biases = generate_data(args.frames, args.num_sensors)
-    for i in range(args.num_epochs):
-        optim.zero_grad()
-        log_prob = model(data, add_bias=not args.no_bias)
-        loss = -log_prob
-        loss.backward()
-        losses.append(loss.item())
-        if i % 10 == 0:
-            print(loss.item())
-        optim.step()
-        scheduler.step()
-    md = {
-            "bias_locs": model.bias_locs,
-            "bias_scales": model.bias_scales,
-            "losses": losses,
-            "data": data.data,
-            "biases": biases
-         }
-    print(f'saving output to: {args.save}')
-    torch.save(md, args.save)
+    data, biases = generate_data(args.frames[-1], args.num_sensors)
+    for f in args.frames:
+        print(f'running data with {f} frames')
+        # must do this since funsor slicing not supported
+        truncated_data = Tensor(data.data[:f])['time']
+        for i in range(args.num_epochs):
+            optim.zero_grad()
+            log_prob = model(truncated_data, add_bias=not args.no_bias)
+            loss = -log_prob
+            loss.backward()
+            losses.append(loss.item())
+            if i % 10 == 0:
+                print(loss.item())
+            optim.step()
+            scheduler.step()
+        md = {
+                "bias_locs": model.bias_locs,
+                "bias_scales": model.bias_scales,
+                "losses": losses,
+                "data": data.data,
+                "biases": biases
+             }
+        print(f'saving output to: {f}_{args.save}')
+        torch.save(md, f'{f}_' + args.save)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-n", "--num-epochs", default=300, type=int)
     parser.add_argument("--no-bias", default=False, action="store_true")
-    parser.add_argument("--frames", default=200, type=int)
+    parser.add_argument("--frames", default="200", type=lambda s: [int(i) for i in s.split(',')],
+                        help="frames to run, comma delimited")
     parser.add_argument("--save", default="sensor.pkl", type=str)
     parser.add_argument("--num-sensors", default=5, type=int)
     parser.add_argument("--plot", default=False, action="store_true")
