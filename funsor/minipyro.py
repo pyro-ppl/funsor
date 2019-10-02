@@ -217,7 +217,17 @@ class log_joint(Messenger):
         elif msg["type"] == "barrier":
             if self.plates:
                 raise NotImplementedError('plates and barrier cannot yet be combined')
-            raise NotImplementedError('TODO')
+            name, context = msg["name"], msg["context"]
+            dist = sum(self.log_factors)  # TODO filter to connected component
+            dist = dist.reduce(funsor.ops.logaddexp, set(dist.inputs) - {msg["value"]})
+            dist -= dist.reduce(funsor.ops.logaddexp)
+            samples = dist.sample(name)  # TODO provide wider support
+            value = samples.delta.value  # FIXME
+            subs = {name: value}
+            self.log_factors = OrderedDict(
+                (k, v(**subs)) for k, v in self.log_factors.items())
+            for k, v in list(context.items()):
+                context[k] = funsor.terms.substitute(v, subs)
 
     def postprocess_message(self, msg):
         if msg["type"] == "sample":
