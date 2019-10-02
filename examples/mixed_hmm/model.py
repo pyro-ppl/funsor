@@ -6,8 +6,9 @@ from torch.distributions import constraints
 import pyro
 
 import funsor.distributions as dist
+import funsor.ops as ops
 from funsor.domains import bint, reals
-from funsor.terms import Variable, to_funsor
+from funsor.terms import Stack, Variable, to_funsor
 from funsor.torch import Tensor
 
 
@@ -95,7 +96,6 @@ class Model(object):
     def __init__(self, config):
         self.config = config
         self.params = self.initialize_params()
-        self.zi_masks = self.initialize_zi_masks()
         self.raggedness_masks = self.initialize_raggedness_masks()
         self.observations = self.initialize_observations()
 
@@ -257,25 +257,6 @@ class Model(object):
         self.observations = observations
         return self.observations
 
-    def initialize_zi_masks(self):
-        """
-        Convert raw zero-inflation masks into funsor.torch.Tensors
-        """
-        batch_inputs = OrderedDict([
-            ("i", bint(self.config["sizes"]["individual"])),
-            ("g", bint(self.config["sizes"]["group"])),
-            ("t", bint(self.config["sizes"]["timesteps"])),
-        ])
-
-        zi_masks = {}
-        for name, data in self.config["observations"].items():
-            mask = (data[..., :self.config["sizes"]["timesteps"]] == self.config["MISSING"]).to(
-                data.dtype)
-            zi_masks[name] = Tensor(1. - mask, batch_inputs)  # , bint(2))
-
-        self.zi_masks = zi_masks
-        return self.zi_masks
-
     def initialize_raggedness_masks(self):
         """
         Convert raw raggedness tensors into funsor.torch.Tensors
@@ -375,11 +356,17 @@ class Model(object):
         )(value=y)
 
         # observation 1: step size
-        step_zi = dist.Categorical(probs=self.params["zi_step"]["zi_param"](y_curr=y))(
-            value=Tensor(self.zi_masks["step"].data, self.zi_masks["step"].inputs, 2))
-        step_dist = plate_g + plate_i + step_zi + dist.Gamma(
+        step_dist = plate_g + plate_i + dist.Gamma(
             **{k: v(y_curr=y) for k, v in self.params["step"].items()}
-        )(value=self.observations["step"]) * self.zi_masks["step"]
+        )(value=self.observations["step"])
+
+        # step size zero-inflation
+        if self.config["zeroinflation"]:
+            step_zi = dist.Categorical(probs=self.params["zi_step"]["zi_param"](y_curr=y))(
+                value="zi_step")
+            step_zi_dist = plate_g + plate_i + dist.Delta(self.config["MISSING"])(
+                value=self.observations["step"])
+            step_dist = (step_zi + Stack("zi_step", (step_dist, step_zi_dist))).reduce(ops.logaddexp, "zi_step")
 
         # observation 2: step angle
         angle_dist = plate_g + plate_i + dist.VonMises(
@@ -387,11 +374,17 @@ class Model(object):
         )(value=self.observations["angle"])
 
         # observation 3: dive activity
-        omega_zi = dist.Categorical(probs=self.params["zi_omega"]["zi_param"](y_curr=y))(
-            value=Tensor(self.zi_masks["omega"].data, self.zi_masks["omega"].inputs, 2))
-        omega_dist = plate_g + plate_i + omega_zi + dist.Beta(
+        omega_dist = plate_g + plate_i + dist.Beta(
             **{k: v(y_curr=y) for k, v in self.params["omega"].items()}
-        )(value=self.observations["omega"]) * self.zi_masks["omega"]
+        )(value=self.observations["omega"])
+
+        # dive activity zero-inflation
+        if self.config["zeroinflation"]:
+            omega_zi = dist.Categorical(probs=self.params["zi_omega"]["zi_param"](y_curr=y))(
+                value="zi_omega")
+            omega_zi_dist = plate_g + plate_i + dist.Delta(self.config["MISSING"])(
+                value=self.observations["omega"])
+            omega_dist = (omega_zi + Stack("zi_omega", (omega_dist, omega_zi_dist))).reduce(ops.logaddexp, "zi_omega")
 
         # finally, construct the term for parallel scan reduction
         hmm_factor = y_dist + step_dist + angle_dist + omega_dist

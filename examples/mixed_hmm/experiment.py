@@ -85,6 +85,8 @@ def run_expt(args):
     if args["length"] > 0:
         config["sizes"]["timesteps"] = args["length"]
 
+    config["zeroinflation"] = args["zeroinflation"]
+
     model = Model(config)
     guide = Guide(config)
     loss_fn = parallel_loss_fn
@@ -166,6 +168,7 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--resultsdir", default="./results", type=str)
     parser.add_argument("-s", "--seed", default=101, type=int)
     parser.add_argument("-l", "--length", default=-1, type=int)
+    parser.add_argument("-zi", "--zeroinflation", action="store_true")
     parser.add_argument("--jit", action="store_true")
     parser.add_argument("--cuda", action="store_true")
     parser.add_argument("--parallel", action="store_true")
