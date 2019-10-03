@@ -17,7 +17,7 @@ from funsor.terms import lazy, to_funsor
 
 
 from model import Model, Guide
-from seal_data import prepare_seal
+from seal_data import prepare_seal, prepare_fake
 
 
 def aic_num_parameters(model, guide=None):
@@ -61,29 +61,37 @@ def parallel_loss_fn(model, guide, parallel=True):
 
 def run_expt(args):
 
-    data_dir = args["folder"]
-    dataset = args["dataset"]
-    assert dataset == "seal", "shark not working"
-    seed = args["seed"]
     optim = args["optim"]
     lr = args["learnrate"]
-    timesteps = args["timesteps"]
     schedule = [] if not args["schedule"] else [int(i) for i in args["schedule"].split(",")]
     random_effects = {"group": args["group"], "individual": args["individual"]}
 
     pyro.enable_validation(args["validation"])
-    pyro.set_rng_seed(seed)  # reproducible random effect parameter init
+    pyro.set_rng_seed(args["seed"])  # reproducible random effect parameter init
     if args["cuda"]:
         torch.set_default_tensor_type(torch.cuda.FloatTensor)
 
-    filename = os.path.join(data_dir, "prep_seal_data.csv")
-    config = prepare_seal(filename, random_effects)
+    if args["dataset"] == "seal":
+        filename = os.path.join(args["folder"], "prep_seal_data.csv")
+        config = prepare_seal(filename, random_effects)
+    elif args["dataset"] == "fake":
+        fake_sizes = {
+            "state": args["size_state"],
+            "random": args["size_random"],
+            "group": args["size_group"],
+            "individual": args["size_individual"],
+            "timesteps": args["size_timesteps"],
+        }
+        config = prepare_fake(fake_sizes, random_effects)
+    else:
+        raise ValueError("Dataset {} not yet included".format(args["dataset"]))
+
     if args["smoke"]:
-        timesteps = 2
+        args["timesteps"] = 2
         config["sizes"]["timesteps"] = 3
 
-    if args["length"] > 0:
-        config["sizes"]["timesteps"] = args["length"]
+    if args["truncate"] > 0:
+        config["sizes"]["timesteps"] = args["truncate"]
 
     config["zeroinflation"] = args["zeroinflation"]
 
@@ -122,7 +130,7 @@ def run_expt(args):
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
         schedule_step_loss = True
 
-    for t in range(timesteps):
+    for t in range(args["timesteps"]):
         def closure():
             optimizer.zero_grad()
             loss = loss_fn()
@@ -148,7 +156,7 @@ def run_expt(args):
     if args["resultsdir"] is not None and os.path.exists(args["resultsdir"]):
         re_str = "g" + ("n" if args["group"] is None else "d" if args["group"] == "discrete" else "c")
         re_str += "i" + ("n" if args["individual"] is None else "d" if args["individual"] == "discrete" else "c")
-        results_filename = "expt_{}_{}_{}.json".format(dataset, re_str, str(uuid.uuid4().hex)[0:5])
+        results_filename = "expt_{}_{}_{}.json".format(args["dataset"], re_str, str(uuid.uuid4().hex)[0:5])
         with open(os.path.join(args["resultsdir"], results_filename), "w") as f:
             json.dump(results, f)
 
@@ -166,15 +174,22 @@ if __name__ == "__main__":
     parser.add_argument("-lr", "--learnrate", default=0.05, type=float)
     parser.add_argument("-t", "--timesteps", default=1000, type=int)
     parser.add_argument("-r", "--resultsdir", default="./results", type=str)
-    parser.add_argument("-s", "--seed", default=101, type=int)
-    parser.add_argument("-l", "--length", default=-1, type=int)
     parser.add_argument("-zi", "--zeroinflation", action="store_true")
+    parser.add_argument("--seed", default=101, type=int)
+    parser.add_argument("--truncate", default=-1, type=int)
     parser.add_argument("--jit", action="store_true")
     parser.add_argument("--cuda", action="store_true")
     parser.add_argument("--parallel", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--schedule", default="", type=str)
     parser.add_argument('--validation', action='store_true')
+
+    # sizes for generating fake data
+    parser.add_argument("-ss", "--size-state", default=3, type=int)
+    parser.add_argument("-sr", "--size-random", default=4, type=int)
+    parser.add_argument("-sg", "--size-group", default=2, type=int)
+    parser.add_argument("-si", "--size-individual", default=20, type=int)
+    parser.add_argument("-st", "--size-timesteps", default=1800, type=int)
     args = parser.parse_args()
 
     if args.group == "none":

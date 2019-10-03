@@ -67,3 +67,45 @@ def prepare_seal(filename, random_effects):
     }
 
     return config
+
+
+def prepare_fake(sizes, random_effects):
+    """
+    Generate fake datasets of varying size. Used for evaluating computational performance.
+    """
+    obs_keys = ["step", "angle", "omega"]
+    # data format for z1, z2:
+    # single tensor with shape (individual, group, time, coords)
+    observations = torch.randn((
+        sizes["individual"], sizes["group"], sizes["timesteps"], len(obs_keys))).abs()
+    observations[torch.isnan(observations)] = float("-inf")
+    observations[observations >= 1.] = 0.5
+
+    # make masks
+    # mask_i should mask out individuals, it applies at all timesteps
+    mask_i = (observations > float("-inf")).any(dim=-1).any(dim=-1)  # time nonempty
+
+    # mask_t handles padding for time series of different length
+    mask_t = (observations > float("-inf")).all(dim=-1)   # include non-inf
+
+    # temporary hack to avoid zero-inflation issues
+    # observations[observations == 0.] = MISSING
+    observations[(observations == 0.) | (observations == float("-inf"))] = MISSING
+    assert not torch.isnan(observations).any()
+
+    # observations = observations[..., 5:11, :]  # truncate for testing
+
+    config = {
+        "MISSING": MISSING,
+        "sizes": sizes.copy(),
+        "group": {"random": random_effects["group"], "fixed": None},
+        "individual": {"random": random_effects["individual"], "fixed": None, "mask": mask_i},
+        "timestep": {"random": None, "fixed": None, "mask": mask_t},
+        "observations": {
+            "step": observations[..., 0],
+            "angle": observations[..., 1],
+            "omega": observations[..., 2],
+        },
+    }
+
+    return config
