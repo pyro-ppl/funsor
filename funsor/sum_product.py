@@ -1,8 +1,10 @@
 from collections import OrderedDict, defaultdict
 from functools import reduce
 
+import funsor.ops as ops
 from funsor.ops import UNITS, AssociativeOp
-from funsor.terms import Cat, Funsor, Number, Slice
+from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Subs, Variable, eager, substitute, to_funsor
+from funsor.util import quote
 
 
 def _partition(terms, sum_vars):
@@ -99,12 +101,12 @@ def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
-    assert isinstance(time, str)
+    assert isinstance(time, Variable)
     assert isinstance(step, dict)
     assert all(isinstance(k, str) for k in step.keys())
     assert all(isinstance(v, str) for v in step.values())
-    if time not in trans.inputs:
-        return trans  # edge case of a single time step
+    if time.name in trans.inputs:
+        assert time.output == trans.inputs[time.name]
 
     step = OrderedDict(sorted(step.items()))
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
@@ -112,7 +114,8 @@ def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
     curr_to_drop = dict(zip(step.values(), drop))
     drop = frozenset(drop)
 
-    factors = [trans(**{time: t}) for t in range(trans.inputs[time].size)]
+    time, duration = time.name, time.output.size
+    factors = [trans(**{time: t}) for t in range(duration)]
     while len(factors) > 1:
         y = factors.pop()(**prev_to_drop)
         x = factors.pop()(**curr_to_drop)
@@ -129,7 +132,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
         tail_time = 1 + arange("time", trans.inputs["time"].size - 1)
         tail = sequential_sum_product(sum_op, prod_op,
                                       trans(time=tail_time),
-                                      "time", {"prev": "curr"})
+                                      time, {"prev": "curr"})
         return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
            .reduce(sum_op, "drop")
 
@@ -138,19 +141,19 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
     :param ~funsor.terms.Funsor trans: A transition funsor.
-    :param str time: The name of the time input dimension.
+    :param Variable time: The time input dimension.
     :param dict step: A dict mapping previous variables to current variables.
         This can contain multiple pairs of prev->curr variable names.
     """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
-    assert isinstance(time, str)
+    assert isinstance(time, Variable)
     assert isinstance(step, dict)
     assert all(isinstance(k, str) for k in step.keys())
     assert all(isinstance(v, str) for v in step.values())
-    if time not in trans.inputs:
-        return trans  # edge case of a single time step
+    if time.name in trans.inputs:
+        assert time.output == trans.inputs[time.name]
 
     step = OrderedDict(sorted(step.items()))
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
@@ -158,11 +161,9 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     curr_to_drop = dict(zip(step.values(), drop))
     drop = frozenset(drop)
 
-    while trans.inputs[time].size > 1:
-        duration = trans.inputs[time].size
+    time, duration = time.name, time.output.size
+    while duration > 1:
         even_duration = duration // 2 * 2
-        # TODO support syntax
-        # x = trans(time=slice(0, even_duration, 2), ...)
         x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
         y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
         contracted = prod_op(x, y).reduce(sum_op, drop)
@@ -170,4 +171,121 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
             extra = trans(**{time: Slice(time, duration - 1, duration)})
             contracted = Cat(time, (contracted, extra))
         trans = contracted
+        duration = (duration + 1) // 2
     return trans(**{time: 0})
+
+
+class MarkovProductMeta(FunsorMeta):
+    """
+    Wrapper to convert ``step`` to a tuple and fill in default ``step_names``.
+    """
+    def __call__(cls, sum_op, prod_op, trans, time, step, step_names=None):
+        if isinstance(time, str):
+            assert time in trans.inputs, "please pass Variable(time, ...)"
+            time = Variable(time, trans.inputs[time])
+        if isinstance(step, dict):
+            step = frozenset(step.items())
+        if step_names is None:
+            step_names = frozenset((k, k) for pair in step for k in pair)
+        if isinstance(step_names, dict):
+            step_names = frozenset(step_names.items())
+        return super().__call__(sum_op, prod_op, trans, time, step, step_names)
+
+
+class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
+    """
+    Lazy representation of :func:`sequential_sum_product` .
+
+    :param AssociativeOp sum_op: A marginalization op.
+    :param AssociativeOp prod_op: A Bayesian fusion op.
+    :param Funsor trans: A sequence of transition factors,
+        usually varying along the ``time`` input.
+    :param time: A time dimension.
+    :type time: str or Variable
+    :param dict step: A str-to-str mapping of "previous" inputs of ``trans``
+        to "current" inputs of ``trans``.
+    :param dict step_names: Optional, for internal use by alpha conversion.
+    """
+    def __init__(self, sum_op, prod_op, trans, time, step, step_names):
+        assert isinstance(sum_op, AssociativeOp)
+        assert isinstance(prod_op, AssociativeOp)
+        assert isinstance(trans, Funsor)
+        assert isinstance(time, Variable)
+        assert isinstance(step, frozenset)
+        assert isinstance(step_names, frozenset)
+        step = dict(step)
+        step_names = dict(step_names)
+        assert all(isinstance(k, str) for k in step_names.keys())
+        assert all(isinstance(v, str) for v in step_names.values())
+        assert set(step_names) == set(step).union(step.values())
+        inputs = OrderedDict((step_names.get(k, k), v)
+                             for k, v in trans.inputs.items()
+                             if k != time.name)
+        output = trans.output
+        fresh = frozenset(step_names.values())
+        bound = frozenset(step_names.keys()) | {time.name}
+        super().__init__(inputs, output, fresh, bound)
+        self.sum_op = sum_op
+        self.prod_op = prod_op
+        self.trans = trans
+        self.time = time
+        self.step = step
+        self.step_names = step_names
+
+    def _alpha_convert(self, alpha_subs):
+        assert self.bound.issuperset(alpha_subs)
+        time = Variable(alpha_subs.get(self.time.name, self.time.name),
+                        self.time.output)
+        step = frozenset((alpha_subs.get(k, k), alpha_subs.get(v, v))
+                         for k, v in self.step.items())
+        step_names = frozenset((alpha_subs.get(k, k), v)
+                               for k, v in self.step_names.items())
+        alpha_subs = {k: to_funsor(v, self.trans.inputs[k])
+                      for k, v in alpha_subs.items()
+                      if k in self.trans.inputs}
+        trans = substitute(self.trans, alpha_subs)
+        return self.sum_op, self.prod_op, trans, time, step, step_names
+
+    def eager_subs(self, subs):
+        assert isinstance(subs, tuple)
+        # Eagerly rename variables.
+        rename = {k: v.name for k, v in subs if isinstance(v, Variable)}
+        if not rename:
+            return None
+        step_names = frozenset((k, rename.get(v, v))
+                               for k, v in self.step_names.items())
+        result = MarkovProduct(self.sum_op, self.prod_op,
+                               self.trans, self.time, self.step, step_names)
+        lazy = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
+        if lazy:
+            result = Subs(result, lazy)
+        return result
+
+
+@quote.register(MarkovProduct)
+def _(arg, indent, out):
+    line = f"{type(arg).__name__}({repr(arg.sum_op)}, {repr(arg.prod_op)},"
+    out.append((indent, line))
+    for value in arg._ast_values[2:]:
+        quote.inplace(value, indent + 1, out)
+        i, line = out[-1]
+        out[-1] = i, line + ","
+    i, line = out[-1]
+    out[-1] = i, line[:-1] + ")"
+
+
+@eager.register(MarkovProduct, AssociativeOp, AssociativeOp,
+                Funsor, Variable, frozenset, frozenset)
+def eager_markov_product(sum_op, prod_op, trans, time, step, step_names):
+    if step:
+        result = sequential_sum_product(sum_op, prod_op, trans, time, dict(step))
+    elif time.name in trans.inputs:
+        result = trans.reduce(prod_op, time.name)
+    elif prod_op is ops.add:
+        result = trans * time.size
+    elif prod_op is ops.mul:
+        result = trans ** time.size
+    else:
+        raise NotImplementedError('https://github.com/pyro-ppl/funsor/issues/233')
+
+    return Subs(result, step_names)
