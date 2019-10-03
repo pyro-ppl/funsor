@@ -387,9 +387,11 @@ class Model(object):
             omega_dist = (omega_zi + Stack("zi_omega", (omega_dist, omega_zi_dist))).reduce(ops.logaddexp, "zi_omega")
 
         # finally, construct the term for parallel scan reduction
-        hmm_factor = y_dist + step_dist + angle_dist + omega_dist
+        hmm_factor = step_dist + angle_dist + omega_dist
         hmm_factor = hmm_factor * self.raggedness_masks["individual"]
         hmm_factor = hmm_factor * self.raggedness_masks["timestep"]
+        # copy masking behavior of pyro.infer.TraceEnum_ELBO._compute_model_factors
+        hmm_factor = hmm_factor + y_dist
         log_prob.insert(0, hmm_factor)
 
         return log_prob
