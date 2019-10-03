@@ -523,6 +523,17 @@ def test_mvn_affine_matmul():
     m = Tensor(torch.randn(2, 3))
     data = dict(x=Tensor(torch.randn(2)), y=Tensor(torch.randn(3)))
     with interpretation(lazy):
+        d = random_mvn((), 3)
+        d = dist.MultivariateNormal(loc=y, scale_tril=d.scale_tril, value=x @ m)
+    _check_mvn_affine(d, data)
+
+
+def test_mvn_affine_matmul_sub():
+    x = Variable('x', reals(2))
+    y = Variable('y', reals(3))
+    m = Tensor(torch.randn(2, 3))
+    data = dict(x=Tensor(torch.randn(2)), y=Tensor(torch.randn(3)))
+    with interpretation(lazy):
         d = dist_to_funsor(random_mvn((), 3))
         d = d(value=x @ m - y)
     _check_mvn_affine(d, data)
