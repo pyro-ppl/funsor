@@ -64,6 +64,9 @@ def run_expt(args):
     optim = args["optim"]
     lr = args["learnrate"]
     schedule = [] if not args["schedule"] else [int(i) for i in args["schedule"].split(",")]
+    # default these to "none" instead of None, which argparse does for some reason
+    args["group"] = "none" if args["group"] is None else args["group"]
+    args["individual"] = "none" if args["individual"] is None else args["individual"]
     random_effects = {"group": args["group"], "individual": args["individual"]}
 
     pyro.enable_validation(args["validation"])

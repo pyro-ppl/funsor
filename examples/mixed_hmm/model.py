@@ -109,6 +109,7 @@ class Model(object):
             "e_i": {},
             "theta_i": {},
             "eps_i": {},
+            "y": {},
             "zi_step": {},
             "step": {},
             "angle": {},
@@ -177,6 +178,13 @@ class Model(object):
                 torch.ones((N_c, N_state, N_state)),
                 OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
             )
+
+        # initialize global state transition parameters
+        params["y"]["logits"] = Tensor(
+            pyro.param("y_logits",
+                       lambda: torch.randn((N_state, N_state))),
+            OrderedDict([("y_prev", bint(N_state))]),
+        )
 
         # initialize likelihood parameters
         # observation 1: step size (step ~ Gamma)
@@ -290,11 +298,6 @@ class Model(object):
         N_state = self.config["sizes"]["state"]
 
         # initialize gamma to uniform
-        gamma = Tensor(
-            torch.zeros((N_state, N_state)),
-            OrderedDict([("y_prev", bint(N_state))]),
-        )
-
         N_v = self.config["sizes"]["random"]
         N_c = self.config["sizes"]["group"]
         log_prob = []
@@ -343,7 +346,7 @@ class Model(object):
             eps_i = to_funsor(0.)
 
         # add group-level and individual-level random effects to gamma
-        gamma = gamma + eps_g + eps_i
+        gamma = self.params["y"]["logits"] + eps_g + eps_i
 
         N_state = self.config["sizes"]["state"]
 
