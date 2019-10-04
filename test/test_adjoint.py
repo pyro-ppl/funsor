@@ -19,7 +19,7 @@ from funsor.sum_product import (
     sequential_sum_product,
     sum_product
 )
-from funsor.terms import Binary, Variable, lazy, reflect, to_funsor
+from funsor.terms import Binary, Variable, reflect, to_funsor
 from funsor.testing import (
     assert_close,
     check_funsor,
@@ -222,7 +222,7 @@ def test_adjoint_binary_only(expr, expected_adjoint_exprs):
     expected_adjoints = OrderedDict((eval(k, locals_), to_funsor(eval(v, locals_)))
                                     for k, v in expected_adjoint_exprs.items())
 
-    with interpretation(lazy), AdjointTape() as tape:
+    with AdjointTape() as tape:
         fwd_expr = eval(expr, locals_)
 
     actual_adjoints = tape.adjoint(ops.add, ops.mul, fwd_expr, list(expected_adjoints.keys()))
