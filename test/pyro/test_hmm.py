@@ -1,4 +1,3 @@
-import warnings
 
 import pyro.distributions as dist
 import pytest
@@ -177,11 +176,7 @@ def test_gaussian_hmm_log_prob(init_shape, trans_mat_shape, trans_mvn_shape,
     data = obs_dist.expand(shape).sample()
     assert data.shape == actual_dist.shape()
 
-    # https://github.com/pyro-ppl/funsor/issues/184
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
     actual_log_prob = actual_dist.log_prob(data)
-
     expected_log_prob = expected_dist.log_prob(data)
     assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
     check_expand(actual_dist, data)
@@ -411,11 +406,7 @@ def test_gaussian_hmm_log_prob_null_dynamics(init_shape, trans_mat_shape, trans_
     data = obs_dist.expand(shape).sample()
     assert data.shape == actual_dist.shape()
 
-    # https://github.com/pyro-ppl/funsor/issues/184
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
     actual_log_prob = actual_dist.log_prob(data)
-
     expected_log_prob = expected_dist.log_prob(data)
 
     assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)

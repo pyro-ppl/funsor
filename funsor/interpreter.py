@@ -24,11 +24,55 @@ _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
 _GENSYM_COUNTER = 0
 
 
+def _indent():
+    result = u'    \u2502' * (_STACK_SIZE // 4 + 3)
+    return result[:_STACK_SIZE]
+
+
+if _DEBUG:
+    class DebugLogged(object):
+        def __init__(self, fn):
+            self.fn = fn
+            while isinstance(fn, functools.partial):
+                fn = fn.func
+            path = inspect.getabsfile(fn)
+            lineno = inspect.getsourcelines(fn)[1]
+            self._message = "{} file://{} {}".format(fn.__name__, path, lineno)
+
+        def __call__(self, *args, **kwargs):
+            global _STACK_SIZE
+            print(_indent() + self._message)
+            _STACK_SIZE += 1
+            try:
+                return self.fn(*args, **kwargs)
+            finally:
+                _STACK_SIZE -= 1
+
+        @property
+        def register(self):
+            return self.fn.register
+
+    def debug_logged(fn):
+        if isinstance(fn, DebugLogged):
+            return fn
+        return DebugLogged(fn)
+else:
+    def debug_logged(fn):
+        return fn
+
+
+def _classname(cls):
+    return getattr(cls, "classname", cls.__name__)
+
+
 if _DEBUG:
     def interpret(cls, *args):
         global _STACK_SIZE
-        indent = '  ' * _STACK_SIZE
-        typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
+        indent = _indent()
+        if _DEBUG > 1:
+            typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
+        else:
+            typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
         print(indent + ' '.join(typenames))
 
         _STACK_SIZE += 1
@@ -86,6 +130,7 @@ def recursion_reinterpret(x):
 
 # We need to register this later in terms.py after declaring Funsor.
 # reinterpret.register(Funsor)
+@debug_logged
 def reinterpret_funsor(x):
     return _INTERPRETATION(type(x), *map(recursion_reinterpret, x._ast_values))
 
@@ -107,21 +152,25 @@ def recursion_reinterpret_ground(x):
 
 
 @recursion_reinterpret.register(tuple)
+@debug_logged
 def recursion_reinterpret_tuple(x):
     return tuple(map(recursion_reinterpret, x))
 
 
 @recursion_reinterpret.register(frozenset)
+@debug_logged
 def recursion_reinterpret_frozenset(x):
     return frozenset(map(recursion_reinterpret, x))
 
 
 @recursion_reinterpret.register(dict)
+@debug_logged
 def recursion_reinterpret_dict(x):
     return {key: recursion_reinterpret(value) for key, value in x.items()}
 
 
 @recursion_reinterpret.register(OrderedDict)
+@debug_logged
 def recursion_reinterpret_ordereddict(x):
     return OrderedDict((key, recursion_reinterpret(value)) for key, value in x.items())
 
@@ -269,29 +318,6 @@ def reinterpret(x):
         return stack_reinterpret(x)
     else:
         return recursion_reinterpret(x)
-
-
-if _DEBUG:
-    class DebugLogged(object):
-        def __init__(self, fn):
-            self.fn = fn
-            while isinstance(fn, functools.partial):
-                fn = fn.func
-            path = inspect.getabsfile(fn)
-            lineno = inspect.getsourcelines(fn)[1]
-            self._message = "{} file://{} {}".format(fn.__name__, path, lineno)
-
-        def __call__(self, *args, **kwargs):
-            print('  ' * _STACK_SIZE + self._message)
-            return self.fn(*args, **kwargs)
-
-    def debug_logged(fn):
-        if isinstance(fn, DebugLogged):
-            return fn
-        return DebugLogged(fn)
-else:
-    def debug_logged(fn):
-        return fn
 
 
 def dispatched_interpretation(fn):

@@ -19,7 +19,7 @@ class Op(Dispatcher):
             self.add(default_signature, fn)
 
     def __repr__(self):
-        return self.__name__
+        return "ops." + self.__name__
 
     def __str__(self):
         return self.__name__
@@ -53,11 +53,24 @@ class TransformOp(Op):
         raise NotImplementedError
 
 
+# FIXME Most code assumes this is an AssociativeCommutativeOp.
 class AssociativeOp(Op):
     pass
 
 
 class AddOp(AssociativeOp):
+    pass
+
+
+class MulOp(AssociativeOp):
+    pass
+
+
+class MatmulOp(Op):  # Associtive but not commutative.
+    pass
+
+
+class LogAddExpOp(AssociativeOp):
     pass
 
 
@@ -67,6 +80,42 @@ class SubOp(Op):
 
 class NegOp(Op):
     pass
+
+
+class DivOp(Op):
+    pass
+
+
+class NullOp(AssociativeOp):
+    """Placeholder associative op that unifies with any other op"""
+    pass
+
+
+@NullOp
+def nullop(x, y):
+    raise ValueError("should never actually evaluate this!")
+
+
+class ReshapeMeta(type):
+    _cache = {}
+
+    def __call__(cls, shape):
+        shape = tuple(shape)
+        try:
+            return ReshapeMeta._cache[shape]
+        except KeyError:
+            instance = super().__call__(shape)
+            ReshapeMeta._cache[shape] = instance
+            return instance
+
+
+class ReshapeOp(Op, metaclass=ReshapeMeta):
+    def __init__(self, shape):
+        self.shape = shape
+        super().__init__(self._default)
+
+    def _default(self, x):
+        return x.reshape(self.shape)
 
 
 class GetitemMeta(type):
@@ -108,11 +157,12 @@ lt = Op(operator.lt)
 ne = Op(operator.ne)
 neg = NegOp(operator.neg)
 sub = SubOp(operator.sub)
-truediv = Op(operator.truediv)
+truediv = DivOp(operator.truediv)
 
 add = AddOp(operator.add)
 and_ = AssociativeOp(operator.and_)
-mul = AssociativeOp(operator.mul)
+mul = MulOp(operator.mul)
+matmul = MatmulOp(operator.matmul)
 or_ = AssociativeOp(operator.or_)
 xor = AssociativeOp(operator.xor)
 
@@ -137,7 +187,11 @@ def sqrt(x):
     return np.sqrt(x)
 
 
-@TransformOp
+class ExpOp(TransformOp):
+    pass
+
+
+@ExpOp
 def exp(x):
     return np.exp(x)
 
@@ -147,7 +201,11 @@ def log_abs_det_jacobian(x, y):
     return add(x)
 
 
-@TransformOp
+class LogOp(TransformOp):
+    pass
+
+
+@LogOp
 def log(x):
     return np.log(x)
 
@@ -164,6 +222,11 @@ log.set_inv(exp)
 @Op
 def log1p(x):
     return np.log1p(x)
+
+
+@Op
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
 
 @Op
@@ -189,25 +252,29 @@ def max(x, y):
     return _builtin_max(x, y)
 
 
-@AssociativeOp
+@LogAddExpOp
 def logaddexp(x, y):
     shift = max(x, y)
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
-@Op
+@SubOp
 def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
 
 
-@Op
+@DivOp
 def safediv(x, y):
     if isinstance(y, Number):
         return truediv(x, y)
 
 
-@Op
+class ReciprocalOp(Op):
+    pass
+
+
+@ReciprocalOp
 def reciprocal(x):
     if isinstance(x, Number):
         return 1. / x
@@ -236,23 +303,21 @@ PRODUCT_INVERSES = {
 }
 
 
-PRODUCT_ROOTS = {
-    mul: lambda a, b: pow(a, reciprocal(b)),
-    add: truediv,
-}
-
-
 __all__ = [
     'AddOp',
     'AssociativeOp',
     'DISTRIBUTIVE_OPS',
+    'ExpOp',
     'GetitemOp',
+    'LogAddExpOp',
+    'LogOp',
     'NegOp',
     'Op',
     'PRODUCT_INVERSES',
-    'PRODUCT_ROOTS',
-    'UNITS',
+    'ReciprocalOp',
     'SubOp',
+    'ReshapeOp',
+    'UNITS',
     'abs',
     'add',
     'and_',
@@ -266,6 +331,7 @@ __all__ = [
     'log',
     'log1p',
     'lt',
+    'matmul',
     'max',
     'min',
     'mul',
@@ -275,6 +341,7 @@ __all__ = [
     'pow',
     'safediv',
     'safesub',
+    'sigmoid',
     'sqrt',
     'sub',
     'truediv',

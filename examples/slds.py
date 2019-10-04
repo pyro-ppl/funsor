@@ -44,8 +44,7 @@ def main(args):
 
             # Marginalize out previous delayed sample statements.
             if t > 0:
-                log_prob = log_prob.reduce(
-                    ops.logaddexp, frozenset([s_prev.name, x_prev.name]))
+                log_prob = log_prob.reduce(ops.logaddexp, {s_prev.name, x_prev.name})
 
             # An observe statement.
             log_prob += dist.Normal(x_curr, emit_noise, value=y)

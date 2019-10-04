@@ -5,8 +5,9 @@ import pytest
 
 import funsor
 from funsor import Number, Variable, bint, reals
-from funsor.interpreter import _USE_TCO
+from funsor.interpreter import _USE_TCO, interpretation
 from funsor.numpy import Array
+from funsor.terms import lazy
 from funsor.testing import assert_equiv, check_funsor, random_array
 
 # FIXME rewrite stack-based interpreter to be compatible with unhashable data
@@ -168,9 +169,10 @@ def test_advanced_indexing_lazy(output_shape):
     ]))
     u = Variable('u', bint(2))
     v = Variable('v', bint(3))
-    i = Number(1, 2) - u
-    j = Number(2, 3) - v
-    k = u + v
+    with interpretation(lazy):
+        i = Number(1, 2) - u
+        j = Number(2, 3) - v
+        k = u + v
 
     expected_data = np.empty((2, 3) + output_shape)
     i_data = funsor.numpy.materialize(i).data.astype(np.int64)

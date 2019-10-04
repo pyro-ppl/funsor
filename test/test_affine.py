@@ -3,21 +3,22 @@ from collections import OrderedDict
 import pytest
 import torch
 
-from funsor.affine import Affine
+from funsor.affine import extract_affine
+from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.terms import Number, Variable
-from funsor.testing import check_funsor
-from funsor.torch import Tensor
+from funsor.testing import assert_close, check_funsor, random_tensor
+from funsor.torch import Einsum, Tensor
 
 SMOKE_TESTS = [
-    ('t+x', Affine),
-    ('x+t', Affine),
-    ('n+x', Affine),
-    ('n*x', Affine),
-    ('t*x', Affine),
-    ('x*t', Affine),
-    ('-x', Affine),
-    ('t-x', Affine),
+    ('t+x', Contraction),
+    ('x+t', Contraction),
+    ('n+x', Contraction),
+    ('n*x', Contraction),
+    ('t*x', Contraction),
+    ('x*t', Contraction),
+    ('-x', Contraction),
+    ('t-x', Contraction),
 ]
 
 
@@ -38,15 +39,16 @@ def test_smoke(expr, expected_type):
 
     result = eval(expr)
     assert isinstance(result, expected_type)
+    assert result.is_affine
 
 
 SUBS_TESTS = [
-    ("(t * x)(i=1)", Affine, {"j": bint(3), "x": reals()}),
-    ("(t * x)(i=1, x=y)", Affine, {"j": bint(3), "y": reals()}),
-    ("(t * x + n)(x=y)", Affine, {"y": reals(), "i": bint(2), "j": bint(3)}),
-    ("(x + y)(y=z)", Affine, {"x": reals(), "z": reals()}),
-    ("(-x)(x=y+z)", Affine, {"y": reals(), "z": reals()}),
-    ("(t * x + t * y)(x=z)", Affine, {"y": reals(), "z": reals(), "i": bint(2), "j": bint(3)}),
+    ("(t * x)(i=1)", Contraction, {"j": bint(3), "x": reals()}),
+    ("(t * x)(i=1, x=y)", Contraction, {"j": bint(3), "y": reals()}),
+    ("(t * x + n)(x=y)", Contraction, {"y": reals(), "i": bint(2), "j": bint(3)}),
+    ("(x + y)(y=z)", Contraction, {"x": reals(), "z": reals()}),
+    ("(-x)(x=y+z)", Contraction, {"y": reals(), "z": reals()}),
+    ("(t * x + t * y)(x=z)", Contraction, {"y": reals(), "z": reals(), "i": bint(2), "j": bint(3)}),
 ]
 
 
@@ -73,3 +75,44 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     result = eval(expr)
     assert isinstance(result, expected_type)
     check_funsor(result, expected_inputs, expected_output)
+    assert result.is_affine
+
+
+@pytest.mark.parametrize('expr', [
+    "Variable('x', reals()) + 0.5",
+    "Variable('x', reals(2, 3)) + Variable('y', reals(2, 3))",
+    "Variable('x', reals(2)) + Variable('y', reals(2))",
+    "Variable('x', reals(2)) + torch.ones(2)",
+    "Variable('x', reals(2)) * torch.randn(2)",
+    "Variable('x', reals(2)) * torch.randn(2) + torch.ones(2)",
+    "Variable('x', reals(2)) + Tensor(torch.randn(3, 2), OrderedDict(i=bint(3)))",
+    "Einsum('abcd,ac->bd',"
+    " (Tensor(torch.randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
+    "Tensor(torch.randn(3, 5)) + Einsum('abcd,ac->bd',"
+    " (Tensor(torch.randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
+    "Variable('x', reals(2, 8))[0] + torch.randn(8)",
+    "Variable('x', reals(2, 8))[Variable('i', bint(2))] / 4 - 3.5",
+])
+def test_extract_affine(expr):
+    x = eval(expr)
+    assert isinstance(x, (Contraction, Einsum))
+    real_inputs = OrderedDict((k, d) for k, d in x.inputs.items()
+                              if d.dtype == 'real')
+
+    const, coeffs = extract_affine(x)
+    assert isinstance(const, Tensor)
+    assert const.shape == x.shape
+    assert list(coeffs) == list(real_inputs)
+    for name, (coeff, eqn) in coeffs.items():
+        assert isinstance(name, str)
+        assert isinstance(coeff, Tensor)
+        assert isinstance(eqn, str)
+
+    subs = {k: random_tensor(OrderedDict(), d) for k, d in real_inputs.items()}
+    expected = x(**subs)
+    assert isinstance(expected, Tensor)
+
+    actual = const + sum(Einsum(eqn, (coeff, subs[k]))
+                         for k, (coeff, eqn) in coeffs.items())
+    assert isinstance(actual, Tensor)
+    assert_close(actual, expected)

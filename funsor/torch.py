@@ -1,4 +1,5 @@
 import functools
+import itertools
 import warnings
 from collections import OrderedDict
 from functools import reduce
@@ -7,14 +8,31 @@ import opt_einsum
 import torch
 from contextlib2 import contextmanager
 from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
-from funsor.contract import Contract, contractor
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.terms import Binary, Funsor, FunsorMeta, Lambda, Number, Variable, eager, substitute, to_data, to_funsor
-from funsor.util import getargspec
+from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
+from funsor.terms import (
+    Binary,
+    Funsor,
+    FunsorMeta,
+    Lambda,
+    Number,
+    Slice,
+    Unary,
+    Variable,
+    eager,
+    substitute,
+    to_data,
+    to_funsor
+)
+from funsor.util import getargspec, quote
+
+
+def _nameof(fn):
+    return getattr(fn, '__name__', type(fn).__name__)
 
 
 @contextmanager
@@ -24,13 +42,23 @@ def ignore_jit_warnings():
         yield
 
 
-def align_tensor(new_inputs, x):
+@quote.register(torch.Tensor)
+def _(x, indent, out):
+    """
+    Work around PyTorch not supporting reproducible repr.
+    """
+    out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
+
+
+def align_tensor(new_inputs, x, expand=False):
     r"""
-    Permute and expand a tensor to match desired ``new_inputs``.
+    Permute and add dims to a tensor to match desired ``new_inputs``.
 
     :param OrderedDict new_inputs: A target set of inputs.
     :param funsor.terms.Funsor x: A :class:`Tensor` or
         :class:`~funsor.terms.Number` .
+    :param bool expand: If False (default), set result size to 1 for any input
+        of ``x`` not in ``new_inputs``; if True expand to ``new_inputs`` size.
     :return: a number or :class:`torch.Tensor` that can be broadcast to other
         tensors with inputs ``new_inputs``.
     :rtype: tuple
@@ -55,10 +83,14 @@ def align_tensor(new_inputs, x):
     # Unsquash multivariate input dims by filling in ones.
     data = data.reshape(tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +
                         x.output.shape)
+
+    # Optionally expand new dims.
+    if expand:
+        data = data.expand(tuple(d.dtype for d in new_inputs.values()) + x.output.shape)
     return data
 
 
-def align_tensors(*args):
+def align_tensors(*args, **kwargs):
     r"""
     Permute multiple tensors before applying a broadcasted op.
 
@@ -66,15 +98,18 @@ def align_tensors(*args):
 
     :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
         :class:`~funsor.terms.Number` s.
+    :param bool expand: Whether to expand input tensors. Defaults to False.
     :return: a pair ``(inputs, tensors)`` where tensors are all
         :class:`torch.Tensor` s that can be broadcast together to a single data
         with given ``inputs``.
     :rtype: tuple
     """
+    expand = kwargs.pop('expand', False)
+    assert not kwargs
     inputs = OrderedDict()
     for x in args:
         inputs.update(x.inputs)
-    tensors = [align_tensor(inputs, x) for x in args]
+    tensors = [align_tensor(inputs, x, expand=expand) for x in args]
     return inputs, tensors
 
 
@@ -168,11 +203,28 @@ class Tensor(Funsor, metaclass=TensorMeta):
         if not subs:
             return self
 
-        # special case: renaming
-        # must be handled to ensure proper cons hashing
-        if all(isinstance(v, Variable) and v.name not in self.inputs for v in subs.values()):
-            renamed_inputs = OrderedDict((subs[k].name if k in subs else k, self.inputs[k]) for k in self.inputs)
-            return Tensor(self.data, renamed_inputs, self.dtype)
+        # Handle renaming to enable cons hashing, and
+        # handle slicing to avoid copying data.
+        if any(isinstance(v, (Variable, Slice)) for v in subs.values()):
+            slices = None
+            inputs = OrderedDict()
+            for i, (k, d) in enumerate(self.inputs.items()):
+                if k in subs:
+                    v = subs[k]
+                    if isinstance(v, Variable):
+                        del subs[k]
+                        k = v.name
+                    elif isinstance(v, Slice):
+                        del subs[k]
+                        k = v.name
+                        d = v.inputs[v.name]
+                        if slices is None:
+                            slices = [slice(None)] * self.data.dim()
+                        slices[i] = v.slice
+                inputs[k] = d
+            data = self.data[tuple(slices)] if slices else self.data
+            result = Tensor(data, inputs, self.dtype)
+            return result.eager_subs(tuple(subs.items()))
 
         # materialize after checking for renaming case
         subs = OrderedDict((k, materialize(v)) for k, v in subs.items())
@@ -372,8 +424,8 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
 
     # Reshape to support broadcasting of output shape.
     if inputs:
-        lhs_dim = len(lhs.output.shape)
-        rhs_dim = len(rhs.output.shape)
+        lhs_dim = len(lhs.shape)
+        rhs_dim = len(rhs.shape)
         if lhs_dim < rhs_dim:
             cut = lhs_data.dim() - lhs_dim
             shape = lhs_data.shape
@@ -387,6 +439,52 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
 
     data = op(lhs_data, rhs_data)
     return Tensor(data, inputs, dtype)
+
+
+@eager.register(Binary, MatmulOp, Tensor, Tensor)
+def eager_binary_tensor_tensor(op, lhs, rhs):
+    # Compute inputs and outputs.
+    dtype = find_domain(op, lhs.output, rhs.output).dtype
+    if lhs.inputs == rhs.inputs:
+        inputs = lhs.inputs
+        lhs_data, rhs_data = lhs.data, rhs.data
+    else:
+        inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
+    if len(lhs.shape) == 1:
+        lhs_data = lhs_data.unsqueeze(-2)
+    if len(rhs.shape) == 1:
+        rhs_data = rhs_data.unsqueeze(-1)
+
+    # Reshape to support broadcasting of output shape.
+    if inputs:
+        lhs_dim = max(2, len(lhs.shape))
+        rhs_dim = max(2, len(rhs.shape))
+        if lhs_dim < rhs_dim:
+            cut = lhs_data.dim() - lhs_dim
+            shape = lhs_data.shape
+            shape = shape[:cut] + (1,) * (rhs_dim - lhs_dim) + shape[cut:]
+            lhs_data = lhs_data.reshape(shape)
+        elif rhs_dim < lhs_dim:
+            cut = rhs_data.dim() - rhs_dim
+            shape = rhs_data.shape
+            shape = shape[:cut] + (1,) * (lhs_dim - rhs_dim) + shape[cut:]
+            rhs_data = rhs_data.reshape(shape)
+
+    data = op(lhs_data, rhs_data)
+    if len(lhs.shape) == 1:
+        data = data.squeeze(-2)
+    if len(rhs.shape) == 1:
+        data = data.squeeze(-1)
+    return Tensor(data, inputs, dtype)
+
+
+@eager.register(Unary, ReshapeOp, Tensor)
+def eager_reshape_tensor(op, arg):
+    if arg.shape == op.shape:
+        return arg
+    batch_shape = arg.data.shape[:arg.data.dim() - len(arg.shape)]
+    data = arg.data.reshape(batch_shape + op.shape)
+    return Tensor(data, arg.inputs, arg.dtype)
 
 
 @eager.register(Binary, GetitemOp, Tensor, Number)
@@ -460,24 +558,46 @@ def eager_lambda(var, expr):
     return Tensor(data, inputs, expr.dtype)
 
 
-@eager.register(Contract, AssociativeOp, AssociativeOp, Tensor, Tensor, frozenset)
-@contractor
-def eager_contract(sum_op, prod_op, lhs, rhs, reduced_vars):
-    if (sum_op, prod_op) == (ops.add, ops.mul):
-        backend = "torch"
-    elif (sum_op, prod_op) == (ops.logaddexp, ops.add):
-        backend = "pyro.ops.einsum.torch_log"
-    else:
-        return prod_op(lhs, rhs).reduce(sum_op, reduced_vars)
+@dispatch(str, Variadic[Tensor])
+def eager_stack_homogeneous(name, *parts):
+    assert parts
+    output = parts[0].output
+    part_inputs = OrderedDict()
+    for part in parts:
+        assert part.output == output
+        assert name not in part.inputs
+        part_inputs.update(part.inputs)
 
-    inputs = OrderedDict((k, d) for t in (lhs, rhs)
-                         for k, d in t.inputs.items() if k not in reduced_vars)
+    shape = tuple(d.size for d in part_inputs.values()) + output.shape
+    data = torch.stack([align_tensor(part_inputs, part).expand(shape)
+                        for part in parts])
+    inputs = OrderedDict([(name, bint(len(parts)))])
+    inputs.update(part_inputs)
+    return Tensor(data, inputs, dtype=output.dtype)
 
-    data = opt_einsum.contract(lhs.data, list(lhs.inputs),
-                               rhs.data, list(rhs.inputs),
-                               list(inputs), backend=backend)
-    dtype = find_domain(prod_op, lhs.output, rhs.output).dtype
-    return Tensor(data, inputs, dtype)
+
+@dispatch(str, str, Variadic[Tensor])
+def eager_cat_homogeneous(name, part_name, *parts):
+    assert parts
+    output = parts[0].output
+    inputs = OrderedDict([(part_name, None)])
+    for part in parts:
+        assert part.output == output
+        assert part_name in part.inputs
+        inputs.update(part.inputs)
+
+    tensors = []
+    for part in parts:
+        inputs[part_name] = part.inputs[part_name]
+        shape = tuple(d.size for d in inputs.values()) + output.shape
+        tensors.append(align_tensor(inputs, part).expand(shape))
+    if part_name != name:
+        del inputs[part_name]
+
+    dim = 0
+    tensor = torch.cat(tensors, dim=dim)
+    inputs[name] = bint(tensor.size(dim))
+    return Tensor(tensor, inputs, dtype=output.dtype)
 
 
 def arange(name, size):
@@ -529,6 +649,7 @@ class Function(Funsor):
     """
     def __init__(self, fn, output, args):
         assert callable(fn)
+        assert not isinstance(fn, Function)
         assert isinstance(args, tuple)
         inputs = OrderedDict()
         for arg in args:
@@ -539,14 +660,23 @@ class Function(Funsor):
         self.args = args
 
     def __repr__(self):
-        name = getattr(self.fn, '__name__', type(self.fn).__name__)
-        return '{}({}, {}, {})'.format(type(self).__name__, name,
+        return '{}({}, {}, {})'.format(type(self).__name__, _nameof(self.fn),
                                        repr(self.output), repr(self.args))
 
     def __str__(self):
-        name = getattr(self.fn, '__name__', type(self.fn).__name__)
-        return '{}({}, {}, {})'.format(type(self).__name__, name,
+        return '{}({}, {}, {})'.format(type(self).__name__, _nameof(self.fn),
                                        str(self.output), str(self.args))
+
+
+@quote.register(Function)
+def _(arg, indent, out):
+    out.append((indent, f"Function({_nameof(arg.fn)},"))
+    quote.inplace(arg.output, indent + 1, out)
+    i, line = out[-1]
+    out[-1] = i, line + ","
+    quote.inplace(arg.args, indent + 1, out)
+    i, line = out[-1]
+    out[-1] = i, line + ")"
 
 
 @eager.register(Function, object, Domain, tuple)
@@ -573,7 +703,7 @@ def _nested_function(fn, args, output):
         result = []
         for i, output_i in enumerate(output):
             fn_i = functools.partial(_select, fn, i)
-            fn_i.__name__ = "{}_{}".format(fn_i, i)
+            fn_i.__name__ = f"{_nameof(fn)}_{i}"
             result.append(_nested_function(fn_i, args, output_i))
         return LazyTuple(result)
     raise ValueError("Invalid output: {}".format(output))
@@ -595,7 +725,7 @@ class _Memoized(object):
 
     @property
     def __name__(self):
-        return self.fn.__name__
+        return _nameof(self.fn)
 
 
 def _function(inputs, output, fn):
@@ -668,8 +798,8 @@ class Einsum(Funsor):
         for ein_input, x in zip(ein_inputs, operands):
             assert x.dtype == 'real'
             inputs.update(x.inputs)
-            assert len(ein_inputs) == len(x.output.shape)
-            for name, size in zip(ein_inputs, x.output.shape):
+            assert len(ein_input) == len(x.output.shape)
+            for name, size in zip(ein_input, x.output.shape):
                 other_size = size_dict.setdefault(name, size)
                 if other_size != size:
                     raise ValueError("Size mismatch at {}: {} vs {}"
@@ -689,8 +819,30 @@ class Einsum(Funsor):
 @eager.register(Einsum, str, tuple)
 def eager_einsum(equation, operands):
     if all(isinstance(x, Tensor) for x in operands):
-        inputs, tensors = align_tensors(*operands)
-        data = torch.einsum(equation, tensors)
+        # Make new symbols for inputs of operands.
+        inputs = OrderedDict()
+        for x in operands:
+            inputs.update(x.inputs)
+        symbols = set(equation)
+        get_symbol = iter(map(opt_einsum.get_symbol, itertools.count()))
+        new_symbols = {}
+        for k in inputs:
+            symbol = next(get_symbol)
+            while symbol in symbols:
+                symbol = next(get_symbol)
+            symbols.add(symbol)
+            new_symbols[k] = symbol
+
+        # Manually broadcast using einsum symbols.
+        assert '.' not in equation
+        ins, out = equation.split('->')
+        ins = ins.split(',')
+        ins = [''.join(new_symbols[k] for k in x.inputs) + x_out
+               for x, x_out in zip(operands, ins)]
+        out = ''.join(new_symbols[k] for k in inputs) + out
+        equation = ','.join(ins) + '->' + out
+
+        data = torch.einsum(equation, [x.data for x in operands])
         return Tensor(data, inputs)
 
     return None  # defer to default implementation
@@ -814,8 +966,7 @@ def _max(x, y):
 
 @ops.reciprocal.register(torch.Tensor)
 def _reciprocal(x):
-    result = x.reciprocal()
-    result.clamp_(max=torch.finfo(result.dtype).max)
+    result = x.reciprocal().clamp(max=torch.finfo(x.dtype).max)
     return result
 
 

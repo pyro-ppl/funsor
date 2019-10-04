@@ -2,20 +2,23 @@ from collections import OrderedDict
 from functools import reduce
 
 import pytest
+import torch
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
+    MarkovProduct,
     _partition,
     naive_sequential_sum_product,
     partial_sum_product,
     sequential_sum_product,
     sum_product
 )
-from funsor.terms import moment_matching, reflect
+from funsor.terms import Variable, eager_or_die, moment_matching, reflect
 from funsor.testing import assert_close, random_gaussian, random_tensor
+from funsor.torch import Tensor
 
 
 @pytest.mark.parametrize('inputs,dims,expected_num_components', [
@@ -102,7 +105,11 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     {"foo": bint(5)},
     {"foo": bint(2), "bar": bint(4)},
 ], ids=lambda d: ",".join(d.keys()))
-@pytest.mark.parametrize('impl', [sequential_sum_product, naive_sequential_sum_product])
+@pytest.mark.parametrize('impl', [
+    sequential_sum_product,
+    naive_sequential_sum_product,
+    MarkovProduct,
+])
 def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
     inputs = OrderedDict(batch_inputs)
     inputs.update(prev=state_domain, curr=state_domain)
@@ -114,8 +121,9 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
         trans = random_gaussian(inputs)
     else:
         trans = random_tensor(inputs)
+    time = Variable("time", bint(num_steps))
 
-    actual = impl(sum_op, prod_op, trans, "time", {"prev": "curr"})
+    actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
     expected_inputs = batch_inputs.copy()
     expected_inputs.update(prev=state_domain, curr=state_domain)
     assert dict(actual.inputs) == expected_inputs
@@ -129,7 +137,7 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
     expected = apply_optimizer(expected)
     expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
     expected = expected.align(tuple(actual.inputs.keys()))
-    assert_close(actual, expected, rtol=1e-4 * num_steps)
+    assert_close(actual, expected, rtol=5e-4 * num_steps)
 
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 6)))
@@ -143,7 +151,11 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
     (reals(), reals(2, 2)),
     (bint(2), reals(2)),
 ], ids=str)
-@pytest.mark.parametrize('impl', [sequential_sum_product, naive_sequential_sum_product])
+@pytest.mark.parametrize('impl', [
+    sequential_sum_product,
+    naive_sequential_sum_product,
+    MarkovProduct,
+])
 def test_sequential_sum_product_multi(impl, x_domain, y_domain, batch_inputs, num_steps):
     sum_op = ops.logaddexp
     prod_op = ops.add
@@ -158,10 +170,11 @@ def test_sequential_sum_product_multi(impl, x_domain, y_domain, batch_inputs, nu
         trans = random_gaussian(inputs)
     else:
         trans = random_tensor(inputs)
+    time = Variable("time", bint(num_steps))
     step = {"x_prev": "x_curr", "y_prev": "y_curr"}
 
     with interpretation(moment_matching):
-        actual = impl(sum_op, prod_op, trans, "time", step)
+        actual = impl(sum_op, prod_op, trans, time, step)
         expected_inputs = batch_inputs.copy()
         expected_inputs.update(x_prev=x_domain, x_curr=x_domain,
                                y_prev=y_domain, y_curr=y_domain)
@@ -178,3 +191,59 @@ def test_sequential_sum_product_multi(impl, x_domain, y_domain, batch_inputs, nu
         expected = expected(**{"x_0": "x_prev", "x_{}".format(num_steps): "x_curr",
                                "y_0": "y_prev", "y_{}".format(num_steps): "y_curr"})
         expected = expected.align(tuple(actual.inputs.keys()))
+
+
+@pytest.mark.parametrize("num_steps", [1, 2, 3, 10])
+@pytest.mark.parametrize("dim", [1, 2, 3])
+def test_sequential_sum_product_bias_1(num_steps, dim):
+    time = Variable("time", bint(num_steps))
+    bias_dist = random_gaussian(OrderedDict([
+        ("bias", reals(dim)),
+    ]))
+    trans = random_gaussian(OrderedDict([
+        ("time", bint(num_steps)),
+        ("x_prev", reals(dim)),
+        ("x_curr", reals(dim)),
+    ]))
+    obs = random_gaussian(OrderedDict([
+        ("time", bint(num_steps)),
+        ("x_curr", reals(dim)),
+        ("bias", reals(dim)),
+    ]))
+    factor = trans + obs + bias_dist
+    assert set(factor.inputs) == {"time", "bias", "x_prev", "x_curr"}
+
+    result = sequential_sum_product(ops.logaddexp, ops.add, factor, time, {"x_prev": "x_curr"})
+    assert set(result.inputs) == {"bias", "x_prev", "x_curr"}
+
+
+@pytest.mark.xfail(reason="missing pattern for Gaussian(x=y[z]) for real x")
+@pytest.mark.parametrize("num_steps", [1, 2, 3, 10])
+@pytest.mark.parametrize("num_sensors", [2])
+@pytest.mark.parametrize("dim", [1, 2, 3])
+def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
+    time = Variable("time", bint(num_steps))
+    bias = Variable("bias", reals(num_sensors, dim))
+    bias_dist = random_gaussian(OrderedDict([
+        ("bias", reals(num_sensors, dim)),
+    ]))
+    trans = random_gaussian(OrderedDict([
+        ("time", bint(num_steps)),
+        ("x_prev", reals(dim)),
+        ("x_curr", reals(dim)),
+    ]))
+    obs = random_gaussian(OrderedDict([
+        ("time", bint(num_steps)),
+        ("x_curr", reals(dim)),
+        ("bias", reals(dim)),
+    ]))
+
+    # Each time step only a single sensor observes x,
+    # and each sensor has a different bias.
+    sensor_id = Tensor(torch.arange(num_steps) % 2, OrderedDict(time=bint(num_steps)), dtype=2)
+    with interpretation(eager_or_die):
+        factor = trans + obs(bias=bias[sensor_id]) + bias_dist
+    assert set(factor.inputs) == {"time", "bias", "x_prev", "x_curr"}
+
+    result = sequential_sum_product(ops.logaddexp, ops.add, factor, time, {"x_prev": "x_curr"})
+    assert set(result.inputs) == {"bias", "x_prev", "x_curr"}

@@ -1,13 +1,15 @@
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
-from funsor.terms import Funsor, Independent, Lambda, Number, Variable, of_shape, to_data, to_funsor
+from funsor.sum_product import MarkovProduct
+from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.torch import Tensor, arange
+from funsor.util import pretty, quote
 
 from . import (
     adjoint,
     affine,
-    contract,
+    cnf,
     delta,
     distributions,
     domains,
@@ -19,20 +21,25 @@ from . import (
     memoize,
     minipyro,
     montecarlo,
+    numpy,
     ops,
-    pattern,
     sum_product,
     terms,
+    testing,
     torch
 )
 
 __all__ = [
+    'Cat',
     'Domain',
     'Funsor',
     'Independent',
     'Integrate',
     'Lambda',
+    'MarkovProduct',
     'Number',
+    'Slice',
+    'Stack',
     'Tensor',
     'Variable',
     'adjoint',
@@ -40,7 +47,7 @@ __all__ = [
     'arange',
     'backward',
     'bint',
-    'contract',
+    'cnf',
     'delta',
     'distributions',
     'domains',
@@ -53,13 +60,16 @@ __all__ = [
     'memoize',
     'minipyro',
     'montecarlo',
+    'numpy',
     'of_shape',
     'ops',
-    'pattern',
+    'pretty',
+    'quote',
     'reals',
     'reinterpret',
     'sum_product',
     'terms',
+    'testing',
     'to_data',
     'to_funsor',
     'torch',

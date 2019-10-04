@@ -7,14 +7,14 @@ from torch.autograd import grad
 
 import funsor.distributions as dist
 import funsor.ops as ops
+from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.integrate import Integrate
-from funsor.joint import Joint
 from funsor.montecarlo import monte_carlo_interpretation
 from funsor.terms import Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
-from funsor.torch import align_tensors, materialize
+from funsor.torch import Tensor, align_tensors, materialize
 
 
 @pytest.mark.parametrize('sample_inputs', [
@@ -45,7 +45,7 @@ def test_tensor_shape(sample_inputs, batch_inputs, event_inputs):
             print('sampled_vars: {}'.format(', '.join(sampled_vars)))
             y = x.sample(sampled_vars, sample_inputs)
             if num_sampled == len(event_inputs):
-                assert isinstance(y, (Delta, Joint))
+                assert isinstance(y, (Delta, Contraction))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:
@@ -86,7 +86,7 @@ def test_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
                 xfail = True
                 continue
             if num_sampled == len(event_inputs):
-                assert isinstance(y, (Delta, Joint))
+                assert isinstance(y, (Delta, Contraction))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:
@@ -133,7 +133,7 @@ def test_transformed_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
                 xfail = True
                 continue
             if num_sampled == len(event_inputs):
-                assert isinstance(y, (Delta, Joint))
+                assert isinstance(y, (Delta, Contraction))
             if sampled_vars:
                 assert dict(y.inputs) == dict(expected_inputs), sampled_vars
             else:
@@ -165,7 +165,7 @@ def test_joint_shape(sample_inputs, int_event_inputs, real_event_inputs):
     event_inputs = OrderedDict(event_inputs)
     t = random_tensor(discrete_inputs)
     g = random_gaussian(gaussian_inputs)
-    x = Joint(discrete=t, gaussian=g)
+    x = t + g  # Joint(discrete=t, gaussian=g)
 
     xfail = False
     for num_sampled in range(len(event_inputs)):
@@ -256,6 +256,36 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
                          Integrate(p, x * y, p_vars), atol=1e-2)
 
 
+@pytest.mark.parametrize('batch_inputs', [
+    (),
+    (('b', bint(3)),),
+    (('b', bint(3)), ('c', bint(2))),
+], ids=id_from_inputs)
+@pytest.mark.parametrize('event_inputs', [
+    (('e', reals()), ('f', bint(3))),
+    (('e', reals(2)), ('f', bint(2))),
+], ids=id_from_inputs)
+def test_gaussian_mixture_distribution(batch_inputs, event_inputs):
+    num_samples = 100000
+    sample_inputs = OrderedDict(particle=bint(num_samples))
+    be_inputs = OrderedDict(batch_inputs + event_inputs)
+    int_inputs = OrderedDict((k, d) for k, d in be_inputs.items()
+                             if d.dtype != 'real')
+    batch_inputs = OrderedDict(batch_inputs)
+    event_inputs = OrderedDict(event_inputs)
+    sampled_vars = frozenset(['f'])
+    p = random_gaussian(be_inputs) + 0.5 * random_tensor(int_inputs)
+    p_marginal = p.reduce(ops.logaddexp, 'e')
+    assert isinstance(p_marginal, Tensor)
+
+    q = p.sample(sampled_vars, sample_inputs)
+    q_marginal = q.reduce(ops.logaddexp, 'e')
+    q_marginal = materialize(q_marginal).reduce(ops.logaddexp, 'particle')
+    assert isinstance(q_marginal, Tensor)
+    q_marginal = q_marginal.align(tuple(p_marginal.inputs))
+    assert_close(q_marginal, p_marginal, atol=0.1, rtol=None)
+
+
 @pytest.mark.parametrize('moment', [0, 1, 2, 3])
 def test_lognormal_distribution(moment):
     num_samples = 100000
@@ -263,11 +293,11 @@ def test_lognormal_distribution(moment):
     loc = random_tensor(inputs)
     scale = random_tensor(inputs).exp()
 
-    log_measure = dist.LogNormal(loc, scale)
+    log_measure = dist.LogNormal(loc, scale)(value='x')
     probe = Variable('x', reals()) ** moment
     with monte_carlo_interpretation(particle=bint(num_samples)):
         with xfail_if_not_implemented():
-            actual = Integrate(log_measure, probe)
+            actual = Integrate(log_measure, probe, frozenset(['x']))
 
     samples = torch.distributions.LogNormal(loc, scale).sample((num_samples,))
     expected = (samples ** moment).mean(0)
