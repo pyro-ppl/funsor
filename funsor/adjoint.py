@@ -279,6 +279,8 @@ def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, 
     # inverting advanced indexing
     slices = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
 
+    assert len(slices + renames) == len(subs)
+
     in_adj_discrete = adjoint_ops(Subs, adj_redop, adj_binop, out_adj.terms[0], arg.terms[0], subs)[arg.terms[0]]
 
     arg_int_inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if v.dtype != 'real')
@@ -309,8 +311,9 @@ def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, su
     if any(v.dtype == 'real' and not isinstance(v, Variable) for k, v in subs):
         raise NotImplementedError("TODO implement adjoint for substitution into Gaussian real variable")
 
-    out_adj = out_adj + Tensor(out_adj.info_vec.new_zeros(()))
-    return {arg: adjoint_ops(Subs, adj_redop, adj_binop, out_adj, arg, subs)[arg]}
+    out_adj_int_inputs = OrderedDict((k, v) for k, v in out_adj.inputs.items() if v.dtype != 'real')
+    out_adj_ = out_adj + Tensor(out_adj.info_vec.new_zeros(out_adj.info_vec.shape[:-1]), out_adj_int_inputs)
+    return {arg: adjoint_ops(Subs, adj_redop, adj_binop, out_adj_, arg, subs)[arg]}
 
 
 @adjoint_ops.register(Subs, ops.LogAddExpOp, ops.AddOp, (GaussianMixture, Gaussian), Gaussian, tuple)
@@ -319,7 +322,8 @@ def adjoint_subs_gaussian_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
     if any(v.dtype == 'real' and not isinstance(v, Variable) for k, v in subs):
         raise NotImplementedError("TODO implement adjoint for substitution into Gaussian real variable")
 
-    arg_ = arg + Tensor(arg.info_vec.new_zeros(()))
+    arg_int_inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if v.dtype != 'real')
+    arg_ = arg + Tensor(arg.info_vec.new_zeros(arg.info_vec.shape[:-1]), arg_int_inputs)
     return {arg: adjoint_ops(Subs, adj_redop, adj_binop, out_adj, arg_, subs)[arg_]}
 
 
