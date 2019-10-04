@@ -128,17 +128,12 @@ class HMM(nn.Module):
         # marginalize out remaining latent variables
         # use mvn_to_funsor to pull out bias cov
         # plot trace or max e-value
+        cov = logp.terms[1].precision
         logp = logp.reduce(ops.logaddexp)
-#         import pdb; pdb.set_trace()
 
         # we should get a single scalar Tensor here
         assert isinstance(logp, Tensor) and logp.data.dim() == 0, logp.pretty()
-        return logp.data
-
-
-def plot():
-    import matplotlib.pyplot as plt
-    pass
+        return logp.data, cov
 
 
 def main(args):
@@ -156,7 +151,7 @@ def main(args):
         truncated_data = data[:f]
         for i in range(args.num_epochs):
             optim.zero_grad()
-            log_prob = model(truncated_data, add_bias=not args.no_bias)
+            log_prob, cov = model(truncated_data, add_bias=not args.no_bias)
             loss = -log_prob
             loss.backward()
             losses.append(loss.item())
@@ -169,7 +164,8 @@ def main(args):
                 "bias_scales": model.bias_scales,
                 "losses": losses,
                 "data": data.data,
-                "biases": biases
+                "biases": biases,
+                "cov": cov
              }
         print(f'saving output to: {f}_{args.save}')
         torch.save(md, f'{f}_' + args.save)
