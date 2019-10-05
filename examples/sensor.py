@@ -70,14 +70,12 @@ class HMM(nn.Module):
             )
         )(value=bias)
 
-        # this needs to be a funsor dist
         init_dist = torch.distributions.MultivariateNormal(torch.zeros(2), torch.eye(2) + 0.1 * torch.randn(2))
         self.init = dist_to_funsor(init_dist)(value="state")
 
         # hidden states
         prev = Variable("prev", reals(self.state_dim))
         curr = Variable("curr", reals(self.state_dim))
-        # inputs are the previous state ``state`` and the next state
         # ncv transition matrix todo
 #         transition_matrix = 0.1 * torch.randn(state_dim, state_dim) + self.transition_param.diag_embed().flip(0)
         transition_matrix = torch.randn(self.state_dim, self.state_dim)
@@ -89,10 +87,8 @@ class HMM(nn.Module):
             value=curr
             )
 
-        # free variables that have distributions over them
         state = Variable('state', reals(self.state_dim))
         obs = Variable("obs", reals(obs_dim))
-        # observation
         observation_matrix = Tensor(torch.eye(self.state_dim, self.state_dim).expand(num_sensors, -1, -1).
                                     transpose(0, -1).reshape(self.state_dim, obs_dim))
         assert observation_matrix.output.shape == (self.state_dim, obs_dim), observation_matrix.output.shape
@@ -109,7 +105,6 @@ class HMM(nn.Module):
         logp = bias_dist
         curr = "state_init"
         logp += self.init(state=curr)
-#         import pdb; pdb.set_trace()
         for t, x in enumerate(track):
             x = x.expand([num_sensors, -1]).reshape(-1)
             prev, curr = curr, f"state_{t}"
@@ -133,14 +128,12 @@ def main(args):
     print(f'running with bias={not args.no_bias}')
     torch.manual_seed(12)
     losses = []
-    # params.append(transition_matrix)
     model = HMM(args.num_sensors)
     optim = Adam(model.parameters(), lr=0.1)
     scheduler = torch.optim.lr_scheduler.StepLR(optim, 200, gamma=0.2)
     data, biases = generate_data(args.frames[-1], args.num_sensors)
     for f in args.frames:
         print(f'running data with {f} frames')
-        # must do this since funsor slicing not supported
         truncated_data = data[:f]
         for i in range(args.num_epochs):
             optim.zero_grad()
