@@ -1,5 +1,4 @@
 import argparse
-from collections import OrderedDict
 
 import torch
 import torch.nn as nn
@@ -8,39 +7,43 @@ from torch.optim import Adam
 import pyro.distributions as dist
 
 import funsor
-import funsor.pyro
 import funsor.distributions as f_dist
 import funsor.ops as ops
-from funsor.pyro.convert import dist_to_funsor, mvn_to_funsor, matrix_and_mvn_to_funsor, tensor_to_funsor
+from funsor.pyro.convert import dist_to_funsor
 from funsor.domains import bint, reals
 from funsor.torch import Tensor, Variable
 from funsor.gaussian import Gaussian
 
 
 def generate_data(num_frames, num_sensors):
+    """
+    Generate data from an NCV dynamics model
+    """
     # simulate biased sensors
     sensors = []
     full_observations = []
     for _ in range(num_sensors):
-        bias = 1. * torch.randn(2)
+        bias = torch.randn(2)
         sensors.append(bias)
 
     # simulate all sensor observations
-    z = 10 * torch.rand(2)  # initial state
-    v = torch.randn(2)  # velocity
-#     f = torch.randn(2, 2)
-#     h = torch.randn(2, 2)
-#     Q = torch.eye(2)
-#     R = torch.eye(2)
+    z = torch.cat([torch.zeros(2), 0.1 * torch.rand(2)]).unsqueeze(1)  # PV vector
+    f = torch.eye(4, 4)
+    f[0, 2] = 1
+    f[1, 3] = 1
+    h = torch.eye(2, 4)
+    Q = torch.eye(4)
+    Q[2,2] = 0.1
+    Q[3,3] = 0.1
+    R = torch.eye(2)
 
     for t in range(num_frames):
-        # Advance latent state.
-        z += v + 0.1 * torch.randn(2)
-        x = z.expand([num_sensors, 2]) - torch.stack(sensors)
-#     z += f @ z + dist.MultivariateNormal(torch.zeros(2), Q)
-#     y += h @ z + dist.MultivariateNormal(torch.zeros(2), R)
-        full_observations.append(x)
+        z += f @ z + dist.MultivariateNormal(torch.zeros(4), Q).sample().unsqueeze(1)
+        x = h @ z + dist.MultivariateNormal(torch.zeros(2), R).sample().unsqueeze(1)
+        x = x.transpose(0, 1).expand([num_sensors, 2]) - torch.stack(sensors)
+        full_observations.append(x.clone())
     full_observations = torch.stack(full_observations)
+    import pdb; pdb.set_trace()
     assert full_observations.shape == (num_frames, num_sensors, 2)
     return full_observations, sensors
 
@@ -59,11 +62,6 @@ class HMM(nn.Module):
     def forward(self, track, add_bias=True):
         num_sensors = self.num_sensors
         obs_dim = num_sensors * self.state_dim
-
-        # reshape the data
-#         assert isinstance(track, Tensor)
-#         data = Tensor(track.data.reshape(-1, obs_dim),
-#                       OrderedDict(time=bint(len(track.data))))
 
         # bias distribution
         bias = Variable('bias', reals(obs_dim))
@@ -107,8 +105,6 @@ class HMM(nn.Module):
             obs_loc += bias
         self.observation_dist = f_dist.MultivariateNormal(
             loc=obs_loc,
-#             loc=Tensor(torch.zeros(obs_dim)),
-#             scale_tril=Tensor(torch.eye(obs_dim)),
             scale_tril=Tensor(obs_noise),
             value=obs
         )
@@ -160,7 +156,6 @@ def main(args):
             optim.step()
             scheduler.step()
         md = {
-#                 "bias_locs": model.bias_locs,
                 "bias_scales": model.bias_scales,
                 "losses": losses,
                 "data": data.data,
