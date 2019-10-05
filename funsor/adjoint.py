@@ -6,7 +6,7 @@ import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import bint
-from funsor.gaussian import Gaussian
+from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
@@ -100,6 +100,9 @@ def _fail_default(*args):
 
 
 adjoint_ops = KeyedRegistry(default=_fail_default)
+if interpreter._DEBUG:
+    adjoint_ops_register = adjoint_ops.register
+    adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(interpreter.debug_logged(fn))
 
 
 @adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object)
@@ -286,13 +289,19 @@ def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, 
     arg_int_inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if v.dtype != 'real')
     out_adj_int_inputs = OrderedDict((k, v) for k, v in out_adj.inputs.items() if v.dtype != 'real')
 
+    arg_real_inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if v.dtype == 'real')
+
+    align_inputs = OrderedDict((k, v) for k, v in out_adj.terms[1].inputs.items() if v.dtype != 'real')
+    align_inputs.update(arg_real_inputs)
+    out_adj_info_vec, out_adj_precision = align_gaussian(align_inputs, out_adj.terms[1])
+
     in_adj_info_vec = list(adjoint_ops(Subs, adj_redop, adj_binop,  # ops.add, ops.mul,
-                                       Tensor(out_adj.terms[1].info_vec, out_adj_int_inputs),
+                                       Tensor(out_adj_info_vec, out_adj_int_inputs),
                                        Tensor(arg.terms[1].info_vec, arg_int_inputs),
                                        slices).values())[0]
 
     in_adj_precision = list(adjoint_ops(Subs, adj_redop, adj_binop,  # ops.add, ops.mul,
-                                        Tensor(out_adj.terms[1].precision, out_adj_int_inputs),
+                                        Tensor(out_adj_precision, out_adj_int_inputs),
                                         Tensor(arg.terms[1].precision, arg_int_inputs),
                                         slices).values())[0]
 
