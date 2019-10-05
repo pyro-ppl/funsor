@@ -7,6 +7,7 @@ from pyro.ops.contract import einsum as pyro_einsum
 
 import funsor
 from funsor.distributions import Categorical
+from funsor.domains import bint
 from funsor.einsum import naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
@@ -54,7 +55,7 @@ def test_einsum(equation, backend):
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
-            assert actual.inputs[output_dim] == sizes[output_dim]
+            assert actual.inputs[output_dim].dtype == sizes[output_dim]
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
@@ -69,8 +70,8 @@ def test_einsum_categorical(equation):
         funsor_operands = [
             Categorical(probs=Tensor(
                 operand,
-                inputs=OrderedDict([(d, sizes[d]) for d in inp[:-1]])
-            ))(value=Variable(inp[-1], sizes[inp[-1]])).exp()
+                inputs=OrderedDict([(d, bint(sizes[d])) for d in inp[:-1]])
+            ))(value=Variable(inp[-1], bint(sizes[inp[-1]]))).exp()
             for inp, operand in zip(inputs, operands)
         ]
 
@@ -93,7 +94,7 @@ def test_einsum_categorical(equation):
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
-            assert actual.inputs[output_dim] == sizes[output_dim]
+            assert actual.inputs[output_dim].dtype == sizes[output_dim]
 
 
 PLATED_EINSUM_EXAMPLES = [
@@ -134,4 +135,4 @@ def test_plated_einsum(equation, plates, backend):
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
-            assert actual.inputs[output_dim] == sizes[output_dim]
+            assert actual.inputs[output_dim].dtype == sizes[output_dim]
