@@ -146,6 +146,33 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     return None  # defer to default implementation
 
 
+@eager.register(Integrate,
+                Independent[Independent[GaussianMixture, str, str, str], str, str, str],
+                MarkovProduct[ops.LogaddexpOp, ops.AddOp, GaussianMixture, Variable, frozenset, frozenset],
+                frozenset)
+def eager_integrate(log_measure, integrand, reduced_vars):
+    real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
+    if real_vars:
+        lhs_reals = frozenset(k for k, d in log_measure.inputs.items() if d.dtype == 'real')
+        rhs_reals = frozenset(k for k, d in integrand.inputs.items() if d.dtype == 'real')
+        if lhs_reals == real_vars and rhs_reals <= real_vars:
+
+            # First compute marginals.
+            with AdjointTape() as tape:
+                out = reinterpret(integrand).reduce(ops.logaddexp, rhs_reals)
+            marginals = tape.adjoint(ops.logaddexp, ops.add, out, (integrand.trans,))
+            marginal = marginals[integrand.trans]
+            assert issubclass(type(marginal), GaussianMixture)
+
+            # FIXME adapt from pyro/distributions/kl.py
+            rhs_precision = marginal.terms[1].precision
+            rhs_precision_diag = rhs_precision.diagonal(dim1=-2, dim2=-1)
+            trace_term = 0.5 * (rhs_precision_diag / log_measure.terms[1].precision).sum(-1)
+
+        raise NotImplementedError('TODO implement partial integration')
+
+    return None  # defer to default implementation
+
 __all__ = [
     'Integrate',
 ]
