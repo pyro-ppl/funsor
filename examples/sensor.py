@@ -6,13 +6,11 @@ from torch.optim import Adam
 
 import pyro.distributions as dist
 
-import funsor
 import funsor.distributions as f_dist
 import funsor.ops as ops
 from funsor.pyro.convert import dist_to_funsor
-from funsor.domains import bint, reals
+from funsor.domains import reals
 from funsor.torch import Tensor, Variable
-from funsor.gaussian import Gaussian
 
 
 def generate_data(num_frames, num_sensors):
@@ -33,8 +31,8 @@ def generate_data(num_frames, num_sensors):
     f[1, 3] = 1
     h = torch.eye(2, 4)
     Q = torch.eye(4)
-    Q[2,2] = 0.1
-    Q[3,3] = 0.1
+    Q[2, 2] = 0.1
+    Q[3, 3] = 0.1
     R = torch.eye(2)
 
     for t in range(num_frames):
@@ -43,7 +41,6 @@ def generate_data(num_frames, num_sensors):
         x = x.transpose(0, 1).expand([num_sensors, 2]) - torch.stack(sensors)
         full_observations.append(x.clone())
     full_observations = torch.stack(full_observations)
-    import pdb; pdb.set_trace()
     assert full_observations.shape == (num_frames, num_sensors, 2)
     return full_observations, sensors
 
@@ -97,7 +94,7 @@ class HMM(nn.Module):
         obs = Variable("obs", reals(obs_dim))
         # observation
         observation_matrix = Tensor(torch.eye(self.state_dim, self.state_dim).expand(num_sensors, -1, -1).
-                transpose(0, -1).reshape(self.state_dim, obs_dim))
+                                    transpose(0, -1).reshape(self.state_dim, obs_dim))
         assert observation_matrix.output.shape == (self.state_dim, obs_dim), observation_matrix.output.shape
         obs_noise = self.obs_noise.expand(obs_dim).diag_embed()
         obs_loc = state @ observation_matrix
