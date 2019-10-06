@@ -1,5 +1,7 @@
 import argparse
 
+import math
+
 import torch
 import torch.nn as nn
 from torch.optim import Adam
@@ -17,18 +19,21 @@ def generate_data(num_frames, num_sensors):
     """
     Generate data from an NCV dynamics model
     """
-    # simulate biased sensors
+    dt = 1
     sensors = []
     full_observations = []
+    # simulate biased sensors
     for _ in range(num_sensors):
         bias = torch.randn(2)
         sensors.append(bias)
 
     # simulate all sensor observations
     z = torch.cat([torch.zeros(2), 0.1 * torch.rand(2)]).unsqueeze(1)  # PV vector
-    f = torch.eye(4, 4)
-    f[0, 2] = 1
-    f[1, 3] = 1
+    damp = 10.
+    f = torch.tensor([[1, 0, dt * math.exp(-damp * dt), 0],
+                      [0, 1, 0, dt * math.exp(-damp * dt)],
+                      [0, 0, math.exp(-damp * dt), 0],
+                      [0, 0, 0, math.exp(-damp * dt)]])
     h = torch.eye(2, 4)
     Q = torch.eye(4)
     Q[2, 2] = 0.1
