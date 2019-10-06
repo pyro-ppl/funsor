@@ -139,7 +139,6 @@ def main(args):
     losses = []
     model = HMM(args.num_sensors)
     optim = Adam(model.parameters(), lr=0.1)
-    scheduler = torch.optim.lr_scheduler.StepLR(optim, 200, gamma=0.2)
     data, biases = generate_data(args.frames[-1], args.num_sensors)
     for f in args.frames:
         print(f'running data with {f} frames')
@@ -153,7 +152,6 @@ def main(args):
             if i % 10 == 0:
                 print(loss.item())
             optim.step()
-            scheduler.step()
         md = {
                 "bias_scales": model.bias_scales,
                 "losses": losses,
@@ -162,7 +160,7 @@ def main(args):
                 "cov": cov
              }
         print(f'saving output to: {f}_{args.save}')
-        torch.save(md, f'{f}_' + args.save)
+        torch.save(md, args.save + f'{f}_bias={not args.no_bias}.pkl')
 
 
 if __name__ == "__main__":
@@ -171,7 +169,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-bias", default=False, action="store_true")
     parser.add_argument("--frames", default="200", type=lambda s: [int(i) for i in s.split(',')],
                         help="frames to run, comma delimited")
-    parser.add_argument("--save", default="sensor.pkl", type=str)
+    parser.add_argument("--save", default="sensor", type=str)
     parser.add_argument("--num-sensors", default=5, type=int)
     parser.add_argument("--plot", default=False, action="store_true")
     args = parser.parse_args()
