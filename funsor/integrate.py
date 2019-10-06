@@ -2,10 +2,13 @@ from collections import OrderedDict
 from typing import Union
 
 import funsor.ops as ops
+from funsor.adjoint import AdjointTape
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian, cholesky_inverse, cholesky_solve
-from funsor.terms import Funsor, Number, Subs, Unary, Variable, eager, normalize, substitute, to_funsor
+from funsor.interpreter import reinterpret
+from funsor.sum_product import MarkovProduct
+from funsor.terms import Funsor, Independent, Number, Subs, Unary, Variable, eager, normalize, substitute, to_funsor
 from funsor.torch import Tensor
 
 
@@ -146,9 +149,37 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     return None  # defer to default implementation
 
 
+########################################
+# Independent patterns
+########################################
+
+@eager.register(Integrate, Independent, Independent, frozenset)
+def eager_integrate(log_measure, integrand, reduced_vars):
+    if (log_measure.reals_var in reduced_vars and
+            log_measure.reals_var == integrand.reals_var and
+            log_measure.bint_var == integrand.bint_var):
+        result = Integrate(log_measure.fn, integrand.fn, reduced_vars)
+        return result.reduce(ops.logaddexp, log_measure.bint_var)
+
+    return None  # defer to default implementation
+
+
+@eager.register(Integrate,
+                Independent,
+                MarkovProduct[ops.LogAddExpOp, ops.AddOp, Funsor, Variable, frozenset, frozenset],
+                frozenset)
+def eager_integrate(log_measure, integrand, reduced_vars):
+    if (log_measure.reals_var in reduced_vars and
+            log_measure.reals_var == integrand.step.keys() and
+            log_measure.reals_var == integrand.values.keys()):
+        raise NotImplementedError('TODO')
+
+    return None  # defer to default implementation
+
+
 @eager.register(Integrate,
                 Independent[Independent[GaussianMixture, str, str, str], str, str, str],
-                MarkovProduct[ops.LogaddexpOp, ops.AddOp, GaussianMixture, Variable, frozenset, frozenset],
+                MarkovProduct[ops.LogAddExpOp, ops.AddOp, GaussianMixture, Variable, frozenset, frozenset],
                 frozenset)
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
@@ -168,10 +199,12 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             rhs_precision = marginal.terms[1].precision
             rhs_precision_diag = rhs_precision.diagonal(dim1=-2, dim2=-1)
             trace_term = 0.5 * (rhs_precision_diag / log_measure.terms[1].precision).sum(-1)
+            assert trace_term.shape
 
         raise NotImplementedError('TODO implement partial integration')
 
     return None  # defer to default implementation
+
 
 __all__ = [
     'Integrate',

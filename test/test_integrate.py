@@ -3,12 +3,15 @@ from collections import OrderedDict
 import pytest
 
 import funsor.ops as ops
+from funsor.cnf import GaussianMixture
 from funsor.domains import bint, reals
+from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpreter import interpretation, reinterpret, dispatched_interpretation
 from funsor.montecarlo import monte_carlo
-from funsor.terms import eager, lazy, moment_matching, normalize, reflect
-from funsor.testing import random_tensor
+from funsor.sum_product import MarkovProduct
+from funsor.terms import Independent, Variable, eager, lazy, moment_matching, normalize, reflect
+from funsor.testing import assert_close, random_tensor, random_gaussian
 
 
 @pytest.mark.parametrize('interp', [
@@ -36,9 +39,9 @@ def forget_independence(cls, *args):
 @forget_independence.register(Independent, GaussianMixture, str, str, str)
 def forget_independent_gaussian_mixture(fn, reals_var, bint_var, diag_var):
     tensor, gaussian = fn.terms
-    info_vec = TODO
-    precision = TODO
-    inputs = TODO
+    info_vec = 'TODO'
+    precision = 'TODO'
+    inputs = 'TODO'
     gaussian = Gaussian(info_vec, precision, inputs)
     return tensor + gaussian
 
@@ -48,12 +51,12 @@ def forget_independent_gaussian_mixture(fn, reals_var, bint_var, diag_var):
 def test_iigaussian_markov_product(t_size, z_size, y_size):
     t = Variable('t', bint(t_size))
     rhs_gaussian = (random_tensor(OrderedDict(t=bint(t_size), i=bint(y_size))) +
-                    random_gaussian(OrderedDict(y=reals()))
+                    random_gaussian(OrderedDict(y=reals())))
     log_measure = Independent(Independent(rhs_gaussian, 'y', 'i'), 'y', 't')
     lhs_gaussian = (random_tensor(OrderedDict(t=bint(t_size))) +
                     random_gaussian(OrderedDict(z_prev=reals(z_size),
                                                 z_curr=reals(z_size),
-                                                y=reals(y_size)))
+                                                y=reals(y_size))))
     with interpretation(lazy):
         integrand = MarkovProduct(ops.logaddeyp, ops.add, lhs_gaussian, t, {'z_prev': 'z_curr'})
     actual = Integrate(log_measure, integrand, frozenset(['y']))
