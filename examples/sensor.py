@@ -39,8 +39,8 @@ def generate_data(num_frames, num_sensors):
         bias = torch.randn(2)
         sensors.append(bias)
 
-    # simulate all sensor observations
     z = torch.cat([torch.zeros(2), 0.1 * torch.rand(2)]).unsqueeze(1)  # PV vector
+    # damp the velocities
     damp = 0.5
     f = torch.tensor([[1, 0, dt * math.exp(-damp * dt), 0],
                       [0, 1, 0, dt * math.exp(-damp * dt)],
@@ -90,7 +90,6 @@ class HMM(nn.Module):
         # hidden states
         prev = Variable("prev", reals(4))
         curr = Variable("curr", reals(4))
-        # ncv transition noise todo
         trans_noise = self.trans_noise * NCV_PROCESS_NOISE.cholesky()
         self.trans_dist = f_dist.MultivariateNormal(
             loc=prev @ NCV_TRANSITION_MATRIX,
@@ -125,12 +124,12 @@ class HMM(nn.Module):
             logp += self.observation_dist(state=curr, obs=x)
             logp = logp.reduce(ops.logaddexp, prev)
         # marginalize out remaining latent variables
-        cov = logp.terms[1].precision
+        prec = logp.terms[1].precision
         logp = logp.reduce(ops.logaddexp)
 
         # we should get a single scalar Tensor here
         assert isinstance(logp, Tensor) and logp.data.dim() == 0, logp.pretty()
-        return logp.data, cov
+        return logp.data, prec
 
 
 def main(args):
@@ -145,7 +144,7 @@ def main(args):
         truncated_data = data[:f]
         for i in range(args.num_epochs):
             optim.zero_grad()
-            log_prob, cov = model(truncated_data, add_bias=not args.no_bias)
+            log_prob, prec = model(truncated_data, add_bias=not args.no_bias)
             loss = -log_prob
             loss.backward()
             losses.append(loss.item())
@@ -157,7 +156,7 @@ def main(args):
                 "losses": losses,
                 "data": data.data,
                 "biases": biases,
-                "cov": cov
+                "prec": prec
              }
         print(f'saving output to: {f}_{args.save}')
         torch.save(md, args.save + f'{f}_bias={not args.no_bias}.pkl')
