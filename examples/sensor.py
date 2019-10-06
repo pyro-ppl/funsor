@@ -15,12 +15,13 @@ from funsor.domains import reals
 from funsor.torch import Tensor, Variable
 
 
-NCV_PROCESS_NOISE = torch.tensor([[1./3., 0., 0.5, 0.],
-                                  [0., 1./3., 0., 0.5],
-                                  [0.5, 0., 1., 0.],
-                                  [0., 0.5, 0., 1.]])
-
-
+# We use a 2D continuous-time NCV dynamics model throughout.
+# See http://webee.technion.ac.il/people/shimkin/Estimation09/ch8_target.pdf
+TIME_STEP = 1.
+NCV_PROCESS_NOISE = torch.tensor([[1/3, 0.0, 1/2, 0.0],
+                                  [0.0, 1/3, 0.0, 1/2],
+                                  [1/2, 0.0, 1.0, 0.0],
+                                  [0.0, 1/2, 0.0, 1.0]])
 NCV_TRANSITION_MATRIX = torch.tensor([[1., 0., 1., 0.],
                                       [0., 1., 0., 1.],
                                       [0., 0., 1., 0.],
@@ -29,9 +30,9 @@ NCV_TRANSITION_MATRIX = torch.tensor([[1., 0., 1., 0.],
 
 def generate_data(num_frames, num_sensors):
     """
-    Generate data from an NCV dynamics model
+    Generate data from a damped NCV dynamics model
     """
-    dt = 1
+    dt = TIME_STEP
     sensors = []
     full_observations = []
     # simulate biased sensors
@@ -60,39 +61,41 @@ def generate_data(num_frames, num_sensors):
 
 
 class HMM(nn.Module):
-    def __init__(self, num_sensors, state_dim=2):
+    def __init__(self, num_sensors):
         super(HMM, self).__init__()
         self.num_sensors = num_sensors
-        self.state_dim = state_dim
 
         # learnable params
-        self.bias_scales = nn.Parameter(torch.ones(2))
-        self.obs_noise = nn.Parameter(torch.tensor(1.))
-        self.trans_noise = nn.Parameter(torch.tensor(1.))
+        self.log_bias_scale = nn.Parameter(torch.tensor(0.))
+        self.log_obs_noise = nn.Parameter(torch.tensor(0.))
+        self.log_trans_noise = nn.Parameter(torch.tensor(0.))
 
     def forward(self, track, add_bias=True):
         obs_dim = self.num_sensors * 2
+        bias_scale = self.log_bias_scale.exp()
+        obs_noise = self.log_obs_noise.exp()
+        trans_noise = self.log_trans_noise.exp()
 
         # bias distribution
         bias = Variable('bias', reals(obs_dim))
-        assert not torch.isnan(self.bias_scales).any(), "bias scales was nan"
+        assert not torch.isnan(bias_scale), "bias scales was nan"
         bias_dist = dist_to_funsor(
             dist.MultivariateNormal(
                 torch.zeros(obs_dim),
-                self.bias_scales.expand(self.num_sensors, 2).reshape(-1).diag_embed()
+                scale_tril=bias_scale.expand(self.num_sensors * 2).diag_embed()
             )
         )(value=bias)
 
-        init_dist = torch.distributions.MultivariateNormal(torch.zeros(4), torch.eye(4))
+        init_dist = torch.distributions.MultivariateNormal(
+            torch.zeros(4), scale_tril=10 * torch.eye(4))
         self.init = dist_to_funsor(init_dist)(value="state")
 
         # hidden states
         prev = Variable("prev", reals(4))
         curr = Variable("curr", reals(4))
-        trans_noise = self.trans_noise * NCV_PROCESS_NOISE.cholesky()
         self.trans_dist = f_dist.MultivariateNormal(
             loc=prev @ NCV_TRANSITION_MATRIX,
-            scale_tril=trans_noise,
+            scale_tril=trans_noise * NCV_PROCESS_NOISE.cholesky(),
             value=curr
             )
 
@@ -101,13 +104,13 @@ class HMM(nn.Module):
         observation_matrix = Tensor(torch.eye(4, 2).expand(self.num_sensors, -1, -1).
                                     transpose(0, -1).reshape(4, obs_dim))
         assert observation_matrix.output.shape == (4, obs_dim), observation_matrix.output.shape
-        obs_noise = self.obs_noise.expand(obs_dim).diag_embed()
+        obs_noise = obs_noise.expand(obs_dim).diag_embed()
         obs_loc = state @ observation_matrix
         if add_bias:
             obs_loc += bias
         self.observation_dist = f_dist.MultivariateNormal(
             loc=obs_loc,
-            scale_tril=Tensor(obs_noise),
+            scale_tril=obs_noise,
             value=obs
         )
 
@@ -166,7 +169,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Switching linear dynamical system")
     parser.add_argument("-n", "--num-epochs", default=300, type=int)
     parser.add_argument("--no-bias", default=False, action="store_true")
-    parser.add_argument("--frames", default="200", type=lambda s: [int(i) for i in s.split(',')],
+    parser.add_argument("--frames", default="50", type=lambda s: [int(i) for i in s.split(',')],
                         help="frames to run, comma delimited")
     parser.add_argument("--save", default="sensor", type=str)
     parser.add_argument("--num-sensors", default=5, type=int)
