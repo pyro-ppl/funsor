@@ -15,6 +15,18 @@ from funsor.domains import reals
 from funsor.torch import Tensor, Variable
 
 
+NCV_PROCESS_NOISE = torch.tensor([[1./3., 0., 0.5, 0.],
+                                  [0., 1./3., 0., 0.5],
+                                  [0.5, 0., 1., 0.],
+                                  [0., 0.5, 0., 1.]])
+
+
+NCV_TRANSITION_MATRIX = torch.tensor([[1., 0., 1., 0.],
+                                      [0., 1., 0., 1.],
+                                      [0., 0., 1., 0.],
+                                      [0., 0., 0., 1.]])
+
+
 def generate_data(num_frames, num_sensors):
     """
     Generate data from an NCV dynamics model
@@ -29,19 +41,16 @@ def generate_data(num_frames, num_sensors):
 
     # simulate all sensor observations
     z = torch.cat([torch.zeros(2), 0.1 * torch.rand(2)]).unsqueeze(1)  # PV vector
-    damp = 10.
+    damp = 0.5
     f = torch.tensor([[1, 0, dt * math.exp(-damp * dt), 0],
                       [0, 1, 0, dt * math.exp(-damp * dt)],
                       [0, 0, math.exp(-damp * dt), 0],
                       [0, 0, 0, math.exp(-damp * dt)]])
     h = torch.eye(2, 4)
-    Q = torch.eye(4)
-    Q[2, 2] = 0.1
-    Q[3, 3] = 0.1
     R = torch.eye(2)
 
     for t in range(num_frames):
-        z += f @ z + dist.MultivariateNormal(torch.zeros(4), Q).sample().unsqueeze(1)
+        z = f @ z + dist.MultivariateNormal(torch.zeros(4), NCV_PROCESS_NOISE).sample().unsqueeze(1)
         x = h @ z + dist.MultivariateNormal(torch.zeros(2), R).sample().unsqueeze(1)
         x = x.transpose(0, 1).expand([num_sensors, 2]) - torch.stack(sensors)
         full_observations.append(x.clone())
@@ -63,40 +72,37 @@ class HMM(nn.Module):
 
     def forward(self, track, add_bias=True):
         num_sensors = self.num_sensors
-        obs_dim = num_sensors * self.state_dim
+        obs_dim = num_sensors * 2
 
         # bias distribution
         bias = Variable('bias', reals(obs_dim))
         assert not torch.isnan(self.bias_scales).any(), "bias scales was nan"
         bias_dist = dist_to_funsor(
             dist.MultivariateNormal(
-                torch.zeros(num_sensors * 2),
+                torch.zeros(obs_dim),
                 self.bias_scales.expand(num_sensors, 2).reshape(-1).diag_embed()
             )
         )(value=bias)
 
-        init_dist = torch.distributions.MultivariateNormal(torch.zeros(2), torch.eye(2) + 0.1 * torch.randn(2))
+        init_dist = torch.distributions.MultivariateNormal(torch.zeros(4), 10. * torch.eye(4))
         self.init = dist_to_funsor(init_dist)(value="state")
 
         # hidden states
-        prev = Variable("prev", reals(self.state_dim))
-        curr = Variable("curr", reals(self.state_dim))
-        # ncv transition matrix todo
-#         transition_matrix = 0.1 * torch.randn(state_dim, state_dim) + self.transition_param.diag_embed().flip(0)
-        transition_matrix = torch.randn(self.state_dim, self.state_dim)
+        prev = Variable("prev", reals(4))
+        curr = Variable("curr", reals(4))
         # ncv transition noise todo
-        trans_noise = self.trans_noise.expand([self.state_dim]).diag_embed()
+        trans_noise = self.trans_noise * NCV_PROCESS_NOISE.cholesky()
         self.trans_dist = f_dist.MultivariateNormal(
-            loc=prev @ transition_matrix,
+            loc=prev @ NCV_TRANSITION_MATRIX,
             scale_tril=trans_noise,
             value=curr
             )
 
-        state = Variable('state', reals(self.state_dim))
+        state = Variable('state', reals(4))
         obs = Variable("obs", reals(obs_dim))
-        observation_matrix = Tensor(torch.eye(self.state_dim, self.state_dim).expand(num_sensors, -1, -1).
-                                    transpose(0, -1).reshape(self.state_dim, obs_dim))
-        assert observation_matrix.output.shape == (self.state_dim, obs_dim), observation_matrix.output.shape
+        observation_matrix = Tensor(torch.eye(4, 2).expand(num_sensors, -1, -1).
+                                    transpose(0, -1).reshape(4, obs_dim))
+        assert observation_matrix.output.shape == (4, obs_dim), observation_matrix.output.shape
         obs_noise = self.obs_noise.expand(obs_dim).diag_embed()
         obs_loc = state @ observation_matrix
         if add_bias:
@@ -119,8 +125,6 @@ class HMM(nn.Module):
             logp += self.observation_dist(state=curr, obs=x)
             logp = logp.reduce(ops.logaddexp, prev)
         # marginalize out remaining latent variables
-        # use mvn_to_funsor to pull out bias cov
-        # plot trace or max e-value
         cov = logp.terms[1].precision
         logp = logp.reduce(ops.logaddexp)
 
