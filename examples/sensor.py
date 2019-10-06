@@ -36,7 +36,7 @@ def generate_data(num_frames, num_sensors):
     full_observations = []
     # simulate biased sensors
     for _ in range(num_sensors):
-        bias = torch.randn(2)
+        bias = 3 * torch.randn(2)
         sensors.append(bias)
 
     z = torch.cat([torch.zeros(2), 0.1 * torch.rand(2)]).unsqueeze(1)  # PV vector
@@ -71,8 +71,7 @@ class HMM(nn.Module):
         self.trans_noise = nn.Parameter(torch.tensor(1.))
 
     def forward(self, track, add_bias=True):
-        num_sensors = self.num_sensors
-        obs_dim = num_sensors * 2
+        obs_dim = self.num_sensors * 2
 
         # bias distribution
         bias = Variable('bias', reals(obs_dim))
@@ -80,11 +79,11 @@ class HMM(nn.Module):
         bias_dist = dist_to_funsor(
             dist.MultivariateNormal(
                 torch.zeros(obs_dim),
-                self.bias_scales.expand(num_sensors, 2).reshape(-1).diag_embed()
+                self.bias_scales.expand(self.num_sensors, 2).reshape(-1).diag_embed()
             )
         )(value=bias)
 
-        init_dist = torch.distributions.MultivariateNormal(torch.zeros(4), 10. * torch.eye(4))
+        init_dist = torch.distributions.MultivariateNormal(torch.zeros(4), torch.eye(4))
         self.init = dist_to_funsor(init_dist)(value="state")
 
         # hidden states
@@ -99,7 +98,7 @@ class HMM(nn.Module):
 
         state = Variable('state', reals(4))
         obs = Variable("obs", reals(obs_dim))
-        observation_matrix = Tensor(torch.eye(4, 2).expand(num_sensors, -1, -1).
+        observation_matrix = Tensor(torch.eye(4, 2).expand(self.num_sensors, -1, -1).
                                     transpose(0, -1).reshape(4, obs_dim))
         assert observation_matrix.output.shape == (4, obs_dim), observation_matrix.output.shape
         obs_noise = self.obs_noise.expand(obs_dim).diag_embed()
@@ -116,7 +115,7 @@ class HMM(nn.Module):
         curr = "state_init"
         logp += self.init(state=curr)
         for t, x in enumerate(track):
-            x = x.expand([num_sensors, -1]).reshape(-1)
+            x = x.expand([self.num_sensors, -1]).reshape(-1)
             prev, curr = curr, f"state_{t}"
             # transition to state at t=1
             logp += self.trans_dist(prev=prev, curr=curr)
@@ -135,11 +134,11 @@ class HMM(nn.Module):
 def main(args):
     print(f'running with bias={not args.no_bias}')
     torch.manual_seed(12)
-    losses = []
-    model = HMM(args.num_sensors)
-    optim = Adam(model.parameters(), lr=0.1)
     data, biases = generate_data(args.frames[-1], args.num_sensors)
     for f in args.frames:
+        losses = []
+        model = HMM(args.num_sensors)
+        optim = Adam(model.parameters(), lr=0.1)
         print(f'running data with {f} frames')
         truncated_data = data[:f]
         for i in range(args.num_epochs):
@@ -158,8 +157,9 @@ def main(args):
                 "biases": biases,
                 "prec": prec
              }
-        print(f'saving output to: {f}_{args.save}')
-        torch.save(md, args.save + f'{f}_bias={not args.no_bias}.pkl')
+        suffix = f'_{f}_bias={not args.no_bias}.pkl'
+        print(f'saving output to: {args.save}' + suffix)
+        torch.save(md, args.save + suffix)
 
 
 if __name__ == "__main__":
