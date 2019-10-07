@@ -150,7 +150,7 @@ def main(args):
     for f in args.frames:
         losses = []
         model = HMM(args.num_sensors)
-        optim = Adam(model.parameters(), lr=0.1)
+        optim = Adam(model.parameters(), lr=args.lr)
         print(f'running data with {f} frames')
         truncated_data = data[:f]
         for i in range(args.num_epochs):
@@ -160,7 +160,6 @@ def main(args):
             loss.backward()
             losses.append(loss.item())
             if i % 10 == 0:
-                print('params: ', [(k, float(v)) for k,v in model.named_parameters()])
                 print(loss.item())
             optim.step()
         md = {
@@ -185,6 +184,7 @@ if __name__ == "__main__":
                         help="frames to run, comma delimited")
     parser.add_argument("--save", default="sensor", type=str)
     parser.add_argument("--num-sensors", default=5, type=int)
+    parser.add_argument("--lr", default=0.1, type=float)
     parser.add_argument("--plot", default=False, action="store_true")
     args = parser.parse_args()
     main(args)
