@@ -22,10 +22,10 @@ NCV_PROCESS_NOISE = torch.tensor([[1/3, 0.0, 1/2, 0.0],
                                   [0.0, 1/3, 0.0, 1/2],
                                   [1/2, 0.0, 1.0, 0.0],
                                   [0.0, 1/2, 0.0, 1.0]])
-NCV_TRANSITION_MATRIX = torch.tensor([[1., 0., 1., 0.],
-                                      [0., 1., 0., 1.],
-                                      [0., 0., 1., 0.],
-                                      [0., 0., 0., 1.]])
+NCV_TRANSITION_MATRIX = torch.tensor([[1., 0., 0., 0.],
+                                      [0., 1., 0., 0.],
+                                      [1., 0., 1., 0.],
+                                      [0., 1., 0., 1.]])
 
 
 def generate_data(num_frames, num_sensors):
@@ -37,7 +37,7 @@ def generate_data(num_frames, num_sensors):
     full_observations = []
     # simulate biased sensors
     for _ in range(num_sensors):
-        bias = 3 * torch.randn(2)
+        bias = torch.randn(2)
         sensors.append(bias)
 
     z = torch.cat([torch.zeros(2), 0.1 * torch.rand(2)]).unsqueeze(1)  # PV vector
@@ -49,15 +49,20 @@ def generate_data(num_frames, num_sensors):
                       [0, 0, 0, math.exp(-damp * dt)]])
     h = torch.eye(2, 4)
     R = torch.eye(2)
+    Q = 0.1 * NCV_PROCESS_NOISE
+
+    true_states = []
 
     for t in range(num_frames):
-        z = f @ z + dist.MultivariateNormal(torch.zeros(4), NCV_PROCESS_NOISE).sample().unsqueeze(1)
+        z = f @ z + dist.MultivariateNormal(torch.zeros(4), Q).sample().unsqueeze(1)
         x = h @ z + dist.MultivariateNormal(torch.zeros(2), R).sample().unsqueeze(1)
         x = x.transpose(0, 1).expand([num_sensors, 2]) - torch.stack(sensors)
+        true_states.append(z.clone())
         full_observations.append(x.clone())
     full_observations = torch.stack(full_observations)
+    true_states = torch.stack(true_states)
     assert full_observations.shape == (num_frames, num_sensors, 2)
-    return full_observations, sensors
+    return full_observations, true_states, sensors
 
 
 class HMM(nn.Module):
@@ -101,8 +106,8 @@ class HMM(nn.Module):
 
         state = Variable('state', reals(4))
         obs = Variable("obs", reals(obs_dim))
-        observation_matrix = Tensor(torch.eye(4, 2).expand(self.num_sensors, -1, -1).
-                                    transpose(0, -1).reshape(4, obs_dim))
+        observation_matrix = Tensor(torch.eye(4, 2).expand(self.num_sensors, -1, -1)
+                                    .reshape(4, obs_dim))
         assert observation_matrix.output.shape == (4, obs_dim), observation_matrix.output.shape
         obs_noise = obs_noise.expand(obs_dim).diag_embed()
         obs_loc = state @ observation_matrix
@@ -126,18 +131,22 @@ class HMM(nn.Module):
             logp += self.observation_dist(state=curr, obs=x)
             logp = logp.reduce(ops.logaddexp, prev)
         # marginalize out remaining latent variables
+        logp = logp.reduce(ops.logaddexp, "bias")
+        # posterior over the final state
+        assert set(logp.inputs) == {f'state_{len(track) - 1}'}
         prec = logp.terms[1].precision
+        mean = prec.inverse() @ logp.terms[1].info_vec
         logp = logp.reduce(ops.logaddexp)
 
         # we should get a single scalar Tensor here
         assert isinstance(logp, Tensor) and logp.data.dim() == 0, logp.pretty()
-        return logp.data, prec
+        return logp.data, (mean, prec)
 
 
 def main(args):
     print(f'running with bias={not args.no_bias}')
     torch.manual_seed(12)
-    data, biases = generate_data(args.frames[-1], args.num_sensors)
+    data, truth, biases = generate_data(args.frames[-1], args.num_sensors)
     for f in args.frames:
         losses = []
         model = HMM(args.num_sensors)
@@ -146,19 +155,22 @@ def main(args):
         truncated_data = data[:f]
         for i in range(args.num_epochs):
             optim.zero_grad()
-            log_prob, prec = model(truncated_data, add_bias=not args.no_bias)
+            log_prob, (mean, prec) = model(truncated_data, add_bias=not args.no_bias)
             loss = -log_prob
             loss.backward()
             losses.append(loss.item())
             if i % 10 == 0:
+                print('params: ', [(k, float(v)) for k,v in model.named_parameters()])
                 print(loss.item())
             optim.step()
         md = {
-                "bias_scales": model.bias_scales,
+                "bias_scales": model.log_bias_scale,
                 "losses": losses,
                 "data": data.data,
                 "biases": biases,
-                "prec": prec
+                "mean": mean,
+                "prec": prec,
+                "truth": truth
              }
         suffix = f'_{f}_bias={not args.no_bias}.pkl'
         print(f'saving output to: {args.save}' + suffix)
