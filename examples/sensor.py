@@ -193,20 +193,23 @@ def track(args):
                 "final_pos_error": final_pos_error,
                 "final_vel_error": final_vel_error,
             }
-        print(f'saving output to: {args.metrics_filename}')
-        torch.save(results, args.metrics_filename)
+        if args.metrics_filename:
+            print(f'saving output to: {args.metrics_filename}')
+            torch.save(results, args.metrics_filename)
+        return results
 
 
 def main(args):
-    if args.force or not os.path.exists(args.metrics_filename):
-        track(args)
+    if args.force or not args.metrics_filename or not os.path.exists(args.metrics_filename):
+        results = track(args)
+    else:
+        results = torch.load(args.metrics_filename)
 
     if args.plot_filename:
         import matplotlib
         matplotlib.use('Agg')
         from matplotlib import pyplot
         import numpy as np
-        results = torch.load(args.metrics_filename)
         seeds = set(seed for seed, _, _ in results)
         X = args.num_frames
         pyplot.figure(figsize=(5, 1.4), dpi=300)
@@ -238,7 +241,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-sensors", default=5, type=int)
     parser.add_argument("-n", "--num-epochs", default=50, type=int)
     parser.add_argument("--lr", default=0.1, type=float)
-    parser.add_argument("--metrics-filename", default="sensor.pkl", type=str)
+    parser.add_argument("--metrics-filename", default="", type=str)
     parser.add_argument("--plot-filename", default="", type=str)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
