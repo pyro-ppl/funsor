@@ -38,7 +38,7 @@ def generate_data(num_frames, num_sensors):
     obs_noise = 1.0
 
     # define dynamics
-    z = torch.cat([torch.randn(2),        # position
+    z = torch.cat([10. * torch.randn(2),  # position
                    0.1 * torch.rand(2)])  # velocity
     damp = 0.5  # damp the velocities
     f = torch.tensor([[1, 0, 0, 0],
@@ -207,13 +207,13 @@ def main(args):
         results = torch.load(args.metrics_filename)
         seeds = set(seed for seed, _, _ in results)
         X = args.num_frames
-        fig = pyplot.figure(figsize=(6,2), dpi=300).patch.set_color('white')
+        pyplot.figure(figsize=(5, 1.5), dpi=300)
         pyplot.plot(X, [np.mean([results[s, 0, f]['final_pos_error']**2 for s in seeds])
-                     for f in args.num_frames], 'k--')
+                        for f in args.num_frames], 'k--')
         pyplot.plot(X, [np.mean([results[s, 1, f]['final_pos_error']**2 for s in seeds])
-                     for f in args.num_frames], 'r-')
-        pyplot.ylabel('final position RMSE')
-        pyplot.xlabel('track length')
+                        for f in args.num_frames], 'r-')
+        pyplot.ylabel('Position RMSE')
+        pyplot.xlabel('Track Length')
         pyplot.xticks((2, 5, 10, 15, 20))
         pyplot.xlim(2, 20)
         pyplot.tight_layout(0)
