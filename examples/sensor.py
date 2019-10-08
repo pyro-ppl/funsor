@@ -196,7 +196,7 @@ def track(args):
         if args.metrics_filename:
             print(f'saving output to: {args.metrics_filename}')
             torch.save(results, args.metrics_filename)
-        return results
+    return results
 
 
 def main(args):
@@ -225,13 +225,20 @@ def main(args):
         pyplot.savefig(args.plot_filename)
 
 
-def int_list(arg):
-    return [int(n) for n in arg.split(',')]
+def int_list(args):
+    result = []
+    for arg in args.split(','):
+        if '-' in arg:
+            beg, end = map(int, arg.split('-'))
+            result.extend(range(beg, 1 + end))
+        else:
+            result.append(int(arg))
+    return result
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Biased Kalman filter")
-    parser.add_argument("--seed", default="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15", type=int_list,
+    parser.add_argument("--seed", default="0", type=int_list,
                         help="random seed, comma delimited for multiple runs")
     parser.add_argument("--bias", default="0,1", type=int_list,
                         help="whether to model bias, comma deliminted for multiple runs")
