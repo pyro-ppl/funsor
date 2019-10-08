@@ -71,9 +71,9 @@ def generate_data(num_frames, num_sensors):
     return observations, states, sensor_bias
 
 
-class HMM(nn.Module):
+class Model(nn.Module):
     def __init__(self, num_sensors):
-        super(HMM, self).__init__()
+        super(Model, self).__init__()
         self.num_sensors = num_sensors
 
         # learnable params
@@ -153,7 +153,7 @@ def track(args):
         observations, states, sensor_bias = generate_data(max(args.num_frames), args.num_sensors)
         for bias, num_frames in itertools.product(args.bias, args.num_frames):
             print(f'tracking with seed={seed}, bias={bias}, num_frames={num_frames}')
-            model = HMM(args.num_sensors)
+            model = Model(args.num_sensors)
             optim = Adam(model.parameters(), lr=args.lr, betas=(0.5, 0.8))
             losses = []
             for i in range(args.num_epochs):
@@ -213,10 +213,21 @@ def main(args):
         seeds = set(seed for seed, _, _ in results)
         X = args.num_frames
         pyplot.figure(figsize=(5, 1.4), dpi=300)
-        pyplot.plot(X, [np.mean([results[s, 0, f]['final_pos_error']**2 for s in seeds])**0.5
-                        for f in args.num_frames], 'k--')
-        pyplot.plot(X, [np.mean([results[s, 1, f]['final_pos_error']**2 for s in seeds])**0.5
-                        for f in args.num_frames], 'r-')
+
+        pos_error = np.array([[results[s, 0, f]['final_pos_error'] for s in seeds]
+                              for f in args.num_frames])
+        mse = (pos_error**2).mean(axis=1)
+        std = (pos_error**2).std(axis=1) / len(seeds)**0.5
+        pyplot.plot(X, mse**0.5, 'k--')
+        pyplot.fill_between(X, (mse - std)**0.5, (mse + std)**0.5, color='black', alpha=0.15, lw=0)
+
+        pos_error = np.array([[results[s, 1, f]['final_pos_error'] for s in seeds]
+                              for f in args.num_frames])
+        mse = (pos_error**2).mean(axis=1)
+        std = (pos_error**2).std(axis=1) / len(seeds)**0.5
+        pyplot.plot(X, mse**0.5, 'r-')
+        pyplot.fill_between(X, (mse - std)**0.5, (mse + std)**0.5, color='red', alpha=0.15, lw=0)
+
         pyplot.ylabel('Position RMSE')
         pyplot.xlabel('Track Length')
         pyplot.xticks((5, 10, 15, 20, 25, 30))
