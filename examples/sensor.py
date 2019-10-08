@@ -33,26 +33,28 @@ def generate_data(num_frames, num_sensors):
     Generate data from a damped NCV dynamics model
     """
     dt = TIME_STEP
-    bias_scale = 3.0
-    process_noise = 0.1
+    bias_scale = 4.0
     obs_noise = 1.0
+    trans_noise = 0.3
 
     # define dynamics
     z = torch.cat([10. * torch.randn(2),  # position
-                   0.1 * torch.rand(2)])  # velocity
-    damp = 0.5  # damp the velocities
+                   torch.rand(2)])  # velocity
+    damp = 0.1  # damp the velocities
     f = torch.tensor([[1, 0, 0, 0],
                       [0, 1, 0, 0],
                       [dt * math.exp(-damp * dt), 0, math.exp(-damp * dt), 0],
                       [0, dt * math.exp(-damp * dt), 0, math.exp(-damp * dt)]])
-    Q = process_noise * NCV_PROCESS_NOISE
-    trans_dist = dist.MultivariateNormal(torch.zeros(4), Q)
+    trans_dist = dist.MultivariateNormal(
+        torch.zeros(4),
+        scale_tril=trans_noise * NCV_PROCESS_NOISE.cholesky())
 
     # define biased sensors
-    sensor_bias = bias_scale * torch.randn(2, num_sensors)
+    sensor_bias = bias_scale * torch.randn(2 * num_sensors)
     h = torch.eye(4, 2).unsqueeze(-1).expand(-1, -1, num_sensors).reshape(4, -1)
-    R = obs_noise * torch.eye(2 * num_sensors)
-    obs_dist = dist.MultivariateNormal(sensor_bias.reshape(-1), R)
+    obs_dist = dist.MultivariateNormal(
+        sensor_bias,
+        scale_tril=obs_noise * torch.eye(2 * num_sensors))
 
     states = []
     observations = []
@@ -91,12 +93,12 @@ class HMM(nn.Module):
         bias_dist = dist_to_funsor(
             dist.MultivariateNormal(
                 torch.zeros(obs_dim),
-                scale_tril=bias_scale.expand(2 * self.num_sensors).diag_embed()
+                scale_tril=bias_scale * torch.eye(2 * self.num_sensors)
             )
         )(value=bias)
 
         init_dist = torch.distributions.MultivariateNormal(
-            torch.zeros(4), scale_tril=10. * torch.eye(4))
+            torch.zeros(4), scale_tril=100. * torch.eye(4))
         self.init = dist_to_funsor(init_dist)(value="state")
 
         # hidden states
@@ -113,13 +115,12 @@ class HMM(nn.Module):
         observation_matrix = Tensor(torch.eye(4, 2).unsqueeze(-1)
                                     .expand(-1, -1, self.num_sensors).reshape(4, -1))
         assert observation_matrix.output.shape == (4, obs_dim), observation_matrix.output.shape
-        obs_noise = obs_noise.expand(obs_dim).diag_embed()
         obs_loc = state @ observation_matrix
         if add_bias:
             obs_loc += bias
         self.observation_dist = f_dist.MultivariateNormal(
             loc=obs_loc,
-            scale_tril=obs_noise,
+            scale_tril=obs_noise * torch.eye(obs_dim),
             value=obs
         )
 
@@ -153,7 +154,7 @@ def track(args):
         for bias, num_frames in itertools.product(args.bias, args.num_frames):
             print(f'tracking with seed={seed}, bias={bias}, num_frames={num_frames}')
             model = HMM(args.num_sensors)
-            optim = Adam(model.parameters(), lr=args.lr)
+            optim = Adam(model.parameters(), lr=args.lr, betas=(0.5, 0.8))
             losses = []
             for i in range(args.num_epochs):
                 optim.zero_grad()
@@ -208,15 +209,15 @@ def main(args):
         results = torch.load(args.metrics_filename)
         seeds = set(seed for seed, _, _ in results)
         X = args.num_frames
-        pyplot.figure(figsize=(5, 1.5), dpi=300)
-        pyplot.plot(X, [np.mean([results[s, 0, f]['final_pos_error']**2 for s in seeds])
+        pyplot.figure(figsize=(5, 1.4), dpi=300)
+        pyplot.plot(X, [np.mean([results[s, 0, f]['final_pos_error']**2 for s in seeds])**0.5
                         for f in args.num_frames], 'k--')
-        pyplot.plot(X, [np.mean([results[s, 1, f]['final_pos_error']**2 for s in seeds])
+        pyplot.plot(X, [np.mean([results[s, 1, f]['final_pos_error']**2 for s in seeds])**0.5
                         for f in args.num_frames], 'r-')
         pyplot.ylabel('Position RMSE')
         pyplot.xlabel('Track Length')
-        pyplot.xticks((2, 5, 10, 15, 20))
-        pyplot.xlim(2, 20)
+        pyplot.xticks((5, 10, 15, 20, 25, 30))
+        pyplot.xlim(5, 30)
         pyplot.tight_layout(0)
         pyplot.savefig(args.plot_filename)
 
@@ -227,15 +228,15 @@ def int_list(arg):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Biased Kalman filter")
-    parser.add_argument("--seed", default="0,1,2,3,4,5,6,7,8,9", type=int_list,
+    parser.add_argument("--seed", default="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15", type=int_list,
                         help="random seed, comma delimited for multiple runs")
     parser.add_argument("--bias", default="0,1", type=int_list,
                         help="whether to model bias, comma deliminted for multiple runs")
-    parser.add_argument("-f", "--num-frames", default="2,4,6,8,10,12,14,16,18,20",
+    parser.add_argument("-f", "--num-frames", default="5,10,15,20,25,30",
                         type=int_list,
                         help="number of sensor frames, comma delimited for multiple runs")
     parser.add_argument("--num-sensors", default=5, type=int)
-    parser.add_argument("-n", "--num-epochs", default=100, type=int)
+    parser.add_argument("-n", "--num-epochs", default=50, type=int)
     parser.add_argument("--lr", default=0.1, type=float)
     parser.add_argument("--metrics-filename", default="sensor.pkl", type=str)
     parser.add_argument("--plot-filename", default="", type=str)
