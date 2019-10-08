@@ -33,7 +33,7 @@ def generate_data(num_frames, num_sensors):
     Generate data from a damped NCV dynamics model
     """
     dt = TIME_STEP
-    bias_scale = 2.0
+    bias_scale = 3.0
     process_noise = 0.1
     obs_noise = 1.0
 
@@ -50,7 +50,7 @@ def generate_data(num_frames, num_sensors):
 
     # define biased sensors
     sensor_bias = bias_scale * torch.randn(2, num_sensors)
-    h = torch.eye(4, 2).unsqueeze(-1).expand(4, 2, num_sensors).reshape(4, -1)
+    h = torch.eye(4, 2).unsqueeze(-1).expand(-1, -1, num_sensors).reshape(4, -1)
     R = obs_noise * torch.eye(2 * num_sensors)
     obs_dist = dist.MultivariateNormal(sensor_bias.reshape(-1), R)
 
@@ -96,7 +96,7 @@ class HMM(nn.Module):
         )(value=bias)
 
         init_dist = torch.distributions.MultivariateNormal(
-            torch.zeros(4), scale_tril=10 * torch.eye(4))
+            torch.zeros(4), scale_tril=10. * torch.eye(4))
         self.init = dist_to_funsor(init_dist)(value="state")
 
         # hidden states
@@ -110,8 +110,8 @@ class HMM(nn.Module):
 
         state = Variable('state', reals(4))
         obs = Variable("obs", reals(obs_dim))
-        observation_matrix = Tensor(torch.eye(4, 2).expand(self.num_sensors, -1, -1)
-                                    .reshape(4, obs_dim))
+        observation_matrix = Tensor(torch.eye(4, 2).unsqueeze(-1)
+                                    .expand(-1, -1, self.num_sensors).reshape(4, -1))
         assert observation_matrix.output.shape == (4, obs_dim), observation_matrix.output.shape
         obs_noise = obs_noise.expand(obs_dim).diag_embed()
         obs_loc = state @ observation_matrix
@@ -177,6 +177,7 @@ def track(args):
             final_vel_est = final_state_est[2:]
             final_pos_error = float(torch.norm(final_pos_true - final_pos_est))
             final_vel_error = float(torch.norm(final_vel_true - final_vel_est))
+            print(f'final_pos_error = {final_pos_error}')
 
             results[seed, bias, num_frames] = {
                 "args": args,
