@@ -1,19 +1,18 @@
 import argparse
-
+import itertools
 import math
+import os
 
+import pyro.distributions as dist
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 
-import pyro.distributions as dist
-
 import funsor.distributions as f_dist
 import funsor.ops as ops
-from funsor.pyro.convert import dist_to_funsor
 from funsor.domains import reals
+from funsor.pyro.convert import dist_to_funsor, funsor_to_mvn
 from funsor.torch import Tensor, Variable
-
 
 # We use a 2D continuous-time NCV dynamics model throughout.
 # See http://webee.technion.ac.il/people/shimkin/Estimation09/ch8_target.pdf
@@ -28,41 +27,46 @@ NCV_TRANSITION_MATRIX = torch.tensor([[1., 0., 0., 0.],
                                       [0., 1., 0., 1.]])
 
 
+@torch.no_grad()
 def generate_data(num_frames, num_sensors):
     """
     Generate data from a damped NCV dynamics model
     """
     dt = TIME_STEP
-    sensors = []
-    full_observations = []
-    # simulate biased sensors
-    for _ in range(num_sensors):
-        bias = torch.randn(2)
-        sensors.append(bias)
+    bias_scale = 2.0
+    process_noise = 0.1
+    obs_noise = 1.0
 
-    z = torch.cat([torch.zeros(2), 0.1 * torch.rand(2)]).unsqueeze(1)  # PV vector
-    # damp the velocities
-    damp = 0.5
-    f = torch.tensor([[1, 0, dt * math.exp(-damp * dt), 0],
-                      [0, 1, 0, dt * math.exp(-damp * dt)],
-                      [0, 0, math.exp(-damp * dt), 0],
-                      [0, 0, 0, math.exp(-damp * dt)]])
-    h = torch.eye(2, 4)
-    R = torch.eye(2)
-    Q = 0.1 * NCV_PROCESS_NOISE
+    # define dynamics
+    z = torch.cat([torch.randn(2),        # position
+                   0.1 * torch.rand(2)])  # velocity
+    damp = 0.5  # damp the velocities
+    f = torch.tensor([[1, 0, 0, 0],
+                      [0, 1, 0, 0],
+                      [dt * math.exp(-damp * dt), 0, math.exp(-damp * dt), 0],
+                      [0, dt * math.exp(-damp * dt), 0, math.exp(-damp * dt)]])
+    Q = process_noise * NCV_PROCESS_NOISE
+    trans_dist = dist.MultivariateNormal(torch.zeros(4), Q)
 
-    true_states = []
+    # define biased sensors
+    sensor_bias = bias_scale * torch.randn(2, num_sensors)
+    h = torch.eye(4, 2).unsqueeze(-1).expand(4, 2, num_sensors).reshape(4, -1)
+    R = obs_noise * torch.eye(2 * num_sensors)
+    obs_dist = dist.MultivariateNormal(sensor_bias.reshape(-1), R)
 
+    states = []
+    observations = []
     for t in range(num_frames):
-        z = f @ z + dist.MultivariateNormal(torch.zeros(4), Q).sample().unsqueeze(1)
-        x = h @ z + dist.MultivariateNormal(torch.zeros(2), R).sample().unsqueeze(1)
-        x = x.transpose(0, 1).expand([num_sensors, 2]) - torch.stack(sensors)
-        true_states.append(z.clone())
-        full_observations.append(x.clone())
-    full_observations = torch.stack(full_observations)
-    true_states = torch.stack(true_states)
-    assert full_observations.shape == (num_frames, num_sensors, 2)
-    return full_observations, true_states, sensors
+        z = z @ f + trans_dist.sample()
+        states.append(z)
+
+        x = z @ h + obs_dist.sample()
+        observations.append(x)
+
+    states = torch.stack(states)
+    observations = torch.stack(observations)
+    assert observations.shape == (num_frames, num_sensors * 2)
+    return observations, states, sensor_bias
 
 
 class HMM(nn.Module):
@@ -75,8 +79,8 @@ class HMM(nn.Module):
         self.log_obs_noise = nn.Parameter(torch.tensor(0.))
         self.log_trans_noise = nn.Parameter(torch.tensor(0.))
 
-    def forward(self, track, add_bias=True):
-        obs_dim = self.num_sensors * 2
+    def forward(self, observations, add_bias=True):
+        obs_dim = 2 * self.num_sensors
         bias_scale = self.log_bias_scale.exp()
         obs_noise = self.log_obs_noise.exp()
         trans_noise = self.log_trans_noise.exp()
@@ -87,7 +91,7 @@ class HMM(nn.Module):
         bias_dist = dist_to_funsor(
             dist.MultivariateNormal(
                 torch.zeros(obs_dim),
-                scale_tril=bias_scale.expand(self.num_sensors * 2).diag_embed()
+                scale_tril=bias_scale.expand(2 * self.num_sensors).diag_embed()
             )
         )(value=bias)
 
@@ -122,69 +126,118 @@ class HMM(nn.Module):
         logp = bias_dist
         curr = "state_init"
         logp += self.init(state=curr)
-        for t, x in enumerate(track):
-            x = x.expand([self.num_sensors, -1]).reshape(-1)
+        for t, x in enumerate(observations):
             prev, curr = curr, f"state_{t}"
-            # transition to state at t=1
             logp += self.trans_dist(prev=prev, curr=curr)
-
             logp += self.observation_dist(state=curr, obs=x)
+            # marginalize out previous state
             logp = logp.reduce(ops.logaddexp, prev)
-        # marginalize out remaining latent variables
+        # marginalize out bias variable
         logp = logp.reduce(ops.logaddexp, "bias")
-        # posterior over the final state
-        assert set(logp.inputs) == {f'state_{len(track) - 1}'}
-        prec = logp.terms[1].precision
-        mean = prec.inverse() @ logp.terms[1].info_vec
-        logp = logp.reduce(ops.logaddexp)
 
-        # we should get a single scalar Tensor here
-        assert isinstance(logp, Tensor) and logp.data.dim() == 0, logp.pretty()
-        return logp.data, (mean, prec)
+        # save posterior over the final state
+        assert set(logp.inputs) == {f'state_{len(observations) - 1}'}
+        posterior = funsor_to_mvn(logp, ndims=0)
+
+        # marginalize out remaining variables
+        logp = logp.reduce(ops.logaddexp)
+        assert isinstance(logp, Tensor) and logp.shape == (), logp.pretty()
+        return logp.data, posterior
+
+
+def track(args):
+    results = {}  # keyed on (seed, bias, num_frames)
+    for seed in args.seed:
+        torch.manual_seed(seed)
+        observations, states, sensor_bias = generate_data(max(args.num_frames), args.num_sensors)
+        for bias, num_frames in itertools.product(args.bias, args.num_frames):
+            print(f'tracking with seed={seed}, bias={bias}, num_frames={num_frames}')
+            model = HMM(args.num_sensors)
+            optim = Adam(model.parameters(), lr=args.lr)
+            losses = []
+            for i in range(args.num_epochs):
+                optim.zero_grad()
+                log_prob, posterior = model(observations[:num_frames], add_bias=bias)
+                loss = -log_prob
+                loss.backward()
+                losses.append(loss.item())
+                if i % 10 == 0:
+                    print(loss.item())
+                optim.step()
+
+            # Collect evaluation metrics.
+            final_state_true = states[num_frames - 1]
+            assert final_state_true.shape == (4,)
+            final_pos_true = final_state_true[:2]
+            final_vel_true = final_state_true[2:]
+
+            final_state_est = posterior.loc
+            assert final_state_est.shape == (4,)
+            final_pos_est = final_state_est[:2]
+            final_vel_est = final_state_est[2:]
+            final_pos_error = float(torch.norm(final_pos_true - final_pos_est))
+            final_vel_error = float(torch.norm(final_vel_true - final_vel_est))
+
+            results[seed, bias, num_frames] = {
+                "args": args,
+                "observations": observations[:num_frames],
+                "states": states[:num_frames],
+                "sensor_bias": sensor_bias,
+                "losses": losses,
+                "bias_scale": float(model.log_bias_scale.exp()),
+                "obs_noise": float(model.log_obs_noise.exp()),
+                "trans_noise": float(model.log_trans_noise.exp()),
+                "final_state_estimate": posterior,
+                "final_pos_error": final_pos_error,
+                "final_vel_error": final_vel_error,
+            }
+        print(f'saving output to: {args.metrics_filename}')
+        torch.save(results, args.metrics_filename)
 
 
 def main(args):
-    print(f'running with bias={not args.no_bias}')
-    torch.manual_seed(12)
-    data, truth, biases = generate_data(args.frames[-1], args.num_sensors)
-    for f in args.frames:
-        losses = []
-        model = HMM(args.num_sensors)
-        optim = Adam(model.parameters(), lr=args.lr)
-        print(f'running data with {f} frames')
-        truncated_data = data[:f]
-        for i in range(args.num_epochs):
-            optim.zero_grad()
-            log_prob, (mean, prec) = model(truncated_data, add_bias=not args.no_bias)
-            loss = -log_prob
-            loss.backward()
-            losses.append(loss.item())
-            if i % 10 == 0:
-                print(loss.item())
-            optim.step()
-        md = {
-                "bias_scales": model.log_bias_scale,
-                "losses": losses,
-                "data": data.data,
-                "biases": biases,
-                "mean": mean,
-                "prec": prec,
-                "truth": truth
-             }
-        suffix = f'_{f}_bias={not args.no_bias}.pkl'
-        print(f'saving output to: {args.save}' + suffix)
-        torch.save(md, args.save + suffix)
+    if args.force or not os.path.exists(args.metrics_filename):
+        track(args)
+
+    if args.plot_filename:
+        import matplotlib
+        matplotlib.use('Agg')
+        from matplotlib import pyplot
+        import numpy as np
+        results = torch.load(args.metrics_filename)
+        seeds = set(seed for seed, _, _ in results)
+        X = args.num_frames
+        fig = pyplot.figure(figsize=(6,2), dpi=300).patch.set_color('white')
+        pyplot.plot(X, [np.mean([results[s, 0, f]['final_pos_error']**2 for s in seeds])
+                     for f in args.num_frames], 'k--')
+        pyplot.plot(X, [np.mean([results[s, 1, f]['final_pos_error']**2 for s in seeds])
+                     for f in args.num_frames], 'r-')
+        pyplot.ylabel('final position RMSE')
+        pyplot.xlabel('track length')
+        pyplot.xticks((2, 5, 10, 15, 20))
+        pyplot.xlim(2, 20)
+        pyplot.tight_layout(0)
+        pyplot.savefig(args.plot_filename)
+
+
+def int_list(arg):
+    return [int(n) for n in arg.split(',')]
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Switching linear dynamical system")
-    parser.add_argument("-n", "--num-epochs", default=300, type=int)
-    parser.add_argument("--no-bias", default=False, action="store_true")
-    parser.add_argument("--frames", default="50", type=lambda s: [int(i) for i in s.split(',')],
-                        help="frames to run, comma delimited")
-    parser.add_argument("--save", default="sensor", type=str)
+    parser = argparse.ArgumentParser(description="Biased Kalman filter")
+    parser.add_argument("--seed", default="0,1,2,3,4,5,6,7,8,9", type=int_list,
+                        help="random seed, comma delimited for multiple runs")
+    parser.add_argument("--bias", default="0,1", type=int_list,
+                        help="whether to model bias, comma deliminted for multiple runs")
+    parser.add_argument("-f", "--num-frames", default="2,4,6,8,10,12,14,16,18,20",
+                        type=int_list,
+                        help="number of sensor frames, comma delimited for multiple runs")
     parser.add_argument("--num-sensors", default=5, type=int)
+    parser.add_argument("-n", "--num-epochs", default=100, type=int)
     parser.add_argument("--lr", default=0.1, type=float)
-    parser.add_argument("--plot", default=False, action="store_true")
+    parser.add_argument("--metrics-filename", default="sensor.pkl", type=str)
+    parser.add_argument("--plot-filename", default="", type=str)
+    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
     main(args)
