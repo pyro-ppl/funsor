@@ -15,7 +15,7 @@ def monte_carlo(cls, *args):
     cases.
     """
     # TODO Memoize sample statements in a context manager.
-    result = monte_carlo.dispatch(cls, *args)
+    result = monte_carlo.dispatch(cls, *args)(*args)
     if result is None:
         result = eager(cls, *args)
     return result

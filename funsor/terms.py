@@ -84,7 +84,7 @@ def reflect(cls, *args, **kwargs):
 @dispatched_interpretation
 def normalize(cls, *args):
 
-    result = normalize.dispatch(cls, *args)
+    result = normalize.dispatch(cls, *args)(*args)
     if result is None:
         result = reflect(cls, *args)
 
@@ -96,7 +96,7 @@ def lazy(cls, *args):
     """
     Substitute eagerly but perform ops lazily.
     """
-    result = lazy.dispatch(cls, *args)
+    result = lazy.dispatch(cls, *args)(*args)
     if result is None:
         result = reflect(cls, *args)
     return result
@@ -107,9 +107,9 @@ def eager(cls, *args):
     """
     Eagerly execute ops with known implementations.
     """
-    result = eager.dispatch(cls, *args)
+    result = eager.dispatch(cls, *args)(*args)
     if result is None:
-        result = normalize.dispatch(cls, *args)
+        result = normalize.dispatch(cls, *args)(*args)
     if result is None:
         result = reflect(cls, *args)
     return result
@@ -124,7 +124,7 @@ def eager_or_die(cls, *args):
 
     :raises: :py:class:`NotImplementedError` no pattern is found.
     """
-    result = eager.dispatch(cls, *args)
+    result = eager.dispatch(cls, *args)(*args)
     if result is None:
         if cls in (Subs, Unary, Binary, Reduce):
             raise NotImplementedError("Missing pattern for {}({})".format(
@@ -139,11 +139,11 @@ def sequential(cls, *args):
     Eagerly execute ops with known implementations; additonally execute
     vectorized ops sequentially if no known vectorized implementation exists.
     """
-    result = sequential.dispatch(cls, *args)
+    result = sequential.dispatch(cls, *args)(*args)
     if result is None:
-        result = eager.dispatch(cls, *args)
+        result = eager.dispatch(cls, *args)(*args)
     if result is None:
-        result = normalize.dispatch(cls, *args)
+        result = normalize.dispatch(cls, *args)(*args)
     if result is None:
         result = reflect(cls, *args)
     return result
@@ -155,11 +155,11 @@ def moment_matching(cls, *args):
     A moment matching interpretation of :class:`Reduce` expressions. This falls
     back to :class:`eager` in other cases.
     """
-    result = moment_matching.dispatch(cls, *args)
+    result = moment_matching.dispatch(cls, *args)(*args)
     if result is None:
-        result = eager.dispatch(cls, *args)
+        result = eager.dispatch(cls, *args)(*args)
     if result is None:
-        result = normalize.dispatch(cls, *args)
+        result = normalize.dispatch(cls, *args)(*args)
     if result is None:
         result = reflect(cls, *args)
     return result
