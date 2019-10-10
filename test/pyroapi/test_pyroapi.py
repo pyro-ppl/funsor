@@ -3,7 +3,7 @@ from pyroapi import pyro_backend
 from pyroapi.tests import *  # noqa F401
 
 
-@pytest.fixture(params=["funsor"])
-def backend(request):
-    with pyro_backend(request.param):
+@pytest.yield_fixture
+def backend():
+    with pyro_backend("funsor"):
         yield
