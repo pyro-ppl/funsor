@@ -16,6 +16,7 @@ install:
 
     # Keep track of Pyro dev branch
     - pip install https://github.com/pyro-ppl/pyro/archive/dev.zip
+    - pip install https://github.com/pyro-ppl/pyro-api/archive/pyroapi-tests.zip
 
     - pip install .[test]
     - pip freeze
