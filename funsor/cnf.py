@@ -199,20 +199,24 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor)
 def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
-    return eager.dispatch(Reduce, red_op, term, reduced_vars)
+    args = red_op, term, reduced_vars
+    return eager.dispatch(Reduce, *args)(*args)
 
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 
     if reduced_vars - (reduced_vars.intersection(lhs.inputs, rhs.inputs)):
-        result = eager.dispatch(Contraction, red_op, bin_op, reduced_vars, (lhs, rhs))
+        args = red_op, bin_op, reduced_vars, (lhs, rhs)
+        result = eager.dispatch(Contraction, *args)(*args)
         if result is not None:
             return result
 
-    result = eager.dispatch(Binary, bin_op, lhs, rhs)
+    args = bin_op, lhs, rhs
+    result = eager.dispatch(Binary, *args)(*args)
     if result is not None and reduced_vars:
-        result = eager.dispatch(Reduce, red_op, result, reduced_vars)
+        args = red_op, result, reduced_vars
+        result = eager.dispatch(Reduce, *args)(*args)
     return result
 
 
