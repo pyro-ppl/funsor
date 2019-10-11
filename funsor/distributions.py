@@ -570,21 +570,21 @@ class VonMises(Distribution):
     dist_class = dist.VonMises
 
     @staticmethod
-    def _fill_defaults(concentration, loc, value='value'):
-        concentration = to_funsor(concentration)
-        assert concentration.dtype == "real"
+    def _fill_defaults(loc, concentration, value='value'):
         loc = to_funsor(loc)
         assert loc.dtype == "real"
+        concentration = to_funsor(concentration)
+        assert concentration.dtype == "real"
         value = to_funsor(value, reals())
-        return concentration, loc, value
+        return loc, concentration, value
 
-    def __init__(self, concentration, loc, value=None):
-        super().__init__(concentration, loc, value)
+    def __init__(self, loc, concentration, value=None):
+        super().__init__(loc, concentration, value)
 
 
 @eager.register(VonMises, Tensor, Tensor, Tensor)
-def eager_vonmises(concentration, loc, value):
-    return VonMises.eager_log_prob(concentration=concentration, loc=loc, value=value)
+def eager_vonmises(loc, concentration, value):
+    return VonMises.eager_log_prob(loc=loc, concentration=concentration, value=value)
 
 
 __all__ = [
