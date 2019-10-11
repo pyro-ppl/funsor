@@ -15,10 +15,6 @@ lint: FORCE
 format: FORCE
 	isort -y
 
-sensor: FORCE
-	python examples/sensor.py --num-sensors 4 --frames 10,20,30 -n 80
-	python examples/sensor.py --num-sensors 4 --frames 10,20,30 -n 80 --no-bias
-
 test: lint FORCE
 	pytest -v -n auto test/
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
