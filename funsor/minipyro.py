@@ -156,6 +156,20 @@ class block(Messenger):
             msg["stop"] = True
 
 
+# seed is used to fix the RNG state when calling a model.
+class seed(Messenger):
+    def __init__(self, fn=None, rng_seed=None):
+        self.rng_seed = rng_seed
+        super(seed, self).__init__(fn)
+
+    def __enter__(self):
+        self.old_rng_state = torch.get_rng_state()
+        torch.manual_seed(self.rng_seed)
+
+    def __exit__(self, type, value, traceback):
+        torch.set_rng_state(self.old_rng_state)
+
+
 # Conditional independence is recorded as a plate context at each site.
 CondIndepStackFrame = namedtuple("CondIndepStackFrame", ["name", "size", "dim"])
 

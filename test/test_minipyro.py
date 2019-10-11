@@ -3,7 +3,7 @@ import warnings
 import pytest
 import torch
 from pyro.generic import distributions as dist
-from pyro.generic import infer, optim, pyro, pyro_backend
+from pyro.generic import handlers, infer, optim, pyro, pyro_backend
 from pyro.ops.indexing import Vindex as _Vindex
 from torch.autograd import grad
 from torch.distributions import constraints, kl_divergence
@@ -77,6 +77,59 @@ def assert_warning(model, guide, elbo):
 
 @pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_generate_data(backend):
+
+    def model(data=None):
+        loc = pyro.param("loc", torch.tensor(2.0))
+        scale = pyro.param("scale", torch.tensor(1.0))
+        x = pyro.sample("x", dist.Normal(loc, scale), obs=data)
+        return x
+
+    with pyro_backend(backend):
+        data = model()
+        data = data.data
+        assert data.shape == ()
+
+
+@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
+def test_rng_seed(backend):
+
+    def model(data=None):
+        loc = pyro.param("loc", torch.tensor(2.0))
+        scale = pyro.param("scale", torch.tensor(1.0))
+        x = pyro.sample("x", dist.Normal(loc, scale), obs=data)
+        return x
+
+    with pyro_backend(backend):
+        with handlers.seed(rng_seed=0):
+            expected = model()
+        with handlers.seed(rng_seed=0):
+            actual = model()
+        assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
+def test_rng_state(backend):
+
+    def model(data=None):
+        loc = pyro.param("loc", torch.tensor(2.0))
+        scale = pyro.param("scale", torch.tensor(1.0))
+        x = pyro.sample("x", dist.Normal(loc, scale), obs=data)
+        return x
+
+    with pyro_backend(backend):
+        with handlers.seed(rng_seed=0):
+            model()
+            expected = model()
+        with handlers.seed(rng_seed=0):
+            model()
+            with handlers.seed(rng_seed=0):
+                model()
+            actual = model()
+        assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
+def test_rng_state(backend):
 
     def model(data=None):
         loc = pyro.param("loc", torch.tensor(2.0))
