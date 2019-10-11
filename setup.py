@@ -17,10 +17,11 @@ setup(
         'torch>=1.0.0',
     ],
     extras_require={
-        'test': ['flake8', 'pytest>=4.1', 'pytest-xdist==1.27.0', 'torchvision==0.2.1'],
+        'test': ['flake8', 'pandas', 'pytest>=4.1', 'pytest-xdist==1.27.0', 'torchvision==0.2.1'],
         'dev': [
             'flake8',
             'isort',
+            'pandas',
             'pytest>=4.1',
             'pytest-xdist==1.27.0',
             'sphinx>=2.0',
@@ -28,7 +29,7 @@ setup(
             'torchvision==0.2.1',
         ],
     },
-    tests_require=['flake8', 'pytest>=4.1'],
+    tests_require=['flake8', 'pandas', 'pytest>=4.1'],
     keywords='probabilistic machine learning bayesian statistics pytorch',
     classifiers=[
         'Intended Audience :: Developers',
