@@ -206,8 +206,7 @@ def to_funsor(x, output):
 @to_data.register(Array)
 def _to_data_array(x):
     if x.inputs:
-        raise ValueError("cannot convert Array to a data due to lazy inputs: {}"
-                         .format(set(x.inputs)))
+        raise ValueError(f"cannot convert Array to data due to lazy inputs: {set(x.inputs)}")
     return x.data
 
 

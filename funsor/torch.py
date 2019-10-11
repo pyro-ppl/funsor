@@ -397,8 +397,7 @@ def to_funsor(x, output):
 @to_data.register(Tensor)
 def _to_data_tensor(x):
     if x.inputs:
-        raise ValueError("cannot convert Tensor to a data due to lazy inputs: {}"
-                         .format(set(x.inputs)))
+        raise ValueError(f"cannot convert Tensor to data due to lazy inputs: {set(x.inputs)}")
     return x.data
 
 

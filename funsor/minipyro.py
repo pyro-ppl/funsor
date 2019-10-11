@@ -396,7 +396,7 @@ class SVI(object):
             with block(hide_fn=lambda msg: msg["type"] != "param"):
                 loss = self.loss(self.model, self.guide, *args, **kwargs)
         # Differentiate the loss.
-        loss.data.backward()
+        funsor.to_data(loss).backward()
         # Grab all the parameters from the trace.
         params = [site["value"].data.unconstrained()
                   for site in param_capture.values()]
@@ -559,7 +559,7 @@ class Jit(object):
                 result = replay(self.fn, guide_trace=self._param_trace)(*args)
                 assert not result.inputs
                 assert result.output == funsor.reals()
-                return result.data
+                return funsor.to_data(result)
 
             with validation_enabled(False), warnings.catch_warnings():
                 if self.ignore_jit_warnings:
