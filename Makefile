@@ -37,7 +37,7 @@ test: lint FORCE
 	python examples/eeg_slds.py --num-steps 2 --fon --test 
 	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --smoke
 	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --parallel --smoke
-	@#python examples/ss_vae_delayed.py --xfail-if-not-implemented
+	python examples/sensor.py --seed=0 --num-frames=2 -n 1
 	@echo PASS
 
 clean: FORCE
