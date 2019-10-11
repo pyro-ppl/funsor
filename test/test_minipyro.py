@@ -9,7 +9,8 @@ from torch.autograd import grad
 from torch.distributions import constraints, kl_divergence
 
 import funsor
-from funsor.testing import assert_close, xfail_param
+import funsor.compat.ops as ops
+from funsor.testing import xfail_param
 
 # This file tests a variety of model,guide pairs with valid and invalid structure.
 # See https://github.com/pyro-ppl/pyro/blob/0.3.1/tests/infer/test_valid_models.py
@@ -24,7 +25,7 @@ def Vindex(x):
 def _check_loss_and_grads(expected_loss, actual_loss, atol=1e-4, rtol=1e-4):
     # copied from pyro
     expected_loss, actual_loss = funsor.to_data(expected_loss), funsor.to_data(actual_loss)
-    assert_close(actual_loss, expected_loss, atol=atol, rtol=rtol)
+    assert ops.allclose(actual_loss, expected_loss, atol=atol, rtol=rtol)
     names = pyro.get_param_store().keys()
     params = []
     for name in names:
@@ -34,7 +35,7 @@ def _check_loss_and_grads(expected_loss, actual_loss, atol=1e-4, rtol=1e-4):
     for name, actual_grad, expected_grad in zip(names, actual_grads, expected_grads):
         if actual_grad is None or expected_grad is None:
             continue
-        assert_close(actual_grad, expected_grad, atol=atol, rtol=rtol)
+        assert ops.allclose(actual_grad, expected_grad, atol=atol, rtol=rtol)
 
 
 def assert_ok(model, guide, elbo, *args, **kwargs):
@@ -226,7 +227,7 @@ def test_local_param_ok(backend, jit):
         # Check that pyro.param() can be called without init_value.
         expected = guide()
         actual = pyro.param("p")
-        assert_close(actual, expected)
+        assert ops.allclose(actual, expected)
 
 
 @pytest.mark.parametrize("jit", [False, True], ids=["py", "jit"])
@@ -340,8 +341,8 @@ def test_elbo_plate_plate(backend, outer_dim, inner_dim):
         actual_loss.backward()
         actual_grad = funsor.to_data(pyro.param('q')).grad
 
-        assert_close(actual_loss, expected_loss, atol=1e-5)
-        assert_close(actual_grad, expected_grad, atol=1e-5)
+        assert ops.allclose(actual_loss, expected_loss, atol=1e-5)
+        assert ops.allclose(actual_grad, expected_grad, atol=1e-5)
 
 
 @pytest.mark.parametrize('backend', ["pyro", "funsor"])

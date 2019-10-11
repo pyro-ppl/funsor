@@ -9,7 +9,10 @@ import numpy as np
 import opt_einsum
 import pytest
 import torch
+from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic
 
+import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, reals
@@ -41,6 +44,28 @@ def id_from_inputs(inputs):
     if not inputs:
         return '()'
     return ','.join(k + ''.join(map(str, d.shape)) for k, d in inputs)
+
+
+@dispatch(object, object, Variadic[float])
+def allclose(a, b, rtol=1e-05, atol=1e-08):
+    if type(a) != type(b):
+        return False
+    return ops.abs(a - b) < rtol + atol * ops.abs(b)
+
+
+dispatch(np.ndarray, np.ndarray, Variadic[float])(np.allclose)
+
+
+@dispatch(torch.Tensor, torch.Tensor, Variadic[float])
+def allclose(a, b, rtol=1e-05, atol=1e-08):
+    return torch.allclose(a, b, rtol=rtol, atol=atol)
+
+
+@dispatch(Tensor, Tensor, Variadic[float])
+def allclose(a, b, rtol=1e-05, atol=1e-08):
+    if a.inputs != b.inputs or a.output != b.output:
+        return False
+    return allclose(a.data, b.data, rtol=rtol, atol=atol)
 
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
