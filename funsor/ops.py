@@ -3,7 +3,6 @@ from numbers import Number
 
 import numpy as np
 from multipledispatch import Dispatcher
-from torch import tensor
 
 _builtin_abs = abs
 _builtin_max = max
@@ -345,7 +344,6 @@ __all__ = [
     'sigmoid',
     'sqrt',
     'sub',
-    'tensor',
     'truediv',
     'xor',
 ]
