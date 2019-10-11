@@ -7,7 +7,7 @@ results
 examples/*/processed
 examples/*/results
 examples/*/raw
-examples/dmm/*.pkl
+examples/*.pkl
 examples/*.csv
 pyro/contrib/examples/processed
 pyro/contrib/examples/results
