@@ -545,6 +545,48 @@ def eager_poisson(rate, value):
     return Poisson.eager_log_prob(rate=rate, value=value)
 
 
+class Gamma(Distribution):
+    dist_class = dist.Gamma
+
+    @staticmethod
+    def _fill_defaults(concentration, rate, value='value'):
+        concentration = to_funsor(concentration)
+        assert concentration.dtype == "real"
+        rate = to_funsor(rate)
+        assert rate.dtype == "real"
+        value = to_funsor(value, reals())
+        return concentration, rate, value
+
+    def __init__(self, concentration, rate, value=None):
+        super().__init__(concentration, rate, value)
+
+
+@eager.register(Gamma, Tensor, Tensor, Tensor)
+def eager_gamma(concentration, rate, value):
+    return Gamma.eager_log_prob(concentration=concentration, rate=rate, value=value)
+
+
+class VonMises(Distribution):
+    dist_class = dist.VonMises
+
+    @staticmethod
+    def _fill_defaults(concentration, loc, value='value'):
+        concentration = to_funsor(concentration)
+        assert concentration.dtype == "real"
+        loc = to_funsor(loc)
+        assert loc.dtype == "real"
+        value = to_funsor(value, reals())
+        return concentration, loc, value
+
+    def __init__(self, concentration, loc, value=None):
+        super().__init__(concentration, loc, value)
+
+
+@eager.register(VonMises, Tensor, Tensor, Tensor)
+def eager_vonmises(concentration, loc, value):
+    return VonMises.eager_log_prob(concentration=concentration, loc=loc, value=value)
+
+
 __all__ = [
     'Bernoulli',
     'BernoulliLogits',
@@ -555,9 +597,11 @@ __all__ = [
     'Dirichlet',
     'DirichletMultinomial',
     'Distribution',
+    'Gamma',
     'LogNormal',
     'Multinomial',
     'MultivariateNormal',
     'Normal',
     'Poisson',
+    'VonMises',
 ]
