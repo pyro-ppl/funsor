@@ -523,6 +523,17 @@ def test_mvn_affine_matmul():
     m = Tensor(torch.randn(2, 3))
     data = dict(x=Tensor(torch.randn(2)), y=Tensor(torch.randn(3)))
     with interpretation(lazy):
+        d = random_mvn((), 3)
+        d = dist.MultivariateNormal(loc=y, scale_tril=d.scale_tril, value=x @ m)
+    _check_mvn_affine(d, data)
+
+
+def test_mvn_affine_matmul_sub():
+    x = Variable('x', reals(2))
+    y = Variable('y', reals(3))
+    m = Tensor(torch.randn(2, 3))
+    data = dict(x=Tensor(torch.randn(2)), y=Tensor(torch.randn(3)))
+    with interpretation(lazy):
         d = dist_to_funsor(random_mvn((), 3))
         d = d(value=x @ m - y)
     _check_mvn_affine(d, data)
@@ -580,5 +591,59 @@ def test_poisson_probs_density(batch_shape, syntax):
         actual = dist.Poisson(rate, value)
     elif syntax == 'lazy':
         actual = dist.Poisson(rate, d)(value=value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('syntax', ['eager', 'lazy'])
+def test_gamma_probs_density(batch_shape, syntax):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.torch.function(reals(), reals(), reals(), reals())
+    def gamma(concentration, rate, value):
+        return torch.distributions.Gamma(concentration, rate).log_prob(value)
+
+    check_funsor(gamma, {'concentration': reals(), 'rate': reals(), 'value': reals()}, reals())
+
+    concentration = Tensor(torch.rand(batch_shape), inputs)
+    rate = Tensor(torch.rand(batch_shape), inputs)
+    value = Tensor(torch.randn(batch_shape).exp(), inputs)
+    expected = gamma(concentration, rate, value)
+    check_funsor(expected, inputs, reals())
+
+    d = Variable('value', reals())
+    if syntax == 'eager':
+        actual = dist.Gamma(concentration, rate, value)
+    elif syntax == 'lazy':
+        actual = dist.Gamma(concentration, rate, d)(value=value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('syntax', ['eager', 'lazy'])
+def test_von_mises_probs_density(batch_shape, syntax):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.torch.function(reals(), reals(), reals(), reals())
+    def von_mises(loc, concentration, value):
+        return pyro.distributions.VonMises(loc, concentration).log_prob(value)
+
+    check_funsor(von_mises, {'concentration': reals(), 'loc': reals(), 'value': reals()}, reals())
+
+    concentration = Tensor(torch.rand(batch_shape), inputs)
+    loc = Tensor(torch.rand(batch_shape), inputs)
+    value = Tensor(torch.randn(batch_shape).abs(), inputs)
+    expected = von_mises(loc, concentration, value)
+    check_funsor(expected, inputs, reals())
+
+    d = Variable('value', reals())
+    if syntax == 'eager':
+        actual = dist.VonMises(loc, concentration, value)
+    elif syntax == 'lazy':
+        actual = dist.VonMises(loc, concentration, d)(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)

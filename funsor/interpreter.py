@@ -65,31 +65,36 @@ def _classname(cls):
     return getattr(cls, "classname", cls.__name__)
 
 
-if _DEBUG:
-    def interpret(cls, *args):
-        global _STACK_SIZE
-        indent = _indent()
-        if _DEBUG > 1:
-            typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
-        else:
-            typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
-        print(indent + ' '.join(typenames))
+class Interpreter:
+    @property
+    def __call__(self):
+        return _INTERPRETATION
 
-        _STACK_SIZE += 1
-        try:
-            result = _INTERPRETATION(cls, *args)
-        finally:
-            _STACK_SIZE -= 1
 
-        if _DEBUG > 1:
-            result_str = re.sub('\n', '\n          ' + indent, str(result))
-        else:
-            result_str = type(result).__name__
-        print(indent + '-> ' + result_str)
-        return result
-else:
-    def interpret(cls, *args):
-        return _INTERPRETATION(cls, *args)
+def debug_interpret(cls, *args):
+    global _STACK_SIZE
+    indent = _indent()
+    if _DEBUG > 1:
+        typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
+    else:
+        typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
+    print(indent + ' '.join(typenames))
+
+    _STACK_SIZE += 1
+    try:
+        result = _INTERPRETATION(cls, *args)
+    finally:
+        _STACK_SIZE -= 1
+
+    if _DEBUG > 1:
+        result_str = re.sub('\n', '\n          ' + indent, str(result))
+    else:
+        result_str = type(result).__name__
+    print(indent + '-> ' + result_str)
+    return result
+
+
+interpret = debug_interpret if _DEBUG else Interpreter()
 
 
 def set_interpretation(new):
@@ -329,7 +334,7 @@ def dispatched_interpretation(fn):
         fn.register = lambda *args: lambda fn: registry.register(*args)(debug_logged(fn))
     else:
         fn.register = registry.register
-    fn.dispatch = registry.__call__
+    fn.dispatch = registry.dispatch
     return fn
 
 

@@ -193,7 +193,9 @@ class Tensor(Funsor, metaclass=TensorMeta):
         inputs.update(self.inputs)
         old_dims = tuple(self.inputs)
         new_dims = tuple(inputs)
-        data = self.data.permute(tuple(old_dims.index(d) for d in new_dims))
+        permutation = tuple(old_dims.index(d) for d in new_dims)
+        permutation = permutation + tuple(range(len(permutation), len(permutation) + len(self.output.shape)))
+        data = self.data.permute(permutation)
         return Tensor(data, inputs, self.dtype)
 
     def eager_subs(self, subs):

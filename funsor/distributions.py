@@ -12,7 +12,7 @@ from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.interpreter import interpretation
-from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
 
 
@@ -452,9 +452,9 @@ def eager_mvn(loc, scale_tril, value):
 # Create a Gaussian from a ground observation.
 # TODO refactor this logic into Gaussian.eager_subs() and
 #   here return Gaussian(...scale_tril...)(value=loc-value).
-@eager.register(MultivariateNormal, (Variable, Contraction), Tensor, (Variable, Contraction))
-@eager.register(MultivariateNormal, (Variable, Contraction), Tensor, Tensor)
-@eager.register(MultivariateNormal, Tensor, Tensor, (Variable, Contraction))
+@eager.register(MultivariateNormal, (Variable, Contraction, Binary), Tensor, (Variable, Contraction, Binary))
+@eager.register(MultivariateNormal, (Variable, Contraction, Binary), Tensor, Tensor)
+@eager.register(MultivariateNormal, Tensor, Tensor, (Variable, Contraction, Binary))
 def eager_mvn(loc, scale_tril, value):
     assert len(loc.shape) == 1
     assert len(scale_tril.shape) == 2
@@ -570,21 +570,21 @@ class VonMises(Distribution):
     dist_class = dist.VonMises
 
     @staticmethod
-    def _fill_defaults(concentration, loc, value='value'):
-        concentration = to_funsor(concentration)
-        assert concentration.dtype == "real"
+    def _fill_defaults(loc, concentration, value='value'):
         loc = to_funsor(loc)
         assert loc.dtype == "real"
+        concentration = to_funsor(concentration)
+        assert concentration.dtype == "real"
         value = to_funsor(value, reals())
-        return concentration, loc, value
+        return loc, concentration, value
 
-    def __init__(self, concentration, loc, value=None):
-        super().__init__(concentration, loc, value)
+    def __init__(self, loc, concentration, value=None):
+        super().__init__(loc, concentration, value)
 
 
 @eager.register(VonMises, Tensor, Tensor, Tensor)
-def eager_vonmises(concentration, loc, value):
-    return VonMises.eager_log_prob(concentration=concentration, loc=loc, value=value)
+def eager_vonmises(loc, concentration, value):
+    return VonMises.eager_log_prob(loc=loc, concentration=concentration, value=value)
 
 
 __all__ = [
