@@ -78,10 +78,10 @@ def assert_warning(model, guide, elbo):
 @pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_generate_data(backend):
 
-    def model(data=None):
+    def model():
         loc = pyro.param("loc", torch.tensor(2.0))
         scale = pyro.param("scale", torch.tensor(1.0))
-        x = pyro.sample("x", dist.Normal(loc, scale), obs=data)
+        x = pyro.sample("x", dist.Normal(loc, scale))
         return x
 
     with pyro_backend(backend):
@@ -93,11 +93,8 @@ def test_generate_data(backend):
 @pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_rng_seed(backend):
 
-    def model(data=None):
-        loc = pyro.param("loc", torch.tensor(2.0))
-        scale = pyro.param("scale", torch.tensor(1.0))
-        x = pyro.sample("x", dist.Normal(loc, scale), obs=data)
-        return x
+    def model():
+        return pyro.sample("x", dist.Normal(0, 1))
 
     with pyro_backend(backend):
         with handlers.seed(rng_seed=0):
@@ -110,11 +107,8 @@ def test_rng_seed(backend):
 @pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
 def test_rng_state(backend):
 
-    def model(data=None):
-        loc = pyro.param("loc", torch.tensor(2.0))
-        scale = pyro.param("scale", torch.tensor(1.0))
-        x = pyro.sample("x", dist.Normal(loc, scale), obs=data)
-        return x
+    def model():
+        return pyro.sample("x", dist.Normal(0, 1))
 
     with pyro_backend(backend):
         with handlers.seed(rng_seed=0):
@@ -126,21 +120,6 @@ def test_rng_state(backend):
                 model()
             actual = model()
         assert_close(actual, expected)
-
-
-@pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
-def test_rng_state(backend):
-
-    def model(data=None):
-        loc = pyro.param("loc", torch.tensor(2.0))
-        scale = pyro.param("scale", torch.tensor(1.0))
-        x = pyro.sample("x", dist.Normal(loc, scale), obs=data)
-        return x
-
-    with pyro_backend(backend):
-        data = model()
-        data = data.data
-        assert data.shape == ()
 
 
 @pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
