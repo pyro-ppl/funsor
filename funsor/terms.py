@@ -13,7 +13,7 @@ from multipledispatch.variadic import Variadic, isvariadic
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.interpreter import dispatched_interpretation, interpret
+from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, lazy_property, pretty, quote
 
@@ -774,14 +774,17 @@ def to_data(x):
 
     :param x: An object, possibly a :class:`Funsor`.
     :return: A non-funsor equivalent to ``x``.
-    :raises: ValueError
+    :raises: ValueError if any free variables remain.
+    :raises: PatternMissingError if funsor is not fully evaluated.
     """
     return x
 
 
 @to_data.register(Funsor)
 def _to_data_funsor(x):
-    raise ValueError("cannot convert to a non-Funsor: {}".format(repr(x)))
+    if x.inputs:
+        raise ValueError(f"cannot convert {type(x)} to data due to lazy inputs: {set(x.inputs)}")
+    raise PatternMissingError(r"cannot convert to a non-Funsor: {repr(x)}")
 
 
 class Variable(Funsor):

@@ -338,7 +338,13 @@ def dispatched_interpretation(fn):
     return fn
 
 
+class PatternMissingError(NotImplementedError):
+    def __str__(self):
+        return f"{super().__str__()}\nThis is most likely due to a missing pattern."
+
+
 __all__ = [
+    'PatternMissingError',
     'dispatched_interpretation',
     'interpret',
     'interpretation',
