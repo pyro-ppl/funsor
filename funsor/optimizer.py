@@ -11,9 +11,9 @@ from funsor.terms import Funsor, eager, lazy, normalize
 
 @interpreter.dispatched_interpretation
 def unfold(cls, *args):
-    result = unfold.dispatch(cls, *args)
+    result = unfold.dispatch(cls, *args)(*args)
     if result is None:
-        result = normalize.dispatch(cls, *args)
+        result = normalize.dispatch(cls, *args)(*args)
     if result is None:
         result = lazy(cls, *args)
     return result
@@ -53,7 +53,7 @@ unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[F
 
 @interpreter.dispatched_interpretation
 def optimize(cls, *args):
-    result = optimize.dispatch(cls, *args)
+    result = optimize.dispatch(cls, *args)(*args)
     if result is None:
         result = eager(cls, *args)
     return result
@@ -128,7 +128,7 @@ def apply_optimizer(x):
 
     @interpreter.interpretation(interpreter._INTERPRETATION)
     def nested_optimize_interpreter(cls, *args):
-        result = optimize.dispatch(cls, *args)
+        result = optimize.dispatch(cls, *args)(*args)
         if result is None:
             result = cls(*args)
         return result
