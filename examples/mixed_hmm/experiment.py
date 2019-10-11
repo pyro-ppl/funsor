@@ -24,19 +24,12 @@ def aic_num_parameters(model, guide=None):
     """
     hacky AIC param count that includes all parameters in the model and guide
     """
-
-    def _size(tensor):
-        """product of shape"""
-        s = 1
-        for d in tensor.shape:
-            s = s * d
-        return s
-
     with poutine.block(), poutine.trace(param_only=True) as param_capture:
         model()
-        guide()
+        if guide is not None:
+            guide()
 
-    return sum(_size(node["value"]) for node in param_capture.trace.nodes.values())
+    return sum(node["value"].numel() for node in param_capture.trace.nodes.values())
 
 
 def parallel_loss_fn(model, guide, parallel=True):
@@ -45,9 +38,9 @@ def parallel_loss_fn(model, guide, parallel=True):
     t_term, new_factors = factors[0], factors[1:]
     t = to_funsor("t", t_term.inputs["t"])
     if parallel:
-        result = MarkovProduct(ops.logaddexp, ops.add, t_term, t, {"y": "y(t=1)"})
+        result = MarkovProduct(ops.logaddexp, ops.add, t_term, t, {"y(t=1)": "y"})
     else:
-        result = naive_sequential_sum_product(ops.logaddexp, ops.add, t_term, t, {"y": "y(t=1)"})
+        result = naive_sequential_sum_product(ops.logaddexp, ops.add, t_term, t, {"y(t=1)": "y"})
     new_factors = [result] + new_factors
 
     plates = frozenset(['g', 'i'])
