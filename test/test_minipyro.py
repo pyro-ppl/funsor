@@ -102,7 +102,7 @@ def test_rng_seed(backend):
             expected = model()
         with handlers.seed(rng_seed=0):
             actual = model()
-        assert_close(actual, expected)
+        assert ops.allclose(actual, expected)
 
 
 @pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
@@ -120,7 +120,7 @@ def test_rng_state(backend):
             with handlers.seed(rng_seed=0):
                 model()
             actual = model()
-        assert_close(actual, expected)
+        assert ops.allclose(actual, expected)
 
 
 @pytest.mark.parametrize("backend", ["pyro", "minipyro", "funsor"])
