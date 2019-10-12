@@ -48,23 +48,13 @@ def cholesky(u):
     return u.cholesky()
 
 
-def cholesky_solve(b, u):
-    """
-    Like :func:`torch.cholesky_solve` but supports gradients.
-    """
-    if not b.requires_grad and not u.requires_grad:
-        return b.cholesky_solve(u)
-    x = b.triangular_solve(u, upper=False).solution
-    return x.triangular_solve(u, upper=False, transpose=True).solution
-
-
 def cholesky_inverse(u):
     """
     Like :func:`torch.cholesky_inverse` but supports batching and gradients.
     """
-    if u.dim() == 2 and not u.requires_grad:
+    if u.dim() == 2:
         return u.cholesky_inverse()
-    return cholesky_solve(torch.eye(u.size(-1)).expand(u.size()), u)
+    return torch.eye(u.size(-1)).expand(u.size()).cholesky_solve(u)
 
 
 def _compute_offsets(inputs):

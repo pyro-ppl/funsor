@@ -11,7 +11,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import bint
-from funsor.gaussian import Gaussian, align_gaussian, cholesky, cholesky_inverse, cholesky_solve
+from funsor.gaussian import Gaussian, align_gaussian, cholesky, cholesky_inverse
 from funsor.ops import AssociativeOp
 from funsor.terms import Funsor, Independent, Number, Reduce, Unary, eager, moment_matching, normalize
 from funsor.torch import Tensor, align_tensor
@@ -100,8 +100,7 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
         int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
         probs = (discrete - new_discrete.clamp_finite()).exp()
 
-        old_loc = Tensor(cholesky_solve(gaussian.info_vec.unsqueeze(-1),
-                                        gaussian._precision_chol).squeeze(-1),
+        old_loc = Tensor(gaussian.info_vec.unsqueeze(-1).cholesky_solve(gaussian._precision_chol).squeeze(-1),
                          int_inputs)
         new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
         old_cov = Tensor(cholesky_inverse(gaussian._precision_chol), int_inputs)

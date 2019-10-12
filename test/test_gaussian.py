@@ -8,7 +8,7 @@ import torch
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse, cholesky_solve
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
 from funsor.integrate import Integrate
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
@@ -22,9 +22,9 @@ def test_cholesky_solve(batch_shape, size):
     x = torch.randn(batch_shape + (size, size))
     x = x.transpose(-1, -2).matmul(x)
     u = x.cholesky()
-    expected = cholesky_solve(b, u)
+    expected = torch.cholesky_solve(b, u)
     assert not expected.requires_grad
-    actual = cholesky_solve(b.requires_grad_(), u.requires_grad_())
+    actual = torch.cholesky_solve(b.requires_grad_(), u.requires_grad_())
     assert actual.requires_grad
     assert_close(expected, actual)
 
