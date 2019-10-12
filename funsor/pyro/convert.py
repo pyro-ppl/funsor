@@ -26,7 +26,7 @@ from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian, align_tensors, cholesky_solve, cholesky
+from funsor.gaussian import Gaussian, align_tensors, cholesky
 from funsor.interpreter import gensym
 from funsor.terms import Funsor, Independent, Variable, eager
 from funsor.torch import Tensor
@@ -171,7 +171,7 @@ def funsor_to_mvn(gaussian, ndims, event_inputs=()):
     assert isinstance(gaussian, Gaussian)
 
     precision = gaussian.precision
-    loc = cholesky_solve(gaussian.info_vec.unsqueeze(-1), cholesky(precision)).squeeze(-1)
+    loc = gaussian.info_vec.unsqueeze(-1).cholesky_solve(cholesky(precision)).squeeze(-1)
 
     int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != "real")
     loc = Tensor(loc, int_inputs)
@@ -331,7 +331,7 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
                             Variable(x_name, reals(x_size)),
                             Variable(y_name, reals(y_size)))
 
-    info_vec = cholesky_solve(mvn.loc.unsqueeze(-1), mvn.scale_tril).squeeze(-1)
+    info_vec = mvn.loc.unsqueeze(-1).cholesky_solve(mvn.scale_tril).squeeze(-1)
     log_prob = (-0.5 * y_size * math.log(2 * math.pi)
                 - mvn.scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
                 - 0.5 * (info_vec * mvn.loc).sum(-1))

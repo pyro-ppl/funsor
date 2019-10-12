@@ -4,7 +4,7 @@ from typing import Union
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
-from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian, cholesky_inverse, cholesky_solve
+from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian, cholesky_inverse
 from funsor.terms import Funsor, Number, Subs, Unary, Variable, eager, normalize, substitute, to_funsor
 from funsor.torch import Tensor
 
@@ -108,7 +108,7 @@ def eager_integrate(delta, integrand, reduced_vars):
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars == frozenset([integrand.name]):
-        loc = cholesky_solve(log_measure.info_vec.unsqueeze(-1), log_measure._precision_chol).squeeze(-1)
+        loc = log_measure.info_vec.unsqueeze(-1).cholesky_solve(log_measure._precision_chol).squeeze(-1)
         data = loc * log_measure.log_normalizer.data.exp().unsqueeze(-1)
         data = data.reshape(loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
@@ -136,7 +136,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
             norm = lhs.log_normalizer.data.exp()
             lhs_cov = cholesky_inverse(lhs._precision_chol)
-            lhs_loc = cholesky_solve(lhs.info_vec.unsqueeze(-1), lhs._precision_chol).squeeze(-1)
+            lhs_loc = lhs.info_vec.unsqueeze(-1).cholesky_solve(lhs._precision_chol).squeeze(-1)
             vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
             data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
             inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)

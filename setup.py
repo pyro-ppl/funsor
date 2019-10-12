@@ -14,7 +14,7 @@ setup(
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
         'pyro-ppl>=0.3',
-        'torch>=1.0.0',
+        'torch>=1.3.0',
     ],
     extras_require={
         'test': [
