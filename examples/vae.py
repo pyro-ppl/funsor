@@ -65,7 +65,7 @@ def main(args):
         p = p.reduce(ops.add, {'x', 'y'})
 
         # Construct an elbo. This is where sampling happens.
-        elbo = funsor.Integrate(q, p - q, frozenset(['z']))
+        elbo = funsor.Integrate(q, p - q, 'z')
         elbo = elbo.reduce(ops.add, 'batch') * subsample_scale
         loss = -elbo
         return loss

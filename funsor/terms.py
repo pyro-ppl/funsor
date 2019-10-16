@@ -288,6 +288,27 @@ def _issubclass_tuple(subcls, cls):
     return all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__))
 
 
+def _convert_reduced_vars(reduced_vars):
+    """
+    Helper to convert the reduced_vars arg of ``.reduce()`` and friends.
+
+    :param reduced_vars:
+    :type reduced_vars: str, Variable, or set or frozenset thereof.
+    :rtype: frozenset of str
+    """
+    # Avoid copying if arg is of correct type.
+    if (isinstance(reduced_vars, frozenset) and
+            all(isinstance(var, str) for var in reduced_vars)):
+        return reduced_vars
+
+    if isinstance(reduced_vars, (str, Variable)):
+        reduced_vars = {reduced_vars}
+    assert isinstance(reduced_vars, (frozenset, set))
+    assert all(isinstance(var, (str, Variable)) for var in reduced_vars)
+    return frozenset(var if isinstance(var, str) else var.name
+                     for var in reduced_vars)
+
+
 class Funsor(object, metaclass=FunsorMeta):
     """
     Abstract base class for immutable functional tensors.
@@ -402,19 +423,15 @@ class Funsor(object, metaclass=FunsorMeta):
         :param callable op: A reduction operation.
         :param reduced_vars: An optional input name or set of names to reduce.
             If unspecified, all inputs will be reduced.
-        :type reduced_vars: str or frozenset
+        :type reduced_vars: str, Variable, or set or frozenset thereof.
         """
         assert isinstance(op, AssociativeOp)
         # Eagerly convert reduced_vars to appropriate things.
         if reduced_vars is None:
             # Empty reduced_vars means "reduce over everything".
             reduced_vars = frozenset(self.inputs)
-        elif isinstance(reduced_vars, str):
-            # A single name means "reduce over this one variable".
-            reduced_vars = frozenset([reduced_vars])
-        elif isinstance(reduced_vars, set):
-            # Support set syntax because it is less verbose.
-            reduced_vars = frozenset(reduced_vars)
+        else:
+            reduced_vars = _convert_reduced_vars(reduced_vars)
         assert isinstance(reduced_vars, frozenset), reduced_vars
         if not reduced_vars:
             return self
@@ -440,12 +457,14 @@ class Funsor(object, metaclass=FunsorMeta):
         If ``sample_inputs`` is provided, this creates a batch of samples
         scaled samples.
 
-        :param frozenset sampled_vars: A set of input variables to sample.
+        :param sampled_vars: A set of input variables to sample.
+        :type sampled_vars: str, Variable, or set or frozenset thereof.
         :param OrderedDict sample_inputs: An optional mapping from variable
             name to :class:`~funsor.domains.Domain` over which samples will
             be batched.
         """
         assert self.output == reals()
+        sampled_vars = _convert_reduced_vars(sampled_vars)
         assert isinstance(sampled_vars, frozenset)
         if sample_inputs is None:
             sample_inputs = OrderedDict()

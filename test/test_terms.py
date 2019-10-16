@@ -302,12 +302,16 @@ def test_reduce_subset(op, reduced_vars):
 
 
 def test_reduce_syntactic_sugar():
+    i = Variable("i", bint(3))
     x = Stack("i", (Number(1), Number(2), Number(3)))
     expected = Number(1 + 2 + 3)
     assert x.reduce(ops.add) is expected
     assert x.reduce(ops.add, "i") is expected
     assert x.reduce(ops.add, {"i"}) is expected
     assert x.reduce(ops.add, frozenset(["i"])) is expected
+    assert x.reduce(ops.add, i) is expected
+    assert x.reduce(ops.add, {i}) is expected
+    assert x.reduce(ops.add, frozenset([i])) is expected
 
 
 def test_slice():
