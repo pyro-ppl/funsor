@@ -20,6 +20,47 @@ from funsor.terms import Variable, eager, lazy, moment_matching
 
 
 class DiscreteHMM(FunsorDistribution):
+    r"""
+    Hidden Markov Model with discrete latent state and arbitrary observation
+    distribution. This uses [1] to parallelize over time, achieving
+    O(log(time)) parallel complexity.
+
+    The event_shape of this distribution includes time on the left::
+
+        event_shape = (num_steps,) + observation_dist.event_shape
+
+    This distribution supports any combination of homogeneous/heterogeneous
+    time dependency of ``transition_logits`` and ``observation_dist``. However,
+    because time is included in this distribution's event_shape, the
+    homogeneous+homogeneous case will have a broadcastable event_shape with
+    ``num_steps = 1``, allowing :meth:`log_prob` to work with arbitrary length
+    data::
+
+        # homogeneous + homogeneous case:
+        event_shape = (1,) + observation_dist.event_shape
+
+    This class should be interchangeable with
+    :class:`pyro.distributions.hmm.DiscreteHMM` .
+
+    **References:**
+
+    [1] Simo Sarkka, Angel F. Garcia-Fernandez (2019)
+        "Temporal Parallelization of Bayesian Filters and Smoothers"
+        https://arxiv.org/pdf/1905.13002.pdf
+
+    :param ~torch.Tensor initial_logits: A logits tensor for an initial
+        categorical distribution over latent states. Should have rightmost size
+        ``state_dim`` and be broadcastable to ``batch_shape + (state_dim,)``.
+    :param ~torch.Tensor transition_logits: A logits tensor for transition
+        conditional distributions between latent states. Should have rightmost
+        shape ``(state_dim, state_dim)`` (old, new), and be broadcastable to
+        ``batch_shape + (num_steps, state_dim, state_dim)``.
+    :param ~torch.distributions.Distribution observation_dist: A conditional
+        distribution of observed data conditioned on latent state. The
+        ``.batch_shape`` should have rightmost size ``state_dim`` and be
+        broadcastable to ``batch_shape + (num_steps, state_dim)``. The
+        ``.event_shape`` may be arbitrary.
+    """
     def __init__(self, initial_logits, transition_logits, observation_dist, validate_args=None):
         assert isinstance(initial_logits, torch.Tensor)
         assert isinstance(transition_logits, torch.Tensor)
@@ -98,9 +139,11 @@ class DiscreteHMM(FunsorDistribution):
 
 
 class GaussianHMM(FunsorDistribution):
-    """
+    r"""
     Hidden Markov Model with Gaussians for initial, transition, and observation
-    distributions.
+    distributions. This adapts [1] to parallelize over time to achieve
+    O(log(time)) parallel complexity, however it differs in that it tracks the
+    log normalizer to ensure :meth:`log_prob` is differentiable.
 
     This corresponds to the generative model::
 
@@ -123,6 +166,18 @@ class GaussianHMM(FunsorDistribution):
 
         event_shape = (1, obs_dim)  # homogeneous + homogeneous case
 
+    This class should be compatible with
+    :class:`pyro.distributions.hmm.GaussianHMM` , but additionally supports
+    funsor :mod:`~funsor.adjoint` algorithms.
+
+    **References:**
+
+    [1] Simo Sarkka, Angel F. Garcia-Fernandez (2019)
+        "Temporal Parallelization of Bayesian Filters and Smoothers"
+        https://arxiv.org/pdf/1905.13002.pdf
+
+    :ivar int hidden_dim: The dimension of the hidden state.
+    :ivar int obs_dim: The dimension of the observed state.
     :param ~torch.distributions.MultivariateNormal initial_dist: A distribution
         over initial states. This should have batch_shape broadcastable to
         ``self.batch_shape``.  This should have event_shape ``(hidden_dim,)``.
@@ -137,10 +192,11 @@ class GaussianHMM(FunsorDistribution):
     :param ~torch.Tensor transition_matrix: A linear transformation from hidden
         to observed state. This should have shape broadcastable to
         ``self.batch_shape + (num_steps, hidden_dim, obs_dim)``.
-    :param ~torch.distributions.MultivariateNormal observation_dist: An
-        observation noise distribution. This should have batch_shape
-        broadcastable to ``self.batch_shape + (num_steps,)``.  This should have
-        event_shape ``(obs_dim,)``.
+    :param observation_dist: An observation noise distribution. This should
+        have batch_shape broadcastable to ``self.batch_shape + (num_steps,)``.
+        This should have event_shape ``(obs_dim,)``.
+    :type observation_dist: ~torch.distributions.MultivariateNormal or
+        ~torch.distributions.Independent of ~torch.distributions.Normal
     """
     has_rsample = True
     arg_constraints = {}
@@ -185,9 +241,54 @@ class GaussianHMM(FunsorDistribution):
 
         super(GaussianHMM, self).__init__(
             funsor_dist, batch_shape, event_shape, dtype, validate_args)
+        self.hidden_dim = hidden_dim
+        self.obs_dim = obs_dim
 
 
 class GaussianMRF(FunsorDistribution):
+    r"""
+    Temporal Markov Random Field with Gaussian factors for initial, transition,
+    and observation distributions. This adapts [1] to parallelize over time to
+    achieve O(log(time)) parallel complexity, however it differs in that it
+    tracks the log normalizer to ensure :meth:`log_prob` is differentiable.
+
+    The event_shape of this distribution includes time on the left::
+
+        event_shape = (num_steps,) + observation_dist.event_shape
+
+    This distribution supports any combination of homogeneous/heterogeneous
+    time dependency of ``transition_dist`` and ``observation_dist``. However,
+    because time is included in this distribution's event_shape, the
+    homogeneous+homogeneous case will have a broadcastable event_shape with
+    ``num_steps = 1``, allowing :meth:`log_prob` to work with arbitrary length
+    data::
+
+        event_shape = (1, obs_dim)  # homogeneous + homogeneous case
+
+    This class should be compatible with
+    :class:`pyro.distributions.hmm.GaussianMRF` , but additionally supports
+    funsor :mod:`~funsor.adjoint` algorithms.
+
+    **References:**
+
+    [1] Simo Sarkka, Angel F. Garcia-Fernandez (2019)
+        "Temporal Parallelization of Bayesian Filters and Smoothers"
+        https://arxiv.org/pdf/1905.13002.pdf
+
+    :ivar int hidden_dim: The dimension of the hidden state.
+    :ivar int obs_dim: The dimension of the observed state.
+    :param ~torch.distributions.MultivariateNormal initial_dist: A distribution
+        over initial states. This should have batch_shape broadcastable to
+        ``self.batch_shape``.  This should have event_shape ``(hidden_dim,)``.
+    :param ~torch.distributions.MultivariateNormal transition_dist: A joint
+        distribution factor over a pair of successive time steps. This should
+        have batch_shape broadcastable to ``self.batch_shape + (num_steps,)``.
+        This should have event_shape ``(hidden_dim + hidden_dim,)`` (old+new).
+    :param ~torch.distributions.MultivariateNormal observation_dist: A joint
+        distribution factor over a hidden and an observed state. This should
+        have batch_shape broadcastable to ``self.batch_shape + (num_steps,)``.
+        This should have event_shape ``(hidden_dim + obs_dim,)``.
+    """
     has_rsample = True
 
     def __init__(self, initial_dist, transition_dist, observation_dist, validate_args=None):
@@ -231,6 +332,8 @@ class GaussianMRF(FunsorDistribution):
 
         dtype = "real"
         super(GaussianMRF, self).__init__(funsor_dist, batch_shape, event_shape, dtype, validate_args)
+        self.hidden_dim = hidden_dim
+        self.obs_dim = obs_dim
 
 
 class SwitchingLinearHMM(FunsorDistribution):
