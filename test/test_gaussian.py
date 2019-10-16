@@ -490,6 +490,6 @@ def test_mc_plate_gaussian():
     integrand = Gaussian(torch.randn((100, 1)) + 3., torch.ones((100, 1, 1)),
                          (('data', bint(100)), ('loc', reals())))
 
-    res = Integrate(log_measure.sample(frozenset({'loc'})), integrand, frozenset({'loc'}))
-    res = res.reduce(ops.mul, frozenset({'data'}))
+    res = Integrate(log_measure.sample('loc'), integrand, 'loc')
+    res = res.reduce(ops.mul, 'data')
     assert not torch.isinf(res).any()

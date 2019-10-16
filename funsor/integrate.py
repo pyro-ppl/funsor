@@ -5,13 +5,39 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian, cholesky_inverse
-from funsor.terms import Funsor, Number, Subs, Unary, Variable, eager, normalize, substitute, to_funsor
+from funsor.terms import (
+    Funsor,
+    FunsorMeta,
+    Number,
+    Subs,
+    Unary,
+    Variable,
+    _convert_reduced_vars,
+    eager,
+    normalize,
+    substitute,
+    to_funsor
+)
 from funsor.torch import Tensor
 
 
-class Integrate(Funsor):
+class IntegrateMeta(FunsorMeta):
+    """
+    Wrapper to convert reduced_vars arg to a frozenset of str.
+    """
+    def __call__(cls, log_measure, integrand, reduced_vars):
+        reduced_vars = _convert_reduced_vars(reduced_vars)
+        return super().__call__(log_measure, integrand, reduced_vars)
+
+
+class Integrate(Funsor, metaclass=IntegrateMeta):
     """
     Funsor representing an integral wrt a log density funsor.
+
+    :param Funsor log_measure: A log density funsor treated as a measure.
+    :param Funsor integrand: An integrand funsor.
+    :param reduced_vars: An input name or set of names to reduce.
+    :type reduced_vars: str, Variable, or set or frozenset thereof.
     """
     def __init__(self, log_measure, integrand, reduced_vars):
         assert isinstance(log_measure, Funsor)

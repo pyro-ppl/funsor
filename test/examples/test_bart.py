@@ -197,14 +197,14 @@ def test_bart(analytic_kl):
                 'real')),)),)),))
 
     if analytic_kl:
-        exact_part = funsor.Integrate(q, p_prior - q, frozenset(["gate_rate_t"]))
+        exact_part = funsor.Integrate(q, p_prior - q, "gate_rate_t")
         with interpretation(monte_carlo):
-            approx_part = funsor.Integrate(q, p_likelihood, frozenset(["gate_rate_t"]))
+            approx_part = funsor.Integrate(q, p_likelihood, "gate_rate_t")
         elbo = exact_part + approx_part
     else:
         p = p_prior + p_likelihood
         with interpretation(monte_carlo):
-            elbo = Integrate(q, p - q, frozenset(["gate_rate_t"]))
+            elbo = Integrate(q, p - q, "gate_rate_t")
 
     assert isinstance(elbo, Tensor), elbo.pretty()
     assert call_count == 1
