@@ -43,7 +43,6 @@ class Contraction(Funsor):
         elif isinstance(bin_op, NullOp):
             assert len(terms) == 1
         else:
-            assert reduced_vars and len(terms) > 1
             assert (red_op, bin_op) in DISTRIBUTIVE_OPS
 
         inputs = OrderedDict()
@@ -159,11 +158,18 @@ def recursion_reinterpret_contraction(x):
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
 def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
-    return eager(Contraction, red_op, bin_op, reduced_vars, tuple(terms))
+    return eager(Contraction, red_op, bin_op, reduced_vars, terms)
 
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
+    # Use einsum optimizer when possible.
+    # This cannot be registered as Tuple[Tensor] due to multipledispatch limitations.
+    if all(isinstance(term, Tensor) for term in terms):
+        if red_op is ops.add and bin_op is ops.mul:
+            return _eager_contract_tensors(reduced_vars, terms, backend="torch")
+        if red_op is ops.logaddexp and bin_op is ops.add:
+            return _eager_contract_tensors(reduced_vars, terms, backend="pyro.ops.einsum.torch_log")
 
     # push down leaf reductions
     terms, reduced_vars, leaf_reduced = list(terms), frozenset(reduced_vars), False
@@ -183,8 +189,6 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     # exploit associativity to recursively evaluate this contraction
     # a bit expensive, but handles interpreter-imposed directionality constraints
     terms = tuple(terms)
-    # return reduce(bin_op, terms).reduce(red_op, reduced_vars)
-    # for i, (lhs, rhs) in enumerate(zip(terms[0:-1], terms[1:])):
     for i, lhs in enumerate(terms[0:-1]):
         for j_, rhs in enumerate(terms[i+1:]):
             j = i + j_ + 1
@@ -224,24 +228,7 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
-# FIXME this fails with type ambiguity.
-@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Variadic[Tensor])
-def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
-    if all(term.dtype == "real" for term in terms):
-        return _eager_contract_tensor(reduced_vars, terms, backend="torch")
-    # Fall back to generic_to_tuple.
-    return Contraction(red_op, bin_op, reduced_vars, terms)
-
-
-@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Variadic[Tensor])
-def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
-    if all(term.dtype == "real" for term in terms):
-        return _eager_contract_tensor(reduced_vars, terms, backend="pyro.ops.einsum.torch_log")
-    # Fall back to generic_to_tuple.
-    return Contraction(red_op, bin_op, reduced_vars, terms)
-
-
-def _eager_contract_tensor(reduced_vars, terms, backend):
+def _eager_contract_tensors(reduced_vars, terms, backend):
     iter_symbols = map(opt_einsum.get_symbol, itertools.count())
     symbols = defaultdict(functools.partial(next, iter_symbols))
 

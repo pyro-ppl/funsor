@@ -2,6 +2,7 @@ from collections import OrderedDict, defaultdict
 from functools import reduce
 
 import funsor.ops as ops
+from funsor.cnf import Contraction
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Subs, Variable, eager, substitute, to_funsor
 from funsor.util import quote
@@ -71,7 +72,7 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
+            f = Contraction(sum_op, prod_op, group_vars, group_factors)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate))
@@ -119,7 +120,7 @@ def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
     while len(factors) > 1:
         y = factors.pop()(**prev_to_drop)
         x = factors.pop()(**curr_to_drop)
-        xy = prod_op(x, y).reduce(sum_op, drop)
+        xy = Contraction(sum_op, prod_op, drop, (x, y))
         factors.append(xy)
     return factors[0]
 
@@ -166,7 +167,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
         even_duration = duration // 2 * 2
         x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
         y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
-        contracted = prod_op(x, y).reduce(sum_op, drop)
+        contracted = Contraction(sum_op, prod_op, drop, (x, y))
         if duration > even_duration:
             extra = trans(**{time: Slice(time, duration - 1, duration)})
             contracted = Cat(time, (contracted, extra))
