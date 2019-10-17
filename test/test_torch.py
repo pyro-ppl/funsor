@@ -10,7 +10,7 @@ from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
-from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, torch_stack, torch_tensordot
+from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, arange, align_tensors, torch_stack, torch_tensordot
 
 
 @pytest.mark.parametrize('output_shape', [(), (2,), (3, 2)], ids=str)
@@ -134,6 +134,34 @@ def test_slice_1(stop):
 def test_slice_2(start, stop, step):
     t = torch.randn(10, 2)
     actual = Tensor(t)["i"](i=Slice("j", start, stop, step, dtype=10))
+    expected = Tensor(t[start: stop: step])["j"]
+    assert_close(actual, expected)
+
+
+def test_arange_simple():
+    t = torch.randn(3, 4, 5)
+    f = Tensor(t)["i", "j"]
+    assert_close(f, f(i=arange("i", 3)))
+    assert_close(f, f(j=arange("j", 4)))
+    assert_close(f, f(i=arange("i", 3), j=arange("j", 4)))
+    assert_close(f, f(i=arange("i", 3), j="j"))
+    assert_close(f, f(i="i", j=arange("j", 4)))
+
+
+@pytest.mark.parametrize("stop", [0, 1, 2, 10])
+def test_arange_1(stop):
+    t = torch.randn(10, 2)
+    actual = Tensor(t)["i"](i=arange("j", stop, dtype=10))
+    expected = Tensor(t[:stop])["j"]
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("start", [0, 1, 2, 10])
+@pytest.mark.parametrize("stop", [0, 1, 2, 10])
+@pytest.mark.parametrize("step", [1, 2, 5, 10])
+def test_arange_2(start, stop, step):
+    t = torch.randn(10, 2)
+    actual = Tensor(t)["i"](i=arange("j", start, stop, step, dtype=10))
     expected = Tensor(t[start: stop: step])["j"]
     assert_close(actual, expected)
 
