@@ -750,8 +750,8 @@ interpreter.children.register(Funsor)(interpreter.children_funsor)
 @dispatch(object)
 def to_funsor(x):
     """
-    Convert to a :class:`Funsor`.
-    Only :class:`Funsor`s and scalars are accepted.
+    Convert to a :class:`Funsor` .
+    Only :class:`Funsor` s and scalars are accepted.
 
     :param x: An object.
     :param funsor.domains.Domain output: An optional output hint.
@@ -848,6 +848,11 @@ class SubsMeta(FunsorMeta):
 class Subs(Funsor, metaclass=SubsMeta):
     """
     Lazy substitution of the form ``x(u=y, v=z)``.
+
+    :param Funsor arg: A funsor being substituted into.
+    :param tuple subs: A tuple of ``(name, value)`` pairs, where ``name`` is a
+        string and ``value`` can be coerced to a :class:`Funsor` via
+        :func:`to_funsor`.
     """
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
@@ -915,6 +920,9 @@ _PREFIX = {
 class Unary(Funsor):
     """
     Lazy unary operation.
+
+    :param ~funsor.ops.Op op: A unary operator.
+    :param Funsor arg: An argument.
     """
     def __init__(self, op, arg):
         assert callable(op)
@@ -954,6 +962,10 @@ _INFIX = {
 class Binary(Funsor):
     """
     Lazy binary operation.
+
+    :param ~funsor.ops.Op op: A binary operator.
+    :param Funsor lhs: A left hand side argument.
+    :param Funsor rhs: A right hand side argument.
     """
     def __init__(self, op, lhs, rhs):
         assert callable(op)
@@ -976,6 +988,10 @@ class Binary(Funsor):
 class Reduce(Funsor):
     """
     Lazy reduction over multiple variables.
+
+    :param ~funsor.ops.Op op: A binary operator.
+    :param funsor arg: An argument to be reduced.
+    :param frozenset reduced_vars: A set of variable names over which to reduce.
     """
     def __init__(self, op, arg, reduced_vars):
         assert callable(op)
@@ -1130,6 +1146,12 @@ class SliceMeta(FunsorMeta):
 class Slice(Funsor, metaclass=SliceMeta):
     """
     Symbolic representation of a Python :py:class:`slice` object.
+
+    :param str name: A name for the new slice dimension.
+    :param int start:
+    :param int stop:
+    :param int step: Three args following :py:class:`slice` semantics.
+    :param int dtype: An optional bounded integer type of this slice.
     """
     def __init__(self, name, start, stop, step, dtype):
         assert isinstance(name, str)
@@ -1173,6 +1195,9 @@ class Slice(Funsor, metaclass=SliceMeta):
 class Align(Funsor):
     """
     Lazy call to ``.align(...)``.
+
+    :param Funsor arg: A funsor to align.
+    :param tuple names: A tuple of input names whose order to follow.
     """
     def __init__(self, arg, names):
         assert isinstance(arg, Funsor)
@@ -1369,6 +1394,9 @@ class Lambda(Funsor):
 
     This is useful to simulate higher-order functions of integers
     by representing those functions as arrays.
+
+    :param Variable var: A variable to bind.
+    :param funsor expr: A funsor.
     """
     def __init__(self, var, expr):
         assert isinstance(var, Variable)
@@ -1415,6 +1443,11 @@ class Independent(Funsor):
 
         x = Variable('x', reals(3, 4, 5))
         g == f(x_i=x['i']).reduce(ops.logaddexp, 'i')
+
+    :param Funsor fn: A funsor.
+    :param str reals_var: The name of a real-tensor input.
+    :param str bint_var: The name of a new batch input of ``fn``.
+    :param diag_var: The name of a smaller-shape real input of ``fn``.
     """
     def __init__(self, fn, reals_var, bint_var, diag_var):
         assert isinstance(fn, Funsor)
