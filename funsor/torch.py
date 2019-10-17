@@ -619,9 +619,14 @@ def eager_cat_homogeneous(name, part_name, *parts):
 def arange(name, *args, **kwargs):
     """
     Helper to create a named :func:`torch.arange` funsor.
-    Takes a name and the same arguments as :func:`torch.arange`.
+    In some cases this can be replaced by a symbolic
+    :class:`~funsor.terms.Slice` .
 
     :param str name: A variable name.
+    :param int start:
+    :param int stop:
+    :param int step: Three args following :py:class:`slice` semantics.
+    :param int dtype: An optional bounded integer type of this slice.
     :rtype: Tensor
     """
     start = 0
@@ -652,6 +657,9 @@ def materialize(x):
     """
     Attempt to convert a Funsor to a :class:`~funsor.terms.Number` or
     :class:`Tensor` by substituting :func:`arange` s into its free variables.
+
+    :arg Funsor x: A funsor.
+    :rtype: Funsor
     """
     assert isinstance(x, Funsor)
     if isinstance(x, (Number, Tensor)):
@@ -801,7 +809,7 @@ def function(*signature):
             return torch.max(x, dim=-1)
 
     :param \*signature: A sequence if input domains followed by a final output
-        domain.
+        domain or nested tuple of output domains.
     """
     assert signature
     inputs, output = signature[:-1], signature[-1]
@@ -890,7 +898,22 @@ def torch_tensordot(x, y, dims):
     Note this operates only on the ``output`` tensor. To perform sum-product
     contractions on named dimensions, instead use ``+`` and
     :class:`~funsor.terms.Reduce`.
+
+    Arguments should satisfy::
+
+        len(x.shape) >= dims
+        len(y.shape) >= dims
+        dims == 0 or x.shape[-dims:] == y.shape[:dims]
+
+    :param Funsor x: A left hand argument.
+    :param Funsor y: A y hand argument.
+    :param int dims: The number of dimension of overlap of output shape.
+    :rtype: Funsor
     """
+    assert dims >= 0
+    assert len(x.shape) >= dims
+    assert len(y.shape) >= dims
+    assert dims == 0 or x.shape[-dims:] == y.shape[:dims]
     x_start, x_end = 0, len(x.output.shape)
     y_start = x_end - dims
     y_end = y_start + len(y.output.shape)
@@ -911,6 +934,10 @@ def torch_stack(parts, dim=0):
 
     Note this operates only on the ``output`` tensor. To stack funsors in a
     new named dim, instead use :class:`~funsor.terms.Stack`.
+
+    :param tuple parts: A tuple of funsors.
+    :param int dim: A torch dim along which to stack.
+    :rtype: Funsor
     """
     assert isinstance(dim, int)
     assert isinstance(parts, tuple)
