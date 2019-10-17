@@ -601,17 +601,36 @@ def eager_cat_homogeneous(name, part_name, *parts):
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 
-def arange(name, size):
+def arange(name, *args, **kwargs):
     """
     Helper to create a named :func:`torch.arange` funsor.
+    Takes a name and the same arguments as :func:`torch.arange`.
 
     :param str name: A variable name.
-    :param int size: A size.
     :rtype: Tensor
     """
-    data = torch.arange(size)
-    inputs = OrderedDict([(name, bint(size))])
-    return Tensor(data, inputs, dtype=size)
+    start = 0
+    step = 1
+    dtype = None
+    if len(args) == 1:
+        stop = args[0]
+        dtype = kwargs.pop("dtype", stop)
+    elif len(args) == 2:
+        start, stop = args
+        dtype = kwargs.pop("dtype", stop)
+    elif len(args) == 3:
+        start, stop, step = args
+        dtype = kwargs.pop("dtype", stop)
+    elif len(args) == 4:
+        start, stop, step, dtype = args
+    else:
+        raise ValueError
+    if step <= 0:
+        raise ValueError
+    stop = min(dtype, max(start, stop))
+    data = torch.arange(start, stop, step)
+    inputs = OrderedDict([(name, bint(len(data)))])
+    return Tensor(data, inputs, dtype=dtype)
 
 
 def materialize(x):
