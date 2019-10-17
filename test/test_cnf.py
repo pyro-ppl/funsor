@@ -1,12 +1,17 @@
+import itertools
+from collections import OrderedDict
+
 import pytest
 import torch  # noqa F403
 
+from funsor import ops
 from funsor.cnf import Contraction
 from funsor.domains import bint  # noqa F403
+from funsor.domains import reals
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.terms import Number, eager, normalize, reflect
-from funsor.testing import assert_close, check_funsor, make_einsum_example  # , xfail_param
+from funsor.testing import assert_close, check_funsor, make_einsum_example, random_tensor
 from funsor.torch import Tensor
 from funsor.util import quote
 
@@ -59,3 +64,32 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
 
     actual = eval(quote(expected))  # requires torch, bint
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("x_shape", [(), (1,), (3,), (1, 1), (1, 3), (2, 1), (2, 3)], ids=str)
+@pytest.mark.parametrize("y_shape", [(), (1,), (3,), (1, 1), (1, 3), (2, 1), (2, 3)], ids=str)
+@pytest.mark.parametrize("x_inputs,y_inputs", [
+    ("", ""),
+    ("i", ""),
+    ("", "i"),
+    ("j", "i"),
+    ("ij", "i"),
+    ("i", "ik"),
+    ("ij", "ik"),
+])
+@pytest.mark.parametrize("red_op,bin_op", [(ops.add, ops.mul), (ops.logaddexp, ops.add)], ids=str)
+def test_eager_contract_tensor_tensor(red_op, bin_op, x_inputs, x_shape, y_inputs, y_shape):
+    inputs = OrderedDict([("i", bint(4)), ("j", bint(5)), ("k", bint(6))])
+    x_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in x_inputs)
+    y_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in y_inputs)
+    x = random_tensor(x_inputs, reals(*x_shape))
+    y = random_tensor(y_inputs, reals(*y_shape))
+
+    xy = bin_op(x, y)
+    all_vars = frozenset(x.inputs).union(y.inputs)
+    for n in range(len(all_vars)):
+        for reduced_vars in map(frozenset, itertools.combinations(all_vars, n)):
+            print(f"reduced_vars = {reduced_vars}")
+            expected = xy.reduce(red_op, reduced_vars)
+            actual = Contraction(red_op, bin_op, reduced_vars, (x, y))
+            assert_close(actual, expected, atol=1e-4, rtol=1e-4)

@@ -246,7 +246,7 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
     for term in terms:
         inputs.update(term.inputs)
         einsum_inputs.append("".join(symbols[k] for k in term.inputs) +
-                             "".join(symbols[len(term.shape) - i]
+                             "".join(symbols[i - len(term.shape)]
                                      for i, size in enumerate(term.shape)
                                      if size != 1))
 
@@ -263,7 +263,7 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
     event_shape = broadcast_shape(*(term.shape for term in terms))
     einsum_output = ("".join(symbols[k] for k in inputs) +
                      "".join(symbols[dim]
-                             for dim in range(-1, -1 - len(event_shape), -1)
+                             for dim in range(-len(event_shape), 0)
                              if dim in symbols))
     equation = ",".join(einsum_inputs) + "->" + einsum_output
     data = opt_einsum.contract(equation, *operands, backend=backend)
