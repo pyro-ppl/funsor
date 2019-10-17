@@ -1,8 +1,12 @@
-from collections import OrderedDict
+import functools
+import itertools
+from collections import OrderedDict, defaultdict
 from functools import reduce
 from typing import Tuple, Union
 
+import opt_einsum
 from multipledispatch.variadic import Variadic
+from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.delta import Delta
@@ -218,6 +222,58 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
         args = red_op, result, reduced_vars
         result = eager.dispatch(Reduce, *args)(*args)
     return result
+
+
+# FIXME this fails with type ambiguity.
+@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Variadic[Tensor])
+def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
+    if all(term.dtype == "real" for term in terms):
+        return _eager_contract_tensor(reduced_vars, terms, backend="torch")
+    # Fall back to generic_to_tuple.
+    return Contraction(red_op, bin_op, reduced_vars, terms)
+
+
+@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Variadic[Tensor])
+def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
+    if all(term.dtype == "real" for term in terms):
+        return _eager_contract_tensor(reduced_vars, terms, backend="pyro.ops.einsum.torch_log")
+    # Fall back to generic_to_tuple.
+    return Contraction(red_op, bin_op, reduced_vars, terms)
+
+
+def _eager_contract_tensor(reduced_vars, terms, backend):
+    iter_symbols = map(opt_einsum.get_symbol, itertools.count())
+    symbols = defaultdict(functools.partial(next, iter_symbols))
+
+    inputs = OrderedDict()
+    einsum_inputs = []
+    operands = []
+    for term in terms:
+        inputs.update(term.inputs)
+        einsum_inputs.append("".join(symbols[k] for k in term.inputs) +
+                             "".join(symbols[len(term.shape) - i]
+                                     for i, size in enumerate(term.shape)
+                                     if size != 1))
+
+        # Squeeze absent event dims to be compatible with einsum.
+        data = term.data
+        batch_shape = data.shape[:data.dim() - len(term.shape)]
+        event_shape = tuple(size for size in term.shape if size != 1)
+        data = data.reshape(batch_shape + event_shape)
+        operands.append(data)
+
+    for k in reduced_vars:
+        del inputs[k]
+    batch_shape = tuple(v.size for v in inputs.values())
+    event_shape = broadcast_shape(*(term.shape for term in terms))
+    einsum_output = ("".join(symbols[k] for k in inputs) +
+                     "".join(symbols[dim]
+                             for dim in range(-1, -1 - len(event_shape), -1)
+                             if dim in symbols))
+    equation = ",".join(einsum_inputs) + "->" + einsum_output
+    data = opt_einsum.contract(equation, *operands, backend=backend)
+    data = data.reshape(batch_shape + event_shape)
+    return Tensor(data, inputs)
 
 
 ##########################################
