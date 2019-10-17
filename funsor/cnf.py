@@ -43,6 +43,7 @@ class Contraction(Funsor):
         elif isinstance(bin_op, NullOp):
             assert len(terms) == 1
         else:
+            assert reduced_vars and len(terms) > 1
             assert (red_op, bin_op) in DISTRIBUTIVE_OPS
 
         inputs = OrderedDict()
@@ -163,14 +164,6 @@ def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
-    # Use einsum optimizer when possible.
-    # This cannot be registered as Tuple[Tensor] due to multipledispatch limitations.
-    if all(isinstance(term, Tensor) for term in terms):
-        if red_op is ops.add and bin_op is ops.mul:
-            return _eager_contract_tensors(reduced_vars, terms, backend="torch")
-        if red_op is ops.logaddexp and bin_op is ops.add:
-            return _eager_contract_tensors(reduced_vars, terms, backend="pyro.ops.einsum.torch_log")
-
     # push down leaf reductions
     terms, reduced_vars, leaf_reduced = list(terms), frozenset(reduced_vars), False
     for i, v in enumerate(terms):
@@ -228,6 +221,21 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
+@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Tensor, Tensor)
+def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
+    if not all(term.dtype == "real" for term in terms):
+        raise NotImplementedError('TODO')
+    return _eager_contract_tensors(reduced_vars, terms, backend="torch")
+
+
+@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Tensor, Tensor)
+def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
+    if not all(term.dtype == "real" for term in terms):
+        raise NotImplementedError('TODO')
+    return _eager_contract_tensors(reduced_vars, terms, backend="pyro.ops.einsum.torch_log")
+
+
+# TODO Consider using this for more than binary contractions.
 def _eager_contract_tensors(reduced_vars, terms, backend):
     iter_symbols = map(opt_einsum.get_symbol, itertools.count())
     symbols = defaultdict(functools.partial(next, iter_symbols))

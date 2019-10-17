@@ -72,7 +72,7 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            f = Contraction(sum_op, prod_op, group_vars, group_factors)
+            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate))
@@ -120,7 +120,7 @@ def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
     while len(factors) > 1:
         y = factors.pop()(**prev_to_drop)
         x = factors.pop()(**curr_to_drop)
-        xy = Contraction(sum_op, prod_op, drop, (x, y))
+        xy = prod_op(x, y).reduce(sum_op, drop)
         factors.append(xy)
     return factors[0]
 
