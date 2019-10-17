@@ -9,6 +9,8 @@ Basic Funsors
     :show-inheritance:
     :member-order: bysource
 
+.. autofunction:: funsor.terms.to_funsor
+
 Delta
 -----
 .. automodule:: funsor.delta

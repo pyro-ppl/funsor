@@ -54,8 +54,12 @@ class DistributionMeta(FunsorMeta):
 
 
 class Distribution(Funsor, metaclass=DistributionMeta):
-    """
+    r"""
     Funsor backed by a PyTorch distribution object.
+
+    :param \*args: Distribution-dependent parameters.  These can be either
+        funsors or objects that can be coerced to funsors via
+        :func:`~funsor.terms.to_funsor` . See derived classes for details.
     """
     dist_class = "defined by derived classes"
 
@@ -95,6 +99,12 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 ################################################################################
 
 class BernoulliProbs(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Bernoulli` .
+
+    :param Funsor probs: Probability of 1.
+    :param Funsor value: Optional observation in ``{0,1}``.
+    """
     dist_class = dist.Bernoulli
 
     @staticmethod
@@ -114,6 +124,13 @@ def eager_bernoulli(probs, value):
 
 
 class BernoulliLogits(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Bernoulli` .
+
+    :param Funsor logits: Log likelihood ratio of 1.
+        This should equal ``log(p1 / p0)``.
+    :param Funsor value: Optional observation in ``{0,1}``.
+    """
     dist_class = dist.Bernoulli
 
     @staticmethod
@@ -133,6 +150,15 @@ def eager_bernoulli_logits(logits, value):
 
 
 def Bernoulli(probs=None, logits=None, value='value'):
+    """
+    Wraps :class:`pyro.distributions.Bernoulli` .
+
+    This dispatches to either :class:`BernoulliProbs` or
+    :class:`BernoulliLogits` to accept either ``probs`` or ``logits`` args.
+
+    :param Funsor probs: Probability of 1.
+    :param Funsor value: Optional observation in ``{0,1}``.
+    """
     if probs is not None:
         return BernoulliProbs(probs, value)
     if logits is not None:
@@ -141,6 +167,13 @@ def Bernoulli(probs=None, logits=None, value='value'):
 
 
 class Beta(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Beta` .
+
+    :param Funsor concentration1: Positive concentration parameter.
+    :param Funsor concentration0: Positive concentration parameter.
+    :param Funsor value: Optional observation in ``(0,1)``.
+    """
     dist_class = dist.Beta
 
     @staticmethod
@@ -169,6 +202,13 @@ def eager_beta(concentration1, concentration0, value):
 
 
 class Binomial(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Binomial` .
+
+    :param Funsor total_count: Total number of trials.
+    :param Funsor probs: Probability of each positive trial.
+    :param Funsor value: Optional integer observation (encoded as "real").
+    """
     dist_class = dist.Binomial
 
     @staticmethod
@@ -196,6 +236,12 @@ def eager_binomial(total_count, probs, value):
 
 
 class Categorical(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Categorical` .
+
+    :param Funsor probs: Probability vector over outcomes.
+    :param Funsor value: Optional bouded integer observation.
+    """
     dist_class = dist.Categorical
 
     @staticmethod
@@ -226,6 +272,14 @@ def eager_categorical(probs, value):
 
 
 class Delta(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Delta` .
+
+    :param Funsor v: The unique point of concentration.
+    :param Funsor log_density: Optional density (used by transformed
+        distributions).
+    :param Funsor value: Optional observation of similar domain as ``v``.
+    """
     dist_class = dist.Delta
 
     @staticmethod
@@ -264,6 +318,12 @@ def eager_delta(v, log_density, value):
 
 
 class Dirichlet(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Dirichlet` .
+
+    :param Funsor concentration: Positive concentration vector.
+    :param Funsor value: Optional observation in the unit simplex.
+    """
     dist_class = dist.Dirichlet
 
     @staticmethod
@@ -285,6 +345,13 @@ def eager_dirichlet(concentration, value):
 
 
 class DirichletMultinomial(Distribution):
+    """
+    Wraps :class:`pyro.distributions.DirichletMultinomial` .
+
+    :param Funsor concentration: Positive concentration vector.
+    :param Funsor total_count: Total number of trials.
+    :param Funsor value: Optional observation in the unit simplex.
+    """
     dist_class = dist.DirichletMultinomial
 
     @staticmethod
@@ -308,6 +375,14 @@ def eager_dirichlet_multinomial(concentration, total_count, value):
 
 
 def LogNormal(loc, scale, value='value'):
+    """
+    Wraps :class:`pyro.distributions.LogNormal` .
+
+    :param Funsor loc: Mean of the untransformed Normal distribution.
+    :param Funsor scale: Standard deviation of the untransformed Normal
+        distribution.
+    :param Funsor value: Optional real observation.
+    """
     loc, scale, y = Normal._fill_defaults(loc, scale, value)
     t = ops.exp
     x = t.inv(y)
@@ -316,6 +391,13 @@ def LogNormal(loc, scale, value='value'):
 
 
 class Multinomial(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Multinomial` .
+
+    :param Funsor probs: Probability vector over outcomes.
+    :param Funsor total_count: Total number of trials.
+    :param Funsor value: Optional value in the unit simplex.
+    """
     dist_class = dist.Multinomial
 
     @staticmethod
@@ -344,6 +426,13 @@ def eager_multinomial(total_count, probs, value):
 
 
 class Normal(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Normal` .
+
+    :param Funsor loc: Mean.
+    :param Funsor scale: Standard deviation.
+    :param Funsor value: Optional real observation.
+    """
     dist_class = dist.Normal
 
     @staticmethod
@@ -426,6 +515,13 @@ def eager_normal(loc, scale, value):
 
 
 class MultivariateNormal(Distribution):
+    """
+    Wraps :class:`pyro.distributions.MultivariateNormal` .
+
+    :param Funsor loc: Mean vector.
+    :param Funsor scale_tril: Lower Cholesky factor of the covariance matrix.
+    :param Funsor value: Optional real vector observation.
+    """
     dist_class = dist.MultivariateNormal
 
     @staticmethod
@@ -527,6 +623,12 @@ def eager_mvn(loc, scale_tril, value):
 
 
 class Poisson(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Poisson` .
+
+    :param Funsor rate: Mean parameter.
+    :param Funsor value: Optional integer observation (coded as "real").
+    """
     dist_class = dist.Poisson
 
     @staticmethod
@@ -546,6 +648,12 @@ def eager_poisson(rate, value):
 
 
 class Gamma(Distribution):
+    """
+    Wraps :class:`pyro.distributions.Poisson` .
+
+    :param Funsor concentration: Positive concentration parameter.
+    :param Funsor value: Optional positive observation.
+    """
     dist_class = dist.Gamma
 
     @staticmethod
@@ -567,6 +675,13 @@ def eager_gamma(concentration, rate, value):
 
 
 class VonMises(Distribution):
+    """
+    Wraps :class:`pyro.distributions.VonMises` .
+
+    :param Funsor loc: A location angle.
+    :param Funsor concentration: Positive concentration parameter.
+    :param Funsor value: Optional angular observation.
+    """
     dist_class = dist.VonMises
 
     @staticmethod

@@ -132,7 +132,7 @@ class GetitemMeta(type):
 
 class GetitemOp(Op, metaclass=GetitemMeta):
     """
-    Op encoding an index into one dime, e.g. ``x[:,:,:,y]`` for offset of 3.
+    Op encoding an index into one dimension, e.g. ``x[:,:,y]`` for offset of 2.
     """
     def __init__(self, offset):
         assert isinstance(offset, int)
@@ -347,3 +347,14 @@ __all__ = [
     'truediv',
     'xor',
 ]
+
+__doc__ = """
+Built-in operations
+-------------------
+
+{}
+
+Operation classes
+-----------------
+""".format("\n".join(f".. autodata:: {_name}\n"
+                     for _name in __all__ if isinstance(globals()[_name], Op)))
