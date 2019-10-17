@@ -129,8 +129,23 @@ class Tensor(Funsor, metaclass=TensorMeta):
     """
     Funsor backed by a PyTorch Tensor.
 
-    :param tuple dims: A tuple of strings of dimension names.
-    :param torch.Tensor data: A PyTorch tensor of appropriate shape.
+    This follows the :mod:`torch.distributions` convention of arranging
+    named "batch" dimensions on the left and remaining "event" dimensions
+    on the right. The output shape is determined by all remaining dims.
+    For example::
+
+        data = torch.zeros(5,4,3,2)
+        x = Tensor(data, OrderedDict([("i", bint(5)), ("j", bint(4))]))
+        assert x.output == reals(3, 2)
+
+    Operators like ``matmul`` and ``.sum()`` operate only on the output shape,
+    and will not change the named inputs.
+
+    :param torch.Tensor data: A PyTorch tensor.
+    :param OrderedDict inputs: An optional mapping from input name (str) to
+        datatype (:class:`~funsor.domains.Domain` ). Defaults to empty.
+    :param dtype: optional output datatype. Defaults to "real".
+    :type dtype: int or the string "real".
     """
     def __init__(self, data, inputs=None, dtype="real"):
         assert isinstance(data, torch.Tensor)
@@ -784,7 +799,7 @@ class Einsum(Funsor):
     contractions on named dimensions, instead use ``+`` and
     :class:`~funsor.terms.Reduce`.
 
-    :param str equation: An einsum equation.
+    :param str equation: An :func:`torch.einsum` equation.
     :param tuple operands: A tuple of input funsors.
     """
     def __init__(self, equation, operands):
