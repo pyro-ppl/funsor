@@ -483,7 +483,7 @@ def eager_normal(loc, scale, value):
 @eager.register(Normal, Tensor, Tensor, (Variable, Contraction))
 def eager_normal(loc, scale, value):
     affine = (loc - value) / scale
-    if not affine.is_affine:
+    if not is_affine(affine):
         return None
 
     real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')

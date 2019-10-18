@@ -3,12 +3,14 @@ from collections import OrderedDict
 import pytest
 import torch
 
-from funsor.affine import extract_affine
+from funsor.affine import extract_affine, is_affine
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
-from funsor.terms import Number, Variable
-from funsor.testing import assert_close, check_funsor, random_tensor
+from funsor.terms import Number, Unary, Variable
+from funsor.testing import assert_close, check_funsor, random_gaussian, random_tensor
 from funsor.torch import Einsum, Tensor
+
+assert random_gaussian  # flake8
 
 SMOKE_TESTS = [
     ('t+x', Contraction),
@@ -39,7 +41,7 @@ def test_smoke(expr, expected_type):
 
     result = eval(expr)
     assert isinstance(result, expected_type)
-    assert result.is_affine
+    assert is_affine(result)
 
 
 SUBS_TESTS = [
@@ -75,10 +77,12 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     result = eval(expr)
     assert isinstance(result, expected_type)
     check_funsor(result, expected_inputs, expected_output)
-    assert result.is_affine
+    assert is_affine(result)
 
 
 @pytest.mark.parametrize('expr', [
+    "-Variable('x', reals())",
+    "Variable('x', reals(2)).sum()",
     "Variable('x', reals()) + 0.5",
     "Variable('x', reals(2, 3)) + Variable('y', reals(2, 3))",
     "Variable('x', reals(2)) + Variable('y', reals(2))",
@@ -95,7 +99,8 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 ])
 def test_extract_affine(expr):
     x = eval(expr)
-    assert isinstance(x, (Contraction, Einsum))
+    assert is_affine(x)
+    assert isinstance(x, (Unary, Contraction, Einsum))
     real_inputs = OrderedDict((k, d) for k, d in x.inputs.items()
                               if d.dtype == 'real')
 
@@ -116,3 +121,25 @@ def test_extract_affine(expr):
                          for k, (coeff, eqn) in coeffs.items())
     assert isinstance(actual, Tensor)
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("expr", [
+    "Variable('x', reals()).log()",
+    "Variable('x', reals()).exp()",
+    "Variable('x', reals()).sigmoid()",
+    "Variable('x', reals(2)).prod()",
+    "Variable('x', reals()) ** 2",
+    "Variable('x', reals()) ** 2",
+    "2 ** Variable('x', reals())",
+    "Variable('x', reals()) * Variable('x', reals())",
+    "Variable('x', reals()) * Variable('y', reals())",
+    "Variable('x', reals()) / Variable('y', reals())",
+    "Variable('x', reals()) / Variable('y', reals())",
+    "Variable('x', reals(2,3)) @ Variable('y', reals(3,4))",
+    "random_gaussian(OrderedDict(x=reals()))",
+    "Einsum('abcd,ac->bd',"
+    " (Variable('y', reals(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
+])
+def test_not_is_affine(expr):
+    x = eval(expr)
+    assert not is_affine(x)

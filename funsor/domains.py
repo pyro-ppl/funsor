@@ -90,6 +90,8 @@ def find_domain(op, *domains):
             dtype = 'real'
         elif isinstance(op, ops.ReshapeOp):
             shape = op.shape
+        elif isinstance(op, ops.AssociativeOp):
+            shape = ()
         return Domain(shape, dtype)
 
     lhs, rhs = domains
