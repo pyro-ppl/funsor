@@ -76,10 +76,25 @@ class ArrayMeta(FunsorMeta):
 
 class Array(Funsor, metaclass=ArrayMeta):
     """
-    Funsor backed by a numpy ndarray.
+    Funsor backed by a NumPy Array.
 
-    :param tuple dims: A tuple of strings of dimension names.
-    :param np.ndarray data: A np.ndarray of appropriate shape.
+    This follows the :mod:`torch.distributions` convention of arranging
+    named "batch" dimensions on the left and remaining "event" dimensions
+    on the right. The output shape is determined by all remaining dims.
+    For example::
+
+        data = np.zeros((5,4,3,2))
+        x = Array(data, OrderedDict([("i", bint(5)), ("j", bint(4))]))
+        assert x.output == reals(3, 2)
+
+    Operators like ``matmul`` and ``.sum()`` operate only on the output shape,
+    and will not change the named inputs.
+
+    :param np.ndarray data: A NumPy array.
+    :param OrderedDict inputs: An optional mapping from input name (str) to
+        datatype (:class:`~funsor.domains.Domain` ). Defaults to empty.
+    :param dtype: optional output datatype. Defaults to "real".
+    :type dtype: int or the string "real".
     """
     def __init__(self, data, inputs=None, dtype="real"):
         assert isinstance(data, np.ndarray) or np.isscalar(data)
