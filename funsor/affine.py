@@ -1,9 +1,8 @@
 from collections import OrderedDict
-from functools import reduce
+from functools import reduce, singledispatch
 
 import opt_einsum
 import torch
-from multipledispatch import dispatch
 
 from funsor.cnf import Contraction
 from funsor.interpreter import gensym, interpretation
@@ -29,7 +28,7 @@ def _real_inputs(fn):
     return frozenset(k for k, d in fn.inputs.items() if d.dtype == "real")
 
 
-@dispatch(Funsor)
+@singledispatch
 def _affine_inputs(fn):
     """
     Returns a [sound sub]set of real inputs of ``fn``
@@ -38,20 +37,20 @@ def _affine_inputs(fn):
     return frozenset()
 
 
-@dispatch(Variable)
-def _affine_inputs(fn):
+@_affine_inputs.register(Variable)
+def _(fn):
     return _real_inputs(fn)
 
 
-@dispatch(Unary)
-def _affine_inputs(fn):
+@_affine_inputs.register(Unary)
+def _(fn):
     if fn.op in (ops.neg, ops.add) or isinstance(fn.op, ops.ReshapeOp):
         return _affine_inputs(fn.arg)
     return frozenset()
 
 
-@dispatch(Binary)
-def _affine_inputs(fn):
+@_affine_inputs.register(Binary)
+def _(fn):
     if fn.op in (ops.add, ops.sub):
         return _affine_inputs(fn.lhs) | _affine_inputs(fn.rhs)
     if fn.op is ops.truediv:
@@ -71,20 +70,20 @@ def _affine_inputs(fn):
     return frozenset()
 
 
-@dispatch(Reduce)
-def _affine_inputs(fn):
+@_affine_inputs.register(Reduce)
+def _(fn):
     return _affine_inputs(fn.arg) - fn.reduced_vars
 
 
-@dispatch(Contraction)
-def _affine_inputs(fn):
+@_affine_inputs.register(Contraction)
+def _(fn):
     with interpretation(reflect):
         flat = reduce(fn.bin_op, fn.terms).reduce(fn.red_op, fn.reduced_vars)
     return _affine_inputs(flat)
 
 
-@dispatch(Einsum)
-def _affine_inputs(fn):
+@_affine_inputs.register(Einsum)
+def _(fn):
     # This is simply a multiary version of the above Binary(ops.mul, ...) case.
     results = []
     for i, x in enumerate(fn.operands):
