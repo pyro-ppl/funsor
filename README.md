@@ -4,23 +4,70 @@
 
 # Funsor
 
-Functional analysis + tensors + symbolic algebra.
+Funsor is a tensor-like library for functions and distributions.
 
-This library is an experimental work in progress.
-Beware building on top of this unstable prototype.
+See
+[Functional tensors for probabilistic programming](https://openreview.net/pdf?id=HkecHuIaUS)
+for a system description.
+
+## Installing
+
+**Install using pip:**
+
+Funsor supports Python 3.6+.
+
+```sh
+pip install funsor@https://api.github.com/repos/pyro-ppl/funsor/tarball/master
+```
+
+**Install from source:**
+```sh
+git clone git@github.com:pyro-ppl/funsor.git
+cd funsor
+git checkout master
+pip install .
+```
+
+## Using funsor
+
+Funsor can be used through a number of interfaces:
+
+-   Funsors can be used directly for probabilistic computations, using PyTorch
+    optimizers in a standard training loop. Start with these examples:
+    [discrete_hmm](examples/discrete_hmm.py),
+    [eeg_slds](examples/eeg_slds.py),
+    [kalman_filter](examples/kalman_filter.py),
+    [pcfg](examples/pcfg.py),
+    [sensor](examples/sensor.py),
+    [slds](examples/slds.py), and
+    [vae](examples/slds.py).
+-   Funsors can be used to implement custom inference algorithms within Pyro,
+    using custom elbo implementations in standard
+    [pyro.infer.SVI](http://docs.pyro.ai/en/stable/inference_algos.html#pyro.infer.svi.SVI)
+    training. See these examples:
+    [mixed_hmm](examples/mixed_hmm/model.py) and
+    [bart forecasting](https://github.com/pyro-ppl/sandbox/blob/master/2019-08-time-series/bart/forecast.py).
+-   [funsor.pyro](https://funsor.readthedocs.io/en/latest/pyro.html) provides a
+    number of Pyro-compatible (and PyTorch-compatible) distribution classes
+    that use funsors under the hood, as well
+    [utilities](https://funsor.readthedocs.io/en/latest/pyro.html#module-funsor.pyro.convert)
+    to convert between funsors and distributions.
+-   [funsor.minipyro](https://funsor.readthedocs.io/en/latest/minipyro.html)
+    provides a limited alternate backend for the Pyro probabilistic programming
+    language, and can perform some ELBO computations exactly.
 
 ## Design
 
-See [design doc](https://docs.google.com/document/d/1NVlfQnNQ0Aebg8vfIGcJKsnSqAhB4bbClQrb5dwm2OM).
+See [design doc](https://docs.google.com/document/d/1NVlfQnNQ0Aebg8vfIGcJKsnSqAhB4bbClQrb5dwm2OM). 
 
 The goal of this library is to generalize [Pyro](http://pyro.ai)'s delayed
 inference algorithms from discrete to continuous variables, and to create
 machinery to enable partially delayed sampling compatible with universality. To
 achieve this goal this library makes three orthogonal design choices:
 
-1.  Functions are first class objects. Funsors generalize the tensor interface
+1.  Open terms are objects. Funsors generalize the tensor interface
     to also cover arbitrary functions of multiple variables ("inputs"), where
-    variables may be integers, real numbers or themselves tensors. Function
+    variables may be integers, real numbers, or real tensors. Function
     evaluation / substitution is the basic operation, generalizing tensor
     indexing.  This allows probability distributions to be first-class Funsors
     and make use of existing tensor machinery, for example we can generalize
@@ -63,19 +110,9 @@ def pyro_sample(name, dist, obs=None):
     return value
 
 # ...later during inference...
-log_prob = trace_log_prob.reduce(logaddexp)  # collapses delayed variables
-loss = -funsor.eval(log_prob)                 # performs variable elimination
+loss = -trace_log_prob.reduce(logaddexp)  # collapses delayed variables
 ```
-See [examples/minipyro.py](examples/minipyro.py) for a more complete example.
-
-## Code organization
-
-- `funsor.ops` is a collection of basic ops: unary, binary, and reductions.
-- `funsor.terms` contains AST classes for symbolic algebra.
-- `funsor.torch` contains wrappers around PyTorch `Tensor`s and functions.
-- `funsor.distributions` contains standard probability distributions.
-- `funsor.interpreter` implements different evaluation strategies.
-- `funsor.minipyro` a small Funsor-compatible implementation of Pyro.
+See [funsor/minipyro.py](funsor/minipyro.py) for complete implementation.
 
 ## Related projects
 
