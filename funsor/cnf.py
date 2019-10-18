@@ -1,8 +1,12 @@
-from collections import OrderedDict
+import functools
+import itertools
+from collections import OrderedDict, defaultdict
 from functools import reduce
 from typing import Tuple, Union
 
+import opt_einsum
 from multipledispatch.variadic import Variadic
+from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.delta import Delta
@@ -121,6 +125,10 @@ class Contraction(Funsor):
         return red_op, bin_op, reduced_vars, terms
 
 
+GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
+                              Tuple[Union[Tensor, Number], Gaussian]]
+
+
 @quote.register(Contraction)
 def _(arg, indent, out):
     line = f"{type(arg).__name__}({repr(arg.red_op)}, {repr(arg.bin_op)},"
@@ -140,12 +148,11 @@ def recursion_reinterpret_contraction(x):
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
 def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
-    return eager(Contraction, red_op, bin_op, reduced_vars, tuple(terms))
+    return eager(Contraction, red_op, bin_op, reduced_vars, terms)
 
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
-
     # push down leaf reductions
     terms, reduced_vars, leaf_reduced = list(terms), frozenset(reduced_vars), False
     for i, v in enumerate(terms):
@@ -164,8 +171,6 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     # exploit associativity to recursively evaluate this contraction
     # a bit expensive, but handles interpreter-imposed directionality constraints
     terms = tuple(terms)
-    # return reduce(bin_op, terms).reduce(red_op, reduced_vars)
-    # for i, (lhs, rhs) in enumerate(zip(terms[0:-1], terms[1:])):
     for i, lhs in enumerate(terms[0:-1]):
         for j_, rhs in enumerate(terms[i+1:]):
             j = i + j_ + 1
@@ -205,14 +210,71 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
+@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Tensor, Tensor)
+def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
+    if not all(term.dtype == "real" for term in terms):
+        raise NotImplementedError('TODO')
+    return _eager_contract_tensors(reduced_vars, terms, backend="torch")
+
+
+@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Tensor, Tensor)
+def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
+    if not all(term.dtype == "real" for term in terms):
+        raise NotImplementedError('TODO')
+    return _eager_contract_tensors(reduced_vars, terms, backend="pyro.ops.einsum.torch_log")
+
+
+# TODO Consider using this for more than binary contractions.
+def _eager_contract_tensors(reduced_vars, terms, backend):
+    iter_symbols = map(opt_einsum.get_symbol, itertools.count())
+    symbols = defaultdict(functools.partial(next, iter_symbols))
+
+    inputs = OrderedDict()
+    einsum_inputs = []
+    operands = []
+    for term in terms:
+        inputs.update(term.inputs)
+        einsum_inputs.append("".join(symbols[k] for k in term.inputs) +
+                             "".join(symbols[i - len(term.shape)]
+                                     for i, size in enumerate(term.shape)
+                                     if size != 1))
+
+        # Squeeze absent event dims to be compatible with einsum.
+        data = term.data
+        batch_shape = data.shape[:data.dim() - len(term.shape)]
+        event_shape = tuple(size for size in term.shape if size != 1)
+        data = data.reshape(batch_shape + event_shape)
+        operands.append(data)
+
+    for k in reduced_vars:
+        del inputs[k]
+    batch_shape = tuple(v.size for v in inputs.values())
+    event_shape = broadcast_shape(*(term.shape for term in terms))
+    einsum_output = ("".join(symbols[k] for k in inputs) +
+                     "".join(symbols[dim]
+                             for dim in range(-len(event_shape), 0)
+                             if dim in symbols))
+    equation = ",".join(einsum_inputs) + "->" + einsum_output
+    data = opt_einsum.contract(equation, *operands, backend=backend)
+    data = data.reshape(batch_shape + event_shape)
+    return Tensor(data, inputs)
+
+
+# TODO(https://github.com/pyro-ppl/funsor/issues/238) Use a port of
+# Pyro's gaussian_tensordot() here. Until then we must eagerly add the
+# possibly-rank-deficient terms before reducing to avoid Cholesky errors.
+@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset,
+                GaussianMixture, GaussianMixture)
+def eager_contraction_gaussian(red_op, bin_op, reduced_vars, x, y):
+    return (x + y).reduce(red_op, reduced_vars)
+
+
 ##########################################
 # Normalizing Contractions
 ##########################################
 
 ORDERING = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
 GROUND_TERMS = tuple(ORDERING)
-GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
-                              Tuple[Union[Tensor, Number], Gaussian]]
 
 
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)

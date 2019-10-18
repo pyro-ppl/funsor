@@ -2,6 +2,7 @@ from collections import OrderedDict, defaultdict
 from functools import reduce
 
 import funsor.ops as ops
+from funsor.cnf import Contraction
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Subs, Variable, eager, substitute, to_funsor
 from funsor.util import quote
@@ -166,7 +167,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
         even_duration = duration // 2 * 2
         x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
         y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
-        contracted = prod_op(x, y).reduce(sum_op, drop)
+        contracted = Contraction(sum_op, prod_op, drop, x, y)
         if duration > even_duration:
             extra = trans(**{time: Slice(time, duration - 1, duration)})
             contracted = Cat(time, (contracted, extra))
