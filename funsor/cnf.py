@@ -58,21 +58,6 @@ class Contraction(Funsor):
         self.bin_op = bin_op
         self.terms = terms
         self.reduced_vars = reduced_vars
-        self.is_affine = self._is_affine()
-
-    def _is_affine(self):
-        for t in self.terms:
-            if not isinstance(t, (Number, Tensor, Variable, Contraction)):
-                return False
-            if isinstance(t, Contraction):
-                if not ((t.bin_op, self.bin_op) in DISTRIBUTIVE_OPS or (self.bin_op, t.bin_op) in DISTRIBUTIVE_OPS) \
-                        and t.is_affine:
-                    return False
-
-        if self.bin_op is ops.add and self.red_op is not nullop:
-            return sum(1 for k, v in self.inputs.items() if v.dtype == 'real') == \
-                sum(sum(1 for k, v in t.inputs.items() if v.dtype == 'real') for t in self.terms)
-        return True
 
     def unscaled_sample(self, sampled_vars, sample_inputs):
         sampled_vars = sampled_vars.intersection(self.inputs)
