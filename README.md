@@ -36,20 +36,20 @@ pip install .
 Funsor can be used through a number of interfaces:
 
 -   Funsors can be used directly for probabilistic computations, using PyTorch
-    optimizers in a standard training loop. For example see:
-    - [examples/discrete_hmm.py](examples/discrete_hmm.py)
-    - [examples/eeg_slds.py](examples/eeg_slds.py)
-    - [examples/kalman_filter.py](examples/kalman_filter.py)
-    - [examples/pcfg.py](examples/pcfg.py)
-    - [examples/sensor.py](examples/sensor.py)
-    - [examples/slds.py](examples/slds.py)
-    - [examples/vae.py](examples/slds.py)
+    optimizers in a standard training loop. Start with these examples:
+    [discrete_hmm](examples/discrete_hmm.py),
+    [eeg_slds](examples/eeg_slds.py),
+    [kalman_filter](examples/kalman_filter.py),
+    [pcfg](examples/pcfg.py),
+    [sensor](examples/sensor.py),
+    [slds](examples/slds.py), and
+    [vae](examples/slds.py).
 -   Funsors can be used to implement custom inference algorithms within Pyro,
     using custom elbo implementations in standard
     [pyro.infer.SVI](http://docs.pyro.ai/en/stable/inference_algos.html#pyro.infer.svi.SVI)
-    training. For example see:
-    - [examples/mixed_hmm/model.py](examples/mixed_hmm/model.py)
-    - [sandbox/.../bart/forecast.py](https://github.com/pyro-ppl/sandbox/blob/master/2019-08-time-series/bart/forecast.py)
+    training. See these examples:
+    [mixed_hmm](examples/mixed_hmm/model.py) and
+    [bart forecasting](https://github.com/pyro-ppl/sandbox/blob/master/2019-08-time-series/bart/forecast.py).
 -   [funsor.pyro](https://funsor.readthedocs.io/en/latest/pyro.html) provides a
     number of Pyro-compatible (and PyTorch-compatible) distribution classes
     that use funsors under the hood, as well
