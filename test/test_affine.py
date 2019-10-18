@@ -131,6 +131,8 @@ def test_extract_affine(expr):
     "Variable('x', reals()) / Variable('y', reals())",
     "Variable('x', reals(2,3)) @ Variable('y', reals(3,4))",
     "random_gaussian(OrderedDict(x=reals()))",
+    "Einsum('abcd,ac->bd',"
+    " (Variable('y', reals(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
 ])
 def test_not_is_affine(expr):
     x = eval(expr)
