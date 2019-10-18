@@ -10,9 +10,6 @@ See
 [Functional tensors for probabilistic programming](https://openreview.net/pdf?id=HkecHuIaUS)
 for a system description.
 
-This library is an experimental work in progress.
-Beware building on top of this unstable prototype.
-
 ## Installing
 
 **Install using pip:**
