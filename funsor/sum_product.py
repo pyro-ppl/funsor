@@ -167,7 +167,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
         even_duration = duration // 2 * 2
         x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
         y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
-        contracted = Contraction(sum_op, prod_op, drop, (x, y))
+        contracted = Contraction(sum_op, prod_op, drop, x, y)
         if duration > even_duration:
             extra = trans(**{time: Slice(time, duration - 1, duration)})
             contracted = Cat(time, (contracted, extra))

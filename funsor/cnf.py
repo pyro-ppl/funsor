@@ -140,6 +140,10 @@ class Contraction(Funsor):
         return red_op, bin_op, reduced_vars, terms
 
 
+GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
+                              Tuple[Union[Tensor, Number], Gaussian]]
+
+
 @quote.register(Contraction)
 def _(arg, indent, out):
     line = f"{type(arg).__name__}({repr(arg.red_op)}, {repr(arg.bin_op)},"
@@ -271,14 +275,21 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
     return Tensor(data, inputs)
 
 
+# TODO(https://github.com/pyro-ppl/funsor/issues/238) Use a port of
+# Pyro's gaussian_tensordot() here. Until then we must eagerly add the
+# possibly-rank-deficient terms before reducing to avoid Cholesky errors.
+@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset,
+                GaussianMixture, GaussianMixture)
+def eager_contraction_gaussian(red_op, bin_op, reduced_vars, x, y):
+    return (x + y).reduce(red_op, reduced_vars)
+
+
 ##########################################
 # Normalizing Contractions
 ##########################################
 
 ORDERING = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
 GROUND_TERMS = tuple(ORDERING)
-GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
-                              Tuple[Union[Tensor, Number], Gaussian]]
 
 
 @normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
