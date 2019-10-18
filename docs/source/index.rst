@@ -3,8 +3,8 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Funsor is a tensor-like library for functional analysis
-=======================================================
+Funsor is a tensor-like library for functions and distributions
+===============================================================
 
 .. toctree::
    :glob:
