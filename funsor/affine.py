@@ -85,12 +85,19 @@ def _affine_inputs(fn):
 
 @dispatch(Einsum)
 def _affine_inputs(fn):
-    result = frozenset()
+    # This is simply a multiary version of the above Binary(ops.mul, ...) case.
+    results = []
     for i, x in enumerate(fn.operands):
         others = fn.operands[:i] + fn.operands[i+1:]
         other_inputs = reduce(ops.or_, map(_real_inputs, others), frozenset())
-        result |= _affine_inputs(x) - other_inputs
-    return result
+        results.append(_affine_inputs(x) - other_inputs)
+    # This multilinear case introduces incompleteness, since some vars
+    # could later be reduced, making remaining vars affine.
+    if sum(map(bool, results)) == 1:
+        for result in results:
+            if result:
+                return result
+    return frozenset()
 
 
 def extract_affine(fn):
