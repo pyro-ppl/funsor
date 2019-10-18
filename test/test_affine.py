@@ -6,7 +6,7 @@ import torch
 from funsor.affine import extract_affine, is_affine
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
-from funsor.terms import Number, Variable
+from funsor.terms import Number, Unary, Variable
 from funsor.testing import assert_close, check_funsor, random_gaussian, random_tensor
 from funsor.torch import Einsum, Tensor
 
@@ -81,6 +81,8 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 
 
 @pytest.mark.parametrize('expr', [
+    "-Variable('x', reals())",
+    "Variable('x', reals(2)).sum()",
     "Variable('x', reals()) + 0.5",
     "Variable('x', reals(2, 3)) + Variable('y', reals(2, 3))",
     "Variable('x', reals(2)) + Variable('y', reals(2))",
@@ -98,7 +100,7 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 def test_extract_affine(expr):
     x = eval(expr)
     assert is_affine(x)
-    assert isinstance(x, (Contraction, Einsum))
+    assert isinstance(x, (Unary, Contraction, Einsum))
     real_inputs = OrderedDict((k, d) for k, d in x.inputs.items()
                               if d.dtype == 'real')
 
@@ -122,6 +124,10 @@ def test_extract_affine(expr):
 
 
 @pytest.mark.parametrize("expr", [
+    "Variable('x', reals()).log()",
+    "Variable('x', reals()).exp()",
+    "Variable('x', reals()).sigmoid()",
+    "Variable('x', reals(2)).prod()",
     "Variable('x', reals()) ** 2",
     "Variable('x', reals()) ** 2",
     "2 ** Variable('x', reals())",
