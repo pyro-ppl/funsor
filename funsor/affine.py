@@ -134,6 +134,7 @@ def extract_affine(fn):
     """
     # Determine constant part by evaluating fn at zero.
     inputs = affine_inputs(fn)
+    inputs = OrderedDict((k, v) for k, v in fn.inputs.items() if k in inputs)
     zeros = {k: Tensor(torch.zeros(v.shape)) for k, v in inputs.items()}
     const = fn(**zeros)
 
