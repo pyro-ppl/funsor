@@ -6,6 +6,7 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
+from funsor.affine import affine_inputs, extract_affine
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.ops import AddOp, NegOp, SubOp
@@ -334,47 +335,56 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         if not subs:
             return self
 
-        # Constants and Variables are eagerly substituted;
+        # Constants and Affine funsors are eagerly substituted;
         # everything else is lazily substituted.
         lazy_subs = tuple((k, v) for k, v in subs
-                          if not isinstance(v, (Number, Tensor, Variable, Slice)))
+                          if not isinstance(v, (Number, Tensor, Variable, Slice))
+                          and not affine_inputs(v))
         var_subs = tuple((k, v) for k, v in subs if isinstance(v, Variable))
         int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor, Slice))
                          if v.dtype != 'real')
         real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
                           if v.dtype == 'real')
-        if not (var_subs or int_subs or real_subs):
-            return reflect(Subs, self, lazy_subs)
-
-        # First perform any variable substitutions.
+        affine_subs = tuple((k, v) for k, v in subs
+                            if not isinstance(v, Variable) and affine_inputs(v))
         if var_subs:
-            rename = {k: v.name for k, v in var_subs}
-            inputs = OrderedDict((rename.get(k, k), d) for k, d in self.inputs.items())
-            if len(inputs) != len(self.inputs):
-                raise ValueError("Variable substitution name conflict")
-            var_result = Gaussian(self.info_vec, self.precision, inputs)
-            new_subs = int_subs + real_subs + lazy_subs
-            return Subs(var_result, new_subs) if new_subs else var_result
-
-        # Next perform any integer substitution, i.e. slicing into a batch.
+            return self._eager_subs_var(var_subs, int_subs + real_subs + affine_subs + lazy_subs)
         if int_subs:
-            int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
-            real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
-            tensors = [self.info_vec, self.precision]
-            funsors = [Subs(Tensor(x, int_inputs), int_subs) for x in tensors]
-            inputs = funsors[0].inputs.copy()
-            inputs.update(real_inputs)
-            int_result = Gaussian(funsors[0].data, funsors[1].data, inputs)
-            new_subs = real_subs + lazy_subs
-            return Subs(int_result, new_subs) if new_subs else int_result
+            return self._eager_subs_int(int_subs, real_subs + affine_subs + lazy_subs)
+        if real_subs:
+            return self._eager_subs_real(real_subs, affine_subs + lazy_subs)
+        # TODO
+        # if affine_subs:
+        #     return self._eager_subs_affine(affine_subs, lazy_subs)
+        return reflect(Subs, self, lazy_subs)
 
+    def _eager_subs_var(self, subs, remaining_subs):
+        # Perform variable substitution, i.e. renaming of inputs.
+        rename = {k: v.name for k, v in subs}
+        inputs = OrderedDict((rename.get(k, k), d) for k, d in self.inputs.items())
+        if len(inputs) != len(self.inputs):
+            raise ValueError("Variable substitution name conflict")
+        var_result = Gaussian(self.info_vec, self.precision, inputs)
+        return Subs(var_result, remaining_subs) if remaining_subs else var_result
+
+    def _eager_subs_int(self, subs, remaining_subs):
+        # Perform integer substitution, i.e. slicing into a batch.
+        int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
+        real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
+        tensors = [self.info_vec, self.precision]
+        funsors = [Subs(Tensor(x, int_inputs), subs) for x in tensors]
+        inputs = funsors[0].inputs.copy()
+        inputs.update(real_inputs)
+        int_result = Gaussian(funsors[0].data, funsors[1].data, inputs)
+        return Subs(int_result, remaining_subs) if remaining_subs else int_result
+
+    def _eager_subs_real(self, subs, remaining_subs):
         # Broadcast all component tensors.
-        real_subs = OrderedDict(subs)
-        assert real_subs and not int_subs
+        subs = OrderedDict(subs)
         int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
         tensors = [Tensor(self.info_vec, int_inputs),
                    Tensor(self.precision, int_inputs)]
-        tensors.extend(real_subs.values())
+        tensors.extend(subs.values())
         int_inputs, tensors = align_tensors(*tensors)
         batch_dim = tensors[0].dim() - 1
         batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
@@ -384,7 +394,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                   for k, offset in offsets.items()]
 
         # Expand all substituted values.
-        values = OrderedDict(zip(real_subs, values))
+        values = OrderedDict(zip(subs, values))
         for k, value in values.items():
             value = value.reshape(value.shape[:batch_dim] + (-1,))
             if not torch._C._get_tracing_state():
@@ -392,7 +402,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             values[k] = value.expand(batch_shape + value.shape[-1:])
 
         # Try to perform a complete substitution of all real variables, resulting in a Tensor.
-        if all(k in real_subs for k, d in self.inputs.items() if d.dtype == 'real'):
+        if all(k in subs for k, d in self.inputs.items() if d.dtype == 'real'):
             # Form the concatenated value.
             value = BlockVector(batch_shape + (event_size,))
             for k, i in slices:
@@ -405,11 +415,11 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
             result = Tensor(result, int_inputs)
             assert result.output == reals()
-            return Subs(result, lazy_subs)
+            return Subs(result, remaining_subs) if remaining_subs else result
 
         # Perform a partial substution of a subset of real variables, resulting in a Joint.
         # We split real inputs into two sets: a for the preserved and b for the substituted.
-        b = frozenset(k for k, v in real_subs.items())
+        b = frozenset(k for k, v in subs.items())
         a = frozenset(k for k, d in self.inputs.items() if d.dtype == 'real' and k not in b)
         prec_aa = torch.cat([torch.cat([
             precision[..., i1, i2]
@@ -431,9 +441,15 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         precision = prec_aa.expand(info_vec.shape + (-1,))
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
-            if k not in real_subs:
+            if k not in subs:
                 inputs[k] = d
-        return Gaussian(info_vec, precision, inputs) + Tensor(log_scale, int_inputs)
+        result = Gaussian(info_vec, precision, inputs) + Tensor(log_scale, int_inputs)
+        return Subs(result, remaining_subs) if remaining_subs else result
+
+    def _eager_subs_affine(self, subs, remaining_subs):
+        affine = OrderedDict((k, extract_affine(v)) for k, v in subs)
+        assert affine
+        raise NotImplementedError('TODO')
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
