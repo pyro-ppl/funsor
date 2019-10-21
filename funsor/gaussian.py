@@ -353,9 +353,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             return self._eager_subs_int(int_subs, real_subs + affine_subs + lazy_subs)
         if real_subs:
             return self._eager_subs_real(real_subs, affine_subs + lazy_subs)
-        # TODO
-        # if affine_subs:
-        #     return self._eager_subs_affine(affine_subs, lazy_subs)
+        if affine_subs:
+            # TODO: return self._eager_subs_affine(affine_subs, lazy_subs)
+            lazy_subs = affine_subs + lazy_subs
         return reflect(Subs, self, lazy_subs)
 
     def _eager_subs_var(self, subs, remaining_subs):
