@@ -12,7 +12,9 @@ from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
 from funsor.integrate import Integrate
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
-from funsor.torch import Tensor
+from funsor.torch import Einsum, Tensor
+
+assert Einsum  # flake8
 
 
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
@@ -310,6 +312,7 @@ def test_eager_subs_variable():
     (('x', 'Variable("u", reals()) * 2 + 1'),
      ('y', 'Variable("u", reals()) * Tensor(torch.ones(4))'),
      ('z', 'Variable("u", reals()) * Tensor(torch.ones(2, 3))')),
+    (('y', 'Einsum("abc,bc->a", (Tensor(torch.randn(4, 3, 5)), Variable("v", reals(3, 5))))'),),
 ])
 @pytest.mark.parametrize('g_ints', ["", "i", "j", "ij"])
 @pytest.mark.parametrize('subs_ints', ["", "i", "j", "ji"])
