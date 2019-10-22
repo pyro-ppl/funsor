@@ -51,14 +51,6 @@ Joint
     :show-inheritance:
     :member-order: bysource
 
-Affine
---------
-.. automodule:: funsor.affine
-    :members:
-    :undoc-members:
-    :show-inheritance:
-    :member-order: bysource
-
 Contraction
 -----------
 .. automodule:: funsor.cnf

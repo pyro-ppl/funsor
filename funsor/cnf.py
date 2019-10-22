@@ -9,12 +9,26 @@ from multipledispatch.variadic import Variadic
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
+from funsor.affine import affine_inputs
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
-from funsor.interpreter import recursion_reinterpret
+from funsor.interpreter import interpretation, recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
-from funsor.terms import Align, Binary, Funsor, Number, Reduce, Subs, Unary, Variable, eager, normalize, to_funsor
+from funsor.terms import (
+    Align,
+    Binary,
+    Funsor,
+    Number,
+    Reduce,
+    Subs,
+    Unary,
+    Variable,
+    eager,
+    normalize,
+    reflect,
+    to_funsor
+)
 from funsor.torch import Tensor
 from funsor.util import quote
 
@@ -267,6 +281,13 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
                 GaussianMixture, GaussianMixture)
 def eager_contraction_gaussian(red_op, bin_op, reduced_vars, x, y):
     return (x + y).reduce(red_op, reduced_vars)
+
+
+@affine_inputs.register(Contraction)
+def _(fn):
+    with interpretation(reflect):
+        flat = reduce(fn.bin_op, fn.terms).reduce(fn.red_op, fn.reduced_vars)
+    return affine_inputs(flat)
 
 
 ##########################################

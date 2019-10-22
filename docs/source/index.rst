@@ -18,6 +18,7 @@ Funsor is a tensor-like library for functions and distributions
    optimizer
    adjoint
    sum_product
+   affine
    testing
 
 .. toctree::
