@@ -8,9 +8,8 @@ from pyro.distributions.util import broadcast_shape
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
-from funsor.cnf import Contraction
 from funsor.domains import bint, reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
+from funsor.gaussian import Gaussian, cholesky_inverse
 from funsor.interpreter import gensym, interpretation
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
@@ -451,67 +450,22 @@ def eager_normal(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
-# Create a Gaussian from a ground prior or ground likelihood.
-@eager.register(Normal, Tensor, Tensor, Variable)
-@eager.register(Normal, Variable, Tensor, Tensor)
+@eager.register(Normal, Funsor, Tensor, Funsor)
 def eager_normal(loc, scale, value):
-    if isinstance(loc, Variable):
-        loc, value = value, loc
+    assert loc.output == reals()
+    assert scale.output == reals()
+    assert value.output == reals()
+    if not is_affine(loc) or not is_affine(value):
+        return None  # lazy
 
-    inputs, (loc, scale) = align_tensors(loc, scale, expand=True)
-    inputs.update(value.inputs)
-    int_inputs = OrderedDict((k, v) for k, v in inputs.items() if v.dtype != 'real')
-
-    precision = scale.pow(-2)
-    info_vec = (precision * loc).unsqueeze(-1)
-    precision = precision.unsqueeze(-1).unsqueeze(-1)
-    log_prob = -0.5 * math.log(2 * math.pi) - scale.log() - 0.5 * (loc * info_vec).squeeze(-1)
-    return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, inputs)
-
-
-# Create a transformed Gaussian from a ground prior or ground likelihood.
-@eager.register(Normal, Tensor, Tensor, Funsor)
-@eager.register(Normal, Funsor, Tensor, Tensor)
-def eager_normal(loc, scale, value):
-    if not isinstance(loc, Tensor):
-        loc, value = value, loc
-    return Normal(loc, scale, 'value')(value=value)
-
-
-@eager.register(Normal, (Variable, Contraction), Tensor, (Variable, Contraction))
-@eager.register(Normal, (Variable, Contraction), Tensor, Tensor)
-@eager.register(Normal, Tensor, Tensor, (Variable, Contraction))
-def eager_normal(loc, scale, value):
-    affine = (loc - value) / scale
-    if not is_affine(affine):
-        return None
-
-    real_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype == 'real')
-    int_inputs = OrderedDict((k, v) for k, v in affine.inputs.items() if v.dtype != 'real')
-    assert not any(v.shape for v in real_inputs.values())
-
-    const = affine(**{k: 0. for k, v in real_inputs.items()})
-    coeffs = OrderedDict()
-    for c in real_inputs.keys():
-        coeffs[c] = affine(**{k: 1. if c == k else 0. for k in real_inputs.keys()}) - const
-
-    tensors = [const] + list(coeffs.values())
-    inputs, tensors = align_tensors(*tensors, expand=True)
-    const, coeffs = tensors[0], tensors[1:]
-
-    dim = sum(d.num_elements for d in real_inputs.values())
-    loc = BlockVector(const.shape + (dim,))
-    loc[..., 0] = -const / coeffs[0]
-    precision = BlockMatrix(const.shape + (dim, dim))
-    for i, (v1, c1) in enumerate(zip(real_inputs, coeffs)):
-        for j, (v2, c2) in enumerate(zip(real_inputs, coeffs)):
-            precision[..., i, j] = c1 * c2
-    loc = loc.as_tensor()
-    precision = precision.as_tensor()
-    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
-
-    log_prob = -0.5 * math.log(2 * math.pi) - scale.data.log() - 0.5 * (loc * info_vec).sum(-1)
-    return Tensor(log_prob, int_inputs) + Gaussian(info_vec, precision, affine.inputs)
+    info_vec = scale.data.new_zeros(scale.data.shape + (1,))
+    precision = scale.data.pow(-2).reshape(scale.data.shape + (1, 1))
+    log_prob = -0.5 * math.log(2 * math.pi) - scale.log().sum()
+    inputs = scale.inputs.copy()
+    var = gensym('value')
+    inputs[var] = reals()
+    gaussian = log_prob + Gaussian(info_vec, precision, inputs)
+    return gaussian(**{var: value - loc})
 
 
 class MultivariateNormal(Distribution):
