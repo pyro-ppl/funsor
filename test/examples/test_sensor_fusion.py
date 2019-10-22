@@ -55,7 +55,6 @@ def test_distributions(state_dim, obs_dim):
 
 
 # This version constructs factors using funsor.pyro.convert.
-@pytest.mark.xfail(reason="missing pattern")
 def test_pyro_convert():
     data = Tensor(torch.randn(2, 2), OrderedDict([("time", bint(2))]))
 
@@ -84,7 +83,6 @@ def test_pyro_convert():
     assert isinstance(log_prob, Tensor), log_prob.pretty()
 
 
-@pytest.mark.xfail(reason="missing pattern")
 def test_affine_subs():
     # This was recorded from test_pyro_convert.
     x = Subs(
