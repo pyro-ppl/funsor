@@ -480,8 +480,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         for old_k, (const, coeffs) in affine.items():
             del new_real_inputs[old_k]
             for new_k, (coeff, eqn) in coeffs.items():
-                ins1, ins2 = eqn.split('->')[0].split(',')
-                new_real_inputs[new_k] = reals(*coeff.shape[len(ins1) - len(ins2):])
+                new_dim = len(eqn.split('->')[0].split(',')[1])
+                new_real_inputs[new_k] = reals(*coeff.shape[:new_dim])
         old_offsets, old_dim = _compute_offsets(old_real_inputs)
         new_offsets, new_dim = _compute_offsets(new_real_inputs)
         new_inputs = new_int_inputs.copy()
@@ -489,14 +489,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         # Construct a blockwise affine representation of the substitution.
         subs_vector = BlockVector(batch_shape + (old_dim,))
-        subs_matrix = BlockMatrix(batch_shape + (old_dim, new_dim))
+        subs_matrix = BlockMatrix(batch_shape + (new_dim, old_dim))
         for old_k, old_offset in old_offsets.items():
             old_size = old_real_inputs[old_k].num_elements
             old_slice = slice(old_offset, old_offset + old_size)
             if old_k in new_real_inputs:
                 new_offset = new_offsets[old_k]
                 new_slice = slice(new_offset, new_offset + old_size)
-                subs_matrix[..., old_slice, new_slice] = \
+                subs_matrix[..., new_slice, old_slice] = \
                     torch.eye(old_size).expand(batch_shape + (-1, -1))
                 continue
             const, coeffs = affine[old_k]
@@ -508,25 +508,25 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                     coeff, eqn = coeffs[new_k]
                     new_size = new_real_inputs[new_k].num_elements
                     new_slice = slice(new_offset, new_offset + new_size)
-                    assert coeff.shape == old_shape + new_real_inputs[new_k].shape
-                    subs_matrix[..., old_slice, new_slice] = \
-                        coeff.data.reshape(batch_shape + (old_size, new_size))
+                    assert coeff.shape == new_real_inputs[new_k].shape + old_shape
+                    subs_matrix[..., new_slice, old_slice] = \
+                        coeff.data.reshape(batch_shape + (new_size, old_size))
         subs_vector = subs_vector.as_tensor()
         subs_matrix = subs_matrix.as_tensor()
         subs_matrix_t = subs_matrix.transpose(-1, -2)
 
         # Construct the new funsor. Suppose the old Gaussian funsor g has density
-        #   g(x) = < x | P x - 2 i >
+        #   g(x) = < x | i - 1/2 P x>
         # Now define a new funsor f by substituting x = A y + B:
-        #   f(y) = g(A y + b)
-        #        = < A y + B | P (A y + B) - 2 i >
-        #        = < y | At P A y - 2 At (i - P B) > - < B | P B - 2 i >
-        #        =: < y | P' y - 2 i' > + C
+        #   f(y) = g(A y + B)
+        #        = < A y + B | i - 1/2 P (A y + B) >
+        #        = < y | At (i - P B) - 1/2 At P A y > + < B | i - 1/2 P B >
+        #        =: < y | i' - 1/2 P' y > + C
         # where  P' = At P A  and  i' = At (i - P B)  parametrize a new Gaussian
-        # and  C = < B | 2 i - P B >  parametrize a new Tensor.
-        precision = subs_matrix_t @ old_precision @ subs_matrix
-        info_vec = _mv(subs_matrix_t, old_info_vec - _mv(old_precision, subs_vector))
-        const = _vv(subs_vector, 2 * old_info_vec - _mv(old_precision, subs_vector))
+        # and  C = < B | i - 1/2 P B >  parametrize a new Tensor.
+        precision = subs_matrix @ old_precision @ subs_matrix_t
+        info_vec = _mv(subs_matrix, old_info_vec - _mv(old_precision, subs_vector))
+        const = _vv(subs_vector, old_info_vec - 0.5 * _mv(old_precision, subs_vector))
         result = Gaussian(info_vec, precision, new_inputs) + Tensor(const, new_int_inputs)
         return Subs(result, remaining_subs) if remaining_subs else result
 

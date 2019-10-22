@@ -301,14 +301,23 @@ def test_eager_subs_variable():
     (('x', 'Variable("u", reals()) * 2'),),
     (('y', 'Variable("v", reals(4)) + 1'),),
     (('z', 'Variable("w", reals(6)).reshape((2,3))'),),
+    (('x', 'Variable("v", reals(4)).sum()'),
+     ('y', 'Variable("v", reals(4)) - 1')),
+    (('x', 'Variable("u", reals()) * 2 + 1'),
+     ('y', 'Variable("u", reals()) * Tensor(torch.ones(4))'),
+     ('z', 'Variable("u", reals()) * Tensor(torch.ones(2, 3))')),
 ])
-def test_eager_subs_affine(subs):
-    g = random_gaussian(OrderedDict([
-        ('x', reals()),
-        ('y', reals(4)),
-        ('z', reals(2, 3)),
-    ]))
-    subs = {k: eval(v) for k, v in subs}
+@pytest.mark.parametrize('g_ints', ["", "i", "j", "ij"])
+@pytest.mark.parametrize('subs_ints', ["", "i", "j", "ji"])
+def test_eager_subs_affine(subs, g_ints, subs_ints):
+    sizes = {'i': 5, 'j': 6}
+    subs_inputs = OrderedDict((k, bint(sizes[k])) for k in subs_ints)
+    g_inputs = OrderedDict((k, bint(sizes[k])) for k in g_ints)
+    g_inputs['x'] = reals()
+    g_inputs['y'] = reals(4)
+    g_inputs['z'] = reals(2, 3)
+    g = random_gaussian(g_inputs)
+    subs = {k: eval(v) + random_tensor(subs_inputs) for k, v in subs}
 
     inputs = g.inputs.copy()
     for v in subs.values():
@@ -320,7 +329,7 @@ def test_eager_subs_affine(subs):
     assert issubclass(type(g_subs), GaussianMixture)
     actual = g_subs(**grounding_subs)
     expected = g(**ground_subs)(**grounding_subs)
-    assert_close(actual, expected)
+    assert_close(actual, expected, atol=1e-3, rtol=1e-4)
 
 
 @pytest.mark.parametrize('int_inputs', [
