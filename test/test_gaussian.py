@@ -80,7 +80,8 @@ def test_block_vector_batched(batch_shape):
     assert_close(actual.as_tensor(), expected)
 
 
-def test_block_matrix():
+@pytest.mark.parametrize('sparse', [False, True])
+def test_block_matrix(sparse):
     shape = (10, 10)
     expected = torch.zeros(shape)
     actual = BlockMatrix(shape)
@@ -88,11 +89,12 @@ def test_block_matrix():
     expected[1, 1] = torch.randn(())
     actual[1, 1] = expected[1, 1]
 
-    expected[1, 3:5] = torch.randn(2)
-    actual[1, 3:5] = expected[1, 3:5]
+    if not sparse:
+        expected[1, 3:5] = torch.randn(2)
+        actual[1, 3:5] = expected[1, 3:5]
 
-    expected[3:5, 1] = torch.randn(2)
-    actual[3:5, 1] = expected[3:5, 1]
+        expected[3:5, 1] = torch.randn(2)
+        actual[3:5, 1] = expected[3:5, 1]
 
     expected[3:5, 3:5] = torch.randn(2, 2)
     actual[3:5, 3:5] = expected[3:5, 3:5]
@@ -100,8 +102,9 @@ def test_block_matrix():
     assert_close(actual.as_tensor(), expected)
 
 
+@pytest.mark.parametrize('sparse', [False, True])
 @pytest.mark.parametrize('batch_shape', [(), (4,), (3, 2)])
-def test_block_matrix_batched(batch_shape):
+def test_block_matrix_batched(batch_shape, sparse):
     shape = batch_shape + (10, 10)
     expected = torch.zeros(shape)
     actual = BlockMatrix(shape)
@@ -109,11 +112,12 @@ def test_block_matrix_batched(batch_shape):
     expected[..., 1, 1] = torch.randn(batch_shape)
     actual[..., 1, 1] = expected[..., 1, 1]
 
-    expected[..., 1, 3:5] = torch.randn(batch_shape + (2,))
-    actual[..., 1, 3:5] = expected[..., 1, 3:5]
+    if not sparse:
+        expected[..., 1, 3:5] = torch.randn(batch_shape + (2,))
+        actual[..., 1, 3:5] = expected[..., 1, 3:5]
 
-    expected[..., 3:5, 1] = torch.randn(batch_shape + (2,))
-    actual[..., 3:5, 1] = expected[..., 3:5, 1]
+        expected[..., 3:5, 1] = torch.randn(batch_shape + (2,))
+        actual[..., 3:5, 1] = expected[..., 3:5, 1]
 
     expected[..., 3:5, 3:5] = torch.randn(batch_shape + (2, 2))
     actual[..., 3:5, 3:5] = expected[..., 3:5, 3:5]
