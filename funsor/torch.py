@@ -61,7 +61,7 @@ def align_tensor(new_inputs, x, expand=False):
         of ``x`` not in ``new_inputs``; if True expand to ``new_inputs`` size.
     :return: a number or :class:`torch.Tensor` that can be broadcast to other
         tensors with inputs ``new_inputs``.
-    :rtype: tuple
+    :rtype: int or float or torch.Tensor
     """
     assert isinstance(new_inputs, OrderedDict)
     assert isinstance(x, (Number, Tensor))

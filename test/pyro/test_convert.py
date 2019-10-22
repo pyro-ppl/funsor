@@ -180,9 +180,9 @@ def test_funsor_to_mvn(batch_shape, event_shape, real_size):
     actual = funsor_to_mvn(funsor_, ndims, event_dims)
     assert isinstance(actual, dist.MultivariateNormal)
     assert actual.batch_shape == expected.batch_shape
-    assert_close(actual.loc, expected.loc, atol=1e-4, rtol=None)
+    assert_close(actual.loc, expected.loc, atol=1e-3, rtol=None)
     assert_close(actual.precision_matrix,
-                 expected.precision_matrix, atol=1e-4, rtol=None)
+                 expected.precision_matrix, atol=1e-3, rtol=None)
 
 
 @pytest.mark.parametrize("int_size", [2, 3])
