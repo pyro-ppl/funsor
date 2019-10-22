@@ -449,11 +449,16 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     def _eager_subs_affine(self, subs, remaining_subs):
         # Extract an affine representation.
-        affine = OrderedDict((k, extract_affine(v)) for k, v in subs)
-        assert affine and all(v for v in affine.values())
-        for const, coeffs in affine.values():
-            assert isinstance(const, Tensor)
-            assert all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values())
+        affine = OrderedDict()
+        for k, v in subs:
+            const, coeffs = extract_affine(v)
+            if (isinstance(const, Tensor) and
+                    all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values())):
+                affine[k] = const, coeffs
+            else:
+                remaining_subs += (k, v),
+        if not affine:
+            return reflect(Subs, self, remaining_subs)
 
         # Align integer dimensions.
         old_int_inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
