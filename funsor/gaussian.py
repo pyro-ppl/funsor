@@ -6,7 +6,7 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-from funsor.affine import affine_inputs, extract_affine
+from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.ops import AddOp, NegOp, SubOp
@@ -339,14 +339,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # everything else is lazily substituted.
         lazy_subs = tuple((k, v) for k, v in subs
                           if not isinstance(v, (Number, Tensor, Variable, Slice))
-                          and not affine_inputs(v))
+                          and not is_affine(v))
         var_subs = tuple((k, v) for k, v in subs if isinstance(v, Variable))
         int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor, Slice))
                          if v.dtype != 'real')
         real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
                           if v.dtype == 'real')
         affine_subs = tuple((k, v) for k, v in subs
-                            if not isinstance(v, Variable) and affine_inputs(v))
+                            if is_affine(v) and not isinstance(v, Variable))
         if var_subs:
             return self._eager_subs_var(var_subs, int_subs + real_subs + affine_subs + lazy_subs)
         if int_subs:
@@ -354,8 +354,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         if real_subs:
             return self._eager_subs_real(real_subs, affine_subs + lazy_subs)
         if affine_subs:
-            # TODO: return self._eager_subs_affine(affine_subs, lazy_subs)
-            lazy_subs = affine_subs + lazy_subs
+            return self._eager_subs_affine(affine_subs, lazy_subs)
         return reflect(Subs, self, lazy_subs)
 
     def _eager_subs_var(self, subs, remaining_subs):
@@ -447,9 +446,66 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return Subs(result, remaining_subs) if remaining_subs else result
 
     def _eager_subs_affine(self, subs, remaining_subs):
+        # Extract an affine representation.
         affine = OrderedDict((k, extract_affine(v)) for k, v in subs)
-        assert affine
-        raise NotImplementedError('TODO')
+        assert affine and all(v for v in affine.values())
+
+        # Align integer dimensions.
+        old_int_inputs = OrderedDict((k, v) for k, v in v.inputs.items() if v.dtype != 'real')
+        tensors = [Tensor(self.info_vec, old_int_inputs),
+                   Tensor(self.precision, old_int_inputs)]
+        for const, coeffs in affine.values():
+            tensors.append(const)
+            tensors.extend(coeff for coeff, _ in coeffs.values())
+        new_int_inputs, tensors = align_tensors(*tensors, expand=True)
+        tensors = (Tensor(x, new_int_inputs) for x in tensors)
+        old_info_vec = next(tensors).data
+        old_precision = next(tensors).data
+        for old_k, (const, coeffs) in affine.items():
+            const = next(tensors)
+            for new_k, (coeff, eqn) in coeffs.items():
+                coeff = next(tensors)
+                coeffs[new_k] = coeff, eqn
+            affine[old_k] = const, coeffs
+        batch_shape = old_info_vec.data.shape[:-1]
+
+        # Align real dimensions.
+        old_real_inputs = OrderedDict((k, v) for k, v in v.inputs.items() if v.dtype == 'real')
+        new_real_inputs = old_real_inputs.copy()
+        for old_k, (const, coeffs) in affine.items():
+            del new_real_inputs[old_k]
+            for new_k, (coeff, eqn) in coeffs.items():
+                assert isinstance(coeff, Tensor)
+                new_real_inputs[new_k] = coeff.output
+        old_offsets, old_dim = _compute_offsets(old_real_inputs)
+        new_offsets, new_dim = _compute_offsets(new_real_inputs)
+
+        # Construct a blockwise affine equivalent of the substitution.
+        subs_matrix = BlockMatrix(batch_shape + (new_dim, old_dim))
+        for old_k, old_offset in old_offsets.items():
+            old_size = old_inputs[old_k].num_elements
+            old_slice = slice(old_offset, old_offset + old_size)
+            if old_k in new_inputs:
+                new_offset = new_offsets[old_k]
+                new_slice = slice(new_offset, new_offset + old_size)
+                subs_matrix[..., old_slice, new_slice] = \
+                    torch.eye(old_size).expand(batch_shape + (-1, -1))
+                continue
+            const, coeffs = affine[old_k]
+            # TODO what to do with the const?
+            for new_k, new_offset in new_offsets.items():
+                if new_k in coeffs:
+                    coeff, eqn = coeffs[new_k]
+                    new_size = coeff.output.num_elements
+                    new_slice = slice(new_offset, new_offset + new_size.num_elements)
+                    assert coeff.shape == old_shape + new_inputs
+                    subs_matrix[..., old_slice, new_slice] = \
+                        coeff.data.reshape(batch_shape + (old_size, new_size))
+        subs_matrix = subs_matrix.as_tensor()
+
+        info_vec = subs_matrix.transpose(-1, -2) @ old_info_vec
+        precision = subs_matrix.transpose(-1, -2) @ old_precision @ subs_matrix
+        return Gaussian(info_vec, precision, inputs) + Tensor("TODO")
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
