@@ -485,8 +485,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         for old_k, (const, coeffs) in affine.items():
             del new_real_inputs[old_k]
             for new_k, (coeff, eqn) in coeffs.items():
-                new_dim = len(eqn.split('->')[0].split(',')[1])
-                new_real_inputs[new_k] = reals(*coeff.shape[:new_dim])
+                new_shape = coeff.shape[:len(eqn.split('->')[0].split(',')[1])]
+                new_real_inputs[new_k] = reals(*new_shape)
         old_offsets, old_dim = _compute_offsets(old_real_inputs)
         new_offsets, new_dim = _compute_offsets(new_real_inputs)
         new_inputs = new_int_inputs.copy()
