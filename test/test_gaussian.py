@@ -6,7 +6,7 @@ import pytest
 import torch
 
 import funsor.ops as ops
-from funsor.cnf import Contraction
+from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
 from funsor.integrate import Integrate
@@ -295,6 +295,32 @@ def test_eager_subs_variable():
     assert set(g2.inputs) == {'j', 'x', 'y'}
     assert g2.info_vec is g1.info_vec
     assert g2.precision is g1.precision
+
+
+@pytest.mark.parametrize('subs', [
+    (('x', 'Variable("u", reals()) * 2'),),
+    (('y', 'Variable("v", reals(4)) + 1'),),
+    (('z', 'Variable("w", reals(6)).reshape((2,3))'),),
+])
+def test_eager_subs_affine(subs):
+    g = random_gaussian(OrderedDict([
+        ('x', reals()),
+        ('y', reals(4)),
+        ('z', reals(2, 3)),
+    ]))
+    subs = {k: eval(v) for k, v in subs}
+
+    inputs = g.inputs.copy()
+    for v in subs.values():
+        inputs.update(v.inputs)
+    grounding_subs = {k: random_tensor(OrderedDict(), d) for k, d in inputs.items()}
+    ground_subs = {k: v(**grounding_subs) for k, v in subs.items()}
+
+    g_subs = g(**subs)
+    assert issubclass(type(g_subs), GaussianMixture)
+    actual = g_subs(**grounding_subs)
+    expected = g(**ground_subs)(**grounding_subs)
+    assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('int_inputs', [

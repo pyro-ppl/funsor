@@ -6,7 +6,7 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-from funsor.affine import affine_inputs, extract_affine, is_affine
+from funsor.affine import extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.ops import AddOp, NegOp, SubOp
@@ -79,11 +79,13 @@ def _compute_offsets(inputs):
     return offsets, total
 
 
-def _find_gaps(intervals, end):
-    intervals = list(sorted(intervals))
-    stops = [0] + [stop for start, stop in intervals]
-    starts = [start for start, stop in intervals] + [end]
-    return [(stop, start) for stop, start in zip(stops, starts) if stop != start]
+def _find_intervals(intervals, end):
+    """
+    Finds a complete set of intervals partitioning [0, end), given a partial
+    set of non-overlapping intervals.
+    """
+    cuts = list(sorted({0, end}.union(*intervals)))
+    return list(zip(cuts[:-1], cuts[1:]))
 
 
 def _parse_slices(index, value):
@@ -127,8 +129,9 @@ class BlockVector(object):
         # Fill gaps with zeros.
         prototype = next(iter(self.parts.values()))
         options = dict(dtype=prototype.dtype, device=prototype.device)
-        for i in _find_gaps(self.parts.keys(), self.shape[-1]):
-            self.parts[i] = torch.zeros(self.shape[:-1] + (i[1] - i[0],), **options)
+        for i in _find_intervals(self.parts.keys(), self.shape[-1]):
+            if i not in self.parts:
+                self.parts[i] = torch.zeros(self.shape[:-1] + (i[1] - i[0],), **options)
 
         # Concatenate parts.
         parts = [v for k, v in sorted(self.parts.items())]
@@ -164,10 +167,9 @@ class BlockMatrix(object):
         arbitrary_row = next(iter(self.parts.values()))
         prototype = next(iter(arbitrary_row.values()))
         options = dict(dtype=prototype.dtype, device=prototype.device)
-        i_gaps = _find_gaps(self.parts.keys(), self.shape[-2])
-        j_gaps = _find_gaps(arbitrary_row.keys(), self.shape[-1])
-        rows = set().union(i_gaps, self.parts)
-        cols = set().union(j_gaps, arbitrary_row)
+        js = set().union(*(part.keys() for part in self.parts.values()))
+        rows = _find_intervals(self.parts.keys(), self.shape[-2])
+        cols = _find_intervals(js, self.shape[-1])
         for i in rows:
             for j in cols:
                 if j not in self.parts[i]:
@@ -449,9 +451,12 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # Extract an affine representation.
         affine = OrderedDict((k, extract_affine(v)) for k, v in subs)
         assert affine and all(v for v in affine.values())
+        for const, coeffs in affine.values():
+            assert isinstance(const, Tensor)
+            assert all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values())
 
         # Align integer dimensions.
-        old_int_inputs = OrderedDict((k, v) for k, v in v.inputs.items() if v.dtype != 'real')
+        old_int_inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
         tensors = [Tensor(self.info_vec, old_int_inputs),
                    Tensor(self.precision, old_int_inputs)]
         for const, coeffs in affine.values():
@@ -470,42 +475,60 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         batch_shape = old_info_vec.data.shape[:-1]
 
         # Align real dimensions.
-        old_real_inputs = OrderedDict((k, v) for k, v in v.inputs.items() if v.dtype == 'real')
+        old_real_inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype == 'real')
         new_real_inputs = old_real_inputs.copy()
         for old_k, (const, coeffs) in affine.items():
             del new_real_inputs[old_k]
             for new_k, (coeff, eqn) in coeffs.items():
-                assert isinstance(coeff, Tensor)
-                new_real_inputs[new_k] = coeff.output
+                ins1, ins2 = eqn.split('->')[0].split(',')
+                new_real_inputs[new_k] = reals(*coeff.shape[len(ins1) - len(ins2):])
         old_offsets, old_dim = _compute_offsets(old_real_inputs)
         new_offsets, new_dim = _compute_offsets(new_real_inputs)
+        new_inputs = new_int_inputs.copy()
+        new_inputs.update(new_real_inputs)
 
-        # Construct a blockwise affine equivalent of the substitution.
-        subs_matrix = BlockMatrix(batch_shape + (new_dim, old_dim))
+        # Construct a blockwise affine representation of the substitution.
+        subs_vector = BlockVector(batch_shape + (old_dim,))
+        subs_matrix = BlockMatrix(batch_shape + (old_dim, new_dim))
         for old_k, old_offset in old_offsets.items():
-            old_size = old_inputs[old_k].num_elements
+            old_size = old_real_inputs[old_k].num_elements
             old_slice = slice(old_offset, old_offset + old_size)
-            if old_k in new_inputs:
+            if old_k in new_real_inputs:
                 new_offset = new_offsets[old_k]
                 new_slice = slice(new_offset, new_offset + old_size)
                 subs_matrix[..., old_slice, new_slice] = \
                     torch.eye(old_size).expand(batch_shape + (-1, -1))
                 continue
             const, coeffs = affine[old_k]
-            # TODO what to do with the const?
+            old_shape = old_real_inputs[old_k].shape
+            assert const.data.shape == batch_shape + old_shape
+            subs_vector[..., old_slice] = const.data.reshape(batch_shape + (old_size,))
             for new_k, new_offset in new_offsets.items():
                 if new_k in coeffs:
                     coeff, eqn = coeffs[new_k]
-                    new_size = coeff.output.num_elements
-                    new_slice = slice(new_offset, new_offset + new_size.num_elements)
-                    assert coeff.shape == old_shape + new_inputs
+                    new_size = new_real_inputs[new_k].num_elements
+                    new_slice = slice(new_offset, new_offset + new_size)
+                    assert coeff.shape == old_shape + new_real_inputs[new_k].shape
                     subs_matrix[..., old_slice, new_slice] = \
                         coeff.data.reshape(batch_shape + (old_size, new_size))
+        subs_vector = subs_vector.as_tensor()
         subs_matrix = subs_matrix.as_tensor()
+        subs_matrix_t = subs_matrix.transpose(-1, -2)
 
-        info_vec = subs_matrix.transpose(-1, -2) @ old_info_vec
-        precision = subs_matrix.transpose(-1, -2) @ old_precision @ subs_matrix
-        return Gaussian(info_vec, precision, inputs) + Tensor("TODO")
+        # Construct the new funsor. Suppose the old Gaussian funsor g has density
+        #   g(x) = < x | P x - 2 i >
+        # Now define a new funsor f by substituting x = A y + B:
+        #   f(y) = g(A y + b)
+        #        = < A y + B | P (A y + B) - 2 i >
+        #        = < y | At P A y - 2 At (i - P B) > - < B | P B - 2 i >
+        #        =: < y | P' y - 2 i' > + C
+        # where  P' = At P A  and  i' = At (i - P B)  parametrize a new Gaussian
+        # and  C = < B | 2 i - P B >  parametrize a new Tensor.
+        precision = subs_matrix_t @ old_precision @ subs_matrix
+        info_vec = _mv(subs_matrix_t, old_info_vec - _mv(old_precision, subs_vector))
+        const = _vv(subs_vector, 2 * old_info_vec - _mv(old_precision, subs_vector))
+        result = Gaussian(info_vec, precision, new_inputs) + Tensor(const, new_int_inputs)
+        return Subs(result, remaining_subs) if remaining_subs else result
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
