@@ -6,7 +6,7 @@ import torch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-from funsor.affine import extract_affine, is_affine
+from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.ops import AddOp, NegOp, SubOp
@@ -341,14 +341,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # everything else is lazily substituted.
         lazy_subs = tuple((k, v) for k, v in subs
                           if not isinstance(v, (Number, Tensor, Variable, Slice))
-                          and not is_affine(v))
+                          and not (is_affine(v) and affine_inputs(v)))
         var_subs = tuple((k, v) for k, v in subs if isinstance(v, Variable))
         int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor, Slice))
                          if v.dtype != 'real')
         real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
                           if v.dtype == 'real')
         affine_subs = tuple((k, v) for k, v in subs
-                            if is_affine(v) and not isinstance(v, Variable))
+                            if is_affine(v) and affine_inputs(v) and not isinstance(v, Variable))
         if var_subs:
             return self._eager_subs_var(var_subs, int_subs + real_subs + affine_subs + lazy_subs)
         if int_subs:
