@@ -6,13 +6,15 @@ import pytest
 import torch
 
 import funsor.ops as ops
-from funsor.cnf import Contraction
+from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
 from funsor.integrate import Integrate
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
-from funsor.torch import Tensor
+from funsor.torch import Einsum, Tensor
+
+assert Einsum  # flake8
 
 
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
@@ -80,7 +82,8 @@ def test_block_vector_batched(batch_shape):
     assert_close(actual.as_tensor(), expected)
 
 
-def test_block_matrix():
+@pytest.mark.parametrize('sparse', [False, True])
+def test_block_matrix(sparse):
     shape = (10, 10)
     expected = torch.zeros(shape)
     actual = BlockMatrix(shape)
@@ -88,11 +91,12 @@ def test_block_matrix():
     expected[1, 1] = torch.randn(())
     actual[1, 1] = expected[1, 1]
 
-    expected[1, 3:5] = torch.randn(2)
-    actual[1, 3:5] = expected[1, 3:5]
+    if not sparse:
+        expected[1, 3:5] = torch.randn(2)
+        actual[1, 3:5] = expected[1, 3:5]
 
-    expected[3:5, 1] = torch.randn(2)
-    actual[3:5, 1] = expected[3:5, 1]
+        expected[3:5, 1] = torch.randn(2)
+        actual[3:5, 1] = expected[3:5, 1]
 
     expected[3:5, 3:5] = torch.randn(2, 2)
     actual[3:5, 3:5] = expected[3:5, 3:5]
@@ -100,8 +104,9 @@ def test_block_matrix():
     assert_close(actual.as_tensor(), expected)
 
 
+@pytest.mark.parametrize('sparse', [False, True])
 @pytest.mark.parametrize('batch_shape', [(), (4,), (3, 2)])
-def test_block_matrix_batched(batch_shape):
+def test_block_matrix_batched(batch_shape, sparse):
     shape = batch_shape + (10, 10)
     expected = torch.zeros(shape)
     actual = BlockMatrix(shape)
@@ -109,11 +114,12 @@ def test_block_matrix_batched(batch_shape):
     expected[..., 1, 1] = torch.randn(batch_shape)
     actual[..., 1, 1] = expected[..., 1, 1]
 
-    expected[..., 1, 3:5] = torch.randn(batch_shape + (2,))
-    actual[..., 1, 3:5] = expected[..., 1, 3:5]
+    if not sparse:
+        expected[..., 1, 3:5] = torch.randn(batch_shape + (2,))
+        actual[..., 1, 3:5] = expected[..., 1, 3:5]
 
-    expected[..., 3:5, 1] = torch.randn(batch_shape + (2,))
-    actual[..., 3:5, 1] = expected[..., 3:5, 1]
+        expected[..., 3:5, 1] = torch.randn(batch_shape + (2,))
+        actual[..., 3:5, 1] = expected[..., 3:5, 1]
 
     expected[..., 3:5, 3:5] = torch.randn(batch_shape + (2, 2))
     actual[..., 3:5, 3:5] = expected[..., 3:5, 3:5]
@@ -295,6 +301,42 @@ def test_eager_subs_variable():
     assert set(g2.inputs) == {'j', 'x', 'y'}
     assert g2.info_vec is g1.info_vec
     assert g2.precision is g1.precision
+
+
+@pytest.mark.parametrize('subs', [
+    (('x', 'Variable("u", reals()) * 2'),),
+    (('y', 'Variable("v", reals(4)) + 1'),),
+    (('z', 'Variable("w", reals(6)).reshape((2,3))'),),
+    (('x', 'Variable("v", reals(4)).sum()'),
+     ('y', 'Variable("v", reals(4)) - 1')),
+    (('x', 'Variable("u", reals()) * 2 + 1'),
+     ('y', 'Variable("u", reals()) * Tensor(torch.ones(4))'),
+     ('z', 'Variable("u", reals()) * Tensor(torch.ones(2, 3))')),
+    (('y', 'Einsum("abc,bc->a", (Tensor(torch.randn(4, 3, 5)), Variable("v", reals(3, 5))))'),),
+])
+@pytest.mark.parametrize('g_ints', ["", "i", "j", "ij"])
+@pytest.mark.parametrize('subs_ints', ["", "i", "j", "ji"])
+def test_eager_subs_affine(subs, g_ints, subs_ints):
+    sizes = {'i': 5, 'j': 6}
+    subs_inputs = OrderedDict((k, bint(sizes[k])) for k in subs_ints)
+    g_inputs = OrderedDict((k, bint(sizes[k])) for k in g_ints)
+    g_inputs['x'] = reals()
+    g_inputs['y'] = reals(4)
+    g_inputs['z'] = reals(2, 3)
+    g = random_gaussian(g_inputs)
+    subs = {k: eval(v) + random_tensor(subs_inputs) for k, v in subs}
+
+    inputs = g.inputs.copy()
+    for v in subs.values():
+        inputs.update(v.inputs)
+    grounding_subs = {k: random_tensor(OrderedDict(), d) for k, d in inputs.items()}
+    ground_subs = {k: v(**grounding_subs) for k, v in subs.items()}
+
+    g_subs = g(**subs)
+    assert issubclass(type(g_subs), GaussianMixture)
+    actual = g_subs(**grounding_subs)
+    expected = g(**ground_subs)(**grounding_subs)
+    assert_close(actual, expected, atol=1e-3, rtol=1e-4)
 
 
 @pytest.mark.parametrize('int_inputs', [
