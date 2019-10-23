@@ -10,7 +10,7 @@ from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
-from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, arange, align_tensors, torch_stack, torch_tensordot
+from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, arange, torch_stack, torch_tensordot
 
 
 @pytest.mark.parametrize('output_shape', [(), (2,), (3, 2)], ids=str)

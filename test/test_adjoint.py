@@ -12,12 +12,7 @@ from funsor.domains import bint, reals
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
-from funsor.sum_product import (
-    MarkovProduct,
-    naive_sequential_sum_product,
-    sequential_sum_product,
-    sum_product
-)
+from funsor.sum_product import MarkovProduct, naive_sequential_sum_product, sequential_sum_product, sum_product
 from funsor.terms import Variable, reflect
 from funsor.testing import (
     assert_close,
@@ -26,9 +21,8 @@ from funsor.testing import (
     make_plated_hmm_einsum,
     random_gaussian,
     random_tensor,
-    xfail_param,
+    xfail_param
 )
-
 
 EINSUM_EXAMPLES = [
     "a->",

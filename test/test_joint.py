@@ -6,7 +6,7 @@ import torch
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.delta import Delta, Delta
+from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate

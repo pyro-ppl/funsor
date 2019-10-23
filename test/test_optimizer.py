@@ -1,8 +1,8 @@
 from collections import OrderedDict
 
-from pyro.ops.contract import einsum as pyro_einsum
 import pytest
 import torch
+from pyro.ops.contract import einsum as pyro_einsum
 
 import funsor
 from funsor.distributions import Categorical

@@ -1,9 +1,8 @@
 from collections import OrderedDict
 
+import pyro
 import torch
 from torch.distributions import constraints
-
-import pyro
 
 import funsor.distributions as dist
 import funsor.ops as ops

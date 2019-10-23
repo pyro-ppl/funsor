@@ -1,19 +1,39 @@
+import sys
+
 from setuptools import find_packages, setup
+
+# READ README.md for long description on PyPi.
+# This requires uploading via twine, e.g.:
+# $ python setup.py sdist bdist_wheel
+# $ twine upload --repository-url https://test.pypi.org/legacy/ dist/*  # test version
+# $ twine upload dist/*
+try:
+    long_description = open('README.md', encoding='utf-8').read()
+except Exception as e:
+    sys.stderr.write(f'Failed to convert README.md to rst:\n  {e}\n')
+    sys.stderr.flush()
+    long_description = ''
+
+# Remove badges since they will always be obsolete.
+# This assumes the first 4 lines contain badge info.
+long_description = '\n'.join(line for line in long_description.split('\n')[4:])
 
 setup(
     name='funsor',
-    version='0.0.0',
-    description='Functional analysis + tensors + symbolic algebra',
+    version='0.1.0',
+    description='A tensor-like library for functions and distributions',
     packages=find_packages(include=['funsor', 'funsor.*']),
     url='https://github.com/pyro-ppl/funsor',
+    project_urls={
+        "Documentation": "https://funsor.pyro.ai",
+    },
     author='Uber AI Labs',
     author_email='fritzo@uber.com',
     install_requires=[
-        'contextlib2',
         'multipledispatch',
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
-        'pyro-ppl>=0.3',
+        'pyro-ppl>=0.5',
         'torch>=1.3.0',
     ],
     extras_require={
@@ -23,7 +43,7 @@ setup(
             'pytest>=4.1',
             'pytest-xdist==1.27.0',
             'torchvision==0.2.1',
-            'pyro-api@https://api.github.com/repos/pyro-ppl/pyro-api/tarball/master',
+            'pyro-api>=0.1',
         ],
         'dev': [
             'flake8',
@@ -36,7 +56,8 @@ setup(
             'torchvision==0.2.1',
         ],
     },
-    tests_require=['flake8', 'pandas', 'pytest>=4.1'],
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     keywords='probabilistic machine learning bayesian statistics pytorch',
     classifiers=[
         'Intended Audience :: Developers',

@@ -1,5 +1,5 @@
 from collections import Hashable
-from contextlib2 import contextmanager
+from contextlib import contextmanager
 
 import funsor.interpreter as interpreter
 

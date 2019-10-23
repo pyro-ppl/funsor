@@ -15,6 +15,7 @@ pyro/contrib/examples/raw
 pyro/_version.py
 processed
 raw
+prep_seal_data.csv
 
 # Logs
 logs

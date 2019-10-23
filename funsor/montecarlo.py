@@ -1,6 +1,5 @@
 from collections import OrderedDict
-
-from contextlib2 import contextmanager
+from contextlib import contextmanager
 
 from funsor.integrate import Integrate
 from funsor.interpreter import dispatched_interpretation, interpretation

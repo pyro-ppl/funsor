@@ -4,11 +4,11 @@ import os
 import re
 import types
 from collections import OrderedDict
+from contextlib import contextmanager
 from functools import singledispatch
 
 import numpy
 import torch
-from contextlib2 import contextmanager
 
 from funsor.domains import Domain
 from funsor.ops import Op
