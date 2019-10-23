@@ -29,6 +29,7 @@ setup(
     },
     author='Uber AI Labs',
     author_email='fritzo@uber.com',
+    python_requires=">=3.6",
     install_requires=[
         'multipledispatch',
         'numpy>=1.7',
