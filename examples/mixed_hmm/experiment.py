@@ -1,23 +1,20 @@
 import argparse
-import os
-import json
-import uuid
 import functools
-
-import torch
+import json
+import os
+import uuid
 
 import pyro
 import pyro.poutine as poutine
+import torch
 
 import funsor.ops as ops
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import MarkovProduct, naive_sequential_sum_product, sum_product
 from funsor.terms import lazy, to_funsor
-
-
-from model import Model, Guide
-from seal_data import prepare_seal, prepare_fake
+from model import Guide, Model
+from seal_data import prepare_fake, prepare_seal
 
 
 def aic_num_parameters(model, guide=None):

@@ -8,10 +8,10 @@ References
 [1] Anderson, B., and J. Moore. "Optimal filtering. Prentice-Hall, Englewood Cliffs." New Jersey (1979).
 """
 import argparse
-from os.path import exists
-from urllib.request import urlopen
 import time
 from collections import OrderedDict
+from os.path import exists
+from urllib.request import urlopen
 
 import numpy as np
 import torch
@@ -20,7 +20,7 @@ import torch.nn as nn
 import funsor
 import funsor.distributions as dist
 import funsor.ops as ops
-from funsor.pyro.convert import matrix_and_mvn_to_funsor, mvn_to_funsor, funsor_to_cat_and_mvn, funsor_to_mvn
+from funsor.pyro.convert import funsor_to_cat_and_mvn, funsor_to_mvn, matrix_and_mvn_to_funsor, mvn_to_funsor
 
 
 # download dataset from UCI archive

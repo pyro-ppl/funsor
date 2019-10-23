@@ -2,11 +2,11 @@ import functools
 import itertools
 import warnings
 from collections import OrderedDict
+from contextlib import contextmanager
 from functools import reduce
 
 import opt_einsum
 import torch
-from contextlib2 import contextmanager
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 

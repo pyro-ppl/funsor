@@ -9,7 +9,6 @@ from funsor.memoize import memoize
 from funsor.terms import reflect
 from funsor.testing import make_einsum_example, xfail_param
 
-
 EINSUM_EXAMPLES = [
     ("a,b->", ''),
     ("ab,a->", ''),

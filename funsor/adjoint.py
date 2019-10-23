@@ -10,19 +10,7 @@ from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import (
-    Binary,
-    Cat,
-    Funsor,
-    Number,
-    Reduce,
-    Slice,
-    Subs,
-    Variable,
-    reflect,
-    substitute,
-    to_funsor,
-)
+from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, reflect, substitute, to_funsor
 from funsor.torch import Tensor, materialize
 
 

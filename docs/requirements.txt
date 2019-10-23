@@ -1,4 +1,3 @@
-contextlib2
 multipledispatch
 numpy>=1.7
 opt_einsum>=2.3.2
