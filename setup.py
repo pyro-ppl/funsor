@@ -20,7 +20,7 @@ long_description = '\n'.join(line for line in long_description.split('\n')[4:])
 
 setup(
     name='funsor',
-    version='0.1.0',
+    version='0.1.1',
     description='A tensor-like library for functions and distributions',
     packages=find_packages(include=['funsor', 'funsor.*']),
     url='https://github.com/pyro-ppl/funsor',
