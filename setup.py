@@ -24,6 +24,9 @@ setup(
     description='Functional analysis + tensors + symbolic algebra',
     packages=find_packages(include=['funsor', 'funsor.*']),
     url='https://github.com/pyro-ppl/funsor',
+    project_urls={
+        "Documentation": "https://funsor.pyro.ai",
+    },
     author='Uber AI Labs',
     author_email='fritzo@uber.com',
     install_requires=[
