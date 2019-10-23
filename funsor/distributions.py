@@ -545,9 +545,10 @@ def eager_poisson(rate, value):
 
 class Gamma(Distribution):
     """
-    Wraps :class:`pyro.distributions.Poisson` .
+    Wraps :class:`pyro.distributions.Gamma` .
 
     :param Funsor concentration: Positive concentration parameter.
+    :param Funsor rate: Positive rate parameter.
     :param Funsor value: Optional positive observation.
     """
     dist_class = dist.Gamma
