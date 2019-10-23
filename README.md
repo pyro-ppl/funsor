@@ -17,7 +17,7 @@ for a system description.
 Funsor supports Python 3.6+.
 
 ```sh
-pip install funsor@https://api.github.com/repos/pyro-ppl/funsor/tarball/master
+pip install funsor
 ```
 
 **Install from source:**

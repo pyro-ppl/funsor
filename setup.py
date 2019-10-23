@@ -1,4 +1,22 @@
+import sys
+
 from setuptools import find_packages, setup
+
+# READ README.md for long description on PyPi.
+# This requires uploading via twine, e.g.:
+# $ python setup.py sdist bdist_wheel
+# $ twine upload --repository-url https://test.pypi.org/legacy/ dist/*  # test version
+# $ twine upload dist/*
+try:
+    long_description = open('README.md', encoding='utf-8').read()
+except Exception as e:
+    sys.stderr.write(f'Failed to convert README.md to rst:\n  {e}\n')
+    sys.stderr.flush()
+    long_description = ''
+
+# Remove badges since they will always be obsolete.
+# This assumes the first 4 lines contain badge info.
+long_description = '\n'.join(line for line in long_description.split('\n')[4:])
 
 setup(
     name='funsor',
@@ -35,6 +53,8 @@ setup(
             'torchvision==0.2.1',
         ],
     },
+    long_description=long_description,
+    long_description_content_type='text/markdown',
     keywords='probabilistic machine learning bayesian statistics pytorch',
     classifiers=[
         'Intended Audience :: Developers',
