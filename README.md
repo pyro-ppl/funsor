@@ -7,7 +7,7 @@
 Funsor is a tensor-like library for functions and distributions.
 
 See
-[Functional tensors for probabilistic programming](https://openreview.net/pdf?id=HkecHuIaUS)
+[Functional tensors for probabilistic programming](https://arxiv.org/abs/1910.10775)
 for a system description.
 
 ## Installing
@@ -126,3 +126,16 @@ See [funsor/minipyro.py](funsor/minipyro.py) for complete implementation.
 - [Hakaru](https://hakaru-dev.github.io)
 - [sympy](https://www.sympy.org/en/index.html)
 - [namedtensor](https://github.com/harvardnlp/namedtensor)
+
+## Citation
+
+If you use Funsor, please consider citing:
+```
+@article{obermeyer2019functional,
+  author = {Obermeyer, Fritz and Bingham, Eli and Jankowiak, Martin and
+            Phan, Du and Chen, Jonathan P},
+  title = {{Functional Tensors for Probabilistic Programming}},
+  journal = {arXiv preprint arXiv:1910.10775},
+  year = {2019}
+}
+```
