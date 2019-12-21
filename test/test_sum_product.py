@@ -251,8 +251,39 @@ def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
     assert set(result.inputs) == {"bias", "x_prev", "x_curr"}
 
 
+@pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
+def test_sarkka_bilmes_example_1(duration):
+
+    sum_op, prod_op = ops.logaddexp, ops.add
+
+    time_var = Variable("time", bint(duration))
+
+    trans = random_tensor(OrderedDict({
+        "time": bint(duration),
+        "a": bint(3),
+        "b": bint(2),
+        "Pb": bint(2),
+    }))
+
+    expected_inputs = {
+        "a": bint(3),
+        "b": bint(2),
+        "Pb": bint(2),
+    }
+
+    print("\n")
+    expected = naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var)
+    assert dict(expected.inputs) == expected_inputs
+
+    actual = sarkka_bilmes_product(sum_op, prod_op, trans, time_var)
+    assert dict(actual.inputs) == expected_inputs
+
+    actual = actual.align(tuple(expected.inputs.keys()))
+    assert_close(actual, expected)
+
+
 @pytest.mark.parametrize("duration", [2, 4, 6, 8])
-def test_sarkka_bilmes_example(duration):
+def test_sarkka_bilmes_example_2(duration):
 
     sum_op, prod_op = ops.logaddexp, ops.add
 
@@ -283,4 +314,5 @@ def test_sarkka_bilmes_example(duration):
     actual = sarkka_bilmes_product(sum_op, prod_op, trans, time_var)
     assert dict(actual.inputs) == expected_inputs
 
+    actual = actual.align(tuple(expected.inputs.keys()))
     assert_close(actual, expected)

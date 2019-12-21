@@ -172,6 +172,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
         x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
         y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
         contracted = Contraction(sum_op, prod_op, drop, x, y)
+
         if duration > even_duration:
             extra = trans(**{time: Slice(time, duration - 1, duration)})
             contracted = Cat(time, (contracted, extra))
@@ -207,11 +208,8 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
     original_names = frozenset(name for name in trans.inputs
                                if name != time and not name.startswith("P"))
     for t in range(trans.inputs[time].size - 2, -1, -1):
-        print("RESULT INPUTS 1: {}".format(sorted(set(result.inputs))))
         result = prod_op(shift_funsor(trans(**{time: t}), duration - t - 1), result)
-        print("RESULT INPUTS 2: {}".format(sorted(set(result.inputs))))
         sum_vars = frozenset(shift_name(name, duration - t - 1) for name in original_names)
-        print("SUM VARS: {}".format(sorted(sum_vars)))
         result = result.reduce(sum_op, sum_vars)
 
     result = result(**{name: name.replace("P" * duration, "P") for name in result.inputs})
@@ -250,7 +248,8 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
         renamed_factors.append(factor)
 
     block_trans = reduce(prod_op, renamed_factors)
-    block_step = {shift_name(name, period): name for name in block_trans.inputs if name != time}
+    block_step = {shift_name(name, period): name for name in block_trans.inputs
+                  if name != time and get_shift(name) < period}
     block_time_var = Variable(time_var.name, bint(duration // period))
     final_chunk = sequential_sum_product(sum_op, prod_op, block_trans, block_time_var, block_step)
     final_sum_vars = frozenset(
