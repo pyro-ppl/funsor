@@ -1,8 +1,12 @@
+import re
 from collections import OrderedDict, defaultdict
 from functools import reduce
 
+import numpy as np
+
 import funsor.ops as ops
 from funsor.cnf import Contraction
+from funsor.domains import bint
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Subs, Variable, eager, substitute, to_funsor
 from funsor.util import quote
@@ -168,12 +172,97 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
         x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
         y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
         contracted = Contraction(sum_op, prod_op, drop, x, y)
+
         if duration > even_duration:
             extra = trans(**{time: Slice(time, duration - 1, duration)})
             contracted = Cat(time, (contracted, extra))
         trans = contracted
         duration = (duration + 1) // 2
     return trans(**{time: 0})
+
+
+def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
+
+    time = time_var.name
+
+    def get_shift(name):
+        return len(re.search("^P*", name).group(0))
+
+    def shift_name(name, t):
+        return t * "P" + name
+
+    def shift_funsor(f, t):
+        if t == 0:
+            return f
+        return f(**{name: shift_name(name, t) for name in f.inputs if name != time})
+
+    lags = {get_shift(name) for name in trans.inputs if name != time}
+    lags.discard(0)
+    if not lags:
+        return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, {})
+
+    period = int(np.lcm.reduce(list(lags)))
+
+    duration = trans.inputs[time].size
+    if duration % period:
+        raise NotImplementedError("TODO handle partial windows")
+
+    result = trans(**{time: duration - 1})
+    original_names = frozenset(name for name in trans.inputs
+                               if name != time and not name.startswith("P"))
+    for t in range(trans.inputs[time].size - 2, -1, -1):
+        result = prod_op(shift_funsor(trans(**{time: t}), duration - t - 1), result)
+        sum_vars = frozenset(shift_name(name, duration - t - 1) for name in original_names)
+        result = result.reduce(sum_op, sum_vars)
+
+    result = result(**{name: name.replace("P" * duration, "P") for name in result.inputs})
+    return result
+
+
+def sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
+
+    time = time_var.name
+
+    def get_shift(name):
+        return len(re.search("^P*", name).group(0))
+
+    def shift_name(name, t):
+        return t * "P" + name
+
+    def shift_funsor(f, t):
+        if t == 0:
+            return f
+        return f(**{name: shift_name(name, t) for name in f.inputs if name != time})
+
+    lags = {get_shift(name) for name in trans.inputs if name != time}
+    lags.discard(0)
+    if not lags:
+        return sequential_sum_product(sum_op, prod_op, trans, time_var, {})
+
+    period = int(np.lcm.reduce(list(lags)))
+    original_names = frozenset(name for name in trans.inputs
+                               if name != time and not name.startswith("P"))
+    renamed_factors = []
+    duration = trans.inputs[time].size
+    if duration % period:
+        raise NotImplementedError("TODO handle partial windows")
+
+    for t in range(period):
+        slice_t = Slice(time, t, duration - period + t + 1, period, duration)
+        factor = shift_funsor(trans, period - t - 1)
+        factor = factor(**{time: slice_t})
+        renamed_factors.append(factor)
+
+    block_trans = reduce(prod_op, renamed_factors)
+    block_step = {shift_name(name, period): name for name in block_trans.inputs
+                  if name != time and get_shift(name) < period}
+    block_time_var = Variable(time_var.name, bint(duration // period))
+    final_chunk = sequential_sum_product(sum_op, prod_op, block_trans, block_time_var, block_step)
+    final_sum_vars = frozenset(
+        shift_name(name, t) for name in original_names for t in range(1, period))
+    result = final_chunk.reduce(sum_op, final_sum_vars)
+    result = result(**{name: name.replace("P" * period, "P") for name in result.inputs})
+    return result
 
 
 class MarkovProductMeta(FunsorMeta):

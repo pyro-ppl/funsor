@@ -11,8 +11,10 @@ from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
     _partition,
+    naive_sarkka_bilmes_product,
     naive_sequential_sum_product,
     partial_sum_product,
+    sarkka_bilmes_product,
     sequential_sum_product,
     sum_product
 )
@@ -247,3 +249,119 @@ def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
 
     result = sequential_sum_product(ops.logaddexp, ops.add, factor, time, {"x_prev": "x_curr"})
     assert set(result.inputs) == {"bias", "x_prev", "x_curr"}
+
+
+def _check_sarkka_bilmes(trans, expected_inputs):
+
+    sum_op, prod_op = ops.logaddexp, ops.add
+
+    assert "time" in trans.inputs
+    duration = trans.inputs["time"].dtype
+    time_var = Variable("time", bint(duration))
+
+    expected = naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var)
+    assert dict(expected.inputs) == expected_inputs
+
+    actual = sarkka_bilmes_product(sum_op, prod_op, trans, time_var)
+    assert dict(actual.inputs) == expected_inputs
+
+    actual = actual.align(tuple(expected.inputs.keys()))
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
+def test_sarkka_bilmes_example_0(duration):
+
+    trans = random_tensor(OrderedDict({
+        "time": bint(duration),
+        "a": bint(3),
+    }))
+
+    expected_inputs = {
+        "a": bint(3),
+    }
+
+    _check_sarkka_bilmes(trans, expected_inputs)
+
+
+@pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
+def test_sarkka_bilmes_example_1(duration):
+
+    trans = random_tensor(OrderedDict({
+        "time": bint(duration),
+        "a": bint(3),
+        "b": bint(2),
+        "Pb": bint(2),
+    }))
+
+    expected_inputs = {
+        "a": bint(3),
+        "b": bint(2),
+        "Pb": bint(2),
+    }
+
+    _check_sarkka_bilmes(trans, expected_inputs)
+
+
+@pytest.mark.parametrize("duration", [2, 4, 6, 8])
+def test_sarkka_bilmes_example_2(duration):
+
+    trans = random_tensor(OrderedDict({
+        "time": bint(duration),
+        "a": bint(4),
+        "b": bint(3),
+        "Pb": bint(3),
+        "c": bint(2),
+        "PPc": bint(2),
+    }))
+
+    expected_inputs = {
+        "a": bint(4),
+        "b": bint(3),
+        "Pb": bint(3),
+        "c": bint(2),
+        "PPc": bint(2),
+        "Pc": bint(2),
+    }
+
+    _check_sarkka_bilmes(trans, expected_inputs)
+
+
+@pytest.mark.parametrize("duration", [2, 4, 6, 8])
+def test_sarkka_bilmes_example_3(duration):
+
+    trans = random_tensor(OrderedDict({
+        "time": bint(duration),
+        "a": bint(4),
+        "c": bint(2),
+        "PPc": bint(2),
+    }))
+
+    expected_inputs = {
+        "a": bint(4),
+        "c": bint(2),
+        "PPc": bint(2),
+        "Pc": bint(2),
+    }
+
+    _check_sarkka_bilmes(trans, expected_inputs)
+
+
+@pytest.mark.parametrize("duration", [3, 6, 9])
+def test_sarkka_bilmes_example_4(duration):
+
+    trans = random_tensor(OrderedDict({
+        "time": bint(duration),
+        "a": bint(2),
+        "Pa": bint(2),
+        "PPPa": bint(2),
+    }))
+
+    expected_inputs = {
+        "a": bint(2),
+        "PPa": bint(2),
+        "PPPa": bint(2),
+        "Pa": bint(2),
+    }
+
+    _check_sarkka_bilmes(trans, expected_inputs)
