@@ -367,7 +367,7 @@ def test_matmul(inputs1, inputs2, output_shape1, output_shape2):
     block = {'a': 1, 'b': 2, 'c': 3}
     actual_block = actual(**block)
     expected_block = Tensor(x1(**block).data @ x2(**block).data)
-    assert_close(actual_block, expected_block)
+    assert_close(actual_block, expected_block, atol=1e-5, rtol=1e-5)
 
 
 @pytest.mark.parametrize('scalar', [0.5])
