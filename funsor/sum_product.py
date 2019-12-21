@@ -198,6 +198,9 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
 
     lags = {get_shift(name) for name in trans.inputs if name != time}
     lags.discard(0)
+    if not lags:
+        return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, {})
+
     period = int(np.lcm.reduce(list(lags)))
 
     duration = trans.inputs[time].size
@@ -233,6 +236,9 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
 
     lags = {get_shift(name) for name in trans.inputs if name != time}
     lags.discard(0)
+    if not lags:
+        return sequential_sum_product(sum_op, prod_op, trans, time_var, {})
+
     period = int(np.lcm.reduce(list(lags)))
     original_names = frozenset(name for name in trans.inputs
                                if name != time and not name.startswith("P"))
