@@ -426,7 +426,7 @@ def test_sarkka_bilmes_example_6(duration):
     (("a", bint(2)), ("b", bint(2)), ("PPb", bint(2))),
     (("a", bint(2)), ("b", bint(2)), ("Pb", bint(2)), ("c", bint(2)), ("PPc", bint(2))),
     (("a", bint(2)), ("Pa", bint(2)), ("PPPa", bint(2))),
-    (("a", bint(2)), ("PPa", bint(2)), ("PPPa", bint(2))),
+    (("a", bint(2)), ("b", bint(2)), ("PPb", bint(2)), ("PPPa", bint(2))),
     # gaussian
     (("a", reals()),),
     (("a", reals()), ("Pa", reals())),
@@ -434,6 +434,7 @@ def test_sarkka_bilmes_example_6(duration):
     (("a", reals()), ("b", reals()), ("PPb", reals())),
     (("a", reals()), ("b", reals()), ("Pb", reals()), ("c", reals()), ("PPc", reals())),
     (("a", reals()), ("Pa", reals()), ("PPPa", reals())),
+    (("a", reals()), ("b", reals()), ("PPb", reals()), ("PPPa", reals())),
     # mv gaussian
     (("a", reals(2)), ("b", reals(2)), ("Pb", reals(2))),
     (("a", reals(2)), ("b", reals(2)), ("PPb", reals(2))),
