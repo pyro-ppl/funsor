@@ -1,3 +1,4 @@
+import re
 from collections import OrderedDict
 from functools import reduce
 
@@ -19,7 +20,7 @@ from funsor.sum_product import (
     sum_product
 )
 from funsor.terms import Variable, eager_or_die, moment_matching, reflect
-from funsor.testing import assert_close, random_gaussian, random_tensor
+from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
 from funsor.torch import Tensor
 
 
@@ -266,7 +267,7 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars):
     assert dict(actual.inputs) == expected_inputs
 
     actual = actual.align(tuple(expected.inputs.keys()))
-    assert_close(actual, expected)
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
@@ -410,3 +411,52 @@ def test_sarkka_bilmes_example_6(duration):
     global_vars = frozenset(["x"])
 
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
+
+
+@pytest.mark.parametrize("time_input", [("time", bint(t)) for t in range(2, 10)])
+@pytest.mark.parametrize("global_inputs", [
+    (),
+    (("x", bint(2)),),
+])
+@pytest.mark.parametrize("local_inputs", [
+    # tensor
+    (("a", bint(2)),),
+    (("a", bint(2)), ("Pa", bint(2))),
+    (("a", bint(2)), ("b", bint(2)), ("Pb", bint(2))),
+    (("a", bint(2)), ("b", bint(2)), ("PPb", bint(2))),
+    (("a", bint(2)), ("b", bint(2)), ("Pb", bint(2)), ("c", bint(2)), ("PPc", bint(2))),
+    (("a", bint(2)), ("Pa", bint(2)), ("PPPa", bint(2))),
+    # gaussian
+    (("a", reals()),),
+    (("a", reals()), ("Pa", reals())),
+    (("a", reals()), ("b", reals()), ("Pb", reals())),
+    (("a", reals()), ("b", reals()), ("PPb", reals())),
+    (("a", reals()), ("b", reals()), ("Pb", reals()), ("c", reals()), ("PPc", reals())),
+    (("a", reals()), ("Pa", reals()), ("PPPa", reals())),
+    # mv gaussian
+    (("a", reals(2)), ("b", reals(2)), ("Pb", reals(2))),
+    (("a", reals(2)), ("b", reals(2)), ("PPb", reals(2))),
+])
+def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs):
+
+    lags = {
+        kk: reduce(max, [
+            len(re.search("^P*", k).group(0)) for k, v in local_inputs
+            if k.strip("P") == kk], 0)
+        for kk, vv in local_inputs if not kk.startswith("P")
+    }
+    expected_inputs = dict(global_inputs + tuple(set(
+        ((t * "P" + k), v)
+        for k, v in local_inputs if not k.startswith("P")
+        for t in range(0, lags[k] + 1))))
+
+    trans_inputs = OrderedDict(global_inputs + (time_input,) + local_inputs)
+    global_vars = frozenset(k for k, v in global_inputs)
+
+    if any(v.dtype == "real" for v in trans_inputs.values()):
+        trans = random_gaussian(trans_inputs)
+    else:
+        trans = random_tensor(trans_inputs)
+
+    with xfail_if_not_implemented():  # xfail for partial window cases
+        _check_sarkka_bilmes(trans, expected_inputs, global_vars)
