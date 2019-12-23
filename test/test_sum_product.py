@@ -20,7 +20,7 @@ from funsor.sum_product import (
     sum_product
 )
 from funsor.terms import Variable, eager_or_die, moment_matching, reflect
-from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
+from funsor.testing import assert_close, random_gaussian, random_tensor
 from funsor.torch import Tensor
 
 
@@ -426,6 +426,7 @@ def test_sarkka_bilmes_example_6(duration):
     (("a", bint(2)), ("b", bint(2)), ("PPb", bint(2))),
     (("a", bint(2)), ("b", bint(2)), ("Pb", bint(2)), ("c", bint(2)), ("PPc", bint(2))),
     (("a", bint(2)), ("Pa", bint(2)), ("PPPa", bint(2))),
+    (("a", bint(2)), ("PPa", bint(2)), ("PPPa", bint(2))),
     # gaussian
     (("a", reals()),),
     (("a", reals()), ("Pa", reals())),
@@ -458,5 +459,10 @@ def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs):
     else:
         trans = random_tensor(trans_inputs)
 
-    with xfail_if_not_implemented():  # xfail for partial window cases
+    try:
         _check_sarkka_bilmes(trans, expected_inputs, global_vars)
+    except NotImplementedError as e:
+        if 'partial window' in e.args[0]:
+            pytest.xfail(reason=e.args[0])
+        else:
+            raise
