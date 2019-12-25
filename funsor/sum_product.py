@@ -268,7 +268,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     final_chunk = sequential_sum_product(sum_op, prod_op, block_trans, block_time_var, block_step)
     final_sum_vars = frozenset(
         shift_name(name, t) for name in original_names for t in range(1, period))
-    result = final_chunk.reduce(sum_op, final_sum_vars - global_vars)
+    result = final_chunk.reduce(sum_op, final_sum_vars)
     result = result(**{name: name.replace("P" * period, "P") for name in result.inputs})
     return result
 
