@@ -181,9 +181,8 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     return trans(**{time: 0})
 
 
-def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=None):
+def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset()):
 
-    global_vars = frozenset() if global_vars is None else global_vars
     assert isinstance(global_vars, frozenset)
 
     time = time_var.name
@@ -218,15 +217,14 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=No
     for t in range(trans.inputs[time].size - 2, -1, -1):
         result = prod_op(shift_funsor(trans(**{time: t}), duration - t - 1), result)
         sum_vars = frozenset(shift_name(name, duration - t - 1) for name in original_names)
-        result = result.reduce(sum_op, sum_vars - global_vars)
+        result = result.reduce(sum_op, sum_vars)
 
     result = result(**{name: name.replace("P" * duration, "P") for name in result.inputs})
     return result
 
 
-def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=None):
+def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset()):
 
-    global_vars = frozenset() if global_vars is None else global_vars
     assert isinstance(global_vars, frozenset)
 
     time = time_var.name
