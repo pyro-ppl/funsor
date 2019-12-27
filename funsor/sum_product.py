@@ -181,7 +181,9 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     return trans(**{time: 0})
 
 
-def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
+def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset()):
+
+    assert isinstance(global_vars, frozenset)
 
     time = time_var.name
 
@@ -194,7 +196,8 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
     def shift_funsor(f, t):
         if t == 0:
             return f
-        return f(**{name: shift_name(name, t) for name in f.inputs if name != time})
+        return f(**{name: shift_name(name, t) for name in f.inputs
+                    if name != time and name not in global_vars})
 
     lags = {get_shift(name) for name in trans.inputs if name != time}
     lags.discard(0)
@@ -209,7 +212,8 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
 
     result = trans(**{time: duration - 1})
     original_names = frozenset(name for name in trans.inputs
-                               if name != time and not name.startswith("P"))
+                               if name != time and name not in global_vars
+                               and not name.startswith("P"))
     for t in range(trans.inputs[time].size - 2, -1, -1):
         result = prod_op(shift_funsor(trans(**{time: t}), duration - t - 1), result)
         sum_vars = frozenset(shift_name(name, duration - t - 1) for name in original_names)
@@ -219,7 +223,9 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
     return result
 
 
-def sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
+def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset()):
+
+    assert isinstance(global_vars, frozenset)
 
     time = time_var.name
 
@@ -232,7 +238,8 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
     def shift_funsor(f, t):
         if t == 0:
             return f
-        return f(**{name: shift_name(name, t) for name in f.inputs if name != time})
+        return f(**{name: shift_name(name, t) for name in f.inputs
+                    if name != time and name not in global_vars})
 
     lags = {get_shift(name) for name in trans.inputs if name != time}
     lags.discard(0)
@@ -241,7 +248,8 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
 
     period = int(np.lcm.reduce(list(lags)))
     original_names = frozenset(name for name in trans.inputs
-                               if name != time and not name.startswith("P"))
+                               if name != time and name not in global_vars
+                               and not name.startswith("P"))
     renamed_factors = []
     duration = trans.inputs[time].size
     if duration % period:
@@ -255,7 +263,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var):
 
     block_trans = reduce(prod_op, renamed_factors)
     block_step = {shift_name(name, period): name for name in block_trans.inputs
-                  if name != time and get_shift(name) < period}
+                  if name != time and name not in global_vars and get_shift(name) < period}
     block_time_var = Variable(time_var.name, bint(duration // period))
     final_chunk = sequential_sum_product(sum_op, prod_op, block_trans, block_time_var, block_step)
     final_sum_vars = frozenset(
