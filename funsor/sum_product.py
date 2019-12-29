@@ -183,7 +183,30 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
 
 def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
                                  num_chunks=1, seqpar=True):
+    """
+    For a funsor ``trans`` with dimensions ``time``, ``prev`` and ``curr``,
+    computes a recursion equivalent to::
 
+        tail_time = 1 + arange("time", trans.inputs["time"].size - 1)
+        tail = sequential_sum_product(sum_op, prod_op,
+                                      trans(time=tail_time),
+                                      time, {"prev": "curr"})
+        return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
+           .reduce(sum_op, "drop")
+
+    by mixing parallel and serial scan algorithms over ``num_chunks`` chunks.
+
+    :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
+    :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
+    :param ~funsor.terms.Funsor trans: A transition funsor.
+    :param Variable time: The time input dimension.
+    :param dict step: A dict mapping previous variables to current variables.
+        This can contain multiple pairs of prev->curr variable names.
+    :param int num_chunks: number of chunks for the first stage
+    :param bool seqpar: Toggle order of serial and parallel algorithms.
+        When set to True, uses parallel followed by sequential;
+        when set to False, uses sequential followed by parallel.
+    """
     time_var, time, duration = time, time.name, time.output.size
     assert num_chunks > 0 and num_chunks <= duration
     if duration % num_chunks:
