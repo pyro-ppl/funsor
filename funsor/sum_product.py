@@ -184,15 +184,18 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
 def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
                                  num_chunks=1, seqpar=True):
 
+    time_var, time, duration = time, time.name, time.output.size
+    assert num_chunks > 0 and num_chunks <= duration
+    if duration % num_chunks:
+        raise NotImplementedError("TODO handle partial windows")
+
     first_stage = sequential_sum_product if seqpar else naive_sequential_sum_product
     second_stage = naive_sequential_sum_product if seqpar else sequential_sum_product
 
     if num_chunks == 1:
-        return first_stage(sum_op, prod_op, trans, time, step)
-
-    time, duration = time.name, time.output.size
-    if duration % num_chunks:
-        raise NotImplementedError("TODO handle partial windows")
+        return first_stage(sum_op, prod_op, trans, time_var, step)
+    if num_chunks == duration:
+        return second_stage(sum_op, prod_op, trans, time_var, step)
 
     # break trans into num_chunks chunks of equal length
     chunk_length = duration // num_chunks
@@ -252,7 +255,8 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
     return result
 
 
-def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset()):
+def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset(),
+                          num_periods=1):
 
     assert isinstance(global_vars, frozenset)
 
@@ -294,7 +298,9 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     block_step = {shift_name(name, period): name for name in block_trans.inputs
                   if name != time and name not in global_vars and get_shift(name) < period}
     block_time_var = Variable(time_var.name, bint(duration // period))
-    final_chunk = sequential_sum_product(sum_op, prod_op, block_trans, block_time_var, block_step)
+    final_chunk = mixed_sequential_sum_product(
+        sum_op, prod_op, block_trans, block_time_var, block_step,
+        num_chunks=max(1, duration // (period * num_periods)), seqpar=False)
     final_sum_vars = frozenset(
         shift_name(name, t) for name in original_names for t in range(1, period))
     result = final_chunk.reduce(sum_op, final_sum_vars)
