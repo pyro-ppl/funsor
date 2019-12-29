@@ -8,7 +8,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import bint
 from funsor.ops import UNITS, AssociativeOp
-from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Subs, Variable, eager, substitute, to_funsor
+from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Stack, Subs, Variable, eager, substitute, to_funsor
 from funsor.util import quote
 
 
@@ -179,6 +179,35 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
         trans = contracted
         duration = (duration + 1) // 2
     return trans(**{time: 0})
+
+
+def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
+                                 num_chunks=1, seqpar=True):
+
+    first_stage = sequential_sum_product if seqpar else naive_sequential_sum_product
+    second_stage = naive_sequential_sum_product if seqpar else sequential_sum_product
+
+    if num_chunks == 1:
+        return first_stage(sum_op, prod_op, trans, time, step)
+
+    time, duration = time.name, time.output.size
+    if duration % num_chunks:
+        raise NotImplementedError("TODO handle partial windows")
+
+    # break trans into num_chunks chunks of equal length
+    chunk_length = duration // num_chunks
+    chunks = [trans(**{time: Slice(time, i * chunk_length, (i + 1) * chunk_length, 1, duration)})
+              for i in range(num_chunks)]
+
+    first_stage_result = first_stage(
+        sum_op, prod_op, Stack(time + "__CHUNKED", tuple(chunks)),
+        Variable(time, bint(chunk_length)), step)
+
+    second_stage_result = second_stage(
+        sum_op, prod_op, first_stage_result,
+        Variable(time + "__CHUNKED", bint(num_chunks)), step)
+
+    return second_stage_result
 
 
 def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset()):

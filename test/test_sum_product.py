@@ -12,6 +12,7 @@ from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
     _partition,
+    mixed_sequential_sum_product,
     naive_sarkka_bilmes_product,
     naive_sequential_sum_product,
     partial_sum_product,
@@ -467,3 +468,24 @@ def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs):
             pytest.xfail(reason=e.args[0])
         else:
             raise
+
+
+@pytest.mark.parametrize("duration,num_chunks", [(12, 1), (12, 2), (12, 3), (12, 4), (12, 6)])
+@pytest.mark.parametrize("seqpar", [True, False])
+def test_mixed_sequential_sum_product(duration, num_chunks, seqpar):
+
+    sum_op, prod_op = ops.logaddexp, ops.add
+    time_var = Variable("time", bint(duration))
+    step = {"Px": "x"}
+
+    trans_inputs = ((time_var.name, bint(duration)),) + \
+        tuple((k, bint(2)) for k in step.keys()) + \
+        tuple((v, bint(2)) for v in step.values())
+
+    trans = random_tensor(OrderedDict(trans_inputs))
+
+    expected = sequential_sum_product(sum_op, prod_op, trans, time_var, step)
+    actual = mixed_sequential_sum_product(sum_op, prod_op, trans, time_var, step,
+                                          num_chunks=num_chunks, seqpar=seqpar)
+
+    assert_close(actual, expected)
