@@ -253,7 +253,7 @@ def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
     assert set(result.inputs) == {"bias", "x_prev", "x_curr"}
 
 
-def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
+def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1, seqpar=False):
 
     sum_op, prod_op = ops.logaddexp, ops.add
 
@@ -264,7 +264,8 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
     expected = naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars)
     assert dict(expected.inputs) == expected_inputs
 
-    actual = sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars, num_periods=num_periods)
+    actual = sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars,
+                                   num_periods=num_periods, seqpar=seqpar)
     assert dict(actual.inputs) == expected_inputs
 
     actual = actual.align(tuple(expected.inputs.keys()))
@@ -441,7 +442,8 @@ def test_sarkka_bilmes_example_6(duration):
     (("a", reals(2)), ("b", reals(2)), ("PPb", reals(2))),
 ])
 @pytest.mark.parametrize("num_periods", [1, 2])
-def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_periods):
+@pytest.mark.parametrize("seqpar", [False, True])
+def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_periods, seqpar):
 
     lags = {
         kk: reduce(max, [
@@ -463,7 +465,7 @@ def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_peri
         trans = random_tensor(trans_inputs)
 
     try:
-        _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods)
+        _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods, seqpar)
     except NotImplementedError as e:
         partial_reasons = (
             'TODO handle partial windows',

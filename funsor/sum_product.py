@@ -256,7 +256,7 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
 
 
 def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset(),
-                          num_periods=1):
+                          num_periods=1, seqpar=False):
 
     assert isinstance(global_vars, frozenset)
 
@@ -300,7 +300,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     block_time_var = Variable(time_var.name, bint(duration // period))
     final_chunk = mixed_sequential_sum_product(
         sum_op, prod_op, block_trans, block_time_var, block_step,
-        num_chunks=max(1, duration // (period * num_periods)), seqpar=False)
+        num_chunks=max(1, duration // (period * num_periods)), seqpar=seqpar)
     final_sum_vars = frozenset(
         shift_name(name, t) for name in original_names for t in range(1, period))
     result = final_chunk.reduce(sum_op, final_sum_vars)
