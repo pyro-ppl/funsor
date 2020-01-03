@@ -229,6 +229,9 @@ class log_joint(Messenger):
                 # Create a delayed sample.
                 msg["value"] = funsor.Variable(msg["name"], msg["fn"].output)
 
+        if msg["type"] == "barrier":
+            self.log_factors, msg["state"] = _apply_barrier(self.log_factors, msg["state"])
+
     def postprocess_message(self, msg):
         if msg["type"] == "sample":
             assert msg["name"] not in self.log_factors, "all sites must have unique names"
@@ -334,6 +337,64 @@ def param(name, init_value=None, constraint=torch.distributions.constraints.real
     msg = apply_stack(initial_msg)
     assert isinstance(msg["value"], funsor.Funsor)
     return msg["value"]
+
+
+# Barrier is an effectful primitive to block lazy computation.
+# barrier(state) will eliminate any lazy free variables in state.
+# Typical usage patterns are:
+#   locals.update(pyro.barrier(locals()))
+# and
+#   x, y = pyro.barrier([x, y])
+def barrier(state):
+    initial_msg = {
+        "type": barrier,
+        "state": state,
+    }
+    msg = apply_stack(initial_msg)
+    return msg["state"]
+
+
+def _get_connected_components(factors, free_vars):
+    return factors  # TODO restrict to factors that depend on free_vars
+
+
+def _apply_barrier(log_factors, state):
+    free_vars = get_free_vars(state)
+    if not free_vars:
+        return
+    log_prob = functools.reduce(
+        funsor.ops.add,
+        _get_connected_components(log_factors.values(), free_vars))
+    with funsor.montecarlo.monte_carlo_interpretation():
+        log_prob = log_prob.reduce(funsor.ops.logaddexp, free_vars)
+    raise NotImplementedError("TODO extract substitution from log_prob")
+    mc_subs = "TODO"
+    state = funsor.terms.substitute(state, mc_subs)
+    for key in log_factors:
+        log_factors[key] = log_factors[key](**mc_subs)
+
+
+# get_free_vars() is a helper used by the barrier() statement.
+@functools.singledispatch
+def get_free_vars(x):
+    raise ValueError(type(x))
+
+
+@get_free_vars.register(funsor.Funsor)
+def _(x):
+    return frozenset(x.inputs.keys())
+
+
+@get_free_vars.register(list)
+@get_free_vars.register(tuple)
+def _(x):
+    return frozenset().union(*map(get_free_vars, x))
+
+
+@get_free_vars.register(dict)
+@get_free_vars.register(OrderedDict)
+def _(x):
+    return frozenset().union(*map(get_free_vars, x.values()))
 
 
 # boilerplate to match the syntax of actual pyro.plate:
