@@ -39,16 +39,6 @@ def _trace_mm(x, y):
     return (x * y).sum([-1, -2])
 
 
-def cholesky(u):
-    """
-    Like :func:`torch.cholesky` but uses sqrt for scalar matrices.
-    Works around https://github.com/pytorch/pytorch/issues/24403 often.
-    """
-    if u.size(-1) == 1:
-        return u.sqrt()
-    return u.cholesky()
-
-
 def cholesky_inverse(u):
     """
     Like :func:`torch.cholesky_inverse` but supports batching and gradients.
@@ -273,8 +263,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         :class:`~funsor.domains.Domain` .
     """
     def __init__(self, info_vec, precision, inputs):
-        assert isinstance(info_vec, Tensor)
-        assert isinstance(precision, Tensor)
+        assert isinstance(info_vec, torch.Tensor)
+        assert isinstance(precision, torch.Tensor)
         assert isinstance(inputs, tuple)
         inputs = OrderedDict(inputs)
 
@@ -303,7 +293,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     @lazy_property
     def _precision_chol(self):
-        return cholesky(self.precision)
+        return ops.cholesky(self.precision)
 
     @lazy_property
     def log_normalizer(self):
@@ -563,7 +553,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 prec_aa = self.precision[..., a.unsqueeze(-1), a]
                 prec_ba = self.precision[..., b.unsqueeze(-1), a]
                 prec_bb = self.precision[..., b.unsqueeze(-1), b]
-                prec_b = cholesky(prec_bb)
+                prec_b = ops.cholesky(prec_bb)
                 prec_a = prec_ba.triangular_solve(prec_b, upper=False).solution
                 prec_at = prec_a.transpose(-1, -2)
                 precision = prec_aa - prec_at.matmul(prec_a)

@@ -1048,6 +1048,17 @@ def _safediv(x, y):
         return x * y.reciprocal().clamp(max=torch.iinfo(y.dtype).max)
 
 
+@ops.cholesky.register(torch.Tensor)
+def _cholesky(x):
+    """
+    Like :func:`torch.cholesky` but uses sqrt for scalar matrices.
+    Works around https://github.com/pytorch/pytorch/issues/24403 often.
+    """
+    if x.size(-1) == 1:
+        return x.sqrt()
+    return x.cholesky()
+
+
 REDUCE_OP_TO_TORCH = {
     ops.add: torch.sum,
     ops.mul: torch.prod,

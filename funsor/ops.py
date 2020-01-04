@@ -303,6 +303,13 @@ PRODUCT_INVERSES = {
 }
 
 
+# Linear algebra ops
+
+@Op
+def cholesky(x):
+    raise NotImplementedError
+
+
 __all__ = [
     'AddOp',
     'AssociativeOp',
