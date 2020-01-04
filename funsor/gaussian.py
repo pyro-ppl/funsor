@@ -273,8 +273,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         :class:`~funsor.domains.Domain` .
     """
     def __init__(self, info_vec, precision, inputs):
-        assert isinstance(info_vec, torch.Tensor)
-        assert isinstance(precision, torch.Tensor)
+        assert isinstance(info_vec, Tensor)
+        assert isinstance(precision, Tensor)
         assert isinstance(inputs, tuple)
         inputs = OrderedDict(inputs)
 
