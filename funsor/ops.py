@@ -310,6 +310,30 @@ def cholesky(x):
     raise NotImplementedError
 
 
+@Op
+def cholesky_inverse(x):
+    raise NotImplementedError
+
+
+@Op
+def trace_mm(x, y):
+    raise NotImplementedError
+
+
+@Op
+def vv(x):
+    raise NotImplementedError
+
+
+@Op
+def mv(x):
+    raise NotImplementedError
+
+
+@Op
+def log_det_tri(x):
+    raise NotImplementedError
+
 
 @Op
 def cat_args(dim, *x):

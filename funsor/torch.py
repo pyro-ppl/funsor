@@ -1059,6 +1059,41 @@ def _cholesky(x):
     return x.cholesky()
 
 
+@ops.cholesky_inverse.register(torch.Tensor)
+def _cholesky_inverse(x):
+    """
+    Like :func:`torch.cholesky_inverse` but supports batching and gradients.
+    """
+    if x.dim() == 2:
+        return x.cholesky_inverse()
+    return torch.eye(x.size(-1)).cholesky_solve(x)
+
+
+@ops.trace_mm.register(torch.Tensor, torch.Tensor)
+def _trace_mm(x, y):
+    """
+    Computes ``trace(x.T @ y)``.
+    """
+    assert x.dim() >= 2
+    assert y.dim() >= 2
+    return (x * y).sum([-1, -2])
+
+
+@ops.mv.register(torch.Tensor, torch.Tensor)
+def _mv(x, y):
+    return x.matmul(y.unsqueeze(-1)).squeeze(-1)
+
+
+@ops.vv.register(torch.Tensor, torch.Tensor)
+def _vv(x, y):
+    return x.unsqueeze(-2).matmul(y.unsqueeze(-1)).squeeze(-1).squeeze(-1)
+
+
+@ops.log_det_tri.register(torch.Tensor)
+def _log_det_tri(x):
+    return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+
+
 @ops.cat_args.register(int, [torch.Tensor])
 def _cat_args(dim, *x):
     return torch.cat(x, dim=dim)

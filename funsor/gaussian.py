@@ -15,39 +15,6 @@ from funsor.torch import Tensor, align_tensor, align_tensors, materialize
 from funsor.util import lazy_property
 
 
-def _log_det_tri(x):
-    return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
-
-
-def _vv(vec1, vec2):
-    """
-    Computes the inner product ``< vec1 | vec 2 >``.
-    """
-    return vec1.unsqueeze(-2).matmul(vec2.unsqueeze(-1)).squeeze(-1).squeeze(-1)
-
-
-def _mv(mat, vec):
-    return torch.matmul(mat, vec.unsqueeze(-1)).squeeze(-1)
-
-
-def _trace_mm(x, y):
-    """
-    Computes ``trace(x.T @ y)``.
-    """
-    assert x.dim() >= 2
-    assert y.dim() >= 2
-    return (x * y).sum([-1, -2])
-
-
-def cholesky_inverse(u):
-    """
-    Like :func:`torch.cholesky_inverse` but supports batching and gradients.
-    """
-    if u.dim() == 2:
-        return u.cholesky_inverse()
-    return torch.eye(u.size(-1)).expand(u.size()).cholesky_solve(u)
-
-
 def _compute_offsets(inputs):
     """
     Compute offsets of real inputs into the concatenated Gaussian dims.
@@ -298,7 +265,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     @lazy_property
     def log_normalizer(self):
         dim = self.precision.size(-1)
-        log_det_term = _log_det_tri(self._precision_chol)
+        log_det_term = ops.log_det_tri(self._precision_chol)
         loc_info_vec_term = 0.5 * self.info_vec.unsqueeze(-1).triangular_solve(
             self._precision_chol, upper=False).solution.squeeze(-1).pow(2).sum(-1)
         data = 0.5 * dim * math.log(2 * math.pi) - log_det_term + loc_info_vec_term
@@ -402,7 +369,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             value = value.as_tensor()
 
             # Evaluate the non-normalized log density.
-            result = _vv(value, info_vec - 0.5 * _mv(precision, value))
+            result = ops.vv(value, info_vec - 0.5 * ops.mv(precision, value))
 
             result = Tensor(result, int_inputs)
             assert result.output == reals()
@@ -427,8 +394,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         info_a = ops.cat([info_vec[..., i] for k, i in slices if k in a], dim=-1)
         info_b = ops.cat([info_vec[..., i] for k, i in slices if k in b], dim=-1)
         value_b = ops.cat([values[k] for k, i in slices if k in b], dim=-1)
-        info_vec = info_a - _mv(prec_ab, value_b)
-        log_scale = _vv(value_b, info_b - 0.5 * _mv(prec_bb, value_b))
+        info_vec = info_a - ops.mv(prec_ab, value_b)
+        log_scale = ops.vv(value_b, info_b - 0.5 * ops.mv(prec_bb, value_b))
         precision = prec_aa.expand(info_vec.shape + (-1,))
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
@@ -520,8 +487,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # where  P' = At P A  and  i' = At (i - P B)  parametrize a new Gaussian
         # and  C = < B | i - 1/2 P B >  parametrize a new Tensor.
         precision = subs_matrix @ old_precision @ subs_matrix_t
-        info_vec = _mv(subs_matrix, old_info_vec - _mv(old_precision, subs_vector))
-        const = _vv(subs_vector, old_info_vec - 0.5 * _mv(old_precision, subs_vector))
+        info_vec = ops.mv(subs_matrix, old_info_vec - ops.mv(old_precision, subs_vector))
+        const = ops.vv(subs_vector, old_info_vec - 0.5 * ops.mv(old_precision, subs_vector))
         result = Gaussian(info_vec, precision, new_inputs) + Tensor(const, new_int_inputs)
         return Subs(result, remaining_subs) if remaining_subs else result
 
@@ -563,7 +530,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 b_tmp = info_b.unsqueeze(-1).triangular_solve(prec_b, upper=False).solution
                 info_vec = info_a - prec_at.matmul(b_tmp).squeeze(-1)
 
-                log_prob = Tensor(0.5 * len(b) * math.log(2 * math.pi) - _log_det_tri(prec_b) +
+                log_prob = Tensor(0.5 * len(b) * math.log(2 * math.pi) - ops.log_det_tri(prec_b) +
                                   0.5 * b_tmp.squeeze(-1).pow(2).sum(-1),
                                   int_inputs)
                 result = log_prob + Gaussian(info_vec, precision, inputs)

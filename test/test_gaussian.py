@@ -8,7 +8,7 @@ import torch
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import bint, reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian, cholesky_inverse
+from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
@@ -48,9 +48,9 @@ def test_cholesky_inverse(batch_shape, size, requires_grad):
     u = x.cholesky()
     if requires_grad:
         u.requires_grad_()
-    assert_close(cholesky_inverse(u), naive_cholesky_inverse(u))
+    assert_close(ops.cholesky_inverse(u), naive_cholesky_inverse(u))
     if requires_grad:
-        cholesky_inverse(u).sum().backward()
+        ops.cholesky_inverse(u).sum().backward()
 
 
 def test_block_vector():
