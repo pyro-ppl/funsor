@@ -1059,6 +1059,11 @@ def _cholesky(x):
     return x.cholesky()
 
 
+@ops.cat_args.register(int, [torch.Tensor])
+def _cat_args(dim, *x):
+    return torch.cat(x, dim=dim)
+
+
 REDUCE_OP_TO_TORCH = {
     ops.add: torch.sum,
     ops.mul: torch.prod,

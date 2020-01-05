@@ -310,6 +310,16 @@ def cholesky(x):
     raise NotImplementedError
 
 
+
+@Op
+def cat_args(dim, *x):
+    raise NotImplementedError
+
+
+def cat(x, dim=0):
+    return cat_args(dim, *x)
+
+
 __all__ = [
     'AddOp',
     'AssociativeOp',
@@ -328,6 +338,9 @@ __all__ = [
     'abs',
     'add',
     'and_',
+    'cat',
+    'cat_args',
+    'cholesky',
     'eq',
     'exp',
     'ge',
