@@ -4,7 +4,7 @@ from typing import Union
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
-from funsor.gaussian import Gaussian, align_gaussian
+from funsor.gaussian import Gaussian, align_gaussian, _mv, _trace_mm, _vv
 from funsor.terms import (
     Funsor,
     FunsorMeta,
@@ -163,8 +163,8 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             norm = lhs.log_normalizer.data.exp()
             lhs_cov = ops.cholesky_inverse(lhs._precision_chol)
             lhs_loc = lhs.info_vec.unsqueeze(-1).cholesky_solve(lhs._precision_chol).squeeze(-1)
-            vmv_term = ops.vv(lhs_loc, rhs_info_vec - 0.5 * ops.mv(rhs_precision, lhs_loc))
-            data = norm * (vmv_term - 0.5 * ops.trace_mm(rhs_precision, lhs_cov))
+            vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
+            data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
             inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)
             result = Tensor(data, inputs)
             return result.reduce(ops.add, reduced_vars - real_vars)

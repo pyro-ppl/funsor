@@ -1069,38 +1069,18 @@ def _cholesky_inverse(x):
     return torch.eye(x.size(-1)).cholesky_solve(x)
 
 
-@ops.triangular_solve.register(torch.Tensor, torch.Tensor)
-def _triangular_solve(x, y):
-    return x.triangular_solve(y, upper=False).solution
+@ops.triangular_solve_op.register(torch.Tensor, torch.Tensor, bool, bool)
+def _triangular_solve(x, y, upper, transpose):
+    return x.triangular_solve(y, upper=upper, transpose=transpose).solution
 
 
-@ops.trace_mm.register(torch.Tensor, torch.Tensor)
-def _trace_mm(x, y):
-    """
-    Computes ``trace(x.T @ y)``.
-    """
-    assert x.dim() >= 2
-    assert y.dim() >= 2
-    return (x * y).sum([-1, -2])
+@ops.diagonal.register(torch.Tensor, int, int)
+def _diagonal(x, dim1, dim2):
+    return x.diagonal(dim1=dim1, dim2=dim2)
 
 
-@ops.mv.register(torch.Tensor, torch.Tensor)
-def _mv(x, y):
-    return x.matmul(y.unsqueeze(-1)).squeeze(-1)
-
-
-@ops.vv.register(torch.Tensor, torch.Tensor)
-def _vv(x, y):
-    return x.unsqueeze(-2).matmul(y.unsqueeze(-1)).squeeze(-1).squeeze(-1)
-
-
-@ops.log_det_tri.register(torch.Tensor)
-def _log_det_tri(x):
-    return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
-
-
-@ops.cat_args.register(int, [torch.Tensor])
-def _cat_args(dim, *x):
+@ops.cat_op.register(int, [torch.Tensor])
+def _cat(dim, *x):
     return torch.cat(x, dim=dim)
 
 

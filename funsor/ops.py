@@ -316,37 +316,21 @@ def cholesky_inverse(x):
 
 
 @Op
-def triangular_solve(x, y):
+def triangular_solve_op(x, y, upper, transpose):
     raise NotImplementedError
 
 
-@Op
-def trace_mm(x, y):
-    raise NotImplementedError
+def triangular_solve(x, y, upper=False, transpose=False):
+    return triangular_solve_op(x, y, upper, transpose)
 
 
 @Op
-def vv(x):
-    raise NotImplementedError
-
-
-@Op
-def mv(x):
-    raise NotImplementedError
-
-
-@Op
-def log_det_tri(x):
-    raise NotImplementedError
-
-
-@Op
-def cat_args(dim, *x):
+def cat_op(dim, *x):
     raise NotImplementedError
 
 
 def cat(x, dim=0):
-    return cat_args(dim, *x)
+    return cat_op(dim, *x)
 
 
 @Op
@@ -366,6 +350,11 @@ def unsqueeze(x, dim):
 
 @Op
 def expand(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def diagonal(x, dim1, dim2):
     raise NotImplementedError
 
 
@@ -393,9 +382,9 @@ __all__ = [
     'add',
     'and_',
     'cat',
-    'cat_args',
     'cholesky',
     'cholesky_inverse',
+    'diagonal',
     'eq',
     'exp',
     'ge',
@@ -405,13 +394,11 @@ __all__ = [
     'le',
     'log',
     'log1p',
-    'log_det_tri',
     'lt',
     'matmul',
     'max',
     'min',
     'mul',
-    'mv',
     'ne',
     'neg',
     'new_zeros',
@@ -422,9 +409,8 @@ __all__ = [
     'sigmoid',
     'sqrt',
     'sub',
-    'trace_mm',
+    'triangular_solve',
     'truediv',
-    'vv',
     'xor',
 ]
 
