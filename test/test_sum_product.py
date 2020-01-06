@@ -1,6 +1,6 @@
 import re
 from collections import OrderedDict
-from functools import reduce
+from functools import partial, reduce
 
 import pytest
 import torch
@@ -113,6 +113,9 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     sequential_sum_product,
     naive_sequential_sum_product,
     MarkovProduct,
+    partial(mixed_sequential_sum_product, num_segments=2, seqpar=False),
+    partial(mixed_sequential_sum_product, num_segments=3, seqpar=False),
+    partial(mixed_sequential_sum_product, num_segments=2, seqpar=True),
 ])
 def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
     inputs = OrderedDict(batch_inputs)
@@ -159,6 +162,9 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
     sequential_sum_product,
     naive_sequential_sum_product,
     MarkovProduct,
+    partial(mixed_sequential_sum_product, num_segments=2, seqpar=False),
+    partial(mixed_sequential_sum_product, num_segments=3, seqpar=False),
+    partial(mixed_sequential_sum_product, num_segments=2, seqpar=True),
 ])
 def test_sequential_sum_product_multi(impl, x_domain, y_domain, batch_inputs, num_steps):
     sum_op = ops.logaddexp

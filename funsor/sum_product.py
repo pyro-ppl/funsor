@@ -207,23 +207,34 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
         When set to True, uses parallel followed by sequential;
         when set to False, uses sequential followed by parallel.
     """
-    time_var, time, duration = time, time.name, time.output.size
-    assert num_segments > 0 and num_segments <= duration
-    if duration % num_segments:
-        raise NotImplementedError("TODO handle partial windows")
-
     first_stage = sequential_sum_product if seqpar else naive_sequential_sum_product
     second_stage = naive_sequential_sum_product if seqpar else sequential_sum_product
 
+    time_var, time, duration = time, time.name, time.output.size
+    assert num_segments > 0 and duration > 0
+
+    if duration % num_segments and duration - duration % num_segments > 0:
+        remainder = trans(
+            **{time: Slice(time, duration - duration % num_segments, duration, 1, duration)})
+        initial = trans(
+            **{time: Slice(time, 0, duration - duration % num_segments, 1, duration)})
+        initial_eliminated = mixed_sequential_sum_product(
+            sum_op, prod_op, initial, Variable(time, bint(duration - duration % num_segments)), step,
+            num_segments=num_segments, seqpar=seqpar)
+        final = Cat(time, (Stack(time, (initial_eliminated,)), remainder))
+        final_eliminated = second_stage(
+            sum_op, prod_op, final, Variable(time, bint(1 + duration % num_segments)), step)
+        return final_eliminated
+
     if num_segments == 1:
         return first_stage(sum_op, prod_op, trans, time_var, step)
-    if num_segments == duration:
+    if num_segments >= duration:
         return second_stage(sum_op, prod_op, trans, time_var, step)
 
     # break trans into num_segments segments of equal length
     segment_length = duration // num_segments
     segments = [trans(**{time: Slice(time, i * segment_length, (i + 1) * segment_length, 1, duration)})
-              for i in range(num_segments)]
+                for i in range(num_segments)]
 
     first_stage_result = first_stage(
         sum_op, prod_op, Stack(time + "__SEGMENTED", tuple(segments)),
