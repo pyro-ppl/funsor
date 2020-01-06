@@ -336,7 +336,7 @@ def test_eager_subs_affine(subs, g_ints, subs_ints):
     assert issubclass(type(g_subs), GaussianMixture)
     actual = g_subs(**grounding_subs)
     expected = g(**ground_subs)(**grounding_subs)
-    assert_close(actual, expected, atol=1e-3, rtol=1e-4)
+    assert_close(actual, expected, atol=1e-3, rtol=2e-4)
 
 
 @pytest.mark.parametrize('int_inputs', [

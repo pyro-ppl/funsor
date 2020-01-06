@@ -387,6 +387,7 @@ __all__ = [
     'diagonal',
     'eq',
     'exp',
+    'expand',
     'ge',
     'getitem',
     'gt',
@@ -401,6 +402,7 @@ __all__ = [
     'mul',
     'ne',
     'neg',
+    'new_eye',
     'new_zeros',
     'or_',
     'pow',
@@ -409,8 +411,10 @@ __all__ = [
     'sigmoid',
     'sqrt',
     'sub',
+    'transpose',
     'triangular_solve',
     'truediv',
+    'unsqueeze',
     'xor',
 ]
 
