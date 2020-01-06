@@ -1048,6 +1048,67 @@ def _safediv(x, y):
         return x * y.reciprocal().clamp(max=torch.iinfo(y.dtype).max)
 
 
+@ops.cholesky.register(torch.Tensor)
+def _cholesky(x):
+    """
+    Like :func:`torch.cholesky` but uses sqrt for scalar matrices.
+    Works around https://github.com/pytorch/pytorch/issues/24403 often.
+    """
+    if x.size(-1) == 1:
+        return x.sqrt()
+    return x.cholesky()
+
+
+@ops.cholesky_inverse.register(torch.Tensor)
+def _cholesky_inverse(x):
+    """
+    Like :func:`torch.cholesky_inverse` but supports batching and gradients.
+    """
+    if x.dim() == 2:
+        return x.cholesky_inverse()
+    return torch.eye(x.size(-1)).cholesky_solve(x)
+
+
+@ops.triangular_solve_op.register(torch.Tensor, torch.Tensor, bool, bool)
+def _triangular_solve(x, y, upper, transpose):
+    return x.triangular_solve(y, upper=upper, transpose=transpose).solution
+
+
+@ops.diagonal.register(torch.Tensor, int, int)
+def _diagonal(x, dim1, dim2):
+    return x.diagonal(dim1=dim1, dim2=dim2)
+
+
+@ops.cat_op.register(int, [torch.Tensor])
+def _cat(dim, *x):
+    return torch.cat(x, dim=dim)
+
+
+@ops.new_zeros.register(torch.Tensor, object)
+def _new_zeros(x, shape):
+    return x.new_zeros(shape)
+
+
+@ops.new_eye.register(torch.Tensor, object)
+def _new_eye(x, shape):
+    return torch.eye(shape[-1]).expand(shape + (-1,))
+
+
+@ops.unsqueeze.register(torch.Tensor, int)
+def _unsqueeze(x, dim):
+    return x.unsqueeze(dim)
+
+
+@ops.expand.register(torch.Tensor, object)
+def _expand(x, shape):
+    return x.expand(shape)
+
+
+@ops.transpose.register(torch.Tensor, int, int)
+def _transpose(x, dim0, dim1):
+    return x.transpose(dim0, dim1)
+
+
 REDUCE_OP_TO_TORCH = {
     ops.add: torch.sum,
     ops.mul: torch.prod,

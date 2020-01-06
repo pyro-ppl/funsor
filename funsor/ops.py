@@ -303,6 +303,66 @@ PRODUCT_INVERSES = {
 }
 
 
+# Linear algebra ops
+
+@Op
+def cholesky(x):
+    raise NotImplementedError
+
+
+@Op
+def cholesky_inverse(x):
+    raise NotImplementedError
+
+
+@Op
+def triangular_solve_op(x, y, upper, transpose):
+    raise NotImplementedError
+
+
+def triangular_solve(x, y, upper=False, transpose=False):
+    return triangular_solve_op(x, y, upper, transpose)
+
+
+@Op
+def cat_op(dim, *x):
+    raise NotImplementedError
+
+
+def cat(x, dim=0):
+    return cat_op(dim, *x)
+
+
+@Op
+def new_zeros(x, shape):
+    raise NotImplementedError
+
+
+@Op
+def new_eye(x, shape):
+    raise NotImplementedError
+
+
+@Op
+def unsqueeze(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def expand(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def diagonal(x, dim1, dim2):
+    raise NotImplementedError
+
+
+@Op
+def transpose(x, dim0, dim1):
+    raise NotImplementedError
+
+
 __all__ = [
     'AddOp',
     'AssociativeOp',
@@ -321,6 +381,10 @@ __all__ = [
     'abs',
     'add',
     'and_',
+    'cat',
+    'cholesky',
+    'cholesky_inverse',
+    'diagonal',
     'eq',
     'exp',
     'ge',
@@ -337,6 +401,7 @@ __all__ = [
     'mul',
     'ne',
     'neg',
+    'new_zeros',
     'or_',
     'pow',
     'safediv',
@@ -344,6 +409,7 @@ __all__ = [
     'sigmoid',
     'sqrt',
     'sub',
+    'triangular_solve',
     'truediv',
     'xor',
 ]
