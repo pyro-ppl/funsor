@@ -1111,7 +1111,7 @@ def _new_zeros(x, shape):
 
 @ops.new_eye.register(torch.Tensor, object)
 def _new_eye(x, shape):
-    return torch.eye(shape[-1]).expand(shape[:-1] + (-1, -1))
+    return torch.eye(shape[-1]).expand(shape + (-1,))
 
 
 @ops.unsqueeze.register(torch.Tensor, int)
