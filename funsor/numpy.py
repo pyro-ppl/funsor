@@ -311,7 +311,7 @@ def _sigmoid(x):
     try:
         from scipy.special import expit
         return expit(x)
-    except:
+    except ImportError:
         return 1 / (1 + np.exp(-x))
 
 
@@ -374,17 +374,19 @@ def _reciprocal(x):
 @ops.safesub.register((int, float), np.ndarray)
 def _safesub(x, y):
     try:
-        return x + np.clip(-y, max=np.finfo(y.dtype).max)
+        finfo = np.finfo(y.dtype)
     except ValueError:
-        return x + np.clip(-y, max=np.iinfo(y.dtype).max)
+        finfo = np.iinfo(y.dtype)
+    return x + np.clip(-y, a_max=finfo)
 
 
 @ops.safediv.register((int, float), np.ndarray)
 def _safediv(x, y):
     try:
-        return x * np.clip(np.reciprocal(y), a_max=np.finfo(y.dtype).max)
-    except TypeError:
-        return x * np.clip(np.reciprocal(y), a_max=np.finfo(y.dtype).max)
+        finfo = np.finfo(y.dtype)
+    except ValueError:
+        finfo = np.iinfo(y.dtype)
+    return x * np.clip(np.reciprocal(y), a_max=finfo)
 
 
 @ops.cholesky.register(np.ndarray)
