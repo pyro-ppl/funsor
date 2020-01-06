@@ -984,14 +984,14 @@ def _log1p(x):
     return x.log1p()
 
 
-@ops.pow.register(object, torch.Tensor)
+@ops.pow.register((int, float), torch.Tensor)
 def _pow(x, y):
     result = x ** y
     # work around shape bug https://github.com/pytorch/pytorch/issues/16685
     return result.reshape(y.shape)
 
 
-@ops.pow.register(torch.Tensor, (object, torch.Tensor))
+@ops.pow.register(torch.Tensor, ((int, float), torch.Tensor))
 def _pow(x, y):
     return x ** y
 
@@ -1001,12 +1001,12 @@ def _min(x, y):
     return torch.min(x, y)
 
 
-@ops.min.register(object, torch.Tensor)
+@ops.min.register((int, float), torch.Tensor)
 def _min(x, y):
     return y.clamp(max=x)
 
 
-@ops.min.register(torch.Tensor, object)
+@ops.min.register(torch.Tensor, (int, float))
 def _min(x, y):
     return x.clamp(max=y)
 
@@ -1016,12 +1016,12 @@ def _max(x, y):
     return torch.max(x, y)
 
 
-@ops.max.register(object, torch.Tensor)
+@ops.max.register((int, float), torch.Tensor)
 def _max(x, y):
     return y.clamp(min=x)
 
 
-@ops.max.register(torch.Tensor, object)
+@ops.max.register(torch.Tensor, (int, float))
 def _max(x, y):
     return x.clamp(min=y)
 
@@ -1032,7 +1032,7 @@ def _reciprocal(x):
     return result
 
 
-@ops.safesub.register(object, torch.Tensor)
+@ops.safesub.register((int, float), torch.Tensor)
 def _safesub(x, y):
     try:
         return x + (-y).clamp(max=torch.finfo(y.dtype).max)
@@ -1040,7 +1040,7 @@ def _safesub(x, y):
         return x + (-y).clamp(max=torch.iinfo(y.dtype).max)
 
 
-@ops.safediv.register(object, torch.Tensor)
+@ops.safediv.register((int, float), torch.Tensor)
 def _safediv(x, y):
     try:
         return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
@@ -1084,12 +1084,12 @@ def _cat(dim, *x):
     return torch.cat(x, dim=dim)
 
 
-@ops.new_zeros.register(torch.Tensor, object)
+@ops.new_zeros.register(torch.Tensor, tuple)
 def _new_zeros(x, shape):
     return x.new_zeros(shape)
 
 
-@ops.new_eye.register(torch.Tensor, object)
+@ops.new_eye.register(torch.Tensor, tuple)
 def _new_eye(x, shape):
     return torch.eye(shape[-1]).expand(shape + (-1,))
 
@@ -1099,7 +1099,7 @@ def _unsqueeze(x, dim):
     return x.unsqueeze(dim)
 
 
-@ops.expand.register(torch.Tensor, object)
+@ops.expand.register(torch.Tensor, tuple)
 def _expand(x, shape):
     return x.expand(shape)
 

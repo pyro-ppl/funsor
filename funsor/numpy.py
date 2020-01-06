@@ -306,6 +306,15 @@ def materialize(x):
 ################################################################################
 
 
+@ops.sigmoid.register(np.ndarray)
+def _sigmoid(x):
+    try:
+        from scipy.special import expit
+        return expit(x)
+    except:
+        return 1 / (1 + np.exp(-x))
+
+
 @ops.sqrt.register(np.ndarray)
 def _sqrt(x):
     return np.sqrt(x)
@@ -331,12 +340,12 @@ def _min(x, y):
     return np.minimum(x, y)
 
 
-@ops.min.register(object, np.ndarray)
+@ops.min.register((int, float), np.ndarray)
 def _min(x, y):
     return np.clip(y, a_max=x)
 
 
-@ops.min.register(np.ndarray, object)
+@ops.min.register(np.ndarray, (int, float))
 def _min(x, y):
     return np.clip(x, a_max=y)
 
@@ -346,12 +355,12 @@ def _max(x, y):
     return np.maximum(x, y)
 
 
-@ops.max.register(object, np.ndarray)
+@ops.max.register((int, float), np.ndarray)
 def _max(x, y):
     return np.clip(y, a_min=x)
 
 
-@ops.max.register(np.ndarray, object)
+@ops.max.register(np.ndarray, (int, float))
 def _max(x, y):
     return np.clip(x, a_min=y)
 
@@ -362,7 +371,7 @@ def _reciprocal(x):
     return result
 
 
-@ops.safesub.register(object, np.ndarray)
+@ops.safesub.register((int, float), np.ndarray)
 def _safesub(x, y):
     try:
         return x + np.clip(-y, max=np.finfo(y.dtype).max)
@@ -370,7 +379,7 @@ def _safesub(x, y):
         return x + np.clip(-y, max=np.iinfo(y.dtype).max)
 
 
-@ops.safediv.register(object, np.ndarray)
+@ops.safediv.register((int, float), np.ndarray)
 def _safediv(x, y):
     try:
         return x * np.clip(np.reciprocal(y), a_max=np.finfo(y.dtype).max)
@@ -393,19 +402,15 @@ def _cholesky_inverse(x):
     """
     Like :func:`torch.cholesky_inverse` but supports batching and gradients.
     """
-    try:
-        from scipy.linalg import cho_solve
-    except:
-        raise ImportError("scipy is not available")
+    from scipy.linalg import cho_solve
+
     return cho_solve((x, False), np.eye(x.shape[-1]))
 
 
 @ops.triangular_solve_op.register(np.ndarray, np.ndarray, bool, bool)
 def _triangular_solve(x, y, upper, transpose):
-    try:
-        from scipy.linalg import solve_triangular
-    except:
-        raise ImportError("scipy is not available")
+    from scipy.linalg import solve_triangular
+
     return solve_triangular(a, b, trans=int(transpose), lower=not upper)
 
 
@@ -419,12 +424,12 @@ def _cat(dim, *x):
     return np.concatenate(x, axis=dim)
 
 
-@ops.new_zeros.register(np.ndarray, object)
+@ops.new_zeros.register(np.ndarray, tuple)
 def _new_zeros(x, shape):
     return np.zeros(shape, dtype=x.dtype)
 
 
-@ops.new_eye.register(np.ndarray, object)
+@ops.new_eye.register(np.ndarray, tuple)
 def _new_eye(x, shape):
     return np.broadcast_to(np.eye(shape[-1]), shape + (-1,))
 
@@ -434,7 +439,7 @@ def _unsqueeze(x, dim):
     return np.expand_dims(x, dim)
 
 
-@ops.expand.register(np.ndarray, object)
+@ops.expand.register(np.ndarray, tuple)
 def _expand(x, shape):
     return np.broadcast_to(x, shape)
 
