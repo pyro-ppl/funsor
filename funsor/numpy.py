@@ -413,7 +413,7 @@ def _cholesky_inverse(x):
 def _triangular_solve(x, y, upper, transpose):
     from scipy.linalg import solve_triangular
 
-    return solve_triangular(a, b, trans=int(transpose), lower=not upper)
+    return solve_triangular(x, y, trans=int(transpose), lower=not upper)
 
 
 @ops.diagonal.register(np.ndarray, int, int)
