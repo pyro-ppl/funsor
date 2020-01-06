@@ -1035,9 +1035,9 @@ def _reciprocal(x):
 @ops.safesub.register(object, torch.Tensor)
 def _safesub(x, y):
     try:
-        return x + -y.clamp(max=torch.finfo(y.dtype).max)
+        return x + (-y).clamp(max=torch.finfo(y.dtype).max)
     except TypeError:
-        return x + -y.clamp(max=torch.iinfo(y.dtype).max)
+        return x + (-y).clamp(max=torch.iinfo(y.dtype).max)
 
 
 @ops.safediv.register(object, torch.Tensor)
