@@ -477,9 +477,9 @@ def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_peri
             raise
 
 
-@pytest.mark.parametrize("duration,num_chunks", [(12, 1), (12, 2), (12, 3), (12, 4), (12, 6)])
+@pytest.mark.parametrize("duration,num_segments", [(12, 1), (12, 2), (12, 3), (12, 4), (12, 6)])
 @pytest.mark.parametrize("seqpar", [True, False])
-def test_mixed_sequential_sum_product(duration, num_chunks, seqpar):
+def test_mixed_sequential_sum_product(duration, num_segments, seqpar):
 
     sum_op, prod_op = ops.logaddexp, ops.add
     time_var = Variable("time", bint(duration))
@@ -493,6 +493,6 @@ def test_mixed_sequential_sum_product(duration, num_chunks, seqpar):
 
     expected = sequential_sum_product(sum_op, prod_op, trans, time_var, step)
     actual = mixed_sequential_sum_product(sum_op, prod_op, trans, time_var, step,
-                                          num_chunks=num_chunks, seqpar=seqpar)
+                                          num_segments=num_segments, seqpar=seqpar)
 
     assert_close(actual, expected)

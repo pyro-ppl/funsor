@@ -182,7 +182,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
 
 
 def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
-                                 num_chunks=1, seqpar=True):
+                                 num_segments=1, seqpar=True):
     """
     For a funsor ``trans`` with dimensions ``time``, ``prev`` and ``curr``,
     computes a recursion equivalent to::
@@ -194,7 +194,7 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
         return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
            .reduce(sum_op, "drop")
 
-    by mixing parallel and serial scan algorithms over ``num_chunks`` chunks.
+    by mixing parallel and serial scan algorithms over ``num_segments`` segments.
 
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
@@ -202,36 +202,36 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
     :param Variable time: The time input dimension.
     :param dict step: A dict mapping previous variables to current variables.
         This can contain multiple pairs of prev->curr variable names.
-    :param int num_chunks: number of chunks for the first stage
+    :param int num_segments: number of segments for the first stage
     :param bool seqpar: Toggle order of serial and parallel algorithms.
         When set to True, uses parallel followed by sequential;
         when set to False, uses sequential followed by parallel.
     """
     time_var, time, duration = time, time.name, time.output.size
-    assert num_chunks > 0 and num_chunks <= duration
-    if duration % num_chunks:
+    assert num_segments > 0 and num_segments <= duration
+    if duration % num_segments:
         raise NotImplementedError("TODO handle partial windows")
 
     first_stage = sequential_sum_product if seqpar else naive_sequential_sum_product
     second_stage = naive_sequential_sum_product if seqpar else sequential_sum_product
 
-    if num_chunks == 1:
+    if num_segments == 1:
         return first_stage(sum_op, prod_op, trans, time_var, step)
-    if num_chunks == duration:
+    if num_segments == duration:
         return second_stage(sum_op, prod_op, trans, time_var, step)
 
-    # break trans into num_chunks chunks of equal length
-    chunk_length = duration // num_chunks
-    chunks = [trans(**{time: Slice(time, i * chunk_length, (i + 1) * chunk_length, 1, duration)})
-              for i in range(num_chunks)]
+    # break trans into num_segments segments of equal length
+    segment_length = duration // num_segments
+    segments = [trans(**{time: Slice(time, i * segment_length, (i + 1) * segment_length, 1, duration)})
+              for i in range(num_segments)]
 
     first_stage_result = first_stage(
-        sum_op, prod_op, Stack(time + "__CHUNKED", tuple(chunks)),
-        Variable(time, bint(chunk_length)), step)
+        sum_op, prod_op, Stack(time + "__SEGMENTED", tuple(segments)),
+        Variable(time, bint(segment_length)), step)
 
     second_stage_result = second_stage(
         sum_op, prod_op, first_stage_result,
-        Variable(time + "__CHUNKED", bint(num_chunks)), step)
+        Variable(time + "__SEGMENTED", bint(num_segments)), step)
 
     return second_stage_result
 
@@ -323,7 +323,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     block_time_var = Variable(time_var.name, bint(duration // period))
     final_chunk = mixed_sequential_sum_product(
         sum_op, prod_op, block_trans, block_time_var, block_step,
-        num_chunks=max(1, duration // (period * num_periods)), seqpar=seqpar)
+        num_segments=max(1, duration // (period * num_periods)), seqpar=seqpar)
     final_sum_vars = frozenset(
         shift_name(name, t) for name in original_names for t in range(1, period))
     result = final_chunk.reduce(sum_op, final_sum_vars)
