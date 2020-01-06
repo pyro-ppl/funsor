@@ -56,7 +56,7 @@ def _parse_slices(index, value):
             start_stops.append((i.start, i.stop))
         elif isinstance(i, int):
             start_stops.append((i, i + 1))
-            value = value.unsqueeze(pos - len(index))
+            value = ops.unsqueeze(value, pos - len(index))
         else:
             raise ValueError("invalid index: {}".format(i))
     start_stops.reverse()
@@ -85,10 +85,9 @@ class BlockVector(object):
     def as_tensor(self):
         # Fill gaps with zeros.
         prototype = next(iter(self.parts.values()))
-        options = dict(dtype=prototype.dtype, device=prototype.device)
         for i in _find_intervals(self.parts.keys(), self.shape[-1]):
             if i not in self.parts:
-                self.parts[i] = torch.zeros(self.shape[:-1] + (i[1] - i[0],), **options)
+                self.parts[i] = ops.new_zeros(prototype, self.shape[:-1] + (i[1] - i[0],))
 
         # Concatenate parts.
         parts = [v for k, v in sorted(self.parts.items())]
@@ -123,7 +122,6 @@ class BlockMatrix(object):
         # Fill gaps with zeros.
         arbitrary_row = next(iter(self.parts.values()))
         prototype = next(iter(arbitrary_row.values()))
-        options = dict(dtype=prototype.dtype, device=prototype.device)
         js = set().union(*(part.keys() for part in self.parts.values()))
         rows = _find_intervals(self.parts.keys(), self.shape[-2])
         cols = _find_intervals(js, self.shape[-1])
@@ -131,7 +129,7 @@ class BlockMatrix(object):
             for j in cols:
                 if j not in self.parts[i]:
                     shape = self.shape[:-2] + (i[1] - i[0], j[1] - j[0])
-                    self.parts[i][j] = torch.zeros(shape, **options)
+                    self.parts[i][j] = ops.new_zeros(prototype, shape)
 
         # Concatenate parts.
         # TODO This could be optimized into a single .reshape().cat().reshape() if
@@ -240,7 +238,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         if not torch._C._get_tracing_state():
             assert dim
             assert precision.dim() >= 2 and precision.shape[-2:] == (dim, dim)
-            assert info_vec.dim() >= 1 and info_vec.size(-1) == dim
+            assert info_vec.dim() >= 1 and info_vec.shape[-1] == dim
 
         # Compute total shape of all bint inputs.
         batch_shape = tuple(d.dtype for d in inputs.values()
@@ -264,10 +262,10 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     @lazy_property
     def log_normalizer(self):
-        dim = self.precision.size(-1)
+        dim = self.precision.shape[-1]
         log_det_term = ops.log_det_tri(self._precision_chol)
-        loc_info_vec_term = 0.5 * self.info_vec.unsqueeze(-1).triangular_solve(
-            self._precision_chol, upper=False).solution.squeeze(-1).pow(2).sum(-1)
+        loc_info_vec_term = 0.5 * ops.triangular_solve(self.info_vec[..., None],
+            self._precision_chol)[..., 0].pow(2).sum(-1)
         data = 0.5 * dim * math.log(2 * math.pi) - log_det_term + loc_info_vec_term
         inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
         return Tensor(data, inputs)
@@ -356,7 +354,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         for k, value in values.items():
             value = value.reshape(value.shape[:batch_dim] + (-1,))
             if not torch._C._get_tracing_state():
-                assert value.size(-1) == self.inputs[k].num_elements
+                assert value.shape[-1] == self.inputs[k].num_elements
             values[k] = value.expand(batch_shape + value.shape[-1:])
 
         # Try to perform a complete substitution of all real variables, resulting in a Tensor.
@@ -396,7 +394,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         value_b = ops.cat([values[k] for k, i in slices if k in b], dim=-1)
         info_vec = info_a - ops.mv(prec_ab, value_b)
         log_scale = ops.vv(value_b, info_b - 0.5 * ops.mv(prec_bb, value_b))
-        precision = prec_aa.expand(info_vec.shape + (-1,))
+        precision = ops.expand(prec_aa, info_vec.shape + (-1,))
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
             if k not in subs:
@@ -459,7 +457,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 new_offset = new_offsets[old_k]
                 new_slice = slice(new_offset, new_offset + old_size)
                 subs_matrix[..., new_slice, old_slice] = \
-                    torch.eye(old_size).expand(batch_shape + (-1, -1))
+                    ops.new_eye(self.info_vec, batch_shape + (old_size,))
                 continue
             const, coeffs = affine[old_k]
             old_shape = old_real_inputs[old_k].shape
@@ -475,7 +473,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                         coeff.data.reshape(batch_shape + (new_size, old_size))
         subs_vector = subs_vector.as_tensor()
         subs_matrix = subs_matrix.as_tensor()
-        subs_matrix_t = subs_matrix.transpose(-1, -2)
+        subs_matrix_t = ops.transpose(subs_matrix, -1, -2)
 
         # Construct the new funsor. Suppose the old Gaussian funsor g has density
         #   g(x) = < x | i - 1/2 P x>
@@ -517,21 +515,21 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 a = torch.tensor(a)
                 b = torch.tensor(b)
 
-                prec_aa = self.precision[..., a.unsqueeze(-1), a]
-                prec_ba = self.precision[..., b.unsqueeze(-1), a]
-                prec_bb = self.precision[..., b.unsqueeze(-1), b]
+                prec_aa = self.precision[..., a[..., None], a]
+                prec_ba = self.precision[..., b[..., None], a]
+                prec_bb = self.precision[..., b[..., None], b]
                 prec_b = ops.cholesky(prec_bb)
-                prec_a = prec_ba.triangular_solve(prec_b, upper=False).solution
-                prec_at = prec_a.transpose(-1, -2)
-                precision = prec_aa - prec_at.matmul(prec_a)
+                prec_a = ops.triangular_solve(prec_ba, prec_b)
+                prec_at = ops.transpose(prec_a, -1, -2)
+                precision = prec_aa - ops.matmul(prec_at, prec_a)
 
                 info_a = self.info_vec[..., a]
                 info_b = self.info_vec[..., b]
-                b_tmp = info_b.unsqueeze(-1).triangular_solve(prec_b, upper=False).solution
-                info_vec = info_a - prec_at.matmul(b_tmp).squeeze(-1)
+                b_tmp = ops.triangular_solve(info_b[..., None], prec_b)
+                info_vec = info_a - ops.matmul(prec_at, b_tmp)[..., 0]
 
                 log_prob = Tensor(0.5 * len(b) * math.log(2 * math.pi) - ops.log_det_tri(prec_b) +
-                                  0.5 * b_tmp.squeeze(-1).pow(2).sum(-1),
+                                  0.5 * b_tmp[..., 0].pow(2).sum(-1),
                                   int_inputs)
                 result = log_prob + Gaussian(info_vec, precision, inputs)
 
@@ -576,10 +574,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         if sampled_vars == frozenset(real_inputs):
             shape = sample_shape + self.info_vec.shape
             white_noise = torch.randn(shape + (1,))
-            white_vec = self.info_vec.unsqueeze(-1).triangular_solve(
-                self._precision_chol, upper=False).solution
-            sample = (white_noise + white_vec).triangular_solve(
-                self._precision_chol, upper=False, transpose=True).solution.squeeze(-1)
+            white_vec = ops.triangular_solve(self.info_vec[..., None], self._precision_chol)
+            sample = ops.triangular_solve(white_noise + white_vec, ops.transpose(self._precision_chol, -1, -2))[..., 0]
             offsets, _ = _compute_offsets(real_inputs)
             results = []
             for key, domain in real_inputs.items():

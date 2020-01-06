@@ -316,6 +316,11 @@ def cholesky_inverse(x):
 
 
 @Op
+def triangular_solve(x, y):
+    raise NotImplementedError
+
+
+@Op
 def trace_mm(x, y):
     raise NotImplementedError
 
@@ -344,6 +349,31 @@ def cat(x, dim=0):
     return cat_args(dim, *x)
 
 
+@Op
+def new_zeros(x, shape):
+    raise NotImplementedError
+
+
+@Op
+def new_eye(x, shape):
+    raise NotImplementedError
+
+
+@Op
+def unsqueeze(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def expand(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def transpose(x, dim0, dim1):
+    raise NotImplementedError
+
+
 __all__ = [
     'AddOp',
     'AssociativeOp',
@@ -365,6 +395,7 @@ __all__ = [
     'cat',
     'cat_args',
     'cholesky',
+    'cholesky_inverse',
     'eq',
     'exp',
     'ge',
@@ -374,13 +405,16 @@ __all__ = [
     'le',
     'log',
     'log1p',
+    'log_det_tri',
     'lt',
     'matmul',
     'max',
     'min',
     'mul',
+    'mv',
     'ne',
     'neg',
+    'new_zeros',
     'or_',
     'pow',
     'safediv',
@@ -388,7 +422,9 @@ __all__ = [
     'sigmoid',
     'sqrt',
     'sub',
+    'trace_mm',
     'truediv',
+    'vv',
     'xor',
 ]
 

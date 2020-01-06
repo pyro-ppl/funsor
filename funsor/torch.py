@@ -1069,6 +1069,11 @@ def _cholesky_inverse(x):
     return torch.eye(x.size(-1)).cholesky_solve(x)
 
 
+@ops.triangular_solve.register(torch.Tensor, torch.Tensor)
+def _triangular_solve(x, y):
+    return x.triangular_solve(y, upper=False).solution
+
+
 @ops.trace_mm.register(torch.Tensor, torch.Tensor)
 def _trace_mm(x, y):
     """
@@ -1097,6 +1102,31 @@ def _log_det_tri(x):
 @ops.cat_args.register(int, [torch.Tensor])
 def _cat_args(dim, *x):
     return torch.cat(x, dim=dim)
+
+
+@ops.new_zeros.register(torch.Tensor, object)
+def _new_zeros(x, shape):
+    return x.new_zeros(shape)
+
+
+@ops.new_eye.register(torch.Tensor, object)
+def _new_eye(x, shape):
+    return torch.eye(shape[-1]).expand(shape[:-1] + (-1, -1))
+
+
+@ops.unsqueeze.register(torch.Tensor, int)
+def _unsqueeze(x, dim):
+    return x.unsqueeze(dim)
+
+
+@ops.expand.register(torch.Tensor, object)
+def _expand(x, shape):
+    return x.expand(shape)
+
+
+@ops.transpose.register(torch.Tensor, int, int)
+def _transpose(x, dim0, dim1):
+    return x.transpose(dim0, dim1)
 
 
 REDUCE_OP_TO_TORCH = {
