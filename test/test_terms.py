@@ -10,7 +10,7 @@ import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import Domain, bint, reals
-from funsor.interpreter import interpretation
+from funsor.interpreter import interpretation, reinterpret
 from funsor.terms import (
     Binary,
     Cat,
@@ -505,3 +505,25 @@ def test_not_parametric_subclass(subcls_expr, cls_expr):
     print(cls.classname)
     assert issubclass(cls, (Funsor, Reduce)) and not issubclass(subcls, typing.Tuple)  # appease flake8
     assert not issubclass(subcls, cls)
+
+
+@pytest.mark.parametrize("start,stop", [
+    (1, 3), (0, 1), (3, 7), (4, 8), (0, 2), (0, 10), (1, 2), (1, 10), (2, 10)])
+@pytest.mark.parametrize("step", [1, 2, 3, 5, 10])
+def test_cat_slice_tensor(start, stop, step):
+
+    terms = tuple(
+        random_tensor(OrderedDict(t=bint(t), a=bint(2)))
+        for t in [2, 1, 3, 4, 1, 3])
+    dtype = sum(term.inputs['t'].dtype for term in terms)
+    sub = Slice('t', start, stop, step, dtype)
+
+    # eager
+    expected = Cat('t', terms)(t=sub)
+
+    # lazy - exercise Cat.eager_subs
+    with interpretation(lazy):
+        actual = Cat('t', terms)(t=sub)
+    actual = reinterpret(actual)
+
+    assert_close(actual, expected)
