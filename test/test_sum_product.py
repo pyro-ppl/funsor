@@ -475,7 +475,6 @@ def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_peri
     except NotImplementedError as e:
         partial_reasons = (
             'TODO handle partial windows',
-            'TODO implement Cat.eager_subs',
         )
         if any(reason in e.args[0] for reason in partial_reasons):
             pytest.xfail(reason=e.args[0])
