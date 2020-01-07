@@ -239,7 +239,7 @@ def test_unary(symbol, dims):
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
     dtype = 'real'
-    data = np.array(np.random.rand(*shape)) + 0.5
+    data = np.array(np.random.rand(*shape) + 0.5)
     if symbol == '~':
         data = data.astype(bool)
         dtype = 2

@@ -1035,17 +1035,19 @@ def _reciprocal(x):
 @ops.safesub.register((int, float), torch.Tensor)
 def _safesub(x, y):
     try:
-        return x + (-y).clamp(max=torch.finfo(y.dtype).max)
+        finfo = torch.finfo(y.dtype)
     except TypeError:
-        return x + (-y).clamp(max=torch.iinfo(y.dtype).max)
+        finfo = torch.iinfo(y.dtype)
+    return x + (-y).clamp(max=finfo.max)
 
 
 @ops.safediv.register((int, float), torch.Tensor)
 def _safediv(x, y):
     try:
-        return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
+        finfo = torch.finfo(y.dtype)
     except TypeError:
-        return x * y.reciprocal().clamp(max=torch.iinfo(y.dtype).max)
+        finfo = torch.iinfo(y.dtype)
+    return x * y.reciprocal().clamp(max=finfo.max)
 
 
 @ops.cholesky.register(torch.Tensor)

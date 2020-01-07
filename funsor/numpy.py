@@ -306,6 +306,11 @@ def materialize(x):
 ################################################################################
 
 
+@ops.abs.register(np.ndarray)
+def _abs(x):
+    return abs(x)
+
+
 @ops.sigmoid.register(np.ndarray)
 def _sigmoid(x):
     try:
