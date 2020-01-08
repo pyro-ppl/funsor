@@ -213,19 +213,18 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
     time_var, time, duration = time, time.name, time.output.size
     assert num_segments > 0 and duration > 0
 
+    # handle unevenly sized segments by chopping off the final segment and calling mixed_sequential_sum_product again
     if duration % num_segments and duration - duration % num_segments > 0:
-        remainder = trans(
-            **{time: Slice(time, duration - duration % num_segments, duration, 1, duration)})
-        initial = trans(
-            **{time: Slice(time, 0, duration - duration % num_segments, 1, duration)})
+        remainder = trans(**{time: Slice(time, duration - duration % num_segments, duration, 1, duration)})
+        initial = trans(**{time: Slice(time, 0, duration - duration % num_segments, 1, duration)})
         initial_eliminated = mixed_sequential_sum_product(
             sum_op, prod_op, initial, Variable(time, bint(duration - duration % num_segments)), step,
             num_segments=num_segments, seqpar=seqpar)
         final = Cat(time, (Stack(time, (initial_eliminated,)), remainder))
-        final_eliminated = second_stage(
-            sum_op, prod_op, final, Variable(time, bint(1 + duration % num_segments)), step)
+        final_eliminated = second_stage(sum_op, prod_op, final, Variable(time, bint(1 + duration % num_segments)), step)
         return final_eliminated
 
+    # handle degenerate cases that reduce to a single stage
     if num_segments == 1:
         return first_stage(sum_op, prod_op, trans, time_var, step)
     if num_segments >= duration:
