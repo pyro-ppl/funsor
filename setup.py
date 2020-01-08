@@ -45,7 +45,7 @@ setup(
             'pyro-api>=0.1',
             'pytest-xdist==1.27.0',
             'pillow-simd',
-            'torchvision>=0.4.0',
+            'torchvision',
         ],
         'dev': [
             'flake8',
@@ -55,7 +55,7 @@ setup(
             'sphinx>=2.0',
             'sphinx_rtd_theme',
             'pillow-simd',
-            'torchvision>=0.4.0',
+            'torchvision',
         ],
     },
     long_description=long_description,
