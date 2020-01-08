@@ -611,8 +611,7 @@ def eager_cat_homogeneous(name, part_name, *parts):
 
     dim = 0
     tensor = torch.cat(tensors, dim=dim)
-    inputs = tuple(inputs.items())
-    inputs = OrderedDict(inputs[:dim] + ((name, bint(tensor.size(dim))),) + inputs[dim:])
+    inputs = OrderedDict([(name, bint(tensor.size(dim)))] + list(inputs.items()))
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 

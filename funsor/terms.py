@@ -1377,20 +1377,20 @@ class Cat(Funsor, metaclass=CatMeta):
             new_parts = []
             pos = 0
             for part in self.parts:
-                pdtype = part.inputs[self.part_name].dtype
+                psize = part.inputs[self.part_name].dtype
                 if step > 1:
                     pstart = ((pos - start) // step) * step - (pos - start)
                     pstart = pstart + step if pstart < 0 else pstart
                 else:
                     pstart = max(start - pos, 0)
-                pstop = min(pos + pdtype, stop) - pos
+                pstop = min(pos + psize, stop) - pos
 
-                if not (pstart >= pstop or pos >= stop or pos + pdtype <= start):
-                    pslice = Slice(self.part_name, pstart, pstop, step, pdtype)
+                if not (pstart >= pstop or pos >= stop or pos + psize <= start):
+                    pslice = Slice(self.part_name, pstart, pstop, step, psize)
                     part = part(**{self.part_name: pslice})
                     new_parts.append(part)
 
-                pos += pdtype
+                pos += psize
 
             return Cat(self.name, tuple(new_parts), self.part_name)
         else:
