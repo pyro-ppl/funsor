@@ -181,8 +181,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     return trans(**{time: 0})
 
 
-def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
-                                 num_segments=1, seqpar=True):
+def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step, num_segments=None):
     """
     For a funsor ``trans`` with dimensions ``time``, ``prev`` and ``curr``,
     computes a recursion equivalent to::
@@ -203,14 +202,9 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
     :param dict step: A dict mapping previous variables to current variables.
         This can contain multiple pairs of prev->curr variable names.
     :param int num_segments: number of segments for the first stage
-    :param bool seqpar: Toggle order of serial and parallel algorithms.
-        When set to True, uses parallel followed by sequential;
-        when set to False, uses sequential followed by parallel.
     """
-    first_stage = sequential_sum_product if seqpar else naive_sequential_sum_product
-    second_stage = naive_sequential_sum_product if seqpar else sequential_sum_product
-
     time_var, time, duration = time, time.name, time.output.size
+    num_segments = duration if num_segments is None else num_segments
     assert num_segments > 0 and duration > 0
 
     # handle unevenly sized segments by chopping off the final segment and calling mixed_sequential_sum_product again
@@ -219,27 +213,28 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step,
         initial = trans(**{time: Slice(time, 0, duration - duration % num_segments, 1, duration)})
         initial_eliminated = mixed_sequential_sum_product(
             sum_op, prod_op, initial, Variable(time, bint(duration - duration % num_segments)), step,
-            num_segments=num_segments, seqpar=seqpar)
+            num_segments=num_segments)
         final = Cat(time, (Stack(time, (initial_eliminated,)), remainder))
-        final_eliminated = second_stage(sum_op, prod_op, final, Variable(time, bint(1 + duration % num_segments)), step)
+        final_eliminated = naive_sequential_sum_product(
+            sum_op, prod_op, final, Variable(time, bint(1 + duration % num_segments)), step)
         return final_eliminated
 
     # handle degenerate cases that reduce to a single stage
     if num_segments == 1:
-        return first_stage(sum_op, prod_op, trans, time_var, step)
+        return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, step)
     if num_segments >= duration:
-        return second_stage(sum_op, prod_op, trans, time_var, step)
+        return sequential_sum_product(sum_op, prod_op, trans, time_var, step)
 
     # break trans into num_segments segments of equal length
     segment_length = duration // num_segments
     segments = [trans(**{time: Slice(time, i * segment_length, (i + 1) * segment_length, 1, duration)})
                 for i in range(num_segments)]
 
-    first_stage_result = first_stage(
+    first_stage_result = naive_sequential_sum_product(
         sum_op, prod_op, Stack(time + "__SEGMENTED", tuple(segments)),
         Variable(time, bint(segment_length)), step)
 
-    second_stage_result = second_stage(
+    second_stage_result = sequential_sum_product(
         sum_op, prod_op, first_stage_result,
         Variable(time + "__SEGMENTED", bint(num_segments)), step)
 
@@ -288,8 +283,7 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
     return result
 
 
-def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset(),
-                          num_periods=1, seqpar=False):
+def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset(), num_periods=1):
 
     assert isinstance(global_vars, frozenset)
 
@@ -333,7 +327,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     block_time_var = Variable(time_var.name, bint(duration // period))
     final_chunk = mixed_sequential_sum_product(
         sum_op, prod_op, block_trans, block_time_var, block_step,
-        num_segments=max(1, duration // (period * num_periods)), seqpar=seqpar)
+        num_segments=max(1, duration // (period * num_periods)))
     final_sum_vars = frozenset(
         shift_name(name, t) for name in original_names for t in range(1, period))
     result = final_chunk.reduce(sum_op, final_sum_vars)
