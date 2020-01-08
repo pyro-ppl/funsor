@@ -1,6 +1,6 @@
 import re
 from collections import OrderedDict
-from functools import reduce
+from functools import partial, reduce
 
 import pytest
 import torch
@@ -12,6 +12,7 @@ from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
     _partition,
+    mixed_sequential_sum_product,
     naive_sarkka_bilmes_product,
     naive_sequential_sum_product,
     partial_sum_product,
@@ -112,6 +113,8 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     sequential_sum_product,
     naive_sequential_sum_product,
     MarkovProduct,
+    partial(mixed_sequential_sum_product, num_segments=2),
+    partial(mixed_sequential_sum_product, num_segments=3),
 ])
 def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
     inputs = OrderedDict(batch_inputs)
@@ -158,6 +161,8 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
     sequential_sum_product,
     naive_sequential_sum_product,
     MarkovProduct,
+    partial(mixed_sequential_sum_product, num_segments=2),
+    partial(mixed_sequential_sum_product, num_segments=3),
 ])
 def test_sequential_sum_product_multi(impl, x_domain, y_domain, batch_inputs, num_steps):
     sum_op = ops.logaddexp
@@ -252,7 +257,7 @@ def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
     assert set(result.inputs) == {"bias", "x_prev", "x_curr"}
 
 
-def _check_sarkka_bilmes(trans, expected_inputs, global_vars):
+def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
 
     sum_op, prod_op = ops.logaddexp, ops.add
 
@@ -263,7 +268,8 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars):
     expected = naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars)
     assert dict(expected.inputs) == expected_inputs
 
-    actual = sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars)
+    actual = sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars,
+                                   num_periods=num_periods)
     assert dict(actual.inputs) == expected_inputs
 
     actual = actual.align(tuple(expected.inputs.keys()))
@@ -439,7 +445,8 @@ def test_sarkka_bilmes_example_6(duration):
     (("a", reals(2)), ("b", reals(2)), ("Pb", reals(2))),
     (("a", reals(2)), ("b", reals(2)), ("PPb", reals(2))),
 ])
-def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs):
+@pytest.mark.parametrize("num_periods", [1, 2])
+def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_periods):
 
     lags = {
         kk: reduce(max, [
@@ -461,9 +468,32 @@ def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs):
         trans = random_tensor(trans_inputs)
 
     try:
-        _check_sarkka_bilmes(trans, expected_inputs, global_vars)
+        _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods)
     except NotImplementedError as e:
-        if 'partial window' in e.args[0]:
+        partial_reasons = (
+            'TODO handle partial windows',
+        )
+        if any(reason in e.args[0] for reason in partial_reasons):
             pytest.xfail(reason=e.args[0])
         else:
             raise
+
+
+@pytest.mark.parametrize("duration,num_segments", [(12, 1), (12, 2), (12, 3), (12, 4), (12, 6)])
+def test_mixed_sequential_sum_product(duration, num_segments):
+
+    sum_op, prod_op = ops.logaddexp, ops.add
+    time_var = Variable("time", bint(duration))
+    step = {"Px": "x"}
+
+    trans_inputs = ((time_var.name, bint(duration)),) + \
+        tuple((k, bint(2)) for k in step.keys()) + \
+        tuple((v, bint(2)) for v in step.values())
+
+    trans = random_tensor(OrderedDict(trans_inputs))
+
+    expected = sequential_sum_product(sum_op, prod_op, trans, time_var, step)
+    actual = mixed_sequential_sum_product(sum_op, prod_op, trans, time_var, step,
+                                          num_segments=num_segments)
+
+    assert_close(actual, expected)

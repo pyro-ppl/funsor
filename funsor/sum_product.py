@@ -8,7 +8,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import bint
 from funsor.ops import UNITS, AssociativeOp
-from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Subs, Variable, eager, substitute, to_funsor
+from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Stack, Subs, Variable, eager, substitute, to_funsor
 from funsor.util import quote
 
 
@@ -181,6 +181,66 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     return trans(**{time: 0})
 
 
+def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step, num_segments=None):
+    """
+    For a funsor ``trans`` with dimensions ``time``, ``prev`` and ``curr``,
+    computes a recursion equivalent to::
+
+        tail_time = 1 + arange("time", trans.inputs["time"].size - 1)
+        tail = sequential_sum_product(sum_op, prod_op,
+                                      trans(time=tail_time),
+                                      time, {"prev": "curr"})
+        return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
+           .reduce(sum_op, "drop")
+
+    by mixing parallel and serial scan algorithms over ``num_segments`` segments.
+
+    :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
+    :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
+    :param ~funsor.terms.Funsor trans: A transition funsor.
+    :param Variable time: The time input dimension.
+    :param dict step: A dict mapping previous variables to current variables.
+        This can contain multiple pairs of prev->curr variable names.
+    :param int num_segments: number of segments for the first stage
+    """
+    time_var, time, duration = time, time.name, time.output.size
+    num_segments = duration if num_segments is None else num_segments
+    assert num_segments > 0 and duration > 0
+
+    # handle unevenly sized segments by chopping off the final segment and calling mixed_sequential_sum_product again
+    if duration % num_segments and duration - duration % num_segments > 0:
+        remainder = trans(**{time: Slice(time, duration - duration % num_segments, duration, 1, duration)})
+        initial = trans(**{time: Slice(time, 0, duration - duration % num_segments, 1, duration)})
+        initial_eliminated = mixed_sequential_sum_product(
+            sum_op, prod_op, initial, Variable(time, bint(duration - duration % num_segments)), step,
+            num_segments=num_segments)
+        final = Cat(time, (Stack(time, (initial_eliminated,)), remainder))
+        final_eliminated = naive_sequential_sum_product(
+            sum_op, prod_op, final, Variable(time, bint(1 + duration % num_segments)), step)
+        return final_eliminated
+
+    # handle degenerate cases that reduce to a single stage
+    if num_segments == 1:
+        return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, step)
+    if num_segments >= duration:
+        return sequential_sum_product(sum_op, prod_op, trans, time_var, step)
+
+    # break trans into num_segments segments of equal length
+    segment_length = duration // num_segments
+    segments = [trans(**{time: Slice(time, i * segment_length, (i + 1) * segment_length, 1, duration)})
+                for i in range(num_segments)]
+
+    first_stage_result = naive_sequential_sum_product(
+        sum_op, prod_op, Stack(time + "__SEGMENTED", tuple(segments)),
+        Variable(time, bint(segment_length)), step)
+
+    second_stage_result = sequential_sum_product(
+        sum_op, prod_op, first_stage_result,
+        Variable(time + "__SEGMENTED", bint(num_segments)), step)
+
+    return second_stage_result
+
+
 def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset()):
 
     assert isinstance(global_vars, frozenset)
@@ -223,7 +283,7 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
     return result
 
 
-def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset()):
+def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset(), num_periods=1):
 
     assert isinstance(global_vars, frozenset)
 
@@ -265,7 +325,9 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     block_step = {shift_name(name, period): name for name in block_trans.inputs
                   if name != time and name not in global_vars and get_shift(name) < period}
     block_time_var = Variable(time_var.name, bint(duration // period))
-    final_chunk = sequential_sum_product(sum_op, prod_op, block_trans, block_time_var, block_step)
+    final_chunk = mixed_sequential_sum_product(
+        sum_op, prod_op, block_trans, block_time_var, block_step,
+        num_segments=max(1, duration // (period * num_periods)))
     final_sum_vars = frozenset(
         shift_name(name, t) for name in original_names for t in range(1, period))
     result = final_chunk.reduce(sum_op, final_sum_vars)
