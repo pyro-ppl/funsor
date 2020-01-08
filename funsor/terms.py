@@ -1377,7 +1377,7 @@ class Cat(Funsor, metaclass=CatMeta):
             new_parts = []
             pos = 0
             for part in self.parts:
-                psize = part.inputs[self.part_name].dtype
+                psize = part.inputs[self.part_name].size
                 if step > 1:
                     pstart = ((pos - start) // step) * step - (pos - start)
                     pstart = pstart + step if pstart < 0 else pstart
