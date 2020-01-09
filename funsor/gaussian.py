@@ -288,8 +288,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     def log_normalizer(self):
         dim = self.precision.shape[-1]
         log_det_term = _log_det_tri(self._precision_chol)
-        loc_info_vec_term = 0.5 * ops.triangular_solve(self.info_vec[..., None],
-            self._precision_chol)[..., 0].pow(2).sum(-1)
+        loc_info_vec_term = 0.5 * ops.triangular_solve(
+            self.info_vec[..., None], self._precision_chol)[..., 0].pow(2).sum(-1)
         data = 0.5 * dim * math.log(2 * math.pi) - log_det_term + loc_info_vec_term
         inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
         return Tensor(data, inputs)
