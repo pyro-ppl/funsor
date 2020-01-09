@@ -299,3 +299,158 @@ def materialize(x):
         subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
     return substitute(x, subs)
+
+
+################################################################################
+# Register Ops
+################################################################################
+
+
+@ops.abs.register(np.ndarray)
+def _abs(x):
+    return abs(x)
+
+
+@ops.sigmoid.register(np.ndarray)
+def _sigmoid(x):
+    try:
+        from scipy.special import expit
+        return expit(x)
+    except ImportError:
+        return 1 / (1 + np.exp(-x))
+
+
+@ops.sqrt.register(np.ndarray)
+def _sqrt(x):
+    return np.sqrt(x)
+
+
+@ops.exp.register(np.ndarray)
+def _exp(x):
+    return np.exp(x)
+
+
+@ops.log.register(np.ndarray)
+def _log(x):
+    return np.log(x)
+
+
+@ops.log1p.register(np.ndarray)
+def _log1p(x):
+    return np.log1p(x)
+
+
+@ops.min.register(np.ndarray, np.ndarray)
+def _min(x, y):
+    return np.minimum(x, y)
+
+
+@ops.min.register((int, float), np.ndarray)
+def _min(x, y):
+    return np.clip(y, a_max=x)
+
+
+@ops.min.register(np.ndarray, (int, float))
+def _min(x, y):
+    return np.clip(x, a_max=y)
+
+
+@ops.max.register(np.ndarray, np.ndarray)
+def _max(x, y):
+    return np.maximum(x, y)
+
+
+@ops.max.register((int, float), np.ndarray)
+def _max(x, y):
+    return np.clip(y, a_min=x)
+
+
+@ops.max.register(np.ndarray, (int, float))
+def _max(x, y):
+    return np.clip(x, a_min=y)
+
+
+@ops.reciprocal.register(np.ndarray)
+def _reciprocal(x):
+    result = np.clip(np.reciprocal(x), a_max=np.finfo(x.dtype).max)
+    return result
+
+
+@ops.safesub.register((int, float), np.ndarray)
+def _safesub(x, y):
+    try:
+        finfo = np.finfo(y.dtype)
+    except ValueError:
+        finfo = np.iinfo(y.dtype)
+    return x + np.clip(-y, a_max=finfo)
+
+
+@ops.safediv.register((int, float), np.ndarray)
+def _safediv(x, y):
+    try:
+        finfo = np.finfo(y.dtype)
+    except ValueError:
+        finfo = np.iinfo(y.dtype)
+    return x * np.clip(np.reciprocal(y), a_max=finfo)
+
+
+@ops.cholesky.register(np.ndarray)
+def _cholesky(x):
+    """
+    Like :func:`numpy.linalg.cholesky` but uses sqrt for scalar matrices.
+    """
+    if x.shape[-1] == 1:
+        return np.sqrt(x)
+    return np.linalg.cholesky(x)
+
+
+@ops.cholesky_inverse.register(np.ndarray)
+def _cholesky_inverse(x):
+    """
+    Like :func:`torch.cholesky_inverse` but supports batching and gradients.
+    """
+    from scipy.linalg import cho_solve
+
+    return cho_solve((x, False), np.eye(x.shape[-1]))
+
+
+@ops.triangular_solve_op.register(np.ndarray, np.ndarray, bool, bool)
+def _triangular_solve(x, y, upper, transpose):
+    from scipy.linalg import solve_triangular
+
+    return solve_triangular(x, y, trans=int(transpose), lower=not upper)
+
+
+@ops.diagonal.register(np.ndarray, int, int)
+def _diagonal(x, dim1, dim2):
+    return np.diagonal(x, axis1=dim1, axis2=dim2)
+
+
+@ops.cat_op.register(int, [np.ndarray])
+def _cat(dim, *x):
+    return np.concatenate(x, axis=dim)
+
+
+@ops.new_zeros.register(np.ndarray, tuple)
+def _new_zeros(x, shape):
+    return np.zeros(shape, dtype=x.dtype)
+
+
+@ops.new_eye.register(np.ndarray, tuple)
+def _new_eye(x, shape):
+    return np.broadcast_to(np.eye(shape[-1]), shape + (-1,))
+
+
+@ops.unsqueeze.register(np.ndarray, int)
+def _unsqueeze(x, dim):
+    return np.expand_dims(x, dim)
+
+
+@ops.expand.register(np.ndarray, tuple)
+def _expand(x, shape):
+    return np.broadcast_to(x, shape)
+
+
+@ops.transpose.register(np.ndarray, int, int)
+def _transpose(x, dim0, dim1):
+    return np.swapaxes(x, dim0, dim1)

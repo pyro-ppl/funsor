@@ -984,14 +984,14 @@ def _log1p(x):
     return x.log1p()
 
 
-@ops.pow.register(object, torch.Tensor)
+@ops.pow.register((int, float), torch.Tensor)
 def _pow(x, y):
     result = x ** y
     # work around shape bug https://github.com/pytorch/pytorch/issues/16685
     return result.reshape(y.shape)
 
 
-@ops.pow.register(torch.Tensor, (object, torch.Tensor))
+@ops.pow.register(torch.Tensor, ((int, float), torch.Tensor))
 def _pow(x, y):
     return x ** y
 
@@ -1001,12 +1001,12 @@ def _min(x, y):
     return torch.min(x, y)
 
 
-@ops.min.register(object, torch.Tensor)
+@ops.min.register((int, float), torch.Tensor)
 def _min(x, y):
     return y.clamp(max=x)
 
 
-@ops.min.register(torch.Tensor, object)
+@ops.min.register(torch.Tensor, (int, float))
 def _min(x, y):
     return x.clamp(max=y)
 
@@ -1016,12 +1016,12 @@ def _max(x, y):
     return torch.max(x, y)
 
 
-@ops.max.register(object, torch.Tensor)
+@ops.max.register((int, float), torch.Tensor)
 def _max(x, y):
     return y.clamp(min=x)
 
 
-@ops.max.register(torch.Tensor, object)
+@ops.max.register(torch.Tensor, (int, float))
 def _max(x, y):
     return x.clamp(min=y)
 
@@ -1032,20 +1032,83 @@ def _reciprocal(x):
     return result
 
 
-@ops.safesub.register(object, torch.Tensor)
+@ops.safesub.register((int, float), torch.Tensor)
 def _safesub(x, y):
     try:
-        return x + -y.clamp(max=torch.finfo(y.dtype).max)
+        finfo = torch.finfo(y.dtype)
     except TypeError:
-        return x + -y.clamp(max=torch.iinfo(y.dtype).max)
+        finfo = torch.iinfo(y.dtype)
+    return x + (-y).clamp(max=finfo.max)
 
 
-@ops.safediv.register(object, torch.Tensor)
+@ops.safediv.register((int, float), torch.Tensor)
 def _safediv(x, y):
     try:
-        return x * y.reciprocal().clamp(max=torch.finfo(y.dtype).max)
+        finfo = torch.finfo(y.dtype)
     except TypeError:
-        return x * y.reciprocal().clamp(max=torch.iinfo(y.dtype).max)
+        finfo = torch.iinfo(y.dtype)
+    return x * y.reciprocal().clamp(max=finfo.max)
+
+
+@ops.cholesky.register(torch.Tensor)
+def _cholesky(x):
+    """
+    Like :func:`torch.cholesky` but uses sqrt for scalar matrices.
+    Works around https://github.com/pytorch/pytorch/issues/24403 often.
+    """
+    if x.size(-1) == 1:
+        return x.sqrt()
+    return x.cholesky()
+
+
+@ops.cholesky_inverse.register(torch.Tensor)
+def _cholesky_inverse(x):
+    """
+    Like :func:`torch.cholesky_inverse` but supports batching and gradients.
+    """
+    if x.dim() == 2:
+        return x.cholesky_inverse()
+    return torch.eye(x.size(-1)).cholesky_solve(x)
+
+
+@ops.triangular_solve_op.register(torch.Tensor, torch.Tensor, bool, bool)
+def _triangular_solve(x, y, upper, transpose):
+    return x.triangular_solve(y, upper=upper, transpose=transpose).solution
+
+
+@ops.diagonal.register(torch.Tensor, int, int)
+def _diagonal(x, dim1, dim2):
+    return x.diagonal(dim1=dim1, dim2=dim2)
+
+
+@ops.cat_op.register(int, [torch.Tensor])
+def _cat(dim, *x):
+    return torch.cat(x, dim=dim)
+
+
+@ops.new_zeros.register(torch.Tensor, tuple)
+def _new_zeros(x, shape):
+    return x.new_zeros(shape)
+
+
+@ops.new_eye.register(torch.Tensor, tuple)
+def _new_eye(x, shape):
+    return torch.eye(shape[-1]).expand(shape + (-1,))
+
+
+@ops.unsqueeze.register(torch.Tensor, int)
+def _unsqueeze(x, dim):
+    return x.unsqueeze(dim)
+
+
+@ops.expand.register(torch.Tensor, tuple)
+def _expand(x, shape):
+    return x.expand(shape)
+
+
+@ops.transpose.register(torch.Tensor, int, int)
+def _transpose(x, dim0, dim1):
+    return x.transpose(dim0, dim1)
 
 
 @ops.cholesky.register(torch.Tensor)
