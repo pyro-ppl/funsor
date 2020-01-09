@@ -204,6 +204,11 @@ class Array(Funsor, metaclass=ArrayMeta):
         return Array(data, inputs, self.dtype)
 
 
+@ops.TensorOp.register(np.ndarray, (type(None), tuple, OrderedDict), str)
+def _Tensor(x, inputs, dtype):
+    return Array(x, inputs, dtype)
+
+
 @dispatch(np.ndarray)
 def to_funsor(x):
     return Array(x)

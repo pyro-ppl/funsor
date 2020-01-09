@@ -363,6 +363,15 @@ def transpose(x, dim0, dim1):
     raise NotImplementedError
 
 
+@Op
+def TensorOp(x, inputs, dtype):
+    raise NotImplementedError
+
+
+def Tensor(x, inputs=None, dtype="real"):
+    return TensorOp(x, inputs, dtype)
+
+
 __all__ = [
     'AddOp',
     'AssociativeOp',

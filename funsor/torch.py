@@ -395,6 +395,11 @@ class Tensor(Funsor, metaclass=TensorMeta):
         return reduce(ops.add, results)
 
 
+@ops.TensorOp.register(torch.Tensor, (type(None), tuple, OrderedDict), str)
+def _Tensor(x, inputs, dtype):
+    return Tensor(x, inputs, dtype)
+
+
 @dispatch(torch.Tensor)
 def to_funsor(x):
     return Tensor(x)
