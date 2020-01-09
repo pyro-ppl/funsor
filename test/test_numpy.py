@@ -234,6 +234,8 @@ def unary_eval(symbol, x):
 @pytest.mark.parametrize('symbol', [
     '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p', 'sigmoid',
 ])
+@pytest.mark.xfail(reason='Unary ops do not work with Array input yet.'
+                   ' Issue https://github.com/pyro-ppl/funsor/issues/207')
 def test_unary(symbol, dims):
     sizes = {'a': 3, 'b': 4}
     shape = tuple(sizes[d] for d in dims)
