@@ -984,14 +984,14 @@ def _log1p(x):
     return x.log1p()
 
 
-@ops.pow.register((int, float), torch.Tensor)
+@ops.pow.register(object, torch.Tensor)
 def _pow(x, y):
     result = x ** y
     # work around shape bug https://github.com/pytorch/pytorch/issues/16685
     return result.reshape(y.shape)
 
 
-@ops.pow.register(torch.Tensor, ((int, float), torch.Tensor))
+@ops.pow.register(torch.Tensor, (object, torch.Tensor))
 def _pow(x, y):
     return x ** y
 
@@ -1001,12 +1001,12 @@ def _min(x, y):
     return torch.min(x, y)
 
 
-@ops.min.register((int, float), torch.Tensor)
+@ops.min.register(object, torch.Tensor)
 def _min(x, y):
     return y.clamp(max=x)
 
 
-@ops.min.register(torch.Tensor, (int, float))
+@ops.min.register(torch.Tensor, object)
 def _min(x, y):
     return x.clamp(max=y)
 
@@ -1016,12 +1016,12 @@ def _max(x, y):
     return torch.max(x, y)
 
 
-@ops.max.register((int, float), torch.Tensor)
+@ops.max.register(object, torch.Tensor)
 def _max(x, y):
     return y.clamp(min=x)
 
 
-@ops.max.register(torch.Tensor, (int, float))
+@ops.max.register(torch.Tensor, object)
 def _max(x, y):
     return x.clamp(min=y)
 
@@ -1032,7 +1032,7 @@ def _reciprocal(x):
     return result
 
 
-@ops.safesub.register((int, float), torch.Tensor)
+@ops.safesub.register(object, torch.Tensor)
 def _safesub(x, y):
     try:
         finfo = torch.finfo(y.dtype)
@@ -1041,7 +1041,7 @@ def _safesub(x, y):
     return x + (-y).clamp(max=finfo.max)
 
 
-@ops.safediv.register((int, float), torch.Tensor)
+@ops.safediv.register(object, torch.Tensor)
 def _safediv(x, y):
     try:
         finfo = torch.finfo(y.dtype)
