@@ -16,18 +16,18 @@ from funsor.util import lazy_property
 
 
 def _log_det_tri(x):
-    return x.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+    return ops.log(ops.diagonal(x, -1, -2)).sum(-1)
 
 
 def _vv(vec1, vec2):
     """
     Computes the inner product ``< vec1 | vec 2 >``.
     """
-    return vec1.unsqueeze(-2).matmul(vec2.unsqueeze(-1)).squeeze(-1).squeeze(-1)
+    return ops.matmul(ops.unsqueeze(vec1, -2), ops.unsqueeze(vec2, -1)).squeeze(-1).squeeze(-1)
 
 
 def _mv(mat, vec):
-    return torch.matmul(mat, vec.unsqueeze(-1)).squeeze(-1)
+    return ops.matmul(mat, ops.unsqueeze(vec, -1)).squeeze(-1)
 
 
 def _trace_mm(x, y):
@@ -36,7 +36,7 @@ def _trace_mm(x, y):
     """
     assert x.dim() >= 2
     assert y.dim() >= 2
-    return (x * y).sum([-1, -2])
+    return (x * y).sum((-1, -2))
 
 
 def cholesky(u):
@@ -44,18 +44,14 @@ def cholesky(u):
     Like :func:`torch.cholesky` but uses sqrt for scalar matrices.
     Works around https://github.com/pytorch/pytorch/issues/24403 often.
     """
-    if u.size(-1) == 1:
-        return u.sqrt()
-    return u.cholesky()
+    return ops.cholesky(u)
 
 
 def cholesky_inverse(u):
     """
     Like :func:`torch.cholesky_inverse` but supports batching and gradients.
     """
-    if u.dim() == 2:
-        return u.cholesky_inverse()
-    return torch.eye(u.size(-1)).expand(u.size()).cholesky_solve(u)
+    return ops.cholesky_inverse(u)
 
 
 def _compute_offsets(inputs):
