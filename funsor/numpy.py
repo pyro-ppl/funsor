@@ -345,6 +345,7 @@ def _min(x, y):
     return np.minimum(x, y)
 
 
+# TODO: replace (int, float) by object
 @ops.min.register((int, float), np.ndarray)
 def _min(x, y):
     return np.clip(y, a_max=x)
