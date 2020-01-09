@@ -607,12 +607,11 @@ def eager_cat_homogeneous(name, part_name, *parts):
         inputs[part_name] = part.inputs[part_name]
         shape = tuple(d.size for d in inputs.values()) + output.shape
         tensors.append(align_tensor(inputs, part).expand(shape))
-    if part_name != name:
-        del inputs[part_name]
+    del inputs[part_name]
 
     dim = 0
     tensor = torch.cat(tensors, dim=dim)
-    inputs[name] = bint(tensor.size(dim))
+    inputs = OrderedDict([(name, bint(tensor.size(dim)))] + list(inputs.items()))
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 
@@ -1102,67 +1101,6 @@ def _unsqueeze(x, dim):
 
 
 @ops.expand.register(torch.Tensor, tuple)
-def _expand(x, shape):
-    return x.expand(shape)
-
-
-@ops.transpose.register(torch.Tensor, int, int)
-def _transpose(x, dim0, dim1):
-    return x.transpose(dim0, dim1)
-
-
-@ops.cholesky.register(torch.Tensor)
-def _cholesky(x):
-    """
-    Like :func:`torch.cholesky` but uses sqrt for scalar matrices.
-    Works around https://github.com/pytorch/pytorch/issues/24403 often.
-    """
-    if x.size(-1) == 1:
-        return x.sqrt()
-    return x.cholesky()
-
-
-@ops.cholesky_inverse.register(torch.Tensor)
-def _cholesky_inverse(x):
-    """
-    Like :func:`torch.cholesky_inverse` but supports batching and gradients.
-    """
-    if x.dim() == 2:
-        return x.cholesky_inverse()
-    return torch.eye(x.size(-1)).cholesky_solve(x)
-
-
-@ops.triangular_solve_op.register(torch.Tensor, torch.Tensor, bool, bool)
-def _triangular_solve(x, y, upper, transpose):
-    return x.triangular_solve(y, upper=upper, transpose=transpose).solution
-
-
-@ops.diagonal.register(torch.Tensor, int, int)
-def _diagonal(x, dim1, dim2):
-    return x.diagonal(dim1=dim1, dim2=dim2)
-
-
-@ops.cat_op.register(int, [torch.Tensor])
-def _cat(dim, *x):
-    return torch.cat(x, dim=dim)
-
-
-@ops.new_zeros.register(torch.Tensor, object)
-def _new_zeros(x, shape):
-    return x.new_zeros(shape)
-
-
-@ops.new_eye.register(torch.Tensor, object)
-def _new_eye(x, shape):
-    return torch.eye(shape[-1]).expand(shape + (-1,))
-
-
-@ops.unsqueeze.register(torch.Tensor, int)
-def _unsqueeze(x, dim):
-    return x.unsqueeze(dim)
-
-
-@ops.expand.register(torch.Tensor, object)
 def _expand(x, shape):
     return x.expand(shape)
 

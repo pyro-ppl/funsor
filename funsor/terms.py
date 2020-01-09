@@ -1371,6 +1371,28 @@ class Cat(Funsor, metaclass=CatMeta):
                     return part(**{self.part_name: n})
                 n -= size
             assert False
+        elif isinstance(value, Slice):
+            start, stop, step = \
+                value.slice.start, value.slice.stop, value.slice.step
+            new_parts = []
+            pos = 0
+            for part in self.parts:
+                psize = part.inputs[self.part_name].size
+                if step > 1:
+                    pstart = ((pos - start) // step) * step - (pos - start)
+                    pstart = pstart + step if pstart < 0 else pstart
+                else:
+                    pstart = max(start - pos, 0)
+                pstop = min(pos + psize, stop) - pos
+
+                if not (pstart >= pstop or pos >= stop or pos + psize <= start):
+                    pslice = Slice(self.part_name, pstart, pstop, step, psize)
+                    part = part(**{self.part_name: pslice})
+                    new_parts.append(part)
+
+                pos += psize
+
+            return Cat(self.name, tuple(new_parts), self.part_name)
         else:
             raise NotImplementedError("TODO implement Cat.eager_subs for {}"
                                       .format(type(value)))
