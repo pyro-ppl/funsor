@@ -351,7 +351,6 @@ def to_funsor(x, output):
     return result
 
 
-@ops.align_tensor_op.register(OrderedDict, (Number, Tensor), bool)
 def align_tensor(new_inputs, x, expand=False):
     r"""
     Permute and add dims to a tensor to match desired ``new_inputs``.
@@ -967,19 +966,13 @@ def torch_stack(parts, dim=0):
 # Register Ops
 ################################################################################
 
-@ops.abs.register(torch.Tensor)
-def _abs(x):
-    return x.abs()
-
-
-@ops.sqrt.register(torch.Tensor)
-def _sqrt(x):
-    return x.sqrt()
-
-
-@ops.exp.register(torch.Tensor)
-def _exp(x):
-    return x.exp()
+ops.abs.register(torch.Tensor)(torch.abs)
+ops.sqrt.register(torch.Tensor)(torch.sqrt)
+ops.exp.register(torch.Tensor)(torch.exp)
+ops.log1p.register(torch.Tensor)(torch.log1p)
+ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
+ops.expand.register(torch.Tensor, tuple)(torch.expand)
+ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
 
 
 @ops.log.register(torch.Tensor)
@@ -987,11 +980,6 @@ def _log(x):
     if x.dtype in (torch.bool, torch.uint8, torch.long):
         x = x.float()
     return x.log()
-
-
-@ops.log1p.register(torch.Tensor)
-def _log1p(x):
-    return x.log1p()
 
 
 @ops.pow.register(object, torch.Tensor)
@@ -1106,19 +1094,14 @@ def _new_eye(x, shape):
     return torch.eye(shape[-1]).expand(shape + (-1,))
 
 
-@ops.unsqueeze.register(torch.Tensor, int)
-def _unsqueeze(x, dim):
-    return x.unsqueeze(dim)
+@ops.new_arange.register(torch.Tensor, int, int, int)
+def _new_arange(x, start, stop, step):
+    return torch.arange()
 
 
-@ops.expand.register(torch.Tensor, tuple)
-def _expand(x, shape):
-    return x.expand(shape)
-
-
-@ops.transpose.register(torch.Tensor, int, int)
-def _transpose(x, dim0, dim1):
-    return x.transpose(dim0, dim1)
+@ops.permute.register(torch.Tensor, tuple)
+def _permute(x, dims):
+    return x.permute(*dims)
 
 
 REDUCE_OP_TO_TORCH = {

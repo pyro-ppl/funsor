@@ -4,16 +4,17 @@ from functools import reduce
 
 import numpy as np
 import torch
+from multipledispatch import dispatch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.numpy import Array
+from funsor.numpy import Array, materialize as numpy_materialize
 from funsor.ops import AddOp, NegOp, SubOp
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
-from funsor.torch import Tensor
+from funsor.torch import Tensor, materialize as torch_materialize
 from funsor.util import lazy_property
 
 
@@ -39,6 +40,16 @@ def _trace_mm(x, y):
     assert len(x.shape) >= 2
     assert len(y.shape) >= 2
     return (x * y).sum((-1, -2))
+
+
+@dispatch(torch.Tensor, Funsor)
+def _materialize(prototype, x):
+    return torch_materialize(x)
+
+
+@dispatch(np.ndarray, Funsor)
+def _materialize(prototype, x):
+    return numpy_materialize(x)
 
 
 def _compute_offsets(inputs):
@@ -168,6 +179,57 @@ class BlockMatrix(object):
         return result
 
 
+def align_tensor(new_inputs, x, expand=False):
+    assert isinstance(new_inputs, OrderedDict)
+    assert isinstance(x, (Number, Tensor, Array))
+    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
+
+    data = x.data
+    if isinstance(x, Number):
+        return data
+
+    old_inputs = x.inputs
+    if old_inputs == new_inputs:
+        return data
+
+    # Permute squashed input dims.
+    x_keys = tuple(old_inputs)
+    data = ops.permute(data, tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
+                       tuple(range(len(old_inputs), len(data.shape))))
+
+    # Unsquash multivariate input dims by filling in ones.
+    data = data.reshape(tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +
+                        x.output.shape)
+
+    # Optionally expand new dims.
+    if expand:
+        data = ops.expand(data, tuple(d.dtype for d in new_inputs.values()) + x.output.shape)
+    return data
+
+
+def align_tensors(*args, **kwargs):
+    r"""
+    Permute multiple tensors before applying a broadcasted op.
+
+    This is mainly useful for implementing eager funsor operations.
+
+    :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
+        :class:`~funsor.terms.Number` s.
+    :param bool expand: Whether to expand input tensors. Defaults to False.
+    :return: a pair ``(inputs, tensors)`` where tensors are all
+        :class:`torch.Tensor` s that can be broadcast together to a single data
+        with given ``inputs``.
+    :rtype: tuple
+    """
+    expand = kwargs.pop('expand', False)
+    assert not kwargs
+    inputs = OrderedDict()
+    for x in args:
+        inputs.update(x.inputs)
+    tensors = [align_tensor(inputs, x, expand=expand) for x in args]
+    return inputs, tensors
+
+
 def align_gaussian(new_inputs, old):
     """
     Align data of a Gaussian distribution to a new ``inputs`` shape.
@@ -182,8 +244,8 @@ def align_gaussian(new_inputs, old):
     new_ints = OrderedDict((k, d) for k, d in new_inputs.items() if d.dtype != 'real')
     old_ints = OrderedDict((k, d) for k, d in old.inputs.items() if d.dtype != 'real')
     if new_ints != old_ints:
-        info_vec = ops.align_tensor(new_ints, ops.Tensor(info_vec, old_ints))
-        precision = ops.align_tensor(new_ints, ops.Tensor(precision, old_ints))
+        info_vec = align_tensor(new_ints, ops.Tensor(info_vec, old_ints))
+        precision = align_tensor(new_ints, ops.Tensor(precision, old_ints))
 
     # Align real inputs, which are all concatenated in the rightmost dims.
     new_offsets, new_dim = _compute_offsets(new_inputs)
@@ -314,7 +376,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
         subs = tuple((k, v if isinstance(v, (Variable, Slice))
-                      else ops.materialize(self.info_vec, v))
+                      else _materialize(self.info_vec, v))
                      for k, v in subs if k in self.inputs)
         if not subs:
             return self
@@ -368,7 +430,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         tensors = [ops.Tensor(self.info_vec, int_inputs),
                    ops.Tensor(self.precision, int_inputs)]
         tensors.extend(subs.values())
-        int_inputs, tensors = ops.align_tensors(*tensors)
+        int_inputs, tensors = align_tensors(*tensors)
         batch_dim = len(tensors[0].shape) - 1
         batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
         (info_vec, precision), values = tensors[:2], tensors[2:]
@@ -449,7 +511,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         for const, coeffs in affine.values():
             tensors.append(const)
             tensors.extend(coeff for coeff, _ in coeffs.values())
-        new_int_inputs, tensors = ops.align_tensors(*tensors, expand=True)
+        new_int_inputs, tensors = align_tensors(*tensors, expand=True)
         tensors = (Tensor(x, new_int_inputs) for x in tensors)
         old_info_vec = next(tensors).data
         old_precision = next(tensors).data

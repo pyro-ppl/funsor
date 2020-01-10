@@ -1,5 +1,4 @@
 import operator
-from collections import OrderedDict
 from numbers import Number
 
 import numpy as np
@@ -345,6 +344,11 @@ def new_eye(x, shape):
 
 
 @Op
+def new_arange(x, start, stop, step):
+    raise NotImplementedError
+
+
+@Op
 def unsqueeze(x, dim):
     raise NotImplementedError
 
@@ -365,49 +369,17 @@ def transpose(x, dim0, dim1):
 
 
 @Op
+def permute(x, dims):
+    raise NotImplementedError
+
+
+@Op
 def TensorOp(x, inputs, dtype):
     raise NotImplementedError
 
 
 def Tensor(x, inputs=None, dtype="real"):
     return TensorOp(x, inputs, dtype)
-
-
-@Op
-def align_tensor_op(new_inputs, x, expand):
-    raise NotImplementedError
-
-
-def align_tensor(new_inputs, x, expand=False):
-    return align_tensor_op(new_inputs, x, expand)
-
-
-def align_tensors(*args, **kwargs):
-    r"""
-    Permute multiple tensors before applying a broadcasted op.
-
-    This is mainly useful for implementing eager funsor operations.
-
-    :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
-        :class:`~funsor.terms.Number` s.
-    :param bool expand: Whether to expand input tensors. Defaults to False.
-    :return: a pair ``(inputs, tensors)`` where tensors are all
-        :class:`torch.Tensor` s that can be broadcast together to a single data
-        with given ``inputs``.
-    :rtype: tuple
-    """
-    expand = kwargs.pop('expand', False)
-    assert not kwargs
-    inputs = OrderedDict()
-    for x in args:
-        inputs.update(x.inputs)
-    tensors = [align_tensor(inputs, x, expand=expand) for x in args]
-    return inputs, tensors
-
-
-@Op
-def materialize(x, y):
-    raise NotImplementedError
 
 
 __all__ = [

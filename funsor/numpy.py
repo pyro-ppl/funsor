@@ -169,7 +169,6 @@ def to_funsor(x, output):
     return result
 
 
-@ops.align_tensor_op.register(OrderedDict, Array, bool)
 def align_array(new_inputs, x, expand=False):
     r"""
     Permute and expand an array to match desired ``new_inputs``.
@@ -470,6 +469,11 @@ def _new_eye(x, shape):
     return np.broadcast_to(np.eye(shape[-1]), shape + (-1,))
 
 
+@ops.new_arange.register(np.ndarray, int, int, int)
+def _new_arange(x, start, stop, step):
+    return np.arange(start, stop, step)
+
+
 @ops.unsqueeze.register(np.ndarray, int)
 def _unsqueeze(x, dim):
     return np.expand_dims(x, dim)
@@ -483,3 +487,6 @@ def _expand(x, shape):
 @ops.transpose.register(np.ndarray, int, int)
 def _transpose(x, dim0, dim1):
     return np.swapaxes(x, dim0, dim1)
+
+
+ops.permute.register(np.ndarray, tuple)(np.transpose)
