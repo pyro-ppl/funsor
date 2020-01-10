@@ -13,7 +13,7 @@ from funsor.domains import reals
 from funsor.numpy import Array
 from funsor.ops import AddOp, NegOp, SubOp
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
-from funsor.torch import Tensor, align_tensor, align_tensors, materialize
+from funsor.torch import Tensor
 from funsor.util import lazy_property
 
 
@@ -182,8 +182,8 @@ def align_gaussian(new_inputs, old):
     new_ints = OrderedDict((k, d) for k, d in new_inputs.items() if d.dtype != 'real')
     old_ints = OrderedDict((k, d) for k, d in old.inputs.items() if d.dtype != 'real')
     if new_ints != old_ints:
-        info_vec = align_tensor(new_ints, ops.Tensor(info_vec, old_ints))
-        precision = align_tensor(new_ints, ops.Tensor(precision, old_ints))
+        info_vec = ops.align_tensor(new_ints, ops.Tensor(info_vec, old_ints))
+        precision = ops.align_tensor(new_ints, ops.Tensor(precision, old_ints))
 
     # Align real inputs, which are all concatenated in the rightmost dims.
     new_offsets, new_dim = _compute_offsets(new_inputs)
@@ -313,7 +313,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = tuple((k, v if isinstance(v, (Variable, Slice)) else materialize(v))
+        subs = tuple((k, v if isinstance(v, (Variable, Slice))
+                      else ops.materialize(self.info_vec, v))
                      for k, v in subs if k in self.inputs)
         if not subs:
             return self
@@ -367,7 +368,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         tensors = [ops.Tensor(self.info_vec, int_inputs),
                    ops.Tensor(self.precision, int_inputs)]
         tensors.extend(subs.values())
-        int_inputs, tensors = align_tensors(*tensors)
+        int_inputs, tensors = ops.align_tensors(*tensors)
         batch_dim = len(tensors[0].shape) - 1
         batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
         (info_vec, precision), values = tensors[:2], tensors[2:]
@@ -448,7 +449,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         for const, coeffs in affine.values():
             tensors.append(const)
             tensors.extend(coeff for coeff, _ in coeffs.values())
-        new_int_inputs, tensors = align_tensors(*tensors, expand=True)
+        new_int_inputs, tensors = ops.align_tensors(*tensors, expand=True)
         tensors = (Tensor(x, new_int_inputs) for x in tensors)
         old_info_vec = next(tensors).data
         old_precision = next(tensors).data

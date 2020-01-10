@@ -50,69 +50,6 @@ def _(x, indent, out):
     out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
 
 
-def align_tensor(new_inputs, x, expand=False):
-    r"""
-    Permute and add dims to a tensor to match desired ``new_inputs``.
-
-    :param OrderedDict new_inputs: A target set of inputs.
-    :param funsor.terms.Funsor x: A :class:`Tensor` or
-        :class:`~funsor.terms.Number` .
-    :param bool expand: If False (default), set result size to 1 for any input
-        of ``x`` not in ``new_inputs``; if True expand to ``new_inputs`` size.
-    :return: a number or :class:`torch.Tensor` that can be broadcast to other
-        tensors with inputs ``new_inputs``.
-    :rtype: int or float or torch.Tensor
-    """
-    assert isinstance(new_inputs, OrderedDict)
-    assert isinstance(x, (Number, Tensor))
-    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
-
-    data = x.data
-    if isinstance(x, Number):
-        return data
-
-    old_inputs = x.inputs
-    if old_inputs == new_inputs:
-        return data
-
-    # Permute squashed input dims.
-    x_keys = tuple(old_inputs)
-    data = data.permute(tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
-                        tuple(range(len(old_inputs), data.dim())))
-
-    # Unsquash multivariate input dims by filling in ones.
-    data = data.reshape(tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +
-                        x.output.shape)
-
-    # Optionally expand new dims.
-    if expand:
-        data = data.expand(tuple(d.dtype for d in new_inputs.values()) + x.output.shape)
-    return data
-
-
-def align_tensors(*args, **kwargs):
-    r"""
-    Permute multiple tensors before applying a broadcasted op.
-
-    This is mainly useful for implementing eager funsor operations.
-
-    :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
-        :class:`~funsor.terms.Number` s.
-    :param bool expand: Whether to expand input tensors. Defaults to False.
-    :return: a pair ``(inputs, tensors)`` where tensors are all
-        :class:`torch.Tensor` s that can be broadcast together to a single data
-        with given ``inputs``.
-    :rtype: tuple
-    """
-    expand = kwargs.pop('expand', False)
-    assert not kwargs
-    inputs = OrderedDict()
-    for x in args:
-        inputs.update(x.inputs)
-    tensors = [align_tensor(inputs, x, expand=expand) for x in args]
-    return inputs, tensors
-
-
 class TensorMeta(FunsorMeta):
     """
     Wrapper to fill in default args and convert between OrderedDict and tuple.
@@ -414,6 +351,70 @@ def to_funsor(x, output):
     return result
 
 
+@ops.align_tensor_op.register(OrderedDict, (Number, Tensor), bool)
+def align_tensor(new_inputs, x, expand=False):
+    r"""
+    Permute and add dims to a tensor to match desired ``new_inputs``.
+
+    :param OrderedDict new_inputs: A target set of inputs.
+    :param funsor.terms.Funsor x: A :class:`Tensor` or
+        :class:`~funsor.terms.Number` .
+    :param bool expand: If False (default), set result size to 1 for any input
+        of ``x`` not in ``new_inputs``; if True expand to ``new_inputs`` size.
+    :return: a number or :class:`torch.Tensor` that can be broadcast to other
+        tensors with inputs ``new_inputs``.
+    :rtype: int or float or torch.Tensor
+    """
+    assert isinstance(new_inputs, OrderedDict)
+    assert isinstance(x, (Number, Tensor))
+    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
+
+    data = x.data
+    if isinstance(x, Number):
+        return data
+
+    old_inputs = x.inputs
+    if old_inputs == new_inputs:
+        return data
+
+    # Permute squashed input dims.
+    x_keys = tuple(old_inputs)
+    data = data.permute(tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
+                        tuple(range(len(old_inputs), data.dim())))
+
+    # Unsquash multivariate input dims by filling in ones.
+    data = data.reshape(tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +
+                        x.output.shape)
+
+    # Optionally expand new dims.
+    if expand:
+        data = data.expand(tuple(d.dtype for d in new_inputs.values()) + x.output.shape)
+    return data
+
+
+def align_tensors(*args, **kwargs):
+    r"""
+    Permute multiple tensors before applying a broadcasted op.
+
+    This is mainly useful for implementing eager funsor operations.
+
+    :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
+        :class:`~funsor.terms.Number` s.
+    :param bool expand: Whether to expand input tensors. Defaults to False.
+    :return: a pair ``(inputs, tensors)`` where tensors are all
+        :class:`torch.Tensor` s that can be broadcast together to a single data
+        with given ``inputs``.
+    :rtype: tuple
+    """
+    expand = kwargs.pop('expand', False)
+    assert not kwargs
+    inputs = OrderedDict()
+    for x in args:
+        inputs.update(x.inputs)
+    tensors = [align_tensor(inputs, x, expand=expand) for x in args]
+    return inputs, tensors
+
+
 @to_data.register(Tensor)
 def _to_data_tensor(x):
     if x.inputs:
@@ -674,6 +675,11 @@ def materialize(x):
             subs.append((name, arange(name, domain.dtype)))
     subs = tuple(subs)
     return substitute(x, subs)
+
+
+@ops.materialize.register(torch.Tensor, Funsor)
+def _materialize(prototype, x):
+    return materialize(x)
 
 
 class LazyTuple(tuple):
