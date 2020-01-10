@@ -1,3 +1,6 @@
+# Copyright Contributors to the Pyro project.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 We use a switching linear dynamical system [1] to model a EEG time series dataset.
 For inference we use a moment-matching approximation enabled by
