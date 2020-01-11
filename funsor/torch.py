@@ -1103,7 +1103,7 @@ def _expand(x, shape):
 
 @ops.permute.register(torch.Tensor, tuple)
 def _permute(x, dims):
-    return x.permute(*dims)
+    return x.permute(dims)
 
 
 REDUCE_OP_TO_TORCH = {
