@@ -1,3 +1,6 @@
+# Copyright Contributors to the Pyro project.
+# SPDX-License-Identifier: Apache-2.0
+
 from collections import OrderedDict
 
 import numpy as np
@@ -319,44 +322,20 @@ def materialize(x):
 # Register Ops
 ################################################################################
 
-
-@ops.abs.register(np.ndarray)
-def _abs(x):
-    return abs(x)
-
-
-@ops.sigmoid.register(np.ndarray)
-def _sigmoid(x):
-    try:
-        from scipy.special import expit
-        return expit(x)
-    except ImportError:
+try:
+    from scipy.special import expit as _sigmoid
+except ImportError:
+    def _sigmoid(x):
         return 1 / (1 + np.exp(-x))
 
-
-@ops.sqrt.register(np.ndarray)
-def _sqrt(x):
-    return np.sqrt(x)
-
-
-@ops.exp.register(np.ndarray)
-def _exp(x):
-    return np.exp(x)
-
-
-@ops.log.register(np.ndarray)
-def _log(x):
-    return np.log(x)
-
-
-@ops.log1p.register(np.ndarray)
-def _log1p(x):
-    return np.log1p(x)
-
-
-@ops.min.register(np.ndarray, np.ndarray)
-def _min(x, y):
-    return np.minimum(x, y)
+ops.abs.register(np.ndarray)(abs)
+ops.sigmoid.register(np.ndarray)(_sigmoid)
+ops.sqrt.register(np.ndarray)(np.sqrt)
+ops.exp.register(np.ndarray)(np.exp)
+ops.log.register(np.ndarray)(np.log)
+ops.log1p.register(np.ndarray)(np.log1p)
+ops.min.register(np.ndarray, np.ndarray)(np.minimum)
+ops.max.register(np.ndarray, np.ndarray)(np.maximum)
 
 
 # TODO: replace (int, float) by object
@@ -368,11 +347,6 @@ def _min(x, y):
 @ops.min.register(np.ndarray, (int, float))
 def _min(x, y):
     return np.clip(x, a_max=y)
-
-
-@ops.max.register(np.ndarray, np.ndarray)
-def _max(x, y):
-    return np.maximum(x, y)
 
 
 @ops.max.register((int, float), np.ndarray)

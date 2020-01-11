@@ -1,3 +1,6 @@
+# Copyright Contributors to the Pyro project.
+# SPDX-License-Identifier: Apache-2.0
+
 """
 This module follows a convention for converting between funsors and PyTorch
 distribution objects. This convention is compatible with NumPy/PyTorch-style
