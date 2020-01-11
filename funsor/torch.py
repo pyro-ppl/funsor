@@ -676,11 +676,6 @@ def materialize(x):
     return substitute(x, subs)
 
 
-@ops.materialize.register(torch.Tensor, Funsor)
-def _materialize(prototype, x):
-    return materialize(x)
-
-
 class LazyTuple(tuple):
     def __call__(self, *args, **kwargs):
         return LazyTuple(x(*args, **kwargs) for x in self)

@@ -315,11 +315,6 @@ def materialize(x):
     return substitute(x, subs)
 
 
-@ops.materialize.register(np.ndarray, Funsor)
-def _materialize(prototype, x):
-    return materialize(x)
-
-
 ################################################################################
 # Register Ops
 ################################################################################
