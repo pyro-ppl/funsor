@@ -969,7 +969,6 @@ ops.sqrt.register(torch.Tensor)(torch.sqrt)
 ops.exp.register(torch.Tensor)(torch.exp)
 ops.log1p.register(torch.Tensor)(torch.log1p)
 ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
-ops.expand.register(torch.Tensor, tuple)(torch.expand)
 ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
 
 
@@ -1095,6 +1094,11 @@ def _new_eye(x, shape):
 @ops.new_arange.register(torch.Tensor, int, int, int)
 def _new_arange(x, start, stop, step):
     return torch.arange()
+
+
+@ops.expand.register(torch.Tensor, tuple)
+def _expand(x, shape):
+    return x.expand(shape)
 
 
 @ops.permute.register(torch.Tensor, tuple)

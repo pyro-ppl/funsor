@@ -336,6 +336,10 @@ ops.log.register(np.ndarray)(np.log)
 ops.log1p.register(np.ndarray)(np.log1p)
 ops.min.register(np.ndarray, np.ndarray)(np.minimum)
 ops.max.register(np.ndarray, np.ndarray)(np.maximum)
+ops.unsqueeze.register(np.ndarray, int)(np.expand_dims)
+ops.expand.register(np.ndarray, tuple)(np.broadcast_to)
+ops.permute.register(np.ndarray, tuple)(np.transpose)
+ops.transpose.register(np.ndarray, int, int)(np.swapaxes)
 
 
 # TODO: replace (int, float) by object
@@ -441,21 +445,3 @@ def _new_eye(x, shape):
 @ops.new_arange.register(np.ndarray, int, int, int)
 def _new_arange(x, start, stop, step):
     return np.arange(start, stop, step)
-
-
-@ops.unsqueeze.register(np.ndarray, int)
-def _unsqueeze(x, dim):
-    return np.expand_dims(x, dim)
-
-
-@ops.expand.register(np.ndarray, tuple)
-def _expand(x, shape):
-    return np.broadcast_to(x, shape)
-
-
-@ops.transpose.register(np.ndarray, int, int)
-def _transpose(x, dim0, dim1):
-    return np.swapaxes(x, dim0, dim1)
-
-
-ops.permute.register(np.ndarray, tuple)(np.transpose)
