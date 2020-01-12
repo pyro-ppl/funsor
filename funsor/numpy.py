@@ -11,60 +11,6 @@ from funsor.domains import Domain, bint, find_domain
 from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, substitute, to_data, to_funsor
 
 
-def align_array(new_inputs, x):
-    r"""
-    Permute and expand an array to match desired ``new_inputs``.
-
-    :param OrderedDict new_inputs: A target set of inputs.
-    :param funsor.terms.Funsor x: A :class:`Array` s or
-        or :class:`~funsor.terms.Number` .
-    :return: a number or :class:`numpy.ndarray` that can be broadcast to other
-        array with inputs ``new_inputs``.
-    :rtype: tuple
-    """
-    assert isinstance(new_inputs, OrderedDict)
-    assert isinstance(x, (Number, Array))
-    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
-
-    data = x.data
-    if isinstance(x, Number):
-        return data
-
-    old_inputs = x.inputs
-    if old_inputs == new_inputs:
-        return data
-
-    # Permute squashed input dims.
-    x_keys = tuple(old_inputs)
-    data = np.transpose(data, (tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
-                               tuple(range(len(old_inputs), data.ndim))))
-
-    # Unsquash multivariate input dims by filling in ones.
-    data = np.reshape(data, tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +
-                      x.output.shape)
-    return data
-
-
-def align_arrays(*args):
-    r"""
-    Permute multiple arrays before applying a broadcasted op.
-
-    This is mainly useful for implementing eager funsor operations.
-
-    :param funsor.terms.Funsor \*args: Multiple :class:`Array` s and
-        :class:`~funsor.terms.Number` s.
-    :return: a pair ``(inputs, arrays)`` where arrayss are all
-        :class:`numpy.ndarray` s that can be broadcast together to a single data
-        with given ``inputs``.
-    :rtype: tuple
-    """
-    inputs = OrderedDict()
-    for x in args:
-        inputs.update(x.inputs)
-    arrays = [align_array(inputs, x) for x in args]
-    return inputs, arrays
-
-
 class ArrayMeta(FunsorMeta):
     """
     Wrapper to fill in default args and convert between OrderedDict and tuple.
@@ -207,6 +153,11 @@ class Array(Funsor, metaclass=ArrayMeta):
         return Array(data, inputs, self.dtype)
 
 
+@ops.TensorOp.register(np.ndarray, (type(None), tuple, OrderedDict), str)
+def _Tensor(x, inputs, dtype):
+    return Array(x, inputs, dtype)
+
+
 @dispatch(np.ndarray)
 def to_funsor(x):
     return Array(x)
@@ -219,6 +170,69 @@ def to_funsor(x, output):
         raise ValueError("Invalid shape: expected {}, actual {}"
                          .format(output.shape, result.output.shape))
     return result
+
+
+def align_array(new_inputs, x, expand=False):
+    r"""
+    Permute and expand an array to match desired ``new_inputs``.
+
+    :param OrderedDict new_inputs: A target set of inputs.
+    :param funsor.terms.Funsor x: A :class:`Array` s or
+        or :class:`~funsor.terms.Number` .
+    :param bool expand: If False (default), set result size to 1 for any input
+        of ``x`` not in ``new_inputs``; if True expand to ``new_inputs`` size.
+    :return: a number or :class:`numpy.ndarray` that can be broadcast to other
+        array with inputs ``new_inputs``.
+    :rtype: tuple
+    """
+    assert isinstance(new_inputs, OrderedDict)
+    assert isinstance(x, (Number, Array))
+    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
+
+    data = x.data
+    if isinstance(x, Number):
+        return data
+
+    old_inputs = x.inputs
+    if old_inputs == new_inputs:
+        return data
+
+    # Permute squashed input dims.
+    x_keys = tuple(old_inputs)
+    data = np.transpose(data, (tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
+                               tuple(range(len(old_inputs), data.ndim))))
+
+    # Unsquash multivariate input dims by filling in ones.
+    data = np.reshape(data, tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +
+                      x.output.shape)
+
+    # Optionally expand new dims.
+    if expand:
+        data = np.broadcast_to(data, tuple(d.dtype for d in new_inputs.values()) + x.output.shape)
+    return data
+
+
+def align_arrays(*args, **kwargs):
+    r"""
+    Permute multiple arrays before applying a broadcasted op.
+
+    This is mainly useful for implementing eager funsor operations.
+
+    :param funsor.terms.Funsor \*args: Multiple :class:`Array` s and
+        :class:`~funsor.terms.Number` s.
+    :param bool expand: Whether to expand input tensors. Defaults to False.
+    :return: a pair ``(inputs, arrays)`` where arrayss are all
+        :class:`numpy.ndarray` s that can be broadcast together to a single data
+        with given ``inputs``.
+    :rtype: tuple
+    """
+    expand = kwargs.pop('expand', False)
+    assert not kwargs
+    inputs = OrderedDict()
+    for x in args:
+        inputs.update(x.inputs)
+    arrays = [align_array(inputs, x, expand=expand) for x in args]
+    return inputs, arrays
 
 
 @to_data.register(Array)
@@ -322,6 +336,10 @@ ops.log.register(np.ndarray)(np.log)
 ops.log1p.register(np.ndarray)(np.log1p)
 ops.min.register(np.ndarray, np.ndarray)(np.minimum)
 ops.max.register(np.ndarray, np.ndarray)(np.maximum)
+ops.unsqueeze.register(np.ndarray, int)(np.expand_dims)
+ops.expand.register(np.ndarray, tuple)(np.broadcast_to)
+ops.permute.register(np.ndarray, tuple)(np.transpose)
+ops.transpose.register(np.ndarray, int, int)(np.swapaxes)
 
 
 # TODO: replace (int, float) by object
@@ -393,7 +411,15 @@ def _cholesky_inverse(x):
 def _triangular_solve(x, y, upper, transpose):
     from scipy.linalg import solve_triangular
 
-    return solve_triangular(x, y, trans=int(transpose), lower=not upper)
+    # TODO: remove this logic when using JAX
+    # work around the issue of scipy which does not support batched input
+    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
+    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
+    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
+    ans = [solve_triangular(y, x, trans=int(transpose), lower=not upper)
+           for (x, y) in zip(xs, ys)]
+    ans = np.stack(ans)
+    return ans.reshape(batch_shape + ans.shape[-2:])
 
 
 @ops.diagonal.register(np.ndarray, int, int)
@@ -416,16 +442,6 @@ def _new_eye(x, shape):
     return np.broadcast_to(np.eye(shape[-1]), shape + (-1,))
 
 
-@ops.unsqueeze.register(np.ndarray, int)
-def _unsqueeze(x, dim):
-    return np.expand_dims(x, dim)
-
-
-@ops.expand.register(np.ndarray, tuple)
-def _expand(x, shape):
-    return np.broadcast_to(x, shape)
-
-
-@ops.transpose.register(np.ndarray, int, int)
-def _transpose(x, dim0, dim1):
-    return np.swapaxes(x, dim0, dim1)
+@ops.new_arange.register(np.ndarray, int, int, int)
+def _new_arange(x, start, stop, step):
+    return np.arange(start, stop, step)

@@ -48,6 +48,7 @@ setup(
             'pyro-api>=0.1',
             'pytest-xdist==1.27.0',
             'pillow-simd',
+            'scipy',
             'torchvision',
         ],
         'dev': [
@@ -55,6 +56,7 @@ setup(
             'isort',
             'pandas',
             'pytest-xdist==1.27.0',
+            'scipy',
             'sphinx>=2.0',
             'sphinx_rtd_theme',
             'pillow-simd',

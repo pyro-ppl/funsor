@@ -12,7 +12,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.domains import bint, reals
-from funsor.gaussian import Gaussian, cholesky_inverse
+from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, interpretation
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
 from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
@@ -511,7 +511,7 @@ def eager_mvn(loc, scale_tril, value):
         return None  # lazy
 
     info_vec = scale_tril.data.new_zeros(scale_tril.data.shape[:-1])
-    precision = cholesky_inverse(scale_tril.data)
+    precision = ops.cholesky_inverse(scale_tril.data)
     scale_diag = Tensor(scale_tril.data.diagonal(dim1=-1, dim2=-2), scale_tril.inputs)
     log_prob = -0.5 * scale_diag.shape[0] * math.log(2 * math.pi) - scale_diag.log().sum()
     inputs = scale_tril.inputs.copy()

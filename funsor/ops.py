@@ -347,6 +347,11 @@ def new_eye(x, shape):
 
 
 @Op
+def new_arange(x, start, stop, step):
+    raise NotImplementedError
+
+
+@Op
 def unsqueeze(x, dim):
     raise NotImplementedError
 
@@ -364,6 +369,20 @@ def diagonal(x, dim1, dim2):
 @Op
 def transpose(x, dim0, dim1):
     raise NotImplementedError
+
+
+@Op
+def permute(x, dims):
+    raise NotImplementedError
+
+
+@Op
+def TensorOp(x, inputs, dtype):
+    raise NotImplementedError
+
+
+def Tensor(x, inputs=None, dtype="real"):
+    return TensorOp(x, inputs, dtype)
 
 
 __all__ = [

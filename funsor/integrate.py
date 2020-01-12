@@ -7,7 +7,7 @@ from typing import Union
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
-from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian, cholesky_inverse
+from funsor.gaussian import Gaussian, align_gaussian, _mv, _trace_mm, _vv
 from funsor.terms import (
     Funsor,
     FunsorMeta,
@@ -164,7 +164,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
             norm = lhs.log_normalizer.data.exp()
-            lhs_cov = cholesky_inverse(lhs._precision_chol)
+            lhs_cov = ops.cholesky_inverse(lhs._precision_chol)
             lhs_loc = lhs.info_vec.unsqueeze(-1).cholesky_solve(lhs._precision_chol).squeeze(-1)
             vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
             data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
