@@ -82,7 +82,7 @@ def moment_matching_contract_default(*args):
     return None
 
 
-@moment_matching.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, (Number, funsor.torch.Tensor), Gaussian)
+@moment_matching.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, (Number, TorchTensor), Gaussian)
 def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
 
     approx_vars = frozenset(k for k in reduced_vars if k in gaussian.inputs
@@ -146,9 +146,9 @@ def eager_reduce_exp(op, arg, reduced_vars):
 
 @eager.register(Independent,
                 (Contraction[ops.NullOp, ops.AddOp, frozenset,
-                             Tuple[Delta, Union[Number, funsor.torch.Tensor], Gaussian]],
+                             Tuple[Delta, Union[Number, TorchTensor], Gaussian]],
                  Contraction[ops.NullOp, ops.AddOp, frozenset,
-                             Tuple[Delta, Union[Number, funsor.torch.Tensor, Gaussian]]]),
+                             Tuple[Delta, Union[Number, TorchTensor, Gaussian]]]),
                 str, str, str)
 def eager_independent_joint(joint, reals_var, bint_var, diag_var):
     if diag_var not in joint.terms[0].fresh:
