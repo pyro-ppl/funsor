@@ -324,14 +324,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # Constants and Affine funsors are eagerly substituted;
         # everything else is lazily substituted.
         lazy_subs = tuple((k, v) for k, v in subs
-                          if not isinstance(v, (Number, Variable, Slice)) and not is_tensor(v)
+                          if not (isinstance(v, (Number, Variable, Slice)) or is_tensor(v))
                           and not (is_affine(v) and affine_inputs(v)))
         var_subs = tuple((k, v) for k, v in subs if isinstance(v, Variable))
         int_subs = tuple((k, v) for k, v in subs
-                         if isinstance(v, (Number, Slice)) or is_tensor(v)
+                         if (isinstance(v, (Number, Slice)) or is_tensor(v))
                          if v.dtype != 'real')
         real_subs = tuple((k, v) for k, v in subs
-                          if isinstance(v, Number) or is_tensor(v)
+                          if (isinstance(v, Number) or is_tensor(v))
                           if v.dtype == 'real')
         affine_subs = tuple((k, v) for k, v in subs
                             if is_affine(v) and affine_inputs(v) and not isinstance(v, Variable))

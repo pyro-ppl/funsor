@@ -179,7 +179,7 @@ CondIndepStackFrame = namedtuple("CondIndepStackFrame", ["name", "size", "dim"])
 
 # This implementation of vectorized PlateMessenger broadcasts and
 # records a cond_indep_stack which is later used to convert
-# torch.Tensors to TorchTensors.
+# torch.Tensors to funsor.torch.Tensors.
 class PlateMessenger(Messenger):
     def __init__(self, fn, name, size, dim):
         assert dim < 0
