@@ -32,9 +32,8 @@ from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.ops import cholesky
-from funsor.tensor_ops import align_tensors
+from funsor.tensor_ops import Tensor, align_tensors
 from funsor.terms import Funsor, Independent, Variable, eager
-from funsor.torch import Tensor
 
 # Conversion functions use fixed names for Pyro batch dims, but
 # accept an event_inputs tuple for custom event dim names.

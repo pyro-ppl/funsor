@@ -11,7 +11,6 @@ import opt_einsum
 from multipledispatch.variadic import Variadic
 from pyro.distributions.util import broadcast_shape
 
-import funsor
 import funsor.ops as ops
 from funsor.affine import affine_inputs
 from funsor.delta import Delta
@@ -34,6 +33,7 @@ from funsor.terms import (
     reflect,
     to_funsor
 )
+from funsor.torch import Tensor as TorchTensor
 from funsor.util import quote
 
 
@@ -144,7 +144,7 @@ class Contraction(Funsor):
 
 
 GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
-                              Tuple[Union[funsor.torch.Tensor, Number], Gaussian]]
+                              Tuple[Union[TorchTensor, Number], Gaussian]]
 
 
 @quote.register(Contraction)
@@ -228,14 +228,14 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
-@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, funsor.torch.Tensor, funsor.torch.Tensor)
+@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, TorchTensor, TorchTensor)
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
     return _eager_contract_tensors(reduced_vars, terms, backend="torch")
 
 
-@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, funsor.torch.Tensor, funsor.torch.Tensor)
+@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, TorchTensor, TorchTensor)
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
@@ -298,7 +298,7 @@ def _(fn):
 # Normalizing Contractions
 ##########################################
 
-ORDERING = {Delta: 1, Number: 2, funsor.torch.Tensor: 3, Gaussian: 4}
+ORDERING = {Delta: 1, Number: 2, TorchTensor: 3, Gaussian: 4}
 GROUND_TERMS = tuple(ORDERING)
 
 

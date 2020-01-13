@@ -41,7 +41,7 @@ class Distribution(object):
     def log_prob(self, value):
         result = self.funsor_dist(value=value)
         if self.sample_inputs:
-            result = result + funsor.torch.Tensor(
+            result = result + funsor.Tensor(
                 torch.zeros(*(size.dtype for size in self.sample_inputs.values())),
                 self.sample_inputs
             )
@@ -179,7 +179,7 @@ CondIndepStackFrame = namedtuple("CondIndepStackFrame", ["name", "size", "dim"])
 
 # This implementation of vectorized PlateMessenger broadcasts and
 # records a cond_indep_stack which is later used to convert
-# torch.Tensors to funsor.torch.Tensors.
+# torch.Tensors to TorchTensors.
 class PlateMessenger(Messenger):
     def __init__(self, fn, name, size, dim):
         assert dim < 0
@@ -212,7 +212,7 @@ def tensor_to_funsor(value, cond_indep_stack, output):
             frame = cond_indep_stack[dim - len(batch_shape)]
             assert size == frame.size, (size, frame)
             inputs[frame.name] = funsor.bint(int(size))
-    value = funsor.torch.Tensor(data, inputs, output.dtype)
+    value = funsor.Tensor(data, inputs, output.dtype)
     assert value.output == output
     return value
 
@@ -570,7 +570,7 @@ class Jit(object):
                 self._compiled = torch.jit.trace(compiled, params_and_args, check_trace=False)
 
         data = self._compiled(*params_and_args)
-        return funsor.torch.Tensor(data)
+        return funsor.Tensor(data)
 
 
 # This is a jit wrapper for ELBO implementations.

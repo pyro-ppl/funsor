@@ -5,7 +5,6 @@ from collections import OrderedDict, defaultdict
 
 import torch
 
-import funsor
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
@@ -16,6 +15,7 @@ from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.tensor_ops import Tensor, is_tensor, materialize
 from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, reflect, substitute, to_funsor
+from funsor.torch import Tensor as TorchTensor
 
 
 def _alpha_unmangle(expr):
@@ -97,7 +97,7 @@ if interpreter._DEBUG:
     adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(interpreter.debug_logged(fn))
 
 
-@adjoint_ops.register(funsor.torch.Tensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object)
+@adjoint_ops.register(TorchTensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}
 
@@ -168,7 +168,7 @@ def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
     return in_adjs
 
 
-@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, funsor.torch.Tensor), funsor.torch.Tensor, tuple)
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, TorchTensor), TorchTensor, tuple)
 def adjoint_subs_tensor(adj_redop, adj_binop, out_adj, arg, subs):
 
     assert all(isinstance(v, Funsor) for k, v in subs)
@@ -328,7 +328,7 @@ def adjoint_subs_gaussian_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
     return {arg: adjoint_ops(Subs, adj_redop, adj_binop, out_adj, arg_, subs)[arg_]}
 
 
-@adjoint_ops.register(Subs, ops.LogAddExpOp, ops.AddOp, (Number, funsor.torch.Tensor), GaussianMixture, tuple)
+@adjoint_ops.register(Subs, ops.LogAddExpOp, ops.AddOp, (Number, TorchTensor), GaussianMixture, tuple)
 def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, subs):
 
     if any(v.dtype == 'real' and not isinstance(v, Variable) for k, v in subs):
