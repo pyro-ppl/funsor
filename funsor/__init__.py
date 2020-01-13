@@ -5,8 +5,8 @@ from funsor.domains import Domain, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
 from funsor.sum_product import MarkovProduct
-from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.tensor_ops import Tensor, arange
+from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.util import pretty, quote
 
 from . import (

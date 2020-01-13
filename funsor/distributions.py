@@ -8,15 +8,16 @@ import pyro.distributions as dist
 import torch
 from pyro.distributions.util import broadcast_shape
 
+import funsor
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, interpretation
-from funsor.tensor_ops import align_tensors, materialize
+from funsor.tensor_ops import Tensor, align_tensors, is_tensor, materialize
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
-from funsor.torch import Tensor, ignore_jit_warnings, torch_stack
+from funsor.torch import ignore_jit_warnings, torch_stack
 
 
 def numbers_to_tensors(*args):
@@ -27,7 +28,7 @@ def numbers_to_tensors(*args):
     if any(isinstance(x, Number) for x in args):
         options = dict(dtype=torch.get_default_dtype())
         for x in args:
-            if isinstance(x, Tensor):
+            if is_tensor(x):
                 options = dict(dtype=x.data.dtype, device=x.data.device)
                 break
         with ignore_jit_warnings():
@@ -121,7 +122,7 @@ class BernoulliProbs(Distribution):
         super(BernoulliProbs, self).__init__(probs, value)
 
 
-@eager.register(BernoulliProbs, Tensor, Tensor)
+@eager.register(BernoulliProbs, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_bernoulli(probs, value):
     return BernoulliProbs.eager_log_prob(probs=probs, value=value)
 
@@ -147,7 +148,7 @@ class BernoulliLogits(Distribution):
         super(BernoulliLogits, self).__init__(logits, value)
 
 
-@eager.register(BernoulliLogits, Tensor, Tensor)
+@eager.register(BernoulliLogits, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_bernoulli_logits(logits, value):
     return BernoulliLogits.eager_log_prob(logits=logits, value=value)
 
@@ -190,7 +191,7 @@ class Beta(Distribution):
         super(Beta, self).__init__(concentration1, concentration0, value)
 
 
-@eager.register(Beta, Tensor, Tensor, Tensor)
+@eager.register(Beta, funsor.torch.Tensor, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_beta(concentration1, concentration0, value):
     return Beta.eager_log_prob(concentration1=concentration1,
                                concentration0=concentration0,
@@ -226,7 +227,7 @@ class Binomial(Distribution):
         super(Binomial, self).__init__(total_count, probs, value)
 
 
-@eager.register(Binomial, Tensor, Tensor, Tensor)
+@eager.register(Binomial, funsor.torch.Tensor, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_binomial(total_count, probs, value):
     return Binomial.eager_log_prob(total_count=total_count, probs=probs, value=value)
 
@@ -258,17 +259,17 @@ class Categorical(Distribution):
         super(Categorical, self).__init__(probs, value)
 
 
-@eager.register(Categorical, Funsor, Tensor)
+@eager.register(Categorical, Funsor, funsor.torch.Tensor)
 def eager_categorical(probs, value):
     return probs[value].log()
 
 
-@eager.register(Categorical, Tensor, Tensor)
+@eager.register(Categorical, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_categorical(probs, value):
     return Categorical.eager_log_prob(probs=probs, value=value)
 
 
-@eager.register(Categorical, Tensor, Variable)
+@eager.register(Categorical, funsor.torch.Tensor, Variable)
 def eager_categorical(probs, value):
     value = materialize(probs.data, value)
     return Categorical.eager_log_prob(probs=probs, value=value)
@@ -296,7 +297,7 @@ class Delta(Distribution):
         return super(Delta, self).__init__(v, log_density, value)
 
 
-@eager.register(Delta, Tensor, Tensor, Tensor)
+@eager.register(Delta, funsor.torch.Tensor, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_delta(v, log_density, value):
     # This handles event_dim specially, and hence cannot use the
     # generic Delta.eager_log_prob() method.
@@ -342,7 +343,7 @@ class Dirichlet(Distribution):
         super(Dirichlet, self).__init__(concentration, value)
 
 
-@eager.register(Dirichlet, Tensor, Tensor)
+@eager.register(Dirichlet, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_dirichlet(concentration, value):
     return Dirichlet.eager_log_prob(concentration=concentration, value=value)
 
@@ -371,7 +372,7 @@ class DirichletMultinomial(Distribution):
         super(DirichletMultinomial, self).__init__(concentration, total_count, value)
 
 
-@eager.register(DirichletMultinomial, Tensor, Tensor, Tensor)
+@eager.register(DirichletMultinomial, funsor.torch.Tensor, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_dirichlet_multinomial(concentration, total_count, value):
     return DirichletMultinomial.eager_log_prob(
         concentration=concentration, total_count=total_count, value=value)
@@ -416,7 +417,7 @@ class Multinomial(Distribution):
         super(Multinomial, self).__init__(total_count, probs, value)
 
 
-@eager.register(Multinomial, Tensor, Tensor, Tensor)
+@eager.register(Multinomial, funsor.torch.Tensor, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_multinomial(total_count, probs, value):
     # Multinomial.log_prob() supports inhomogeneous total_count only by
     # avoiding passing total_count to the constructor.
@@ -449,12 +450,12 @@ class Normal(Distribution):
         super(Normal, self).__init__(loc, scale, value)
 
 
-@eager.register(Normal, Tensor, Tensor, Tensor)
+@eager.register(Normal, funsor.torch.Tensor, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_normal(loc, scale, value):
     return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
-@eager.register(Normal, Funsor, Tensor, Funsor)
+@eager.register(Normal, Funsor, funsor.torch.Tensor, Funsor)
 def eager_normal(loc, scale, value):
     assert loc.output == reals()
     assert scale.output == reals()
@@ -498,12 +499,12 @@ class MultivariateNormal(Distribution):
         super(MultivariateNormal, self).__init__(loc, scale_tril, value)
 
 
-@eager.register(MultivariateNormal, Tensor, Tensor, Tensor)
+@eager.register(MultivariateNormal, funsor.torch.Tensor, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_mvn(loc, scale_tril, value):
     return MultivariateNormal.eager_log_prob(loc=loc, scale_tril=scale_tril, value=value)
 
 
-@eager.register(MultivariateNormal, Funsor, Tensor, Funsor)
+@eager.register(MultivariateNormal, Funsor, funsor.torch.Tensor, Funsor)
 def eager_mvn(loc, scale_tril, value):
     assert len(loc.shape) == 1
     assert len(scale_tril.shape) == 2
@@ -542,7 +543,7 @@ class Poisson(Distribution):
         super().__init__(rate, value)
 
 
-@eager.register(Poisson, Tensor, Tensor)
+@eager.register(Poisson, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_poisson(rate, value):
     return Poisson.eager_log_prob(rate=rate, value=value)
 
@@ -570,7 +571,7 @@ class Gamma(Distribution):
         super().__init__(concentration, rate, value)
 
 
-@eager.register(Gamma, Tensor, Tensor, Tensor)
+@eager.register(Gamma, funsor.torch.Tensor, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_gamma(concentration, rate, value):
     return Gamma.eager_log_prob(concentration=concentration, rate=rate, value=value)
 
@@ -598,7 +599,7 @@ class VonMises(Distribution):
         super().__init__(loc, concentration, value)
 
 
-@eager.register(VonMises, Tensor, Tensor, Tensor)
+@eager.register(VonMises, funsor.torch.Tensor, funsor.torch.Tensor, funsor.torch.Tensor)
 def eager_vonmises(loc, concentration, value):
     return VonMises.eager_log_prob(loc=loc, concentration=concentration, value=value)
 
