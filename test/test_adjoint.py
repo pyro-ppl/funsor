@@ -16,6 +16,7 @@ from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plate
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import MarkovProduct, naive_sequential_sum_product, sequential_sum_product, sum_product
+from funsor.tensor_ops import is_tensor
 from funsor.terms import Variable, reflect
 from funsor.testing import (
     assert_close,
@@ -71,7 +72,7 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))
-        assert isinstance(actual, funsor.Tensor)
+        assert is_tensor(actual)
         assert expected.shape == actual.data.shape
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
@@ -115,7 +116,7 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))
-        assert isinstance(actual, funsor.Tensor)
+        assert is_tensor(actual)
         assert expected.shape == actual.data.shape
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
@@ -153,7 +154,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))
-        assert isinstance(actual, funsor.Tensor)
+        assert is_tensor(actual)
         assert expected.shape == actual.data.shape
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
