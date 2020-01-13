@@ -28,7 +28,6 @@ from funsor.terms import (
     Unary,
     Variable,
     eager,
-    substitute,
     to_data,
     to_funsor
 )

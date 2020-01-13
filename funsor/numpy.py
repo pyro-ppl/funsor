@@ -7,9 +7,9 @@ import numpy as np
 from multipledispatch import dispatch
 
 import funsor.ops as ops
-from funsor.domains import Domain, bint, find_domain
-from funsor.tensor_ops import align_tensor, align_tensors, materialize
-from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, substitute, to_data, to_funsor
+from funsor.domains import Domain, find_domain
+from funsor.tensor_ops import align_tensors, materialize
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, eager, to_data, to_funsor
 
 
 class ArrayMeta(FunsorMeta):

@@ -7,10 +7,8 @@ from functools import reduce
 
 import numpy as np
 import torch
-from multipledispatch import dispatch
 from pyro.distributions.util import broadcast_shape
 
-import funsor
 import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta

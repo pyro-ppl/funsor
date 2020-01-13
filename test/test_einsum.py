@@ -8,7 +8,6 @@ import pytest
 import torch
 from pyro.ops.contract import einsum as pyro_einsum
 
-import funsor
 from funsor.distributions import Categorical
 from funsor.domains import bint
 from funsor.einsum import naive_einsum, naive_plated_einsum

@@ -8,7 +8,6 @@ import torch
 from pyro.ops.contract import einsum as pyro_einsum
 from pyro.ops.einsum.adjoint import require_backward as pyro_require_backward
 
-import funsor
 import funsor.ops as ops
 from funsor.adjoint import AdjointTape
 from funsor.domains import bint, reals
