@@ -373,8 +373,7 @@ def transpose(x, dim0, dim1):
 
 @Op
 def permute(x, dims):
-    if isinstance(x, Number):
-        return x
+    raise NotImplementedError
 
 
 __all__ = [
