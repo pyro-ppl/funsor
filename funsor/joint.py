@@ -10,7 +10,6 @@ import torch
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
-import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
@@ -19,6 +18,7 @@ from funsor.gaussian import Gaussian, align_gaussian
 from funsor.ops import AssociativeOp
 from funsor.tensor_ops import Tensor, align_tensor
 from funsor.terms import Funsor, Independent, Number, Reduce, Unary, eager, moment_matching, normalize
+from funsor.torch import Tensor as TorchTensor
 
 
 @dispatch(str, str, Variadic[(Gaussian, GaussianMixture)])
