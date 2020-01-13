@@ -32,8 +32,9 @@ from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.ops import cholesky
-from funsor.tensor_ops import Tensor, align_tensors
+from funsor.tensor_ops import Tensor, align_tensors, is_tensor
 from funsor.terms import Funsor, Independent, Variable, eager
+from funsor.torch import Tensor as TorchTensor
 
 # Conversion functions use fixed names for Pyro batch dims, but
 # accept an event_inputs tuple for custom event dim names.
@@ -93,7 +94,7 @@ def funsor_to_tensor(funsor_, ndims, event_inputs=()):
     :return: A PyTorch tensor.
     :rtype: torch.Tensor
     """
-    assert isinstance(funsor_, Tensor)
+    assert is_tensor(funsor_)
     assert all(k.startswith("_pyro_dim_") or k in event_inputs for k in funsor_.inputs)
     name_to_dim = NAME_TO_DIM
     if event_inputs:
@@ -204,9 +205,9 @@ def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
     assert sum(1 for d in funsor_.inputs.values() if d.dtype == "real") == 1
     assert event_inputs, "no components name found"
     assert not any(isinstance(v, Delta) for v in funsor_.terms)
-    discrete = [v for v in funsor_.terms if isinstance(v, Tensor)][0]
+    discrete = [v for v in funsor_.terms if is_tensor(v)][0]
     gaussian = [v for v in funsor_.terms if isinstance(v, Gaussian)][0]
-    assert isinstance(discrete, Tensor)
+    assert is_tensor(discrete)
     assert isinstance(gaussian, Gaussian)
 
     logits = funsor_to_tensor(discrete + gaussian.log_normalizer, ndims + 1, event_inputs)
@@ -253,7 +254,7 @@ class AffineNormal(Funsor):
         self.value_y = value_y
 
 
-@eager.register(AffineNormal, Tensor, Tensor, Tensor, Tensor, (Funsor, Tensor))
+@eager.register(AffineNormal, TorchTensor, TorchTensor, TorchTensor, TorchTensor, (Funsor, TorchTensor))
 def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     assert len(matrix.output.shape) == 2
     assert value_x.output == reals(matrix.output.shape[0])
@@ -271,7 +272,7 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     return y_dist(**{y_name: value_y})
 
 
-@eager.register(AffineNormal, Tensor, Tensor, Tensor, Funsor, Tensor)
+@eager.register(AffineNormal, TorchTensor, TorchTensor, TorchTensor, Funsor, TorchTensor)
 def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     assert len(matrix.output.shape) == 2
     assert value_x.output == reals(matrix.output.shape[0])
