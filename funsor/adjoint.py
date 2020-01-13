@@ -5,6 +5,7 @@ from collections import OrderedDict, defaultdict
 
 import torch
 
+import funsor
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
@@ -13,8 +14,8 @@ from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
+from funsor.tensor_ops import Tensor, is_tensor, materialize
 from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, reflect, substitute, to_funsor
-from funsor.torch import Tensor, materialize
 
 
 def _alpha_unmangle(expr):
@@ -96,7 +97,7 @@ if interpreter._DEBUG:
     adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(interpreter.debug_logged(fn))
 
 
-@adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object)
+@adjoint_ops.register(funsor.torch.Tensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}
 
@@ -167,7 +168,7 @@ def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
     return in_adjs
 
 
-@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, Tensor), Tensor, tuple)
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, (Number, funsor.torch.Tensor), funsor.torch.Tensor, tuple)
 def adjoint_subs_tensor(adj_redop, adj_binop, out_adj, arg, subs):
 
     assert all(isinstance(v, Funsor) for k, v in subs)
@@ -201,7 +202,7 @@ def _scatter(src, res, subs):
     # use advanced indexing logic copied from Tensor.eager_subs:
 
     # materialize after checking for renaming case
-    subs = OrderedDict((k, materialize(v)) for k, v in subs)
+    subs = OrderedDict((k, materialize(res.data, v)) for k, v in subs)
 
     # Compute result shapes.
     inputs = OrderedDict()
@@ -225,9 +226,9 @@ def _scatter(src, res, subs):
                 index.append(int(v.data))
             else:
                 # Permute and expand v.data to end up at new_dims.
-                assert isinstance(v, Tensor)
+                assert is_tensor(v)
                 v = v.align(tuple(k2 for k2 in inputs if k2 in v.inputs))
-                assert isinstance(v, Tensor)
+                assert is_tensor(v)
                 v_shape = [1] * total_size
                 for k2, size in zip(v.inputs, v.data.shape):
                     v_shape[new_dims[k2]] = size
@@ -296,8 +297,8 @@ def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, 
                                         Tensor(arg.terms[1].precision, arg_int_inputs),
                                         slices).values())[0]
 
-    assert isinstance(in_adj_info_vec, Tensor)
-    assert isinstance(in_adj_precision, Tensor)
+    assert is_tensor(in_adj_info_vec)
+    assert is_tensor(in_adj_precision)
 
     in_adj_gaussian = Gaussian(in_adj_info_vec.data, in_adj_precision.data, arg.inputs.copy())
 
@@ -327,7 +328,7 @@ def adjoint_subs_gaussian_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
     return {arg: adjoint_ops(Subs, adj_redop, adj_binop, out_adj, arg_, subs)[arg_]}
 
 
-@adjoint_ops.register(Subs, ops.LogAddExpOp, ops.AddOp, (Number, Tensor), GaussianMixture, tuple)
+@adjoint_ops.register(Subs, ops.LogAddExpOp, ops.AddOp, (Number, funsor.torch.Tensor), GaussianMixture, tuple)
 def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, subs):
 
     if any(v.dtype == 'real' and not isinstance(v, Variable) for k, v in subs):
@@ -360,8 +361,8 @@ def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, su
                                         Tensor(arg.terms[1].precision, arg_int_inputs),
                                         slices).values())[0]
 
-    assert isinstance(in_adj_info_vec, Tensor)
-    assert isinstance(in_adj_precision, Tensor)
+    assert is_tensor(in_adj_info_vec)
+    assert is_tensor(in_adj_precision)
 
     in_adj_gaussian = Gaussian(in_adj_info_vec.data, in_adj_precision.data, arg.inputs.copy())
 

@@ -14,8 +14,9 @@ from funsor.affine import is_affine
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, interpretation
+from funsor.tensor_ops import align_tensors, materialize
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
-from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
+from funsor.torch import Tensor, ignore_jit_warnings, torch_stack
 
 
 def numbers_to_tensors(*args):
@@ -269,7 +270,7 @@ def eager_categorical(probs, value):
 
 @eager.register(Categorical, Tensor, Variable)
 def eager_categorical(probs, value):
-    value = materialize(value)
+    value = materialize(probs.data, value)
     return Categorical.eager_log_prob(probs=probs, value=value)
 
 

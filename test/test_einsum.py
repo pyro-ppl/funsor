@@ -14,9 +14,9 @@ from funsor.domains import bint
 from funsor.einsum import naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
+from funsor.tensor_ops import Tensor, is_tensor
 from funsor.terms import Variable, reflect
 from funsor.testing import assert_close, make_einsum_example
-from funsor.torch import Tensor
 
 EINSUM_EXAMPLES = [
     "a,b->",
@@ -47,7 +47,7 @@ def test_einsum(equation, backend):
     actual_optimized = reinterpret(optimized_ast)  # eager by default
     actual = naive_einsum(equation, *funsor_operands, backend=backend)
 
-    assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
+    assert is_tensor(actual) and len(outputs) == 1
     if len(outputs[0]) > 0:
         actual = actual.align(tuple(outputs[0]))
         actual_optimized = actual_optimized.align(tuple(outputs[0]))

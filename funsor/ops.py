@@ -373,16 +373,8 @@ def transpose(x, dim0, dim1):
 
 @Op
 def permute(x, dims):
-    raise NotImplementedError
-
-
-@Op
-def TensorOp(x, inputs, dtype):
-    raise NotImplementedError
-
-
-def Tensor(x, inputs=None, dtype="real"):
-    return TensorOp(x, inputs, dtype)
+    if isinstance(x, Number):
+        return x
 
 
 __all__ = [

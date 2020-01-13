@@ -10,7 +10,8 @@ import funsor
 from funsor import Number, Variable, bint, reals
 from funsor.domains import Domain
 from funsor.interpreter import _USE_TCO, interpretation
-from funsor.numpy import Array, align_arrays
+from funsor.numpy import Array
+from funsor.tensor_ops import align_tensors
 from funsor.terms import lazy
 from funsor.testing import assert_equiv, check_funsor, random_array
 
@@ -179,9 +180,9 @@ def test_advanced_indexing_lazy(output_shape):
         k = u + v
 
     expected_data = np.empty((2, 3) + output_shape)
-    i_data = funsor.numpy.materialize(i).data.astype(np.int64)
-    j_data = funsor.numpy.materialize(j).data.astype(np.int64)
-    k_data = funsor.numpy.materialize(k).data.astype(np.int64)
+    i_data = funsor.tensor_ops.materialize(x.data, i).data.astype(np.int64)
+    j_data = funsor.tensor_ops.materialize(x.data, j).data.astype(np.int64)
+    k_data = funsor.tensor_ops.materialize(x.data, k).data.astype(np.int64)
     for u in range(2):
         for v in range(3):
             expected_data[u, v] = x.data[i_data[u], j_data[v], k_data[u, v]]
@@ -280,8 +281,8 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
     shape2 = tuple(sizes[d] for d in dims2)
     inputs1 = OrderedDict((d, bint(sizes[d])) for d in dims1)
     inputs2 = OrderedDict((d, bint(sizes[d])) for d in dims2)
-    data1 = np.array(np.random.rand(*shape1)) + 0.5
-    data2 = np.array(np.random.rand(*shape2)) + 0.5
+    data1 = np.array(np.random.rand(*shape1) + 0.5)
+    data2 = np.array(np.random.rand(*shape2) + 0.5)
     dtype = 'real'
     if symbol in BOOLEAN_OPS:
         dtype = 2
@@ -289,7 +290,7 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
         data2 = data2.astype(bool)
     x1 = Array(data1, inputs1, dtype)
     x2 = Array(data2, inputs2, dtype)
-    inputs, aligned = align_arrays(x1, x2)
+    inputs, aligned = align_tensors(x1, x2)
     expected_data = binary_eval(symbol, aligned[0], aligned[1])
 
     actual = binary_eval(symbol, x1, x2)

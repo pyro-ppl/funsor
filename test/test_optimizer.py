@@ -13,9 +13,9 @@ from funsor.domains import bint
 from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
+from funsor.tensor_ops import Tensor
 from funsor.terms import Variable, normalize, reflect
 from funsor.testing import assert_close, make_chain_einsum, make_einsum_example, make_hmm_einsum, make_plated_hmm_einsum
-from funsor.torch import Tensor
 
 OPTIMIZED_EINSUM_EXAMPLES = [
     make_chain_einsum(t) for t in range(2, 50, 10)
@@ -41,7 +41,7 @@ def test_optimized_einsum(equation, backend, einsum_impl):
     optimized_ast = apply_optimizer(naive_ast)
     actual = reinterpret(optimized_ast)  # eager by default
 
-    assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
+    assert isinstance(actual, funsor.torch.Tensor) and len(outputs) == 1
     if len(outputs[0]) > 0:
         actual = actual.align(tuple(outputs[0]))
 
@@ -120,7 +120,7 @@ def test_optimized_plated_einsum(equation, plates, backend):
         actual_naive = naive_plated_einsum(equation, *funsor_operands, plates=plates, backend=backend)
         assert_close(actual, actual_naive)
 
-    assert isinstance(actual, funsor.Tensor) and len(outputs) == 1
+    assert isinstance(actual, funsor.torch.Tensor) and len(outputs) == 1
     if len(outputs[0]) > 0:
         actual = actual.align(tuple(outputs[0]))
 
