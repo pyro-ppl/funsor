@@ -438,7 +438,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         affine = OrderedDict()
         for k, v in subs:
             const, coeffs = extract_affine(v)
-            if is_tensor(const) and all(is_tensor(coeffs) for coeff, _ in coeffs.values()):
+            if is_tensor(const) and all(is_tensor(coeff) for coeff, _ in coeffs.values()):
                 affine[k] = const, coeffs
             else:
                 remaining_subs += (k, v),
