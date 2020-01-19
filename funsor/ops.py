@@ -306,7 +306,42 @@ PRODUCT_INVERSES = {
 }
 
 
-# Linear algebra ops
+# Numeric Array Ops
+
+@Op
+def sum(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def prod(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def all(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def any(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def logsumexp(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def min_(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def max_(x, dim):
+    raise NotImplementedError
+
 
 @Op
 def cholesky(x):
