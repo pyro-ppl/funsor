@@ -8,8 +8,11 @@ from functools import reduce
 import numpy as np
 
 import funsor.ops as ops
+from funsor.adjoint import AdjointTape
 from funsor.cnf import Contraction
+from funsor.delta import Delta
 from funsor.domains import bint
+from funsor.interpreter import reinterpret
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Stack, Subs, Variable, eager, substitute, to_funsor
 from funsor.util import quote
@@ -423,6 +426,14 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
         if lazy:
             result = Subs(result, lazy)
         return result
+
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        if sample_inputs:
+            raise NotImplementedError("TODO")
+        with AdjointTape() as tape:
+            reinterpret(self)
+        samples = tape.adjoint(ops.sample, ops.add)
+        return reduce(ops.add, [Delta(k, v) for k, v in sorted(samples.items())])
 
 
 @quote.register(MarkovProduct)

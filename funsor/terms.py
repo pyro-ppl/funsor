@@ -987,6 +987,15 @@ class Binary(Funsor):
             return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        if sample_inputs:
+            raise NotImplementedError("TODO")
+        if self.op is ops.add:
+            lhs = self.lhs.unscaled_sample(sampled_vars, sample_inputs)
+            rhs = self.rhs.unscaled_sample(sampled_vars, sample_inputs)
+            return lhs + rhs
+        raise NotImplementedError("Cannot sample from a Binary({})".format(self.op))
+
 
 class Reduce(Funsor):
     """
@@ -1019,6 +1028,15 @@ class Reduce(Funsor):
         op, arg, reduced_vars = super()._alpha_convert(alpha_subs)
         reduced_vars = frozenset(str(alpha_subs.get(k, k)) for k in reduced_vars)
         return op, arg, reduced_vars
+
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        if sample_inputs:
+            raise NotImplementedError("TODO")
+        if self.op is ops.logaddexp:
+            samples = self.arg.unscaled_sample(sampled_vars, sample_inputs)
+            # TODO remove auxiliary vars
+            return samples
+        raise NotImplementedError("Cannot sample from a Reduce({})".format(self.op))
 
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
