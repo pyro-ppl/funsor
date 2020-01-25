@@ -431,9 +431,17 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
         if sample_inputs:
             raise NotImplementedError("TODO")
         with AdjointTape() as tape:
-            reinterpret(self)
-        samples = tape.adjoint(ops.sample, ops.add)
-        return reduce(ops.add, [Delta(k, v) for k, v in sorted(samples.items())])
+            root = self.reduce(ops.sample, sampled_vars)
+        targets = (self.trans,)
+
+        # TODO implement an interpretation that triggers sampling for ops.sample.
+        # TODO consider refactoring monte_carlo to first convert ops.logaddexp to
+        #   ops.sample, then run under targeted_monte_carlo?
+        with targeted_monte_carlo(sample_inputs):
+            samples = tape.adjoint(root, targets)
+
+        joint = reduce(ops.add, [Delta(k, v) for k, v in sorted(samples.items())])
+        return joint
 
 
 @quote.register(MarkovProduct)

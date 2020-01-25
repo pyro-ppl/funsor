@@ -207,6 +207,34 @@ def test_gaussian_hmm_log_prob(init_shape, trans_mat_shape, trans_mvn_shape,
 @pytest.mark.parametrize("obs_dim,hidden_dim",
                          [(1, 1), (1, 2), (2, 1), (2, 2), (2, 3), (3, 2)], ids=str)
 @pytest.mark.parametrize(GAUSSIAN_SCHEMA, GAUSSIAN_SHAPES, ids=str)
+def test_gaussian_hmm_mode(init_shape, trans_mat_shape, trans_mvn_shape,
+                           obs_mat_shape, obs_mvn_shape, hidden_dim, obs_dim):
+    init_dist = random_mvn(init_shape, hidden_dim)
+    trans_mat = torch.randn(trans_mat_shape + (hidden_dim, hidden_dim))
+    trans_dist = random_mvn(trans_mvn_shape, hidden_dim)
+    obs_mat = torch.randn(obs_mat_shape + (hidden_dim, obs_dim))
+    obs_dist = random_mvn(obs_mvn_shape, obs_dim)
+
+    actual_dist = GaussianHMM(init_dist, trans_mat, trans_dist, obs_mat, obs_dist)
+    expected_dist = dist.GaussianHMM(init_dist, trans_mat, trans_dist, obs_mat, obs_dist)
+    assert actual_dist.batch_shape == expected_dist.batch_shape
+    assert actual_dist.event_shape == expected_dist.event_shape
+
+    shape = broadcast_shape(init_shape + (1,),
+                            trans_mat_shape, trans_mvn_shape,
+                            obs_mat_shape, obs_mvn_shape)
+    data = obs_dist.expand(shape).sample()
+    assert data.shape == actual_dist.shape()
+
+    actual_samples = actual_dist.mode()
+    expected_samples = expected_dist.mean()  # happens to agree with mode
+    assert actual_samples.shape == expected_samples.shape
+    # TODO check moments
+
+
+@pytest.mark.parametrize("obs_dim,hidden_dim",
+                         [(1, 1), (1, 2), (2, 1), (2, 2), (2, 3), (3, 2)], ids=str)
+@pytest.mark.parametrize(GAUSSIAN_SCHEMA, GAUSSIAN_SHAPES, ids=str)
 def test_gaussian_hmm_sample(init_shape, trans_mat_shape, trans_mvn_shape,
                              obs_mat_shape, obs_mvn_shape, hidden_dim, obs_dim):
     init_dist = random_mvn(init_shape, hidden_dim)

@@ -86,6 +86,24 @@ class FunsorDistribution(dist.TorchDistribution):
         value = funsor_to_tensor(delta.terms[0][1][0], ndims=ndims)
         return value
 
+    @torch.no_grad()
+    def mode(self):
+        """
+        Arg max value.
+        """
+        with AdjointTape() as tape:
+            root = self.funsor_dist.reduce(ops.max, "value")
+        targets = (self.funsor_dist,)
+        argmax = tape.adjoint(ops.max, ops.add, root, targets)
+        # TODO call argmax on the atomic funsors.
+        # TODO later move that argmax upstream to AdjointTape.adjoint().
+        if isinstance(delta, Contraction):
+            assert len([d for d in delta.terms if isinstance(d, Delta)]) == 1
+            delta = delta.terms[0]
+        assert isinstance(delta, Delta)
+        ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
+        value = funsor_to_tensor(delta.terms[0][1][0], ndims=ndims)
+
     def expand(self, batch_shape, _instance=None):
         new = self._get_checked_instance(type(self), _instance)
         batch_shape = torch.Size(batch_shape)
