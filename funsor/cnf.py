@@ -18,6 +18,7 @@ from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpreter import interpretation, recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
+from funsor.tensor import Tensor
 from funsor.terms import (
     Align,
     Binary,
@@ -32,7 +33,6 @@ from funsor.terms import (
     reflect,
     to_funsor
 )
-from funsor.torch import Tensor
 from funsor.util import quote
 
 
