@@ -14,10 +14,9 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
+from funsor.tensor import Einsum, Tensor
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor
-from funsor.torch import Einsum, Tensor
-from funsor.numpy import Array
 
 assert Einsum  # flake8
 
@@ -147,24 +146,22 @@ def test_block_matrix_batched(batch_shape, sparse):
     ('g2(i=i0)', Gaussian),
     ('g1(i=i0) + g2(i=i0)', Gaussian),
     ('g1(i=i0) + g2', Gaussian),
-    ('g1(x=x0)', (Tensor, Array)),
-    ('g2(y=y0)', (Tensor, Array)),
+    ('g1(x=x0)', Tensor),
+    ('g2(y=y0)', Tensor),
     ('(g1 + g2)(i=i0)', Gaussian),
-    ('(g1 + g2)(x=x0, y=y0)', (Tensor, Array)),
-    ('(g2 + g1)(x=x0, y=y0)', (Tensor, Array)),
-    ('g1.reduce(ops.logaddexp, "x")', (Tensor, Array)),
+    ('(g1 + g2)(x=x0, y=y0)', Tensor),
+    ('(g2 + g1)(x=x0, y=y0)', Tensor),
+    ('g1.reduce(ops.logaddexp, "x")', Tensor),
     ('(g1 + g2).reduce(ops.logaddexp, "x")', Contraction),
     ('(g1 + g2).reduce(ops.logaddexp, "y")', Contraction),
-    ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', (Tensor, Array)),
+    ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
 ])
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_smoke(expr, expected_type, backend):
     if backend == "torch":
         tensor = torch.tensor
-        Tensor_ = Tensor
     else:
         tensor = np.array
-        Tensor_ = Array
 
     g1 = Gaussian(
         info_vec=tensor([[0.0, 0.1, 0.2],
@@ -188,19 +185,19 @@ def test_smoke(expr, expected_type, backend):
         inputs=OrderedDict([('i', bint(2)), ('y', reals(2))]))
     assert isinstance(g2, Gaussian)
 
-    shift = Tensor_(tensor([-1., 1.]), OrderedDict([('i', bint(2))]))
-    assert isinstance(shift, Tensor_)
+    shift = Tensor(tensor([-1., 1.]), OrderedDict([('i', bint(2))]))
+    assert isinstance(shift, Tensor)
 
     i0 = Number(1, 2)
     assert isinstance(i0, Number)
 
-    x0 = Tensor_(tensor([0.5, 0.6, 0.7]))
-    assert isinstance(x0, Tensor_)
+    x0 = Tensor(tensor([0.5, 0.6, 0.7]))
+    assert isinstance(x0, Tensor)
 
-    y0 = Tensor_(tensor([[0.2, 0.3],
-                         [0.8, 0.9]]),
-                 inputs=OrderedDict([('i', bint(2))]))
-    assert isinstance(y0, Tensor_)
+    y0 = Tensor(tensor([[0.2, 0.3],
+                        [0.8, 0.9]]),
+                inputs=OrderedDict([('i', bint(2))]))
+    assert isinstance(y0, Tensor)
 
     result = eval(expr)
     assert isinstance(result, expected_type)

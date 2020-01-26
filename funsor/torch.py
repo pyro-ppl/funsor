@@ -965,6 +965,7 @@ ops.exp.register(torch.Tensor)(torch.exp)
 ops.log1p.register(torch.Tensor)(torch.log1p)
 ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
 ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
+ops.full_like.register(torch.Tensor, object)(torch.full_like)
 
 
 @ops.log.register(torch.Tensor)

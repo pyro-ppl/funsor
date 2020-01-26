@@ -23,7 +23,6 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
             shape = tuple(map(int, shape))
         assert all(isinstance(size, int) for size in shape), shape
         if isinstance(dtype, int):
-            print(shape)
             assert not shape
         elif isinstance(dtype, str):
             assert dtype == 'real'

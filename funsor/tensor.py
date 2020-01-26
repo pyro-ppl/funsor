@@ -95,7 +95,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         assert isinstance(data, numeric_array)
         assert isinstance(inputs, tuple)
         if not torch._C._get_tracing_state():
-            assert len(inputs) <= data.dim()
+            assert len(inputs) <= len(data.shape)
             for (k, d), size in zip(inputs, data.shape):
                 assert d.dtype == size
         inputs = OrderedDict(inputs)

@@ -335,6 +335,7 @@ ops.unsqueeze.register(np.ndarray, int)(np.expand_dims)
 ops.expand.register(np.ndarray, tuple)(np.broadcast_to)
 ops.permute.register(np.ndarray, tuple)(np.transpose)
 ops.transpose.register(np.ndarray, int, int)(np.swapaxes)
+ops.full_like.register(np.ndarray, object)(np.full_like)
 
 
 # TODO: replace (int, float) by object

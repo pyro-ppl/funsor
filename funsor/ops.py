@@ -387,6 +387,11 @@ def new_arange(x, start, stop, step):
 
 
 @Op
+def full_like(x, shape):
+    raise NotImplementedError
+
+
+@Op
 def unsqueeze(x, dim):
     raise NotImplementedError
 
@@ -436,6 +441,7 @@ __all__ = [
     'eq',
     'exp',
     'expand',
+    'full_like',
     'ge',
     'getitem',
     'gt',
@@ -450,6 +456,7 @@ __all__ = [
     'mul',
     'ne',
     'neg',
+    'new_arange',
     'new_eye',
     'new_zeros',
     'or_',
