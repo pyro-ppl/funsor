@@ -335,11 +335,6 @@ class Tensor(Funsor, metaclass=TensorMeta):
         return reduce(ops.add, results)
 
 
-@ops.TensorOp.register(torch.Tensor, (type(None), tuple, OrderedDict), str)
-def _Tensor(x, inputs, dtype):
-    return Tensor(x, inputs, dtype)
-
-
 @dispatch(torch.Tensor)
 def to_funsor(x):
     return Tensor(x)
@@ -1093,7 +1088,12 @@ def _new_eye(x, shape):
 
 @ops.new_arange.register(torch.Tensor, int, int, int)
 def _new_arange(x, start, stop, step):
-    return torch.arange()
+    return torch.arange(start, stop, step)
+
+
+@ops.new_arange.register(torch.Tensor, int)
+def _new_arange(x, stop):
+    return torch.arange(stop)
 
 
 @ops.expand.register(torch.Tensor, tuple)

@@ -153,11 +153,6 @@ class Array(Funsor, metaclass=ArrayMeta):
         return Array(data, inputs, self.dtype)
 
 
-@ops.TensorOp.register(np.ndarray, (type(None), tuple, OrderedDict), str)
-def _Tensor(x, inputs, dtype):
-    return Array(x, inputs, dtype)
-
-
 @dispatch(np.ndarray)
 def to_funsor(x):
     return Array(x)
@@ -445,3 +440,8 @@ def _new_eye(x, shape):
 @ops.new_arange.register(np.ndarray, int, int, int)
 def _new_arange(x, start, stop, step):
     return np.arange(start, stop, step)
+
+
+@ops.new_arange.register(np.ndarray, int)
+def _new_arange(x, stop):
+    return np.arange(stop)

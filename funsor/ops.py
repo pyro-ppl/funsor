@@ -411,15 +411,6 @@ def permute(x, dims):
     raise NotImplementedError
 
 
-@Op
-def TensorOp(x, inputs, dtype):
-    raise NotImplementedError
-
-
-def Tensor(x, inputs=None, dtype="real"):
-    return TensorOp(x, inputs, dtype)
-
-
 __all__ = [
     'AddOp',
     'AssociativeOp',

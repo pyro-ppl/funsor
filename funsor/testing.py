@@ -22,7 +22,8 @@ from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.numpy import Array
 from funsor.terms import Funsor, Number
-from funsor.torch import Tensor
+from funsor.tensor import Tensor
+from funsor.torch import Tensor as TorchTensor
 
 
 @contextlib.contextmanager
@@ -80,7 +81,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert actual.inputs == expected.inputs, (actual.inputs, expected.inputs)
         assert actual.output == expected.output, (actual.output, expected.output)
 
-    if isinstance(actual, (Number, Tensor)):
+    if isinstance(actual, (Number, Tensor, TorchTensor)):
         assert_close(actual.data, expected.data, atol=atol, rtol=rtol)
     elif isinstance(actual, Delta):
         assert frozenset(n for n, p in actual.terms) == frozenset(n for n, p in expected.terms)
