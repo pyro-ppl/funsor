@@ -252,7 +252,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             reduced_vars = reduced_vars & self_vars
             if reduced_vars == self_vars and not self.output.shape:
                 # Reduce all dims at once.
-                if op is ops.logaddexp:
+                if isinstance(op, ops.LogAddExpOp):
                     # work around missing torch.Tensor.logsumexp()
                     data = self.data.reshape(-1).logsumexp(0)
                     return Tensor(data, dtype=self.dtype)
@@ -1112,6 +1112,7 @@ REDUCE_OP_TO_TORCH = {
     ops.and_: torch.all,
     ops.or_: torch.any,
     ops.logaddexp: torch.logsumexp,
+    ops.sample: torch.logsumexp,
     ops.min: torch.min,
     ops.max: torch.max,
 }

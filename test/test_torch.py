@@ -526,7 +526,16 @@ def test_lambda_getitem():
     assert Lambda(i, y) is x
 
 
-REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
+REDUCE_OPS = [
+    ops.add,
+    ops.mul,
+    ops.and_,
+    ops.or_,
+    ops.logaddexp,
+    ops.sample,
+    ops.min,
+    ops.max,
+]
 
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
@@ -538,7 +547,7 @@ def test_reduce_all(dims, op):
     data = torch.rand(shape) + 0.5
     if op in [ops.and_, ops.or_]:
         data = data.byte()
-    if op is ops.logaddexp:
+    if isinstance(op, ops.LogAddExpOp):
         # work around missing torch.Tensor.logsumexp()
         expected_data = data.reshape(-1).logsumexp(0)
     else:
@@ -576,7 +585,7 @@ def test_reduce_subset(dims, reduced_vars, op):
         assert actual is x
     else:
         if reduced_vars == frozenset(dims):
-            if op is ops.logaddexp:
+            if isinstance(op, ops.LogAddExpOp):
                 # work around missing torch.Tensor.logsumexp()
                 data = data.reshape(-1).logsumexp(0)
             else:
