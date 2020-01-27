@@ -35,7 +35,7 @@ from funsor.terms import (
 from funsor.util import getargspec, quote
 
 
-numeric_array = (torch.Tensor, np.ndarray, np.float64)
+numeric_array = (torch.Tensor, np.ndarray, np.generic)
 
 
 def _nameof(fn):
@@ -47,14 +47,6 @@ def ignore_jit_warnings():
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
         yield
-
-
-@quote.register(torch.Tensor)
-def _(x, indent, out):
-    """
-    Work around PyTorch not supporting reproducible repr.
-    """
-    out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
 
 
 class TensorMeta(FunsorMeta):
@@ -155,7 +147,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         new_dims = tuple(inputs)
         permutation = tuple(old_dims.index(d) for d in new_dims)
         permutation = permutation + tuple(range(len(permutation), len(permutation) + len(self.output.shape)))
-        data = self.data.permute(permutation)
+        data = ops.permute(self.data, permutation)
         return Tensor(data, inputs, self.dtype)
 
     def eager_subs(self, subs):
@@ -538,7 +530,7 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
         perm = list(range(data.dim()))
         del perm[source_dim]
         perm.insert(target_dim, source_dim)
-        data = data.permute(*perm)
+        data = ops.permute(data, perm)
     return Tensor(data, inputs, lhs.dtype)
 
 

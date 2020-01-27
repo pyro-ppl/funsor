@@ -20,7 +20,6 @@ from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
-from funsor.numpy import Array
 from funsor.terms import Funsor, Number
 from funsor.tensor import Tensor
 
@@ -196,7 +195,32 @@ def assert_equiv(x, y):
     check_funsor(x, y.inputs, y.output, y.data)
 
 
-def random_tensor(inputs, output=reals()):
+def rand(shape, backend="torch"):
+    assert backend in ["torch", "numpy"]
+    if backend == "torch":
+        return torch.rand(shape)
+    else:
+        # work around numpy random returns float object instead of np.ndarray object when shape == ()
+        return np.array(np.random.rand(*shape))
+
+
+def randn(shape, backend="torch"):
+    assert backend in ["torch", "numpy"]
+    if backend == "torch":
+        return torch.randn(shape)
+    else:
+        # work around numpy random returns float object instead of np.ndarray object when shape == ()
+        return np.array(np.random.randn(*shape))
+
+
+def astype(x, dtype):
+    if torch.is_tensor(x):
+        return x.type(dtype)
+    else:
+        return x.astype(dtype)
+
+
+def random_tensor(inputs, output=reals(), backend="torch"):
     """
     Creates a random :class:`funsor.torch.Tensor` with given inputs and output.
     """
@@ -204,30 +228,15 @@ def random_tensor(inputs, output=reals()):
     assert isinstance(output, Domain)
     shape = tuple(d.dtype for d in inputs.values()) + output.shape
     if output.dtype == 'real':
-        data = torch.randn(shape)
+        data = torch.randn(shape) if backend == "torch" else np.array(np.random.randn(*shape))
     else:
         num_elements = reduce(operator.mul, shape, 1)
-        data = torch.multinomial(torch.ones(output.dtype),
-                                 num_elements,
-                                 replacement=True).reshape(shape)
+        if backend == "torch":
+            data = torch.multinomial(torch.ones(output.dtype), num_elements, replacement=True)
+        else:
+            data = np.random.choice(output.dtype, num_elements, replace=True)
+        data = data.reshape(shape)
     return Tensor(data, inputs, output.dtype)
-
-
-def random_array(inputs, output):
-    """
-    Creates a random :class:`funsor.numpy.Array` with given inputs and output.
-    """
-    assert isinstance(inputs, OrderedDict)
-    assert isinstance(output, Domain)
-    shape = tuple(d.dtype for d in inputs.values()) + output.shape
-    if output.dtype == 'real':
-        data = np.random.normal(size=shape)
-    else:
-        num_elements = reduce(operator.mul, shape, 1)
-        data = np.random.choice(np.arange(output.dtype),
-                                size=num_elements,
-                                replace=True).reshape(shape)
-    return Array(data, inputs, output.dtype)
 
 
 def random_gaussian(inputs):

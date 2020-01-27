@@ -4,6 +4,7 @@
 import torch
 
 import funsor.ops as ops
+from funsor.util import quote
 
 
 ################################################################################
@@ -18,6 +19,14 @@ ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
 ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
 ops.full_like.register(torch.Tensor, object)(torch.full_like)
 ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
+
+
+@quote.register(torch.Tensor)
+def _quote(x, indent, out):
+    """
+    Work around PyTorch not supporting reproducible repr.
+    """
+    out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
 
 
 @ops.log.register(torch.Tensor)
@@ -154,7 +163,7 @@ def _expand(x, shape):
     return x.expand(shape)
 
 
-@ops.permute.register(torch.Tensor, tuple)
+@ops.permute.register(torch.Tensor, (tuple, list))
 def _permute(x, dims):
     return x.permute(dims)
 
