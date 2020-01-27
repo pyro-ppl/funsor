@@ -15,11 +15,12 @@ from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.pyro.convert import dist_to_funsor
+from funsor.tensor import Einsum, Tensor
 from funsor.terms import Independent, Variable, lazy
 from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor
-from funsor.torch import Einsum, Tensor
 
 
+# TODO: fix failing tests
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('eager', [False, True])
 def test_beta_density(batch_shape, eager):

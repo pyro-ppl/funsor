@@ -14,9 +14,9 @@ from funsor.domains import bint
 from funsor.einsum import naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
+from funsor.tensor import Tensor
 from funsor.terms import Variable, reflect
 from funsor.testing import assert_close, make_einsum_example
-from funsor.torch import Tensor
 
 EINSUM_EXAMPLES = [
     "a,b->",

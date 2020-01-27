@@ -416,6 +416,16 @@ def permute(x, dims):
     raise NotImplementedError
 
 
+@Op
+def finfo(x):
+    raise NotImplementedError
+
+
+@Op
+def clamp(x, min, max):
+    raise NotImplementedError
+
+
 __all__ = [
     'AddOp',
     'AssociativeOp',

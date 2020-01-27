@@ -336,6 +336,7 @@ ops.expand.register(np.ndarray, tuple)(np.broadcast_to)
 ops.permute.register(np.ndarray, tuple)(np.transpose)
 ops.transpose.register(np.ndarray, int, int)(np.swapaxes)
 ops.full_like.register(np.ndarray, object)(np.full_like)
+ops.clamp.register(np.ndarray, object, object)(np.clip)
 
 
 # TODO: replace (int, float) by object
@@ -446,3 +447,8 @@ def _new_arange(x, start, stop, step):
 @ops.new_arange.register(np.ndarray, int)
 def _new_arange(x, stop):
     return np.arange(stop)
+
+
+@ops.finfo.register(np.ndarray)
+def _finfo(x):
+    return np.finfo(x.dtype)

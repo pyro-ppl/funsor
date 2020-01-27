@@ -966,6 +966,7 @@ ops.log1p.register(torch.Tensor)(torch.log1p)
 ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
 ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
 ops.full_like.register(torch.Tensor, object)(torch.full_like)
+ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
 
 
 @ops.log.register(torch.Tensor)
@@ -1105,6 +1106,11 @@ def _expand(x, shape):
 @ops.permute.register(torch.Tensor, tuple)
 def _permute(x, dims):
     return x.permute(dims)
+
+
+@ops.finfo.register(torch.Tensor)
+def _finfo(x):
+    return torch.finfo(x.dtype)
 
 
 REDUCE_OP_TO_TORCH = {

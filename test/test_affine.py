@@ -11,7 +11,7 @@ from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.terms import Number, Unary, Variable
 from funsor.testing import assert_close, check_funsor, random_gaussian, random_tensor
-from funsor.torch import Einsum, Tensor
+from funsor.tensor import Einsum, Tensor
 
 assert random_gaussian  # flake8
 
@@ -100,6 +100,7 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     "Variable('x', reals(2, 8))[0] + torch.randn(8)",
     "Variable('x', reals(2, 8))[Variable('i', bint(2))] / 4 - 3.5",
 ])
+# TODO: fix Variable + torch.Tensor tests
 def test_extract_affine(expr):
     x = eval(expr)
     assert is_affine(x)

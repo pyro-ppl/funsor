@@ -135,7 +135,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     def clamp_finite(self):
         finfo = ops.finfo(self.data)
-        data = ops.clamp(self.data, min=finfo.min, max=finfo.max)
+        data = ops.clamp(self.data, finfo.min, finfo.max)
         return Tensor(data, self.inputs, self.dtype)
 
     @property
