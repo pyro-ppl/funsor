@@ -384,7 +384,7 @@ def align_tensor(new_inputs, x, expand=False):
     # Permute squashed input dims.
     x_keys = tuple(old_inputs)
     data = ops.permute(data, tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
-                       tuple(range(len(old_inputs), data.dim())))
+                       tuple(range(len(old_inputs), len(data.shape))))
 
     # Unsquash multivariate input dims by filling in ones.
     data = data.reshape(tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +

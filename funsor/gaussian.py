@@ -14,7 +14,7 @@ from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.tensor import Tensor, align_tensor, align_tensors, materialize, numeric_array
+from funsor.tensor import Tensor, align_tensor, align_tensors, materialize
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
 from funsor.util import lazy_property
 
@@ -324,12 +324,12 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # Constants and Affine funsors are eagerly substituted;
         # everything else is lazily substituted.
         lazy_subs = tuple((k, v) for k, v in subs
-                          if not isinstance(v, (Number, numeric_array, Variable, Slice))
+                          if not isinstance(v, (Number, Tensor, Variable, Slice))
                           and not (is_affine(v) and affine_inputs(v)))
         var_subs = tuple((k, v) for k, v in subs if isinstance(v, Variable))
-        int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, numeric_array, Slice))
+        int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor, Slice))
                          if v.dtype != 'real')
-        real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, numeric_array))
+        real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
                           if v.dtype == 'real')
         affine_subs = tuple((k, v) for k, v in subs
                             if is_affine(v) and affine_inputs(v) and not isinstance(v, Variable))
@@ -436,8 +436,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         affine = OrderedDict()
         for k, v in subs:
             const, coeffs = extract_affine(v)
-            if (isinstance(const, numeric_array) and
-                    all(isinstance(coeff, numeric_array) for coeff, _ in coeffs.values())):
+            if (isinstance(const, Tensor) and
+                    all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values())):
                 affine[k] = const, coeffs
             else:
                 remaining_subs += (k, v),
