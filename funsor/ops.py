@@ -260,6 +260,10 @@ def max(x, y):
 
 
 def _logaddexp(x, y):
+    if hasattr(x, "__logaddexp__"):
+        return x.__logaddexp__(y)
+    if hasattr(y, "__rlogaddexp__"):
+        return y.__logaddexp__(x)
     shift = max(x, y)
     return log(exp(x - shift) + exp(y - shift)) + shift
 
