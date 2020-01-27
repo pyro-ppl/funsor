@@ -34,6 +34,7 @@ ops.permute.register(array, (tuple, list))(np.transpose)
 ops.transpose.register(array, int, int)(np.swapaxes)
 ops.full_like.register(array, object)(np.full_like)
 ops.clamp.register(array, object, object)(np.clip)
+ops.einsum.register(str, [array])(np.einsum)
 
 
 @quote.register(np.ndarray)

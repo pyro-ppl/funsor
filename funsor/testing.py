@@ -137,7 +137,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     elif isinstance(actual, numbers.Number):
         diff = abs(actual - expected)
         if rtol is not None:
-            assert diff < (atol + expected) * rtol, msg
+            assert diff < (atol + abs(expected)) * rtol, msg
         elif atol is not None:
             assert diff < atol, msg
     else:
@@ -215,6 +215,8 @@ def randn(shape, backend="torch"):
 
 def astype(x, dtype):
     if torch.is_tensor(x):
+        if dtype == 'uint8':
+            return x.byte()
         return x.type(dtype)
     else:
         return x.astype(dtype)

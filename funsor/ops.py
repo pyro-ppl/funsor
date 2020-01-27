@@ -426,6 +426,11 @@ def clamp(x, min, max):
     raise NotImplementedError
 
 
+@Op
+def einsum(equation, operands):
+    raise NotImplementedError
+
+
 __all__ = [
     'AddOp',
     'AssociativeOp',

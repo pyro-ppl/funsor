@@ -320,7 +320,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         #       g = delta(x=x0) |f|.
         if flat_logits.requires_grad:
             # Apply a dice factor to preserve differentiability.
-            index = [ops.new_arange(self.data, n).reshape((n,) + (1,) * (flat_logits.dim() - i - 2))
+            index = [ops.new_arange(self.data, n).reshape((n,) + (1,) * (len(flat_logits.shape) - i - 2))
                      for i, n in enumerate(flat_logits.shape[:-1])]
             index.append(flat_sample)
             log_prob = flat_logits[index]
@@ -445,12 +445,12 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
         lhs_dim = len(lhs.shape)
         rhs_dim = len(rhs.shape)
         if lhs_dim < rhs_dim:
-            cut = lhs_data.dim() - lhs_dim
+            cut = len(lhs_data.shape) - lhs_dim
             shape = lhs_data.shape
             shape = shape[:cut] + (1,) * (rhs_dim - lhs_dim) + shape[cut:]
             lhs_data = lhs_data.reshape(shape)
         elif rhs_dim < lhs_dim:
-            cut = rhs_data.dim() - rhs_dim
+            cut = len(rhs_data.shape) - rhs_dim
             shape = rhs_data.shape
             shape = shape[:cut] + (1,) * (lhs_dim - rhs_dim) + shape[cut:]
             rhs_data = rhs_data.reshape(shape)
@@ -469,21 +469,21 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
     else:
         inputs, (lhs_data, rhs_data) = align_tensors(lhs, rhs)
     if len(lhs.shape) == 1:
-        lhs_data = lhs_data.unsqueeze(-2)
+        lhs_data = ops.unsqueeze(lhs_data, -2)
     if len(rhs.shape) == 1:
-        rhs_data = rhs_data.unsqueeze(-1)
+        rhs_data = ops.unsqueeze(rhs_data, -1)
 
     # Reshape to support broadcasting of output shape.
     if inputs:
         lhs_dim = max(2, len(lhs.shape))
         rhs_dim = max(2, len(rhs.shape))
         if lhs_dim < rhs_dim:
-            cut = lhs_data.dim() - lhs_dim
+            cut = len(lhs_data.shape) - lhs_dim
             shape = lhs_data.shape
             shape = shape[:cut] + (1,) * (rhs_dim - lhs_dim) + shape[cut:]
             lhs_data = lhs_data.reshape(shape)
         elif rhs_dim < lhs_dim:
-            cut = rhs_data.dim() - rhs_dim
+            cut = len(rhs_data.shape) - rhs_dim
             shape = rhs_data.shape
             shape = shape[:cut] + (1,) * (lhs_dim - rhs_dim) + shape[cut:]
             rhs_data = rhs_data.reshape(shape)
@@ -500,7 +500,7 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
 def eager_reshape_tensor(op, arg):
     if arg.shape == op.shape:
         return arg
-    batch_shape = arg.data.shape[:arg.data.dim() - len(arg.shape)]
+    batch_shape = arg.data.shape[:len(arg.data.shape) - len(arg.shape)]
     data = arg.data.reshape(batch_shape + op.shape)
     return Tensor(data, arg.inputs, arg.dtype)
 
@@ -527,7 +527,7 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
     target_dim = len(lhs.inputs)
     source_dim = target_dim + op.offset
     if target_dim != source_dim:
-        perm = list(range(data.dim()))
+        perm = list(range(len(data.shape)))
         del perm[source_dim]
         perm.insert(target_dim, source_dim)
         data = ops.permute(data, perm)
@@ -548,13 +548,14 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
         rhs_data = rhs_data.reshape(rhs_data.shape + (1,) * (len(lhs.output.shape) - 1))
 
     # Perform advanced indexing.
-    target_dim = lhs_data.dim() - len(lhs.output.shape) + op.offset
-    index = [None] * lhs_data.dim()
+    lhs_data_dim = len(lhs_data.shape)
+    target_dim = lhs_data_dim - len(lhs.output.shape) + op.offset
+    index = [None] * lhs_data_dim
     for i in range(target_dim):
-        index[i] = ops.new_arange(lhs_data, lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 2))
+        index[i] = ops.new_arange(lhs_data, lhs_data.shape[i]).reshape((-1,) + (1,) * (lhs_data_dim - i - 2))
     index[target_dim] = rhs_data
-    for i in range(1 + target_dim, lhs_data.dim()):
-        index[i] = ops.new_arange(lhs_data, lhs_data.size(i)).reshape((-1,) + (1,) * (lhs_data.dim() - i - 1))
+    for i in range(1 + target_dim, lhs_data_dim):
+        index[i] = ops.new_arange(lhs_data, lhs_data.shape[i]).reshape((-1,) + (1,) * (lhs_data_dim - i - 1))
     data = lhs_data[tuple(index)]
     return Tensor(data, inputs, lhs.dtype)
 
@@ -888,7 +889,7 @@ def eager_einsum(equation, operands):
         out = ''.join(new_symbols[k] for k in inputs) + out
         equation = ','.join(ins) + '->' + out
 
-        data = torch.einsum(equation, [x.data for x in operands])
+        data = ops.einsum(equation, *[x.data for x in operands])
         return Tensor(data, inputs)
 
     return None  # defer to default implementation
