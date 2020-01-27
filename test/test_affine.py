@@ -100,7 +100,6 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     "Variable('x', reals(2, 8))[0] + torch.randn(8)",
     "Variable('x', reals(2, 8))[Variable('i', bint(2))] / 4 - 3.5",
 ])
-# TODO: fix Variable + torch.Tensor tests
 def test_extract_affine(expr):
     x = eval(expr)
     assert is_affine(x)

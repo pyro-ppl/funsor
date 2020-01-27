@@ -35,7 +35,7 @@ from funsor.terms import (
 from funsor.util import getargspec, quote
 
 
-numeric_array = (torch.Tensor, np.ndarray)
+numeric_array = (torch.Tensor, np.ndarray, np.float64)
 
 
 def _nameof(fn):
@@ -181,7 +181,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
                         k = v.name
                         d = v.inputs[v.name]
                         if slices is None:
-                            slices = [slice(None)] * self.data.dim()
+                            slices = [slice(None)] * len(self.data.shape)
                         slices[i] = v.slice
                 inputs[k] = d
             data = self.data[tuple(slices)] if slices else self.data

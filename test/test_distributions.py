@@ -20,14 +20,13 @@ from funsor.terms import Independent, Variable, lazy
 from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor
 
 
-# TODO: fix failing tests
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('eager', [False, True])
 def test_beta_density(batch_shape, eager):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(), reals(), reals(), reals())
+    @funsor.tensor.function(reals(), reals(), reals(), reals())
     def beta(concentration1, concentration0, value):
         return torch.distributions.Beta(concentration1, concentration0).log_prob(value)
 
@@ -52,7 +51,7 @@ def test_bernoulli_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(), reals(), reals())
+    @funsor.tensor.function(reals(), reals(), reals())
     def bernoulli(probs, value):
         return torch.distributions.Bernoulli(probs).log_prob(value)
 
@@ -80,7 +79,7 @@ def test_bernoulli_logits_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(), reals(), reals())
+    @funsor.tensor.function(reals(), reals(), reals())
     def bernoulli(logits, value):
         return torch.distributions.Bernoulli(logits=logits).log_prob(value)
 
@@ -109,7 +108,7 @@ def test_binomial_density(batch_shape, eager):
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.torch.function(reals(), reals(), reals(), reals())
+    @funsor.tensor.function(reals(), reals(), reals(), reals())
     def binomial(total_count, probs, value):
         return torch.distributions.Binomial(total_count, probs).log_prob(value)
 
@@ -174,7 +173,7 @@ def test_delta_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(*event_shape), reals(), reals(*event_shape), reals())
+    @funsor.tensor.function(reals(*event_shape), reals(), reals(*event_shape), reals())
     def delta(v, log_density, value):
         eq = (v == value)
         for _ in range(len(event_shape)):
@@ -210,7 +209,7 @@ def test_dirichlet_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(*event_shape), reals(*event_shape), reals())
+    @funsor.tensor.function(reals(*event_shape), reals(*event_shape), reals())
     def dirichlet(concentration, value):
         return torch.distributions.Dirichlet(concentration).log_prob(value)
 
@@ -234,7 +233,7 @@ def test_dirichlet_multinomial_density(batch_shape, event_shape):
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.torch.function(reals(*event_shape), reals(), reals(*event_shape), reals())
+    @funsor.tensor.function(reals(*event_shape), reals(), reals(*event_shape), reals())
     def dirichlet_multinomial(concentration, total_count, value):
         return pyro.distributions.DirichletMultinomial(concentration, total_count).log_prob(value)
 
@@ -260,7 +259,7 @@ def test_lognormal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(), reals(), reals(), reals())
+    @funsor.tensor.function(reals(), reals(), reals(), reals())
     def log_normal(loc, scale, value):
         return torch.distributions.LogNormal(loc, scale).log_prob(value)
 
@@ -284,7 +283,7 @@ def test_multinomial_density(batch_shape, event_shape):
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.torch.function(reals(), reals(*event_shape), reals(*event_shape), reals())
+    @funsor.tensor.function(reals(), reals(*event_shape), reals(*event_shape), reals())
     def multinomial(total_count, probs, value):
         total_count = total_count.max().item()
         return torch.distributions.Multinomial(total_count, probs).log_prob(value)
@@ -455,7 +454,7 @@ def test_mvn_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(3), reals(3, 3), reals(3), reals())
+    @funsor.tensor.function(reals(3), reals(3, 3), reals(3), reals())
     def mvn(loc, scale_tril, value):
         return torch.distributions.MultivariateNormal(loc, scale_tril=scale_tril).log_prob(value)
 
@@ -579,7 +578,7 @@ def test_poisson_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(), reals(), reals())
+    @funsor.tensor.function(reals(), reals(), reals())
     def poisson(rate, value):
         return torch.distributions.Poisson(rate).log_prob(value)
 
@@ -605,7 +604,7 @@ def test_gamma_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(), reals(), reals(), reals())
+    @funsor.tensor.function(reals(), reals(), reals(), reals())
     def gamma(concentration, rate, value):
         return torch.distributions.Gamma(concentration, rate).log_prob(value)
 
@@ -632,7 +631,7 @@ def test_von_mises_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.torch.function(reals(), reals(), reals(), reals())
+    @funsor.tensor.function(reals(), reals(), reals(), reals())
     def von_mises(loc, concentration, value):
         return pyro.distributions.VonMises(loc, concentration).log_prob(value)
 

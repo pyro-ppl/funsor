@@ -158,10 +158,7 @@ def test_block_matrix_batched(batch_shape, sparse):
 ])
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_smoke(expr, expected_type, backend):
-    if backend == "torch":
-        tensor = torch.tensor
-    else:
-        tensor = np.array
+    tensor = torch.tensor if backend == "torch" else np.array
 
     g1 = Gaussian(
         info_vec=tensor([[0.0, 0.1, 0.2],

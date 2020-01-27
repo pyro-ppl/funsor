@@ -4,6 +4,7 @@
 import itertools
 from collections import OrderedDict
 
+import numpy as np
 import pytest
 import torch
 
@@ -38,26 +39,34 @@ def test_to_funsor(shape, dtype):
         funsor.to_funsor(t, reals(5, *shape))
 
 
-def test_to_data():
-    data = torch.zeros(3, 3)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_to_data(backend):
+    t = torch if backend == "torch" else np
+    data = t.zeros((3, 3))
     x = Tensor(data)
     assert funsor.to_data(x) is data
 
 
-def test_to_data_error():
-    data = torch.zeros(3, 3)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_to_data_error(backend):
+    t = torch if backend == "torch" else np
+    data = t.zeros((3, 3))
     x = Tensor(data, OrderedDict(i=bint(3)))
     with pytest.raises(ValueError):
         funsor.to_data(x)
 
 
-def test_cons_hash():
-    x = torch.randn(3, 3)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_cons_hash(backend):
+    random = torch if backend == "torch" else np.random
+    x = random.randn(3, 3)
     assert Tensor(x) is Tensor(x)
 
 
-def test_indexing():
-    data = torch.randn(4, 5)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_indexing(backend):
+    random = torch if backend == "torch" else np.random
+    data = random.randn(4, 5)
     inputs = OrderedDict([('i', bint(4)),
                           ('j', bint(5))])
     x = Tensor(data, inputs)
@@ -79,14 +88,17 @@ def test_indexing():
     check_funsor(x(j=2, k=3), {'i': bint(4)}, reals(), data[:, 2])
 
 
-def test_advanced_indexing_shape():
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_advanced_indexing_shape(backend):
+    random = torch if backend == "torch" else np.random
+    tensor = torch.tensor if backend == "torch" else np.array
     I, J, M, N = 4, 4, 2, 3
-    x = Tensor(torch.randn(I, J), OrderedDict([
+    x = Tensor(random.randn(I, J), OrderedDict([
         ('i', bint(I)),
         ('j', bint(J)),
     ]))
-    m = Tensor(torch.tensor([2, 3]), OrderedDict([('m', bint(M))]), I)
-    n = Tensor(torch.tensor([0, 1, 1]), OrderedDict([('n', bint(N))]), J)
+    m = Tensor(tensor([2, 3]), OrderedDict([('m', bint(M))]), I)
+    n = Tensor(tensor([0, 1, 1]), OrderedDict([('n', bint(N))]), J)
     assert x.data.shape == (I, J)
 
     check_funsor(x(i=m), {'j': bint(J), 'm': bint(M)}, reals())
@@ -113,8 +125,10 @@ def test_advanced_indexing_shape():
     check_funsor(x(n, m, k=m), {'m': bint(M), 'n': bint(N)}, reals())
 
 
-def test_slice_simple():
-    t = torch.randn(3, 4, 5)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_slice_simple(backend):
+    random = torch if backend == "torch" else np.random
+    t = random.randn(3, 4, 5)
     f = Tensor(t)["i", "j"]
     assert_close(f, f(i=Slice("i", 3)))
     assert_close(f, f(j=Slice("j", 4)))
@@ -124,8 +138,10 @@ def test_slice_simple():
 
 
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])
-def test_slice_1(stop):
-    t = torch.randn(10, 2)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_slice_1(stop, backend):
+    random = torch if backend == "torch" else np.random
+    t = random.randn(10, 2)
     actual = Tensor(t)["i"](i=Slice("j", stop, dtype=10))
     expected = Tensor(t[:stop])["j"]
     assert_close(actual, expected)
@@ -134,15 +150,19 @@ def test_slice_1(stop):
 @pytest.mark.parametrize("start", [0, 1, 2, 10])
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])
 @pytest.mark.parametrize("step", [1, 2, 5, 10])
-def test_slice_2(start, stop, step):
-    t = torch.randn(10, 2)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_slice_2(start, stop, step, backend):
+    random = torch if backend == "torch" else np.random
+    t = random.randn(10, 2)
     actual = Tensor(t)["i"](i=Slice("j", start, stop, step, dtype=10))
     expected = Tensor(t[start: stop: step])["j"]
     assert_close(actual, expected)
 
 
-def test_arange_simple():
-    t = torch.randn(3, 4, 5)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_arange_simple(backend):
+    random = torch if backend == "torch" else np.random
+    t = random.randn(3, 4, 5)
     f = Tensor(t)["i", "j"]
     assert_close(f, f(t, i=arange(t, "i", 3)))
     assert_close(f, f(t, j=arange(t, "j", 4)))
@@ -152,8 +172,10 @@ def test_arange_simple():
 
 
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])
-def test_arange_1(stop):
-    t = torch.randn(10, 2)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_arange_1(stop, backend):
+    random = torch if backend == "torch" else np.random
+    t = random.randn(10, 2)
     actual = Tensor(t)["i"](i=arange(t, "j", stop, dtype=10))
     expected = Tensor(t[:stop])["j"]
     assert_close(actual, expected)
@@ -162,13 +184,16 @@ def test_arange_1(stop):
 @pytest.mark.parametrize("start", [0, 1, 2, 10])
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])
 @pytest.mark.parametrize("step", [1, 2, 5, 10])
-def test_arange_2(start, stop, step):
-    t = torch.randn(10, 2)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_arange_2(start, stop, step, backend):
+    random = torch if backend == "torch" else np.random
+    t = random.randn(10, 2)
     actual = Tensor(t)["i"](i=arange(t, "j", start, stop, step, dtype=10))
     expected = Tensor(t[start: stop: step])["j"]
     assert_close(actual, expected)
 
 
+# TODO: add numpy backend for following tests
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
 def test_advanced_indexing_tensor(output_shape):
     #      u   v
@@ -237,9 +262,9 @@ def test_advanced_indexing_lazy(output_shape):
         k = u + v
 
     expected_data = torch.empty((2, 3) + output_shape)
-    i_data = funsor.torch.materialize(i).data
-    j_data = funsor.torch.materialize(j).data
-    k_data = funsor.torch.materialize(k).data
+    i_data = funsor.tensor.materialize(i).data
+    j_data = funsor.tensor.materialize(j).data
+    k_data = funsor.tensor.materialize(k).data
     for u in range(2):
         for v in range(3):
             expected_data[u, v] = x.data[i_data[u], j_data[v], k_data[u, v]]
