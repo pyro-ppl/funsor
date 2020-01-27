@@ -573,7 +573,7 @@ def eager_lambda(var, expr):
         shape = data.shape
         dim = len(shape) - len(expr.output.shape)
         data = data.reshape(shape[:dim] + (1,) + shape[dim:])
-        data = data.expand(shape[:dim] + (var.dtype,) + shape[dim:])
+        data = ops.expand(data, shape[:dim] + (var.dtype,) + shape[dim:])
     return Tensor(data, inputs, expr.dtype)
 
 
@@ -588,8 +588,8 @@ def eager_stack_homogeneous(name, *parts):
         part_inputs.update(part.inputs)
 
     shape = tuple(d.size for d in part_inputs.values()) + output.shape
-    data = torch.stack([align_tensor(part_inputs, part).expand(shape)
-                        for part in parts])
+    data = ops.stack(0, *[ops.expand(align_tensor(part_inputs, part), shape)
+                          for part in parts])
     inputs = OrderedDict([(name, bint(len(parts)))])
     inputs.update(part_inputs)
     return Tensor(data, inputs, dtype=output.dtype)
@@ -609,12 +609,12 @@ def eager_cat_homogeneous(name, part_name, *parts):
     for part in parts:
         inputs[part_name] = part.inputs[part_name]
         shape = tuple(d.size for d in inputs.values()) + output.shape
-        tensors.append(align_tensor(inputs, part).expand(shape))
+        tensors.append(ops.expand(align_tensor(inputs, part), shape))
     del inputs[part_name]
 
     dim = 0
-    tensor = torch.cat(tensors, dim=dim)
-    inputs = OrderedDict([(name, bint(tensor.size(dim)))] + list(inputs.items()))
+    tensor = ops.cat(dim, *tensors)
+    inputs = OrderedDict([(name, bint(tensor.shape[dim]))] + list(inputs.items()))
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 
@@ -895,9 +895,10 @@ def eager_einsum(equation, operands):
     return None  # defer to default implementation
 
 
-def torch_tensordot(x, y, dims):
+def numeric_tensordot(x, y, dims):
     """
-    Wrapper around :func:`torch.tensordot` to operate on real-valued Funsors.
+    Wrapper around :func:`torch.tensordot` or :func:`numpy.tensordot`
+    to operate on real-valued Funsors.
 
     Note this operates only on the ``output`` tensor. To perform sum-product
     contractions on named dimensions, instead use ``+`` and
@@ -928,11 +929,7 @@ def torch_tensordot(x, y, dims):
     return Einsum(equation, (x, y))
 
 
-def _torch_stack(dim, *parts):
-    return torch.stack(parts, dim=dim)
-
-
-def torch_stack(parts, dim=0):
+def numeric_stack(parts, dim=0):
     """
     Wrapper around :func:`torch.stack` to operate on real-valued Funsors.
 
@@ -953,7 +950,7 @@ def torch_stack(parts, dim=0):
     split = dim + len(shape) + 1
     shape = shape[:split] + (len(parts),) + shape[split:]
     output = Domain(shape, parts[0].dtype)
-    fn = functools.partial(_torch_stack, dim)
+    fn = functools.partial(ops.stack, dim)
     return Function(fn, output, parts)
 
 
@@ -979,5 +976,6 @@ __all__ = [
     'function',
     'ignore_jit_warnings',
     'materialize',
-    'torch_tensordot',
+    'numeric_stack',
+    'numeric_tensordot',
 ]

@@ -34,7 +34,11 @@ ops.permute.register(array, (tuple, list))(np.transpose)
 ops.transpose.register(array, int, int)(np.swapaxes)
 ops.full_like.register(array, object)(np.full_like)
 ops.clamp.register(array, object, object)(np.clip)
-ops.einsum.register(str, [array])(np.einsum)
+
+
+@ops.einsum.register(str, [array])
+def _einsum(equation, *operands):
+    return np.einsum(equation, *operands)
 
 
 @quote.register(np.ndarray)
@@ -140,9 +144,14 @@ def _diagonal(x, dim1, dim2):
     return np.diagonal(x, axis1=dim1, axis2=dim2)
 
 
-@ops.cat_op.register(int, [array])
+@ops.cat.register(int, [array])
 def _cat(dim, *x):
     return np.concatenate(x, axis=dim)
+
+
+@ops.stack.register(int, [array])
+def _stack(dim, *x):
+    return np.stack(x, axis=dim)
 
 
 @ops.new_zeros.register(array, tuple)

@@ -363,12 +363,13 @@ def triangular_solve(x, y, upper=False, transpose=False):
 
 
 @Op
-def cat_op(dim, *x):
+def cat(dim, *x):
     raise NotImplementedError
 
 
-def cat(x, dim=0):
-    return cat_op(dim, *x)
+@Op
+def stack(dim, *x):
+    raise NotImplementedError
 
 
 @Op
@@ -427,7 +428,7 @@ def clamp(x, min, max):
 
 
 @Op
-def einsum(equation, operands):
+def einsum(equation, *operands):
     raise NotImplementedError
 
 

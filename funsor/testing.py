@@ -129,9 +129,9 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             if eq.any():
                 actual = actual[~eq]
                 expected = expected[~eq]
-            diff = (actual.detach() - expected.detach()).abs()
+            diff = abs(actual - expected)
             if rtol is not None:
-                assert (diff / (atol + expected.detach().abs())).max() < rtol, msg
+                assert (diff / (atol + expected.abs())).max() < rtol, msg
             elif atol is not None:
                 assert diff.max() < atol, msg
     elif isinstance(actual, numbers.Number):

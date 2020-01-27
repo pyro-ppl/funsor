@@ -19,7 +19,11 @@ ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
 ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
 ops.full_like.register(torch.Tensor, object)(torch.full_like)
 ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
-ops.einsum.register(str, [torch.Tensor])(torch.einsum)
+
+
+@ops.einsum.register(str, [torch.Tensor])
+def _einsum(equation, *operands):
+    return torch.einsum(equation, *operands)
 
 
 @quote.register(torch.Tensor)
@@ -134,9 +138,14 @@ def _diagonal(x, dim1, dim2):
     return x.diagonal(dim1=dim1, dim2=dim2)
 
 
-@ops.cat_op.register(int, [torch.Tensor])
+@ops.cat.register(int, [torch.Tensor])
 def _cat(dim, *x):
     return torch.cat(x, dim=dim)
+
+
+@ops.stack.register(int, [torch.Tensor])
+def _stack(dim, *x):
+    return torch.stack(x, dim=dim)
 
 
 @ops.new_zeros.register(torch.Tensor, tuple)

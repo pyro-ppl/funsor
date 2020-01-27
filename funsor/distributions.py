@@ -14,7 +14,7 @@ from funsor.affine import is_affine
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, interpretation
-from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
+from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, materialize, numeric_stack
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
 
 
@@ -198,8 +198,8 @@ def eager_beta(concentration1, concentration0, value):
 
 @eager.register(Beta, Funsor, Funsor, Funsor)
 def eager_beta(concentration1, concentration0, value):
-    concentration = torch_stack((concentration0, concentration1))
-    value = torch_stack((1 - value, value))
+    concentration = numeric_stack((concentration0, concentration1))
+    value = numeric_stack((1 - value, value))
     return Dirichlet(concentration, value=value)
 
 
@@ -232,8 +232,8 @@ def eager_binomial(total_count, probs, value):
 
 @eager.register(Binomial, Funsor, Funsor, Funsor)
 def eager_binomial(total_count, probs, value):
-    probs = torch_stack((1 - probs, probs))
-    value = torch_stack((total_count - value, value))
+    probs = numeric_stack((1 - probs, probs))
+    value = numeric_stack((total_count - value, value))
     return Multinomial(total_count, probs, value=value)
 
 

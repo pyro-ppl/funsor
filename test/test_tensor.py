@@ -14,7 +14,7 @@ from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import assert_close, assert_equiv, astype, check_funsor, rand, randn, random_tensor
-from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, arange, torch_stack, torch_tensordot
+from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, arange, numeric_stack, numeric_tensordot
 
 
 @pytest.mark.parametrize('output_shape', [(), (2,), (3, 2)], ids=str)
@@ -816,36 +816,45 @@ def test_einsum(equation, backend):
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('batch1', ['', 'i', 'j', 'ij'])
-@pytest.mark.parametrize('batch2', ['', 'i', 'j', 'ij'])
-def test_batched_einsum(equation, batch1, batch2):
+@pytest.mark.parametrize('batch1', [''])
+@pytest.mark.parametrize('batch2', [''])
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_batched_einsum(equation, batch1, batch2, backend):
     inputs, output = equation.split('->')
     inputs = inputs.split(',')
 
     sizes = dict(a=2, b=3, c=4, i=5, j=6)
     batch1 = OrderedDict([(k, bint(sizes[k])) for k in batch1])
     batch2 = OrderedDict([(k, bint(sizes[k])) for k in batch2])
-    funsors = [random_tensor(batch, reals(*(sizes[d] for d in dims)))
+    funsors = [random_tensor(batch, reals(*(sizes[d] for d in dims)), backend)
                for batch, dims in zip([batch1, batch2], inputs)]
     actual = Einsum(equation, tuple(funsors))
 
     _equation = ','.join('...' + i for i in inputs) + '->...' + output
     inputs, tensors = align_tensors(*funsors)
     batch = tuple(v.size for v in inputs.values())
-    tensors = [x.expand(batch + f.shape) for (x, f) in zip(tensors, funsors)]
-    expected = Tensor(torch.einsum(_equation, tensors), inputs)
+    tensors = [ops.expand(x, batch + f.shape) for (x, f) in zip(tensors, funsors)]
+    expected = Tensor(ops.einsum(_equation, *tensors), inputs)
     assert_close(actual, expected, atol=1e-5, rtol=None)
+
+
+def _numeric_tensordot(x, y, dim):
+    if torch.is_tensor(x):
+        return torch.tensordot(x, y, dim)
+    else:
+        return np.tensordot(x, y, axes=dim)
 
 
 @pytest.mark.parametrize('y_shape', [(), (4,), (4, 5)], ids=str)
 @pytest.mark.parametrize('xy_shape', [(), (6,), (6, 7)], ids=str)
 @pytest.mark.parametrize('x_shape', [(), (2,), (2, 3)], ids=str)
-def test_tensordot(x_shape, xy_shape, y_shape):
-    x = torch.randn(x_shape + xy_shape)
-    y = torch.randn(xy_shape + y_shape)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_funsor_tensordot(x_shape, xy_shape, y_shape, backend):
+    x = randn(x_shape + xy_shape, backend)
+    y = randn(xy_shape + y_shape, backend)
     dim = len(xy_shape)
-    actual = torch_tensordot(Tensor(x), Tensor(y), dim)
-    expected = Tensor(torch.tensordot(x, y, dim))
+    actual = numeric_tensordot(Tensor(x), Tensor(y), dim)
+    expected = Tensor(_numeric_tensordot(x, y, dim))
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
@@ -864,25 +873,27 @@ def test_tensordot(x_shape, xy_shape, y_shape):
     ((2, 3), -2),
     ((2, 3), -3),
 ], ids=str)
-def test_torch_stack(n, shape, dim):
-    tensors = [torch.randn(shape) for _ in range(n)]
-    actual = torch_stack(tuple(Tensor(t) for t in tensors), dim=dim)
-    expected = Tensor(torch.stack(tensors, dim=dim))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_numeric_stack(n, shape, dim, backend):
+    tensors = [randn(shape, backend) for _ in range(n)]
+    actual = numeric_stack(tuple(Tensor(t) for t in tensors), dim=dim)
+    expected = Tensor(ops.stack(dim, *tensors))
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('output', [bint(2), reals(), reals(4), reals(2, 3)], ids=str)
-def test_funsor_stack(output):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_funsor_stack(output, backend):
     x = random_tensor(OrderedDict([
         ('i', bint(2)),
-    ]), output)
+    ]), output, backend)
     y = random_tensor(OrderedDict([
         ('j', bint(3)),
-    ]), output)
+    ]), output, backend)
     z = random_tensor(OrderedDict([
         ('i', bint(2)),
         ('k', bint(4)),
-    ]), output)
+    ]), output, backend)
 
     xy = Stack('t', (x, y))
     assert isinstance(xy, Tensor)
@@ -917,18 +928,19 @@ def test_funsor_stack(output):
 
 
 @pytest.mark.parametrize('output', [bint(2), reals(), reals(4), reals(2, 3)], ids=str)
-def test_cat_simple(output):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_cat_simple(output, backend):
     x = random_tensor(OrderedDict([
         ('i', bint(2)),
-    ]), output)
+    ]), output, backend)
     y = random_tensor(OrderedDict([
         ('i', bint(3)),
         ('j', bint(4)),
-    ]), output)
+    ]), output, backend)
     z = random_tensor(OrderedDict([
         ('i', bint(5)),
         ('k', bint(6)),
-    ]), output)
+    ]), output, backend)
 
     assert Cat('i', (x,)) is x
     assert Cat('i', (y,)) is y
