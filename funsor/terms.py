@@ -634,7 +634,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return Binary(ops.logaddexp, self, to_funsor(other))
 
     def __rlogaddexp__(self, other):
-        return Binary(ops.logaddexp, self, to_funsor(other))
+        return Binary(ops.logaddexp, to_funsor(other), self)
 
     def __mul__(self, other):
         return Binary(ops.mul, self, to_funsor(other))
