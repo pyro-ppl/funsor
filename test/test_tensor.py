@@ -157,16 +157,14 @@ def test_slice_2(start, stop, step, backend):
 
 
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
-# FIXME: this test is failing at the second `assert_close`?
 def test_arange_simple(backend):
     t = randn((3, 4, 5), backend)
     f = Tensor(t)["i", "j"]
-    assert_close(f, f(t, i=arange(t, "i", 3)))
-    print(f(t, j=arange(t, "j", 4)))
-    assert_close(f, f(t, j=arange(t, "j", 4)))
-    assert_close(f, f(t, i=arange(t, "i", 3), j=arange(t, "j", 4)))
-    assert_close(f, f(t, i=arange(t, "i", 3), j="j"))
-    assert_close(f, f(t, i="i", j=arange(t, "j", 4)))
+    assert_close(f, f(i=arange(t, "i", 3)))
+    assert_close(f, f(j=arange(t, "j", 4)))
+    assert_close(f, f(i=arange(t, "i", 3), j=arange(t, "j", 4)))
+    assert_close(f, f(i=arange(t, "i", 3), j="j"))
+    assert_close(f, f(i="i", j=arange(t, "j", 4)))
 
 
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])

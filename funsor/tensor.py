@@ -335,7 +335,6 @@ def to_funsor(x):
 
 @dispatch(numeric_array, Domain)
 def to_funsor(x, output):
-    print("to_funsor", x, output)
     result = Tensor(x, dtype=output.dtype)
     if result.output != output:
         raise ValueError("Invalid shape: expected {}, actual {}"
