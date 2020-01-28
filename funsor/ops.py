@@ -77,6 +77,10 @@ class LogAddExpOp(AssociativeOp):
     pass
 
 
+class SampleOp(LogAddExpOp):
+    pass
+
+
 class SubOp(Op):
     pass
 
@@ -255,10 +259,17 @@ def max(x, y):
     return _builtin_max(x, y)
 
 
-@LogAddExpOp
-def logaddexp(x, y):
+def _logaddexp(x, y):
+    if hasattr(x, "__logaddexp__"):
+        return x.__logaddexp__(y)
+    if hasattr(y, "__rlogaddexp__"):
+        return y.__logaddexp__(x)
     shift = max(x, y)
     return log(exp(x - shift) + exp(y - shift)) + shift
+
+
+logaddexp = LogAddExpOp(_logaddexp)
+sample = SampleOp(_logaddexp)
 
 
 @SubOp
@@ -291,6 +302,7 @@ DISTRIBUTIVE_OPS = frozenset([
     (min, mul),
     (max, add),
     (min, add),
+    (sample, add),
 ])
 
 
@@ -449,6 +461,7 @@ __all__ = [
     'Op',
     'PRODUCT_INVERSES',
     'ReciprocalOp',
+    'SampleOp',
     'SubOp',
     'ReshapeOp',
     'UNITS',
@@ -484,6 +497,7 @@ __all__ = [
     'pow',
     'safediv',
     'safesub',
+    'sample',
     'sigmoid',
     'sqrt',
     'sub',

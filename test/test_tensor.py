@@ -563,7 +563,16 @@ def test_lambda_getitem(backend):
     assert Lambda(i, y) is x
 
 
-REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
+REDUCE_OPS = [
+    ops.add,
+    ops.mul,
+    ops.and_,
+    ops.or_,
+    ops.logaddexp,
+    ops.sample,
+    ops.min,
+    ops.max,
+]
 
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
