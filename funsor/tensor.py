@@ -54,6 +54,9 @@ class TensorMeta(FunsorMeta):
     Wrapper to fill in default args and convert between OrderedDict and tuple.
     """
     def __call__(cls, data, inputs=None, dtype="real"):
+        # XXX: convert NumPy scalar to ndarray
+        if isinstance(data, np.generic):
+            data = data.__array__()
         if inputs is None:
             inputs = tuple()
         elif isinstance(inputs, OrderedDict):
