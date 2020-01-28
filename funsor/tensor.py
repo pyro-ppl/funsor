@@ -66,7 +66,7 @@ class TensorMeta(FunsorMeta):
 
 class Tensor(Funsor, metaclass=TensorMeta):
     """
-    Funsor backed by a PyTorch Tensor.
+    Funsor backed by a PyTorch Tensor or a NumPy ndarray.
 
     This follows the :mod:`torch.distributions` convention of arranging
     named "batch" dimensions on the left and remaining "event" dimensions
@@ -351,9 +351,9 @@ def align_tensor(new_inputs, x, expand=False):
         :class:`~funsor.terms.Number` .
     :param bool expand: If False (default), set result size to 1 for any input
         of ``x`` not in ``new_inputs``; if True expand to ``new_inputs`` size.
-    :return: a number or :class:`torch.Tensor` that can be broadcast to other
+    :return: a number or :class:`torch.Tensor` or :class:`np.ndarray` that can be broadcast to other
         tensors with inputs ``new_inputs``.
-    :rtype: int or float or torch.Tensor
+    :rtype: int or float or torch.Tensor or np.ndarray
     """
     assert isinstance(new_inputs, OrderedDict)
     assert isinstance(x, (Number, Tensor))
@@ -392,7 +392,8 @@ def align_tensors(*args, **kwargs):
         :class:`~funsor.terms.Number` s.
     :param bool expand: Whether to expand input tensors. Defaults to False.
     :return: a pair ``(inputs, tensors)`` where tensors are all
-        :class:`torch.Tensor` s that can be broadcast together to a single data
+        :class:`torch.Tensor` s or :class:`np.ndarray` s
+        that can be broadcast together to a single data
         with given ``inputs``.
     :rtype: tuple
     """
@@ -614,7 +615,7 @@ def eager_cat_homogeneous(name, part_name, *parts):
 
 def arange(prototype, name, *args, **kwargs):
     """
-    Helper to create a named :func:`torch.arange` funsor.
+    Helper to create a named :func:`torch.arange` or :func:`np.arange` funsor.
     In some cases this can be replaced by a symbolic
     :class:`~funsor.terms.Slice` .
 
@@ -655,7 +656,7 @@ def materialize(prototype, x):
     Attempt to convert a Funsor to a :class:`~funsor.terms.Number` or
     :class:`Tensor` by substituting :func:`arange` s into its free variables.
 
-    :param prototype: either a torch.Tensor or a numpy.array
+    :param prototype: either a torch.Tensor or a np.ndarray
     :arg Funsor x: A funsor.
     :rtype: Funsor
     """
@@ -786,7 +787,7 @@ def _function(inputs, output, fn):
 
 def function(*signature):
     r"""
-    Decorator to wrap a PyTorch function.
+    Decorator to wrap a PyTorch/NumPy function.
 
     Example::
 
@@ -818,13 +819,13 @@ def function(*signature):
 
 class Einsum(Funsor):
     """
-    Wrapper around :func:`torch.einsum` to operate on real-valued Funsors.
+    Wrapper around :func:`torch.einsum` or :func:`np.einsum` to operate on real-valued Funsors.
 
     Note this operates only on the ``output`` tensor. To perform sum-product
     contractions on named dimensions, instead use ``+`` and
     :class:`~funsor.terms.Reduce`.
 
-    :param str equation: An :func:`torch.einsum` equation.
+    :param str equation: An :func:`torch.einsum` or :func:`np.einsum` equation.
     :param tuple operands: A tuple of input funsors.
     """
     def __init__(self, equation, operands):
@@ -891,7 +892,7 @@ def eager_einsum(equation, operands):
 
 def numeric_tensordot(x, y, dims):
     """
-    Wrapper around :func:`torch.tensordot` or :func:`numpy.tensordot`
+    Wrapper around :func:`torch.tensordot` or :func:`np.tensordot`
     to operate on real-valued Funsors.
 
     Note this operates only on the ``output`` tensor. To perform sum-product
@@ -925,7 +926,7 @@ def numeric_tensordot(x, y, dims):
 
 def numeric_stack(parts, dim=0):
     """
-    Wrapper around :func:`torch.stack` to operate on real-valued Funsors.
+    Wrapper around :func:`torch.stack` or :func:`np.stack` to operate on real-valued Funsors.
 
     Note this operates only on the ``output`` tensor. To stack funsors in a
     new named dim, instead use :class:`~funsor.terms.Stack`.
