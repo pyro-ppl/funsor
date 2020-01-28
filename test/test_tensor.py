@@ -162,6 +162,7 @@ def test_arange_simple(backend):
     t = randn((3, 4, 5), backend)
     f = Tensor(t)["i", "j"]
     assert_close(f, f(t, i=arange(t, "i", 3)))
+    print(f(t, j=arange(t, "j", 4)))
     assert_close(f, f(t, j=arange(t, "j", 4)))
     assert_close(f, f(t, i=arange(t, "i", 3), j=arange(t, "j", 4)))
     assert_close(f, f(t, i=arange(t, "i", 3), j="j"))
