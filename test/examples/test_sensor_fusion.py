@@ -12,9 +12,9 @@ from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.pyro.convert import dist_to_funsor, matrix_and_mvn_to_funsor
+from funsor.tensor import Tensor
 from funsor.terms import Subs, Variable
 from funsor.testing import random_mvn
-from funsor.torch import Tensor
 
 
 # This version constructs factors using funsor.distributions.

@@ -177,3 +177,40 @@ def _new_arange(x, stop):
 @ops.finfo.register(array)
 def _finfo(x):
     return np.finfo(x.dtype)
+
+
+@ops.sum.register(array, (int, type(None)))
+def _sum(x, dim):
+    return np.sum(x, axis=dim)
+
+
+@ops.prod.register(array, (int, type(None)))
+def _prod(x, dim):
+    return np.prod(x, axis=dim)
+
+
+@ops.all.register(array, (int, type(None)))
+def _all(x, dim):
+    return np.all(x, axis=dim)
+
+
+@ops.any.register(array, (int, type(None)))
+def _any(x, dim):
+    return np.any(x, axis=dim)
+
+
+@ops.logsumexp.register(array, (int, type(None)))
+def _logsumexp(x, dim):
+    from scipy.special import logsumexp
+
+    return logsumexp(x, axis=dim)
+
+
+@ops.amin.register(array, (int, type(None)))
+def _amin(x, dim):
+    return np.amin(x, axis=dim)
+
+
+@ops.amax.register(array, (int, type(None)))
+def _amax(x, dim):
+    return np.amax(x, axis=dim)

@@ -17,9 +17,9 @@ from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo
 from funsor.pyro.convert import AffineNormal
 from funsor.sum_product import MarkovProduct
+from funsor.tensor import Function, Tensor
 from funsor.terms import Binary, Independent, Stack, Subs, Variable, reflect
 from funsor.testing import xfail_param
-from funsor.torch import Function, Tensor
 
 num_origins = 2
 num_destins = 2
@@ -32,8 +32,8 @@ def bounded_exp(x, bound):
 call_count = 0
 
 
-@funsor.torch.function(reals(2 * num_origins * num_destins),
-                       (reals(num_origins, num_destins, 2),
+@funsor.tensor.function(reals(2 * num_origins * num_destins),
+                        (reals(num_origins, num_destins, 2),
                         reals(num_origins, num_destins)))
 def unpack_gate_rate(gate_rate):
     global call_count

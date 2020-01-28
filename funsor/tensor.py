@@ -236,24 +236,17 @@ class Tensor(Funsor, metaclass=TensorMeta):
             batch_dim = len(self.data.shape) - len(self.output.shape)
             data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
             data = REDUCE_OP_TO_NUMERIC[op](data, -1)
-            if op is ops.min or op is ops.max:
-                data = data[0]
             return Tensor(data, self.inputs, dtype)
         return Tensor(op(self.data), self.inputs, dtype)
 
     def eager_reduce(self, op, reduced_vars):
         if op in REDUCE_OP_TO_NUMERIC:
-            torch_op = REDUCE_OP_TO_NUMERIC[op]
+            numeric_op = REDUCE_OP_TO_NUMERIC[op]
             assert isinstance(reduced_vars, frozenset)
             self_vars = frozenset(self.inputs)
             reduced_vars = reduced_vars & self_vars
             if reduced_vars == self_vars and not self.output.shape:
-                # Reduce all dims at once.
-                if op is ops.logaddexp:
-                    # work around missing torch.Tensor.logsumexp()
-                    data = self.data.reshape(-1).logsumexp(0)
-                    return Tensor(data, dtype=self.dtype)
-                return Tensor(torch_op(self.data), dtype=self.dtype)
+                return Tensor(numeric_op(self.data, None), dtype=self.dtype)
 
             # Reduce one dim at a time.
             data = self.data
@@ -261,9 +254,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             for k, domain in self.inputs.items():
                 if k in reduced_vars:
                     assert not domain.shape
-                    data = torch_op(data, dim=offset)
-                    if op is ops.min or op is ops.max:
-                        data = data[0]
+                    data = numeric_op(data, offset)
                 else:
                     offset += 1
             inputs = OrderedDict((k, v) for k, v in self.inputs.items()
@@ -955,13 +946,13 @@ def numeric_stack(parts, dim=0):
 
 
 REDUCE_OP_TO_NUMERIC = {
-    ops.add: torch.sum,
-    ops.mul: torch.prod,
-    ops.and_: torch.all,
-    ops.or_: torch.any,
-    ops.logaddexp: torch.logsumexp,
-    ops.min: torch.min,
-    ops.max: torch.max,
+    ops.add: ops.sum,
+    ops.mul: ops.prod,
+    ops.and_: ops.all,
+    ops.or_: ops.any,
+    ops.logaddexp: ops.logsumexp,
+    ops.min: ops.amin,
+    ops.max: ops.amax,
 }
 
 

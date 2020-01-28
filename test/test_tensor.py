@@ -157,6 +157,7 @@ def test_slice_2(start, stop, step, backend):
 
 
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
+# FIXME: this test is failing at the second `assert_close`?
 def test_arange_simple(backend):
     t = randn((3, 4, 5), backend)
     f = Tensor(t)["i", "j"]
@@ -307,7 +308,7 @@ def test_unary(symbol, dims, backend):
     dtype = 'real'
     data = rand(shape) + 0.5
     if symbol == '~':
-        data = astype(data, bool)
+        data = astype(data, 'uint8')
         dtype = 2
     expected_data = unary_eval(symbol, data)
 
@@ -565,7 +566,6 @@ def test_lambda_getitem(backend):
 REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
 
 
-# TODO: fix this test
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
 @pytest.mark.parametrize('op', REDUCE_OPS, ids=str)
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
@@ -576,11 +576,7 @@ def test_reduce_all(dims, op, backend):
     data = rand(shape, backend) + 0.5
     if op in [ops.and_, ops.or_]:
         data = astype(data, 'uint8')
-    if op is ops.logaddexp:
-        # work around missing torch.Tensor.logsumexp()
-        expected_data = data.reshape(-1).logsumexp(0)
-    else:
-        expected_data = REDUCE_OP_TO_NUMERIC[op](data)
+    expected_data = REDUCE_OP_TO_NUMERIC[op](data, None)
 
     x = Tensor(data, inputs)
     actual = x.reduce(op)
@@ -615,16 +611,10 @@ def test_reduce_subset(dims, reduced_vars, op, backend):
         assert actual is x
     else:
         if reduced_vars == frozenset(dims):
-            if op is ops.logaddexp:
-                # work around missing torch.Tensor.logsumexp()
-                data = data.reshape(-1).logsumexp(0)
-            else:
-                data = REDUCE_OP_TO_NUMERIC[op](data)
+            data = REDUCE_OP_TO_NUMERIC[op](data, None)
         else:
             for pos in reversed(sorted(map(dims.index, reduced_vars))):
                 data = REDUCE_OP_TO_NUMERIC[op](data, pos)
-                if op in (ops.min, ops.max):
-                    data = data[0]
         check_funsor(actual, expected_inputs, Domain((), dtype))
         assert_close(actual, Tensor(data, expected_inputs, dtype),
                      atol=1e-5, rtol=1e-5)
@@ -639,17 +629,16 @@ def test_reduce_event(op, event_shape, dims, backend):
     batch_shape = tuple(sizes[d] for d in dims)
     shape = batch_shape + event_shape
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
-    torch_op = REDUCE_OP_TO_NUMERIC[op]
+    numeric_op = REDUCE_OP_TO_NUMERIC[op]
     data = rand(shape, backend) + 0.5
     dtype = 'real'
     if op in [ops.and_, ops.or_]:
-        data = data.byte()
-    expected_data = torch_op(data.reshape(batch_shape + (-1,)), -1)
-    if op in [ops.min, ops.max]:
-        expected_data = expected_data[0]
+        data = astype(data, 'uint8')
+    expected_data = numeric_op(data.reshape(batch_shape + (-1,)), -1)
 
     x = Tensor(data, inputs, dtype=dtype)
-    actual = getattr(x, torch_op.__name__)()
+    op_name = numeric_op.__name__[1:] if op in [ops.min, ops.max] else numeric_op.__name__
+    actual = getattr(x, op_name)()
     check_funsor(actual, inputs, Domain((), dtype), expected_data)
 
 
@@ -757,7 +746,12 @@ def test_function_nested_lazy(backend):
     assert_close(actual_argmax, expected_argmax)
 
 
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
+@pytest.mark.parametrize("backend", [
+    "torch",
+    pytest.param("numpy", marks=pytest.mark.xfail(
+        reason="funsor.util.getargspec regex pattern needs to rewrite to support numpy docstring."
+               " Issue #207"))
+])
 def test_function_of_numeric_array(backend):
     _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
     x = randn((4, 3), backend)

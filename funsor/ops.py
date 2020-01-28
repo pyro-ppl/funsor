@@ -334,12 +334,12 @@ def logsumexp(x, dim):
 
 
 @Op
-def min_(x, dim):
+def amin(x, dim):
     raise NotImplementedError
 
 
 @Op
-def max_(x, dim):
+def amax(x, dim):
     raise NotImplementedError
 
 
@@ -384,6 +384,11 @@ def new_eye(x, shape):
 
 @Op
 def new_arange(x, start, stop, step):
+    raise NotImplementedError
+
+
+@Op
+def new_arange(x, stop):
     raise NotImplementedError
 
 

@@ -163,7 +163,7 @@ def _new_arange(x, start, stop, step):
     return torch.arange(start, stop, step)
 
 
-@ops.new_arange.register(torch.Tensor, int)
+@ops.new_arange.register(torch.Tensor, (int, torch.Tensor))
 def _new_arange(x, stop):
     return torch.arange(stop)
 
@@ -181,3 +181,38 @@ def _permute(x, dims):
 @ops.finfo.register(torch.Tensor)
 def _finfo(x):
     return torch.finfo(x.dtype)
+
+
+@ops.sum.register(torch.Tensor, (int, type(None)))
+def _sum(x, dim):
+    return x.sum() if dim is None else x.sum(dim)
+
+
+@ops.prod.register(torch.Tensor, (int, type(None)))
+def _prod(x, dim):
+    return x.prod() if dim is None else x.prod(dim=dim)
+
+
+@ops.all.register(torch.Tensor, (int, type(None)))
+def _all(x, dim):
+    return x.all() if dim is None else x.all(dim=dim)
+
+
+@ops.any.register(torch.Tensor, (int, type(None)))
+def _any(x, dim):
+    return x.any() if dim is None else x.any(dim=dim)
+
+
+@ops.logsumexp.register(torch.Tensor, (int, type(None)))
+def _logsumexp(x, dim):
+    return x.reshape(-1).logsumexp(0) if dim is None else x.logsumexp(dim)
+
+
+@ops.amin.register(torch.Tensor, (int, type(None)))
+def _amin(x, dim):
+    return x.min() if dim is None else x.min(dim)[0]
+
+
+@ops.amax.register(torch.Tensor, (int, type(None)))
+def _amax(x, dim):
+    return x.max() if dim is None else x.max(dim)[0]

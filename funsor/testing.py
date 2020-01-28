@@ -117,7 +117,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
                 assert (diff / (atol + expected.detach().abs())).max() < rtol, msg
             elif atol is not None:
                 assert diff.max() < atol, msg
-    elif isinstance(actual, np.ndarray):
+    elif isinstance(actual, (np.ndarray, np.generic)):
         assert actual.dtype == expected.dtype, msg
         assert actual.shape == expected.shape, msg
         if actual.dtype in (np.int32, np.int64, np.uint8, np.bool):
@@ -131,7 +131,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
                 expected = expected[~eq]
             diff = abs(actual - expected)
             if rtol is not None:
-                assert (diff / (atol + expected.abs())).max() < rtol, msg
+                assert (diff / (atol + abs(expected))).max() < rtol, msg
             elif atol is not None:
                 assert diff.max() < atol, msg
     elif isinstance(actual, numbers.Number):
