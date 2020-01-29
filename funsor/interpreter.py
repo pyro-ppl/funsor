@@ -267,9 +267,6 @@ def stack_reinterpret(x):
     """
     x_name = gensym(x)
     node_vars = {x_name: x}
-    import numpy as np
-    x_ = x.tobytes() if isinstance(x, np.ndarray) else x
-    node_names = {x_: x_name}
     env = {}
     stack = [(x_name, x)]
     parent_to_children = OrderedDict()
