@@ -51,8 +51,8 @@ def main(args):
     encoder = Encoder()
     decoder = Decoder()
 
-    encode = funsor.tensor.function(reals(28, 28), (reals(20), reals(20)))(encoder)
-    decode = funsor.tensor.function(reals(20), reals(28, 28))(decoder)
+    encode = funsor.function(reals(28, 28), (reals(20), reals(20)))(encoder)
+    decode = funsor.function(reals(20), reals(28, 28))(decoder)
 
     @funsor.interpreter.interpretation(funsor.montecarlo.monte_carlo)
     def loss_function(data, subsample_scale):
@@ -91,7 +91,7 @@ def main(args):
 
             optimizer.zero_grad()
             loss = loss_function(data, subsample_scale)
-            assert isinstance(loss, funsor.tensor.Tensor), loss.pretty()
+            assert isinstance(loss, funsor.Tensor), loss.pretty()
             loss.data.backward()
             train_loss += loss.item()
             optimizer.step()

@@ -12,7 +12,7 @@ from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, reflect, substitute, to_funsor
-from funsor.tensor import Tensor, materialize, numeric_array
+from funsor.tensor import Tensor, numeric_array
 
 
 def _alpha_unmangle(expr):
@@ -199,7 +199,7 @@ def _scatter(src, res, subs):
     # use advanced indexing logic copied from Tensor.eager_subs:
 
     # materialize after checking for renaming case
-    subs = OrderedDict((k, materialize(res.data, v)) for k, v in subs)
+    subs = OrderedDict((k, res.materialize(v)) for k, v in subs)
 
     # Compute result shapes.
     inputs = OrderedDict()

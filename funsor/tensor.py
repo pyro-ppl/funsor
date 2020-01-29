@@ -184,7 +184,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             return result.eager_subs(tuple(subs.items()))
 
         # materialize after checking for renaming case
-        subs = OrderedDict((k, materialize(self.data, v)) for k, v in subs.items())
+        subs = OrderedDict((k, self.materialize(v)) for k, v in subs.items())
 
         # Compute result shapes.
         inputs = OrderedDict()
@@ -326,6 +326,60 @@ class Tensor(Funsor, metaclass=TensorMeta):
             results.append(Tensor(flat_logits.logsumexp(-1), batch_inputs))
 
         return reduce(ops.add, results)
+
+    def new_arange(self, name, *args, **kwargs):
+        """
+        Helper to create a named :func:`torch.arange` or :func:`np.arange` funsor.
+        In some cases this can be replaced by a symbolic
+        :class:`~funsor.terms.Slice` .
+
+        :param str name: A variable name.
+        :param int start:
+        :param int stop:
+        :param int step: Three args following :py:class:`slice` semantics.
+        :param int dtype: An optional bounded integer type of this slice.
+        :rtype: Tensor
+        """
+        start = 0
+        step = 1
+        dtype = None
+        if len(args) == 1:
+            stop = args[0]
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 2:
+            start, stop = args
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 3:
+            start, stop, step = args
+            dtype = kwargs.pop("dtype", stop)
+        elif len(args) == 4:
+            start, stop, step, dtype = args
+        else:
+            raise ValueError
+        if step <= 0:
+            raise ValueError
+        stop = min(dtype, max(start, stop))
+        data = ops.new_arange(self.data, start, stop, step)
+        inputs = OrderedDict([(name, bint(len(data)))])
+        return Tensor(data, inputs, dtype=dtype)
+
+    def materialize(self, x):
+        """
+        Attempt to convert a Funsor to a :class:`~funsor.terms.Number` or
+        :class:`Tensor` by substituting :func:`arange` s into its free variables.
+
+        :arg Funsor x: A funsor.
+        :rtype: Funsor
+        """
+        assert isinstance(x, Funsor)
+        if isinstance(x, (Number, Tensor)):
+            return x
+        subs = []
+        for name, domain in x.inputs.items():
+            if isinstance(domain.dtype, int):
+                subs.append((name, self.new_arange(name, domain.dtype)))
+        subs = tuple(subs)
+        return substitute(x, subs)
 
 
 @dispatch(numeric_array)
@@ -613,64 +667,6 @@ def eager_cat_homogeneous(name, part_name, *parts):
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 
-def arange(prototype, name, *args, **kwargs):
-    """
-    Helper to create a named :func:`torch.arange` or :func:`np.arange` funsor.
-    In some cases this can be replaced by a symbolic
-    :class:`~funsor.terms.Slice` .
-
-    :param prototype: either a torch.Tensor or a numpy.array
-    :param str name: A variable name.
-    :param int start:
-    :param int stop:
-    :param int step: Three args following :py:class:`slice` semantics.
-    :param int dtype: An optional bounded integer type of this slice.
-    :rtype: Tensor
-    """
-    start = 0
-    step = 1
-    dtype = None
-    if len(args) == 1:
-        stop = args[0]
-        dtype = kwargs.pop("dtype", stop)
-    elif len(args) == 2:
-        start, stop = args
-        dtype = kwargs.pop("dtype", stop)
-    elif len(args) == 3:
-        start, stop, step = args
-        dtype = kwargs.pop("dtype", stop)
-    elif len(args) == 4:
-        start, stop, step, dtype = args
-    else:
-        raise ValueError
-    if step <= 0:
-        raise ValueError
-    stop = min(dtype, max(start, stop))
-    data = ops.new_arange(prototype, start, stop, step)
-    inputs = OrderedDict([(name, bint(len(data)))])
-    return Tensor(data, inputs, dtype=dtype)
-
-
-def materialize(prototype, x):
-    """
-    Attempt to convert a Funsor to a :class:`~funsor.terms.Number` or
-    :class:`Tensor` by substituting :func:`arange` s into its free variables.
-
-    :param prototype: either a torch.Tensor or a np.ndarray
-    :arg Funsor x: A funsor.
-    :rtype: Funsor
-    """
-    assert isinstance(x, Funsor)
-    if isinstance(x, (Number, Tensor)):
-        return x
-    subs = []
-    for name, domain in x.inputs.items():
-        if isinstance(domain.dtype, int):
-            subs.append((name, arange(prototype, name, domain.dtype)))
-    subs = tuple(subs)
-    return substitute(x, subs)
-
-
 class LazyTuple(tuple):
     def __call__(self, *args, **kwargs):
         return LazyTuple(x(*args, **kwargs) for x in self)
@@ -678,14 +674,14 @@ class LazyTuple(tuple):
 
 class Function(Funsor):
     r"""
-    Funsor wrapped by a PyTorch function.
+    Funsor wrapped by a native PyTorch or NumPy function.
 
     Functions are assumed to support broadcasting and can be eagerly evaluated
     on funsors with free variables of int type (i.e. batch dimensions).
 
     :class:`Function` s are usually created via the :func:`function` decorator.
 
-    :param callable fn: A PyTorch function to wrap.
+    :param callable fn: A native PyTorch or NumPy function to wrap.
     :param funsor.domains.Domain output: An output domain.
     :param Funsor args: Funsor arguments.
     """
@@ -890,7 +886,7 @@ def eager_einsum(equation, operands):
     return None  # defer to default implementation
 
 
-def numeric_tensordot(x, y, dims):
+def tensordot(x, y, dims):
     """
     Wrapper around :func:`torch.tensordot` or :func:`np.tensordot`
     to operate on real-valued Funsors.
@@ -924,7 +920,7 @@ def numeric_tensordot(x, y, dims):
     return Einsum(equation, (x, y))
 
 
-def numeric_stack(parts, dim=0):
+def stack(parts, dim=0):
     """
     Wrapper around :func:`torch.stack` or :func:`np.stack` to operate on real-valued Funsors.
 
@@ -968,10 +964,8 @@ __all__ = [
     'Tensor',
     'align_tensor',
     'align_tensors',
-    'arange',
     'function',
     'ignore_jit_warnings',
-    'materialize',
-    'numeric_stack',
-    'numeric_tensordot',
+    'stack',
+    'tensordot',
 ]

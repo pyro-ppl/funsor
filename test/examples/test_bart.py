@@ -32,9 +32,9 @@ def bounded_exp(x, bound):
 call_count = 0
 
 
-@funsor.tensor.function(reals(2 * num_origins * num_destins),
-                        (reals(num_origins, num_destins, 2),
-                        reals(num_origins, num_destins)))
+@funsor.function(reals(2 * num_origins * num_destins),
+                 (reals(num_origins, num_destins, 2),
+                 reals(num_origins, num_destins)))
 def unpack_gate_rate(gate_rate):
     global call_count
     call_count += 1

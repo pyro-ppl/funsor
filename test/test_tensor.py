@@ -14,7 +14,7 @@ from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import assert_close, assert_equiv, astype, check_funsor, rand, randn, random_tensor
-from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, arange, numeric_stack, numeric_tensordot
+from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, stack, tensordot
 
 
 @pytest.mark.parametrize('output_shape', [(), (2,), (3, 2)], ids=str)
@@ -160,18 +160,19 @@ def test_slice_2(start, stop, step, backend):
 def test_arange_simple(backend):
     t = randn((3, 4, 5), backend)
     f = Tensor(t)["i", "j"]
-    assert_close(f, f(i=arange(t, "i", 3)))
-    assert_close(f, f(j=arange(t, "j", 4)))
-    assert_close(f, f(i=arange(t, "i", 3), j=arange(t, "j", 4)))
-    assert_close(f, f(i=arange(t, "i", 3), j="j"))
-    assert_close(f, f(i="i", j=arange(t, "j", 4)))
+    assert_close(f, f(i=f.new_arange("i", 3)))
+    assert_close(f, f(j=f.new_arange("j", 4)))
+    assert_close(f, f(i=f.new_arange("i", 3), j=f.new_arange("j", 4)))
+    assert_close(f, f(i=f.new_arange("i", 3), j="j"))
+    assert_close(f, f(i="i", j=f.new_arange("j", 4)))
 
 
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_arange_1(stop, backend):
     t = randn((10, 2), backend)
-    actual = Tensor(t)["i"](i=arange(t, "j", stop, dtype=10))
+    f = Tensor(t)["i"]
+    actual = f(i=f.new_arange("j", stop, dtype=10))
     expected = Tensor(t[:stop])["j"]
     assert_close(actual, expected)
 
@@ -182,7 +183,8 @@ def test_arange_1(stop, backend):
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_arange_2(start, stop, step, backend):
     t = randn((10, 2), backend)
-    actual = Tensor(t)["i"](i=arange(t, "j", start, stop, step, dtype=10))
+    f = Tensor(t)["i"]
+    actual = f(i=f.new_arange("j", start, stop, step, dtype=10))
     expected = Tensor(t[start: stop: step])["j"]
     assert_close(actual, expected)
 
@@ -259,9 +261,9 @@ def test_advanced_indexing_lazy(output_shape, backend):
         k = u + v
 
     expected_data = empty((2, 3) + output_shape)
-    i_data = funsor.tensor.materialize(expected_data, i).data
-    j_data = funsor.tensor.materialize(expected_data, j).data
-    k_data = funsor.tensor.materialize(expected_data, k).data
+    i_data = x.materialize(i).data
+    j_data = x.materialize(j).data
+    k_data = x.materialize(k).data
     for u in range(2):
         for v in range(3):
             expected_data[u, v] = x.data[i_data[u], j_data[v], k_data[u, v]]
@@ -672,7 +674,7 @@ def test_all_equal(shape, backend):
 def test_function_matmul(backend):
     _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
 
-    @funsor.tensor.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
         return _numeric_matmul(x, y)
 
@@ -689,7 +691,7 @@ def test_function_matmul(backend):
 def test_function_lazy_matmul(backend):
     _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
 
-    @funsor.tensor.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
         return _numeric_matmul(x, y)
 
@@ -716,7 +718,7 @@ def _numeric_max_and_argmax(x):
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_function_nested_eager(backend):
 
-    @funsor.tensor.function(reals(8), (reals(), bint(8)))
+    @funsor.function(reals(8), (reals(), bint(8)))
     def max_and_argmax(x):
         return tuple(_numeric_max_and_argmax(x))
 
@@ -734,7 +736,7 @@ def test_function_nested_eager(backend):
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_function_nested_lazy(backend):
 
-    @funsor.tensor.function(reals(8), (reals(), bint(8)))
+    @funsor.function(reals(8), (reals(), bint(8)))
     def max_and_argmax(x):
         return tuple(_numeric_max_and_argmax(x))
 
@@ -764,7 +766,7 @@ def test_function_of_numeric_array(backend):
     _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
     x = randn((4, 3), backend)
     y = randn((3, 2), backend)
-    f = funsor.tensor.function(reals(4, 3), reals(3, 2), reals(4, 2))(_numeric_matmul)
+    f = funsor.function(reals(4, 3), reals(3, 2), reals(4, 2))(_numeric_matmul)
     actual = f(x, y)
     expected = f(Tensor(x), Tensor(y))
     assert_close(actual, expected)
@@ -851,11 +853,11 @@ def _numeric_tensordot(x, y, dim):
 @pytest.mark.parametrize('xy_shape', [(), (6,), (6, 7)], ids=str)
 @pytest.mark.parametrize('x_shape', [(), (2,), (2, 3)], ids=str)
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_funsor_tensordot(x_shape, xy_shape, y_shape, backend):
+def test_tensor_tensordot(x_shape, xy_shape, y_shape, backend):
     x = randn(x_shape + xy_shape, backend)
     y = randn(xy_shape + y_shape, backend)
     dim = len(xy_shape)
-    actual = numeric_tensordot(Tensor(x), Tensor(y), dim)
+    actual = tensordot(Tensor(x), Tensor(y), dim)
     expected = Tensor(_numeric_tensordot(x, y, dim))
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
@@ -876,9 +878,9 @@ def test_funsor_tensordot(x_shape, xy_shape, y_shape, backend):
     ((2, 3), -3),
 ], ids=str)
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_numeric_stack(n, shape, dim, backend):
+def test_tensor_stack(n, shape, dim, backend):
     tensors = [randn(shape, backend) for _ in range(n)]
-    actual = numeric_stack(tuple(Tensor(t) for t in tensors), dim=dim)
+    actual = stack(tuple(Tensor(t) for t in tensors), dim=dim)
     expected = Tensor(ops.stack(dim, *tensors))
     assert_close(actual, expected)
 

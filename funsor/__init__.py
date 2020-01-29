@@ -6,7 +6,7 @@ from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
 from funsor.sum_product import MarkovProduct
 from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
-from funsor.tensor import Tensor, arange
+from funsor.tensor import Tensor, function
 from funsor.util import pretty, quote
 
 from . import (
@@ -56,6 +56,7 @@ __all__ = [
     'domains',
     'einsum',
     'find_domain',
+    'function',
     'gaussian',
     'integrate',
     'interpreter',

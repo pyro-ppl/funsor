@@ -15,7 +15,7 @@ from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.integrate import Integrate
 from funsor.montecarlo import monte_carlo_interpretation
-from funsor.tensor import Tensor, align_tensors, materialize
+from funsor.tensor import Tensor, align_tensors
 from funsor.terms import Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
 
@@ -209,7 +209,7 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
     p.data.requires_grad_(test_grad)
 
     q = p.sample(sampled_vars, sample_inputs)
-    mq = materialize(p.data, q).reduce(ops.logaddexp, 'n')
+    mq = p.materialize(q).reduce(ops.logaddexp, 'n')
     mq = mq.align(tuple(p.inputs))
     assert_close(mq, p, atol=0.1, rtol=None)
 
@@ -283,7 +283,7 @@ def test_gaussian_mixture_distribution(batch_inputs, event_inputs):
 
     q = p.sample(sampled_vars, sample_inputs)
     q_marginal = q.reduce(ops.logaddexp, 'e')
-    q_marginal = materialize(p_marginal.data, q_marginal).reduce(ops.logaddexp, 'particle')
+    q_marginal = p_marginal.materialize(q_marginal).reduce(ops.logaddexp, 'particle')
     assert isinstance(q_marginal, Tensor)
     q_marginal = q_marginal.align(tuple(p_marginal.inputs))
     assert_close(q_marginal, p_marginal, atol=0.1, rtol=None)
