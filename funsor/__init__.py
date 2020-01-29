@@ -47,7 +47,6 @@ __all__ = [
     'Variable',
     'adjoint',
     'affine',
-    'arange',
     'backward',
     'bint',
     'cnf',
