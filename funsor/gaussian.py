@@ -315,8 +315,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
+        prototype = Tensor(self.info_vec)
         subs = tuple((k, v if isinstance(v, (Variable, Slice))
-                      else Tensor(self.info_vec).materialize(v))
+                      else prototype.materialize(v))
                      for k, v in subs if k in self.inputs)
         if not subs:
             return self
