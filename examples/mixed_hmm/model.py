@@ -10,8 +10,8 @@ from torch.distributions import constraints
 import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.domains import bint, reals
+from funsor.tensor import Tensor
 from funsor.terms import Stack, Variable, to_funsor
-from funsor.torch import Tensor
 
 
 class Guide(object):
@@ -103,7 +103,7 @@ class Model(object):
 
     def initialize_params(self):
 
-        # return a dict of per-site params as funsor.torch.Tensors
+        # return a dict of per-site params as funsor.tensor.Tensors
         params = {
             "e_g": {},
             "theta_g": {},
@@ -244,7 +244,7 @@ class Model(object):
 
     def initialize_observations(self):
         """
-        Convert raw observation tensors into funsor.torch.Tensors
+        Convert raw observation tensors into funsor.tensor.Tensors
         """
         batch_inputs = OrderedDict([
             ("i", bint(self.config["sizes"]["individual"])),
@@ -261,7 +261,7 @@ class Model(object):
 
     def initialize_raggedness_masks(self):
         """
-        Convert raw raggedness tensors into funsor.torch.Tensors
+        Convert raw raggedness tensors into funsor.tensor.Tensors
         """
         batch_inputs = OrderedDict([
             ("i", bint(self.config["sizes"]["individual"])),

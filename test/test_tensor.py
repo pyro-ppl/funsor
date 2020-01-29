@@ -4,6 +4,7 @@
 import itertools
 from collections import OrderedDict
 
+import numpy as np
 import pytest
 import torch
 
@@ -12,25 +13,28 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
-from funsor.testing import assert_close, assert_equiv, check_funsor, random_tensor
-from funsor.torch import REDUCE_OP_TO_TORCH, Einsum, Tensor, align_tensors, arange, torch_stack, torch_tensordot
+from funsor.testing import assert_close, assert_equiv, astype, check_funsor, rand, randn, random_tensor
+from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, stack, tensordot
 
 
 @pytest.mark.parametrize('output_shape', [(), (2,), (3, 2)], ids=str)
 @pytest.mark.parametrize('inputs', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')], ids=str)
-def test_quote(output_shape, inputs):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_quote(output_shape, inputs, backend):
     sizes = {'a': 4, 'b': 5, 'c': 6}
     inputs = OrderedDict((k, bint(sizes[k])) for k in inputs)
-    x = random_tensor(inputs, reals(*output_shape))
+    x = random_tensor(inputs, reals(*output_shape), backend)
     s = funsor.quote(x)
     assert isinstance(s, str)
     assert_close(eval(s), x)
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
-@pytest.mark.parametrize('dtype', [torch.float, torch.long, torch.uint8, torch.bool])
+@pytest.mark.parametrize('dtype', [torch.float, torch.long, torch.uint8, torch.bool,
+                                   np.float32, np.float64, np.int32, np.int64, np.uint8])
 def test_to_funsor(shape, dtype):
-    t = torch.randn(shape).type(dtype)
+    backend = "torch" if isinstance(dtype, torch.dtype) else "numpy"
+    t = astype(randn(shape, backend), dtype)
     f = funsor.to_funsor(t)
     assert isinstance(f, Tensor)
     assert funsor.to_funsor(t, reals(*shape)) is f
@@ -38,26 +42,32 @@ def test_to_funsor(shape, dtype):
         funsor.to_funsor(t, reals(5, *shape))
 
 
-def test_to_data():
-    data = torch.zeros(3, 3)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_to_data(backend):
+    zeros = torch.zeros if backend == "torch" else np.zeros
+    data = zeros((3, 3))
     x = Tensor(data)
     assert funsor.to_data(x) is data
 
 
-def test_to_data_error():
-    data = torch.zeros(3, 3)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_to_data_error(backend):
+    zeros = torch.zeros if backend == "torch" else np.zeros
+    data = zeros((3, 3))
     x = Tensor(data, OrderedDict(i=bint(3)))
     with pytest.raises(ValueError):
         funsor.to_data(x)
 
 
-def test_cons_hash():
-    x = torch.randn(3, 3)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_cons_hash(backend):
+    x = randn((3, 3), backend)
     assert Tensor(x) is Tensor(x)
 
 
-def test_indexing():
-    data = torch.randn(4, 5)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_indexing(backend):
+    data = randn((4, 5), backend)
     inputs = OrderedDict([('i', bint(4)),
                           ('j', bint(5))])
     x = Tensor(data, inputs)
@@ -79,14 +89,16 @@ def test_indexing():
     check_funsor(x(j=2, k=3), {'i': bint(4)}, reals(), data[:, 2])
 
 
-def test_advanced_indexing_shape():
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_advanced_indexing_shape(backend):
+    tensor = torch.tensor if backend == "torch" else np.array
     I, J, M, N = 4, 4, 2, 3
-    x = Tensor(torch.randn(I, J), OrderedDict([
+    x = Tensor(randn((I, J), backend), OrderedDict([
         ('i', bint(I)),
         ('j', bint(J)),
     ]))
-    m = Tensor(torch.tensor([2, 3]), OrderedDict([('m', bint(M))]), I)
-    n = Tensor(torch.tensor([0, 1, 1]), OrderedDict([('n', bint(N))]), J)
+    m = Tensor(tensor([2, 3]), OrderedDict([('m', bint(M))]), I)
+    n = Tensor(tensor([0, 1, 1]), OrderedDict([('n', bint(N))]), J)
     assert x.data.shape == (I, J)
 
     check_funsor(x(i=m), {'j': bint(J), 'm': bint(M)}, reals())
@@ -113,8 +125,9 @@ def test_advanced_indexing_shape():
     check_funsor(x(n, m, k=m), {'m': bint(M), 'n': bint(N)}, reals())
 
 
-def test_slice_simple():
-    t = torch.randn(3, 4, 5)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_slice_simple(backend):
+    t = randn((3, 4, 5), backend)
     f = Tensor(t)["i", "j"]
     assert_close(f, f(i=Slice("i", 3)))
     assert_close(f, f(j=Slice("j", 4)))
@@ -124,8 +137,9 @@ def test_slice_simple():
 
 
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])
-def test_slice_1(stop):
-    t = torch.randn(10, 2)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_slice_1(stop, backend):
+    t = randn((10, 2), backend)
     actual = Tensor(t)["i"](i=Slice("j", stop, dtype=10))
     expected = Tensor(t[:stop])["j"]
     assert_close(actual, expected)
@@ -134,27 +148,31 @@ def test_slice_1(stop):
 @pytest.mark.parametrize("start", [0, 1, 2, 10])
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])
 @pytest.mark.parametrize("step", [1, 2, 5, 10])
-def test_slice_2(start, stop, step):
-    t = torch.randn(10, 2)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_slice_2(start, stop, step, backend):
+    t = randn((10, 2), backend)
     actual = Tensor(t)["i"](i=Slice("j", start, stop, step, dtype=10))
     expected = Tensor(t[start: stop: step])["j"]
     assert_close(actual, expected)
 
 
-def test_arange_simple():
-    t = torch.randn(3, 4, 5)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_arange_simple(backend):
+    t = randn((3, 4, 5), backend)
     f = Tensor(t)["i", "j"]
-    assert_close(f, f(i=arange("i", 3)))
-    assert_close(f, f(j=arange("j", 4)))
-    assert_close(f, f(i=arange("i", 3), j=arange("j", 4)))
-    assert_close(f, f(i=arange("i", 3), j="j"))
-    assert_close(f, f(i="i", j=arange("j", 4)))
+    assert_close(f, f(i=f.new_arange("i", 3)))
+    assert_close(f, f(j=f.new_arange("j", 4)))
+    assert_close(f, f(i=f.new_arange("i", 3), j=f.new_arange("j", 4)))
+    assert_close(f, f(i=f.new_arange("i", 3), j="j"))
+    assert_close(f, f(i="i", j=f.new_arange("j", 4)))
 
 
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])
-def test_arange_1(stop):
-    t = torch.randn(10, 2)
-    actual = Tensor(t)["i"](i=arange("j", stop, dtype=10))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_arange_1(stop, backend):
+    t = randn((10, 2), backend)
+    f = Tensor(t)["i"]
+    actual = f(i=f.new_arange("j", stop, dtype=10))
     expected = Tensor(t[:stop])["j"]
     assert_close(actual, expected)
 
@@ -162,15 +180,19 @@ def test_arange_1(stop):
 @pytest.mark.parametrize("start", [0, 1, 2, 10])
 @pytest.mark.parametrize("stop", [0, 1, 2, 10])
 @pytest.mark.parametrize("step", [1, 2, 5, 10])
-def test_arange_2(start, stop, step):
-    t = torch.randn(10, 2)
-    actual = Tensor(t)["i"](i=arange("j", start, stop, step, dtype=10))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_arange_2(start, stop, step, backend):
+    t = randn((10, 2), backend)
+    f = Tensor(t)["i"]
+    actual = f(i=f.new_arange("j", start, stop, step, dtype=10))
     expected = Tensor(t[start: stop: step])["j"]
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
-def test_advanced_indexing_tensor(output_shape):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_advanced_indexing_tensor(output_shape, backend):
+    empty = torch.empty if backend == "torch" else np.empty
     #      u   v
     #     / \ / \
     #    i   j   k
@@ -182,19 +204,19 @@ def test_advanced_indexing_tensor(output_shape):
         ('i', bint(2)),
         ('j', bint(3)),
         ('k', bint(4)),
-    ]), output)
+    ]), output, backend)
     i = random_tensor(OrderedDict([
         ('u', bint(5)),
-    ]), bint(2))
+    ]), bint(2), backend)
     j = random_tensor(OrderedDict([
         ('v', bint(6)),
         ('u', bint(5)),
-    ]), bint(3))
+    ]), bint(3), backend)
     k = random_tensor(OrderedDict([
         ('v', bint(6)),
-    ]), bint(4))
+    ]), bint(4), backend)
 
-    expected_data = torch.empty((5, 6) + output_shape)
+    expected_data = empty((5, 6) + output_shape)
     for u in range(5):
         for v in range(6):
             expected_data[u, v] = x.data[i.data[u], j.data[v, u], k.data[v]]
@@ -223,8 +245,10 @@ def test_advanced_indexing_tensor(output_shape):
 
 
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
-def test_advanced_indexing_lazy(output_shape):
-    x = Tensor(torch.randn((2, 3, 4) + output_shape), OrderedDict([
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_advanced_indexing_lazy(output_shape, backend):
+    empty = torch.empty if backend == "torch" else np.empty
+    x = Tensor(randn((2, 3, 4) + output_shape, backend), OrderedDict([
         ('i', bint(2)),
         ('j', bint(3)),
         ('k', bint(4)),
@@ -236,10 +260,10 @@ def test_advanced_indexing_lazy(output_shape):
         j = Number(2, 3) - v
         k = u + v
 
-    expected_data = torch.empty((2, 3) + output_shape)
-    i_data = funsor.torch.materialize(i).data
-    j_data = funsor.torch.materialize(j).data
-    k_data = funsor.torch.materialize(k).data
+    expected_data = empty((2, 3) + output_shape)
+    i_data = x.materialize(i).data
+    j_data = x.materialize(j).data
+    k_data = x.materialize(k).data
     for u in range(2):
         for v in range(3):
             expected_data[u, v] = x.data[i_data[u], j_data[v], k_data[u, v]]
@@ -277,14 +301,15 @@ def unary_eval(symbol, x):
 @pytest.mark.parametrize('symbol', [
     '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p', 'sigmoid',
 ])
-def test_unary(symbol, dims):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_unary(symbol, dims, backend):
     sizes = {'a': 3, 'b': 4}
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
     dtype = 'real'
-    data = torch.rand(shape) + 0.5
+    data = rand(shape) + 0.5
     if symbol == '~':
-        data = data.byte()
+        data = astype(data, 'uint8')
         dtype = 2
     expected_data = unary_eval(symbol, data)
 
@@ -311,19 +336,20 @@ def binary_eval(symbol, x, y):
 @pytest.mark.parametrize('dims2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')])
 @pytest.mark.parametrize('dims1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
 @pytest.mark.parametrize('symbol', BINARY_OPS + BOOLEAN_OPS)
-def test_binary_funsor_funsor(symbol, dims1, dims2):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_binary_funsor_funsor(symbol, dims1, dims2, backend):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape1 = tuple(sizes[d] for d in dims1)
     shape2 = tuple(sizes[d] for d in dims2)
     inputs1 = OrderedDict((d, bint(sizes[d])) for d in dims1)
     inputs2 = OrderedDict((d, bint(sizes[d])) for d in dims2)
-    data1 = torch.rand(shape1) + 0.5
-    data2 = torch.rand(shape2) + 0.5
+    data1 = rand(shape1, backend) + 0.5
+    data2 = rand(shape2, backend) + 0.5
     dtype = 'real'
     if symbol in BOOLEAN_OPS:
         dtype = 2
-        data1 = data1.byte()
-        data2 = data2.byte()
+        data1 = astype(data1, 'uint8')
+        data2 = astype(data2, 'uint8')
     x1 = Tensor(data1, inputs1, dtype)
     x2 = Tensor(data2, inputs2, dtype)
     inputs, aligned = align_tensors(x1, x2)
@@ -337,12 +363,13 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
 @pytest.mark.parametrize('output_shape1', [(), (2,), (3, 2)], ids=str)
 @pytest.mark.parametrize('inputs2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')], ids=str)
 @pytest.mark.parametrize('inputs1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')], ids=str)
-def test_binary_broadcast(inputs1, inputs2, output_shape1, output_shape2):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_binary_broadcast(inputs1, inputs2, output_shape1, output_shape2, backend):
     sizes = {'a': 4, 'b': 5, 'c': 6}
     inputs1 = OrderedDict((k, bint(sizes[k])) for k in inputs1)
     inputs2 = OrderedDict((k, bint(sizes[k])) for k in inputs2)
-    x1 = random_tensor(inputs1, reals(*output_shape1))
-    x2 = random_tensor(inputs1, reals(*output_shape2))
+    x1 = random_tensor(inputs1, reals(*output_shape1), backend)
+    x2 = random_tensor(inputs1, reals(*output_shape2), backend)
 
     actual = x1 + x2
     assert actual.output == find_domain(ops.add, x1.output, x2.output)
@@ -357,12 +384,13 @@ def test_binary_broadcast(inputs1, inputs2, output_shape1, output_shape2):
 @pytest.mark.parametrize('output_shape1', [(2,), (3, 2), (4, 3, 2)], ids=str)
 @pytest.mark.parametrize('inputs2', [(), ('a',), ('b', 'a'), ('b', 'c', 'a')], ids=str)
 @pytest.mark.parametrize('inputs1', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')], ids=str)
-def test_matmul(inputs1, inputs2, output_shape1, output_shape2):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_matmul(inputs1, inputs2, output_shape1, output_shape2, backend):
     sizes = {'a': 6, 'b': 7, 'c': 8}
     inputs1 = OrderedDict((k, bint(sizes[k])) for k in inputs1)
     inputs2 = OrderedDict((k, bint(sizes[k])) for k in inputs2)
-    x1 = random_tensor(inputs1, reals(*output_shape1))
-    x2 = random_tensor(inputs1, reals(*output_shape2))
+    x1 = random_tensor(inputs1, reals(*output_shape1), backend)
+    x2 = random_tensor(inputs1, reals(*output_shape2), backend)
 
     actual = x1 @ x2
     assert actual.output == find_domain(ops.matmul, x1.output, x2.output)
@@ -376,11 +404,12 @@ def test_matmul(inputs1, inputs2, output_shape1, output_shape2):
 @pytest.mark.parametrize('scalar', [0.5])
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
 @pytest.mark.parametrize('symbol', BINARY_OPS)
-def test_binary_funsor_scalar(symbol, dims, scalar):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_binary_funsor_scalar(symbol, dims, scalar, backend):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
-    data1 = torch.rand(shape) + 0.5
+    data1 = rand(shape, backend) + 0.5
     expected_data = binary_eval(symbol, data1, scalar)
 
     x1 = Tensor(data1, inputs)
@@ -391,11 +420,12 @@ def test_binary_funsor_scalar(symbol, dims, scalar):
 @pytest.mark.parametrize('scalar', [0.5])
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
 @pytest.mark.parametrize('symbol', BINARY_OPS)
-def test_binary_scalar_funsor(symbol, dims, scalar):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_binary_scalar_funsor(symbol, dims, scalar, backend):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
-    data1 = torch.rand(shape) + 0.5
+    data1 = rand(shape, backend) + 0.5
     expected_data = binary_eval(symbol, scalar, data1)
 
     x1 = Tensor(data1, inputs)
@@ -414,9 +444,10 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     ((2, 3, 2), (3, 2, 2)),
     ((2, 3, 2), (2, 2, 3)),
 ])
-def test_reshape(batch_shape, old_shape, new_shape):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_reshape(batch_shape, old_shape, new_shape, backend):
     inputs = OrderedDict(zip("abc", map(bint, batch_shape)))
-    old = random_tensor(inputs, reals(*old_shape))
+    old = random_tensor(inputs, reals(*old_shape), backend)
     assert old.reshape(old.shape) is old
 
     new = old.reshape(new_shape)
@@ -428,8 +459,9 @@ def test_reshape(batch_shape, old_shape, new_shape):
     assert_close(old2, old)
 
 
-def test_getitem_number_0_inputs():
-    data = torch.randn((5, 4, 3, 2))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_getitem_number_0_inputs(backend):
+    data = randn((5, 4, 3, 2), backend)
     x = Tensor(data)
     assert_close(x[2], Tensor(data[2]))
     assert_close(x[:, 1], Tensor(data[:, 1]))
@@ -442,8 +474,9 @@ def test_getitem_number_0_inputs():
     assert_close(x[3, ..., 1], Tensor(data[3, ..., 1]))
 
 
-def test_getitem_number_1_inputs():
-    data = torch.randn((3, 5, 4, 3, 2))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_getitem_number_1_inputs(backend):
+    data = randn((3, 5, 4, 3, 2), backend)
     inputs = OrderedDict([('i', bint(3))])
     x = Tensor(data, inputs)
     assert_close(x[2], Tensor(data[:, 2], inputs))
@@ -457,8 +490,9 @@ def test_getitem_number_1_inputs():
     assert_close(x[3, ..., 1], Tensor(data[:, 3, ..., 1], inputs))
 
 
-def test_getitem_number_2_inputs():
-    data = torch.randn((3, 4, 5, 4, 3, 2))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_getitem_number_2_inputs(backend):
+    data = randn((3, 4, 5, 4, 3, 2), backend)
     inputs = OrderedDict([('i', bint(3)), ('j', bint(4))])
     x = Tensor(data, inputs)
     assert_close(x[2], Tensor(data[:, :, 2], inputs))
@@ -472,8 +506,9 @@ def test_getitem_number_2_inputs():
     assert_close(x[3, ..., 1], Tensor(data[:, :, 3, ..., 1], inputs))
 
 
-def test_getitem_variable():
-    data = torch.randn((5, 4, 3, 2))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_getitem_variable(backend):
+    data = randn((5, 4, 3, 2), backend)
     x = Tensor(data)
     i = Variable('i', bint(5))
     j = Variable('j', bint(4))
@@ -481,31 +516,33 @@ def test_getitem_variable():
     assert x[i, j] is Tensor(data, OrderedDict([('i', bint(5)), ('j', bint(4))]))
 
 
-def test_getitem_string():
-    data = torch.randn((5, 4, 3, 2))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_getitem_string(backend):
+    data = randn((5, 4, 3, 2), backend)
     x = Tensor(data)
     assert x['i'] is Tensor(data, OrderedDict([('i', bint(5))]))
     assert x['i', 'j'] is Tensor(data, OrderedDict([('i', bint(5)), ('j', bint(4))]))
 
 
-def test_getitem_tensor():
-    data = torch.randn((5, 4, 3, 2))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_getitem_tensor(backend):
+    data = randn((5, 4, 3, 2), backend)
     x = Tensor(data)
     i = Variable('i', bint(5))
     j = Variable('j', bint(4))
     k = Variable('k', bint(3))
     m = Variable('m', bint(2))
 
-    y = random_tensor(OrderedDict(), bint(5))
+    y = random_tensor(OrderedDict(), bint(5), backend)
     assert_close(x[i](i=y), x[y])
 
-    y = random_tensor(OrderedDict(), bint(4))
+    y = random_tensor(OrderedDict(), bint(4), backend)
     assert_close(x[:, j](j=y), x[:, y])
 
-    y = random_tensor(OrderedDict(), bint(3))
+    y = random_tensor(OrderedDict(), bint(3), backend)
     assert_close(x[:, :, k](k=y), x[:, :, y])
 
-    y = random_tensor(OrderedDict(), bint(2))
+    y = random_tensor(OrderedDict(), bint(2), backend)
     assert_close(x[:, :, :, m](m=y), x[:, :, :, y])
 
     y = random_tensor(OrderedDict([('i', i.output)]),
@@ -517,8 +554,9 @@ def test_getitem_tensor():
     assert_close(x[i, j, k](k=y), x[i, j, y])
 
 
-def test_lambda_getitem():
-    data = torch.randn(2)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_lambda_getitem(backend):
+    data = randn((2,), backend)
     x = Tensor(data)
     y = Tensor(data, OrderedDict(i=bint(2)))
     i = Variable('i', bint(2))
@@ -526,23 +564,29 @@ def test_lambda_getitem():
     assert Lambda(i, y) is x
 
 
-REDUCE_OPS = [ops.add, ops.mul, ops.and_, ops.or_, ops.logaddexp, ops.min, ops.max]
+REDUCE_OPS = [
+    ops.add,
+    ops.mul,
+    ops.and_,
+    ops.or_,
+    ops.logaddexp,
+    ops.sample,
+    ops.min,
+    ops.max,
+]
 
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
 @pytest.mark.parametrize('op', REDUCE_OPS, ids=str)
-def test_reduce_all(dims, op):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_reduce_all(dims, op, backend):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
-    data = torch.rand(shape) + 0.5
+    data = rand(shape, backend) + 0.5
     if op in [ops.and_, ops.or_]:
-        data = data.byte()
-    if op is ops.logaddexp:
-        # work around missing torch.Tensor.logsumexp()
-        expected_data = data.reshape(-1).logsumexp(0)
-    else:
-        expected_data = REDUCE_OP_TO_TORCH[op](data)
+        data = astype(data, 'uint8')
+    expected_data = REDUCE_OP_TO_NUMERIC[op](data, None)
 
     x = Tensor(data, inputs)
     actual = x.reduce(op)
@@ -556,15 +600,16 @@ def test_reduce_all(dims, op):
     for reduced_vars in itertools.combinations(dims, num_reduced)
 ])
 @pytest.mark.parametrize('op', REDUCE_OPS)
-def test_reduce_subset(dims, reduced_vars, op):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_reduce_subset(dims, reduced_vars, op, backend):
     reduced_vars = frozenset(reduced_vars)
     sizes = {'a': 3, 'b': 4, 'c': 5}
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
-    data = torch.rand(shape) + 0.5
+    data = rand(shape, backend) + 0.5
     dtype = 'real'
     if op in [ops.and_, ops.or_]:
-        data = data.byte()
+        data = astype(data, 'uint8')
         dtype = 2
     x = Tensor(data, inputs, dtype)
     actual = x.reduce(op, reduced_vars)
@@ -576,16 +621,10 @@ def test_reduce_subset(dims, reduced_vars, op):
         assert actual is x
     else:
         if reduced_vars == frozenset(dims):
-            if op is ops.logaddexp:
-                # work around missing torch.Tensor.logsumexp()
-                data = data.reshape(-1).logsumexp(0)
-            else:
-                data = REDUCE_OP_TO_TORCH[op](data)
+            data = REDUCE_OP_TO_NUMERIC[op](data, None)
         else:
             for pos in reversed(sorted(map(dims.index, reduced_vars))):
-                data = REDUCE_OP_TO_TORCH[op](data, pos)
-                if op in (ops.min, ops.max):
-                    data = data[0]
+                data = REDUCE_OP_TO_NUMERIC[op](data, pos)
         check_funsor(actual, expected_inputs, Domain((), dtype))
         assert_close(actual, Tensor(data, expected_inputs, dtype),
                      atol=1e-5, rtol=1e-5)
@@ -594,30 +633,31 @@ def test_reduce_subset(dims, reduced_vars, op):
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')])
 @pytest.mark.parametrize('event_shape', [(), (4,), (2, 3)])
 @pytest.mark.parametrize('op', REDUCE_OPS, ids=str)
-def test_reduce_event(op, event_shape, dims):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_reduce_event(op, event_shape, dims, backend):
     sizes = {'a': 3, 'b': 4, 'c': 5}
     batch_shape = tuple(sizes[d] for d in dims)
     shape = batch_shape + event_shape
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
-    torch_op = REDUCE_OP_TO_TORCH[op]
-    data = torch.rand(shape) + 0.5
+    numeric_op = REDUCE_OP_TO_NUMERIC[op]
+    data = rand(shape, backend) + 0.5
     dtype = 'real'
     if op in [ops.and_, ops.or_]:
-        data = data.byte()
-    expected_data = torch_op(data.reshape(batch_shape + (-1,)), -1)
-    if op in [ops.min, ops.max]:
-        expected_data = expected_data[0]
+        data = astype(data, 'uint8')
+    expected_data = numeric_op(data.reshape(batch_shape + (-1,)), -1)
 
     x = Tensor(data, inputs, dtype=dtype)
-    actual = getattr(x, torch_op.__name__)()
+    op_name = numeric_op.__name__[1:] if op in [ops.min, ops.max] else numeric_op.__name__
+    actual = getattr(x, op_name)()
     check_funsor(actual, inputs, Domain((), dtype), expected_data)
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (2, 3)])
-def test_all_equal(shape):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_all_equal(shape, backend):
     inputs = OrderedDict()
-    data1 = torch.rand(shape) + 0.5
-    data2 = torch.rand(shape) + 0.5
+    data1 = rand(shape, backend) + 0.5
+    data2 = rand(shape, backend) + 0.5
     dtype = 'real'
 
     x1 = Tensor(data1, inputs, dtype=dtype)
@@ -630,48 +670,61 @@ def test_all_equal(shape):
     assert (x1 != x2).any()
 
 
-def test_function_matmul():
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_function_matmul(backend):
+    _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
 
-    @funsor.torch.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
-        return torch.matmul(x, y)
+        return _numeric_matmul(x, y)
 
     check_funsor(matmul, {'x': reals(3, 4), 'y': reals(4, 5)}, reals(3, 5))
 
-    x = Tensor(torch.randn(3, 4))
-    y = Tensor(torch.randn(4, 5))
+    x = Tensor(randn((3, 4), backend))
+    y = Tensor(randn((4, 5), backend))
     actual = matmul(x, y)
-    expected_data = torch.matmul(x.data, y.data)
+    expected_data = _numeric_matmul(x.data, y.data)
     check_funsor(actual, {}, reals(3, 5), expected_data)
 
 
-def test_function_lazy_matmul():
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_function_lazy_matmul(backend):
+    _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
 
-    @funsor.torch.function(reals(3, 4), reals(4, 5), reals(3, 5))
+    @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
-        return torch.matmul(x, y)
+        return _numeric_matmul(x, y)
 
     x_lazy = Variable('x', reals(3, 4))
     y = Tensor(torch.randn(4, 5))
     actual_lazy = matmul(x_lazy, y)
     check_funsor(actual_lazy, {'x': reals(3, 4)}, reals(3, 5))
-    assert isinstance(actual_lazy, funsor.torch.Function)
+    assert isinstance(actual_lazy, funsor.tensor.Function)
 
     x = Tensor(torch.randn(3, 4))
     actual = actual_lazy(x=x)
-    expected_data = torch.matmul(x.data, y.data)
+    expected_data = _numeric_matmul(x.data, y.data)
     check_funsor(actual, {}, reals(3, 5), expected_data)
 
 
-def test_function_nested_eager():
+def _numeric_max_and_argmax(x):
+    if torch.is_tensor(x):
+        return torch.max(x, dim=-1)
+    else:
+        assert isinstance(x, np.ndarray)
+        return np.max(x, axis=-1), np.argmax(x, axis=-1)
 
-    @funsor.torch.function(reals(8), (reals(), bint(8)))
+
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_function_nested_eager(backend):
+
+    @funsor.function(reals(8), (reals(), bint(8)))
     def max_and_argmax(x):
-        return tuple(torch.max(x, dim=-1))
+        return tuple(_numeric_max_and_argmax(x))
 
     inputs = OrderedDict([('i', bint(2)), ('j', bint(3))])
-    x = Tensor(torch.randn(2, 3, 8), inputs)
-    m, a = x.data.max(dim=-1)
+    x = Tensor(randn((2, 3, 8), backend), inputs)
+    m, a = _numeric_max_and_argmax(x.data)
     expected_max = Tensor(m, inputs, 'real')
     expected_argmax = Tensor(a, inputs, 8)
 
@@ -680,21 +733,22 @@ def test_function_nested_eager():
     assert_close(actual_argmax, expected_argmax)
 
 
-def test_function_nested_lazy():
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_function_nested_lazy(backend):
 
-    @funsor.torch.function(reals(8), (reals(), bint(8)))
+    @funsor.function(reals(8), (reals(), bint(8)))
     def max_and_argmax(x):
-        return tuple(torch.max(x, dim=-1))
+        return tuple(_numeric_max_and_argmax(x))
 
     x_lazy = Variable('x', reals(8))
     lazy_max, lazy_argmax = max_and_argmax(x_lazy)
-    assert isinstance(lazy_max, funsor.torch.Function)
-    assert isinstance(lazy_argmax, funsor.torch.Function)
+    assert isinstance(lazy_max, funsor.tensor.Function)
+    assert isinstance(lazy_argmax, funsor.tensor.Function)
     check_funsor(lazy_max, {'x': reals(8)}, reals())
     check_funsor(lazy_argmax, {'x': reals(8)}, bint(8))
 
     inputs = OrderedDict([('i', bint(2)), ('j', bint(3))])
-    y = Tensor(torch.randn(2, 3, 8), inputs)
+    y = Tensor(randn((2, 3, 8), backend), inputs)
     actual_max = lazy_max(x=y)
     actual_argmax = lazy_argmax(x=y)
     expected_max, expected_argmax = max_and_argmax(y)
@@ -702,17 +756,25 @@ def test_function_nested_lazy():
     assert_close(actual_argmax, expected_argmax)
 
 
-def test_function_of_torch_tensor():
-    x = torch.randn(4, 3)
-    y = torch.randn(3, 2)
-    f = funsor.torch.function(reals(4, 3), reals(3, 2), reals(4, 2))(torch.matmul)
+@pytest.mark.parametrize("backend", [
+    "torch",
+    pytest.param("numpy", marks=pytest.mark.xfail(
+        reason="funsor.util.getargspec regex pattern needs to rewrite to support numpy docstring."
+               " Issue #207"))
+])
+def test_function_of_numeric_array(backend):
+    _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
+    x = randn((4, 3), backend)
+    y = randn((3, 2), backend)
+    f = funsor.function(reals(4, 3), reals(3, 2), reals(4, 2))(_numeric_matmul)
     actual = f(x, y)
     expected = f(Tensor(x), Tensor(y))
     assert_close(actual, expected)
 
 
-def test_align():
-    x = Tensor(torch.randn(2, 3, 4), OrderedDict([
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_align(backend):
+    x = Tensor(randn((2, 3, 4), backend), OrderedDict([
         ('i', bint(2)),
         ('j', bint(3)),
         ('k', bint(4)),
@@ -744,48 +806,59 @@ EINSUM_EXAMPLES = [
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-def test_einsum(equation):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_einsum(equation, backend):
+    einsum = torch.einsum if backend == "torch" else np.einsum
     sizes = dict(a=2, b=3, c=4)
     inputs, outputs = equation.split('->')
     inputs = inputs.split(',')
-    tensors = [torch.randn(tuple(sizes[d] for d in dims)) for dims in inputs]
+    tensors = [randn(tuple(sizes[d] for d in dims), backend) for dims in inputs]
     funsors = [Tensor(x) for x in tensors]
-    expected = Tensor(torch.einsum(equation, *tensors))
+    expected = Tensor(einsum(equation, *tensors))
     actual = Einsum(equation, tuple(funsors))
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('batch1', ['', 'i', 'j', 'ij'])
-@pytest.mark.parametrize('batch2', ['', 'i', 'j', 'ij'])
-def test_batched_einsum(equation, batch1, batch2):
+@pytest.mark.parametrize('batch1', [''])
+@pytest.mark.parametrize('batch2', [''])
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_batched_einsum(equation, batch1, batch2, backend):
     inputs, output = equation.split('->')
     inputs = inputs.split(',')
 
     sizes = dict(a=2, b=3, c=4, i=5, j=6)
     batch1 = OrderedDict([(k, bint(sizes[k])) for k in batch1])
     batch2 = OrderedDict([(k, bint(sizes[k])) for k in batch2])
-    funsors = [random_tensor(batch, reals(*(sizes[d] for d in dims)))
+    funsors = [random_tensor(batch, reals(*(sizes[d] for d in dims)), backend)
                for batch, dims in zip([batch1, batch2], inputs)]
     actual = Einsum(equation, tuple(funsors))
 
     _equation = ','.join('...' + i for i in inputs) + '->...' + output
     inputs, tensors = align_tensors(*funsors)
     batch = tuple(v.size for v in inputs.values())
-    tensors = [x.expand(batch + f.shape) for (x, f) in zip(tensors, funsors)]
-    expected = Tensor(torch.einsum(_equation, tensors), inputs)
+    tensors = [ops.expand(x, batch + f.shape) for (x, f) in zip(tensors, funsors)]
+    expected = Tensor(ops.einsum(_equation, *tensors), inputs)
     assert_close(actual, expected, atol=1e-5, rtol=None)
+
+
+def _numeric_tensordot(x, y, dim):
+    if torch.is_tensor(x):
+        return torch.tensordot(x, y, dim)
+    else:
+        return np.tensordot(x, y, axes=dim)
 
 
 @pytest.mark.parametrize('y_shape', [(), (4,), (4, 5)], ids=str)
 @pytest.mark.parametrize('xy_shape', [(), (6,), (6, 7)], ids=str)
 @pytest.mark.parametrize('x_shape', [(), (2,), (2, 3)], ids=str)
-def test_tensordot(x_shape, xy_shape, y_shape):
-    x = torch.randn(x_shape + xy_shape)
-    y = torch.randn(xy_shape + y_shape)
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_tensor_tensordot(x_shape, xy_shape, y_shape, backend):
+    x = randn(x_shape + xy_shape, backend)
+    y = randn(xy_shape + y_shape, backend)
     dim = len(xy_shape)
-    actual = torch_tensordot(Tensor(x), Tensor(y), dim)
-    expected = Tensor(torch.tensordot(x, y, dim))
+    actual = tensordot(Tensor(x), Tensor(y), dim)
+    expected = Tensor(_numeric_tensordot(x, y, dim))
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
@@ -804,25 +877,27 @@ def test_tensordot(x_shape, xy_shape, y_shape):
     ((2, 3), -2),
     ((2, 3), -3),
 ], ids=str)
-def test_torch_stack(n, shape, dim):
-    tensors = [torch.randn(shape) for _ in range(n)]
-    actual = torch_stack(tuple(Tensor(t) for t in tensors), dim=dim)
-    expected = Tensor(torch.stack(tensors, dim=dim))
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_tensor_stack(n, shape, dim, backend):
+    tensors = [randn(shape, backend) for _ in range(n)]
+    actual = stack(tuple(Tensor(t) for t in tensors), dim=dim)
+    expected = Tensor(ops.stack(dim, *tensors))
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('output', [bint(2), reals(), reals(4), reals(2, 3)], ids=str)
-def test_funsor_stack(output):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_funsor_stack(output, backend):
     x = random_tensor(OrderedDict([
         ('i', bint(2)),
-    ]), output)
+    ]), output, backend)
     y = random_tensor(OrderedDict([
         ('j', bint(3)),
-    ]), output)
+    ]), output, backend)
     z = random_tensor(OrderedDict([
         ('i', bint(2)),
         ('k', bint(4)),
-    ]), output)
+    ]), output, backend)
 
     xy = Stack('t', (x, y))
     assert isinstance(xy, Tensor)
@@ -857,18 +932,19 @@ def test_funsor_stack(output):
 
 
 @pytest.mark.parametrize('output', [bint(2), reals(), reals(4), reals(2, 3)], ids=str)
-def test_cat_simple(output):
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_cat_simple(output, backend):
     x = random_tensor(OrderedDict([
         ('i', bint(2)),
-    ]), output)
+    ]), output, backend)
     y = random_tensor(OrderedDict([
         ('i', bint(3)),
         ('j', bint(4)),
-    ]), output)
+    ]), output, backend)
     z = random_tensor(OrderedDict([
         ('i', bint(5)),
         ('k', bint(6)),
-    ]), output)
+    ]), output, backend)
 
     assert Cat('i', (x,)) is x
     assert Cat('i', (y,)) is y

@@ -10,8 +10,8 @@ import torch
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import bint
+from funsor.tensor import Tensor
 from funsor.terms import Number, Stack, Variable
-from funsor.torch import Tensor
 
 
 def Uniform(components):

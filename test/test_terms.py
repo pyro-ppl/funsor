@@ -14,6 +14,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import Domain, bint, reals
 from funsor.interpreter import interpretation, reinterpret
+from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
     Binary,
     Cat,
@@ -36,7 +37,6 @@ from funsor.terms import (
     to_funsor
 )
 from funsor.testing import assert_close, check_funsor, random_tensor
-from funsor.torch import REDUCE_OP_TO_TORCH
 
 assert Binary  # flake8
 assert Subs  # flake8
@@ -241,14 +241,14 @@ def test_binary(symbol, data1, data2):
     assert actual.output == actual_reflect.output
 
 
-@pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
-                         ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
+@pytest.mark.parametrize('op', REDUCE_OP_TO_NUMERIC,
+                         ids=[op.__name__ for op in REDUCE_OP_TO_NUMERIC])
 def test_reduce_all(op):
     x = Variable('x', bint(2))
     y = Variable('y', bint(3))
     z = Variable('z', bint(4))
-    if op is ops.logaddexp:
-        pytest.skip()
+    if isinstance(op, ops.LogAddExpOp):
+        pytest.skip()  # not defined for integers
 
     with interpretation(sequential):
         f = x * y + z
@@ -271,8 +271,8 @@ def test_reduce_all(op):
     for num_reduced in range(3 + 1)
     for reduced_vars in itertools.combinations('xyz', num_reduced)
 ])
-@pytest.mark.parametrize('op', REDUCE_OP_TO_TORCH,
-                         ids=[op.__name__ for op in REDUCE_OP_TO_TORCH])
+@pytest.mark.parametrize('op', REDUCE_OP_TO_NUMERIC,
+                         ids=[op.__name__ for op in REDUCE_OP_TO_NUMERIC])
 def test_reduce_subset(op, reduced_vars):
     reduced_vars = frozenset(reduced_vars)
     x = Variable('x', bint(2))
@@ -281,8 +281,8 @@ def test_reduce_subset(op, reduced_vars):
     f = x * y + z
     dtype = f.dtype
     check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
-    if op is ops.logaddexp:
-        pytest.skip()
+    if isinstance(op, ops.LogAddExpOp):
+        pytest.skip()  # not defined for integers
 
     with interpretation(sequential):
         actual = f.reduce(op, reduced_vars)

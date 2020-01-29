@@ -8,6 +8,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, align_gaussian, _mv, _trace_mm, _vv
+from funsor.tensor import Tensor
 from funsor.terms import (
     Funsor,
     FunsorMeta,
@@ -21,7 +22,6 @@ from funsor.terms import (
     substitute,
     to_funsor
 )
-from funsor.torch import Tensor
 
 
 class IntegrateMeta(FunsorMeta):

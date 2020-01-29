@@ -14,8 +14,8 @@ from funsor.affine import is_affine
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, interpretation
+from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
-from funsor.torch import Tensor, align_tensors, ignore_jit_warnings, materialize, torch_stack
 
 
 def numbers_to_tensors(*args):
@@ -198,8 +198,8 @@ def eager_beta(concentration1, concentration0, value):
 
 @eager.register(Beta, Funsor, Funsor, Funsor)
 def eager_beta(concentration1, concentration0, value):
-    concentration = torch_stack((concentration0, concentration1))
-    value = torch_stack((1 - value, value))
+    concentration = stack((concentration0, concentration1))
+    value = stack((1 - value, value))
     return Dirichlet(concentration, value=value)
 
 
@@ -232,8 +232,8 @@ def eager_binomial(total_count, probs, value):
 
 @eager.register(Binomial, Funsor, Funsor, Funsor)
 def eager_binomial(total_count, probs, value):
-    probs = torch_stack((1 - probs, probs))
-    value = torch_stack((total_count - value, value))
+    probs = stack((1 - probs, probs))
+    value = stack((total_count - value, value))
     return Multinomial(total_count, probs, value=value)
 
 
@@ -269,7 +269,7 @@ def eager_categorical(probs, value):
 
 @eager.register(Categorical, Tensor, Variable)
 def eager_categorical(probs, value):
-    value = materialize(value)
+    value = probs.materialize(value)
     return Categorical.eager_log_prob(probs=probs, value=value)
 
 

@@ -13,9 +13,9 @@ from funsor.domains import bint
 from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
+from funsor.tensor import Tensor
 from funsor.terms import Variable, normalize, reflect
 from funsor.testing import assert_close, make_chain_einsum, make_einsum_example, make_hmm_einsum, make_plated_hmm_einsum
-from funsor.torch import Tensor
 
 OPTIMIZED_EINSUM_EXAMPLES = [
     make_chain_einsum(t) for t in range(2, 50, 10)

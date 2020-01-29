@@ -3,8 +3,6 @@
 
 from collections import OrderedDict, defaultdict
 
-import torch
-
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
@@ -14,7 +12,7 @@ from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, reflect, substitute, to_funsor
-from funsor.torch import Tensor, materialize
+from funsor.tensor import Tensor, numeric_array
 
 
 def _alpha_unmangle(expr):
@@ -96,7 +94,7 @@ if interpreter._DEBUG:
     adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(interpreter.debug_logged(fn))
 
 
-@adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object)
+@adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, numeric_array, tuple, object)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}
 
@@ -181,13 +179,13 @@ def adjoint_subs_tensor(adj_redop, adj_binop, out_adj, arg, subs):
 
     # TODO avoid reifying these zero/one tensors by using symbolic constants
     # ones for things that weren't sliced away
-    ones_like_out = Subs(Tensor(torch.full_like(arg.data, ops.UNITS[adj_binop]),
+    ones_like_out = Subs(Tensor(ops.full_like(arg.data, ops.UNITS[adj_binop]),
                                 arg.inputs.copy(), arg.output.dtype),
                          slices)
     arg_adj = adj_binop(out_adj, ones_like_out)
 
     # ones for things that were sliced away
-    ones_like_arg = Tensor(torch.full_like(arg.data, ops.UNITS[adj_binop]),
+    ones_like_arg = Tensor(ops.full_like(arg.data, ops.UNITS[adj_binop]),
                            arg.inputs.copy(), arg.output.dtype)
     arg_adj = _scatter(arg_adj, ones_like_arg, slices)
 
@@ -201,7 +199,7 @@ def _scatter(src, res, subs):
     # use advanced indexing logic copied from Tensor.eager_subs:
 
     # materialize after checking for renaming case
-    subs = OrderedDict((k, materialize(v)) for k, v in subs)
+    subs = OrderedDict((k, res.materialize(v)) for k, v in subs)
 
     # Compute result shapes.
     inputs = OrderedDict()
@@ -235,13 +233,13 @@ def _scatter(src, res, subs):
         else:
             # Construct a [:] slice for this preserved input.
             offset_from_right = -1 - new_dims[k]
-            index.append(torch.arange(domain.dtype).reshape(
+            index.append(ops.new_arange(res.data, domain.dtype).reshape(
                 (-1,) + (1,) * offset_from_right))
 
     # Construct a [:] slice for the output.
     for i, size in enumerate(res.output.shape):
         offset_from_right = len(res.output.shape) - i - 1
-        index.append(torch.arange(size).reshape(
+        index.append(ops.new_arange(res.data, size).reshape(
             (-1,) + (1,) * offset_from_right))
 
     # the only difference from Tensor.eager_subs is here:

@@ -13,9 +13,9 @@ from funsor.domains import bint  # noqa F403
 from funsor.domains import reals
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
+from funsor.tensor import Tensor
 from funsor.terms import Number, eager, normalize, reflect
 from funsor.testing import assert_close, check_funsor, make_einsum_example, random_tensor
-from funsor.torch import Tensor
 from funsor.util import quote
 
 EINSUM_EXAMPLES = [

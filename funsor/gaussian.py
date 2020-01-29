@@ -7,17 +7,15 @@ from functools import reduce
 
 import numpy as np
 import torch
-from multipledispatch import dispatch
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.numpy import Array, materialize as numpy_materialize
 from funsor.ops import AddOp, NegOp, SubOp
+from funsor.tensor import Tensor, align_tensor, align_tensors
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
-from funsor.torch import Tensor, materialize as torch_materialize
 from funsor.util import lazy_property
 
 
@@ -43,16 +41,6 @@ def _trace_mm(x, y):
     assert len(x.shape) >= 2
     assert len(y.shape) >= 2
     return (x * y).sum((-1, -2))
-
-
-@dispatch(torch.Tensor, Funsor)
-def _materialize(prototype, x):
-    return torch_materialize(x)
-
-
-@dispatch(np.ndarray, Funsor)
-def _materialize(prototype, x):
-    return numpy_materialize(x)
 
 
 def _compute_offsets(inputs):
@@ -131,7 +119,7 @@ class BlockVector(object):
 
         # Concatenate parts.
         parts = [v for k, v in sorted(self.parts.items())]
-        result = ops.cat(parts, dim=-1)
+        result = ops.cat(-1, *parts)
         if not torch._C._get_tracing_state():
             assert result.shape == self.shape
         return result
@@ -174,63 +162,12 @@ class BlockMatrix(object):
         # Concatenate parts.
         # TODO This could be optimized into a single .reshape().cat().reshape() if
         #   all inputs are contiguous, thereby saving a memcopy.
-        columns = {i: ops.cat([v for j, v in sorted(part.items())], dim=-1)
+        columns = {i: ops.cat(-1, *[v for j, v in sorted(part.items())])
                    for i, part in self.parts.items()}
-        result = ops.cat([v for i, v in sorted(columns.items())], dim=-2)
+        result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
         if not torch._C._get_tracing_state():
             assert result.shape == self.shape
         return result
-
-
-def align_tensor(new_inputs, x, expand=False):
-    assert isinstance(new_inputs, OrderedDict)
-    assert isinstance(x, (Number, Tensor, Array))
-    assert all(isinstance(d.dtype, int) for d in x.inputs.values())
-
-    data = x.data
-    if isinstance(x, Number):
-        return data
-
-    old_inputs = x.inputs
-    if old_inputs == new_inputs:
-        return data
-
-    # Permute squashed input dims.
-    x_keys = tuple(old_inputs)
-    data = ops.permute(data, tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
-                       tuple(range(len(old_inputs), len(data.shape))))
-
-    # Unsquash multivariate input dims by filling in ones.
-    data = data.reshape(tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +
-                        x.output.shape)
-
-    # Optionally expand new dims.
-    if expand:
-        data = ops.expand(data, tuple(d.dtype for d in new_inputs.values()) + x.output.shape)
-    return data
-
-
-def align_tensors(*args, **kwargs):
-    r"""
-    Permute multiple tensors before applying a broadcasted op.
-
-    This is mainly useful for implementing eager funsor operations.
-
-    :param funsor.terms.Funsor \*args: Multiple :class:`Tensor` s and
-        :class:`~funsor.terms.Number` s.
-    :param bool expand: Whether to expand input tensors. Defaults to False.
-    :return: a pair ``(inputs, tensors)`` where tensors are all
-        :class:`torch.Tensor` s that can be broadcast together to a single data
-        with given ``inputs``.
-    :rtype: tuple
-    """
-    expand = kwargs.pop('expand', False)
-    assert not kwargs
-    inputs = OrderedDict()
-    for x in args:
-        inputs.update(x.inputs)
-    tensors = [align_tensor(inputs, x, expand=expand) for x in args]
-    return inputs, tensors
 
 
 def align_gaussian(new_inputs, old):
@@ -247,8 +184,8 @@ def align_gaussian(new_inputs, old):
     new_ints = OrderedDict((k, d) for k, d in new_inputs.items() if d.dtype != 'real')
     old_ints = OrderedDict((k, d) for k, d in old.inputs.items() if d.dtype != 'real')
     if new_ints != old_ints:
-        info_vec = align_tensor(new_ints, ops.Tensor(info_vec, old_ints))
-        precision = align_tensor(new_ints, ops.Tensor(precision, old_ints))
+        info_vec = align_tensor(new_ints, Tensor(info_vec, old_ints))
+        precision = align_tensor(new_ints, Tensor(precision, old_ints))
 
     # Align real inputs, which are all concatenated in the rightmost dims.
     new_offsets, new_dim = _compute_offsets(new_inputs)
@@ -359,7 +296,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             self.info_vec[..., None], self._precision_chol)[..., 0] ** 2).sum(-1)
         data = 0.5 * dim * math.log(2 * math.pi) - log_det_term + loc_info_vec_term
         inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
-        return ops.Tensor(data, inputs)
+        return Tensor(data, inputs)
 
     def __repr__(self):
         return 'Gaussian(..., ({}))'.format(' '.join(
@@ -378,8 +315,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
+        prototype = Tensor(self.info_vec)
         subs = tuple((k, v if isinstance(v, (Variable, Slice))
-                      else _materialize(self.info_vec, v))
+                      else prototype.materialize(v))
                      for k, v in subs if k in self.inputs)
         if not subs:
             return self
@@ -387,12 +325,12 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # Constants and Affine funsors are eagerly substituted;
         # everything else is lazily substituted.
         lazy_subs = tuple((k, v) for k, v in subs
-                          if not isinstance(v, (Number, Tensor, Array, Variable, Slice))
+                          if not isinstance(v, (Number, Tensor, Variable, Slice))
                           and not (is_affine(v) and affine_inputs(v)))
         var_subs = tuple((k, v) for k, v in subs if isinstance(v, Variable))
-        int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor, Array, Slice))
+        int_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor, Slice))
                          if v.dtype != 'real')
-        real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor, Array))
+        real_subs = tuple((k, v) for k, v in subs if isinstance(v, (Number, Tensor))
                           if v.dtype == 'real')
         affine_subs = tuple((k, v) for k, v in subs
                             if is_affine(v) and affine_inputs(v) and not isinstance(v, Variable))
@@ -420,7 +358,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
         real_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype == 'real')
         tensors = [self.info_vec, self.precision]
-        funsors = [Subs(ops.Tensor(x, int_inputs), subs) for x in tensors]
+        funsors = [Subs(Tensor(x, int_inputs), subs) for x in tensors]
         inputs = funsors[0].inputs.copy()
         inputs.update(real_inputs)
         int_result = Gaussian(funsors[0].data, funsors[1].data, inputs)
@@ -430,8 +368,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # Broadcast all component tensors.
         subs = OrderedDict(subs)
         int_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if d.dtype != 'real')
-        tensors = [ops.Tensor(self.info_vec, int_inputs),
-                   ops.Tensor(self.precision, int_inputs)]
+        tensors = [Tensor(self.info_vec, int_inputs),
+                   Tensor(self.precision, int_inputs)]
         tensors.extend(subs.values())
         int_inputs, tensors = align_tensors(*tensors)
         batch_dim = len(tensors[0].shape) - 1
@@ -461,7 +399,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             # Evaluate the non-normalized log density.
             result = _vv(value, info_vec - 0.5 * _mv(precision, value))
 
-            result = ops.Tensor(result, int_inputs)
+            result = Tensor(result, int_inputs)
             assert result.output == reals()
             return Subs(result, remaining_subs) if remaining_subs else result
 
@@ -469,21 +407,21 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # We split real inputs into two sets: a for the preserved and b for the substituted.
         b = frozenset(k for k, v in subs.items())
         a = frozenset(k for k, d in self.inputs.items() if d.dtype == 'real' and k not in b)
-        prec_aa = ops.cat([ops.cat([
+        prec_aa = ops.cat(-2, *[ops.cat(-1, *[
             precision[..., i1, i2]
-            for k2, i2 in slices if k2 in a], dim=-1)
-            for k1, i1 in slices if k1 in a], dim=-2)
-        prec_ab = ops.cat([ops.cat([
+            for k2, i2 in slices if k2 in a])
+            for k1, i1 in slices if k1 in a])
+        prec_ab = ops.cat(-2, *[ops.cat(-1, *[
             precision[..., i1, i2]
-            for k2, i2 in slices if k2 in b], dim=-1)
-            for k1, i1 in slices if k1 in a], dim=-2)
-        prec_bb = ops.cat([ops.cat([
+            for k2, i2 in slices if k2 in b])
+            for k1, i1 in slices if k1 in a])
+        prec_bb = ops.cat(-2, *[ops.cat(-1, *[
             precision[..., i1, i2]
-            for k2, i2 in slices if k2 in b], dim=-1)
-            for k1, i1 in slices if k1 in b], dim=-2)
-        info_a = ops.cat([info_vec[..., i] for k, i in slices if k in a], dim=-1)
-        info_b = ops.cat([info_vec[..., i] for k, i in slices if k in b], dim=-1)
-        value_b = ops.cat([values[k] for k, i in slices if k in b], dim=-1)
+            for k2, i2 in slices if k2 in b])
+            for k1, i1 in slices if k1 in b])
+        info_a = ops.cat(-1, *[info_vec[..., i] for k, i in slices if k in a])
+        info_b = ops.cat(-1, *[info_vec[..., i] for k, i in slices if k in b])
+        value_b = ops.cat(-1, *[values[k] for k, i in slices if k in b])
         info_vec = info_a - _mv(prec_ab, value_b)
         log_scale = _vv(value_b, info_b - 0.5 * _mv(prec_bb, value_b))
         precision = ops.expand(prec_aa, info_vec.shape + (-1,))
@@ -491,7 +429,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         for k, d in self.inputs.items():
             if k not in subs:
                 inputs[k] = d
-        result = Gaussian(info_vec, precision, inputs) + ops.Tensor(log_scale, int_inputs)
+        result = Gaussian(info_vec, precision, inputs) + Tensor(log_scale, int_inputs)
         return Subs(result, remaining_subs) if remaining_subs else result
 
     def _eager_subs_affine(self, subs, remaining_subs):
@@ -499,8 +437,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         affine = OrderedDict()
         for k, v in subs:
             const, coeffs = extract_affine(v)
-            if (isinstance(const, (Tensor, Array)) and
-                    all(isinstance(coeff, (Tensor, Array)) for coeff, _ in coeffs.values())):
+            if (isinstance(const, Tensor) and
+                    all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values())):
                 affine[k] = const, coeffs
             else:
                 remaining_subs += (k, v),
@@ -509,8 +447,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         # Align integer dimensions.
         old_int_inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
-        tensors = [ops.Tensor(self.info_vec, old_int_inputs),
-                   ops.Tensor(self.precision, old_int_inputs)]
+        tensors = [Tensor(self.info_vec, old_int_inputs),
+                   Tensor(self.precision, old_int_inputs)]
         for const, coeffs in affine.values():
             tensors.append(const)
             tensors.extend(coeff for coeff, _ in coeffs.values())
@@ -579,7 +517,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         precision = subs_matrix @ old_precision @ subs_matrix_t
         info_vec = _mv(subs_matrix, old_info_vec - _mv(old_precision, subs_vector))
         const = _vv(subs_vector, old_info_vec - 0.5 * _mv(old_precision, subs_vector))
-        result = Gaussian(info_vec, precision, new_inputs) + ops.Tensor(const, new_int_inputs)
+        result = Gaussian(info_vec, precision, new_inputs) + Tensor(const, new_int_inputs)
         return Subs(result, remaining_subs) if remaining_subs else result
 
     def eager_reduce(self, op, reduced_vars):
@@ -620,9 +558,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 b_tmp = ops.triangular_solve(info_b[..., None], prec_b)
                 info_vec = info_a - ops.matmul(prec_at, b_tmp)[..., 0]
 
-                log_prob = ops.Tensor(0.5 * len(b) * math.log(2 * math.pi) - _log_det_tri(prec_b) +
-                                      0.5 * (b_tmp[..., 0] ** 2).sum(-1),
-                                      int_inputs)
+                log_prob = Tensor(0.5 * len(b) * math.log(2 * math.pi) - _log_det_tri(prec_b) +
+                                  0.5 * (b_tmp[..., 0] ** 2).sum(-1),
+                                  int_inputs)
                 result = log_prob + Gaussian(info_vec, precision, inputs)
 
             return result.reduce(ops.logaddexp, reduced_ints)
@@ -637,8 +575,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             new_ints = OrderedDict((k, v) for k, v in old_ints.items() if k not in reduced_vars)
             inputs = OrderedDict((k, v) for k, v in self.inputs.items() if k not in reduced_vars)
 
-            info_vec = ops.Tensor(self.info_vec, old_ints).reduce(ops.add, reduced_vars)
-            precision = ops.Tensor(self.precision, old_ints).reduce(ops.add, reduced_vars)
+            info_vec = Tensor(self.info_vec, old_ints).reduce(ops.add, reduced_vars)
+            precision = Tensor(self.precision, old_ints).reduce(ops.add, reduced_vars)
             assert info_vec.inputs == new_ints
             assert precision.inputs == new_ints
             return Gaussian(info_vec.data, precision.data, inputs)
@@ -673,7 +611,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             for key, domain in real_inputs.items():
                 data = sample[..., offsets[key]: offsets[key] + domain.num_elements]
                 data = data.reshape(shape[:-1] + domain.shape)
-                point = ops.Tensor(data, inputs)
+                point = Tensor(data, inputs)
                 assert point.output == domain
                 results.append(Delta(key, point))
             results.append(self.log_normalizer)
