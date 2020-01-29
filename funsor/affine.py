@@ -8,8 +8,8 @@ import opt_einsum
 import torch
 
 from funsor.interpreter import gensym
+from funsor.tensor import Einsum, Tensor
 from funsor.terms import Binary, Funsor, Lambda, Reduce, Unary, Variable, bint
-from funsor.torch import Einsum, Tensor
 
 from . import ops
 

@@ -41,7 +41,7 @@ class Distribution(object):
     def log_prob(self, value):
         result = self.funsor_dist(value=value)
         if self.sample_inputs:
-            result = result + funsor.torch.Tensor(
+            result = result + funsor.tensor.Tensor(
                 torch.zeros(*(size.dtype for size in self.sample_inputs.values())),
                 self.sample_inputs
             )
@@ -179,7 +179,7 @@ CondIndepStackFrame = namedtuple("CondIndepStackFrame", ["name", "size", "dim"])
 
 # This implementation of vectorized PlateMessenger broadcasts and
 # records a cond_indep_stack which is later used to convert
-# torch.Tensors to funsor.torch.Tensors.
+# torch.Tensors to funsor.tensor.Tensors.
 class PlateMessenger(Messenger):
     def __init__(self, fn, name, size, dim):
         assert dim < 0
@@ -194,14 +194,14 @@ class PlateMessenger(Messenger):
             msg["fn"] = msg["fn"].expand_inputs(self.frame.name, self.frame.size)
 
 
-# This converts raw torch.Tensors to funsor.Funsors with .inputs and .output
+# This converts raw tensor.Tensors to funsor.Funsors with .inputs and .output
 # based on information in msg["cond_indep_stack"] and msg["fn"].
 def tensor_to_funsor(value, cond_indep_stack, output):
     assert isinstance(value, torch.Tensor)
     event_shape = output.shape
     batch_shape = value.shape[:value.dim() - len(event_shape)]
     if torch._C._get_tracing_state():
-        with funsor.torch.ignore_jit_warnings():
+        with funsor.tensor.ignore_jit_warnings():
             batch_shape = tuple(map(int, batch_shape))
     inputs = OrderedDict()
     data = value
@@ -212,7 +212,7 @@ def tensor_to_funsor(value, cond_indep_stack, output):
             frame = cond_indep_stack[dim - len(batch_shape)]
             assert size == frame.size, (size, frame)
             inputs[frame.name] = funsor.bint(int(size))
-    value = funsor.torch.Tensor(data, inputs, output.dtype)
+    value = funsor.tensor.Tensor(data, inputs, output.dtype)
     assert value.output == output
     return value
 
@@ -570,7 +570,7 @@ class Jit(object):
                 self._compiled = torch.jit.trace(compiled, params_and_args, check_trace=False)
 
         data = self._compiled(*params_and_args)
-        return funsor.torch.Tensor(data)
+        return funsor.tensor.Tensor(data)
 
 
 # This is a jit wrapper for ELBO implementations.

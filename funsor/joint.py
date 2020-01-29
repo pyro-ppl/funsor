@@ -16,8 +16,8 @@ from funsor.delta import Delta
 from funsor.domains import bint
 from funsor.gaussian import Gaussian, align_gaussian
 from funsor.ops import AssociativeOp
+from funsor.tensor import Tensor, align_tensor
 from funsor.terms import Funsor, Independent, Number, Reduce, Unary, eager, moment_matching, normalize
-from funsor.torch import Tensor, align_tensor
 
 
 @dispatch(str, str, Variadic[(Gaussian, GaussianMixture)])

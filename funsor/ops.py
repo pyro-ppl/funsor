@@ -318,7 +318,42 @@ PRODUCT_INVERSES = {
 }
 
 
-# Linear algebra ops
+# Numeric Array Ops
+
+@Op
+def sum(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def prod(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def all(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def any(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def logsumexp(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def amin(x, dim):
+    raise NotImplementedError
+
+
+@Op
+def amax(x, dim):
+    raise NotImplementedError
+
 
 @Op
 def cholesky(x):
@@ -340,12 +375,13 @@ def triangular_solve(x, y, upper=False, transpose=False):
 
 
 @Op
-def cat_op(dim, *x):
+def cat(dim, *x):
     raise NotImplementedError
 
 
-def cat(x, dim=0):
-    return cat_op(dim, *x)
+@Op
+def stack(dim, *x):
+    raise NotImplementedError
 
 
 @Op
@@ -360,6 +396,16 @@ def new_eye(x, shape):
 
 @Op
 def new_arange(x, start, stop, step):
+    raise NotImplementedError
+
+
+@Op
+def new_arange(x, stop):
+    raise NotImplementedError
+
+
+@Op
+def full_like(x, shape):
     raise NotImplementedError
 
 
@@ -389,12 +435,18 @@ def permute(x, dims):
 
 
 @Op
-def TensorOp(x, inputs, dtype):
+def finfo(x):
     raise NotImplementedError
 
 
-def Tensor(x, inputs=None, dtype="real"):
-    return TensorOp(x, inputs, dtype)
+@Op
+def clamp(x, min, max):
+    raise NotImplementedError
+
+
+@Op
+def einsum(equation, *operands):
+    raise NotImplementedError
 
 
 __all__ = [
@@ -423,6 +475,7 @@ __all__ = [
     'eq',
     'exp',
     'expand',
+    'full_like',
     'ge',
     'getitem',
     'gt',
@@ -437,6 +490,7 @@ __all__ = [
     'mul',
     'ne',
     'neg',
+    'new_arange',
     'new_eye',
     'new_zeros',
     'or_',

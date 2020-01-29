@@ -23,9 +23,9 @@ from funsor.sum_product import (
     sequential_sum_product,
     sum_product
 )
+from funsor.tensor import Tensor
 from funsor.terms import Variable, eager_or_die, moment_matching, reflect
 from funsor.testing import assert_close, random_gaussian, random_tensor
-from funsor.torch import Tensor
 
 
 @pytest.mark.parametrize('inputs,dims,expected_num_components', [

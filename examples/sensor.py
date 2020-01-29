@@ -15,7 +15,7 @@ import funsor.distributions as f_dist
 import funsor.ops as ops
 from funsor.domains import reals
 from funsor.pyro.convert import dist_to_funsor, funsor_to_mvn
-from funsor.torch import Tensor, Variable
+from funsor.tensor import Tensor, Variable
 
 # We use a 2D continuous-time NCV dynamics model throughout.
 # See http://webee.technion.ac.il/people/shimkin/Estimation09/ch8_target.pdf

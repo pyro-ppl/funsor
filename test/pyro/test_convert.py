@@ -19,9 +19,9 @@ from funsor.pyro.convert import (
     mvn_to_funsor,
     tensor_to_funsor
 )
+from funsor.tensor import Tensor
 from funsor.terms import Funsor, Variable
 from funsor.testing import assert_close, random_mvn, random_tensor
-from funsor.torch import Tensor
 
 EVENT_SHAPES = [(), (1,), (5,), (4, 3)]
 BATCH_SHAPES = [(), (1,), (4,), (2, 3), (1, 2, 1, 3, 1)]

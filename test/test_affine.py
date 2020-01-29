@@ -11,7 +11,7 @@ from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.terms import Number, Unary, Variable
 from funsor.testing import assert_close, check_funsor, random_gaussian, random_tensor
-from funsor.torch import Einsum, Tensor
+from funsor.tensor import Einsum, Tensor
 
 assert random_gaussian  # flake8
 
