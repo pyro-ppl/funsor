@@ -267,6 +267,7 @@ def stack_reinterpret(x):
     """
     x_name = gensym(x)
     node_vars = {x_name: x}
+    node_names = {x: x_name}
     env = {}
     stack = [(x_name, x)]
     parent_to_children = OrderedDict()
