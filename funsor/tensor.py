@@ -381,6 +381,20 @@ class Tensor(Funsor, metaclass=TensorMeta):
         subs = tuple(subs)
         return substitute(x, subs)
 
+    @property
+    def backend(self):
+        if torch.is_tensor(self.data):
+            return "torch"
+        else:
+            return "numpy"
+
+    @property
+    def logsumexp_backend(self):
+        if torch.is_tensor(self.data):
+            return "pyro.ops.einsum.torch_log"
+        else:
+            return "funsor.numpy"
+
 
 @dispatch(numeric_array)
 def to_funsor(x):

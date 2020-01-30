@@ -19,6 +19,7 @@ ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
 ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
 ops.full_like.register(torch.Tensor, object)(torch.full_like)
 ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
+ops.cholesky_solve.register(torch.Tensor, torch.Tensor)(torch.cholesky_solve)
 
 
 @ops.einsum.register(str, [torch.Tensor])

@@ -231,14 +231,14 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
-    return _eager_contract_tensors(reduced_vars, terms, backend="torch")
+    return _eager_contract_tensors(reduced_vars, terms, backend=terms[0].backend)
 
 
 @eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Tensor, Tensor)
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
-    return _eager_contract_tensors(reduced_vars, terms, backend="pyro.ops.einsum.torch_log")
+    return _eager_contract_tensors(reduced_vars, terms, backend=terms[0].logsumexp_backend)
 
 
 # TODO Consider using this for more than binary contractions.
@@ -258,7 +258,7 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
 
         # Squeeze absent event dims to be compatible with einsum.
         data = term.data
-        batch_shape = data.shape[:data.dim() - len(term.shape)]
+        batch_shape = data.shape[:len(data.shape) - len(term.shape)]
         event_shape = tuple(size for size in term.shape if size != 1)
         data = data.reshape(batch_shape + event_shape)
         operands.append(data)
