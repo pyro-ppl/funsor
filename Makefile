@@ -12,6 +12,9 @@ docs: FORCE
 lint: FORCE
 	flake8
 
+license: FORCE
+	python scripts/update_headers.py
+
 format: FORCE
 	isort -y
 
