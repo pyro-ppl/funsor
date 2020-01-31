@@ -437,7 +437,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # Extract an affine representation.
         affine = OrderedDict()
         for k, v in subs:
-            const, coeffs = extract_affine(v)
+            const, coeffs = extract_affine(v, self.info_vec)
             if (isinstance(const, Tensor) and
                     all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values())):
                 affine[k] = const, coeffs
