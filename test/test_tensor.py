@@ -756,12 +756,7 @@ def test_function_nested_lazy(backend):
     assert_close(actual_argmax, expected_argmax)
 
 
-@pytest.mark.parametrize("backend", [
-    "torch",
-    pytest.param("numpy", marks=pytest.mark.xfail(
-        reason="funsor.util.getargspec regex pattern needs to rewrite to support numpy docstring."
-               " Issue #207"))
-])
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_function_of_numeric_array(backend):
     _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
     x = randn((4, 3), backend)
