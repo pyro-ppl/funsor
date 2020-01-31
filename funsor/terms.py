@@ -501,7 +501,7 @@ class Funsor(object, metaclass=FunsorMeta):
         """
         Align this funsor to match given ``names``.
         This is mainly useful in preparation for extracting ``.data``
-        of a :class:`funsor.torch.Tensor`.
+        of a :class:`funsor.tensor.Tensor`.
 
         :param tuple names: A tuple of strings representing all names
             but in a new order.
@@ -1189,7 +1189,7 @@ class Slice(Funsor, metaclass=SliceMeta):
         elif isinstance(index, Number):
             data = self.slice.start + self.slice.step * index.data
             return Number(data, self.output.dtype)
-        elif type(index).__name__ == "Tensor":  # avoid importing funsor.torch.Tensor
+        elif type(index).__name__ == "Tensor":  # avoid importing funsor.tensor.Tensor
             data = self.slice.start + self.slice.step * index.data
             return type(index)(data, index.inputs, self.output.dtype)
         elif isinstance(index, Slice):

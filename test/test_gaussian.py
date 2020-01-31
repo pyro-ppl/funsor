@@ -543,7 +543,7 @@ def test_integrate_gaussian(int_inputs, real_inputs, backend):
     integrand = random_gaussian(inputs, backend)
     reduced_vars = frozenset(real_inputs)
 
-    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(10000)))
+    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(100000)))
     approx = Integrate(sampled_log_measure, integrand, reduced_vars | {'particle'})
     assert isinstance(approx, Tensor)
 

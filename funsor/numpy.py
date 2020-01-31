@@ -63,7 +63,6 @@ ops.abs.register(array)(abs)
 ops.sigmoid.register(array)(_sigmoid)
 ops.sqrt.register(array)(np.sqrt)
 ops.exp.register(array)(np.exp)
-ops.log.register(array)(np.log)
 ops.log1p.register(array)(np.log1p)
 ops.min.register(array)(np.minimum)
 ops.max.register(array)(np.maximum)
@@ -73,6 +72,13 @@ ops.permute.register(array, (tuple, list))(np.transpose)
 ops.transpose.register(array, int, int)(np.swapaxes)
 ops.full_like.register(array, object)(np.full_like)
 ops.clamp.register(array, object, object)(np.clip)
+
+
+@ops.log.register(array)
+def _log(x):
+    # TODO: remove dtype when using JAX. For now, we cast to np.float64
+    # because np.log(True) returns a np.float16 array.
+    return np.log(x, dtype=np.float64)
 
 
 @ops.einsum.register(str, [array])
@@ -131,7 +137,7 @@ def _safesub(x, y):
         finfo = np.finfo(y.dtype)
     except ValueError:
         finfo = np.iinfo(y.dtype)
-    return x + np.clip(-y, a_max=finfo)
+    return x + np.clip(-y, a_min=None, a_max=finfo.max)
 
 
 @ops.safediv.register((int, float), array)
@@ -140,7 +146,7 @@ def _safediv(x, y):
         finfo = np.finfo(y.dtype)
     except ValueError:
         finfo = np.iinfo(y.dtype)
-    return x * np.clip(np.reciprocal(y), a_max=finfo)
+    return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
 @ops.cholesky.register(array)
@@ -158,16 +164,21 @@ def _cholesky_inverse(x):
     """
     Like :func:`torch.cholesky_inverse` but supports batching and gradients.
     """
-    from scipy.linalg import cho_solve
-
-    return cho_solve((x, False), np.eye(x.shape[-1]))
+    return _cholesky_solve(np.eye(x.shape[-1]), x)
 
 
 @ops.cholesky_solve.register(array, array)
 def _cholesky_solve(x, y):
     from scipy.linalg import cho_solve
 
-    return cho_solve((y, False), x)
+    # TODO: remove this logic when using JAX
+    # work around the issue of scipy which does not support batched input
+    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
+    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
+    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
+    ans = [cho_solve((y, True), x) for (x, y) in zip(xs, ys)]
+    ans = np.stack(ans)
+    return ans.reshape(batch_shape + ans.shape[-2:])
 
 
 @ops.triangular_solve_op.register(array, array, bool, bool)

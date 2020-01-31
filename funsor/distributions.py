@@ -20,7 +20,7 @@ from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_f
 
 def numbers_to_tensors(*args):
     """
-    Convert :class:`~funsor.terms.Number`s to :class:`funsor.torch.Tensor`s,
+    Convert :class:`~funsor.terms.Number`s to :class:`funsor.tensor.Tensor`s,
     using any provided tensor as a prototype, if available.
     """
     if any(isinstance(x, Number) for x in args):

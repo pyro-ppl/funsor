@@ -70,7 +70,7 @@ class Integrate(Funsor, metaclass=IntegrateMeta):
 
 @normalize.register(Integrate, Funsor, Funsor, frozenset)
 def normalize_integrate(log_measure, integrand, reduced_vars):
-    return Contraction(ops.add, ops.mul, reduced_vars, ops.exp(log_measure), integrand)
+    return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
 
 
 @normalize.register(Integrate,
