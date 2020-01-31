@@ -152,6 +152,7 @@ def reinterpret_funsor(x):
 @recursion_reinterpret.register(types.BuiltinFunctionType)
 @recursion_reinterpret.register(numpy.ndarray)
 @recursion_reinterpret.register(torch.Tensor)
+@recursion_reinterpret.register(numpy.ufunc)
 @recursion_reinterpret.register(torch.nn.Module)
 @recursion_reinterpret.register(Domain)
 @recursion_reinterpret.register(Op)
