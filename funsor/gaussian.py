@@ -15,7 +15,7 @@ from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.tensor import Tensor, align_tensor, align_tensors
+from funsor.tensor import Tensor, align_tensor, align_tensors, set_default_tensor_type
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
 from funsor.util import lazy_property
 
@@ -434,10 +434,13 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return Subs(result, remaining_subs) if remaining_subs else result
 
     def _eager_subs_affine(self, subs, remaining_subs):
+        # change global DEFAULT_TENSOR_TYPE to extract_affine
+        # TODO: we should not change global states here
+        set_default_tensor_type(self.info_vec.dtype)
         # Extract an affine representation.
         affine = OrderedDict()
         for k, v in subs:
-            const, coeffs = extract_affine(v, self.info_vec)
+            const, coeffs = extract_affine(v)
             if (isinstance(const, Tensor) and
                     all(isinstance(coeff, Tensor) for coeff, _ in coeffs.values())):
                 affine[k] = const, coeffs

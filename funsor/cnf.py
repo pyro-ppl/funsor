@@ -238,7 +238,8 @@ def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
-    return _eager_contract_tensors(reduced_vars, terms, backend=terms[0].logsumexp_backend)
+    backend = BACKEND_TO_LOGSUMEXP_BACKEND[terms[0].backend]
+    return _eager_contract_tensors(reduced_vars, terms, backend=backend)
 
 
 # TODO Consider using this for more than binary contractions.
@@ -446,3 +447,9 @@ def unary_log_exp(op, arg):
 @normalize.register(Unary, ops.NegOp, Contraction[NullOp, ops.AddOp, frozenset, tuple])
 def unary_contract(op, arg):
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
+
+
+BACKEND_TO_LOGSUMEXP_BACKEND = {
+    "torch": "pyro.ops.einsum.torch_log",
+    "numpy": "funsor.einsum.numpy_log",
+}

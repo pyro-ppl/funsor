@@ -36,6 +36,22 @@ from funsor.util import getargspec, quote
 
 
 numeric_array = (torch.Tensor, np.ndarray, np.generic)
+_DEFAULT_TENSOR_TYPE = torch.float32
+
+
+def set_default_tensor_type(dtype):
+    global _DEFAULT_TENSOR_TYPE
+    _DEFAULT_TENSOR_TYPE = dtype
+
+
+def get_default_prototype():
+    dtype = _DEFAULT_TENSOR_TYPE
+    if type(dtype) is torch.dtype:
+        return torch.tensor([], dtype=dtype)
+    elif type(dtype) is np.dtype:
+        return np.array([], dtype=dtype)
+    else:
+        raise RuntimeError("{} is not a valid default tensor type.".format(dtype))
 
 
 def _nameof(fn):
@@ -387,13 +403,6 @@ class Tensor(Funsor, metaclass=TensorMeta):
             return "torch"
         else:
             return "numpy"
-
-    @property
-    def logsumexp_backend(self):
-        if torch.is_tensor(self.data):
-            return "pyro.ops.einsum.torch_log"
-        else:
-            return "funsor.numpy"
 
 
 @dispatch(numeric_array)

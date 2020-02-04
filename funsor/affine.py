@@ -5,10 +5,9 @@ from collections import OrderedDict
 from functools import reduce, singledispatch
 
 import opt_einsum
-import torch
 
 from funsor.interpreter import gensym
-from funsor.tensor import Einsum, Tensor
+from funsor.tensor import Einsum, Tensor, get_default_prototype
 from funsor.terms import Binary, Funsor, Lambda, Reduce, Unary, Variable, bint
 
 from . import ops
@@ -109,7 +108,7 @@ def _(fn):
     return frozenset()
 
 
-def extract_affine(fn, prototype=None):
+def extract_affine(fn):
     """
     Extracts an affine representation of a funsor, satisfying::
 
@@ -135,8 +134,7 @@ def extract_affine(fn, prototype=None):
         ``(coefficient, eqn)`` pair in einsum form.
     :rtype: tuple
     """
-    # FIXME: does this make sense?
-    prototype = prototype if prototype is not None else torch.tensor([])
+    prototype = get_default_prototype()
     # Determine constant part by evaluating fn at zero.
     inputs = affine_inputs(fn)
     inputs = OrderedDict((k, v) for k, v in fn.inputs.items() if k in inputs)
