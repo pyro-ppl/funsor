@@ -34,9 +34,14 @@ EINSUM_EXAMPLES = [
     'torch',
     'pyro.ops.einsum.torch_log',
     'pyro.ops.einsum.torch_map',
+    'numpy',
+    'funsor.einsum.numpy_log',
+    'funsor.einsum.numpy_map',
 ])
 def test_einsum(equation, backend):
-    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+    tensor_backend = "torch" if "torch" in backend else "numpy"
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation,
+                                                                            backend=tensor_backend)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
 
     with interpretation(reflect):
@@ -54,7 +59,7 @@ def test_einsum(equation, backend):
 
     assert_close(actual, actual_optimized, atol=1e-4)
     assert expected.shape == actual.data.shape
-    assert torch.allclose(expected, actual.data)
+    assert_close(expected, actual.data, rtol=1e-5, atol=1e-8)
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
@@ -62,12 +67,13 @@ def test_einsum(equation, backend):
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-def test_einsum_categorical(equation):
-    inputs, outputs, sizes, operands, _ = make_einsum_example(equation)
+@pytest.mark.parametrize('backend', ['torch', 'numpy'])
+def test_einsum_categorical(equation, backend):
+    inputs, outputs, sizes, operands, _ = make_einsum_example(equation, backend=backend)
     operands = [operand.abs() / operand.abs().sum(-1, keepdim=True)
                 for operand in operands]
 
-    expected = opt_einsum.contract(equation, *operands, backend='torch')
+    expected = opt_einsum.contract(equation, *operands, backend=backend)
 
     with interpretation(reflect):
         funsor_operands = [

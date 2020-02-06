@@ -167,7 +167,7 @@ def xfail_param(*args, **kwargs):
     return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
 
 
-def make_einsum_example(equation, fill=None, sizes=(2, 3)):
+def make_einsum_example(equation, fill=None, sizes=(2, 3), backend="torch"):
     symbols = sorted(set(equation) - set(',->'))
     sizes = {dim: size for dim, size in zip(symbols, itertools.cycle(sizes))}
     inputs, outputs = equation.split('->')
@@ -176,7 +176,8 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
     operands = []
     for dims in inputs:
         shape = tuple(sizes[dim] for dim in dims)
-        operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
+        x = randn(shape, backend)
+        operands.append(x if fill is None else ops.full_like(x, fill))
         operands[-1]._pyro_dims = dims
     funsor_operands = [
         Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
