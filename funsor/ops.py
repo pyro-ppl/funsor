@@ -366,6 +366,11 @@ def cholesky_inverse(x):
 
 
 @Op
+def cholesky_solve(x):
+    raise NotImplementedError
+
+
+@Op
 def triangular_solve_op(x, y, upper, transpose):
     raise NotImplementedError
 
@@ -471,6 +476,7 @@ __all__ = [
     'cat',
     'cholesky',
     'cholesky_inverse',
+    'cholesky_solve',
     'diagonal',
     'eq',
     'exp',

@@ -43,7 +43,7 @@ NAME_TO_DIM = dict(zip(DIM_TO_NAME, range(-100, 0)))
 
 def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
     """
-    Convert a :class:`torch.Tensor` to a :class:`funsor.torch.Tensor` .
+    Convert a :class:`torch.Tensor` to a :class:`funsor.tensor.Tensor` .
 
     Note this should not touch data, but may trigger a
     :meth:`torch.Tensor.reshape` op.
@@ -56,7 +56,7 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
         ``result.output``. These must be on the right of any ``event_input``
         dimensions.
     :return: A funsor.
-    :rtype: funsor.torch.Tensor
+    :rtype: funsor.tensor.Tensor
     """
     assert isinstance(tensor, torch.Tensor)
     assert isinstance(event_inputs, tuple)
@@ -82,12 +82,12 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
 
 def funsor_to_tensor(funsor_, ndims, event_inputs=()):
     """
-    Convert a :class:`funsor.torch.Tensor` to a :class:`torch.Tensor` .
+    Convert a :class:`funsor.tensor.Tensor` to a :class:`torch.Tensor` .
 
     Note this should not touch data, but may trigger a
     :meth:`torch.Tensor.reshape` op.
 
-    :param funsor.torch.Tensor funsor_: A funsor.
+    :param funsor.tensor.Tensor funsor_: A funsor.
     :param int ndims: The number of result dims, ``== result.dim()``.
     :param tuple event_inputs: Names assigned to rightmost dimensions.
     :return: A PyTorch tensor.

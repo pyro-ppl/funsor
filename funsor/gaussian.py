@@ -9,12 +9,13 @@ import numpy as np
 import torch
 from pyro.distributions.util import broadcast_shape
 
+import funsor
 import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.tensor import Tensor, align_tensor, align_tensors
+from funsor.tensor import Tensor, align_tensor, align_tensors, set_default_tensor_type
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
 from funsor.util import lazy_property
 
@@ -424,7 +425,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         value_b = ops.cat(-1, *[values[k] for k, i in slices if k in b])
         info_vec = info_a - _mv(prec_ab, value_b)
         log_scale = _vv(value_b, info_b - 0.5 * _mv(prec_bb, value_b))
-        precision = ops.expand(prec_aa, info_vec.shape + (-1,))
+        precision = ops.expand(prec_aa, info_vec.shape + info_vec.shape[-1:])
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
             if k not in subs:
@@ -433,6 +434,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return Subs(result, remaining_subs) if remaining_subs else result
 
     def _eager_subs_affine(self, subs, remaining_subs):
+        # change global DEFAULT_TENSOR_TYPE to extract_affine
+        # TODO: we should not change global states here
+        set_default_tensor_type(self.info_vec.dtype)
         # Extract an affine representation.
         affine = OrderedDict()
         for k, v in subs:
@@ -540,11 +544,10 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 b = []
                 for key, domain in self.inputs.items():
                     if domain.dtype == 'real':
-                        block = range(offsets[key], offsets[key] + domain.num_elements)
-                        (b if key in reduced_vars else a).extend(block)
-                a = torch.tensor(a)
-                b = torch.tensor(b)
-
+                        block = ops.new_arange(self.info_vec, offsets[key], offsets[key] + domain.num_elements, 1)
+                        (b if key in reduced_vars else a).append(block)
+                a = ops.cat(-1, *a)
+                b = ops.cat(-1, *b)
                 prec_aa = self.precision[..., a[..., None], a]
                 prec_ba = self.precision[..., b[..., None], a]
                 prec_bb = self.precision[..., b[..., None], b]
@@ -603,7 +606,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         if sampled_vars == frozenset(real_inputs):
             shape = sample_shape + self.info_vec.shape
-            white_noise = torch.randn(shape + (1,))
+            # TODO: revise the logic here; `key` is required for JAX normal sampler
+            white_noise = funsor.testing.randn(shape + (1,), Tensor(self.info_vec).backend)
             white_vec = ops.triangular_solve(self.info_vec[..., None], self._precision_chol)
             sample = ops.triangular_solve(white_noise + white_vec, self._precision_chol, transpose=True)[..., 0]
             offsets, _ = _compute_offsets(real_inputs)

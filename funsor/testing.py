@@ -224,7 +224,7 @@ def astype(x, dtype):
 
 def random_tensor(inputs, output=reals(), backend="torch"):
     """
-    Creates a random :class:`funsor.torch.Tensor` with given inputs and output.
+    Creates a random :class:`funsor.tensor.Tensor` with given inputs and output.
     """
     assert isinstance(inputs, OrderedDict)
     assert isinstance(output, Domain)
@@ -241,18 +241,18 @@ def random_tensor(inputs, output=reals(), backend="torch"):
     return Tensor(data, inputs, output.dtype)
 
 
-def random_gaussian(inputs):
+def random_gaussian(inputs, backend="torch"):
     """
     Creates a random :class:`funsor.gaussian.Gaussian` with given inputs.
     """
     assert isinstance(inputs, OrderedDict)
     batch_shape = tuple(d.dtype for d in inputs.values() if d.dtype != 'real')
     event_shape = (sum(d.num_elements for d in inputs.values() if d.dtype == 'real'),)
-    prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
-    precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
-    precision = precision + 0.05 * torch.eye(event_shape[0])
-    loc = torch.randn(batch_shape + event_shape)
-    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
+    prec_sqrt = randn(batch_shape + event_shape + event_shape, backend)
+    precision = ops.matmul(prec_sqrt, ops.transpose(prec_sqrt, -1, -2))
+    precision = precision + 0.5 * ops.new_eye(precision, event_shape[:1])
+    loc = randn(batch_shape + event_shape, backend)
+    info_vec = ops.matmul(precision, ops.unsqueeze(loc, -1)).squeeze(-1)
     return Gaussian(info_vec, precision, inputs)
 
 

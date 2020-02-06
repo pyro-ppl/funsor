@@ -10,6 +10,7 @@ from funsor.optimizer import apply_optimizer
 from funsor.sum_product import sum_product
 from funsor.terms import Funsor, lazy
 
+# TODO: add numpy einsum here
 BACKEND_OPS = {
     "torch": (ops.add, ops.mul),
     "pyro.ops.einsum.torch_log": (ops.logaddexp, ops.add),
