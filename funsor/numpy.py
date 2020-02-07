@@ -5,7 +5,6 @@ import jax.numpy as np
 import numpy as onp
 from jax import lax
 from jax.abstract_arrays import UnshapedArray
-from jax.dtypes import canonicalize_dtype
 from jax.interpreters.xla import DeviceArray
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, logsumexp
@@ -205,7 +204,7 @@ def _stack(dim, *x):
 
 @ops.new_zeros.register(array, tuple)
 def _new_zeros(x, shape):
-    return np.zeros(shape, dtype=canonicalize_dtype(x.dtype))
+    return onp.zeros(shape, dtype=x.dtype)
 
 
 @ops.new_eye.register(array, tuple)
