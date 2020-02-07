@@ -9,7 +9,6 @@ from contextlib import contextmanager
 from functools import reduce
 
 import jax.numpy as np
-import numpy as onp
 import opt_einsum
 import torch
 from multipledispatch import dispatch
@@ -72,12 +71,6 @@ class TensorMeta(FunsorMeta):
     Wrapper to fill in default args and convert between OrderedDict and tuple.
     """
     def __call__(cls, data, inputs=None, dtype="real"):
-        # FIXME: how to make the following assertation pass?
-        #   type(Tensor(np.ones(3))) is type(Tensor(onp.ones(3)))
-        # Should we cast numpy array to DeviceArray here?
-        # XXX: convert NumPy scalar to ndarray
-        if isinstance(data, onp.generic):
-            data = data.__array__()
         if inputs is None:
             inputs = tuple()
         elif isinstance(inputs, OrderedDict):

@@ -43,8 +43,8 @@ setup(
     ],
     extras_require={
         'numpy': [
-            'jax==0.1.57',
-            'jaxlib==0.1.37',
+            'jax==0.1.58',
+            'jaxlib==0.1.38',
         ],
         'test': [
             'flake8',

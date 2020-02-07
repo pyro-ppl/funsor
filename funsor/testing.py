@@ -75,8 +75,6 @@ def allclose(a, b, rtol=1e-05, atol=1e-08):
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     msg = ActualExpected(actual, expected)
-    # TODO: remove the following logic when we have
-    #   type(Tensor(np.ones(3))) == type(Tensor(onp.ones(3)))
     if isinstance(actual, array):
         assert isinstance(expected, array), msg
     elif isinstance(actual, Tensor) and isinstance(actual.data, array):

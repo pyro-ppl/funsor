@@ -153,6 +153,7 @@ def reinterpret_funsor(x):
 @recursion_reinterpret.register(types.BuiltinFunctionType)
 @recursion_reinterpret.register(jax.interpreters.xla.DeviceArray)
 @recursion_reinterpret.register(jax.abstract_arrays.UnshapedArray)
+@recursion_reinterpret.register(numpy.generic)
 @recursion_reinterpret.register(numpy.ndarray)
 @recursion_reinterpret.register(torch.Tensor)
 @recursion_reinterpret.register(numpy.ufunc)
@@ -218,6 +219,7 @@ def _children_tuple(x):
 @children.register(types.BuiltinFunctionType)
 @children.register(jax.interpreters.xla.DeviceArray)
 @children.register(jax.abstract_arrays.UnshapedArray)
+@children.register(numpy.generic)
 @children.register(numpy.ndarray)
 @children.register(torch.Tensor)
 @children.register(torch.nn.Module)
@@ -242,6 +244,7 @@ def is_atom(x):
         torch.nn.Module,
         jax.interpreters.xla.DeviceArray,
         jax.abstract_arrays.UnshapedArray,
+        numpy.generic,
         numpy.ndarray,
         Domain,
         Op
