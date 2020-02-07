@@ -75,8 +75,15 @@ def allclose(a, b, rtol=1e-05, atol=1e-08):
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     msg = ActualExpected(actual, expected)
-    if isinstance(actual, DeviceArray):
+    # TODO: remove the following logic when we have
+    #   type(Tensor(np.ones(3))) == type(Tensor(onp.ones(3)))
+    if isinstance(actual, array):
         assert isinstance(expected, array), msg
+    elif isinstance(actual, Tensor) and isinstance(actual.data, array):
+        assert isinstance(expected, Tensor) and isinstance(expected.data, array)
+    elif isinstance(actual, Contraction) and isinstance(actual.terms[0], Tensor) \
+            and isinstance(actual.terms[0].data, array):
+        assert isinstance(expected, Contraction) and isinstance(expected.terms[0].data, array)
     else:
         assert type(actual) == type(expected), msg
     if isinstance(actual, Funsor):
@@ -132,6 +139,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         if actual.dtype in (np.int32, np.int64, np.uint8, np.bool):
             assert (actual == expected).all(), msg
         else:
+            actual, expected = np.asarray(actual), np.asarray(expected)
             eq = (actual == expected)
             if eq.all():
                 return

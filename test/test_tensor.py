@@ -701,12 +701,12 @@ def test_function_lazy_matmul(backend):
         return _numeric_matmul(x, y)
 
     x_lazy = Variable('x', reals(3, 4))
-    y = Tensor(torch.randn(4, 5))
+    y = Tensor(randn((4, 5), backend))
     actual_lazy = matmul(x_lazy, y)
     check_funsor(actual_lazy, {'x': reals(3, 4)}, reals(3, 5))
     assert isinstance(actual_lazy, funsor.tensor.Function)
 
-    x = Tensor(torch.randn(3, 4))
+    x = Tensor(randn((3, 4), backend))
     actual = actual_lazy(x=x)
     expected_data = _numeric_matmul(x.data, y.data)
     check_funsor(actual, {}, reals(3, 5), expected_data)
@@ -846,6 +846,9 @@ def _numeric_tensordot(x, y, dim):
     if torch.is_tensor(x):
         return torch.tensordot(x, y, dim)
     else:
+        # TODO: this edge case will be handled in the new version of JAX
+        if dim == 0 and (np.ndim(x) == 0 or np.ndim(y) == 0):
+            return x * y
         return np.tensordot(x, y, axes=dim)
 
 

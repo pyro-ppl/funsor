@@ -3,6 +3,7 @@
 
 import jax.numpy as np
 import numpy as onp
+from jax import lax
 from jax.abstract_arrays import UnshapedArray
 from jax.dtypes import canonicalize_dtype
 from jax.interpreters.xla import DeviceArray
@@ -131,7 +132,7 @@ def _cholesky_inverse(x):
     """
     Like :func:`torch.cholesky_inverse` but supports batching and gradients.
     """
-    return _cholesky_solve(np.eye(x.shape[-1]), x)
+    return _cholesky_solve(_new_eye(x, x.shape[:-1]), x)
 
 
 @ops.cholesky_solve.register(array, array)
@@ -141,7 +142,50 @@ def _cholesky_solve(x, y):
 
 @ops.triangular_solve_op.register(array, array, bool, bool)
 def _triangular_solve(x, y, upper, transpose):
-    return solve_triangular(y, x, trans=int(transpose), lower=not upper)
+    assert np.ndim(x) >= 2 and np.ndim(y) >= 2
+    n, m = x.shape[-2:]
+    assert y.shape[-2:] == (n, n)
+    # NB: JAX requires x and y have the same batch_shape
+    batch_shape = lax.broadcast_shapes(x.shape[:-2], y.shape[:-2])
+    x = np.broadcast_to(x, batch_shape + (n, m))
+
+    # The following procedure handles the case: y.shape = (i, 1, n, n), x.shape = (..., i, j, n, m)
+    # because we don't want to broadcast y to the shape (i, j, n, n).
+    # We are going to make x have shape (..., 1, j,  i, 1, n) to apply batched triangular_solve
+    dx = x.ndim
+    prepend_ndim = dx - y.ndim  # ndim of ... part
+    # Reshape x with the shape (..., 1, i, j, 1, n, m)
+    x_new_shape = batch_shape[:prepend_ndim]
+    for (sy, sx) in zip(y.shape[:-2], batch_shape[prepend_ndim:]):
+        x_new_shape += (sx // sy, sy)
+    x_new_shape += (n, m,)
+    x = np.reshape(x, x_new_shape)
+    # Permute y to make it have shape (..., 1, j, m, i, 1, n)
+    batch_ndim = x.ndim - 2
+    permute_dims = (tuple(range(prepend_ndim))
+                    + tuple(range(prepend_ndim, batch_ndim, 2))
+                    + (batch_ndim + 1,)
+                    + tuple(range(prepend_ndim + 1, batch_ndim, 2))
+                    + (batch_ndim,))
+    x = np.transpose(x, permute_dims)
+    x_permute_shape = x.shape
+
+    # reshape to (-1, i, 1, n)
+    x = np.reshape(x, (-1,) + y.shape[:-1])
+    # permute to (i, 1, n, -1)
+    x = np.moveaxis(x, 0, -1)
+
+    sol = solve_triangular(y, x, trans=int(transpose), lower=not upper)  # shape: (i, 1, n, -1)
+    sol = np.moveaxis(sol, -1, 0)  # shape: (-1, i, 1, n)
+    sol = np.reshape(sol, x_permute_shape)  # shape: (..., 1, j, m, i, 1, n)
+
+    # now we permute back to x_new_shape = (..., 1, i, j, 1, n, m)
+    permute_inv_dims = tuple(range(prepend_ndim))
+    for i in range(y.ndim - 2):
+        permute_inv_dims += (prepend_ndim + i, dx + i - 1)
+    permute_inv_dims += (sol.ndim - 1, prepend_ndim + y.ndim - 2)
+    sol = np.transpose(sol, permute_inv_dims)
+    return sol.reshape(batch_shape + (n, m))
 
 
 @ops.diagonal.register(array, int, int)

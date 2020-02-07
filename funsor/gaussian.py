@@ -466,7 +466,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 coeff = next(tensors)
                 coeffs[new_k] = coeff, eqn
             affine[old_k] = const, coeffs
-        batch_shape = old_info_vec.data.shape[:-1]
+        batch_shape = old_info_vec.shape[:-1]
 
         # Align real dimensions.
         old_real_inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype == 'real')
