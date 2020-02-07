@@ -5,7 +5,6 @@ import math
 from collections import OrderedDict, defaultdict
 from functools import reduce
 
-import numpy as np
 import torch
 from pyro.distributions.util import broadcast_shape
 
