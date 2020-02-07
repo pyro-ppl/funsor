@@ -45,7 +45,7 @@ def _einsum(equation, *operands):
     return np.einsum(equation, *operands)
 
 
-@quote.register(np.ndarray)
+@quote.register(array)
 def _quote(x, indent, out):
     """
     Work around NumPy not supporting reproducible repr.
