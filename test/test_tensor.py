@@ -196,7 +196,7 @@ def test_arange_2(start, stop, step, backend):
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_advanced_indexing_tensor(output_shape, backend):
-    empty = torch.empty if backend == "torch" else np.empty
+    empty = torch.empty if backend == "torch" else onp.empty
     #      u   v
     #     / \ / \
     #    i   j   k
@@ -251,7 +251,7 @@ def test_advanced_indexing_tensor(output_shape, backend):
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_advanced_indexing_lazy(output_shape, backend):
-    empty = torch.empty if backend == "torch" else np.empty
+    empty = torch.empty if backend == "torch" else onp.empty
     x = Tensor(randn((2, 3, 4) + output_shape, backend), OrderedDict([
         ('i', bint(2)),
         ('j', bint(3)),
