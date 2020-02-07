@@ -12,6 +12,8 @@ import numpy as np
 import opt_einsum
 import pytest
 import torch
+from jax.dtypes import canonicalize_dtype
+from jax.interpreters.xla import DeviceArray
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
@@ -20,6 +22,7 @@ from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
+from funsor.numpy import array
 from funsor.terms import Funsor, Number
 from funsor.tensor import Tensor
 
@@ -72,7 +75,10 @@ def allclose(a, b, rtol=1e-05, atol=1e-08):
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     msg = ActualExpected(actual, expected)
-    assert type(actual) == type(expected), msg
+    if isinstance(actual, DeviceArray):
+        assert isinstance(expected, array), msg
+    else:
+        assert type(actual) == type(expected), msg
     if isinstance(actual, Funsor):
         assert isinstance(actual, Funsor)
         assert isinstance(expected, Funsor)
@@ -117,8 +123,8 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
                 assert (diff / (atol + expected.detach().abs())).max() < rtol, msg
             elif atol is not None:
                 assert diff.max() < atol, msg
-    elif isinstance(actual, (np.ndarray, np.generic)):
-        assert actual.dtype == expected.dtype, msg
+    elif isinstance(actual, array):
+        assert actual.dtype == canonicalize_dtype(expected.dtype), msg
         assert actual.shape == expected.shape, msg
         if actual.dtype in (np.int32, np.int64, np.uint8, np.bool):
             assert (actual == expected).all(), msg

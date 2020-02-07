@@ -1,7 +1,13 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import numpy as np
+import jax.numpy as np
+import numpy as onp
+from jax.abstract_arrays import UnshapedArray
+from jax.dtypes import canonicalize_dtype
+from jax.interpreters.xla import DeviceArray
+from jax.scipy.linalg import cho_solve, solve_triangular
+from jax.scipy.special import expit, logsumexp
 
 import funsor.ops as ops
 from funsor.util import quote
@@ -11,17 +17,11 @@ from funsor.util import quote
 # Register Ops
 ################################################################################
 
-try:
-    from scipy.special import expit as _sigmoid
-except ImportError:
-    def _sigmoid(x):
-        return 1 / (1 + np.exp(-x))
-
 # take care of scalar numpy objects
-array = (np.ndarray, np.generic)
+array = (onp.ndarray, onp.generic, UnshapedArray, DeviceArray)
 
 ops.abs.register(array)(abs)
-ops.sigmoid.register(array)(_sigmoid)
+ops.sigmoid.register(array)(expit)
 ops.sqrt.register(array)(np.sqrt)
 ops.exp.register(array)(np.exp)
 ops.log1p.register(array)(np.log1p)
@@ -37,9 +37,7 @@ ops.clamp.register(array, object, object)(np.clip)
 
 @ops.log.register(array)
 def _log(x):
-    # TODO: remove dtype when using JAX. For now, we cast to np.float64
-    # because np.log(True) returns a np.float16 array.
-    return np.log(x, dtype=np.float64)
+    return np.log(x)
 
 
 @ops.einsum.register(str, [array])
@@ -52,7 +50,7 @@ def _quote(x, indent, out):
     """
     Work around NumPy not supporting reproducible repr.
     """
-    out.append((indent, f"np.array({repr(x.tolist())}, dtype=np.{x.dtype})"))
+    out.append((indent, f"np.array({repr(onp.asarray(x).tolist())}, dtype=np.{x.dtype})"))
 
 
 @ops.min.register(array, array)
@@ -130,31 +128,12 @@ def _cholesky_inverse(x):
 
 @ops.cholesky_solve.register(array, array)
 def _cholesky_solve(x, y):
-    from scipy.linalg import cho_solve
-
-    # TODO: remove this logic when using JAX
-    # work around the issue of scipy which does not support batched input
-    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
-    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
-    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
-    ans = [cho_solve((y, True), x) for (x, y) in zip(xs, ys)]
-    ans = np.stack(ans)
-    return ans.reshape(batch_shape + ans.shape[-2:])
+    return cho_solve((y, True), x)
 
 
 @ops.triangular_solve_op.register(array, array, bool, bool)
 def _triangular_solve(x, y, upper, transpose):
-    from scipy.linalg import solve_triangular
-
-    # TODO: remove this logic when using JAX
-    # work around the issue of scipy which does not support batched input
-    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
-    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
-    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
-    ans = [solve_triangular(y, x, trans=int(transpose), lower=not upper)
-           for (x, y) in zip(xs, ys)]
-    ans = np.stack(ans)
-    return ans.reshape(batch_shape + ans.shape[-2:])
+    return solve_triangular(y, x, trans=int(transpose), lower=not upper)
 
 
 @ops.diagonal.register(array, int, int)
@@ -174,7 +153,7 @@ def _stack(dim, *x):
 
 @ops.new_zeros.register(array, tuple)
 def _new_zeros(x, shape):
-    return np.zeros(shape, dtype=x.dtype)
+    return np.zeros(shape, dtype=canonicalize_dtype(x.dtype))
 
 
 @ops.new_eye.register(array, tuple)
@@ -220,8 +199,6 @@ def _any(x, dim):
 
 @ops.logsumexp.register(array, (int, type(None)))
 def _logsumexp(x, dim):
-    from scipy.special import logsumexp
-
     return logsumexp(x, axis=dim)
 
 
