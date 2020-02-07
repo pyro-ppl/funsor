@@ -10,6 +10,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from functools import singledispatch
 
+import jax
 import numpy
 import torch
 
@@ -150,6 +151,8 @@ def reinterpret_funsor(x):
 @recursion_reinterpret.register(functools.partial)
 @recursion_reinterpret.register(types.FunctionType)
 @recursion_reinterpret.register(types.BuiltinFunctionType)
+@recursion_reinterpret.register(jax.interpreters.xla.DeviceArray)
+@recursion_reinterpret.register(jax.abstract_arrays.UnshapedArray)
 @recursion_reinterpret.register(numpy.ndarray)
 @recursion_reinterpret.register(torch.Tensor)
 @recursion_reinterpret.register(numpy.ufunc)
@@ -213,6 +216,8 @@ def _children_tuple(x):
 @children.register(functools.partial)
 @children.register(types.FunctionType)
 @children.register(types.BuiltinFunctionType)
+@recursion_reinterpret.register(jax.interpreters.xla.DeviceArray)
+@recursion_reinterpret.register(jax.abstract_arrays.UnshapedArray)
 @children.register(numpy.ndarray)
 @children.register(torch.Tensor)
 @children.register(torch.nn.Module)
@@ -235,6 +240,8 @@ def is_atom(x):
         types.BuiltinFunctionType,
         torch.Tensor,
         torch.nn.Module,
+        jax.interpreters.xla.DeviceArray,
+        jax.abstract_arrays.UnshapedArray,
         numpy.ndarray,
         Domain,
         Op

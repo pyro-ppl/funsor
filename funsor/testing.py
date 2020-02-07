@@ -124,7 +124,10 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             elif atol is not None:
                 assert diff.max() < atol, msg
     elif isinstance(actual, array):
-        assert actual.dtype == canonicalize_dtype(expected.dtype), msg
+        if isinstance(actual, DeviceArray):
+            assert actual.dtype == canonicalize_dtype(expected.dtype), msg
+        else:
+            assert actual.dtype == expected.dtype, msg
         assert actual.shape == expected.shape, msg
         if actual.dtype in (np.int32, np.int64, np.uint8, np.bool):
             assert (actual == expected).all(), msg

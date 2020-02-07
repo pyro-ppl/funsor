@@ -4,7 +4,8 @@
 import itertools
 from collections import OrderedDict
 
-import numpy as np
+import jax.numpy as np
+import numpy as onp
 import pytest
 import torch
 
@@ -63,6 +64,9 @@ def test_to_data_error(backend):
 def test_cons_hash(backend):
     x = randn((3, 3), backend)
     assert Tensor(x) is Tensor(x)
+    if backend == "numpy":
+        x = np.array(x)
+        assert Tensor(x) is Tensor(x)
 
 
 @pytest.mark.parametrize("backend", ["torch", "numpy"])

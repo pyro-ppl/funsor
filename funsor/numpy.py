@@ -45,12 +45,20 @@ def _einsum(equation, *operands):
     return np.einsum(equation, *operands)
 
 
-@quote.register(array)
+@quote.register(onp.ndarray)
 def _quote(x, indent, out):
     """
     Work around NumPy not supporting reproducible repr.
     """
-    out.append((indent, f"np.array({repr(onp.asarray(x).tolist())}, dtype=np.{x.dtype})"))
+    out.append((indent, f"onp.array({repr(x.tolist())}, dtype=np.{x.dtype})"))
+
+
+@quote.register(DeviceArray)
+def _quote(x, indent, out):
+    """
+    Work around JAX DeviceArray not supporting reproducible repr.
+    """
+    out.append((indent, f"np.array({repr(x.copy().tolist())}, dtype=np.{x.dtype})"))
 
 
 @ops.min.register(array, array)
