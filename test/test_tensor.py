@@ -846,9 +846,6 @@ def _numeric_tensordot(x, y, dim):
     if torch.is_tensor(x):
         return torch.tensordot(x, y, dim)
     else:
-        # TODO: this edge case will be handled in the new version of JAX
-        if dim == 0 and (np.ndim(x) == 0 or np.ndim(y) == 0):
-            return x * y
         return np.tensordot(x, y, axes=dim)
 
 

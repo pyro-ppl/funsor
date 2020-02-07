@@ -43,7 +43,9 @@ setup(
     ],
     extras_require={
         'numpy': [
-            'jax==0.1.58',
+            # Incoporate the PR https://github.com/google/jax/pull/2039, to resolve the issue
+            # DeviceArray.shape is not a tuple of `int`s.
+            'jax @ git+https://github.com/google/jax.git@a0e1804e4376a359be6dafdd2aff3a80ed6e117b#egg=jax'
             'jaxlib==0.1.38',
         ],
         'test': [
