@@ -23,14 +23,14 @@ def getargspec(fn):
     """
     Similar to Python 2's :py:func:`inspect.getargspec` but:
     - In Python 3 uses ``getfullargspec`` to avoid ``DeprecationWarning``.
-    - For builtin functions like ``torch.matmul`` or ``numpy.matmul, falls back to attempting
-      to parse the function docstring, assuming torch-style or numpy-style.
+    - For builtin functions like ``torch.matmul`` or ``numpy.matmul``, falls back to
+      attempting to parse the function docstring, assuming torch-style or numpy-style.
     """
     assert callable(fn)
     try:
         args, vargs, kwargs, defaults, _, _, _ = inspect.getfullargspec(fn)
     except TypeError:
-        # Fall back to attmpting to parse a PyTorch-style docstring.
+        # Fall back to attempting to parse a PyTorch/NumPy-style docstring.
         match = re.match(r"\s*{}\(([^)]*)\)".format(fn.__name__), fn.__doc__)
         if match is None:
             raise

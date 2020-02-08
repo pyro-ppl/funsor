@@ -10,6 +10,7 @@ from collections import Hashable, OrderedDict
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
+from jax.interpreters.xla import DeviceArray
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic, isvariadic
 
@@ -65,7 +66,9 @@ def reflect(cls, *args, **kwargs):
         assert len(new_args) == len(cls._ast_fields)
         _, args = args, new_args
 
-    cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+    # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
+    cache_key = tuple(id(arg) if isinstance(arg, DeviceArray) or not isinstance(arg, Hashable)
+                      else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 

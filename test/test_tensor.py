@@ -4,7 +4,8 @@
 import itertools
 from collections import OrderedDict
 
-import numpy as np
+import jax.numpy as np
+import numpy as onp
 import pytest
 import torch
 
@@ -12,6 +13,7 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
+from funsor.numpy import array
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import assert_close, assert_equiv, astype, check_funsor, rand, randn, random_tensor
 from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, stack, tensordot
@@ -63,6 +65,9 @@ def test_to_data_error(backend):
 def test_cons_hash(backend):
     x = randn((3, 3), backend)
     assert Tensor(x) is Tensor(x)
+    if backend == "numpy":
+        x = np.array(x)
+        assert Tensor(x) is Tensor(x)
 
 
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
@@ -192,7 +197,7 @@ def test_arange_2(start, stop, step, backend):
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_advanced_indexing_tensor(output_shape, backend):
-    empty = torch.empty if backend == "torch" else np.empty
+    empty = torch.empty if backend == "torch" else onp.empty
     #      u   v
     #     / \ / \
     #    i   j   k
@@ -247,7 +252,7 @@ def test_advanced_indexing_tensor(output_shape, backend):
 @pytest.mark.parametrize('output_shape', [(), (7,), (3, 2)])
 @pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_advanced_indexing_lazy(output_shape, backend):
-    empty = torch.empty if backend == "torch" else np.empty
+    empty = torch.empty if backend == "torch" else onp.empty
     x = Tensor(randn((2, 3, 4) + output_shape, backend), OrderedDict([
         ('i', bint(2)),
         ('j', bint(3)),
@@ -696,12 +701,12 @@ def test_function_lazy_matmul(backend):
         return _numeric_matmul(x, y)
 
     x_lazy = Variable('x', reals(3, 4))
-    y = Tensor(torch.randn(4, 5))
+    y = Tensor(randn((4, 5), backend))
     actual_lazy = matmul(x_lazy, y)
     check_funsor(actual_lazy, {'x': reals(3, 4)}, reals(3, 5))
     assert isinstance(actual_lazy, funsor.tensor.Function)
 
-    x = Tensor(torch.randn(3, 4))
+    x = Tensor(randn((3, 4), backend))
     actual = actual_lazy(x=x)
     expected_data = _numeric_matmul(x.data, y.data)
     check_funsor(actual, {}, reals(3, 5), expected_data)
@@ -711,7 +716,7 @@ def _numeric_max_and_argmax(x):
     if torch.is_tensor(x):
         return torch.max(x, dim=-1)
     else:
-        assert isinstance(x, np.ndarray)
+        assert isinstance(x, array)
         return np.max(x, axis=-1), np.argmax(x, axis=-1)
 
 
