@@ -1,4 +1,9 @@
+# Copyright (c) 2017-2019 Uber Technologies, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 import jax.numpy as np
+
+from funsor.einsum.util import Tensordot
 
 
 def einsum(equation, *operands):
@@ -32,3 +37,9 @@ def einsum(equation, *operands):
 
     result = np.log(np.einsum(equation, *exp_operands))
     return sum(shifts + [result])
+
+
+tensordot = Tensordot(einsum)
+transpose = np.transpose
+
+__all__ = ["transpose", "einsum", "tensordot"]
