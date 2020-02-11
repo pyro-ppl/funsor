@@ -405,18 +405,21 @@ class Tensor(Funsor, metaclass=TensorMeta):
             return "numpy"
 
 
-@dispatch(numeric_array)
-def to_funsor(x):
-    return Tensor(x)
-
-
-@dispatch(numeric_array, Domain)
-def to_funsor(x, output):
-    result = Tensor(x, dtype=output.dtype)
-    if result.output != output:
-        raise ValueError("Invalid shape: expected {}, actual {}"
-                         .format(output.shape, result.output.shape))
-    return result
+# TODO move these registrations to backend-specific files
+@to_funsor.register(torch.Tensor)
+@to_funsor.register(np.ndarray)
+@to_funsor.register(np.generic)
+def tensor_to_funsor(x, output=None, inputs=None):
+    if output is None and inputs is None:
+        return Tensor(x)
+    if output is not None and inputs is None:
+        result = Tensor(x, dtype=output.dtype)
+        if result.output != output:
+            raise ValueError("Invalid shape: expected {}, actual {}"
+                             .format(output.shape, result.output.shape))
+        return result
+    if inputs is not None:
+        raise NotImplementedError("TODO")
 
 
 def align_tensor(new_inputs, x, expand=False):
