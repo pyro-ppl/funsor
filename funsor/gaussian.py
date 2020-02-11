@@ -125,6 +125,19 @@ class BlockVector(object):
             assert result.shape == self.shape
         return result
 
+    def __add__(self, other):
+        assert isinstance(other, BlockVector)
+        vector = BlockVector(self.shape)
+        a = self.parts
+        b = other.parts
+        for j in set(a.keys()) - set(b.keys()):
+            vector.parts[j] = a[j]
+        for j in set(a.keys()) & set(b.keys()):
+            vector.parts[j] = a[j] + b[j]
+        for j in set(b.keys()) - set(a.keys()):
+            vector.parts[j] = b[j]
+        return vector.as_tensor()
+
 
 class BlockMatrix(object):
     """
@@ -163,17 +176,35 @@ class BlockMatrix(object):
         # Concatenate parts.
         # TODO This could be optimized into a single .reshape().cat().reshape() if
         #   all inputs are contiguous, thereby saving a memcopy.
-        # print("gauss", [x.shape for part in self.parts.values() for x in part.values()])
-        result = ops.cat(-2, *[v for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
-        n = len(self.parts)
-        result = result.reshape(result.shape[:-2] + (n, n, -1, result.shape[-1]))
-        result = result.transpose(-2, -3).reshape(result.shape[:-4] + (n * result.shape[-1], n * result.shape[-1]))
-        #columns = {i: ops.cat(-1, *[v for j, v in sorted(part.items())])
-        #           for i, part in self.parts.items()}
-        #result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
+        contiguous = True
+        if contiguous:
+            result = ops.cat(-2, *[v for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
+            n = len(self.parts)
+            a, b = prototype.shape[-2:]
+            result = result.reshape(result.shape[:-2] + (n, -1, a, b))
+            result = ops.transpose(result, -2, -3).reshape(result.shape[:-4] + (n * a, -1))
+        else:
+            columns = {i: ops.cat(-1, *[v for j, v in sorted(part.items())])
+                       for i, part in self.parts.items()}
+            result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
+
         if not torch._C._get_tracing_state():
             assert result.shape == self.shape
         return result
+
+    def __add__(self, other):
+        assert isinstance(other, BlockMatrix)
+        matrix = BlockMatrix(self.shape)
+        for part in set(self.parts.keys()) | set(other.parts.keys()):
+            a = self.parts[part]
+            b = other.parts[part]
+            for j in set(a.keys()) - set(b.keys()):
+                matrix.parts[part][j] = a[j]
+            for j in set(a.keys()) & set(b.keys()):
+                matrix.parts[part][j] = a[j] + b[j]
+            for j in set(b.keys()) - set(a.keys()):
+                matrix.parts[part][j] = b[j]
+        return matrix.as_tensor()
 
 
 def align_gaussian(new_inputs, old):
@@ -219,8 +250,8 @@ def align_gaussian(new_inputs, old):
                 old_slice2 = slice(offset2, offset2 + num_elements2)
                 new_slice2 = slice(new_offset2, new_offset2 + num_elements2)
                 precision[..., new_slice1, new_slice2] = old_precision[..., old_slice1, old_slice2]
-        info_vec = info_vec.as_tensor()
-        precision = precision.as_tensor()
+        # info_vec = info_vec.as_tensor()
+        # precision = precision.as_tensor()
 
     return info_vec, precision
 

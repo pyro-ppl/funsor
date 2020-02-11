@@ -141,9 +141,9 @@ def _diagonal(x, dim1, dim2):
 
 @ops.cat.register(int, [torch.Tensor])
 def _cat(dim, *x):
-    print("cat", [a.shape for a in x])
     if len(x) == 1:
         return x[0]
+    # print("cat", [i.shape for i in x])
     return torch.cat(x, dim=dim)
 
 
