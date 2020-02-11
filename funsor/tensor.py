@@ -409,17 +409,34 @@ class Tensor(Funsor, metaclass=TensorMeta):
 @to_funsor.register(torch.Tensor)
 @to_funsor.register(np.ndarray)
 @to_funsor.register(np.generic)
-def tensor_to_funsor(x, output=None, inputs=None):
-    if output is None and inputs is None:
-        return Tensor(x)
-    if output is not None and inputs is None:
+def tensor_to_funsor(x, output=None, dim_to_name=None):
+    if not dim_to_name:
+        output = output if output is not None else reals(*x.shape)
         result = Tensor(x, dtype=output.dtype)
         if result.output != output:
             raise ValueError("Invalid shape: expected {}, actual {}"
                              .format(output.shape, result.output.shape))
         return result
-    if inputs is not None:
-        raise NotImplementedError("TODO")
+    else:
+        assert output is not None  # TODO attempt to infer output
+        # logic very similar to pyro.ops.packed.pack
+        # this should not touch memory, only reshape
+        # pack the tensor according to the dim => (name, domain) mapping in inputs
+        packed_inputs = OrderedDict(
+            [dim_to_name[dim - len(x.shape)] for dim, size in enumerate(x.shape)
+             if size > 1 and dim < len(x.shape) - len(output.shape)]
+        )
+        if any(size > 1 for size in output.shape):
+            # pack outputs into a single dimension
+            x = x.reshape(x.shape[:-len(output.shape)] + (-1,))
+        x = x.squeeze()
+        if output.shape and all(size == 1 for size in output.shape):
+            # handle special case: all output dims are 1
+            x = x.unsqueeze(-1)
+        x = x.reshape(x.shape[:-1] + output.shape)
+        # unpack dims into final domain shapes
+        x = x.reshape(sum([d.shape for d in packed_inputs.values()], ()) + output.shape)
+        return Tensor(x, packed_inputs, dtype=output.dtype)
 
 
 def align_tensor(new_inputs, x, expand=False):
@@ -487,10 +504,26 @@ def align_tensors(*args, **kwargs):
 
 
 @to_data.register(Tensor)
-def _to_data_tensor(x):
-    if x.inputs:
-        raise ValueError(f"cannot convert Tensor to data due to lazy inputs: {set(x.inputs)}")
-    return x.data
+def _to_data_tensor(x, name_to_dim=None):
+    if not name_to_dim:
+        if x.inputs:
+            raise ValueError(f"cannot convert Tensor to data due to lazy inputs: {set(x.inputs)}")
+        return x.data
+    else:
+        # logic very similar to pyro.ops.packed.unpack
+        # first collapse input domains into single dimensions
+        data = x.data.reshape(tuple(d.num_elements for d in x.inputs.values()) + x.output.shape)
+        # permute packed dimensions to correct order
+        unsorted_dims = [name_to_dim[name] for name in x.inputs]
+        dims = sorted(unsorted_dims)
+        permutation = [unsorted_dims.index(dim) for dim in dims] + \
+            list(range(len(dims), len(dims) + len(x.output.shape)))
+        data = data.permute(*permutation)
+        # expand
+        batch_shape = [1] * -min(dims)
+        for dim, size in zip(dims, data.shape):
+            batch_shape[dim] = size
+        return data.reshape(batch_shape + x.output.shape)
 
 
 @eager.register(Binary, Op, Tensor, Number)
