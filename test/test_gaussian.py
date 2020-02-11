@@ -296,7 +296,7 @@ def test_eager_subs(int_inputs, real_inputs, backend):
         actual = g
         for k in reversed(order):
             actual = actual(**{k: dependent_values[k]})
-        assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+        assert_close(actual, expected, atol=1e-5, rtol=1e-4)
 
 
 @pytest.mark.parametrize("backend", ["torch", "numpy"])

@@ -2,6 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pyro
+try:
+    from jax.config import config
+
+    config.update('jax_platform_name', 'cpu')
+except ModuleNotFoundError:
+    pass
 
 
 def pytest_runtest_setup(item):

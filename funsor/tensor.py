@@ -17,6 +17,7 @@ from multipledispatch.variadic import Variadic
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
+from funsor.numpy import array
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -35,7 +36,7 @@ from funsor.terms import (
 from funsor.util import getargspec, quote
 
 
-numeric_array = (torch.Tensor, np.ndarray, np.generic)
+numeric_array = (torch.Tensor, array)
 _DEFAULT_TENSOR_TYPE = torch.float32
 
 
@@ -70,9 +71,6 @@ class TensorMeta(FunsorMeta):
     Wrapper to fill in default args and convert between OrderedDict and tuple.
     """
     def __call__(cls, data, inputs=None, dtype="real"):
-        # XXX: convert NumPy scalar to ndarray
-        if isinstance(data, np.generic):
-            data = data.__array__()
         if inputs is None:
             inputs = tuple()
         elif isinstance(inputs, OrderedDict):

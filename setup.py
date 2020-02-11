@@ -42,6 +42,10 @@ setup(
         'torch>=1.3.0',
     ],
     extras_require={
+        'numpy': [
+            'jax==0.1.59',
+            'jaxlib==0.1.38',
+        ],
         'test': [
             'flake8',
             'pandas',

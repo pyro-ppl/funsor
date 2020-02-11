@@ -5,7 +5,6 @@ import math
 from collections import OrderedDict, defaultdict
 from functools import reduce
 
-import numpy as np
 import torch
 from pyro.distributions.util import broadcast_shape
 
@@ -14,6 +13,7 @@ import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import reals
+from funsor.numpy import array
 from funsor.ops import AddOp, NegOp, SubOp
 from funsor.tensor import Tensor, align_tensor, align_tensors, set_default_tensor_type
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
@@ -258,7 +258,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     """
     def __init__(self, info_vec, precision, inputs):
         assert ((isinstance(info_vec, torch.Tensor) and isinstance(precision, torch.Tensor))
-                or (isinstance(info_vec, np.ndarray) and isinstance(precision, np.ndarray)))
+                or (isinstance(info_vec, array) and isinstance(precision, array)))
         assert isinstance(inputs, tuple)
         inputs = OrderedDict(inputs)
 
@@ -466,7 +466,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 coeff = next(tensors)
                 coeffs[new_k] = coeff, eqn
             affine[old_k] = const, coeffs
-        batch_shape = old_info_vec.data.shape[:-1]
+        batch_shape = old_info_vec.shape[:-1]
 
         # Align real dimensions.
         old_real_inputs = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype == 'real')

@@ -17,6 +17,7 @@ import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
+from funsor.numpy import unhashable_array
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, lazy_property, pretty, quote
 
@@ -65,7 +66,9 @@ def reflect(cls, *args, **kwargs):
         assert len(new_args) == len(cls._ast_fields)
         _, args = args, new_args
 
-    cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+    # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
+    cache_key = tuple(id(arg) if isinstance(arg, unhashable_array) or not isinstance(arg, Hashable)
+                      else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
