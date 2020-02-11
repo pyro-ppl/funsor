@@ -164,13 +164,13 @@ class BlockMatrix(object):
         # TODO This could be optimized into a single .reshape().cat().reshape() if
         #   all inputs are contiguous, thereby saving a memcopy.
         # print("gauss", [x.shape for part in self.parts.values() for x in part.values()])
-        result = ops.stack(-3, *[v for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
+        result = ops.cat(-2, *[v for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
         n = len(self.parts)
-        result = result.reshape(result.shape[:-3] + (n, n) + result.shape[-2:])
+        result = result.reshape(result.shape[:-2] + (n, n, -1, result.shape[-1]))
         result = result.transpose(-2, -3).reshape(result.shape[:-4] + (n * result.shape[-1], n * result.shape[-1]))
-        # columns = {i: ops.cat(-1, *[v for j, v in sorted(part.items())])
-        #            for i, part in self.parts.items()}
-        # result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
+        #columns = {i: ops.cat(-1, *[v for j, v in sorted(part.items())])
+        #           for i, part in self.parts.items()}
+        #result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
         if not torch._C._get_tracing_state():
             assert result.shape == self.shape
         return result
