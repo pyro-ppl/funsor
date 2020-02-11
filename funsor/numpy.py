@@ -1,24 +1,39 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import jax.numpy as np
 import numpy as onp
-from jax import lax
-from jax.abstract_arrays import UnshapedArray
-from jax.interpreters.xla import DeviceArray
-from jax.scipy.linalg import cho_solve, solve_triangular
-from jax.scipy.special import expit, logsumexp
 
 import funsor.ops as ops
 from funsor.util import quote
+
+try:
+    import jax  # noqa:401
+except ImportError:
+    np = onp
+    unhashable_array = (onp.ndarray,)
+    array = (onp.ndarray, onp.generic)
+
+    def canonicalize_dtype(x):
+        return x
+else:
+    import jax.numpy as np
+    from jax import lax
+    from jax.abstract_arrays import UnshapedArray
+    from jax.dtypes import canonicalize_dtype
+    from jax.interpreters.xla import DeviceArray
+    from jax.scipy.linalg import cho_solve, solve_triangular
+    from jax.scipy.special import expit, logsumexp
+
+    unhashable_array = (onp.ndarray, DeviceArray)
+    array = (onp.ndarray, onp.generic, UnshapedArray, DeviceArray)
+
+
+__all__ = ["array", "canonicalize_dtype", "unhashable_array"]
 
 
 ################################################################################
 # Register Ops
 ################################################################################
-
-# take care of scalar numpy objects
-array = (onp.ndarray, onp.generic, UnshapedArray, DeviceArray)
 
 ops.abs.register(array)(abs)
 ops.sigmoid.register(array)(expit)
@@ -45,20 +60,13 @@ def _einsum(equation, *operands):
     return np.einsum(equation, *operands)
 
 
-@quote.register(onp.ndarray)
-def _quote(x, indent, out):
-    """
-    Work around NumPy not supporting reproducible repr.
-    """
-    out.append((indent, f"onp.array({repr(x.tolist())}, dtype=np.{x.dtype})"))
-
-
-@quote.register(DeviceArray)
-def _quote(x, indent, out):
-    """
-    Work around JAX DeviceArray not supporting reproducible repr.
-    """
-    out.append((indent, f"np.array({repr(x.copy().tolist())}, dtype=np.{x.dtype})"))
+for arr in unhashable_array:
+    @quote.register(arr)
+    def _quote(x, indent, out):
+        """
+        Work around NumPy not supporting reproducible repr.
+        """
+        out.append((indent, f"onp.array({repr(onp.asarray(x).tolist())}, dtype=np.{x.dtype})"))
 
 
 @ops.min.register(array, array)
