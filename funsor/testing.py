@@ -84,6 +84,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert isinstance(expected, Contraction) and isinstance(expected.terms[0].data, array)
     else:
         assert type(actual) == type(expected), msg
+
     if isinstance(actual, Funsor):
         assert isinstance(actual, Funsor)
         assert isinstance(expected, Funsor)

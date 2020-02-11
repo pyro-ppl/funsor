@@ -147,6 +147,8 @@ def _triangular_solve(x, y, upper, transpose):
     # NB: JAX requires x and y have the same batch_shape
     batch_shape = lax.broadcast_shapes(x.shape[:-2], y.shape[:-2])
     x = np.broadcast_to(x, batch_shape + (n, m))
+    if y.shape[:-2] == batch_shape:
+        return solve_triangular(y, x, trans=int(transpose), lower=not upper)
 
     # The following procedure handles the case: y.shape = (i, 1, n, n), x.shape = (..., i, j, n, m)
     # because we don't want to broadcast y to the shape (i, j, n, n).
