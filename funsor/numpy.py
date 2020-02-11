@@ -17,7 +17,7 @@ except ModuleNotFoundError:
 
         def logsumexp(x, axis=None):
             amax = onp.amax(x, axis=axis, keepdims=True)
-            return onp.log(onp.sum(onp.exp(x) - amax, axis=axis)) + amax.squeeze(axis=axis)
+            return onp.log(onp.sum(onp.exp(x - amax), axis=axis)) + amax.squeeze(axis=axis)
 
         def cho_solve(c_and_lower, b):
             c, lower = c_and_lower
