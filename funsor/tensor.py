@@ -8,7 +8,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from functools import reduce
 
-import jax.numpy as np
+import numpy as np
 import opt_einsum
 import torch
 from multipledispatch import dispatch
