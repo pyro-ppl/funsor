@@ -7,6 +7,7 @@ import numbers
 import operator
 from collections import OrderedDict, namedtuple
 from functools import reduce
+from importlib import import_module
 
 import numpy as np
 import opt_einsum
@@ -18,6 +19,7 @@ from multipledispatch.variadic import Variadic
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
+from funsor.distributions import BACKEND_TO_DISTRIBUTION_BACKEND
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.numpy import array, canonicalize_dtype
@@ -271,17 +273,18 @@ def random_gaussian(inputs, backend="torch"):
     return Gaussian(info_vec, precision, inputs)
 
 
-def random_mvn(batch_shape, dim, diag=False):
+def random_mvn(batch_shape, dim, diag=False, backend="torch"):
     """
     Generate a random :class:`torch.distributions.MultivariateNormal` with given shape.
     """
     rank = dim + dim
-    loc = torch.randn(batch_shape + (dim,))
-    cov = torch.randn(batch_shape + (dim, rank))
-    cov = cov.matmul(cov.transpose(-1, -2))
+    loc = randn(batch_shape + (dim,), backend=backend)
+    cov = randn(batch_shape + (dim, rank), backend=backend)
+    cov = cov @ ops.transpose(cov, -1, -2)
     if diag:
-        cov = cov * torch.eye(dim)
-    return torch.distributions.MultivariateNormal(loc, cov)
+        cov = cov * ops.new_eye(cov, (dim,))
+    dist = import_module(BACKEND_TO_DISTRIBUTION_BACKEND[backend])
+    return dist.MultivariateNormal(loc, cov)
 
 
 def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):

@@ -9,7 +9,7 @@ from numpyro.distributions import constraints
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import bint
-from funsor.pyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
+from funsor.numpyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
 from funsor.terms import Funsor
 
 

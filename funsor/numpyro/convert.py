@@ -20,7 +20,7 @@ from collections import OrderedDict
 from functools import singledispatch
 
 import numpyro.distributions as dist
-from jax.lax import broadcast_shape
+from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
@@ -59,8 +59,8 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
     assert isinstance(tensor, array)
     assert isinstance(event_inputs, tuple)
     assert isinstance(event_output, int) and event_output >= 0
-    inputs_shape = tensor.shape[:tensor.dim() - event_output]
-    output_shape = tensor.shape[tensor.dim() - event_output:]
+    inputs_shape = tensor.shape[:tensor.ndim - event_output]
+    output_shape = tensor.shape[tensor.ndim - event_output:]
     dim_to_name = DIM_TO_NAME + event_inputs if event_inputs else DIM_TO_NAME
 
     # Squeeze shape of inputs.
@@ -107,10 +107,9 @@ def funsor_to_tensor(funsor_, ndims, event_inputs=()):
             inputs_shape[dim] = size
         inputs_shape = tuple(inputs_shape)
         tensor = tensor.reshape(inputs_shape + funsor_.output.shape)
-    tensor_dim = len(tensor.shape)
-    if ndims != tensor_dim:
-        tensor = tensor.reshape((1,) * (ndims - tensor_dim) + tensor.shape)
-    assert tensor_dim == ndims
+    if ndims != len(tensor.shape):
+        tensor = tensor.reshape((1,) * (ndims - len(tensor.shape)) + tensor.shape)
+    assert len(tensor.shape) == ndims
     return tensor
 
 
@@ -145,9 +144,9 @@ def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
     precision = tensor_to_funsor(pyro_dist.precision_matrix, event_dims, 2)
     assert loc.inputs == scale_tril.inputs
     assert loc.inputs == precision.inputs
-    info_vec = ops.matmul(precision.data, loc.data.unsqueeze(-1)).squeeze(-1)
+    info_vec = (precision.data @ loc.data[..., None]).squeeze(-1)
     log_prob = (-0.5 * loc.output.shape[0] * math.log(2 * math.pi)
-                - ops.log(ops.diagonal(scale_tril.data, dim1=-1, dim2=-2)).sum(-1)
+                - ops.log(ops.diagonal(scale_tril.data, -1, -2)).sum(-1)
                 - 0.5 * (info_vec * loc.data).sum(-1))
     inputs = loc.inputs.copy()
     inputs.update(real_inputs)
@@ -286,7 +285,7 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     info_vec = (prec_sqrt @ delta[..., None]).squeeze(-1)
     log_normalizer = (-0.5 * loc.shape[-1] * math.log(2 * math.pi)
                       - 0.5 * (delta * delta).sum(-1) - ops.log(scale).sum(-1))
-    precision = ops.expand(precision, info_vec.shape + (-1,))
+    precision = ops.expand(precision, info_vec.shape + precision.shape[-1:])
     log_normalizer = ops.expand(log_normalizer, info_vec.shape[:-1])
     inputs = int_inputs.copy()
     x_name = gensym("x")
@@ -385,12 +384,12 @@ def _independent_to_funsor(pyro_dist, event_inputs=()):
     return result
 
 
-@dist_to_funsor.register(dist.Categorical)
+@dist_to_funsor.register(dist.CategoricalLogits)
 def _categorical_to_funsor(pyro_dist, event_inputs=()):
     return tensor_to_funsor(pyro_dist.logits, event_inputs + ("value",))
 
 
-@dist_to_funsor.register(dist.Bernoulli)
+@dist_to_funsor.register(dist.BernoulliLogits)
 def _bernoulli_to_funsor(pyro_dist, event_inputs=()):
     logits = tensor_to_funsor(pyro_dist.logits, event_inputs)
     return BernoulliLogits(logits)
