@@ -424,10 +424,11 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
         # logic very similar to pyro.ops.packed.pack
         # this should not touch memory, only reshape
         # pack the tensor according to the dim => (name, domain) mapping in inputs
-        packed_inputs = OrderedDict(
-            [dim_to_name[dim + len(output.shape) - len(x.shape)] for dim, size in enumerate(x.shape)
-             if size > 1 and dim < len(x.shape) - len(output.shape)]
-        )
+        packed_inputs = OrderedDict()
+        for dim, size in enumerate(x.shape):
+            if size > 1 and dim < len(x.shape) - len(output.shape):
+                name, domain = dim_to_name[dim + len(output.shape) - len(x.shape)]
+                packed_inputs[name] = domain if domain.dtype > 1 else bint(size)
         if any(size > 1 for size in output.shape):
             # pack outputs into a single dimension
             x = x.reshape(x.shape[:-len(output.shape)] + (-1,))
