@@ -3,9 +3,8 @@
 
 from collections import OrderedDict
 
-import pyro.distributions as dist
-import torch
-from torch.distributions import constraints
+import numpyro.distributions as dist
+from numpyro.distributions import constraints
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta
@@ -14,7 +13,7 @@ from funsor.pyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
 from funsor.terms import Funsor
 
 
-class FunsorDistribution(dist.TorchDistribution):
+class FunsorDistribution(dist.Distribution):
     """
     :class:`~torch.distributions.Distribution` wrapper around a
     :class:`~funsor.terms.Funsor` for use in Pyro code. This is typically used
@@ -31,7 +30,7 @@ class FunsorDistribution(dist.TorchDistribution):
     """
     arg_constraints = {}
 
-    def __init__(self, funsor_dist, batch_shape=torch.Size(), event_shape=torch.Size(),
+    def __init__(self, funsor_dist, batch_shape=(), event_shape=(),
                  dtype="real", validate_args=None):
         assert isinstance(funsor_dist, Funsor)
         assert isinstance(batch_shape, tuple)
@@ -41,23 +40,22 @@ class FunsorDistribution(dist.TorchDistribution):
         self.funsor_dist = funsor_dist
         self.dtype = dtype
 
-    @constraints.dependent_property
+    @property
     def support(self):
         if self.dtype == "real":
             return constraints.real
         else:
             return constraints.integer_interval(0, self.dtype - 1)
 
+    @dist.util.validate_sample
     def log_prob(self, value):
-        if self._validate_args:
-            self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
         value = tensor_to_funsor(value, event_output=self.event_dim, dtype=self.dtype)
         log_prob = self.funsor_dist(value=value)
         log_prob = funsor_to_tensor(log_prob, ndims=ndims)
         return log_prob
 
-    def _sample_delta(self, sample_shape):
+    def _sample_delta(self, key, sample_shape):
         sample_inputs = None
         if sample_shape:
             sample_inputs = OrderedDict()
@@ -65,6 +63,7 @@ class FunsorDistribution(dist.TorchDistribution):
             for dim in range(-len(shape), -len(self.batch_shape)):
                 if shape[dim] > 1:
                     sample_inputs[DIM_TO_NAME[dim]] = bint(shape[dim])
+        # TODO: provide `key` to unscaled_sample
         delta = self.funsor_dist.sample(frozenset({"value"}), sample_inputs)
         if isinstance(delta, Contraction):
             assert len([d for d in delta.terms if isinstance(d, Delta)]) == 1
@@ -72,25 +71,8 @@ class FunsorDistribution(dist.TorchDistribution):
         assert isinstance(delta, Delta)
         return delta
 
-    @torch.no_grad()
-    def sample(self, sample_shape=torch.Size()):
+    def sample(self, key, sample_shape=()):
         delta = self._sample_delta(sample_shape)
-        ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
-        value = funsor_to_tensor(delta.terms[0][1][0], ndims=ndims)
-        return value.detach()
-
-    def rsample(self, sample_shape=torch.Size()):
-        delta = self._sample_delta(sample_shape)
-        assert not delta.log_density.requires_grad, "distribution is not fully reparametrized"
         ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
         value = funsor_to_tensor(delta.terms[0][1][0], ndims=ndims)
         return value
-
-    def expand(self, batch_shape, _instance=None):
-        new = self._get_checked_instance(type(self), _instance)
-        batch_shape = torch.Size(batch_shape)
-        funsor_dist = self.funsor_dist + tensor_to_funsor(torch.zeros(batch_shape))
-        super(type(self), new).__init__(
-            funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
-        new.validate_args = self.__dict__.get('_validate_args')
-        return new
