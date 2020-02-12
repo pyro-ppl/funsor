@@ -4,9 +4,8 @@
 from collections import Hashable
 from contextlib import contextmanager
 
-from jax.interpreters.xla import DeviceArray
-
 import funsor.interpreter as interpreter
+from funsor.numpy import unhashable_array
 
 
 @contextmanager
@@ -19,7 +18,7 @@ def memoize(cache=None):
 
     @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
     def memoize_interpretation(cls, *args):
-        key = (cls,) + tuple(id(arg) if isinstance(arg, DeviceArray) or not isinstance(arg, Hashable)
+        key = (cls,) + tuple(id(arg) if isinstance(arg, unhashable_array) or not isinstance(arg, Hashable)
                              else arg for arg in args)
         if key not in cache:
             cache[key] = cls(*args)

@@ -1,24 +1,67 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import jax.numpy as np
 import numpy as onp
-from jax import lax
-from jax.abstract_arrays import UnshapedArray
-from jax.interpreters.xla import DeviceArray
-from jax.scipy.linalg import cho_solve, solve_triangular
-from jax.scipy.special import expit, logsumexp
 
 import funsor.ops as ops
 from funsor.util import quote
+
+try:
+    import jax  # noqa:401
+except ModuleNotFoundError:
+    try:
+        import scipy  # noqa:401
+    except ModuleNotFoundError:
+        def expit(x):
+            return 1 / (1 + onp.exp(-x))
+
+        def logsumexp(x, axis=None):
+            amax = onp.amax(x, axis=axis, keepdims=True)
+            return onp.log(onp.sum(onp.exp(x - amax), axis=axis)) + amax.squeeze(axis=axis)
+
+        def cho_solve(c_and_lower, b):
+            c, lower = c_and_lower
+            if lower:
+                A = c @ onp.swapaxes(c, -2, -1)
+            else:
+                A = onp.swapaxes(c, -2, -1) @ c
+            return onp.linalg.solve(A, b)
+
+        def solve_triangular(a, b, trans=0, lower=False):
+            if trans:
+                a = onp.swapaxes(a, -2, -1)
+            return onp.linalg.solve(a, b)
+    else:
+        from scipy.special import expit, logsumexp
+        from scipy.linalg import cho_solve, solve_triangular
+
+    np = onp
+    unhashable_array = (onp.ndarray,)
+    array = (onp.ndarray, onp.generic)
+    USING_JAX = False
+
+    def canonicalize_dtype(x):
+        return x
+else:
+    import jax.numpy as np
+    from jax import lax
+    from jax.abstract_arrays import UnshapedArray
+    from jax.dtypes import canonicalize_dtype
+    from jax.interpreters.xla import DeviceArray
+    from jax.scipy.linalg import cho_solve, solve_triangular
+    from jax.scipy.special import expit, logsumexp
+
+    unhashable_array = (onp.ndarray, DeviceArray)
+    array = (onp.ndarray, onp.generic, UnshapedArray, DeviceArray)
+    USING_JAX = True
+
+
+__all__ = ["array", "canonicalize_dtype", "unhashable_array", "USING_JAX"]
 
 
 ################################################################################
 # Register Ops
 ################################################################################
-
-# take care of scalar numpy objects
-array = (onp.ndarray, onp.generic, UnshapedArray, DeviceArray)
 
 ops.abs.register(array)(abs)
 ops.sigmoid.register(array)(expit)
@@ -37,6 +80,10 @@ ops.clamp.register(array, object, object)(np.clip)
 
 @ops.log.register(array)
 def _log(x):
+    if not USING_JAX:
+        if isinstance(x, bool) or (isinstance(x, onp.ndarray) and x.dtype == 'bool'):
+            # we cast to np.float64 because np.log(True) returns a np.float16 array
+            return np.log(x, dtype=np.float64)
     return np.log(x)
 
 
@@ -45,20 +92,13 @@ def _einsum(equation, *operands):
     return np.einsum(equation, *operands)
 
 
-@quote.register(onp.ndarray)
-def _quote(x, indent, out):
-    """
-    Work around NumPy not supporting reproducible repr.
-    """
-    out.append((indent, f"onp.array({repr(x.tolist())}, dtype=np.{x.dtype})"))
-
-
-@quote.register(DeviceArray)
-def _quote(x, indent, out):
-    """
-    Work around JAX DeviceArray not supporting reproducible repr.
-    """
-    out.append((indent, f"np.array({repr(x.copy().tolist())}, dtype=np.{x.dtype})"))
+for arr in unhashable_array:
+    @quote.register(arr)
+    def _quote(x, indent, out):
+        """
+        Work around NumPy not supporting reproducible repr.
+        """
+        out.append((indent, f"np.array({repr(onp.asarray(x).tolist())}, dtype=np.{x.dtype})"))
 
 
 @ops.min.register(array, array)
@@ -136,17 +176,36 @@ def _cholesky_inverse(x):
 
 @ops.cholesky_solve.register(array, array)
 def _cholesky_solve(x, y):
+    if not USING_JAX:
+        batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
+        xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
+        ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
+        ans = [cho_solve((y, True), x) for (x, y) in zip(xs, ys)]
+        ans = np.stack(ans)
+        return ans.reshape(batch_shape + ans.shape[-2:])
+
     return cho_solve((y, True), x)
 
 
 @ops.triangular_solve_op.register(array, array, bool, bool)
 def _triangular_solve(x, y, upper, transpose):
+    if not USING_JAX:
+        batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
+        xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
+        ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
+        ans = [solve_triangular(y, x, trans=int(transpose), lower=not upper)
+               for (x, y) in zip(xs, ys)]
+        ans = np.stack(ans)
+        return ans.reshape(batch_shape + ans.shape[-2:])
+
     assert np.ndim(x) >= 2 and np.ndim(y) >= 2
     n, m = x.shape[-2:]
     assert y.shape[-2:] == (n, n)
     # NB: JAX requires x and y have the same batch_shape
     batch_shape = lax.broadcast_shapes(x.shape[:-2], y.shape[:-2])
     x = np.broadcast_to(x, batch_shape + (n, m))
+    if y.shape[:-2] == batch_shape:
+        return solve_triangular(y, x, trans=int(transpose), lower=not upper)
 
     # The following procedure handles the case: y.shape = (i, 1, n, n), x.shape = (..., i, j, n, m)
     # because we don't want to broadcast y to the shape (i, j, n, n).
