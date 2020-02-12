@@ -15,7 +15,7 @@ from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, interpretation
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
-from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_data, to_funsor
 
 
 def numbers_to_tensors(*args):
@@ -600,6 +600,25 @@ class VonMises(Distribution):
 @eager.register(VonMises, Tensor, Tensor, Tensor)
 def eager_vonmises(loc, concentration, value):
     return VonMises.eager_log_prob(loc=loc, concentration=concentration, value=value)
+
+
+@to_funsor.register(dist.TorchDistribution)
+def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    import funsor.distributions  # TODO find a better way to do this lookup
+    funsor_dist = getattr(funsor.distributions, type(pyro_dist).__name__)
+    params = [to_funsor(getattr(pyro_dist, param_name), dim_to_name=dim_to_name)
+              for param_name in funsor_dist._ast_fields if param_name != 'value']
+    return funsor_dist(*params)
+
+
+@to_data.register(Distribution)
+def distribution_to_data(funsor_dist, name_to_dim=None):
+    pyro_dist = funsor_dist.dist_class
+    assert 'value' not in name_to_dim
+    assert funsor_dist.inputs['value'].shape == ()  # TODO convert properly
+    params = [to_data(getattr(pyro_dist, param_name), name_to_dim=name_to_dim)
+              for param_name in funsor_dist._ast_fields if param_name != 'value']
+    return pyro_dist(*params)
 
 
 __all__ = [
