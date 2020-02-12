@@ -19,19 +19,17 @@ import math
 from collections import OrderedDict
 from functools import singledispatch
 
-import pyro.distributions
-import torch
-import torch.distributions as dist
-from pyro.distributions.torch_distribution import MaskedDistribution
-from pyro.distributions.util import broadcast_shape
+import numpyro.distributions as dist
+from jax.lax import broadcast_shape
 
+import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
 from funsor.domains import bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
-from funsor.ops import cholesky
+from funsor.numpy import array
 from funsor.tensor import Tensor, align_tensors
 from funsor.terms import Funsor, Independent, Variable, eager
 
@@ -58,7 +56,7 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
     :return: A funsor.
     :rtype: funsor.tensor.Tensor
     """
-    assert isinstance(tensor, torch.Tensor)
+    assert isinstance(tensor, array)
     assert isinstance(event_inputs, tuple)
     assert isinstance(event_output, int) and event_output >= 0
     inputs_shape = tensor.shape[:tensor.dim() - event_output]
@@ -73,7 +71,7 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
             name = dim_to_name[dim - len(inputs_shape)]
             inputs[name] = bint(size)
             squeezed_shape.append(size)
-    squeezed_shape = torch.Size(squeezed_shape)
+    squeezed_shape = tuple(squeezed_shape)
     if squeezed_shape != inputs_shape:
         tensor = tensor.reshape(squeezed_shape + output_shape)
 
@@ -107,11 +105,12 @@ def funsor_to_tensor(funsor_, ndims, event_inputs=()):
         inputs_shape = [1] * (-dims[0])
         for dim, size in zip(dims, tensor.shape):
             inputs_shape[dim] = size
-        inputs_shape = torch.Size(inputs_shape)
+        inputs_shape = tuple(inputs_shape)
         tensor = tensor.reshape(inputs_shape + funsor_.output.shape)
-    if ndims != tensor.dim():
-        tensor = tensor.reshape((1,) * (ndims - tensor.dim()) + tensor.shape)
-    assert tensor.dim() == ndims
+    tensor_dim = len(tensor.shape)
+    if ndims != tensor_dim:
+        tensor = tensor.reshape((1,) * (ndims - tensor_dim) + tensor.shape)
+    assert tensor_dim == ndims
     return tensor
 
 
@@ -138,7 +137,7 @@ def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
         bint inputs.
     :rtype: funsor.terms.Funsor
     """
-    assert isinstance(pyro_dist, torch.distributions.MultivariateNormal)
+    assert isinstance(pyro_dist, dist.MultivariateNormal)
     assert isinstance(event_dims, tuple)
     assert isinstance(real_inputs, OrderedDict)
     loc = tensor_to_funsor(pyro_dist.loc, event_dims, 1)
@@ -146,9 +145,9 @@ def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
     precision = tensor_to_funsor(pyro_dist.precision_matrix, event_dims, 2)
     assert loc.inputs == scale_tril.inputs
     assert loc.inputs == precision.inputs
-    info_vec = precision.data.matmul(loc.data.unsqueeze(-1)).squeeze(-1)
+    info_vec = ops.matmul(precision.data, loc.data.unsqueeze(-1)).squeeze(-1)
     log_prob = (-0.5 * loc.output.shape[0] * math.log(2 * math.pi)
-                - scale_tril.data.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+                - ops.log(ops.diagonal(scale_tril.data, dim1=-1, dim2=-2)).sum(-1)
                 - 0.5 * (info_vec * loc.data).sum(-1))
     inputs = loc.inputs.copy()
     inputs.update(real_inputs)
@@ -175,7 +174,7 @@ def funsor_to_mvn(gaussian, ndims, event_inputs=()):
     assert isinstance(gaussian, Gaussian)
 
     precision = gaussian.precision
-    loc = gaussian.info_vec.unsqueeze(-1).cholesky_solve(cholesky(precision)).squeeze(-1)
+    loc = ops.cholesky_solve(gaussian.info_vec[..., None], ops.cholesky(precision)).squeeze(-1)
 
     int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != "real")
     loc = Tensor(loc, int_inputs)
@@ -185,7 +184,7 @@ def funsor_to_mvn(gaussian, ndims, event_inputs=()):
 
     loc = funsor_to_tensor(loc, ndims + 1, event_inputs)
     precision = funsor_to_tensor(precision, ndims + 2, event_inputs)
-    return pyro.distributions.MultivariateNormal(loc, precision_matrix=precision)
+    return dist.MultivariateNormal(loc, precision_matrix=precision)
 
 
 def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
@@ -210,7 +209,7 @@ def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
     assert isinstance(gaussian, Gaussian)
 
     logits = funsor_to_tensor(discrete + gaussian.log_normalizer, ndims + 1, event_inputs)
-    cat = pyro.distributions.Categorical(logits=logits)
+    cat = dist.Categorical(logits=logits)
     mvn = funsor_to_mvn(gaussian, ndims + 1, event_inputs)
     assert cat.batch_shape == mvn.batch_shape[:-1]
     return cat, mvn
@@ -258,7 +257,7 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     assert len(matrix.output.shape) == 2
     assert value_x.output == reals(matrix.output.shape[0])
     assert value_y.output == reals(matrix.output.shape[1])
-    loc += value_x @ matrix
+    loc = loc + value_x @ matrix
     int_inputs, (loc, scale) = align_tensors(loc, scale, expand=True)
 
     i_name = gensym("i")
@@ -280,15 +279,15 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     int_inputs, tensors = align_tensors(*tensors)
     matrix, loc, scale, value_y = tensors
 
-    assert value_y.size(-1) == loc.size(-1)
-    prec_sqrt = matrix / scale.unsqueeze(-2)
-    precision = prec_sqrt.matmul(prec_sqrt.transpose(-1, -2))
+    assert value_y.shape[-1] == loc.shape[-1]
+    prec_sqrt = matrix / scale[..., None, :]
+    precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
     delta = (value_y - loc) / scale
-    info_vec = prec_sqrt.matmul(delta.unsqueeze(-1)).squeeze(-1)
-    log_normalizer = (-0.5 * loc.size(-1) * math.log(2 * math.pi)
-                      - 0.5 * delta.pow(2).sum(-1) - scale.log().sum(-1))
-    precision = precision.expand(info_vec.shape + (-1,))
-    log_normalizer = log_normalizer.expand(info_vec.shape[:-1])
+    info_vec = (prec_sqrt @ delta[..., None]).squeeze(-1)
+    log_normalizer = (-0.5 * loc.shape[-1] * math.log(2 * math.pi)
+                      - 0.5 * (delta * delta).sum(-1) - ops.log(scale).sum(-1))
+    precision = ops.expand(precision, info_vec.shape + (-1,))
+    log_normalizer = ops.expand(log_normalizer, info_vec.shape[:-1])
     inputs = int_inputs.copy()
     x_name = gensym("x")
     inputs[x_name] = value_x.output
@@ -320,37 +319,37 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
         bint inputs.
     :rtype: funsor.terms.Funsor
     """
-    assert (isinstance(mvn, torch.distributions.MultivariateNormal) or
-            (isinstance(mvn, torch.distributions.Independent) and
-             isinstance(mvn.base_dist, torch.distributions.Normal)))
-    assert isinstance(matrix, torch.Tensor)
+    assert (isinstance(mvn, dist.MultivariateNormal) or
+            (isinstance(mvn, dist.Independent) and
+             isinstance(mvn.base_dist, dist.Normal)))
+    assert isinstance(matrix, array)
     x_size, y_size = matrix.shape[-2:]
     assert mvn.event_shape == (y_size,)
 
     # Handle diagonal normal distributions as an efficient special case.
-    if isinstance(mvn, torch.distributions.Independent):
+    if isinstance(mvn, dist.Independent):
         return AffineNormal(tensor_to_funsor(matrix, event_dims, 2),
                             tensor_to_funsor(mvn.base_dist.loc, event_dims, 1),
                             tensor_to_funsor(mvn.base_dist.scale, event_dims, 1),
                             Variable(x_name, reals(x_size)),
                             Variable(y_name, reals(y_size)))
 
-    info_vec = mvn.loc.unsqueeze(-1).cholesky_solve(mvn.scale_tril).squeeze(-1)
+    info_vec = ops.cholesky_solve(mvn.loc[..., None], mvn.scale_tril).squeeze(-1)
     log_prob = (-0.5 * y_size * math.log(2 * math.pi)
-                - mvn.scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+                - ops.log(ops.diagonal(mvn.scale_tril, -1, -2)).sum(-1)
                 - 0.5 * (info_vec * mvn.loc).sum(-1))
 
     batch_shape = broadcast_shape(matrix.shape[:-2], mvn.batch_shape)
-    P_yy = mvn.precision_matrix.expand(batch_shape + (y_size, y_size))
-    neg_P_xy = matrix.matmul(P_yy)
+    P_yy = ops.expand(mvn.precision_matrix, batch_shape + (y_size, y_size))
+    neg_P_xy = matrix @ P_yy
     P_xy = -neg_P_xy
-    P_yx = P_xy.transpose(-1, -2)
-    P_xx = neg_P_xy.matmul(matrix.transpose(-1, -2))
-    precision = torch.cat([torch.cat([P_xx, P_xy], -1),
-                           torch.cat([P_yx, P_yy], -1)], -2)
-    info_y = info_vec.expand(batch_shape + (y_size,))
-    info_x = -matrix.matmul(info_y.unsqueeze(-1)).squeeze(-1)
-    info_vec = torch.cat([info_x, info_y], -1)
+    P_yx = ops.transpose(P_xy, -1, -2)
+    P_xx = neg_P_xy @ ops.transpose(matrix, -1, -2)
+    precision = ops.cat(-2, *[ops.cat(-1, P_xx, P_xy),
+                              ops.cat(-1, P_yx, P_yy)])
+    info_y = ops.expand(info_vec, batch_shape + (y_size,))
+    info_x = -(matrix @ info_y[..., None]).squeeze(-1)
+    info_vec = ops.cat(-1, info_x, info_y)
 
     info_vec = tensor_to_funsor(info_vec, event_dims, 1)
     precision = tensor_to_funsor(precision, event_dims, 2)
@@ -371,7 +370,7 @@ def dist_to_funsor(pyro_dist, event_inputs=()):
     :return: A funsor.
     :rtype: funsor.terms.Funsor
     """
-    assert isinstance(pyro_dist, torch.distributions.Distribution)
+    assert isinstance(pyro_dist, dist.Distribution)
     raise ValueError("Cannot convert {} distribution to a Funsor"
                      .format(type(pyro_dist).__name__))
 
@@ -383,14 +382,6 @@ def _independent_to_funsor(pyro_dist, event_inputs=()):
     result = dist_to_funsor(pyro_dist.base_dist, event_inputs + event_names)
     for name in reversed(event_names):
         result = Independent(result, "value", name, "value")
-    return result
-
-
-@dist_to_funsor.register(MaskedDistribution)
-def _masked_to_funsor(pyro_dist, event_inputs=()):
-    # FIXME This is subject to NANs.
-    mask = tensor_to_funsor(pyro_dist._mask.float(), event_inputs)
-    result = mask * dist_to_funsor(pyro_dist.base_dist, event_inputs)
     return result
 
 
