@@ -28,12 +28,12 @@ from pyro.distributions.util import broadcast_shape
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
-from funsor.domains import bint, reals
+from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.ops import cholesky
 from funsor.tensor import Tensor, align_tensors
-from funsor.terms import Funsor, Independent, Variable, eager
+from funsor.terms import Funsor, Independent, Variable, eager, to_data, to_funsor
 
 # Conversion functions use fixed names for Pyro batch dims, but
 # accept an event_inputs tuple for custom event dim names.
@@ -63,21 +63,12 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
     assert isinstance(event_output, int) and event_output >= 0
     inputs_shape = tensor.shape[:tensor.dim() - event_output]
     output_shape = tensor.shape[tensor.dim() - event_output:]
-    dim_to_name = DIM_TO_NAME + event_inputs if event_inputs else DIM_TO_NAME
-
-    # Squeeze shape of inputs.
-    inputs = OrderedDict()
-    squeezed_shape = []
-    for dim, size in enumerate(inputs_shape):
-        if size > 1:
-            name = dim_to_name[dim - len(inputs_shape)]
-            inputs[name] = bint(size)
-            squeezed_shape.append(size)
-    squeezed_shape = torch.Size(squeezed_shape)
-    if squeezed_shape != inputs_shape:
-        tensor = tensor.reshape(squeezed_shape + output_shape)
-
-    return Tensor(tensor, inputs, dtype)
+    dim_to_name_list = DIM_TO_NAME + event_inputs if event_inputs else DIM_TO_NAME
+    dim_to_name = OrderedDict(zip(
+        range(-len(inputs_shape), 0),
+        zip(dim_to_name_list[len(dim_to_name_list) - len(inputs_shape):],
+            map(bint, inputs_shape))))
+    return to_funsor(tensor, Domain(dtype=dtype, shape=output_shape), dim_to_name)
 
 
 def funsor_to_tensor(funsor_, ndims, event_inputs=()):
@@ -99,16 +90,8 @@ def funsor_to_tensor(funsor_, ndims, event_inputs=()):
     if event_inputs:
         dim_to_name = DIM_TO_NAME + event_inputs
         name_to_dim = dict(zip(dim_to_name, range(-len(dim_to_name), 0)))
-    names = tuple(sorted(funsor_.inputs, key=name_to_dim.__getitem__))
-    tensor = funsor_.align(names).data
-    if names:
-        # Unsqueeze shape of inputs.
-        dims = list(map(name_to_dim.__getitem__, names))
-        inputs_shape = [1] * (-dims[0])
-        for dim, size in zip(dims, tensor.shape):
-            inputs_shape[dim] = size
-        inputs_shape = torch.Size(inputs_shape)
-        tensor = tensor.reshape(inputs_shape + funsor_.output.shape)
+    tensor = to_data(funsor_, name_to_dim)
+
     if ndims != tensor.dim():
         tensor = tensor.reshape((1,) * (ndims - tensor.dim()) + tensor.shape)
     assert tensor.dim() == ndims
