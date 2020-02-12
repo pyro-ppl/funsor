@@ -176,7 +176,7 @@ class BlockMatrix(object):
         # Concatenate parts.
         # TODO This could be optimized into a single .reshape().cat().reshape() if
         #   all inputs are contiguous, thereby saving a memcopy.
-        contiguous = True
+        contiguous = False
         if contiguous:
             result = ops.cat(-2, *[v for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
             n = len(self.parts)
@@ -348,6 +348,10 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         inputs = OrderedDict((name, self.inputs[name]) for name in names)
         inputs.update(self.inputs)
         info_vec, precision = align_gaussian(inputs, self)
+        if isinstance(info_vec, BlockVector):
+            info_vec = info_vec.as_tensor()
+        if isinstance(precision, BlockMatrix):
+            precision = precision.as_tensor()
         return Gaussian(info_vec, precision, inputs)
 
     def eager_subs(self, subs):

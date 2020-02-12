@@ -3,8 +3,8 @@
 
 import math
 from collections import OrderedDict
+from importlib import import_module
 
-import pyro.distributions as dist
 import torch
 from pyro.distributions.util import broadcast_shape
 
@@ -16,6 +16,11 @@ from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, interpretation
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
+
+BACKEND_TO_DISTRIBUTION_BACKEND = {
+    "torch": "pyro.distributions",
+    "numpy": "numpyro.distributions",
+}
 
 
 def numbers_to_tensors(*args):
@@ -92,7 +97,9 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         inputs, tensors = align_tensors(*params.values())
         params = dict(zip(params, tensors))
         value = params.pop('value')
-        data = cls.dist_class(**params).log_prob(value)
+        # TODO: it is better to get backend from a default backend
+        dist = import_module(BACKEND_TO_DISTRIBUTION_BACKEND[Tensor(value).backend])
+        data = getattr(dist, cls.dist_class)(**params).log_prob(value)
         return Tensor(data, inputs)
 
 
@@ -107,7 +114,7 @@ class BernoulliProbs(Distribution):
     :param Funsor probs: Probability of 1.
     :param Funsor value: Optional observation in ``{0,1}``.
     """
-    dist_class = dist.Bernoulli
+    dist_class = "Bernoulli"
 
     @staticmethod
     def _fill_defaults(probs, value='value'):
@@ -133,7 +140,7 @@ class BernoulliLogits(Distribution):
         This should equal ``log(p1 / p0)``.
     :param Funsor value: Optional observation in ``{0,1}``.
     """
-    dist_class = dist.Bernoulli
+    dist_class = "Bernoulli"
 
     @staticmethod
     def _fill_defaults(logits, value='value'):
@@ -176,7 +183,7 @@ class Beta(Distribution):
     :param Funsor concentration0: Positive concentration parameter.
     :param Funsor value: Optional observation in ``(0,1)``.
     """
-    dist_class = dist.Beta
+    dist_class = "Beta"
 
     @staticmethod
     def _fill_defaults(concentration1, concentration0, value='value'):
@@ -211,7 +218,7 @@ class Binomial(Distribution):
     :param Funsor probs: Probability of each positive trial.
     :param Funsor value: Optional integer observation (encoded as "real").
     """
-    dist_class = dist.Binomial
+    dist_class = "Binomial"
 
     @staticmethod
     def _fill_defaults(total_count, probs, value='value'):
@@ -244,7 +251,7 @@ class Categorical(Distribution):
     :param Funsor probs: Probability vector over outcomes.
     :param Funsor value: Optional bouded integer observation.
     """
-    dist_class = dist.Categorical
+    dist_class = "Categorical"
 
     @staticmethod
     def _fill_defaults(probs, value='value'):
@@ -282,7 +289,7 @@ class Delta(Distribution):
         distributions).
     :param Funsor value: Optional observation of similar domain as ``v``.
     """
-    dist_class = dist.Delta
+    dist_class = "Delta"
 
     @staticmethod
     def _fill_defaults(v, log_density=0, value='value'):
@@ -302,6 +309,7 @@ def eager_delta(v, log_density, value):
     assert v.output == value.output
     event_dim = len(v.output.shape)
     inputs, (v, log_density, value) = align_tensors(v, log_density, value)
+    dist = import_module(BACKEND_TO_DISTRIBUTION_BACKEND[Tensor(v).backend])
     data = dist.Delta(v, log_density, event_dim).log_prob(value)
     return Tensor(data, inputs)
 
@@ -326,7 +334,7 @@ class Dirichlet(Distribution):
     :param Funsor concentration: Positive concentration vector.
     :param Funsor value: Optional observation in the unit simplex.
     """
-    dist_class = dist.Dirichlet
+    dist_class = "Dirichlet"
 
     @staticmethod
     def _fill_defaults(concentration, value='value'):
@@ -354,7 +362,7 @@ class DirichletMultinomial(Distribution):
     :param Funsor total_count: Total number of trials.
     :param Funsor value: Optional observation in the unit simplex.
     """
-    dist_class = dist.DirichletMultinomial
+    dist_class = "DirichletMultinomial"
 
     @staticmethod
     def _fill_defaults(concentration, total_count=1, value='value'):
@@ -400,7 +408,7 @@ class Multinomial(Distribution):
     :param Funsor total_count: Total number of trials.
     :param Funsor value: Optional value in the unit simplex.
     """
-    dist_class = dist.Multinomial
+    dist_class = "Multinomial"
 
     @staticmethod
     def _fill_defaults(total_count, probs, value='value'):
@@ -435,7 +443,7 @@ class Normal(Distribution):
     :param Funsor scale: Standard deviation.
     :param Funsor value: Optional real observation.
     """
-    dist_class = dist.Normal
+    dist_class = "Normal"
 
     @staticmethod
     def _fill_defaults(loc, scale, value='value'):
@@ -461,8 +469,8 @@ def eager_normal(loc, scale, value):
     if not is_affine(loc) or not is_affine(value):
         return None  # lazy
 
-    info_vec = scale.data.new_zeros(scale.data.shape + (1,))
-    precision = scale.data.pow(-2).reshape(scale.data.shape + (1, 1))
+    info_vec = ops.new_zeros(scale.data, scale.data.shape + (1,))
+    precision = ops.pow(scale.data, -2).reshape(scale.data.shape + (1, 1))
     log_prob = -0.5 * math.log(2 * math.pi) - scale.log().sum()
     inputs = scale.inputs.copy()
     var = gensym('value')
@@ -479,7 +487,7 @@ class MultivariateNormal(Distribution):
     :param Funsor scale_tril: Lower Cholesky factor of the covariance matrix.
     :param Funsor value: Optional real vector observation.
     """
-    dist_class = dist.MultivariateNormal
+    dist_class = "MultivariateNormal"
 
     @staticmethod
     def _fill_defaults(loc, scale_tril, value='value'):
@@ -510,9 +518,9 @@ def eager_mvn(loc, scale_tril, value):
     if not is_affine(loc) or not is_affine(value):
         return None  # lazy
 
-    info_vec = scale_tril.data.new_zeros(scale_tril.data.shape[:-1])
+    info_vec = ops.new_zeros(scale_tril.data, scale_tril.data.shape[:-1])
     precision = ops.cholesky_inverse(scale_tril.data)
-    scale_diag = Tensor(scale_tril.data.diagonal(dim1=-1, dim2=-2), scale_tril.inputs)
+    scale_diag = Tensor(ops.diagonal(scale_tril.data, -1, -2), scale_tril.inputs)
     log_prob = -0.5 * scale_diag.shape[0] * math.log(2 * math.pi) - scale_diag.log().sum()
     inputs = scale_tril.inputs.copy()
     var = gensym('value')
@@ -528,7 +536,7 @@ class Poisson(Distribution):
     :param Funsor rate: Mean parameter.
     :param Funsor value: Optional integer observation (coded as "real").
     """
-    dist_class = dist.Poisson
+    dist_class = "Poisson"
 
     @staticmethod
     def _fill_defaults(rate, value='value'):
@@ -554,7 +562,7 @@ class Gamma(Distribution):
     :param Funsor rate: Positive rate parameter.
     :param Funsor value: Optional positive observation.
     """
-    dist_class = dist.Gamma
+    dist_class = "Gamma"
 
     @staticmethod
     def _fill_defaults(concentration, rate, value='value'):
@@ -582,7 +590,7 @@ class VonMises(Distribution):
     :param Funsor concentration: Positive concentration parameter.
     :param Funsor value: Optional angular observation.
     """
-    dist_class = dist.VonMises
+    dist_class = "VonMises"
 
     @staticmethod
     def _fill_defaults(loc, concentration, value='value'):
