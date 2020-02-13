@@ -419,7 +419,7 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
         return result
     else:
         assert output is not None  # TODO attempt to infer output
-        assert all(isinstance(k, int) and isinstance(v, str)
+        assert all(isinstance(k, int) and k < 0 and isinstance(v, str)
                    for k, v in dim_to_name.items())
         # logic very similar to pyro.ops.packed.pack
         # this should not touch memory, only reshape
@@ -506,7 +506,7 @@ def tensor_to_data(x, name_to_dim=None):
             raise ValueError(f"cannot convert Tensor to data due to lazy inputs: {set(x.inputs)}")
         return x.data
     else:
-        assert all(isinstance(k, str) and isinstance(v, int) and v <= 0
+        assert all(isinstance(k, str) and isinstance(v, int) and v < 0
                    for k, v in name_to_dim.items())
         # logic very similar to pyro.ops.packed.unpack
         # first collapse input domains into single dimensions
