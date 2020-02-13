@@ -430,14 +430,9 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
                 continue  # TODO broadcast domain and shape here
             name, domain = dim_to_name[dim + len(output.shape) - len(x.shape)]
             packed_inputs[name] = domain if domain.dtype > 1 else bint(size)
-        if any(size > 1 for size in output.shape):
-            # pack outputs into a single dimension
-            x = x.reshape(x.shape[:-len(output.shape)] + (-1,))
-        x = x.squeeze()
-        if all(size == 1 for size in output.shape):
-            # handle special case: all output dims are 1
-            x = x.unsqueeze(-1)
-        x = x.reshape(x.shape[:-1] + output.shape)
+        shape = tuple(d.size for d in packed_inputs.values()) + output.shape
+        if x.shape != shape:
+            x = x.reshape(shape)
         return Tensor(x, packed_inputs, dtype=output.dtype)
 
 
@@ -506,12 +501,14 @@ def align_tensors(*args, **kwargs):
 
 
 @to_data.register(Tensor)
-def _to_data_tensor(x, name_to_dim=None):
+def tensor_to_data(x, name_to_dim=None):
     if not name_to_dim or not x.inputs:
         if x.inputs:
             raise ValueError(f"cannot convert Tensor to data due to lazy inputs: {set(x.inputs)}")
         return x.data
     else:
+        assert all(isinstance(k, str) and isinstance(v, int) and v <= 0
+                   for k, v in name_to_dim.items())
         # logic very similar to pyro.ops.packed.unpack
         # first collapse input domains into single dimensions
         data = x.data.reshape(tuple(d.dtype for d in x.inputs.values()) + x.output.shape)
