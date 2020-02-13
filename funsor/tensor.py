@@ -419,17 +419,16 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
         return result
     else:
         assert output is not None  # TODO attempt to infer output
-        assert all(isinstance(k, int) and isinstance(v[0], str) and isinstance(v[1], Domain)
+        assert all(isinstance(k, int) and isinstance(v, str)
                    for k, v in dim_to_name.items())
         # logic very similar to pyro.ops.packed.pack
         # this should not touch memory, only reshape
-        # pack the tensor according to the dim => (name, domain) mapping in inputs
+        # pack the tensor according to the dim => name mapping in inputs
         packed_inputs = OrderedDict()
         for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
-            if size == 1:
-                continue  # TODO broadcast domain and shape here
-            name, domain = dim_to_name[dim + len(output.shape) - len(x.shape)]
-            packed_inputs[name] = domain if domain.dtype > 1 else bint(size)
+            name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
+            if name is not None:
+                packed_inputs[name] = bint(size)
         shape = tuple(d.size for d in packed_inputs.values()) + output.shape
         if x.shape != shape:
             x = x.reshape(shape)
