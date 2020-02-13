@@ -49,13 +49,13 @@ class FunsorDistribution(dist.Distribution):
 
     @dist.util.validate_sample
     def log_prob(self, value):
-        ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
-        value = tensor_to_funsor(value, event_output=self.event_dim, dtype=self.dtype)
+        ndims = max(len(self.batch_shape), len(value.shape) - len(self.event_shape))
+        value = tensor_to_funsor(value, event_output=len(self.event_shape), dtype=self.dtype)
         log_prob = self.funsor_dist(value=value)
         log_prob = funsor_to_tensor(log_prob, ndims=ndims)
         return log_prob
 
-    def _sample_delta(self, key, sample_shape):
+    def _sample_delta(self, sample_shape):
         sample_inputs = None
         if sample_shape:
             sample_inputs = OrderedDict()
@@ -71,7 +71,7 @@ class FunsorDistribution(dist.Distribution):
         assert isinstance(delta, Delta)
         return delta
 
-    def sample(self, key, sample_shape=()):
+    def sample(self, sample_shape=()):
         delta = self._sample_delta(sample_shape)
         ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
         value = funsor_to_tensor(delta.terms[0][1][0], ndims=ndims)

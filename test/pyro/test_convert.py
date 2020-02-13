@@ -106,10 +106,9 @@ def test_affine_normal(matrix_shape, loc_shape, scale_shape, x_shape, y_shape,
     assert isinstance(f, AffineNormal)
 
     # Evaluate via two different patterns.
-    print(f(y=value_y))
-    #expected = f(x=value_x)(y=value_y)
-    #actual = f(y=value_y)(x=value_x)
-    #assert_close(actual, expected, atol=1e-5, rtol=2e-4)
+    expected = f(x=value_x)(y=value_y)
+    actual = f(y=value_y)(x=value_x)
+    assert_close(actual, expected, atol=1e-5, rtol=2e-4)
 
 
 @pytest.mark.parametrize("x_size", [1, 2, 3])
