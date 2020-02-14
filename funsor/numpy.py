@@ -44,15 +44,14 @@ except ModuleNotFoundError:
         return x
 else:
     import jax.numpy as np
-    from jax import lax
-    from jax.abstract_arrays import UnshapedArray
+    from jax import core, lax
     from jax.dtypes import canonicalize_dtype
     from jax.interpreters.xla import DeviceArray
     from jax.scipy.linalg import cho_solve, solve_triangular
     from jax.scipy.special import expit, logsumexp
 
-    unhashable_array = (onp.ndarray, DeviceArray)
-    array = (onp.ndarray, onp.generic, UnshapedArray, DeviceArray)
+    unhashable_array = (onp.ndarray, core.Tracer, DeviceArray)
+    array = (onp.ndarray, onp.generic, core.Tracer, DeviceArray)
     USING_JAX = True
 
 
@@ -71,11 +70,19 @@ ops.log1p.register(array)(np.log1p)
 ops.min.register(array)(np.minimum)
 ops.max.register(array)(np.maximum)
 ops.unsqueeze.register(array, int)(np.expand_dims)
-ops.expand.register(array, tuple)(np.broadcast_to)
 ops.permute.register(array, (tuple, list))(np.transpose)
 ops.transpose.register(array, int, int)(np.swapaxes)
 ops.full_like.register(array, object)(np.full_like)
 ops.clamp.register(array, object, object)(np.clip)
+
+
+@ops.expand.register(array, tuple)
+def _expand(x, shape):
+    prepend_dim = len(shape) - np.ndim(x)
+    assert prepend_dim >= 0
+    shape = shape[:prepend_dim] + tuple(dx if size == -1 else size
+                                        for dx, size in zip(np.shape(x), shape[prepend_dim:]))
+    return np.broadcast_to(x, shape)
 
 
 @ops.log.register(array)
@@ -253,6 +260,8 @@ def _diagonal(x, dim1, dim2):
 
 @ops.cat.register(int, [array])
 def _cat(dim, *x):
+    if len(x) == 1:
+        return x[0]
     return np.concatenate(x, axis=dim)
 
 
