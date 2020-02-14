@@ -51,8 +51,8 @@ def eager_cat_homogeneous(name, part_name, *parts):
             raise NotImplementedError("TODO")
         discretes.append(discrete)
         info_vec, precision = align_gaussian(inputs, gaussian)
-        info_vecs.append(ops.expand(info_vec, shape + info_vec.shape[-1:]))
-        precisions.append(ops.expand(precision, shape + precision.shape[-2:]))
+        info_vecs.append(ops.expand(info_vec, shape + (-1,)))
+        precisions.append(ops.expand(precision, shape + (-1, -1)))
     if part_name != name:
         del inputs[part_name]
         del int_inputs[part_name]
