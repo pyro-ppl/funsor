@@ -46,29 +46,29 @@ def eager_cat_homogeneous(name, part_name, *parts):
             gaussian = part
         elif issubclass(type(part), GaussianMixture):  # TODO figure out why isinstance isn't working
             discrete, gaussian = part.terms[0], part.terms[1]
-            discrete = align_tensor(int_inputs, discrete).expand(shape)
+            discrete = ops.expand(align_tensor(int_inputs, discrete), shape)
         else:
             raise NotImplementedError("TODO")
         discretes.append(discrete)
         info_vec, precision = align_gaussian(inputs, gaussian)
-        info_vecs.append(info_vec.expand(shape + (-1,)))
-        precisions.append(precision.expand(shape + (-1, -1)))
+        info_vecs.append(ops.expand(info_vec, shape + info_vec.shape[-1:]))
+        precisions.append(ops.expand(precision, shape + precision.shape[-2:]))
     if part_name != name:
         del inputs[part_name]
         del int_inputs[part_name]
 
     dim = 0
-    info_vec = torch.cat(info_vecs, dim=dim)
-    precision = torch.cat(precisions, dim=dim)
-    inputs[name] = bint(info_vec.size(dim))
+    info_vec = ops.cat(dim, *info_vecs)
+    precision = ops.cat(dim, *precisions)
+    inputs[name] = bint(info_vec.shape[dim])
     int_inputs[name] = inputs[name]
     result = Gaussian(info_vec, precision, inputs)
     if any(d is not None for d in discretes):
         for i, d in enumerate(discretes):
             if d is None:
-                discretes[i] = info_vecs[i].new_zeros(info_vecs[i].shape[:-1])
-        discrete = torch.cat(discretes, dim=dim)
-        result += Tensor(discrete, int_inputs)
+                discretes[i] = ops.new_zeros(info_vecs[i], info_vecs[i].shape[:-1])
+        discrete = ops.cat(dim, *discretes)
+        result = result + Tensor(discrete, int_inputs)
     return result
 
 

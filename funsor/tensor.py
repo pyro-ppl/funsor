@@ -326,7 +326,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         #   Then g is an unbiased estimator of f in value and all derivatives.
         #   In the special case f = detach(f), we can simplify to
         #       g = delta(x=x0) |f|.
-        if flat_logits.requires_grad:
+        if hasattr(flat_logits, "requires_grad") and flat_logits.requires_grad:
             # Apply a dice factor to preserve differentiability.
             index = [ops.new_arange(self.data, n).reshape((n,) + (1,) * (len(flat_logits.shape) - i - 2))
                      for i, n in enumerate(flat_logits.shape[:-1])]
@@ -337,7 +337,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
                                   (log_prob - log_prob.detach()), sb_inputs))
         else:
             # This is the special case f = detach(f).
-            results.append(Tensor(flat_logits.logsumexp(-1), batch_inputs))
+            results.append(Tensor(ops.logsumexp(flat_logits, -1), batch_inputs))
 
         return reduce(ops.add, results)
 
