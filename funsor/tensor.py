@@ -33,26 +33,20 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec, quote
+from funsor.util import getargspec, get_default_backend, quote
 
 
 numeric_array = (torch.Tensor, array)
-_DEFAULT_TENSOR_TYPE = torch.float32
-
-
-def set_default_tensor_type(dtype):
-    global _DEFAULT_TENSOR_TYPE
-    _DEFAULT_TENSOR_TYPE = dtype
 
 
 def get_default_prototype():
-    dtype = _DEFAULT_TENSOR_TYPE
-    if type(dtype) is torch.dtype:
-        return torch.tensor([], dtype=dtype)
-    elif type(dtype) is np.dtype:
-        return np.array([], dtype=dtype)
+    backend = get_default_backend()
+    if backend == "torch":
+        return torch.tensor([])
+    elif backend == "numpy" or backend == "jax":
+        return np.array([])
     else:
-        raise RuntimeError("{} is not a valid default tensor type.".format(dtype))
+        raise RuntimeError(f"The backend {backend} is not supported.")
 
 
 def _nameof(fn):

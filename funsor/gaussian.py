@@ -15,7 +15,7 @@ from funsor.delta import Delta
 from funsor.domains import reals
 from funsor.numpy import array
 from funsor.ops import AddOp, NegOp, SubOp
-from funsor.tensor import Tensor, align_tensor, align_tensors, set_default_tensor_type
+from funsor.tensor import Tensor, align_tensor, align_tensors
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
 from funsor.util import lazy_property
 
@@ -434,9 +434,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return Subs(result, remaining_subs) if remaining_subs else result
 
     def _eager_subs_affine(self, subs, remaining_subs):
-        # change global DEFAULT_TENSOR_TYPE to extract_affine
-        # TODO: we should not change global states here
-        set_default_tensor_type(self.info_vec.dtype)
         # Extract an affine representation.
         affine = OrderedDict()
         for k, v in subs:

@@ -42,7 +42,7 @@ setup(
         'torch>=1.3.0',
     ],
     extras_require={
-        'numpy': [
+        'jax': [
             'jax==0.1.59',
             'jaxlib==0.1.38',
         ],

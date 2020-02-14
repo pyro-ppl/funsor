@@ -4,6 +4,9 @@
 import functools
 import inspect
 import re
+import os
+
+BACKEND = os.environ.get("FUNSOR_BACKEND", "torch")
 
 
 class lazy_property(object):
@@ -104,3 +107,22 @@ def _(arg, indent, out):
         out[-1] = i, line + ','
     i, line = out[-1]
     out[-1] = i, line + ')'
+
+
+def set_default_backend(backend):
+    """
+    Set default backend for Funsor. Currently, only three backends
+    are supported: "numpy", "torch", "jax".
+
+    :param str backend: either "numpy", "torch", or "jax".
+    """
+    global BACKEND
+    if backend in ["torch", "numpy", "jax"]:
+        BACKEND = backend
+    else:
+        raise ValueError(f"backend should be either 'numpy', 'torch', or 'jax'"
+                         ", got {backend}")
+
+
+def get_default_backend():
+    return BACKEND

@@ -134,6 +134,7 @@ def extract_affine(fn):
         ``(coefficient, eqn)`` pair in einsum form.
     :rtype: tuple
     """
+    # NB: this depends on the global default backend.
     prototype = get_default_prototype()
     # Determine constant part by evaluating fn at zero.
     inputs = affine_inputs(fn)
