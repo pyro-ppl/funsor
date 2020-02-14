@@ -66,8 +66,7 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
     dim_to_name_list = DIM_TO_NAME + event_inputs if event_inputs else DIM_TO_NAME
     dim_to_name = OrderedDict(zip(
         range(-len(inputs_shape), 0),
-        zip(dim_to_name_list[len(dim_to_name_list) - len(inputs_shape):],
-            map(bint, inputs_shape))))
+        dim_to_name_list[len(dim_to_name_list) - len(inputs_shape):]))
     return to_funsor(tensor, Domain(dtype=dtype, shape=output_shape), dim_to_name)
 
 

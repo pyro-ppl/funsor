@@ -764,7 +764,7 @@ def to_funsor(x, output=None, dim_to_name=None):
 
     :param x: An object.
     :param funsor.domains.Domain output: An optional output hint.
-    :param OrderedDict dim_to_name: An optional inputs hint.
+    :param OrderedDict dim_to_name: An optional mapping from negative batch dimensions to name strings.
     :return: A Funsor equivalent to ``x``.
     :rtype: Funsor
     :raises: ValueError
@@ -776,7 +776,7 @@ def to_funsor(x, output=None, dim_to_name=None):
 def funsor_to_funsor(x, output=None, dim_to_name=None):
     if output is not None and x.output != output:
         raise ValueError("Output mismatch: {} vs {}".format(x.output, output))
-    if dim_to_name is not None and list(x.inputs.keys()) != [v[0] for v in dim_to_name.values()]:
+    if dim_to_name is not None and list(x.inputs.keys()) != list(dim_to_name.values()):
         raise ValueError("Inputs mismatch: {} vs {}".format(x.inputs, dim_to_name))
     return x
 
