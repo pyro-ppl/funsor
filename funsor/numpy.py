@@ -44,15 +44,14 @@ except ModuleNotFoundError:
         return x
 else:
     import jax.numpy as np
-    from jax import lax
-    from jax.abstract_arrays import UnshapedArray
+    from jax import core, lax
     from jax.dtypes import canonicalize_dtype
     from jax.interpreters.xla import DeviceArray
     from jax.scipy.linalg import cho_solve, solve_triangular
     from jax.scipy.special import expit, logsumexp
 
-    unhashable_array = (onp.ndarray, DeviceArray)
-    array = (onp.ndarray, onp.generic, UnshapedArray, DeviceArray)
+    unhashable_array = (onp.ndarray, core.Tracer, DeviceArray)
+    array = (onp.ndarray, onp.generic, core.Tracer, DeviceArray)
     USING_JAX = True
 
 

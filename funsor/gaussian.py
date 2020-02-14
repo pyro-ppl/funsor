@@ -176,7 +176,7 @@ class BlockMatrix(object):
         # Concatenate parts.
         # TODO This could be optimized into a single .reshape().cat().reshape() if
         #   all inputs are contiguous, thereby saving a memcopy.
-        contiguous = False
+        contiguous = True
         if contiguous:
             result = ops.cat(-2, *[v for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
             n = len(self.parts)
