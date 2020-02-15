@@ -96,9 +96,78 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return Tensor(data, inputs)
 
 
+def _dummy_tensor(domain):
+    return torch.tensor(0.1 if domain.dtype == 'real' else 1).expand(domain.shape)
+
+
+class Distribution2(Funsor):
+    """
+    Different design for the Distribution Funsor wrapper,
+    closer to Gaussian or Delta in which the value is a fresh input.
+    """
+    dist_class = dist.Distribution  # defined by derived classes
+
+    def __init__(self, *args, name='value'):
+        params = tuple(zip(self._ast_fields, args))
+        inputs = OrderedDict()
+        for param_name, value in params:
+            assert isinstance(param_name, str)
+            assert isinstance(value, Funsor)
+            inputs.update(value.inputs)
+        assert isinstance(name, str) and name not in inputs
+        inputs[name] = self._infer_value_shape(cls, **params)
+        output = reals()
+        fresh = frozenset({name})
+        bound = frozenset()
+        super().__init__(inputs, output, fresh, bound)
+        self.params = params
+        self.name = name
+
+    @classmethod
+    def _infer_value_shape(cls, **kwargs):
+        # rely on the underlying distribution's logic to infer the event_shape
+        instance = cls.dist_class(**{k: _dummy_tensor(v.output) for k, v in kwargs})
+        out_shape = instance.event_shape
+        if isinstance(instance.support, torch.distributions.constraints._IntegerInterval):
+            out_dtype = instance.support.upper_bound
+        else:
+            out_dtype = 'real'
+        return Domain(dtype=out_dtype, shape=out_shape)
+
+    def eager_subs(self, subs):
+        name, sub = subs[0]
+        if isinstance(sub, Tensor):
+            inputs, tensors = align_tensors(*self.params.values())
+            data = self.dist_class(**params).log_prob(value)
+            return Tensor(data, inputs)
+        elif isinstance(sub, (Variable, str)):  # TODO change name param
+            return
+        else:
+            raise NotImplementedError("not implemented")
+
 ################################################################################
 # Distribution Wrappers
 ################################################################################
+
+def make_dist(pyro_dist_class, param_names=()):
+
+    import makefun
+
+    if not param_names:
+        param_names = tuple(pyro_dist_class.arg_constraints.keys())
+    assert all(name in pyro_dist_class.arg_constraints for name in param_names)
+
+    @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
+    def dist_init(*args, **kwargs):
+        return super().__init__(*args, **kwargs)
+
+    dist_class = DistributionMeta(pyro_dist_class.__name__, (Distribution,), {
+        'dist_class': pyro_dist_class,
+        '__init__': dist_init,
+    })
+
+    return dist_class
+
 
 class BernoulliProbs(Distribution):
     """
