@@ -7,7 +7,7 @@ from funsor.interpreter import reinterpret
 from funsor.sum_product import MarkovProduct
 from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.tensor import Tensor, function
-from funsor.util import pretty, quote
+from funsor.util import set_backend, get_backend, pretty, quote
 
 from . import (
     adjoint,
@@ -24,13 +24,12 @@ from . import (
     memoize,
     minipyro,
     montecarlo,
-    numpy,
     ops,
     sum_product,
     terms,
     testing,
-    torch
 )
+
 
 __all__ = [
     'Cat',
@@ -57,23 +56,23 @@ __all__ = [
     'find_domain',
     'function',
     'gaussian',
+    'get_backend',
     'integrate',
     'interpreter',
     'joint',
     'memoize',
     'minipyro',
     'montecarlo',
-    'numpy',
     'of_shape',
     'ops',
     'pretty',
     'quote',
     'reals',
     'reinterpret',
+    'set_backend',
     'sum_product',
     'terms',
     'testing',
     'to_data',
     'to_funsor',
-    'torch',
 ]

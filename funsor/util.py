@@ -6,7 +6,8 @@ import inspect
 import re
 import os
 
-BACKEND = os.environ.get("FUNSOR_BACKEND", "torch")
+FUNSOR_BACKEND = os.environ.get("FUNSOR_BACKEND", "numpy")
+_JAX_LOADED = True if FUNSOR_BACKEND == "jax" else False
 
 
 class lazy_property(object):
@@ -109,20 +110,43 @@ def _(arg, indent, out):
     out[-1] = i, line + ')'
 
 
-def set_default_backend(backend):
+def set_backend(backend):
     """
-    Set default backend for Funsor. Currently, only three backends
-    are supported: "numpy", "torch", "jax".
+    Set backend for Funsor. Currently, only three backends
+    are supported: "numpy", "torch", and "jax".
+
+    .. note: When `jax` backend is set, we cannot revert back to the default
+    `numpy` backend.
 
     :param str backend: either "numpy", "torch", or "jax".
     """
-    global BACKEND
-    if backend in ["torch", "numpy", "jax"]:
-        BACKEND = backend
+    global FUNSOR_BACKEND
+
+    if backend == "numpy":
+        if _JAX_LOADED:
+            raise ValueError("Cannot revert back to NumPy backend when JAX backend has been set.")
+    elif backend == "torch":
+        import torch  # noqa: F401
+        import funsor.torch  # noqa: F401
+
+        FUNSOR_BACKEND = "torch"
+    elif backend == "jax":
+        import jax  # noqa: F401
+        import funsor.jax  # noqa: F401
+
+        global _JAX_LOADED
+        _JAX_LOADED = True
+        FUNSOR_BACKEND = "jax"
     else:
         raise ValueError(f"backend should be either 'numpy', 'torch', or 'jax'"
                          ", got {backend}")
 
 
-def get_default_backend():
-    return BACKEND
+def get_backend():
+    """
+    Get the current backend of Funsor.
+
+    :return: either "numpy", "torch", or "jax".
+    :rtype: str
+    """
+    return FUNSOR_BACKEND

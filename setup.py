@@ -37,14 +37,17 @@ setup(
         'multipledispatch',
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
-        'pyro-ppl>=0.5',
         'pytest>=4.1',
-        'torch>=1.3.0',
     ],
     extras_require={
+        'torch': [
+            'torch>=1.3.0',
+            'pyro-ppl>=0.5',
+        ],
         'jax': [
             'jax==0.1.59',
             'jaxlib==0.1.38',
+            'numpyro @ git+https://github.com/google/jax.git@f2aefcf#egg=numpyro'
         ],
         'test': [
             'flake8',
