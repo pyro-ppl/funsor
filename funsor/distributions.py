@@ -17,6 +17,11 @@ from funsor.interpreter import gensym, interpretation
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
 
+BACKEND_TO_DISTRIBUTION_BACKEND = {
+    "torch": "pyro.distributions",
+    "jax": "numpyro.distributions",
+}
+
 
 def numbers_to_tensors(*args):
     """

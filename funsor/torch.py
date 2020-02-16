@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
+from multipledispatch import dispatch
 
 import funsor.ops as ops
 from funsor.util import quote
@@ -217,3 +218,10 @@ def _amin(x, dim):
 @ops.amax.register(torch.Tensor, (int, type(None)))
 def _amax(x, dim):
     return x.max() if dim is None else x.max(dim)[0]
+
+
+# TESTING
+
+@dispatch(torch.Tensor, torch.Tensor, [float])
+def allclose(a, b, rtol=1e-05, atol=1e-08):
+    return torch.allclose(a, b, rtol=rtol, atol=atol)
