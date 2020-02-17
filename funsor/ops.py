@@ -8,9 +8,12 @@ import numpy as np
 from multipledispatch import Dispatcher
 
 _builtin_abs = abs
+_builtin_all = all
+_builtin_any = any
 _builtin_max = max
 _builtin_min = min
 _builtin_pow = pow
+_builtin_sum = sum
 
 
 class Op(Dispatcher):
@@ -154,7 +157,7 @@ class GetitemOp(Op, metaclass=GetitemMeta):
 
 
 getitem = GetitemOp(0)
-
+abs = Op(_builtin_abs)
 eq = Op(operator.eq)
 ge = Op(operator.ge)
 gt = Op(operator.gt)
@@ -177,16 +180,6 @@ xor = AssociativeOp(operator.xor)
 @add.register(object)
 def _unary_add(x):
     return x.sum()
-
-
-@Op
-def abs(x):
-    return x.abs()
-
-
-@abs.register(Number)
-def _abs(x):
-    return _builtin_abs(x)
 
 
 @Op
@@ -214,6 +207,9 @@ class LogOp(TransformOp):
 
 @LogOp
 def log(x):
+    if isinstance(x, bool) or (isinstance(x, np.ndarray) and x.dtype == 'bool'):
+        # we cast to np.float64 because np.log(True) returns a np.float16 array
+        return np.log(x, dtype=np.float64)
     return np.log(x)
 
 
@@ -318,140 +314,190 @@ PRODUCT_INVERSES = {
 }
 
 
+######################
 # Numeric Array Ops
-
-@Op
-def sum(x, dim):
-    raise NotImplementedError
+######################
 
 
-@Op
-def prod(x, dim):
-    raise NotImplementedError
+all = Op(np.all)
+amax = Op(np.amax)
+amin = Op(np.amin)
+any = Op(np.any)
+clamp = Op(np.clip)
+einsum = Op(np.einsum)
+expand = Op(np.broadcast_to)
+full_like = Op(np.full_like)
+max = Op(np.maximum)
+min = Op(np.minimum)
+permute = Op(np.transpose)
+prod = Op(np.prod)
+sum = Op(np.sum)
+transpose = Op(np.swapaxes)
+unsqueeze = Op(np.expand_dims)
 
-
-@Op
-def all(x, dim):
-    raise NotImplementedError
-
-
-@Op
-def any(x, dim):
-    raise NotImplementedError
-
-
-@Op
-def logsumexp(x, dim):
-    raise NotImplementedError
-
-
-@Op
-def amin(x, dim):
-    raise NotImplementedError
-
-
-@Op
-def amax(x, dim):
-    raise NotImplementedError
-
-
-@Op
-def cholesky(x):
-    raise NotImplementedError
-
-
-@Op
-def cholesky_inverse(x):
-    raise NotImplementedError
-
-
-@Op
-def cholesky_solve(x):
-    raise NotImplementedError
-
-
-@Op
-def triangular_solve_op(x, y, upper, transpose):
-    raise NotImplementedError
-
-
-def triangular_solve(x, y, upper=False, transpose=False):
-    return triangular_solve_op(x, y, upper, transpose)
+array = (np.ndarray, np.generic)
 
 
 @Op
 def cat(dim, *x):
-    raise NotImplementedError
+    return np.concatenate(x, axis=dim)
 
 
 @Op
-def stack(dim, *x):
-    raise NotImplementedError
+def cholesky(x):
+    """
+    Like :func:`numpy.linalg.cholesky` but uses sqrt for scalar matrices.
+    """
+    if x.shape[-1] == 1:
+        return np.sqrt(x)
+    return np.linalg.cholesky(x)
 
 
 @Op
-def new_zeros(x, shape):
-    raise NotImplementedError
+def cholesky_inverse(x):
+    """
+    Like :func:`torch.cholesky_inverse` but supports batching and gradients.
+    """
+    return cholesky_solve(new_eye(x, x.shape[:-1]), x)
+
+
+# numpy version of scipy.linalg.cho_solve
+def _cho_solve(c_and_lower, b):
+    c, lower = c_and_lower
+    if lower:
+        A = c @ np.swapaxes(c, -2, -1)
+    else:
+        A = np.swapaxes(c, -2, -1) @ c
+    return np.linalg.solve(A, b)
 
 
 @Op
-def new_eye(x, shape):
-    raise NotImplementedError
-
-
-@Op
-def new_arange(x, start, stop, step):
-    raise NotImplementedError
-
-
-@Op
-def new_arange(x, stop):
-    raise NotImplementedError
-
-
-@Op
-def full_like(x, shape):
-    raise NotImplementedError
-
-
-@Op
-def unsqueeze(x, dim):
-    raise NotImplementedError
-
-
-@Op
-def expand(x, dim):
-    raise NotImplementedError
+def cholesky_solve(x, y):
+    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
+    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
+    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
+    ans = [_cho_solve((y, True), x) for (x, y) in zip(xs, ys)]
+    ans = np.stack(ans)
+    return ans.reshape(batch_shape + ans.shape[-2:])
 
 
 @Op
 def diagonal(x, dim1, dim2):
-    raise NotImplementedError
-
-
-@Op
-def transpose(x, dim0, dim1):
-    raise NotImplementedError
-
-
-@Op
-def permute(x, dims):
-    raise NotImplementedError
+    return np.diagonal(x, axis1=dim1, axis2=dim2)
 
 
 @Op
 def finfo(x):
-    raise NotImplementedError
+    return np.finfo(x.dtype)
 
 
 @Op
-def clamp(x, min, max):
-    raise NotImplementedError
+def is_tensor(x):
+    return True if isinstance(x, array) else False
 
 
 @Op
-def einsum(equation, *operands):
-    raise NotImplementedError
+def logsumexp(x, dim):
+    amax = np.amax(x, axis=dim, keepdims=True)
+    return np.log(np.sum(np.exp(x - amax), axis=dim)) + amax.squeeze(axis=dim)
+
+
+@Op
+def max(x, y):
+    return np.maximum(x, y)
+
+
+@max.register((int, float), array)
+def _max(x, y):
+    return np.clip(y, a_min=x, a_max=None)
+
+
+@max.register(array, (int, float))
+def _max(x, y):
+    return np.clip(x, a_min=y, a_max=None)
+
+
+@Op
+def min(x, y):
+    return np.minimum(x, y)
+
+
+@min.register((int, float), array)
+def _min(x, y):
+    return np.clip(y, a_min=None, a_max=x)
+
+
+@min.register(array, (int, float))
+def _min(x, y):
+    return np.clip(x, a_min=None, a_max=y)
+
+
+@Op
+def new_arange(x, start, stop, step):
+    return np.arange(start, stop, step)
+
+
+@new_arange.register(array, int)
+def _new_arange(x, stop):
+    return np.arange(stop)
+
+
+@Op
+def new_zeros(x, shape):
+    return np.zeros(shape, dtype=x.dtype)
+
+
+@Op
+def new_eye(x, shape):
+    n = shape[-1]
+    return np.broadcast_to(np.eye(n), shape + (n,))
+
+
+@Op
+def reciprocal(x):
+    result = np.clip(np.reciprocal(x), a_max=np.finfo(x.dtype).max)
+    return result
+
+
+@Op
+def safediv(x, y):
+    try:
+        finfo = np.finfo(y.dtype)
+    except ValueError:
+        finfo = np.iinfo(y.dtype)
+    return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
+
+
+@Op
+def safesub(x, y):
+    try:
+        finfo = np.finfo(y.dtype)
+    except ValueError:
+        finfo = np.iinfo(y.dtype)
+    return x + np.clip(-y, a_min=None, a_max=finfo.max)
+
+
+@Op
+def _stack(dim, *x):
+    return np.stack(x, axis=dim)
+
+
+# numpy version of scipy.linalg.solve_triangular
+def _solve_triangular(a, b, trans=0, lower=False):
+    if trans:
+        a = np.swapaxes(a, -2, -1)
+    return np.linalg.solve(a, b)
+
+
+@Op
+def triangular_solve(x, y, upper, transpose):
+    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
+    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
+    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
+    ans = [_solve_triangular(y, x, trans=int(transpose), lower=not upper)
+           for (x, y) in zip(xs, ys)]
+    ans = np.stack(ans)
+    return ans.reshape(batch_shape + ans.shape[-2:])
 
 
 __all__ = [

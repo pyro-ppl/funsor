@@ -5,7 +5,41 @@ import torch
 from multipledispatch import dispatch
 
 import funsor.ops as ops
+from funsor.adjoint import adjoint_ops
+from funsor.interpreter import children, recursion_reinterpret
+from funsor.terms import Funsor
+from funsor.tensor import Tensor
 from funsor.util import quote
+
+
+@adjoint_ops.register(Tensor, ops.AssociativeOp, ops.AssociativeOp, Funsor, torch.Tensor, tuple, object)
+def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
+    return {}
+
+
+@recursion_reinterpret.register(torch.Tensor)
+@recursion_reinterpret.register(torch.nn.Module)
+def recursion_reinterpret_ground(x):
+    return x
+
+
+@children.register(torch.Tensor)
+@children.register(torch.nn.Module)
+def _children_ground(x):
+    return ()
+
+
+@quote.register(torch.Tensor)
+def _quote(x, indent, out):
+    """
+    Work around PyTorch not supporting reproducible repr.
+    """
+    out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
+
+
+@dispatch(torch.Tensor, torch.Tensor, [float])
+def allclose(a, b, rtol=1e-05, atol=1e-08):
+    return torch.allclose(a, b, rtol=rtol, atol=atol)
 
 
 ################################################################################
@@ -23,17 +57,14 @@ ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
 ops.cholesky_solve.register(torch.Tensor, torch.Tensor)(torch.cholesky_solve)
 
 
+@ops.is_tensor.register(torch.Tensor)
+def _is_tensor(x):
+    return True
+
+
 @ops.einsum.register(str, [torch.Tensor])
 def _einsum(equation, *operands):
     return torch.einsum(equation, *operands)
-
-
-@quote.register(torch.Tensor)
-def _quote(x, indent, out):
-    """
-    Work around PyTorch not supporting reproducible repr.
-    """
-    out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
 
 
 @ops.log.register(torch.Tensor)
@@ -218,10 +249,3 @@ def _amin(x, dim):
 @ops.amax.register(torch.Tensor, (int, type(None)))
 def _amax(x, dim):
     return x.max() if dim is None else x.max(dim)[0]
-
-
-# TESTING
-
-@dispatch(torch.Tensor, torch.Tensor, [float])
-def allclose(a, b, rtol=1e-05, atol=1e-08):
-    return torch.allclose(a, b, rtol=rtol, atol=atol)

@@ -10,13 +10,12 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from functools import singledispatch
 
-import numpy
-import torch
+import numpy as np
 
 from funsor.domains import Domain
-from funsor.numpy import array
 from funsor.ops import Op
 from funsor.registry import KeyedRegistry
+from funsor.tensor import is_numeric_array, is_nn_module
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
@@ -152,12 +151,10 @@ _ground_types = (
     functools.partial,
     types.FunctionType,
     types.BuiltinFunctionType,
-    torch.Tensor,
-    torch.nn.Module,
     Domain,
     Op,
-    numpy.ufunc
-) + array
+    np.ufunc
+)
 
 
 for t in _ground_types:
@@ -221,7 +218,7 @@ for t in _ground_types:
 def is_atom(x):
     if isinstance(x, (tuple, frozenset)) and not isinstance(x, Domain):
         return len(x) == 0 or all(is_atom(c) for c in x)
-    return isinstance(x, _ground_types)
+    return isinstance(x, _ground_types) or is_numeric_array(x) or is_nn_module(x)
 
 
 def gensym(x=None):

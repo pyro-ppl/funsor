@@ -9,7 +9,6 @@ from typing import Tuple, Union
 
 import opt_einsum
 from multipledispatch.variadic import Variadic
-from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.affine import affine_inputs
@@ -33,7 +32,7 @@ from funsor.terms import (
     reflect,
     to_funsor
 )
-from funsor.util import quote
+from funsor.util import broadcast_shape, quote
 
 
 class Contraction(Funsor):

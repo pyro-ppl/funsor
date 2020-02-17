@@ -6,7 +6,6 @@ from collections import OrderedDict
 
 import pyro.distributions as dist
 import torch
-from pyro.distributions.util import broadcast_shape
 
 import funsor.delta
 import funsor.ops as ops
@@ -16,6 +15,7 @@ from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, interpretation
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
 from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
+from funsor.util import broadcast_shape
 
 BACKEND_TO_DISTRIBUTION_BACKEND = {
     "torch": "pyro.distributions",
