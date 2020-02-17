@@ -62,97 +62,39 @@ def allclose(a, b, rtol=1e-05, atol=1e-08):
 ################################################################################
 
 ops.abs.register(torch.Tensor)(torch.abs)
-ops.sqrt.register(torch.Tensor)(torch.sqrt)
-ops.exp.register(torch.Tensor)(torch.exp)
-ops.log1p.register(torch.Tensor)(torch.log1p)
-ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
-ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
-ops.full_like.register(torch.Tensor, object)(torch.full_like)
-ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
 ops.cholesky_solve.register(torch.Tensor, torch.Tensor)(torch.cholesky_solve)
+ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
+ops.exp.register(torch.Tensor)(torch.exp)
+ops.full_like.register(torch.Tensor, object)(torch.full_like)
+ops.log1p.register(torch.Tensor)(torch.log1p)
+ops.sqrt.register(torch.Tensor)(torch.sqrt)
+ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
+ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
 
 
-@ops.is_tensor.register(torch.Tensor)
-def _is_tensor(x):
-    return True
+@ops.all.register(torch.Tensor, (int, type(None)))
+def _all(x, dim):
+    return x.all() if dim is None else x.all(dim=dim)
 
 
-@ops.einsum.register(str, [torch.Tensor])
-def _einsum(equation, *operands):
-    return torch.einsum(equation, *operands)
+@ops.amax.register(torch.Tensor, (int, type(None)))
+def _amax(x, dim):
+    return x.max() if dim is None else x.max(dim)[0]
 
 
-@ops.log.register(torch.Tensor)
-def _log(x):
-    if x.dtype in (torch.bool, torch.uint8, torch.long):
-        x = x.float()
-    return x.log()
+@ops.amin.register(torch.Tensor, (int, type(None)))
+def _amin(x, dim):
+    return x.min() if dim is None else x.min(dim)[0]
 
 
-@ops.pow.register(object, torch.Tensor)
-def _pow(x, y):
-    result = x ** y
-    # work around shape bug https://github.com/pytorch/pytorch/issues/16685
-    return result.reshape(y.shape)
+@ops.any.register(torch.Tensor, (int, type(None)))
+def _any(x, dim):
+    return x.any() if dim is None else x.any(dim=dim)
 
 
-@ops.pow.register(torch.Tensor, (object, torch.Tensor))
-def _pow(x, y):
-    return x ** y
-
-
-@ops.min.register(torch.Tensor, torch.Tensor)
-def _min(x, y):
-    return torch.min(x, y)
-
-
-@ops.min.register(object, torch.Tensor)
-def _min(x, y):
-    return y.clamp(max=x)
-
-
-@ops.min.register(torch.Tensor, object)
-def _min(x, y):
-    return x.clamp(max=y)
-
-
-@ops.max.register(torch.Tensor, torch.Tensor)
-def _max(x, y):
-    return torch.max(x, y)
-
-
-@ops.max.register(object, torch.Tensor)
-def _max(x, y):
-    return y.clamp(min=x)
-
-
-@ops.max.register(torch.Tensor, object)
-def _max(x, y):
-    return x.clamp(min=y)
-
-
-@ops.reciprocal.register(torch.Tensor)
-def _reciprocal(x):
-    result = x.reciprocal().clamp(max=torch.finfo(x.dtype).max)
-    return result
-
-
-@ops.safesub.register(object, torch.Tensor)
-def _safesub(x, y):
-    try:
-        finfo = torch.finfo(y.dtype)
-    except TypeError:
-        finfo = torch.iinfo(y.dtype)
-    return x + (-y).clamp(max=finfo.max)
-
-
-@ops.safediv.register(object, torch.Tensor)
-def _safediv(x, y):
-    try:
-        finfo = torch.finfo(y.dtype)
-    except TypeError:
-        finfo = torch.iinfo(y.dtype)
-    return x * y.reciprocal().clamp(max=finfo.max)
+@ops.cat.register(int, [torch.Tensor])
+def _cat(dim, *x):
+    return torch.cat(x, dim=dim)
 
 
 @ops.cholesky.register(torch.Tensor)
@@ -181,24 +123,66 @@ def _diagonal(x, dim1, dim2):
     return x.diagonal(dim1=dim1, dim2=dim2)
 
 
-@ops.cat.register(int, [torch.Tensor])
-def _cat(dim, *x):
-    return torch.cat(x, dim=dim)
+@ops.einsum.register(str, [torch.Tensor])
+def _einsum(equation, *operands):
+    return torch.einsum(equation, *operands)
 
 
-@ops.stack.register(int, [torch.Tensor])
-def _stack(dim, *x):
-    return torch.stack(x, dim=dim)
+@ops.expand.register(torch.Tensor, tuple)
+def _expand(x, shape):
+    return x.expand(shape)
 
 
-@ops.new_zeros.register(torch.Tensor, tuple)
-def _new_zeros(x, shape):
-    return x.new_zeros(shape)
+@ops.finfo.register(torch.Tensor)
+def _finfo(x):
+    return torch.finfo(x.dtype)
 
 
-@ops.new_eye.register(torch.Tensor, tuple)
-def _new_eye(x, shape):
-    return torch.eye(shape[-1]).expand(shape + (-1,))
+@ops.is_tensor.register(torch.Tensor)
+def _is_tensor(x):
+    return True
+
+
+@ops.log.register(torch.Tensor)
+def _log(x):
+    if x.dtype in (torch.bool, torch.uint8, torch.long):
+        x = x.float()
+    return x.log()
+
+
+@ops.logsumexp.register(torch.Tensor, (int, type(None)))
+def _logsumexp(x, dim):
+    return x.reshape(-1).logsumexp(0) if dim is None else x.logsumexp(dim)
+
+
+@ops.max.register(torch.Tensor, torch.Tensor)
+def _max(x, y):
+    return torch.max(x, y)
+
+
+@ops.max.register(object, torch.Tensor)
+def _max(x, y):
+    return y.clamp(min=x)
+
+
+@ops.max.register(torch.Tensor, object)
+def _max(x, y):
+    return x.clamp(min=y)
+
+
+@ops.min.register(torch.Tensor, torch.Tensor)
+def _min(x, y):
+    return torch.min(x, y)
+
+
+@ops.min.register(object, torch.Tensor)
+def _min(x, y):
+    return y.clamp(max=x)
+
+
+@ops.min.register(torch.Tensor, object)
+def _min(x, y):
+    return x.clamp(max=y)
 
 
 @ops.new_arange.register(torch.Tensor, int, int, int)
@@ -211,9 +195,14 @@ def _new_arange(x, stop):
     return torch.arange(stop)
 
 
-@ops.expand.register(torch.Tensor, tuple)
-def _expand(x, shape):
-    return x.expand(shape)
+@ops.new_eye.register(torch.Tensor, tuple)
+def _new_eye(x, shape):
+    return torch.eye(shape[-1]).expand(shape + (-1,))
+
+
+@ops.new_zeros.register(torch.Tensor, tuple)
+def _new_zeros(x, shape):
+    return x.new_zeros(shape)
 
 
 @ops.permute.register(torch.Tensor, (tuple, list))
@@ -221,14 +210,16 @@ def _permute(x, dims):
     return x.permute(dims)
 
 
-@ops.finfo.register(torch.Tensor)
-def _finfo(x):
-    return torch.finfo(x.dtype)
+@ops.pow.register(object, torch.Tensor)
+def _pow(x, y):
+    result = x ** y
+    # work around shape bug https://github.com/pytorch/pytorch/issues/16685
+    return result.reshape(y.shape)
 
 
-@ops.sum.register(torch.Tensor, (int, type(None)))
-def _sum(x, dim):
-    return x.sum() if dim is None else x.sum(dim)
+@ops.pow.register(torch.Tensor, (object, torch.Tensor))
+def _pow(x, y):
+    return x ** y
 
 
 @ops.prod.register(torch.Tensor, (int, type(None)))
@@ -236,29 +227,38 @@ def _prod(x, dim):
     return x.prod() if dim is None else x.prod(dim=dim)
 
 
-@ops.all.register(torch.Tensor, (int, type(None)))
-def _all(x, dim):
-    return x.all() if dim is None else x.all(dim=dim)
+@ops.reciprocal.register(torch.Tensor)
+def _reciprocal(x):
+    result = x.reciprocal().clamp(max=torch.finfo(x.dtype).max)
+    return result
 
 
-@ops.any.register(torch.Tensor, (int, type(None)))
-def _any(x, dim):
-    return x.any() if dim is None else x.any(dim=dim)
+@ops.safediv.register(object, torch.Tensor)
+def _safediv(x, y):
+    try:
+        finfo = torch.finfo(y.dtype)
+    except TypeError:
+        finfo = torch.iinfo(y.dtype)
+    return x * y.reciprocal().clamp(max=finfo.max)
 
 
-@ops.logsumexp.register(torch.Tensor, (int, type(None)))
-def _logsumexp(x, dim):
-    return x.reshape(-1).logsumexp(0) if dim is None else x.logsumexp(dim)
+@ops.safesub.register(object, torch.Tensor)
+def _safesub(x, y):
+    try:
+        finfo = torch.finfo(y.dtype)
+    except TypeError:
+        finfo = torch.iinfo(y.dtype)
+    return x + (-y).clamp(max=finfo.max)
 
 
-@ops.amin.register(torch.Tensor, (int, type(None)))
-def _amin(x, dim):
-    return x.min() if dim is None else x.min(dim)[0]
+@ops.stack.register(int, [torch.Tensor])
+def _stack(dim, *x):
+    return torch.stack(x, dim=dim)
 
 
-@ops.amax.register(torch.Tensor, (int, type(None)))
-def _amax(x, dim):
-    return x.max() if dim is None else x.max(dim)[0]
+@ops.sum.register(torch.Tensor, (int, type(None)))
+def _sum(x, dim):
+    return x.sum() if dim is None else x.sum(dim)
 
 
 for upper in [False, True]:
