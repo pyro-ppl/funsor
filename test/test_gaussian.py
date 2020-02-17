@@ -3,7 +3,7 @@
 
 import itertools
 from collections import OrderedDict
-from functools import partial, reduce
+from functools import reduce
 
 import numpy as np
 import pytest
@@ -17,15 +17,11 @@ from funsor.integrate import Integrate
 from funsor.tensor import Einsum, Tensor
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, id_from_inputs, randn, random_gaussian, random_tensor
-from funsor.util import get_default_backend
+from funsor.util import get_backend
 
 assert Einsum  # flake8
 
-backend = get_default_backend()
-backend = "numpy" if backend == "jax" else backend
-randn = partial(randn, backend=backend)
-random_gaussian = partial(random_gaussian, backend=backend)
-random_tensor = partial(random_tensor, backend=backend)
+backend = get_backend()
 tensor = torch.tensor if backend == "torch" else np.array
 zeros = torch.zeros if backend == "torch" else np.zeros
 ones = torch.ones if backend == "torch" else np.ones

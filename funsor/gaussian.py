@@ -599,7 +599,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         if sampled_vars == frozenset(real_inputs):
             shape = sample_shape + self.info_vec.shape
             # TODO: revise the logic here; `key` is required for JAX normal sampler
-            white_noise = funsor.testing.randn(shape + (1,), Tensor(self.info_vec).backend)
+            white_noise = funsor.testing.randn(shape + (1,))
             white_vec = ops.triangular_solve(self.info_vec[..., None], self._precision_chol)
             sample = ops.triangular_solve(white_noise + white_vec, self._precision_chol, transpose=True)[..., 0]
             offsets, _ = _compute_offsets(real_inputs)

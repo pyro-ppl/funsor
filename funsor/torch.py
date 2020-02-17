@@ -6,6 +6,7 @@ from multipledispatch import dispatch
 
 import funsor.ops as ops
 from funsor.adjoint import adjoint_ops
+from funsor.domains import Domain
 from funsor.interpreter import children, recursion_reinterpret
 from funsor.terms import Funsor
 from funsor.tensor import Tensor
@@ -35,6 +36,20 @@ def _quote(x, indent, out):
     Work around PyTorch not supporting reproducible repr.
     """
     out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
+
+
+@dispatch(torch.Tensor)
+def to_funsor(x):
+    return Tensor(x)
+
+
+@dispatch(torch.Tensor, Domain)
+def to_funsor(x, output):
+    result = Tensor(x, dtype=output.dtype)
+    if result.output != output:
+        raise ValueError("Invalid shape: expected {}, actual {}"
+                         .format(output.shape, result.output.shape))
+    return result
 
 
 @dispatch(torch.Tensor, torch.Tensor, [float])
@@ -161,11 +176,6 @@ def _cholesky_inverse(x):
     return torch.eye(x.size(-1)).cholesky_solve(x)
 
 
-@ops.triangular_solve_op.register(torch.Tensor, torch.Tensor, bool, bool)
-def _triangular_solve(x, y, upper, transpose):
-    return x.triangular_solve(y, upper=upper, transpose=transpose).solution
-
-
 @ops.diagonal.register(torch.Tensor, int, int)
 def _diagonal(x, dim1, dim2):
     return x.diagonal(dim1=dim1, dim2=dim2)
@@ -249,3 +259,11 @@ def _amin(x, dim):
 @ops.amax.register(torch.Tensor, (int, type(None)))
 def _amax(x, dim):
     return x.max() if dim is None else x.max(dim)[0]
+
+
+for upper in [False, True]:
+    for transpose in [False, True]:
+        t = ops.TriangularSolveOp(upper, transpose)
+        @t.register(torch.Tensor, torch.Tensor)
+        def _triangular_solve(x, y):
+            return x.triangular_solve(y, upper, transpose).solution

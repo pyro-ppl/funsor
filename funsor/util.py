@@ -6,6 +6,8 @@ import inspect
 import re
 import os
 
+import numpy as np
+
 _FUNSOR_BACKEND = os.environ.get("FUNSOR_BACKEND", "numpy")
 _JAX_LOADED = True if _FUNSOR_BACKEND == "jax" else False
 
@@ -108,6 +110,14 @@ def _(arg, indent, out):
         out[-1] = i, line + ','
     i, line = out[-1]
     out[-1] = i, line + ')'
+
+
+@quote.register(np.ndarray)
+def _quote(arg, indent, out):
+    """
+    Work around NumPy ndarray not supporting reproducible repr.
+    """
+    out.append((indent, f"np.array({repr(arg.tolist())}, dtype=np.{arg.dtype})"))
 
 
 def broadcast_shape(*shapes, **kwargs):

@@ -3,7 +3,6 @@
 
 import itertools
 from collections import OrderedDict
-from functools import partial
 
 import numpy as np
 import pytest
@@ -13,17 +12,12 @@ import funsor
 import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
-from funsor.numpy import array
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import assert_close, assert_equiv, astype, check_funsor, rand, randn, random_tensor
 from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, stack, tensordot
-from funsor.util import get_default_backend
+from funsor.util import get_backend
 
-backend = get_default_backend()
-backend = "numpy" if backend == "jax" else backend
-rand = partial(rand, backend=backend)
-randn = partial(randn, backend=backend)
-random_tensor = partial(random_tensor, backend=backend)
+backend = get_backend()
 tensor = torch.tensor if backend == "torch" else np.array
 zeros = torch.zeros if backend == "torch" else np.zeros
 empty = torch.empty if backend == "torch" else np.empty
@@ -692,7 +686,6 @@ def _numeric_max_and_argmax(x):
     if torch.is_tensor(x):
         return torch.max(x, dim=-1)
     else:
-        assert isinstance(x, array)
         return np.max(x, axis=-1), np.argmax(x, axis=-1)
 
 

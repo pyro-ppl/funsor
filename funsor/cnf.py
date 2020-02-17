@@ -32,7 +32,7 @@ from funsor.terms import (
     reflect,
     to_funsor
 )
-from funsor.util import broadcast_shape, quote
+from funsor.util import broadcast_shape, get_backend, quote
 
 
 class Contraction(Funsor):
@@ -230,14 +230,14 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
-    return _eager_contract_tensors(reduced_vars, terms, backend=terms[0].backend)
+    return _eager_contract_tensors(reduced_vars, terms, backend=get_backend())
 
 
 @eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Tensor, Tensor)
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
-    backend = BACKEND_TO_LOGSUMEXP_BACKEND[terms[0].backend]
+    backend = BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()]
     return _eager_contract_tensors(reduced_vars, terms, backend=backend)
 
 

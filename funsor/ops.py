@@ -323,17 +323,13 @@ all = Op(np.all)
 amax = Op(np.amax)
 amin = Op(np.amin)
 any = Op(np.any)
-clamp = Op(np.clip)
-einsum = Op(np.einsum)
-expand = Op(np.broadcast_to)
+clamp = Dispatcher("ops.clamp")
+einsum = Dispatcher("ops.einsum")
 full_like = Op(np.full_like)
-max = Op(np.maximum)
-min = Op(np.minimum)
-permute = Op(np.transpose)
 prod = Op(np.prod)
+stack = Dispatcher("ops.stack")
 sum = Op(np.sum)
-transpose = Op(np.swapaxes)
-unsqueeze = Op(np.expand_dims)
+transpose = Dispatcher("ops.transpose")
 
 array = (np.ndarray, np.generic)
 
@@ -341,6 +337,11 @@ array = (np.ndarray, np.generic)
 @Op
 def cat(dim, *x):
     return np.concatenate(x, axis=dim)
+
+
+@clamp.register(array, object, object)
+def _clamp(x, min, max):
+    return np.clip(x, min=min, max=max)
 
 
 @Op
@@ -386,6 +387,16 @@ def diagonal(x, dim1, dim2):
     return np.diagonal(x, axis1=dim1, axis2=dim2)
 
 
+@einsum.register(str, [array])
+def _einsum(x, *operand):
+    return np.einsum(x, *operand)
+
+
+@Op
+def expand(x, shape):
+    return np.broadcast_to(x, shape)
+
+
 @Op
 def finfo(x):
     return np.finfo(x.dtype)
@@ -402,8 +413,8 @@ def logsumexp(x, dim):
     return np.log(np.sum(np.exp(x - amax), axis=dim)) + amax.squeeze(axis=dim)
 
 
-@Op
-def max(x, y):
+@max.register(array, array)
+def _max(x, y):
     return np.maximum(x, y)
 
 
@@ -417,8 +428,8 @@ def _max(x, y):
     return np.clip(x, a_min=y, a_max=None)
 
 
-@Op
-def min(x, y):
+@min.register(array, array)
+def _min(x, y):
     return np.minimum(x, y)
 
 
@@ -433,13 +444,13 @@ def _min(x, y):
 
 
 @Op
-def new_arange(x, start, stop, step):
-    return np.arange(start, stop, step)
-
-
-@new_arange.register(array, int)
-def _new_arange(x, stop):
+def new_arange(x, stop):
     return np.arange(stop)
+
+
+@new_arange.register(array, int, int, int)
+def _new_arange(x, start, stop, step):
+    return np.arange(start, stop, step)
 
 
 @Op
@@ -451,6 +462,11 @@ def new_zeros(x, shape):
 def new_eye(x, shape):
     n = shape[-1]
     return np.broadcast_to(np.eye(n), shape + (n,))
+
+
+@Op
+def permute(x, dims):
+    return np.transpose(x, axes=dims)
 
 
 @Op
@@ -477,9 +493,26 @@ def safesub(x, y):
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
 
 
-@Op
+@stack.register(int, [array])
 def _stack(dim, *x):
     return np.stack(x, axis=dim)
+
+
+@transpose.register(array, int, int)
+def _transpose(x, dim1, dim2):
+    return np.swapaxes(x, dim1, dim2)
+
+
+class TriangularSolveMeta(type):
+    _cache = {}
+
+    def __call__(cls, upper, transpose):
+        try:
+            return TriangularSolveMeta._cache[(upper, transpose)]
+        except KeyError:
+            instance = super(TriangularSolveMeta, cls).__call__(upper, transpose)
+            TriangularSolveMeta._cache[(upper, transpose)] = instance
+            return instance
 
 
 # numpy version of scipy.linalg.solve_triangular
@@ -489,15 +522,32 @@ def _solve_triangular(a, b, trans=0, lower=False):
     return np.linalg.solve(a, b)
 
 
+class TriangularSolveOp(Op, metaclass=TriangularSolveMeta):
+    def __init__(self, upper, transpose):
+        assert isinstance(upper, bool)
+        assert isinstance(transpose, bool)
+        self.upper = upper
+        self.transpose = transpose
+        super(TriangularSolveOp, self).__init__(self._default)
+        self.__name__ = f'TriangularSolveOp(upper={upper},transpose={transpose})'
+
+    def _default(self, x, y):
+        batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
+        xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
+        ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
+        ans = [_solve_triangular(y, x, trans=int(self.transpose), lower=not self.upper)
+               for (x, y) in zip(xs, ys)]
+        ans = np.stack(ans)
+        return ans.reshape(batch_shape + ans.shape[-2:])
+
+
+def triangular_solve(x, y, upper=False, transpose=False):
+    return TriangularSolveOp(upper, transpose)(x, y)
+
+
 @Op
-def triangular_solve(x, y, upper, transpose):
-    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
-    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
-    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
-    ans = [_solve_triangular(y, x, trans=int(transpose), lower=not upper)
-           for (x, y) in zip(xs, ys)]
-    ans = np.stack(ans)
-    return ans.reshape(batch_shape + ans.shape[-2:])
+def unsqueeze(x, dim):
+    return np.expand_dims(x, axis=dim)
 
 
 __all__ = [
