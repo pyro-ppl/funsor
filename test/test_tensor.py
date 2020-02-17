@@ -925,3 +925,11 @@ def test_cat_simple(output):
         ('k', bint(6)),
     ])
     assert xy.output == output
+
+
+@pytest.mark.parametrize("expand_shape", [(4, 3, 2), (4, -1, 2), (4, 3, -1), (4, -1, -1)])
+@pytest.mark.parametrize("backend", ["torch", "numpy"])
+def test_ops_expand(expand_shape, backend):
+    x = randn((3, 2), backend)
+    actual = ops.expand(x, expand_shape)
+    assert actual.shape == (4, 3, 2)
