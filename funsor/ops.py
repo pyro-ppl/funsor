@@ -332,6 +332,7 @@ prod = Op(np.prod)
 stack = Dispatcher("ops.stack")
 sum = Op(np.sum)
 transpose = Dispatcher("ops.transpose")
+triangular_solve_op = Dispatcher("ops.triangular_solve_op")
 
 array = (np.ndarray, np.generic)
 
@@ -510,18 +511,6 @@ def _transpose(x, dim1, dim2):
     return np.swapaxes(x, dim1, dim2)
 
 
-class TriangularSolveMeta(type):
-    _cache = {}
-
-    def __call__(cls, upper, transpose):
-        try:
-            return TriangularSolveMeta._cache[(upper, transpose)]
-        except KeyError:
-            instance = super(TriangularSolveMeta, cls).__call__(upper, transpose)
-            TriangularSolveMeta._cache[(upper, transpose)] = instance
-            return instance
-
-
 # numpy version of scipy.linalg.solve_triangular
 def _solve_triangular(a, b, trans=0, lower=False):
     if trans:
@@ -529,27 +518,21 @@ def _solve_triangular(a, b, trans=0, lower=False):
     return np.linalg.solve(a, b)
 
 
-class TriangularSolveOp(Op, metaclass=TriangularSolveMeta):
-    def __init__(self, upper, transpose):
-        assert isinstance(upper, bool)
-        assert isinstance(transpose, bool)
-        self.upper = upper
-        self.transpose = transpose
-        super(TriangularSolveOp, self).__init__(self._default)
-        self.__name__ = f'TriangularSolveOp(upper={upper},transpose={transpose})'
-
-    def _default(self, x, y):
-        batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
-        xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
-        ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
-        ans = [_solve_triangular(y, x, trans=int(self.transpose), lower=not self.upper)
-               for (x, y) in zip(xs, ys)]
-        ans = np.stack(ans)
-        return ans.reshape(batch_shape + ans.shape[-2:])
+# FIXME: contruct TriangularSolveMeta and TriangularSolveOp to cache
+# implementations of each value of transpose and upper
+@triangular_solve_op.register(array, array, bool, bool)
+def _triangular_solve(x, y, transpose, upper):
+    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
+    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
+    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
+    ans = [_solve_triangular(y, x, trans=int(transpose), lower=not upper)
+           for (x, y) in zip(xs, ys)]
+    ans = np.stack(ans)
+    return ans.reshape(batch_shape + ans.shape[-2:])
 
 
 def triangular_solve(x, y, upper=False, transpose=False):
-    return TriangularSolveOp(upper, transpose)(x, y)
+    return triangular_solve_op(x, y, upper, transpose)
 
 
 @Op

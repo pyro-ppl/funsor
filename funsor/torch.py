@@ -263,9 +263,6 @@ def _sum(x, dim):
     return x.sum() if dim is None else x.sum(dim)
 
 
-for upper in [False, True]:
-    for transpose in [False, True]:
-        t = ops.TriangularSolveOp(upper, transpose)
-        @t.register(torch.Tensor, torch.Tensor)
-        def _triangular_solve(x, y):
-            return x.triangular_solve(y, upper, transpose).solution
+@ops.triangular_solve_op.register(torch.Tensor, torch.Tensor, bool, bool)
+def _triangular_solve(x, y, upper, transpose):
+    return x.triangular_solve(y, upper, transpose).solution
