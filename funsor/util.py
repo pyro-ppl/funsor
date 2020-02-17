@@ -6,8 +6,8 @@ import inspect
 import re
 import os
 
-FUNSOR_BACKEND = os.environ.get("FUNSOR_BACKEND", "numpy")
-JAX_LOADED = True if FUNSOR_BACKEND == "jax" else False
+_FUNSOR_BACKEND = os.environ.get("FUNSOR_BACKEND", "numpy")
+_JAX_LOADED = True if _FUNSOR_BACKEND == "jax" else False
 
 
 class lazy_property(object):
@@ -144,21 +144,21 @@ def set_backend(backend):
 
     :param str backend: either "numpy", "torch", or "jax".
     """
-    global FUNSOR_BACKEND, JAX_LOADED
+    global _FUNSOR_BACKEND, _JAX_LOADED
 
     if backend == "numpy":
-        if JAX_LOADED:
+        if _JAX_LOADED:
             raise ValueError("Cannot revert back to NumPy backend when JAX backend has been set.")
         else:
-            FUNSOR_BACKEND = "numpy"
+            _FUNSOR_BACKEND = "numpy"
     elif backend == "torch":
-        FUNSOR_BACKEND = "torch"
+        _FUNSOR_BACKEND = "torch"
 
         import torch  # noqa: F401
         import funsor.torch  # noqa: F401
     elif backend == "jax":
-        FUNSOR_BACKEND = "jax"
-        JAX_LOADED = True
+        _FUNSOR_BACKEND = "jax"
+        _JAX_LOADED = True
 
         import jax  # noqa: F401
         import funsor.jax  # noqa: F401
@@ -174,11 +174,11 @@ def get_backend():
     :return: either "numpy", "torch", or "jax".
     :rtype: str
     """
-    return FUNSOR_BACKEND
+    return _FUNSOR_BACKEND
 
 
 def get_tracing_state():
-    if FUNSOR_BACKEND == "torch":
+    if _FUNSOR_BACKEND == "torch":
         import torch
 
         return torch._C._get_tracing_state()

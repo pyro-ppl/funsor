@@ -10,14 +10,12 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
-import torch
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.numpy import array
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -33,20 +31,26 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec, get_default_backend, quote
-
-
-numeric_array = (torch.Tensor, array)
+from funsor.util import getargspec, get_backend, get_tracing_state, quote
 
 
 def get_default_prototype():
-    backend = get_default_backend()
+    backend = get_backend()
     if backend == "torch":
+        import torch
+
         return torch.tensor([])
-    elif backend == "numpy" or backend == "jax":
-        return np.array([])
     else:
-        raise RuntimeError(f"The backend {backend} is not supported.")
+        return np.array([])
+
+
+def is_nn_module(x):
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return isinstance(x, torch.nn.Module)
+    return False
 
 
 def _nameof(fn):
@@ -56,7 +60,10 @@ def _nameof(fn):
 @contextmanager
 def ignore_jit_warnings():
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+        if get_backend() == "torch":
+            import torch
+
+            warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
         yield
 
 
@@ -95,9 +102,9 @@ class Tensor(Funsor, metaclass=TensorMeta):
     :type dtype: int or the string "real".
     """
     def __init__(self, data, inputs=None, dtype="real"):
-        assert isinstance(data, numeric_array)
+        assert ops.is_tensor(data)
         assert isinstance(inputs, tuple)
-        if not torch._C._get_tracing_state():
+        if not get_tracing_state():
             assert len(inputs) <= len(data.shape)
             for (k, d), size in zip(inputs, data.shape):
                 assert d.dtype == size
@@ -297,6 +304,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         flat_logits = logits.reshape(batch_shape + (-1,))
         sample_shape = tuple(d.dtype for d in sample_inputs.values())
         # TODO: make distribution agnostic
+        import torch
         flat_sample = torch.distributions.Categorical(logits=flat_logits).sample(sample_shape)
         assert flat_sample.shape == sample_shape + batch_shape
         results = []
@@ -389,20 +397,13 @@ class Tensor(Funsor, metaclass=TensorMeta):
         subs = tuple(subs)
         return substitute(x, subs)
 
-    @property
-    def backend(self):
-        if torch.is_tensor(self.data):
-            return "torch"
-        else:
-            return "numpy"
 
-
-@dispatch(numeric_array)
+@dispatch((np.ndarray, np.generic))
 def to_funsor(x):
     return Tensor(x)
 
 
-@dispatch(numeric_array, Domain)
+@dispatch((np.ndarray, np.generic), Domain)
 def to_funsor(x, output):
     result = Tensor(x, dtype=output.dtype)
     if result.output != output:
@@ -782,7 +783,7 @@ class _Memoized(object):
 
 
 def _function(inputs, output, fn):
-    if isinstance(fn, torch.nn.Module):
+    if is_nn_module(fn):
         names = getargspec(fn.forward)[0][1:]
     else:
         names = getargspec(fn)[0]
