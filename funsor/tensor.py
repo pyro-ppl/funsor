@@ -31,7 +31,7 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec, get_backend, get_tracing_state, quote
+from funsor.util import getargspec, get_backend, get_tracing_state, is_nn_module, quote
 
 
 def get_default_prototype():
@@ -42,15 +42,6 @@ def get_default_prototype():
         return torch.tensor([])
     else:
         return np.array([])
-
-
-def is_nn_module(x):
-    backend = get_backend()
-    if backend == "torch":
-        import torch
-
-        return isinstance(x, torch.nn.Module)
-    return False
 
 
 def _nameof(fn):

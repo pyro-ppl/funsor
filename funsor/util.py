@@ -194,3 +194,12 @@ def get_tracing_state():
         return torch._C._get_tracing_state()
     else:
         return None
+
+
+def is_nn_module(x):
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return isinstance(x, torch.nn.Module)
+    return False

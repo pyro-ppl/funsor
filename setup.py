@@ -37,12 +37,15 @@ setup(
         'multipledispatch',
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
+        # TODO: remove pyro-ppl and torch when funsor.minipyro and funsor.pyro is refactored
+        'pyro-ppl>=0.5',
         'pytest>=4.1',
+        'torch>=1.3.0',
     ],
     extras_require={
         'torch': [
-            'torch>=1.3.0',
             'pyro-ppl>=0.5',
+            'torch>=1.3.0',
         ],
         'jax': [
             'jax==0.1.59',
