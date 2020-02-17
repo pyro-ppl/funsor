@@ -1,16 +1,14 @@
-from funsor.numpy import USING_JAX, np
+import numpy as np
 
 
 def einsum(equation, *operands):
     """
     Log-sum-exp implementation of einsum.
     """
-    if not USING_JAX:
-        # NB: rename symbols to support NumPy, which allow only symbols a-z.
-        # This is not required when using JAX.
-        symbols = sorted(set(equation) - set(',->'))
-        rename = dict(zip(symbols, 'abcdefghijklmnopqrstuvwxyz'))
-        equation = ''.join(rename.get(s, s) for s in equation)
+    # NB: rename symbols to support NumPy, which allow only symbols a-z.
+    symbols = sorted(set(equation) - set(',->'))
+    rename = dict(zip(symbols, 'abcdefghijklmnopqrstuvwxyz'))
+    equation = ''.join(rename.get(s, s) for s in equation)
 
     inputs, output = equation.split('->')
     if inputs == output:

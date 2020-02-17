@@ -323,7 +323,9 @@ all = Op(np.all)
 amax = Op(np.amax)
 amin = Op(np.amin)
 any = Op(np.any)
+cat = Dispatcher("ops.cat")
 clamp = Dispatcher("ops.clamp")
+diagonal = Dispatcher("ops.diagonal")
 einsum = Dispatcher("ops.einsum")
 full_like = Op(np.full_like)
 prod = Op(np.prod)
@@ -334,8 +336,8 @@ transpose = Dispatcher("ops.transpose")
 array = (np.ndarray, np.generic)
 
 
-@Op
-def cat(dim, *x):
+@cat.register(int, [array])
+def _cat(dim, *x):
     return np.concatenate(x, axis=dim)
 
 
@@ -382,8 +384,8 @@ def cholesky_solve(x, y):
     return ans.reshape(batch_shape + ans.shape[-2:])
 
 
-@Op
-def diagonal(x, dim1, dim2):
+@diagonal.register(array, int, int)
+def _diagonal(x, dim1, dim2):
     return np.diagonal(x, axis1=dim1, axis2=dim2)
 
 
@@ -394,6 +396,11 @@ def _einsum(x, *operand):
 
 @Op
 def expand(x, shape):
+    prepend_dim = len(shape) - np.ndim(x)
+    assert prepend_dim >= 0
+    shape = shape[:prepend_dim] + tuple(dx if size == -1 else size
+                                        for dx, size in zip(np.shape(x), shape[prepend_dim:]))
+    return np.broadcast_to(x, shape)
     return np.broadcast_to(x, shape)
 
 

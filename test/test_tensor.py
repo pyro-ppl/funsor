@@ -65,9 +65,6 @@ def test_to_data_error():
 def test_cons_hash():
     x = randn((3, 3))
     assert Tensor(x) is Tensor(x)
-    if backend == "numpy":
-        x = np.array(x)
-        assert Tensor(x) is Tensor(x)
 
 
 def test_indexing():
@@ -302,7 +299,7 @@ def test_unary(symbol, dims):
     if symbol == '~':
         data = astype(data, 'uint8')
         dtype = 2
-    if backend == "numpy" and symbol in ["abs", "sqrt", "exp", "log", "log1p", "sigmoid"]:
+    if backend != "torch" and symbol in ["abs", "sqrt", "exp", "log", "log1p", "sigmoid"]:
         expected_data = getattr(ops, symbol)(data)
     else:
         expected_data = unary_eval(symbol, data)
@@ -928,8 +925,7 @@ def test_cat_simple(output):
 
 
 @pytest.mark.parametrize("expand_shape", [(4, 3, 2), (4, -1, 2), (4, 3, -1), (4, -1, -1)])
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_ops_expand(expand_shape, backend):
-    x = randn((3, 2), backend)
+def test_ops_expand(expand_shape):
+    x = randn((3, 2))
     actual = ops.expand(x, expand_shape)
     assert actual.shape == (4, 3, 2)

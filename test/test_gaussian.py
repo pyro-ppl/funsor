@@ -30,6 +30,7 @@ empty = torch.empty if backend == "torch" else np.empty
 
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+@pytest.mark.skipif(backend != "torch", reason="The test is specific to 'torch' backend")
 def test_cholesky_solve(batch_shape, size):
     b = torch.randn(batch_shape + (size, 5))
     x = torch.randn(batch_shape + (size, size))
@@ -53,6 +54,7 @@ def naive_cholesky_inverse(u):
 @pytest.mark.parametrize("requires_grad", [False, True])
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+@pytest.mark.skipif(backend != "torch", reason="The test is specific to 'torch' backend")
 def test_cholesky_inverse(batch_shape, size, requires_grad):
     x = torch.randn(batch_shape + (size, size))
     x = x.transpose(-1, -2).matmul(x)
