@@ -208,9 +208,9 @@ class LogOp(TransformOp):
 @LogOp
 def log(x):
     if isinstance(x, bool) or (isinstance(x, np.ndarray) and x.dtype == 'bool'):
-        # we cast to np.float64 because np.log(True) returns a np.float16 array
-        return np.log(x, dtype=np.float64)
-    return np.log(x)
+        return np.where(x, 0., float('-inf'))
+    with np.errstate(divide='ignore'):  # skip the warning of log(0.)
+        return np.log(x)
 
 
 @log.set_log_abs_det_jacobian
@@ -344,7 +344,7 @@ def _cat(dim, *x):
 
 @clamp.register(array, object, object)
 def _clamp(x, min, max):
-    return np.clip(x, min=min, max=max)
+    return np.clip(x, a_min=min, a_max=max)
 
 
 @Op
@@ -385,6 +385,11 @@ def cholesky_solve(x, y):
     return ans.reshape(batch_shape + ans.shape[-2:])
 
 
+@Op
+def detach(x):
+    return x
+
+
 @diagonal.register(array, int, int)
 def _diagonal(x, dim1, dim2):
     return np.diagonal(x, axis1=dim1, axis2=dim2)
@@ -411,14 +416,16 @@ def finfo(x):
 
 
 @Op
-def is_tensor(x):
+def is_numeric_array(x):
     return True if isinstance(x, array) else False
 
 
 @Op
 def logsumexp(x, dim):
     amax = np.amax(x, axis=dim, keepdims=True)
-    return np.log(np.sum(np.exp(x - amax), axis=dim)) + amax.squeeze(axis=dim)
+    # treat the case x = -inf
+    amax = np.where(np.isfinite(amax), amax, 0.)
+    return log(np.sum(np.exp(x - amax), axis=dim)) + amax.squeeze(axis=dim)
 
 
 @max.register(array, array)
@@ -477,8 +484,8 @@ def permute(x, dims):
     return np.transpose(x, axes=dims)
 
 
-@Op
-def reciprocal(x):
+@reciprocal.register(array)
+def _reciprocal(x):
     result = np.clip(np.reciprocal(x), a_max=np.finfo(x.dtype).max)
     return result
 
@@ -568,6 +575,7 @@ __all__ = [
     'cholesky_inverse',
     'cholesky_solve',
     'clamp',
+    'detach',
     'diagonal',
     'einsum',
     'eq',
@@ -579,6 +587,7 @@ __all__ = [
     'getitem',
     'gt',
     'invert',
+    'is_numeric_array',
     'le',
     'log',
     'log1p',

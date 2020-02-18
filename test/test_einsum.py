@@ -5,6 +5,7 @@ from collections import OrderedDict
 
 import opt_einsum
 import pytest
+# TODO: drop import torch/pyro
 import torch
 from pyro.ops.contract import einsum as pyro_einsum
 

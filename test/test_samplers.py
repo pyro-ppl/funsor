@@ -5,6 +5,7 @@ import itertools
 from collections import OrderedDict
 
 import pytest
+# TODO: make torch optional
 import torch
 from torch.autograd import grad
 

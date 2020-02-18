@@ -4,13 +4,12 @@
 from collections import OrderedDict
 
 import pytest
-import torch
 
 from funsor.affine import extract_affine, is_affine
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
 from funsor.terms import Number, Unary, Variable
-from funsor.testing import assert_close, check_funsor, random_gaussian, random_tensor
+from funsor.testing import assert_close, check_funsor, ones, randn, random_gaussian, random_tensor  # noqa: F401
 from funsor.tensor import Einsum, Tensor
 
 assert random_gaussian  # flake8
@@ -30,7 +29,7 @@ SMOKE_TESTS = [
 @pytest.mark.parametrize('expr,expected_type', SMOKE_TESTS)
 def test_smoke(expr, expected_type):
 
-    t = Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
+    t = Tensor(randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
     assert isinstance(t, Tensor)
 
     n = Number(2.)
@@ -62,7 +61,7 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 
     expected_output = reals()
 
-    t = Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
+    t = Tensor(randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
     assert isinstance(t, Tensor)
 
     n = Number(2.)
@@ -89,15 +88,15 @@ def test_affine_subs(expr, expected_type, expected_inputs):
     "Variable('x', reals()) + 0.5",
     "Variable('x', reals(2, 3)) + Variable('y', reals(2, 3))",
     "Variable('x', reals(2)) + Variable('y', reals(2))",
-    "Variable('x', reals(2)) + torch.ones(2)",
-    "Variable('x', reals(2)) * torch.randn(2)",
-    "Variable('x', reals(2)) * torch.randn(2) + torch.ones(2)",
-    "Variable('x', reals(2)) + Tensor(torch.randn(3, 2), OrderedDict(i=bint(3)))",
+    "Variable('x', reals(2)) + ones(2)",
+    "Variable('x', reals(2)) * randn(2)",
+    "Variable('x', reals(2)) * randn(2) + ones(2)",
+    "Variable('x', reals(2)) + Tensor(randn(3, 2), OrderedDict(i=bint(3)))",
     "Einsum('abcd,ac->bd',"
-    " (Tensor(torch.randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
-    "Tensor(torch.randn(3, 5)) + Einsum('abcd,ac->bd',"
-    " (Tensor(torch.randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
-    "Variable('x', reals(2, 8))[0] + torch.randn(8)",
+    " (Tensor(randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
+    "Tensor(randn(3, 5)) + Einsum('abcd,ac->bd',"
+    " (Tensor(randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
+    "Variable('x', reals(2, 8))[0] + randn(8)",
     "Variable('x', reals(2, 8))[Variable('i', bint(2))] / 4 - 3.5",
 ])
 def test_extract_affine(expr):

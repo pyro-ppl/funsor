@@ -7,7 +7,6 @@ import numbers
 import operator
 from collections import OrderedDict, namedtuple
 from functools import reduce
-from importlib import import_module
 
 import numpy as np
 import opt_einsum
@@ -18,7 +17,6 @@ from multipledispatch.variadic import Variadic
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
-from funsor.distributions import BACKEND_TO_DISTRIBUTION_BACKEND
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.terms import Funsor, Number
@@ -199,7 +197,8 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
         shape = tuple(sizes[dim] for dim in dims)
         x = randn(shape)
         operands.append(x if fill is None else (x - x + fill))
-        operands[-1]._pyro_dims = dims
+        if get_backend() == "torch":
+            operands[-1]._pyro_dims = dims
     funsor_operands = [
         Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)
@@ -217,7 +216,13 @@ def assert_equiv(x, y):
     check_funsor(x, y.inputs, y.output, y.data)
 
 
-def rand(shape):
+def rand(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
     backend = get_backend()
     if backend == "torch":
         import torch
@@ -228,7 +233,13 @@ def rand(shape):
         return np.array(np.random.rand(*shape))
 
 
-def randn(shape):
+def randn(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
     backend = get_backend()
     if backend == "torch":
         import torch
@@ -237,6 +248,64 @@ def randn(shape):
     else:
         # work around numpy random returns float object instead of np.ndarray object when shape == ()
         return np.array(np.random.randn(*shape))
+
+
+def zeros(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.zeros(shape)
+    else:
+        return np.zeros(shape)
+
+
+def ones(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.ones(shape)
+    else:
+        return np.ones(shape)
+
+
+def empty(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.empty(shape)
+    else:
+        return np.empty(shape)
+
+
+def numeric_array(x):
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.tensor(x)
+    else:
+        return np.array(x)
 
 
 def astype(x, dtype):
@@ -290,14 +359,21 @@ def random_mvn(batch_shape, dim, diag=False):
     """
     Generate a random :class:`torch.distributions.MultivariateNormal` with given shape.
     """
+    backend = get_backend()
     rank = dim + dim
     loc = randn(batch_shape + (dim,))
     cov = randn(batch_shape + (dim, rank))
     cov = cov @ ops.transpose(cov, -1, -2)
     if diag:
         cov = cov * ops.new_eye(cov, (dim,))
-    dist = import_module(BACKEND_TO_DISTRIBUTION_BACKEND[get_backend()])
-    return dist.MultivariateNormal(loc, cov)
+    if backend == "torch":
+        import pyro
+
+        return pyro.distributions.MultivariateNormal(loc, cov)
+    elif backend == "jax":
+        import numpyro
+
+        return numpyro.distributions.MultivariateNormal(loc, cov)
 
 
 def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):

@@ -120,6 +120,11 @@ def _cholesky_inverse(x):
     return torch.eye(x.size(-1)).cholesky_solve(x)
 
 
+@ops.detach.register(torch.Tensor)
+def _detach(x):
+    return x.detach()
+
+
 @ops.diagonal.register(torch.Tensor, int, int)
 def _diagonal(x, dim1, dim2):
     return x.diagonal(dim1=dim1, dim2=dim2)
@@ -140,8 +145,8 @@ def _finfo(x):
     return torch.finfo(x.dtype)
 
 
-@ops.is_tensor.register(torch.Tensor)
-def _is_tensor(x):
+@ops.is_numeric_array.register(torch.Tensor)
+def _is_numeric_array(x):
     return True
 
 

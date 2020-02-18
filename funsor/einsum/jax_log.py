@@ -1,4 +1,9 @@
+# Copyright Contributors to the Pyro project.
+# SPDX-License-Identifier: Apache-2.0
+
 import jax.numpy as np
+
+from funsor.einsum.util import Tensordot
 
 
 def einsum(equation, *operands):
@@ -33,3 +38,9 @@ def einsum(equation, *operands):
 
     result = np.log(np.einsum(equation, *exp_operands))
     return sum(shifts + [result])
+
+
+tensordot = Tensordot(einsum)
+transpose = np.transpose
+
+__all__ = ["einsum", "tensordot", "transpose"]

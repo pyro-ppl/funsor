@@ -5,9 +5,7 @@ import itertools
 from collections import OrderedDict
 from functools import reduce
 
-import numpy as np
 import pytest
-import torch
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
@@ -16,22 +14,19 @@ from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
 from funsor.tensor import Einsum, Tensor
 from funsor.terms import Number, Variable
-from funsor.testing import assert_close, id_from_inputs, randn, random_gaussian, random_tensor
+from funsor.testing import (assert_close, id_from_inputs, ones, randn, random_gaussian,
+                            random_tensor, zeros, numeric_array)
 from funsor.util import get_backend
 
 assert Einsum  # flake8
 
-backend = get_backend()
-tensor = torch.tensor if backend == "torch" else np.array
-zeros = torch.zeros if backend == "torch" else np.zeros
-ones = torch.ones if backend == "torch" else np.ones
-empty = torch.empty if backend == "torch" else np.empty
-
 
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
-@pytest.mark.skipif(backend != "torch", reason="The test is specific to 'torch' backend")
+@pytest.mark.skipif(get_backend() != "torch", reason="The test is specific to 'torch' backend")
 def test_cholesky_solve(batch_shape, size):
+    import torch
+
     b = torch.randn(batch_shape + (size, 5))
     x = torch.randn(batch_shape + (size, size))
     x = x.transpose(-1, -2).matmul(x)
@@ -44,6 +39,8 @@ def test_cholesky_solve(batch_shape, size):
 
 
 def naive_cholesky_inverse(u):
+    import torch
+
     shape = u.shape
     return torch.stack([
         part.cholesky_inverse()
@@ -54,8 +51,10 @@ def naive_cholesky_inverse(u):
 @pytest.mark.parametrize("requires_grad", [False, True])
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
-@pytest.mark.skipif(backend != "torch", reason="The test is specific to 'torch' backend")
+@pytest.mark.skipif(get_backend() != "torch", reason="The test is specific to 'torch' backend")
 def test_cholesky_inverse(batch_shape, size, requires_grad):
+    import torch
+
     x = torch.randn(batch_shape + (size, size))
     x = x.transpose(-1, -2).matmul(x)
     u = x.cholesky()
@@ -167,38 +166,38 @@ def test_block_matrix_batched(batch_shape, sparse):
 ])
 def test_smoke(expr, expected_type):
     g1 = Gaussian(
-        info_vec=tensor([[0.0, 0.1, 0.2],
-                         [2.0, 3.0, 4.0]]),
-        precision=tensor([[[1.0, 0.1, 0.2],
-                           [0.1, 1.0, 0.3],
-                           [0.2, 0.3, 1.0]],
-                          [[1.0, 0.1, 0.2],
-                           [0.1, 1.0, 0.3],
-                           [0.2, 0.3, 1.0]]]),
+        info_vec=numeric_array([[0.0, 0.1, 0.2],
+                               [2.0, 3.0, 4.0]]),
+        precision=numeric_array([[[1.0, 0.1, 0.2],
+                                  [0.1, 1.0, 0.3],
+                                  [0.2, 0.3, 1.0]],
+                                 [[1.0, 0.1, 0.2],
+                                 [0.1, 1.0, 0.3],
+                                 [0.2, 0.3, 1.0]]]),
         inputs=OrderedDict([('i', bint(2)), ('x', reals(3))]))
     assert isinstance(g1, Gaussian)
 
     g2 = Gaussian(
-        info_vec=tensor([[0.0, 0.1],
-                         [2.0, 3.0]]),
-        precision=tensor([[[1.0, 0.2],
-                           [0.2, 1.0]],
-                          [[1.0, 0.2],
-                           [0.2, 1.0]]]),
+        info_vec=numeric_array([[0.0, 0.1],
+                                [2.0, 3.0]]),
+        precision=numeric_array([[[1.0, 0.2],
+                                  [0.2, 1.0]],
+                                 [[1.0, 0.2],
+                                  [0.2, 1.0]]]),
         inputs=OrderedDict([('i', bint(2)), ('y', reals(2))]))
     assert isinstance(g2, Gaussian)
 
-    shift = Tensor(tensor([-1., 1.]), OrderedDict([('i', bint(2))]))
+    shift = Tensor(numeric_array([-1., 1.]), OrderedDict([('i', bint(2))]))
     assert isinstance(shift, Tensor)
 
     i0 = Number(1, 2)
     assert isinstance(i0, Number)
 
-    x0 = Tensor(tensor([0.5, 0.6, 0.7]))
+    x0 = Tensor(numeric_array([0.5, 0.6, 0.7]))
     assert isinstance(x0, Tensor)
 
-    y0 = Tensor(tensor([[0.2, 0.3],
-                        [0.8, 0.9]]),
+    y0 = Tensor(numeric_array([[0.2, 0.3],
+                               [0.8, 0.9]]),
                 inputs=OrderedDict([('i', bint(2))]))
     assert isinstance(y0, Tensor)
 
@@ -540,11 +539,11 @@ def test_integrate_gaussian(int_inputs, real_inputs):
 
 @pytest.mark.xfail(reason="numerically unstable")
 def test_mc_plate_gaussian(backend):
-    log_measure = Gaussian(tensor([0.]), tensor([[1.]]),
-                           (('loc', reals()),)) + tensor(-0.9189)
+    log_measure = Gaussian(numeric_array([0.]), numeric_array([[1.]]),
+                           (('loc', reals()),)) + numeric_array(-0.9189)
     integrand = Gaussian(randn((100, 1)) + 3., ones((100, 1, 1)),
                          (('data', bint(100)), ('loc', reals())))
 
     res = Integrate(log_measure.sample('loc'), integrand, 'loc')
     res = res.reduce(ops.mul, 'data')
-    assert not torch.isinf(res).any()
+    assert not ops.any((res == float('inf')) | (res == float('-inf')))

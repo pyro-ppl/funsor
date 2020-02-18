@@ -13,14 +13,10 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
-from funsor.testing import assert_close, assert_equiv, astype, check_funsor, rand, randn, random_tensor
+from funsor.testing import (assert_close, assert_equiv, astype, check_funsor, empty,
+                            numeric_array, rand, randn, random_tensor, zeros)
 from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, stack, tensordot
 from funsor.util import get_backend
-
-backend = get_backend()
-tensor = torch.tensor if backend == "torch" else np.array
-zeros = torch.zeros if backend == "torch" else np.zeros
-empty = torch.empty if backend == "torch" else np.empty
 
 
 @pytest.mark.parametrize('output_shape', [(), (2,), (3, 2)], ids=str)
@@ -34,12 +30,17 @@ def test_quote(output_shape, inputs):
     assert_close(eval(s), x)
 
 
+def _get_dtypes(backend):
+    if backend == "torch":
+        import torch
+
+        return [torch.float, torch.long, torch.uint8, torch.bool]
+    else:
+        return [np.float32, np.float64, np.int32, np.int64, np.uint8]
+
+
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
-@pytest.mark.parametrize(
-    'dtype',
-    [torch.float, torch.long, torch.uint8, torch.bool] if backend == "torch"
-    else [np.float32, np.float64, np.int32, np.int64, np.uint8]
- )
+@pytest.mark.parametrize('dtype', _get_dtypes(get_backend()))
 def test_to_funsor(shape, dtype):
     t = astype(randn(shape), dtype)
     f = funsor.to_funsor(t)
@@ -96,8 +97,8 @@ def test_advanced_indexing_shape():
         ('i', bint(I)),
         ('j', bint(J)),
     ]))
-    m = Tensor(tensor([2, 3]), OrderedDict([('m', bint(M))]), I)
-    n = Tensor(tensor([0, 1, 1]), OrderedDict([('n', bint(N))]), J)
+    m = Tensor(numeric_array([2, 3]), OrderedDict([('m', bint(M))]), I)
+    n = Tensor(numeric_array([0, 1, 1]), OrderedDict([('n', bint(N))]), J)
     assert x.data.shape == (I, J)
 
     check_funsor(x(i=m), {'j': bint(J), 'm': bint(M)}, reals())
@@ -299,7 +300,7 @@ def test_unary(symbol, dims):
     if symbol == '~':
         data = astype(data, 'uint8')
         dtype = 2
-    if backend != "torch" and symbol in ["abs", "sqrt", "exp", "log", "log1p", "sigmoid"]:
+    if get_backend() == "torch" and symbol in ["abs", "sqrt", "exp", "log", "log1p", "sigmoid"]:
         expected_data = getattr(ops, symbol)(data)
     else:
         expected_data = unary_eval(symbol, data)
@@ -645,27 +646,24 @@ def test_all_equal(shape):
 
 
 def test_function_matmul():
-    _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
-
     @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
-        return _numeric_matmul(x, y)
+        return x @ y
 
     check_funsor(matmul, {'x': reals(3, 4), 'y': reals(4, 5)}, reals(3, 5))
 
     x = Tensor(randn((3, 4)))
     y = Tensor(randn((4, 5)))
     actual = matmul(x, y)
-    expected_data = _numeric_matmul(x.data, y.data)
+    expected_data = x.data @ y.data
     check_funsor(actual, {}, reals(3, 5), expected_data)
 
 
 def test_function_lazy_matmul():
-    _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
 
     @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
-        return _numeric_matmul(x, y)
+        return x @ y
 
     x_lazy = Variable('x', reals(3, 4))
     y = Tensor(randn((4, 5)))
@@ -675,7 +673,7 @@ def test_function_lazy_matmul():
 
     x = Tensor(randn((3, 4)))
     actual = actual_lazy(x=x)
-    expected_data = _numeric_matmul(x.data, y.data)
+    expected_data = x.data @ y.data
     check_funsor(actual, {}, reals(3, 5), expected_data)
 
 
@@ -726,10 +724,9 @@ def test_function_nested_lazy():
 
 
 def test_function_of_numeric_array():
-    _numeric_matmul = torch.matmul if backend == "torch" else np.matmul
     x = randn((4, 3))
     y = randn((3, 2))
-    f = funsor.function(reals(4, 3), reals(3, 2), reals(4, 2))(_numeric_matmul)
+    f = funsor.function(reals(4, 3), reals(3, 2), reals(4, 2))(ops.matmul)
     actual = f(x, y)
     expected = f(Tensor(x), Tensor(y))
     assert_close(actual, expected)
@@ -769,13 +766,12 @@ EINSUM_EXAMPLES = [
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 def test_einsum(equation):
-    einsum = torch.einsum if backend == "torch" else np.einsum
     sizes = dict(a=2, b=3, c=4)
     inputs, outputs = equation.split('->')
     inputs = inputs.split(',')
     tensors = [randn(tuple(sizes[d] for d in dims)) for dims in inputs]
     funsors = [Tensor(x) for x in tensors]
-    expected = Tensor(einsum(equation, *tensors))
+    expected = Tensor(ops.einsum(equation, *tensors))
     actual = Einsum(equation, tuple(funsors))
     assert_close(actual, expected, atol=1e-5, rtol=None)
 

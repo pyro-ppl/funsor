@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+# TODO: drop dependency on torch
 import torch
 
 import funsor.ops as ops

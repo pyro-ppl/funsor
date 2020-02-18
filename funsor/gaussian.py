@@ -253,7 +253,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         :class:`~funsor.domains.Domain` .
     """
     def __init__(self, info_vec, precision, inputs):
-        assert ops.is_tensor(info_vec) and ops.is_tensor(precision)
+        assert ops.is_numeric_array(info_vec) and ops.is_numeric_array(precision)
         assert isinstance(inputs, tuple)
         inputs = OrderedDict(inputs)
 

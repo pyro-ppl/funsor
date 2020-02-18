@@ -129,6 +129,11 @@ def _cholesky_solve(x, y):
     return cho_solve((y, True), x)
 
 
+@ops.detach.register(array)
+def _detach(x):
+    return lax.stop_gradient(x)
+
+
 @ops.diagonal.register(array, int, int)
 def _diagonal(x, dim1, dim2):
     return np.diagonal(x, axis1=dim1, axis2=dim2)
@@ -153,8 +158,8 @@ def _finfo(x):
     return np.finfo(x.dtype)
 
 
-@ops.is_tensor.register(array)
-def _is_tensor(x):
+@ops.is_numeric_array.register(array)
+def _is_numeric_array(x):
     return True
 
 

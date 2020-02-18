@@ -197,8 +197,7 @@ def get_tracing_state():
 
 
 def is_nn_module(x):
-    backend = get_backend()
-    if backend == "torch":
+    if _FUNSOR_BACKEND == "torch":
         import torch
 
         return isinstance(x, torch.nn.Module)

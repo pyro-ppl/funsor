@@ -10,6 +10,9 @@ from funsor.domains import bint, reals
 from funsor.interpreter import gensym, interpretation, reinterpret
 from funsor.terms import Cat, Independent, Lambda, Number, Slice, Stack, Variable, reflect
 from funsor.testing import assert_close, check_funsor, random_tensor
+from funsor.util import set_backend
+
+set_backend("jax")
 
 
 def test_sample_subs_smoke():
@@ -50,7 +53,7 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
     expected = (lhs(**lhs_subs) * rhs(**rhs_subs)).reduce(
         ops.add, frozenset(lhs_subs.values()) | frozenset(rhs_subs.values()))
 
-    assert_close(actual, expected)
+    assert_close(actual, expected, rtol=1e-5)
 
 
 def test_lazy_subs_type_clash():

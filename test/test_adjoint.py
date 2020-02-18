@@ -4,6 +4,7 @@
 from collections import OrderedDict
 
 import pytest
+# TODO: remove torch/pyro imports
 import torch
 from pyro.ops.contract import einsum as pyro_einsum
 from pyro.ops.einsum.adjoint import require_backward as pyro_require_backward
