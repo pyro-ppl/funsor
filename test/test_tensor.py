@@ -300,7 +300,7 @@ def test_unary(symbol, dims):
     if symbol == '~':
         data = astype(data, 'uint8')
         dtype = 2
-    if get_backend() == "torch" and symbol in ["abs", "sqrt", "exp", "log", "log1p", "sigmoid"]:
+    if get_backend() != "torch" and symbol in ["abs", "sqrt", "exp", "log", "log1p", "sigmoid"]:
         expected_data = getattr(ops, symbol)(data)
     else:
         expected_data = unary_eval(symbol, data)
@@ -724,9 +724,20 @@ def test_function_nested_lazy():
 
 
 def test_function_of_numeric_array():
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        matmul = torch.matmul
+    elif backend == "jax":
+        import jax
+
+        matmul = jax.numpy.matmul
+    else:
+        matmul = np.matmul
     x = randn((4, 3))
     y = randn((3, 2))
-    f = funsor.function(reals(4, 3), reals(3, 2), reals(4, 2))(ops.matmul)
+    f = funsor.function(reals(4, 3), reals(3, 2), reals(4, 2))(matmul)
     actual = f(x, y)
     expected = f(Tensor(x), Tensor(y))
     assert_close(actual, expected)
