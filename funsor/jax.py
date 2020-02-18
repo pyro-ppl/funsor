@@ -1,56 +1,68 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import numpy as onp
+from collections import OrderedDict
 
 import jax.numpy as np
+import numpy as onp
 from jax import lax
 from jax.core import Tracer
 from jax.interpreters.xla import DeviceArray
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, logsumexp
-from multipledispatch import dispatch
 
 import funsor.ops as ops
 from funsor.adjoint import adjoint_ops
-from funsor.domains import Domain
+from funsor.domains import bint, reals
 from funsor.interpreter import children, recursion_reinterpret
-from funsor.terms import Funsor
+from funsor.terms import Funsor, to_funsor
 from funsor.tensor import Tensor
 from funsor.util import quote
 
-jax_array = (DeviceArray, Tracer)
 
-
-@adjoint_ops.register(Tensor, ops.AssociativeOp, ops.AssociativeOp, Funsor, jax_array, tuple, object)
+@adjoint_ops.register(Tensor, ops.AssociativeOp, ops.AssociativeOp, Funsor, (DeviceArray, Tracer), tuple, object)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}
 
 
-for t in jax_array:
-    @recursion_reinterpret.register(t)
-    def _recursion_reinterpret_ground(x):
-        return x
+@recursion_reinterpret.register(DeviceArray)
+@recursion_reinterpret.register(Tracer)
+def _recursion_reinterpret_ground(x):
+    return x
 
 
-for t in jax_array:
-    @children.register(t)
-    def _children_ground(x):
-        return ()
+@children.register(DeviceArray)
+@children.register(Tracer)
+def _children_ground(x):
+    return ()
 
 
-@dispatch(jax_array)
-def to_funsor(x):
-    return Tensor(x)
-
-
-@dispatch(jax_array, Domain)
-def to_funsor(x, output):
-    result = Tensor(x, dtype=output.dtype)
-    if result.output != output:
-        raise ValueError("Invalid shape: expected {}, actual {}"
-                         .format(output.shape, result.output.shape))
-    return result
+@to_funsor.register(DeviceArray)
+@to_funsor.register(Tracer)
+def tensor_to_funsor(x, output=None, dim_to_name=None):
+    if not dim_to_name:
+        output = output if output is not None else reals(*x.shape)
+        result = Tensor(x, dtype=output.dtype)
+        if result.output != output:
+            raise ValueError("Invalid shape: expected {}, actual {}"
+                             .format(output.shape, result.output.shape))
+        return result
+    else:
+        assert output is not None  # TODO attempt to infer output
+        assert all(isinstance(k, int) and k < 0 and isinstance(v, str)
+                   for k, v in dim_to_name.items())
+        # logic very similar to pyro.ops.packed.pack
+        # this should not touch memory, only reshape
+        # pack the tensor according to the dim => name mapping in inputs
+        packed_inputs = OrderedDict()
+        for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
+            name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
+            if name is not None and size > 1:
+                packed_inputs[name] = bint(size)
+        shape = tuple(d.size for d in packed_inputs.values()) + output.shape
+        if x.shape != shape:
+            x = x.reshape(shape)
+        return Tensor(x, packed_inputs, dtype=output.dtype)
 
 
 @quote.register(DeviceArray)
