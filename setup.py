@@ -50,7 +50,7 @@ setup(
         'jax': [
             'jax==0.1.59',
             'jaxlib==0.1.38',
-            'numpyro @ git+https://github.com/google/jax.git@f2aefcf#egg=numpyro'
+            'numpyro @ git+https://github.com/google/jax.git@f2aefcf1b034418244c1e465c64bce469388e566#egg=numpyro'
         ],
         'test': [
             'flake8',
