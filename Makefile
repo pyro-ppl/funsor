@@ -19,12 +19,11 @@ format: FORCE
 	isort -y
 
 test: lint FORCE
-	pytest -v test/test_tensor.py
-	pytest -v test/test_gaussian.py
+	pytest -v -n auto test/*py
 	FUNSOR_BACKEND=torch pytest -v -n auto test/
 	FUNSOR_BACKEND=jax pytest -v test/test_tensor.py
-	FUNSOR_BACKEND=torch FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
 	FUNSOR_BACKEND=jax pytest -v test/test_gaussian.py
+	FUNSOR_BACKEND=torch FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
 	FUNSOR_BACKEND=torch FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_BACKEND=torch FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
 	FUNSOR_BACKEND=torch python examples/discrete_hmm.py -n 2

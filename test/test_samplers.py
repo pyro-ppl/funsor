@@ -5,7 +5,6 @@ import itertools
 from collections import OrderedDict
 
 import pytest
-# TODO: make torch optional
 import torch
 from torch.autograd import grad
 
@@ -19,6 +18,10 @@ from funsor.montecarlo import monte_carlo_interpretation
 from funsor.tensor import Tensor, align_tensors
 from funsor.terms import Variable
 from funsor.testing import assert_close, id_from_inputs, random_gaussian, random_tensor, xfail_if_not_implemented
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif(get_backend() != "torch",
+                                reason="numpy/jax backend requires porting pyro.ops.einsum")
 
 
 @pytest.mark.parametrize('sample_inputs', [
