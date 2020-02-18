@@ -8,7 +8,7 @@ from multipledispatch import dispatch
 
 import funsor.ops as ops
 from funsor.adjoint import adjoint_ops
-from funsor.domain import bint, reals
+from funsor.domains import bint, reals
 from funsor.interpreter import children, recursion_reinterpret
 from funsor.terms import Funsor, to_funsor
 from funsor.tensor import Tensor
