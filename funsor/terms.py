@@ -759,14 +759,15 @@ interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funso
 interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
-@dispatch(object)
-def to_funsor(x):
+@singledispatch
+def to_funsor(x, output=None, dim_to_name=None):
     """
     Convert to a :class:`Funsor` .
     Only :class:`Funsor` s and scalars are accepted.
 
     :param x: An object.
     :param funsor.domains.Domain output: An optional output hint.
+    :param OrderedDict dim_to_name: An optional mapping from negative batch dimensions to name strings.
     :return: A Funsor equivalent to ``x``.
     :rtype: Funsor
     :raises: ValueError
@@ -774,36 +775,24 @@ def to_funsor(x):
     raise ValueError("Cannot convert to Funsor: {}".format(repr(x)))
 
 
-@dispatch(object, Domain)
-def to_funsor(x, output):
-    raise ValueError("Cannot convert to Funsor: {}".format(repr(x)))
-
-
-@dispatch(object, object)
-def to_funsor(x, output):
-    raise TypeError("Invalid Domain: {}".format(repr(output)))
-
-
-@dispatch(Funsor)
-def to_funsor(x):
-    return x
-
-
-@dispatch(Funsor, Domain)
-def to_funsor(x, output):
-    if x.output != output:
+@to_funsor.register(Funsor)
+def funsor_to_funsor(x, output=None, dim_to_name=None):
+    if output is not None and x.output != output:
         raise ValueError("Output mismatch: {} vs {}".format(x.output, output))
+    if dim_to_name is not None and list(x.inputs.keys()) != list(dim_to_name.values()):
+        raise ValueError("Inputs mismatch: {} vs {}".format(x.inputs, dim_to_name))
     return x
 
 
 @singledispatch
-def to_data(x):
+def to_data(x, name_to_dim=None):
     """
     Extract a python object from a :class:`Funsor`.
 
     Raises a ``ValueError`` if free variables remain or if the funsor is lazy.
 
     :param x: An object, possibly a :class:`Funsor`.
+    :param OrderedDict name_to_dim: An optional inputs hint.
     :return: A non-funsor equivalent to ``x``.
     :raises: ValueError if any free variables remain.
     :raises: PatternMissingError if funsor is not fully evaluated.
@@ -812,8 +801,8 @@ def to_data(x):
 
 
 @to_data.register(Funsor)
-def _to_data_funsor(x):
-    if x.inputs:
+def _to_data_funsor(x, name_to_dim=None):
+    if name_to_dim is None and x.inputs:
         raise ValueError(f"cannot convert {type(x)} to data due to lazy inputs: {set(x.inputs)}")
     raise PatternMissingError(r"cannot convert to a non-Funsor: {repr(x)}")
 
@@ -842,8 +831,10 @@ class Variable(Funsor):
         return subs[0][1]
 
 
-@dispatch(str, Domain)
-def to_funsor(name, output):
+@to_funsor.register(str)
+def name_to_funsor(name, output=None):
+    if output is None:
+        raise ValueError(f"Missing output: {name}")
     return Variable(name, output)
 
 
@@ -1102,13 +1093,10 @@ class Number(Funsor, metaclass=NumberMeta):
         return Number(op(self.data), dtype)
 
 
-@dispatch(numbers.Number)
-def to_funsor(x):
-    return Number(x)
-
-
-@dispatch(numbers.Number, Domain)
-def to_funsor(x, output):
+@to_funsor.register(numbers.Number)
+def number_to_funsor(x, output=None):
+    if output is None:
+        return Number(x)
     if output.shape:
         raise ValueError("Cannot create Number with shape {}".format(output.shape))
     return Number(x, output.dtype)
