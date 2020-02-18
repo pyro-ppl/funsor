@@ -1,12 +1,14 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import numpy as np
+
 from funsor.util import get_backend
 
 
 def pytest_runtest_setup(item):
+    np.random.seed(0)
     backend = get_backend()
-
     if backend == "torch":
         import pyro
 

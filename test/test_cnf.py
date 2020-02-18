@@ -87,6 +87,7 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
 ])
 @pytest.mark.parametrize("red_op,bin_op", [(ops.add, ops.mul), (ops.logaddexp, ops.add)], ids=str)
 def test_eager_contract_tensor_tensor(red_op, bin_op, x_inputs, x_shape, y_inputs, y_shape):
+    backend = get_backend()
     inputs = OrderedDict([("i", bint(4)), ("j", bint(5)), ("k", bint(6))])
     x_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in x_inputs)
     y_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in y_inputs)
@@ -100,4 +101,4 @@ def test_eager_contract_tensor_tensor(red_op, bin_op, x_inputs, x_shape, y_input
             print(f"reduced_vars = {reduced_vars}")
             expected = xy.reduce(red_op, reduced_vars)
             actual = Contraction(red_op, bin_op, reduced_vars, (x, y))
-            assert_close(actual, expected, atol=1e-4, rtol=5e-4)
+            assert_close(actual, expected, atol=1e-4, rtol=5e-4 if backend == "jax" else 1e-4)

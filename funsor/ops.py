@@ -365,24 +365,11 @@ def cholesky_inverse(x):
     return cholesky_solve(new_eye(x, x.shape[:-1]), x)
 
 
-# numpy version of scipy.linalg.cho_solve
-def _cho_solve(c_and_lower, b):
-    c, lower = c_and_lower
-    if lower:
-        A = c @ np.swapaxes(c, -2, -1)
-    else:
-        A = np.swapaxes(c, -2, -1) @ c
-    return np.linalg.solve(A, b)
-
-
 @Op
 def cholesky_solve(x, y):
-    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
-    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
-    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
-    ans = [_cho_solve((y, True), x) for (x, y) in zip(xs, ys)]
-    ans = np.stack(ans)
-    return ans.reshape(batch_shape + ans.shape[-2:])
+    y_inv = np.linalg.inv(y)
+    A = np.swapaxes(y_inv, -2, -1) @ y_inv
+    return A @ x
 
 
 @Op
@@ -518,24 +505,13 @@ def _transpose(x, dim1, dim2):
     return np.swapaxes(x, dim1, dim2)
 
 
-# numpy version of scipy.linalg.solve_triangular
-def _solve_triangular(a, b, trans=0, lower=False):
-    if trans:
-        a = np.swapaxes(a, -2, -1)
-    return np.linalg.solve(a, b)
-
-
 # FIXME: contruct TriangularSolveMeta and TriangularSolveOp to cache
 # implementations of each value of transpose and upper
 @triangular_solve_op.register(array, array, bool, bool)
-def _triangular_solve(x, y, transpose, upper):
-    batch_shape = np.broadcast(x[..., 0, 0], y[..., 0, 0]).shape
-    xs = np.broadcast_to(x, batch_shape + x.shape[-2:]).reshape((-1,) + x.shape[-2:])
-    ys = np.broadcast_to(y, batch_shape + y.shape[-2:]).reshape((-1,) + y.shape[-2:])
-    ans = [_solve_triangular(y, x, trans=int(transpose), lower=not upper)
-           for (x, y) in zip(xs, ys)]
-    ans = np.stack(ans)
-    return ans.reshape(batch_shape + ans.shape[-2:])
+def _triangular_solve(x, y, upper, transpose):
+    if transpose:
+        y = np.swapaxes(y, -2, -1)
+    return np.linalg.inv(y) @ x
 
 
 def triangular_solve(x, y, upper=False, transpose=False):

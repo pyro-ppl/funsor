@@ -35,7 +35,7 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     """
     assert "plates" not in kwargs
 
-    backend = kwargs.pop('backend', 'numpy')
+    backend = kwargs.pop('backend', 'torch')
     if backend in BACKEND_OPS:
         sum_op, prod_op = BACKEND_OPS[backend]
     else:
@@ -57,7 +57,7 @@ def naive_einsum(eqn, *terms, **kwargs):
     """
     Implements standard variable elimination.
     """
-    backend = kwargs.pop('backend', 'numpy')
+    backend = kwargs.pop('backend', 'torch')
     if backend in BACKEND_OPS:
         sum_op, prod_op = BACKEND_OPS[backend]
     else:
@@ -85,7 +85,7 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
     if not plates:
         return naive_einsum(eqn, *terms, **kwargs)
 
-    backend = kwargs.pop('backend', 'numpy')
+    backend = kwargs.pop('backend', 'torch')
     if backend in BACKEND_OPS:
         sum_op, prod_op = BACKEND_OPS[backend]
     else:

@@ -40,7 +40,8 @@ def einsum(equation, *operands):
             shift = np.transpose(shift, [dims.index(dim) for dim in output])
         shifts.append(shift)
 
-    result = np.log(np.einsum(equation, *exp_operands))
+    result = np.einsum(equation, *exp_operands)
+    result = np.log(result)
     return sum(shifts + [result])
 
 
