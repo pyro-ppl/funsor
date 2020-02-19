@@ -12,6 +12,11 @@ from funsor.memoize import memoize
 from funsor.terms import reflect
 from funsor.testing import make_einsum_example, xfail_param
 
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif(get_backend() != "torch",
+                                reason="numpy/jax backend does not work yet")
+
 EINSUM_EXAMPLES = [
     ("a,b->", ''),
     ("ab,a->", ''),

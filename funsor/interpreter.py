@@ -10,13 +10,12 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from functools import singledispatch
 
-import jax
-import numpy
-import torch
+import numpy as np
 
 from funsor.domains import Domain
-from funsor.ops import Op
+from funsor.ops import Op, is_numeric_array
 from funsor.registry import KeyedRegistry
+from funsor.util import is_nn_module
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
@@ -144,24 +143,26 @@ def reinterpret_funsor(x):
     return _INTERPRETATION(type(x), *map(recursion_reinterpret, x._ast_values))
 
 
-@recursion_reinterpret.register(str)
-@recursion_reinterpret.register(int)
-@recursion_reinterpret.register(float)
-@recursion_reinterpret.register(type)
-@recursion_reinterpret.register(functools.partial)
-@recursion_reinterpret.register(types.FunctionType)
-@recursion_reinterpret.register(types.BuiltinFunctionType)
-@recursion_reinterpret.register(jax.interpreters.xla.DeviceArray)
-@recursion_reinterpret.register(jax.abstract_arrays.UnshapedArray)
-@recursion_reinterpret.register(numpy.generic)
-@recursion_reinterpret.register(numpy.ndarray)
-@recursion_reinterpret.register(torch.Tensor)
-@recursion_reinterpret.register(numpy.ufunc)
-@recursion_reinterpret.register(torch.nn.Module)
-@recursion_reinterpret.register(Domain)
-@recursion_reinterpret.register(Op)
-def recursion_reinterpret_ground(x):
-    return x
+_ground_types = (
+    str,
+    int,
+    float,
+    type,
+    functools.partial,
+    types.FunctionType,
+    types.BuiltinFunctionType,
+    Domain,
+    Op,
+    np.generic,
+    np.ndarray,
+    np.ufunc,
+)
+
+
+for t in _ground_types:
+    @recursion_reinterpret.register(t)
+    def recursion_reinterpret_ground(x):
+        return x
 
 
 @recursion_reinterpret.register(tuple)
@@ -210,45 +211,16 @@ def _children_tuple(x):
     return x.values()
 
 
-@children.register(str)
-@children.register(int)
-@children.register(float)
-@children.register(type)
-@children.register(functools.partial)
-@children.register(types.FunctionType)
-@children.register(types.BuiltinFunctionType)
-@children.register(jax.interpreters.xla.DeviceArray)
-@children.register(jax.abstract_arrays.UnshapedArray)
-@children.register(numpy.generic)
-@children.register(numpy.ndarray)
-@children.register(torch.Tensor)
-@children.register(torch.nn.Module)
-@children.register(Domain)
-@children.register(Op)
-def _children_ground(x):
-    return ()
+for t in _ground_types:
+    @children.register(t)
+    def _children_ground(x):
+        return ()
 
 
 def is_atom(x):
     if isinstance(x, (tuple, frozenset)) and not isinstance(x, Domain):
         return len(x) == 0 or all(is_atom(c) for c in x)
-    return isinstance(x, (
-        int,
-        str,
-        float,
-        type,
-        functools.partial,
-        types.FunctionType,
-        types.BuiltinFunctionType,
-        torch.Tensor,
-        torch.nn.Module,
-        jax.interpreters.xla.DeviceArray,
-        jax.abstract_arrays.UnshapedArray,
-        numpy.generic,
-        numpy.ndarray,
-        Domain,
-        Op
-    ))
+    return isinstance(x, _ground_types) or is_numeric_array(x) or is_nn_module(x)
 
 
 def gensym(x=None):

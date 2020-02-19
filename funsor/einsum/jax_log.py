@@ -1,7 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import numpy as np
+import jax.numpy as np
 
 from funsor.einsum.util import Tensordot
 
@@ -10,10 +10,6 @@ def einsum(equation, *operands):
     """
     Log-sum-exp implementation of einsum.
     """
-    # NB: rename symbols to support NumPy, which allow only symbols a-z.
-    symbols = sorted(set(equation) - set(',->'))
-    rename = dict(zip(symbols, 'abcdefghijklmnopqrstuvwxyz'))
-    equation = ''.join(rename.get(s, s) for s in equation)
 
     inputs, output = equation.split('->')
     if inputs == output:

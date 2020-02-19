@@ -26,6 +26,10 @@ from funsor.testing import (
     random_tensor,
     xfail_param
 )
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif(get_backend() != "torch",
+                                reason="numpy/jax backend requires porting pyro.ops.einsum")
 
 EINSUM_EXAMPLES = [
     "a->",

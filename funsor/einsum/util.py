@@ -1,5 +1,5 @@
-# Copyright (c) 2017-2019 Uber Technologies, Inc.
-# SPDX-License-Identifier: Apache-2.0 AND MIT
+# Copyright Contributors to the Pyro project.
+# SPDX-License-Identifier: Apache-2.0
 
 EINSUM_SYMBOLS_BASE = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 

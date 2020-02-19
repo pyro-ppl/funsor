@@ -17,6 +17,10 @@ from funsor.optimizer import apply_optimizer
 from funsor.tensor import Tensor
 from funsor.terms import Variable, reflect
 from funsor.testing import assert_close, make_einsum_example
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif(get_backend() != "torch",
+                                reason="numpy/jax backend requires porting pyro.ops.einsum")
 
 EINSUM_EXAMPLES = [
     "a,b->",

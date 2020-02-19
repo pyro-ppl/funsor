@@ -14,6 +14,10 @@ from torch.distributions import constraints, kl_divergence
 import funsor
 import funsor.compat.ops as ops
 from funsor.testing import xfail_param
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif(get_backend() != "torch",
+                                reason="numpy/jax backend requires porting pyro.ops.einsum")
 
 # This file tests a variety of model,guide pairs with valid and invalid structure.
 # See https://github.com/pyro-ppl/pyro/blob/0.3.1/tests/infer/test_valid_models.py

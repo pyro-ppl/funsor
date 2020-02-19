@@ -19,27 +19,30 @@ format: FORCE
 	isort -y
 
 test: lint FORCE
-	pytest -v -n auto test/
-	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
-	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
-	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
-	python examples/discrete_hmm.py -n 2
-	python examples/discrete_hmm.py -n 2 -t 50 --lazy
-	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 50 --lazy
-	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 500 --lazy
-	python examples/kalman_filter.py -n 2
-	python examples/kalman_filter.py -n 2 -t 50 --lazy
-	FUNSOR_USE_TCO=1 python examples/kalman_filter.py -n 1 -t 50 --lazy
-	FUNSOR_USE_TCO=1 python examples/kalman_filter.py -n 1 -t 500 --lazy
-	python examples/minipyro.py
-	python examples/minipyro.py --jit
-	python examples/slds.py -n 2 -t 50
-	python examples/pcfg.py --size 3
-	python examples/vae.py --smoke-test
-	python examples/eeg_slds.py --num-steps 2 --fon --test 
-	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --smoke
-	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --parallel --smoke
-	python examples/sensor.py --seed=0 --num-frames=2 -n 1
+	pytest -v -n auto test/*py
+	FUNSOR_BACKEND=torch pytest -v -n auto test/
+	FUNSOR_BACKEND=jax pytest -v test/test_tensor.py
+	FUNSOR_BACKEND=jax pytest -v test/test_gaussian.py
+	FUNSOR_BACKEND=torch FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
+	FUNSOR_BACKEND=torch FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
+	FUNSOR_BACKEND=torch FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
+	FUNSOR_BACKEND=torch python examples/discrete_hmm.py -n 2
+	FUNSOR_BACKEND=torch python examples/discrete_hmm.py -n 2 -t 50 --lazy
+	FUNSOR_BACKEND=torch FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 50 --lazy
+	FUNSOR_BACKEND=torch FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 500 --lazy
+	FUNSOR_BACKEND=torch python examples/kalman_filter.py -n 2
+	FUNSOR_BACKEND=torch python examples/kalman_filter.py -n 2 -t 50 --lazy
+	FUNSOR_BACKEND=torch FUNSOR_USE_TCO=1 python examples/kalman_filter.py -n 1 -t 50 --lazy
+	FUNSOR_BACKEND=torch FUNSOR_USE_TCO=1 python examples/kalman_filter.py -n 1 -t 500 --lazy
+	FUNSOR_BACKEND=torch python examples/minipyro.py
+	FUNSOR_BACKEND=torch python examples/minipyro.py --jit
+	FUNSOR_BACKEND=torch python examples/slds.py -n 2 -t 50
+	FUNSOR_BACKEND=torch python examples/pcfg.py --size 3
+	FUNSOR_BACKEND=torch python examples/vae.py --smoke-test
+	FUNSOR_BACKEND=torch python examples/eeg_slds.py --num-steps 2 --fon --test 
+	FUNSOR_BACKEND=torch python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --smoke
+	FUNSOR_BACKEND=torch python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --parallel --smoke
+	FUNSOR_BACKEND=torch python examples/sensor.py --seed=0 --num-frames=2 -n 1
 	@echo PASS
 
 clean: FORCE
