@@ -477,8 +477,8 @@ def _reciprocal(x):
     return result
 
 
-@Op
-def safediv(x, y):
+@safediv.register(object, array)
+def _safediv(x, y):
     try:
         finfo = np.finfo(y.dtype)
     except ValueError:
@@ -486,8 +486,8 @@ def safediv(x, y):
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
-@Op
-def safesub(x, y):
+@safesub.register(object, array)
+def _safesub(x, y):
     try:
         finfo = np.finfo(y.dtype)
     except ValueError:

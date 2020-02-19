@@ -518,7 +518,7 @@ def tensor_to_data(x, name_to_dim=None):
         dims = sorted(unsorted_dims)
         permutation = [unsorted_dims.index(dim) for dim in dims] + \
             list(range(len(dims), len(dims) + len(x.output.shape)))
-        data = data.permute(*permutation)
+        data = ops.permute(data, permutation)
         # expand
         batch_shape = [1] * -min(dims)
         for dim, size in zip(dims, data.shape):
