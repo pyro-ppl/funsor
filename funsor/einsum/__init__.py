@@ -12,11 +12,15 @@ from funsor.terms import Funsor, lazy
 
 # TODO: add numpy einsum here
 BACKEND_OPS = {
+    "numpy": (ops.add, ops.mul),
+    "funsor.einsum.numpy_log": (ops.logaddexp, ops.add),
     "torch": (ops.add, ops.mul),
     "pyro.ops.einsum.torch_log": (ops.logaddexp, ops.add),
     "pyro.ops.einsum.torch_marginal": (ops.logaddexp, ops.add),
     "pyro.ops.einsum.torch_map": (ops.max, ops.add),
     "pyro.ops.einsum.torch_sample": (ops.logaddexp, ops.add),
+    "jax.numpy": (ops.add, ops.mul),
+    "funsor.einsum.jax_log": (ops.logaddexp, ops.add),
 }
 
 BACKEND_ADJOINT_OPS = {

@@ -3,6 +3,8 @@
 
 from collections import OrderedDict, defaultdict
 
+import numpy as np
+
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
@@ -12,7 +14,7 @@ from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, reflect, substitute, to_funsor
-from funsor.tensor import Tensor, numeric_array
+from funsor.tensor import Tensor
 
 
 def _alpha_unmangle(expr):
@@ -94,7 +96,7 @@ if interpreter._DEBUG:
     adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(interpreter.debug_logged(fn))
 
 
-@adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, numeric_array, tuple, object)
+@adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, (np.ndarray, np.generic), tuple, object)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}
 

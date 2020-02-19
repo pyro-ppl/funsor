@@ -4,8 +4,8 @@
 from collections import OrderedDict
 from functools import reduce
 
+import numpy as np
 import pytest
-import torch
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
@@ -17,7 +17,9 @@ from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo_interpretation
 from funsor.tensor import Tensor
 from funsor.terms import Number, Variable, eager, moment_matching
-from funsor.testing import assert_close, random_gaussian, random_tensor, xfail_if_not_implemented
+from funsor.testing import (assert_close, numeric_array, randn,
+                            random_gaussian, random_tensor, zeros, xfail_if_not_implemented)
+from funsor.util import get_backend
 
 
 def id_from_inputs(inputs):
@@ -93,31 +95,31 @@ SMOKE_TESTS = [
 
 @pytest.mark.parametrize('expr,expected_type', SMOKE_TESTS)
 def test_smoke(expr, expected_type):
-    dx = Delta('x', Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2))])))
+    dx = Delta('x', Tensor(randn(2, 3), OrderedDict([('i', bint(2))])))
     assert isinstance(dx, Delta)
 
-    dy = Delta('y', Tensor(torch.randn(3, 4), OrderedDict([('j', bint(3))])))
+    dy = Delta('y', Tensor(randn(3, 4), OrderedDict([('j', bint(3))])))
     assert isinstance(dy, Delta)
 
-    t = Tensor(torch.randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
+    t = Tensor(randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
     assert isinstance(t, Tensor)
 
     g = Gaussian(
-        info_vec=torch.tensor([[0.0, 0.1, 0.2],
-                               [2.0, 3.0, 4.0]]),
-        precision=torch.tensor([[[1.0, 0.1, 0.2],
-                                 [0.1, 1.0, 0.3],
-                                 [0.2, 0.3, 1.0]],
-                                [[1.0, 0.1, 0.2],
-                                 [0.1, 1.0, 0.3],
-                                 [0.2, 0.3, 1.0]]]),
+        info_vec=numeric_array([[0.0, 0.1, 0.2],
+                                [2.0, 3.0, 4.0]]),
+        precision=numeric_array([[[1.0, 0.1, 0.2],
+                                  [0.1, 1.0, 0.3],
+                                  [0.2, 0.3, 1.0]],
+                                 [[1.0, 0.1, 0.2],
+                                  [0.1, 1.0, 0.3],
+                                  [0.2, 0.3, 1.0]]]),
         inputs=OrderedDict([('i', bint(2)), ('x', reals(3))]))
     assert isinstance(g, Gaussian)
 
     i0 = Number(1, 2)
     assert isinstance(i0, Number)
 
-    x0 = Tensor(torch.tensor([0.5, 0.6, 0.7]))
+    x0 = Tensor(numeric_array([0.5, 0.6, 0.7]))
     assert isinstance(x0, Tensor)
 
     result = eval(expr)
@@ -160,8 +162,8 @@ def test_reduce_logaddexp(int_inputs, real_inputs):
 
 
 def test_reduce_logaddexp_deltas_lazy():
-    a = Delta('a', Tensor(torch.randn(3, 2), OrderedDict(i=bint(3))))
-    b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
+    a = Delta('a', Tensor(randn(3, 2), OrderedDict(i=bint(3))))
+    b = Delta('b', Tensor(randn(3), OrderedDict(i=bint(3))))
     x = a + b
     assert isinstance(x, Delta)
     assert set(x.inputs) == {'a', 'b', 'i'}
@@ -173,9 +175,9 @@ def test_reduce_logaddexp_deltas_lazy():
 
 
 def test_reduce_logaddexp_deltas_discrete_lazy():
-    a = Delta('a', Tensor(torch.randn(3, 2), OrderedDict(i=bint(3))))
-    b = Delta('b', Tensor(torch.randn(3), OrderedDict(i=bint(3))))
-    c = Tensor(torch.randn(3), OrderedDict(i=bint(3)))
+    a = Delta('a', Tensor(randn(3, 2), OrderedDict(i=bint(3))))
+    b = Delta('b', Tensor(randn(3), OrderedDict(i=bint(3))))
+    c = Tensor(randn(3), OrderedDict(i=bint(3)))
     x = a + b + c
     assert isinstance(x, Contraction)
     assert set(x.inputs) == {'a', 'b', 'i'}
@@ -228,10 +230,10 @@ def test_reduce_moment_matching_univariate():
     p = 0.8
     t = 1.234
     s1, s2, s3 = 2.0, 3.0, 4.0
-    loc = torch.tensor([[-s1], [s1]])
-    precision = torch.tensor([[[s2 ** -2]], [[s3 ** -2]]])
-    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
-    discrete = Tensor(torch.tensor([1 - p, p]).log() + t, int_inputs)
+    loc = numeric_array([[-s1], [s1]])
+    precision = numeric_array([[[s2 ** -2]], [[s3 ** -2]]])
+    info_vec = (precision @ ops.unsqueeze(loc, -1)).squeeze(-1)
+    discrete = Tensor(ops.log(numeric_array([1 - p, p])) + t, int_inputs)
     gaussian = Gaussian(info_vec, precision, inputs)
     gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
@@ -239,17 +241,24 @@ def test_reduce_moment_matching_univariate():
         actual = joint.reduce(ops.logaddexp, 'i')
     assert_close(actual.reduce(ops.logaddexp), joint.reduce(ops.logaddexp))
 
-    expected_loc = torch.tensor([(2 * p - 1) * s1])
+    expected_loc = numeric_array([(2 * p - 1) * s1])
     expected_variance = (4 * p * (1 - p) * s1 ** 2
                          + (1 - p) * s2 ** 2
                          + p * s3 ** 2)
-    expected_precision = torch.tensor([[1 / expected_variance]])
-    expected_info_vec = expected_precision.matmul(expected_loc.unsqueeze(-1)).squeeze(-1)
+    expected_precision = numeric_array([[1 / expected_variance]])
+    expected_info_vec = (expected_precision @ ops.unsqueeze(expected_loc, -1)).squeeze(-1)
     expected_gaussian = Gaussian(expected_info_vec, expected_precision, real_inputs)
     expected_gaussian -= expected_gaussian.log_normalizer
-    expected_discrete = Tensor(torch.tensor(t))
+    expected_discrete = Tensor(numeric_array(t))
     expected = expected_discrete + expected_gaussian
     assert_close(actual, expected, atol=1e-5, rtol=None)
+
+
+def _inverse(x):
+    if get_backend() == "torch":
+        return x.inverse()
+    else:
+        return np.linalg.inv(x)
 
 
 def test_reduce_moment_matching_multivariate():
@@ -259,12 +268,12 @@ def test_reduce_moment_matching_multivariate():
     int_inputs = OrderedDict(int_inputs)
     real_inputs = OrderedDict(real_inputs)
 
-    loc = torch.tensor([[-10., -1.],
-                        [+10., -1.],
-                        [+10., +1.],
-                        [-10., +1.]])
-    precision = torch.zeros(4, 1, 1) + torch.eye(2, 2)
-    discrete = Tensor(torch.zeros(4), int_inputs)
+    loc = numeric_array([[-10., -1.],
+                         [+10., -1.],
+                         [+10., +1.],
+                         [-10., +1.]])
+    precision = zeros(4, 1, 1) + ops.new_eye(loc, (2,))
+    discrete = Tensor(zeros(4), int_inputs)
     gaussian = Gaussian(loc, precision, inputs)
     gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
@@ -272,12 +281,12 @@ def test_reduce_moment_matching_multivariate():
         actual = joint.reduce(ops.logaddexp, 'i')
     assert_close(actual.reduce(ops.logaddexp), joint.reduce(ops.logaddexp))
 
-    expected_loc = torch.zeros(2)
-    expected_covariance = torch.tensor([[101., 0.], [0., 2.]])
-    expected_precision = expected_covariance.inverse()
+    expected_loc = zeros(2)
+    expected_covariance = numeric_array([[101., 0.], [0., 2.]])
+    expected_precision = _inverse(expected_covariance)
     expected_gaussian = Gaussian(expected_loc, expected_precision, real_inputs)
     expected_gaussian -= expected_gaussian.log_normalizer
-    expected_discrete = Tensor(torch.tensor(4.).log())
+    expected_discrete = Tensor(ops.log(numeric_array(4.)))
     expected = expected_discrete + expected_gaussian
     assert_close(actual, expected, atol=1e-5, rtol=None)
 

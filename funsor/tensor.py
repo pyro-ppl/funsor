@@ -10,14 +10,12 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
-import torch
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
-from funsor.numpy import array
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -33,26 +31,17 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec, quote
-
-
-numeric_array = (torch.Tensor, array)
-_DEFAULT_TENSOR_TYPE = torch.float32
-
-
-def set_default_tensor_type(dtype):
-    global _DEFAULT_TENSOR_TYPE
-    _DEFAULT_TENSOR_TYPE = dtype
+from funsor.util import getargspec, get_backend, get_tracing_state, is_nn_module, quote
 
 
 def get_default_prototype():
-    dtype = _DEFAULT_TENSOR_TYPE
-    if type(dtype) is torch.dtype:
-        return torch.tensor([], dtype=dtype)
-    elif type(dtype) is np.dtype:
-        return np.array([], dtype=dtype)
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.tensor([])
     else:
-        raise RuntimeError("{} is not a valid default tensor type.".format(dtype))
+        return np.array([])
 
 
 def _nameof(fn):
@@ -62,7 +51,10 @@ def _nameof(fn):
 @contextmanager
 def ignore_jit_warnings():
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+        if get_backend() == "torch":
+            import torch
+
+            warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
         yield
 
 
@@ -101,9 +93,9 @@ class Tensor(Funsor, metaclass=TensorMeta):
     :type dtype: int or the string "real".
     """
     def __init__(self, data, inputs=None, dtype="real"):
-        assert isinstance(data, numeric_array)
+        assert ops.is_numeric_array(data)
         assert isinstance(inputs, tuple)
-        if not torch._C._get_tracing_state():
+        if not get_tracing_state():
             assert len(inputs) <= len(data.shape)
             for (k, d), size in zip(inputs, data.shape):
                 assert d.dtype == size
@@ -302,8 +294,29 @@ class Tensor(Funsor, metaclass=TensorMeta):
         batch_shape = logits.shape[:len(batch_inputs)]
         flat_logits = logits.reshape(batch_shape + (-1,))
         sample_shape = tuple(d.dtype for d in sample_inputs.values())
-        # TODO: make distribution agnostic
-        flat_sample = torch.distributions.Categorical(logits=flat_logits).sample(sample_shape)
+
+        backend = get_backend()
+        if backend == "torch":
+            import torch
+
+            flat_sample = torch.distributions.Categorical(logits=flat_logits).sample(sample_shape)
+        elif backend == "jax":
+            import jax
+            import numpyro
+
+            # TODO: use unscaled_sample key instead of random key here, this won't work under jit
+            key = jax.random.PRNGKey(np.random.randint(0, np.iinfo(np.int32).max))
+            flat_sample = numpyro.distributions.Categorical(logits=flat_logits).sample(key, sample_shape)
+        else:  # default numpy backend
+            assert backend == "numpy"
+            shape = sample_shape + flat_logits.shape[:-1]
+            logit_max = np.amax(flat_logits, -1, keepdims=True)
+            probs = np.exp(flat_logits - logit_max)
+            probs = probs / np.sum(probs, -1, keepdims=True)
+            s = np.cumsum(probs, -1)
+            r = np.random.rand(*shape)
+            flat_sample = np.sum(s < np.expand_dims(r, -1), axis=-1)
+
         assert flat_sample.shape == sample_shape + batch_shape
         results = []
         mod_sample = flat_sample
@@ -326,15 +339,15 @@ class Tensor(Funsor, metaclass=TensorMeta):
         #   Then g is an unbiased estimator of f in value and all derivatives.
         #   In the special case f = detach(f), we can simplify to
         #       g = delta(x=x0) |f|.
-        if hasattr(flat_logits, "requires_grad") and flat_logits.requires_grad:
+        if (backend == "torch" and flat_logits.requires_grad) or backend == "jax":
             # Apply a dice factor to preserve differentiability.
             index = [ops.new_arange(self.data, n).reshape((n,) + (1,) * (len(flat_logits.shape) - i - 2))
                      for i, n in enumerate(flat_logits.shape[:-1])]
             index.append(flat_sample)
-            log_prob = flat_logits[index]
+            log_prob = flat_logits[tuple(index)]
             assert log_prob.shape == flat_sample.shape
-            results.append(Tensor(flat_logits.detach().logsumexp(-1) +
-                                  (log_prob - log_prob.detach()), sb_inputs))
+            results.append(Tensor(ops.logsumexp(ops.detach(flat_logits), -1) +
+                                  (log_prob - ops.detach(log_prob)), sb_inputs))
         else:
             # This is the special case f = detach(f).
             results.append(Tensor(ops.logsumexp(flat_logits, -1), batch_inputs))
@@ -395,16 +408,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         subs = tuple(subs)
         return substitute(x, subs)
 
-    @property
-    def backend(self):
-        if torch.is_tensor(self.data):
-            return "torch"
-        else:
-            return "numpy"
 
-
-# TODO move these registrations to backend-specific files
-@to_funsor.register(torch.Tensor)
 @to_funsor.register(np.ndarray)
 @to_funsor.register(np.generic)
 def tensor_to_funsor(x, output=None, dim_to_name=None):
@@ -514,7 +518,7 @@ def tensor_to_data(x, name_to_dim=None):
         dims = sorted(unsorted_dims)
         permutation = [unsorted_dims.index(dim) for dim in dims] + \
             list(range(len(dims), len(dims) + len(x.output.shape)))
-        data = data.permute(*permutation)
+        data = ops.permute(data, permutation)
         # expand
         batch_shape = [1] * -min(dims)
         for dim, size in zip(dims, data.shape):
@@ -822,7 +826,7 @@ class _Memoized(object):
 
 
 def _function(inputs, output, fn):
-    if isinstance(fn, torch.nn.Module):
+    if is_nn_module(fn):
         names = getargspec(fn.forward)[0][1:]
     else:
         names = getargspec(fn)[0]

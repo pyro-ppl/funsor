@@ -4,6 +4,12 @@
 import functools
 import inspect
 import re
+import os
+
+import numpy as np
+
+_FUNSOR_BACKEND = os.environ.get("FUNSOR_BACKEND", "numpy")
+_JAX_LOADED = True if _FUNSOR_BACKEND == "jax" else False
 
 
 class lazy_property(object):
@@ -104,3 +110,95 @@ def _(arg, indent, out):
         out[-1] = i, line + ','
     i, line = out[-1]
     out[-1] = i, line + ')'
+
+
+@quote.register(np.ndarray)
+def _quote(arg, indent, out):
+    """
+    Work around NumPy ndarray not supporting reproducible repr.
+    """
+    out.append((indent, f"np.array({repr(arg.tolist())}, dtype=np.{arg.dtype})"))
+
+
+def broadcast_shape(*shapes, **kwargs):
+    """
+    Similar to ``np.broadcast()`` but for shapes.
+    Equivalent to ``np.broadcast(*map(np.empty, shapes)).shape``.
+    :param tuple shapes: shapes of tensors.
+    :param bool strict: whether to use extend-but-not-resize broadcasting.
+    :returns: broadcasted shape
+    :rtype: tuple
+    :raises: ValueError
+    """
+    strict = kwargs.pop('strict', False)
+    reversed_shape = []
+    for shape in shapes:
+        for i, size in enumerate(reversed(shape)):
+            if i >= len(reversed_shape):
+                reversed_shape.append(size)
+            elif reversed_shape[i] == 1 and not strict:
+                reversed_shape[i] = size
+            elif reversed_shape[i] != size and (size != 1 or strict):
+                raise ValueError('shape mismatch: objects cannot be broadcast to a single shape: {}'.format(
+                    ' vs '.join(map(str, shapes))))
+    return tuple(reversed(reversed_shape))
+
+
+def set_backend(backend):
+    """
+    Set backend for Funsor. Currently, only three backends
+    are supported: "numpy", "torch", and "jax".
+
+    .. note: When `jax` backend is set, we cannot revert back to the default
+    `numpy` backend.
+
+    :param str backend: either "numpy", "torch", or "jax".
+    """
+    global _FUNSOR_BACKEND, _JAX_LOADED
+
+    if backend == "numpy":
+        if _JAX_LOADED:
+            raise ValueError("Cannot revert back to NumPy backend when JAX backend has been set.")
+        else:
+            _FUNSOR_BACKEND = "numpy"
+    elif backend == "torch":
+        _FUNSOR_BACKEND = "torch"
+
+        import torch  # noqa: F401
+        import funsor.torch  # noqa: F401
+    elif backend == "jax":
+        _FUNSOR_BACKEND = "jax"
+        _JAX_LOADED = True
+
+        import jax  # noqa: F401
+        import funsor.jax  # noqa: F401
+    else:
+        raise ValueError(f"backend should be either 'numpy', 'torch', or 'jax'"
+                         ", got {backend}")
+
+
+def get_backend():
+    """
+    Get the current backend of Funsor.
+
+    :return: either "numpy", "torch", or "jax".
+    :rtype: str
+    """
+    return _FUNSOR_BACKEND
+
+
+def get_tracing_state():
+    if _FUNSOR_BACKEND == "torch":
+        import torch
+
+        return torch._C._get_tracing_state()
+    else:
+        return None
+
+
+def is_nn_module(x):
+    if _FUNSOR_BACKEND == "torch":
+        import torch
+
+        return isinstance(x, torch.nn.Module)
+    return False

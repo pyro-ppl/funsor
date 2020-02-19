@@ -6,7 +6,6 @@ from collections import OrderedDict
 from functools import reduce
 from typing import Tuple, Union
 
-import torch
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
@@ -103,22 +102,22 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
         int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != 'real')
         probs = (discrete - new_discrete.clamp_finite()).exp()
 
-        old_loc = Tensor(gaussian.info_vec.unsqueeze(-1).cholesky_solve(gaussian._precision_chol).squeeze(-1),
+        old_loc = Tensor(ops.cholesky_solve(ops.unsqueeze(gaussian.info_vec, -1), gaussian._precision_chol).squeeze(-1),
                          int_inputs)
         new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
         old_cov = Tensor(ops.cholesky_inverse(gaussian._precision_chol), int_inputs)
         diff = old_loc - new_loc
-        outers = Tensor(diff.data.unsqueeze(-1) * diff.data.unsqueeze(-2), diff.inputs)
+        outers = Tensor(ops.unsqueeze(diff.data, -1) * ops.unsqueeze(diff.data, -2), diff.inputs)
         new_cov = ((probs * old_cov).reduce(ops.add, approx_vars) +
                    (probs * outers).reduce(ops.add, approx_vars))
 
         # Numerically stabilize by adding bogus precision to empty components.
         total = probs.reduce(ops.add, approx_vars)
-        mask = (total.data == 0).to(total.data.dtype).unsqueeze(-1).unsqueeze(-1)
-        new_cov.data += mask * torch.eye(new_cov.data.size(-1))
+        mask = ops.unsqueeze(ops.unsqueeze((total.data == 0), -1), -1)
+        new_cov.data = new_cov.data + mask * ops.new_eye(new_cov.data, new_cov.data.shape[-1:])
 
         new_precision = Tensor(ops.cholesky_inverse(ops.cholesky(new_cov.data)), new_cov.inputs)
-        new_info_vec = new_precision.data.matmul(new_loc.data.unsqueeze(-1)).squeeze(-1)
+        new_info_vec = (new_precision.data @ ops.unsqueeze(new_loc.data, -1)).squeeze(-1)
         new_inputs = new_loc.inputs.copy()
         new_inputs.update((k, d) for k, d in gaussian.inputs.items() if d.dtype == 'real')
         new_gaussian = Gaussian(new_info_vec, new_precision.data, new_inputs)
