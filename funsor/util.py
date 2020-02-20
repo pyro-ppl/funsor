@@ -183,9 +183,6 @@ def set_backend(backend):
                          ", got {backend}")
 
 
-set_backend(_FUNSOR_BACKEND)
-
-
 def get_backend():
     """
     Get the current backend of Funsor.
