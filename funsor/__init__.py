@@ -30,8 +30,6 @@ from . import (
     testing,
 )
 
-set_backend(get_backend())
-
 
 __all__ = [
     'Cat',

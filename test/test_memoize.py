@@ -11,25 +11,25 @@ from funsor.interpreter import interpretation, reinterpret
 from funsor.memoize import memoize
 from funsor.terms import reflect
 from funsor.testing import make_einsum_example, numeric_array, xfail_param
-from funsor.util import get_backend, set_backend
+from funsor.util import get_backend
 
 
 EINSUM_EXAMPLES = [
-    #("a,b->", ''),
-    #("ab,a->", ''),
-    #("a,a->", ''),
-    #("a,a->a", ''),
-    #("ab,bc,cd->da", ''),
-    #("ab,cd,bc->da", ''),
-    #("a,a,a,ab->ab", ''),
-    #('i->', 'i'),
-    #(',i->', 'i'),
-    #('ai->', 'i'),
+    ("a,b->", ''),
+    ("ab,a->", ''),
+    ("a,a->", ''),
+    ("a,a->a", ''),
+    ("ab,bc,cd->da", ''),
+    ("ab,cd,bc->da", ''),
+    ("a,a,a,ab->ab", ''),
+    ('i->', 'i'),
+    (',i->', 'i'),
+    ('ai->', 'i'),
     (',ai,abij->', 'ij'),
-    #('a,ai,bij->', 'ij'),
-    #('ai,abi,bci,cdi->', 'i'),
-    #('aij,abij,bcij->', 'ij'),
-    #('a,abi,bcij,cdij->', 'ij'),
+    ('a,ai,bij->', 'ij'),
+    ('ai,abi,bci,cdi->', 'i'),
+    ('aij,abij,bcij->', 'ij'),
+    ('a,abi,bcij,cdij->', 'ij'),
 ]
 
 
@@ -43,37 +43,11 @@ def backend_to_einsum_backends(backend):
 @pytest.mark.parametrize('backend', backend_to_einsum_backends(get_backend()))
 @pytest.mark.parametrize('einsum_impl,same_lazy', [
     (einsum, True),
-    #(einsum, xfail_param(False, reason="nested interpreters?")),
-    #(naive_plated_einsum, True),
-    #(naive_plated_einsum, False)
+    (einsum, xfail_param(False, reason="nested interpreters?")),
+    (naive_plated_einsum, True),
+    (naive_plated_einsum, False)
 ])
-def test_einsum_complete_sharing10(equation, plates, backend, einsum_impl, same_lazy):
-    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
-
-    with interpretation(reflect):
-        lazy_expr1 = einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
-        lazy_expr2 = lazy_expr1 if same_lazy else \
-            einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
-
-    with memoize():
-        expr1 = reinterpret(lazy_expr1)
-        expr2 = reinterpret(lazy_expr2)
-    expr3 = reinterpret(lazy_expr1)
-
-    assert expr1 is expr2
-    assert expr1 is not expr3
-
-
-@pytest.mark.parametrize('equation,plates', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', backend_to_einsum_backends(get_backend()))
-@pytest.mark.parametrize('einsum_impl,same_lazy', [
-    (einsum, True),
-    #(einsum, xfail_param(False, reason="nested interpreters?")),
-    #(naive_plated_einsum, True),
-    #(naive_plated_einsum, False)
-])
-def test_einsum_complete_sharing11(equation, plates, backend, einsum_impl, same_lazy):
-    set_backend("jax")
+def test_einsum_complete_sharing(equation, plates, backend, einsum_impl, same_lazy):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
     with interpretation(reflect):
