@@ -2,49 +2,52 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-import torch
 
 import funsor.ops as ops
+from funsor.cnf import BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND
 from funsor.distributions import Normal
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.memoize import memoize
 from funsor.terms import reflect
-from funsor.testing import make_einsum_example, xfail_param
+from funsor.testing import make_einsum_example, numeric_array, xfail_param
+from funsor.util import get_backend, set_backend
 
-from funsor.util import get_backend
-
-pytestmark = pytest.mark.skipif(get_backend() != "torch",
-                                reason="numpy/jax backend does not work yet")
 
 EINSUM_EXAMPLES = [
-    ("a,b->", ''),
-    ("ab,a->", ''),
-    ("a,a->", ''),
-    ("a,a->a", ''),
-    ("ab,bc,cd->da", ''),
-    ("ab,cd,bc->da", ''),
-    ("a,a,a,ab->ab", ''),
-    ('i->', 'i'),
-    (',i->', 'i'),
-    ('ai->', 'i'),
+    #("a,b->", ''),
+    #("ab,a->", ''),
+    #("a,a->", ''),
+    #("a,a->a", ''),
+    #("ab,bc,cd->da", ''),
+    #("ab,cd,bc->da", ''),
+    #("a,a,a,ab->ab", ''),
+    #('i->', 'i'),
+    #(',i->', 'i'),
+    #('ai->', 'i'),
     (',ai,abij->', 'ij'),
-    ('a,ai,bij->', 'ij'),
-    ('ai,abi,bci,cdi->', 'i'),
-    ('aij,abij,bcij->', 'ij'),
-    ('a,abi,bcij,cdij->', 'ij'),
+    #('a,ai,bij->', 'ij'),
+    #('ai,abi,bci,cdi->', 'i'),
+    #('aij,abij,bcij->', 'ij'),
+    #('a,abi,bcij,cdij->', 'ij'),
 ]
 
 
+def backend_to_einsum_backends(backend):
+    backends = [BACKEND_TO_EINSUM_BACKEND[get_backend()],
+                BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()]]
+    return backends[:1]
+
+
 @pytest.mark.parametrize('equation,plates', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize('backend', backend_to_einsum_backends(get_backend()))
 @pytest.mark.parametrize('einsum_impl,same_lazy', [
     (einsum, True),
-    (einsum, xfail_param(False, reason="nested interpreters?")),
-    (naive_plated_einsum, True),
-    (naive_plated_einsum, False)
+    #(einsum, xfail_param(False, reason="nested interpreters?")),
+    #(naive_plated_einsum, True),
+    #(naive_plated_einsum, False)
 ])
-def test_einsum_complete_sharing(equation, plates, backend, einsum_impl, same_lazy):
+def test_einsum_complete_sharing10(equation, plates, backend, einsum_impl, same_lazy):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
     with interpretation(reflect):
@@ -62,7 +65,33 @@ def test_einsum_complete_sharing(equation, plates, backend, einsum_impl, same_la
 
 
 @pytest.mark.parametrize('equation,plates', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize('backend', backend_to_einsum_backends(get_backend()))
+@pytest.mark.parametrize('einsum_impl,same_lazy', [
+    (einsum, True),
+    #(einsum, xfail_param(False, reason="nested interpreters?")),
+    #(naive_plated_einsum, True),
+    #(naive_plated_einsum, False)
+])
+def test_einsum_complete_sharing11(equation, plates, backend, einsum_impl, same_lazy):
+    set_backend("jax")
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+
+    with interpretation(reflect):
+        lazy_expr1 = einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
+        lazy_expr2 = lazy_expr1 if same_lazy else \
+            einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
+
+    with memoize():
+        expr1 = reinterpret(lazy_expr1)
+        expr2 = reinterpret(lazy_expr2)
+    expr3 = reinterpret(lazy_expr1)
+
+    assert expr1 is expr2
+    assert expr1 is not expr3
+
+
+@pytest.mark.parametrize('equation,plates', EINSUM_EXAMPLES)
+@pytest.mark.parametrize('backend', backend_to_einsum_backends(get_backend()))
 @pytest.mark.parametrize('einsum_impl,same_lazy', [
     (einsum, True),
     (einsum, xfail_param(False, reason="nested interpreters?")),
@@ -95,7 +124,7 @@ def test_einsum_complete_sharing_reuse_cache(equation, plates, backend, einsum_i
 def test_memoize_sample(check_sample):
 
     with memoize():
-        m, s = torch.tensor(0.), torch.tensor(1.)
+        m, s = numeric_array(0.), numeric_array(1.)
         j1 = Normal(m, s, 'x')
         j2 = Normal(m, s, 'x')
         x1 = j1.sample(frozenset({'x'}))
@@ -114,8 +143,8 @@ def test_memoize_sample(check_sample):
 @pytest.mark.parametrize("eqn1,eqn2", [("ab,bc,cd->d", "de,ef,fg->")])
 @pytest.mark.parametrize("einsum_impl1", [naive_plated_einsum, xfail_param(einsum, reason="nested interpreters?")])
 @pytest.mark.parametrize("einsum_impl2", [naive_plated_einsum, xfail_param(einsum, reason="nested interpreters?")])
-@pytest.mark.parametrize('backend1', ['torch', 'pyro.ops.einsum.torch_log'])
-@pytest.mark.parametrize('backend2', ['torch', 'pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize('backend1', backend_to_einsum_backends(get_backend()))
+@pytest.mark.parametrize('backend2', backend_to_einsum_backends(get_backend()))
 def test_nested_einsum_complete_sharing(eqn1, eqn2, einsum_impl1, einsum_impl2, backend1, backend2):
 
     inputs1, outputs1, sizes1, operands1, funsor_operands1 = make_einsum_example(eqn1, sizes=(3,))

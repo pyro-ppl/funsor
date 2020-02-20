@@ -9,6 +9,8 @@ import torch
 from pyro.ops.contract import einsum as pyro_einsum
 
 import funsor
+import funsor.ops as ops
+from funsor.cnf import BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND, BACKEND_TO_MAP_BACKEND
 from funsor.distributions import Categorical
 from funsor.domains import bint
 from funsor.einsum import naive_einsum, naive_plated_einsum
@@ -18,9 +20,6 @@ from funsor.tensor import Tensor
 from funsor.terms import Variable, reflect
 from funsor.testing import assert_close, make_einsum_example
 from funsor.util import get_backend
-
-pytestmark = pytest.mark.skipif(get_backend() != "torch",
-                                reason="numpy/jax backend requires porting pyro.ops.einsum")
 
 EINSUM_EXAMPLES = [
     "a,b->",
@@ -33,19 +32,23 @@ EINSUM_EXAMPLES = [
 ]
 
 
+def backend_to_einsum_backends(backend):
+    backends = [BACKEND_TO_EINSUM_BACKEND[get_backend()],
+                BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()]]
+    map_backend = BACKEND_TO_MAP_BACKEND[get_backend()]
+    if backend == "jax":
+        map_backend = pytest.param(
+            map_backend,
+            marks=pytest.mark.xfail(reason="Can't set attribute '_pyro_dims' to DeviceArray")
+        )
+    backends.append(map_backend)
+    return backends
+
+
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', [
-    'torch',
-    'pyro.ops.einsum.torch_log',
-    'pyro.ops.einsum.torch_map',
-    'numpy',
-    'funsor.einsum.numpy_log',
-    'funsor.einsum.numpy_map',
-])
+@pytest.mark.parametrize('backend', backend_to_einsum_backends(get_backend()))
 def test_einsum(equation, backend):
-    tensor_backend = "torch" if "torch" in backend else "numpy"
-    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation,
-                                                                            backend=tensor_backend)
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
 
     with interpretation(reflect):
@@ -71,13 +74,15 @@ def test_einsum(equation, backend):
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', ['torch', 'numpy'])
-def test_einsum_categorical(equation, backend):
-    inputs, outputs, sizes, operands, _ = make_einsum_example(equation, backend=backend)
-    operands = [operand.abs() / operand.abs().sum(-1, keepdim=True)
+@pytest.mark.skipif(get_backend() != "torch",
+                    reason="funsor.distributions does not support numpy/jax backend")
+def test_einsum_categorical(equation):
+    inputs, outputs, sizes, operands, _ = make_einsum_example(equation)
+    operands = [ops.abs(operand) / ops.abs(operand).sum(-1)[..., None]
                 for operand in operands]
 
-    expected = opt_einsum.contract(equation, *operands, backend=backend)
+    expected = opt_einsum.contract(equation, *operands,
+                                   backend=BACKEND_TO_EINSUM_BACKEND[get_backend()])
 
     with interpretation(reflect):
         funsor_operands = [
@@ -124,10 +129,12 @@ PLATED_EINSUM_EXAMPLES = [
 
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', [
-    'torch',
-    'pyro.ops.einsum.torch_log',
-    'pyro.ops.einsum.torch_map',
+    BACKEND_TO_EINSUM_BACKEND[get_backend()],
+    BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()],
+    BACKEND_TO_MAP_BACKEND[get_backend()]
 ])
+@pytest.mark.skipif(get_backend() != "torch",
+                    reason="pyro.ops.contract.einsum does not work with numpy/jax backend.")
 def test_plated_einsum(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = pyro_einsum(equation, *operands, plates=plates, backend=backend, modulo_total=False)[0]

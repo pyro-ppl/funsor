@@ -93,13 +93,13 @@ def _all(x, dim):
 
 
 @ops.amax.register(torch.Tensor, (int, type(None)))
-def _amax(x, dim):
-    return x.max() if dim is None else x.max(dim)[0]
+def _amax(x, dim, keepdims=False):
+    return x.max() if dim is None else x.max(dim, keepdims)[0]
 
 
 @ops.amin.register(torch.Tensor, (int, type(None)))
-def _amin(x, dim):
-    return x.min() if dim is None else x.min(dim)[0]
+def _amin(x, dim, keepdims=False):
+    return x.min() if dim is None else x.min(dim, keepdims)[0]
 
 
 @ops.any.register(torch.Tensor, (int, type(None)))
@@ -283,6 +283,6 @@ def _sum(x, dim):
     return x.sum() if dim is None else x.sum(dim)
 
 
-@ops.triangular_solve_op.register(torch.Tensor, torch.Tensor, bool, bool)
-def _triangular_solve(x, y, upper, transpose):
+@ops.triangular_solve.register(torch.Tensor, torch.Tensor)
+def _triangular_solve(x, y, upper=False, transpose=False):
     return x.triangular_solve(y, upper, transpose).solution
