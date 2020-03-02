@@ -11,7 +11,7 @@ from pyro.distributions.util import broadcast_shape
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
-from funsor.domains import bint, reals
+from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym, interpretation
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
@@ -37,7 +37,7 @@ class Distribution2(Funsor):
             assert isinstance(value, Funsor)
             inputs.update(value.inputs)
         assert isinstance(name, str) and name not in inputs
-        inputs[name] = self._infer_value_shape(cls, **params)
+        inputs[name] = self._infer_value_shape(**params)
         output = reals()
         fresh = frozenset({name})
         bound = frozenset()
@@ -67,6 +67,7 @@ class Distribution2(Funsor):
         else:
             raise NotImplementedError("not implemented")
 
+
 ################################################################################
 # Distribution Wrappers
 ################################################################################
@@ -91,7 +92,7 @@ def make_dist(pyro_dist_class, param_names=()):
     return dist_class
 
 
-for pyro_dist in (dist.Categorical, dist.Bernoulli, dist.Normal):
+for pyro_dist_class in (dist.Categorical, dist.Bernoulli, dist.Normal):
     locals()[pyro_dist_class.__name__.split(".")[-1]] = make_dist(pyro_dist_class)
 
 
