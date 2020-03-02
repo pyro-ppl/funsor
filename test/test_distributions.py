@@ -18,6 +18,10 @@ from funsor.pyro.convert import dist_to_funsor
 from funsor.tensor import Einsum, Tensor
 from funsor.terms import Independent, Variable, lazy
 from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif(get_backend() != "torch",
+                                reason="numpy/jax backend requires refactoring funsor.distributions")
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)

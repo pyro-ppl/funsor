@@ -9,7 +9,6 @@ from typing import Tuple, Union
 
 import opt_einsum
 from multipledispatch.variadic import Variadic
-from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.affine import affine_inputs
@@ -33,7 +32,7 @@ from funsor.terms import (
     reflect,
     to_funsor
 )
-from funsor.util import quote
+from funsor.util import broadcast_shape, get_backend, quote
 
 
 class Contraction(Funsor):
@@ -231,14 +230,15 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
-    return _eager_contract_tensors(reduced_vars, terms, backend=terms[0].backend)
+    backend = BACKEND_TO_EINSUM_BACKEND[get_backend()]
+    return _eager_contract_tensors(reduced_vars, terms, backend=backend)
 
 
 @eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Tensor, Tensor)
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
-    backend = BACKEND_TO_LOGSUMEXP_BACKEND[terms[0].backend]
+    backend = BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()]
     return _eager_contract_tensors(reduced_vars, terms, backend=backend)
 
 
@@ -449,7 +449,13 @@ def unary_contract(op, arg):
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
 
 
+BACKEND_TO_EINSUM_BACKEND = {
+    "numpy": "numpy",
+    "torch": "torch",
+    "jax": "jax.numpy",
+}
 BACKEND_TO_LOGSUMEXP_BACKEND = {
-    "torch": "pyro.ops.einsum.torch_log",
     "numpy": "funsor.einsum.numpy_log",
+    "torch": "pyro.ops.einsum.torch_log",
+    "jax": "funsor.einsum.jax_log",
 }

@@ -37,11 +37,21 @@ setup(
         'multipledispatch',
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
+        # TODO: remove pyro-ppl and torch when funsor.minipyro and funsor.pyro is refactored
         'pyro-ppl>=0.5',
         'pytest>=4.1',
         'torch>=1.3.0',
     ],
     extras_require={
+        'torch': [
+            'pyro-ppl>=0.5',
+            'torch>=1.3.0',
+        ],
+        'jax': [
+            'jax==0.1.59',
+            'jaxlib==0.1.38',
+            'numpyro @ git+https://github.com/pyro-ppl/numpyro.git@f2aefcf1b034418244c1e465c64bce469388e566#egg=numpyro'
+        ],
         'test': [
             'flake8',
             'pandas',

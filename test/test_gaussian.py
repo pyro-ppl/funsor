@@ -5,9 +5,7 @@ import itertools
 from collections import OrderedDict
 from functools import reduce
 
-import numpy as np
 import pytest
-import torch
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
@@ -16,14 +14,19 @@ from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
 from funsor.tensor import Einsum, Tensor
 from funsor.terms import Number, Variable
-from funsor.testing import assert_close, id_from_inputs, randn, random_gaussian, random_tensor
+from funsor.testing import (assert_close, id_from_inputs, ones, randn, random_gaussian,
+                            random_tensor, zeros, numeric_array)
+from funsor.util import get_backend
 
 assert Einsum  # flake8
 
 
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+@pytest.mark.skipif(get_backend() != "torch", reason="The test is specific to 'torch' backend")
 def test_cholesky_solve(batch_shape, size):
+    import torch
+
     b = torch.randn(batch_shape + (size, 5))
     x = torch.randn(batch_shape + (size, size))
     x = x.transpose(-1, -2).matmul(x)
@@ -36,6 +39,8 @@ def test_cholesky_solve(batch_shape, size):
 
 
 def naive_cholesky_inverse(u):
+    import torch
+
     shape = u.shape
     return torch.stack([
         part.cholesky_inverse()
@@ -46,7 +51,10 @@ def naive_cholesky_inverse(u):
 @pytest.mark.parametrize("requires_grad", [False, True])
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+@pytest.mark.skipif(get_backend() != "torch", reason="The test is specific to 'torch' backend")
 def test_cholesky_inverse(batch_shape, size, requires_grad):
+    import torch
+
     x = torch.randn(batch_shape + (size, size))
     x = x.transpose(-1, -2).matmul(x)
     u = x.cholesky()
@@ -59,54 +67,50 @@ def test_cholesky_inverse(batch_shape, size, requires_grad):
 
 def test_block_vector():
     shape = (10,)
-    expected = torch.zeros(shape)
+    expected = zeros(shape)
     actual = BlockVector(shape)
 
-    expected[1] = torch.randn(())
+    expected[1] = randn(())
     actual[1] = expected[1]
 
-    expected[3:5] = torch.randn(2)
+    expected[3:5] = randn((2,))
     actual[3:5] = expected[3:5]
 
     assert_close(actual.as_tensor(), expected)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (4,), (3, 2)])
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_block_vector_batched(batch_shape, backend):
-    zeros = torch.zeros if backend == "torch" else np.zeros
+def test_block_vector_batched(batch_shape):
     shape = batch_shape + (10,)
     expected = zeros(shape)
     actual = BlockVector(shape)
 
-    expected[..., 1] = randn(batch_shape, backend)
+    expected[..., 1] = randn(batch_shape)
     actual[..., 1] = expected[..., 1]
 
-    expected[..., 3:5] = randn(batch_shape + (2,), backend)
+    expected[..., 3:5] = randn(batch_shape + (2,))
     actual[..., 3:5] = expected[..., 3:5]
 
     assert_close(actual.as_tensor(), expected)
 
 
 @pytest.mark.parametrize('sparse', [False, True])
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_block_matrix(sparse, backend):
-    zeros = torch.zeros if backend == "torch" else np.zeros
+def test_block_matrix(sparse):
     shape = (10, 10)
     expected = zeros(shape)
     actual = BlockMatrix(shape)
 
-    expected[1, 1] = randn((), backend)
+    expected[1, 1] = randn(())
     actual[1, 1] = expected[1, 1]
 
     if not sparse:
-        expected[1, 3:5] = randn((2,), backend)
+        expected[1, 3:5] = randn((2,))
         actual[1, 3:5] = expected[1, 3:5]
 
-        expected[3:5, 1] = randn((2,), backend)
+        expected[3:5, 1] = randn((2,))
         actual[3:5, 1] = expected[3:5, 1]
 
-    expected[3:5, 3:5] = randn((2, 2), backend)
+    expected[3:5, 3:5] = randn((2, 2))
     actual[3:5, 3:5] = expected[3:5, 3:5]
 
     assert_close(actual.as_tensor(), expected)
@@ -114,24 +118,22 @@ def test_block_matrix(sparse, backend):
 
 @pytest.mark.parametrize('sparse', [False, True])
 @pytest.mark.parametrize('batch_shape', [(), (4,), (3, 2)])
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_block_matrix_batched(batch_shape, sparse, backend):
-    zeros = torch.zeros if backend == "torch" else np.zeros
+def test_block_matrix_batched(batch_shape, sparse):
     shape = batch_shape + (10, 10)
     expected = zeros(shape)
     actual = BlockMatrix(shape)
 
-    expected[..., 1, 1] = randn(batch_shape, backend)
+    expected[..., 1, 1] = randn(batch_shape)
     actual[..., 1, 1] = expected[..., 1, 1]
 
     if not sparse:
-        expected[..., 1, 3:5] = randn(batch_shape + (2,), backend)
+        expected[..., 1, 3:5] = randn(batch_shape + (2,))
         actual[..., 1, 3:5] = expected[..., 1, 3:5]
 
-        expected[..., 3:5, 1] = randn(batch_shape + (2,), backend)
+        expected[..., 3:5, 1] = randn(batch_shape + (2,))
         actual[..., 3:5, 1] = expected[..., 3:5, 1]
 
-    expected[..., 3:5, 3:5] = randn(batch_shape + (2, 2), backend)
+    expected[..., 3:5, 3:5] = randn(batch_shape + (2, 2))
     actual[..., 3:5, 3:5] = expected[..., 3:5, 3:5]
 
     assert_close(actual.as_tensor(), expected)
@@ -162,43 +164,40 @@ def test_block_matrix_batched(batch_shape, sparse, backend):
     ('(g1 + g2).reduce(ops.logaddexp, "y")', Contraction),
     ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
 ])
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_smoke(expr, expected_type, backend):
-    tensor = torch.tensor if backend == "torch" else np.array
-
+def test_smoke(expr, expected_type):
     g1 = Gaussian(
-        info_vec=tensor([[0.0, 0.1, 0.2],
-                         [2.0, 3.0, 4.0]]),
-        precision=tensor([[[1.0, 0.1, 0.2],
-                           [0.1, 1.0, 0.3],
-                           [0.2, 0.3, 1.0]],
-                          [[1.0, 0.1, 0.2],
-                           [0.1, 1.0, 0.3],
-                           [0.2, 0.3, 1.0]]]),
+        info_vec=numeric_array([[0.0, 0.1, 0.2],
+                               [2.0, 3.0, 4.0]]),
+        precision=numeric_array([[[1.0, 0.1, 0.2],
+                                  [0.1, 1.0, 0.3],
+                                  [0.2, 0.3, 1.0]],
+                                 [[1.0, 0.1, 0.2],
+                                 [0.1, 1.0, 0.3],
+                                 [0.2, 0.3, 1.0]]]),
         inputs=OrderedDict([('i', bint(2)), ('x', reals(3))]))
     assert isinstance(g1, Gaussian)
 
     g2 = Gaussian(
-        info_vec=tensor([[0.0, 0.1],
-                         [2.0, 3.0]]),
-        precision=tensor([[[1.0, 0.2],
-                           [0.2, 1.0]],
-                          [[1.0, 0.2],
-                           [0.2, 1.0]]]),
+        info_vec=numeric_array([[0.0, 0.1],
+                                [2.0, 3.0]]),
+        precision=numeric_array([[[1.0, 0.2],
+                                  [0.2, 1.0]],
+                                 [[1.0, 0.2],
+                                  [0.2, 1.0]]]),
         inputs=OrderedDict([('i', bint(2)), ('y', reals(2))]))
     assert isinstance(g2, Gaussian)
 
-    shift = Tensor(tensor([-1., 1.]), OrderedDict([('i', bint(2))]))
+    shift = Tensor(numeric_array([-1., 1.]), OrderedDict([('i', bint(2))]))
     assert isinstance(shift, Tensor)
 
     i0 = Number(1, 2)
     assert isinstance(i0, Number)
 
-    x0 = Tensor(tensor([0.5, 0.6, 0.7]))
+    x0 = Tensor(numeric_array([0.5, 0.6, 0.7]))
     assert isinstance(x0, Tensor)
 
-    y0 = Tensor(tensor([[0.2, 0.3],
-                        [0.8, 0.9]]),
+    y0 = Tensor(numeric_array([[0.2, 0.3],
+                               [0.8, 0.9]]),
                 inputs=OrderedDict([('i', bint(2))]))
     assert isinstance(y0, Tensor)
 
@@ -219,12 +218,11 @@ def test_smoke(expr, expected_type, backend):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_align(int_inputs, real_inputs, backend):
+def test_align(int_inputs, real_inputs):
     inputs1 = OrderedDict(list(sorted(int_inputs.items())) +
                           list(sorted(real_inputs.items())))
     inputs2 = OrderedDict(reversed(inputs1.items()))
-    g1 = random_gaussian(inputs1, backend)
+    g1 = random_gaussian(inputs1)
     g2 = g1.align(tuple(inputs2))
     assert g2.inputs == inputs2
     g3 = g2.align(tuple(inputs1))
@@ -244,14 +242,12 @@ def test_align(int_inputs, real_inputs, backend):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_eager_subs_origin(int_inputs, real_inputs, backend):
-    zeros = torch.zeros if backend == "torch" else np.zeros
+def test_eager_subs_origin(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
-    g = random_gaussian(inputs, backend)
+    g = random_gaussian(inputs)
 
     # Check that Gaussian log density at origin is zero.
     origin = {k: zeros(d.shape) for k, d in real_inputs.items()}
@@ -274,21 +270,20 @@ def test_eager_subs_origin(int_inputs, real_inputs, backend):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_eager_subs(int_inputs, real_inputs, backend):
+def test_eager_subs(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
-    g = random_gaussian(inputs, backend)
+    g = random_gaussian(inputs)
 
     for order in itertools.permutations(inputs):
         ground_values = {}
         dependent_values = {}
         for i, name in enumerate(order):
             upstream = OrderedDict([(k, inputs[k]) for k in order[:i] if k in int_inputs])
-            value = random_tensor(upstream, inputs[name], backend)
+            value = random_tensor(upstream, inputs[name])
             ground_values[name] = value(**ground_values)
             dependent_values[name] = value
 
@@ -296,13 +291,12 @@ def test_eager_subs(int_inputs, real_inputs, backend):
         actual = g
         for k in reversed(order):
             actual = actual(**{k: dependent_values[k]})
-        assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+        assert_close(actual, expected, atol=1e-5, rtol=1e-4)
 
 
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_eager_subs_variable(backend):
+def test_eager_subs_variable():
     inputs = OrderedDict([('i', bint(2)), ('x', reals()), ('y', reals(2))])
-    g1 = random_gaussian(inputs, backend)
+    g1 = random_gaussian(inputs)
 
     g2 = g1(x='z')
     assert set(g2.inputs) == {'i', 'y', 'z'}
@@ -330,26 +324,24 @@ def test_eager_subs_variable(backend):
     (('x', 'Variable("u", reals()) * 2 + 1'),
      ('y', 'Variable("u", reals()) * Tensor(ones((4,)))'),
      ('z', 'Variable("u", reals()) * Tensor(ones((2, 3)))')),
-    (('y', 'Einsum("abc,bc->a", (Tensor(randn((4, 3, 5), backend)), Variable("v", reals(3, 5))))'),),
+    (('y', 'Einsum("abc,bc->a", (Tensor(randn((4, 3, 5))), Variable("v", reals(3, 5))))'),),
 ])
 @pytest.mark.parametrize('g_ints', ["", "i", "j", "ij"])
 @pytest.mark.parametrize('subs_ints', ["", "i", "j", "ji"])
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_eager_subs_affine(subs, g_ints, subs_ints, backend):
-    locals = {"ones": torch.ones if backend == "torch" else np.ones, "backend": backend}
+def test_eager_subs_affine(subs, g_ints, subs_ints):
     sizes = {'i': 5, 'j': 6}
     subs_inputs = OrderedDict((k, bint(sizes[k])) for k in subs_ints)
     g_inputs = OrderedDict((k, bint(sizes[k])) for k in g_ints)
     g_inputs['x'] = reals()
     g_inputs['y'] = reals(4)
     g_inputs['z'] = reals(2, 3)
-    g = random_gaussian(g_inputs, backend)
-    subs = {k: eval(v, globals(), locals) + random_tensor(subs_inputs, backend=backend) for k, v in subs}
+    g = random_gaussian(g_inputs)
+    subs = {k: eval(v) + random_tensor(subs_inputs) for k, v in subs}
 
     inputs = g.inputs.copy()
     for v in subs.values():
         inputs.update(v.inputs)
-    grounding_subs = {k: random_tensor(OrderedDict(), d, backend) for k, d in inputs.items()}
+    grounding_subs = {k: random_tensor(OrderedDict(), d) for k, d in inputs.items()}
     ground_subs = {k: v(**grounding_subs) for k, v in subs.items()}
 
     g_subs = g(**subs)
@@ -372,16 +364,15 @@ def test_eager_subs_affine(subs, g_ints, subs_ints, backend):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_add_gaussian_number(int_inputs, real_inputs, backend):
+def test_add_gaussian_number(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
-    g = random_gaussian(inputs, backend)
+    g = random_gaussian(inputs)
     n = Number(1.234)
-    values = {name: random_tensor(int_inputs, domain, backend)
+    values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
     assert_close((g + n)(**values), g(**values) + n, atol=1e-5, rtol=1e-5)
@@ -402,16 +393,15 @@ def test_add_gaussian_number(int_inputs, real_inputs, backend):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_add_gaussian_tensor(int_inputs, real_inputs, backend):
+def test_add_gaussian_tensor(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
-    g = random_gaussian(inputs, backend)
-    t = random_tensor(int_inputs, reals(), backend)
-    values = {name: random_tensor(int_inputs, domain, backend)
+    g = random_gaussian(inputs)
+    t = random_tensor(int_inputs, reals())
+    values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
     assert_close((g + t)(**values), g(**values) + t, atol=1e-5, rtol=1e-5)
@@ -433,8 +423,7 @@ def test_add_gaussian_tensor(int_inputs, real_inputs, backend):
     {'x': reals(), 'y': reals(4)},
     {'y': reals(4), 'z': reals(2, 3)},
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs, backend):
+def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs):
     lhs_inputs = OrderedDict(sorted(lhs_inputs.items()))
     rhs_inputs = OrderedDict(sorted(rhs_inputs.items()))
     inputs = lhs_inputs.copy()
@@ -442,9 +431,9 @@ def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs, backend):
     int_inputs = OrderedDict((k, d) for k, d in inputs.items() if d.dtype != 'real')
     real_inputs = OrderedDict((k, d) for k, d in inputs.items() if d.dtype == 'real')
 
-    g1 = random_gaussian(lhs_inputs, backend)
-    g2 = random_gaussian(rhs_inputs, backend)
-    values = {name: random_tensor(int_inputs, domain, backend)
+    g1 = random_gaussian(lhs_inputs)
+    g2 = random_gaussian(rhs_inputs)
+    values = {name: random_tensor(int_inputs, domain)
               for name, domain in real_inputs.items()}
 
     assert_close((g1 + g2)(**values), g1(**values) + g2(**values), atol=1e-4, rtol=None)
@@ -457,9 +446,8 @@ def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs, backend):
     OrderedDict([('i', bint(2)), ('x', reals()), ('y', reals())]),
     OrderedDict([('i', bint(3)), ('j', bint(4)), ('x', reals(2))]),
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_reduce_add(inputs, backend):
-    g = random_gaussian(inputs, backend)
+def test_reduce_add(inputs):
+    g = random_gaussian(inputs)
     actual = g.reduce(ops.add, 'i')
 
     gs = [g(i=i) for i in range(g.inputs['i'].dtype)]
@@ -478,14 +466,13 @@ def test_reduce_add(inputs, backend):
     {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
     {'w': reals(5), 'x': reals(4), 'y': reals(2, 3), 'z': reals()},
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_reduce_logsumexp(int_inputs, real_inputs, backend):
+def test_reduce_logsumexp(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
-    g = random_gaussian(inputs, backend)
+    g = random_gaussian(inputs)
     g_xy = g.reduce(ops.logaddexp, frozenset(['x', 'y']))
     assert_close(g_xy, g.reduce(ops.logaddexp, 'x').reduce(ops.logaddexp, 'y'), atol=1e-3, rtol=None)
     assert_close(g_xy, g.reduce(ops.logaddexp, 'y').reduce(ops.logaddexp, 'x'), atol=1e-3, rtol=None)
@@ -500,14 +487,13 @@ def test_reduce_logsumexp(int_inputs, real_inputs, backend):
     {'x': reals(4)},
     {'x': reals(2, 3)},
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_integrate_variable(int_inputs, real_inputs, backend):
+def test_integrate_variable(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
-    log_measure = random_gaussian(inputs, backend)
+    log_measure = random_gaussian(inputs)
     integrand = reduce(ops.add, [Variable(k, d) for k, d in real_inputs.items()])
     reduced_vars = frozenset(real_inputs)
 
@@ -532,15 +518,14 @@ def test_integrate_variable(int_inputs, real_inputs, backend):
     {'x': reals(2), 'y': reals(3)},
     {'x': reals(4), 'y': reals(2, 3)},
 ], ids=id_from_inputs)
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
-def test_integrate_gaussian(int_inputs, real_inputs, backend):
+def test_integrate_gaussian(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
 
-    log_measure = random_gaussian(inputs, backend)
-    integrand = random_gaussian(inputs, backend)
+    log_measure = random_gaussian(inputs)
+    integrand = random_gaussian(inputs)
     reduced_vars = frozenset(real_inputs)
 
     sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(100000)))
@@ -553,15 +538,12 @@ def test_integrate_gaussian(int_inputs, real_inputs, backend):
 
 
 @pytest.mark.xfail(reason="numerically unstable")
-@pytest.mark.parametrize("backend", ["torch", "numpy"])
 def test_mc_plate_gaussian(backend):
-    tensor = torch.tensor if backend == "torch" else np.array
-    ones = torch.ones if backend == "torch" else np.ones
-    log_measure = Gaussian(tensor([0.]), tensor([[1.]]),
-                           (('loc', reals()),)) + tensor(-0.9189)
-    integrand = Gaussian(randn((100, 1), backend) + 3., ones((100, 1, 1)),
+    log_measure = Gaussian(numeric_array([0.]), numeric_array([[1.]]),
+                           (('loc', reals()),)) + numeric_array(-0.9189)
+    integrand = Gaussian(randn((100, 1)) + 3., ones((100, 1, 1)),
                          (('data', bint(100)), ('loc', reals())))
 
     res = Integrate(log_measure.sample('loc'), integrand, 'loc')
     res = res.reduce(ops.mul, 'data')
-    assert not torch.isinf(res).any()
+    assert not ops.any((res == float('inf')) | (res == float('-inf')))

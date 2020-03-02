@@ -17,7 +17,8 @@ def memoize(cache=None):
 
     @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
     def memoize_interpretation(cls, *args):
-        key = (cls,) + tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+        key = (cls,) + tuple(id(arg) if (type(arg).__name__ == "DeviceArray") or not isinstance(arg, Hashable)
+                             else arg for arg in args)
         if key not in cache:
             cache[key] = cls(*args)
         return cache[key]

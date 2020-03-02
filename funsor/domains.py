@@ -6,10 +6,9 @@ from collections import namedtuple
 from functools import reduce
 
 import torch
-from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
-from funsor.util import lazy_property, quote
+from funsor.util import broadcast_shape, lazy_property, quote
 
 
 class Domain(namedtuple('Domain', ['shape', 'dtype'])):
