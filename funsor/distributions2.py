@@ -51,7 +51,7 @@ class Distribution2(Funsor):
         instance = cls.dist_class(**{k: _dummy_tensor(v.output) for k, v in kwargs.items()})
         out_shape = instance.event_shape
         if isinstance(instance.support, torch.distributions.constraints._IntegerInterval):
-            out_dtype = instance.support.upper_bound
+            out_dtype = instance.support.upper_bound + 1
         else:
             out_dtype = 'real'
         return Domain(dtype=out_dtype, shape=out_shape)
@@ -111,13 +111,38 @@ def make_dist(pyro_dist_class, param_names=()):
 #     return pyro_dist(*params)
 
 
+class BernoulliProbs(dist.Bernoulli):
+    def __init__(self, probs, validate_args=None):
+        return super().__init__(probs=probs, validate_args=validate_args)
+
+
+class BernoulliLogits(dist.Bernoulli):
+    def __init__(self, logits, validate_args=None):
+        return super().__init__(logits=logits, validate_args=validate_args)
+
+
+class CategoricalProbs(dist.Categorical):
+    def __init__(self, probs, validate_args=None):
+        return super().__init__(probs=probs, validate_args=validate_args)
+
+
+class CategoricalLogits(dist.Categorical):
+    def __init__(self, logits, validate_args=None):
+        return super().__init__(logits=logits, validate_args=validate_args)
+
+
 _wrapped_pyro_dists = [
-    dist.Beta,
-    # dist.Bernoulli,
-    # dist.Categorical,
-    # dist.Poisson,
-    # dist.Normal,
+    (dist.Beta, ()),
+    (BernoulliProbs, ('probs',)),
+    (BernoulliLogits, ('logits',)),
+    (CategoricalProbs, ('probs',)),
+    (CategoricalLogits, ('logits',)),
+    (dist.Poisson, ()),
+    (dist.Gamma, ()),
+    (dist.VonMises, ()),
+    (dist.Dirichlet, ()),
+    (dist.Normal, ()),
 ]
 
-for pyro_dist_class in _wrapped_pyro_dists:
-    locals()[pyro_dist_class.__name__.split(".")[-1]] = make_dist(pyro_dist_class)
+for pyro_dist_class, param_names in _wrapped_pyro_dists:
+    locals()[pyro_dist_class.__name__.split(".")[-1]] = make_dist(pyro_dist_class, param_names)

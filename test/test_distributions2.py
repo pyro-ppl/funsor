@@ -45,14 +45,13 @@ def test_beta_density(batch_shape):
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('syntax', ['eager', 'lazy', 'generic'])
-def test_bernoulli_probs_density(batch_shape, syntax):
+def test_bernoulli_probs_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
     @funsor.function(reals(), reals(), reals())
     def bernoulli(probs, value):
-        return torch.distributions.Bernoulli(probs).log_prob(value)
+        return torch.distributions.Bernoulli(probs=probs).log_prob(value)
 
     check_funsor(bernoulli, {'probs': reals(), 'value': reals()}, reals())
 
@@ -61,20 +60,13 @@ def test_bernoulli_probs_density(batch_shape, syntax):
     expected = bernoulli(probs, value)
     check_funsor(expected, inputs, reals())
 
-    d = Variable('value', reals())
-    if syntax == 'eager':
-        actual = dist.BernoulliProbs(probs, value)
-    elif syntax == 'lazy':
-        actual = dist.BernoulliProbs(probs, d)(value=value)
-    elif syntax == 'generic':
-        actual = dist.Bernoulli(probs=probs)(value=value)
+    actual = dist.BernoulliProbs(probs, 'value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('syntax', ['eager', 'lazy', 'generic'])
-def test_bernoulli_logits_density(batch_shape, syntax):
+def test_bernoulli_logits_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -89,65 +81,55 @@ def test_bernoulli_logits_density(batch_shape, syntax):
     expected = bernoulli(logits, value)
     check_funsor(expected, inputs, reals())
 
-    d = Variable('value', reals())
-    if syntax == 'eager':
-        actual = dist.BernoulliLogits(logits, value)
-    elif syntax == 'lazy':
-        actual = dist.BernoulliLogits(logits, d)(value=value)
-    elif syntax == 'generic':
-        actual = dist.Bernoulli(logits=logits)(value=value)
-    check_funsor(actual, inputs, reals())
-    assert_close(actual, expected)
-
-
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('eager', [False, True])
-def test_binomial_density(batch_shape, eager):
-    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
-    max_count = 10
-
-    @funsor.function(reals(), reals(), reals(), reals())
-    def binomial(total_count, probs, value):
-        return torch.distributions.Binomial(total_count, probs).log_prob(value)
-
-    check_funsor(binomial, {'total_count': reals(), 'probs': reals(), 'value': reals()}, reals())
-
-    value_data = random_tensor(inputs, bint(max_count)).data.float()
-    total_count_data = value_data + random_tensor(inputs, bint(max_count)).data.float()
-    value = Tensor(value_data, inputs)
-    total_count = Tensor(total_count_data, inputs)
-    probs = Tensor(torch.rand(batch_shape), inputs)
-    expected = binomial(total_count, probs, value)
-    check_funsor(expected, inputs, reals())
-
-    m = Variable('value', reals())
-    actual = dist.Binomial(total_count, probs, value) if eager else \
-        dist.Binomial(total_count, probs, m)(value=value)
+    actual = dist.BernoulliLogits(logits, 'value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('size', [4])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_categorical_density(size, batch_shape):
+def test_categorical_probs_density(size, batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.of_shape(reals(size), bint(size))
-    def categorical(probs, value):
-        return probs[value].log()
+    @funsor.function(reals(size), bint(size), reals())
+    def categorical_probs(probs, value):
+        return torch.distributions.Categorical(probs=probs).log_prob(value)
 
-    check_funsor(categorical, {'probs': reals(size), 'value': bint(size)}, reals())
+    check_funsor(categorical_probs, {'probs': reals(size), 'value': bint(size)}, reals())
 
     probs_data = torch.randn(batch_shape + (size,)).exp()
     probs_data /= probs_data.sum(-1, keepdim=True)
     probs = Tensor(probs_data, inputs)
     value = random_tensor(inputs, bint(size))
-    expected = categorical(probs, value)
+    expected = categorical_probs(probs, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.Categorical(probs, value)
+    actual = dist.CategoricalProbs(probs, 'value')(value=value)
+    check_funsor(actual, inputs, reals())
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('size', [4])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_categorical_logits_density(size, batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    @funsor.function(reals(size), bint(size), reals())
+    def categorical_logits(logits, value):
+        return torch.distributions.Categorical(logits=logits).log_prob(value)
+
+    check_funsor(categorical_logits, {'logits': reals(size), 'value': bint(size)}, reals())
+
+    logits_data = torch.randn(batch_shape + (size,))
+    logits_data /= logits_data.sum(-1, keepdim=True)
+    logits = Tensor(logits_data, inputs)
+    value = random_tensor(inputs, bint(size))
+    expected = categorical_logits(logits, value)
+    check_funsor(expected, inputs, reals())
+
+    actual = dist.CategoricalLogits(logits, 'value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -170,7 +152,7 @@ def test_dirichlet_density(batch_shape, event_shape):
     value = Tensor(value_data, inputs)
     expected = dirichlet(concentration, value)
     check_funsor(expected, inputs, reals())
-    actual = dist.Dirichlet(concentration, value)
+    actual = dist.Dirichlet(concentration, 'value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -192,14 +174,13 @@ def test_normal_density(batch_shape):
     expected = normal(loc, scale, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.Normal(loc, scale, value)
+    actual = dist.Normal(loc, scale, 'value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('syntax', ['eager', 'lazy'])
-def test_poisson_probs_density(batch_shape, syntax):
+def test_poisson_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -214,18 +195,13 @@ def test_poisson_probs_density(batch_shape, syntax):
     expected = poisson(rate, value)
     check_funsor(expected, inputs, reals())
 
-    d = Variable('value', reals())
-    if syntax == 'eager':
-        actual = dist.Poisson(rate, value)
-    elif syntax == 'lazy':
-        actual = dist.Poisson(rate, d)(value=value)
+    actual = dist.Poisson(rate, 'value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('syntax', ['eager', 'lazy'])
-def test_gamma_probs_density(batch_shape, syntax):
+def test_gamma_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -241,18 +217,13 @@ def test_gamma_probs_density(batch_shape, syntax):
     expected = gamma(concentration, rate, value)
     check_funsor(expected, inputs, reals())
 
-    d = Variable('value', reals())
-    if syntax == 'eager':
-        actual = dist.Gamma(concentration, rate, value)
-    elif syntax == 'lazy':
-        actual = dist.Gamma(concentration, rate, d)(value=value)
+    actual = dist.Gamma(concentration, rate, 'value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('syntax', ['eager', 'lazy'])
-def test_von_mises_probs_density(batch_shape, syntax):
+def test_von_mises_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -268,10 +239,6 @@ def test_von_mises_probs_density(batch_shape, syntax):
     expected = von_mises(loc, concentration, value)
     check_funsor(expected, inputs, reals())
 
-    d = Variable('value', reals())
-    if syntax == 'eager':
-        actual = dist.VonMises(loc, concentration, value)
-    elif syntax == 'lazy':
-        actual = dist.VonMises(loc, concentration, d)(value=value)
+    actual = dist.VonMises(loc, concentration, 'value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
