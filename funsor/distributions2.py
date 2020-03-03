@@ -4,6 +4,7 @@
 import math
 from collections import OrderedDict
 
+import makefun
 import pyro.distributions as dist
 import torch
 from pyro.distributions.util import broadcast_shape
@@ -85,8 +86,6 @@ class Distribution2(Funsor, metaclass=DistributionMeta2):
 ################################################################################
 
 def make_dist(pyro_dist_class, param_names=()):
-
-    import makefun
 
     if not param_names:
         param_names = tuple(pyro_dist_class.arg_constraints.keys())

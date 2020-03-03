@@ -34,6 +34,7 @@ setup(
     author_email='fritzo@uber.com',
     python_requires=">=3.6",
     install_requires=[
+        'makefun',
         'multipledispatch',
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
