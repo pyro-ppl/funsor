@@ -95,7 +95,7 @@ def make_dist(pyro_dist_class, param_names=()):
 @to_funsor.register(dist.TorchDistribution)
 def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
     import funsor.distributions2  # TODO find a better way to do this lookup
-    funsor_dist = getattr(funsor.distributions2, type(pyro_dist).__name__)
+    funsor_dist_class = getattr(funsor.distributions2, type(pyro_dist).__name__)
     params = [to_funsor(getattr(pyro_dist, param_name), dim_to_name=dim_to_name)
               for param_name in funsor_dist_class._ast_fields if param_name != 'name']
     return funsor_dist_class(*params)
@@ -106,7 +106,12 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     pyro_dist_class = funsor_dist.dist_class
     params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
               for param_name in funsor_dist._ast_fields if param_name != 'name']
-    return pyro_dist_class(*params)
+    pyro_dist = pyro_dist_class(*params)
+    funsor_event_shape = funsor_dist.inputs[funsor_dist.name].shape
+    pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
+    if pyro_dist.event_shape != funsor_event_shape:
+        raise ValueError("Event shapes don't match, something went wrong")
+    return pyro_dist
 
 
 class BernoulliProbs(dist.Bernoulli):
