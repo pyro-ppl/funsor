@@ -174,6 +174,9 @@ _wrapped_pyro_dists = [
 for pyro_dist_class, param_names in _wrapped_pyro_dists:
     locals()[pyro_dist_class.__name__.split(".")[-1]] = make_dist(pyro_dist_class, param_names)
 
+# Delta has to be treated specially because of its weird shape inference semantics
+Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'].output)
+
 
 ######################################
 # Converting distributions to funsors
