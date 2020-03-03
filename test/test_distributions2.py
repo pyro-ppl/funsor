@@ -162,9 +162,9 @@ def test_normal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.of_shape(reals(), reals(), reals())
+    @funsor.function(reals(), reals(), reals(), reals())
     def normal(loc, scale, value):
-        return -((value - loc) ** 2) / (2 * scale ** 2) - scale.log() - math.log(math.sqrt(2 * math.pi))
+        return torch.distributions.Normal(loc, scale).log_prob(value)
 
     check_funsor(normal, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
 
