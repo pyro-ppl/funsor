@@ -22,7 +22,14 @@ def _dummy_tensor(domain):
     return torch.tensor(0.1 if domain.dtype == 'real' else 1).expand(domain.shape)
 
 
-class Distribution2(Funsor):
+class DistributionMeta2(FunsorMeta):
+    def __call__(cls, *args, name=None):
+        if len(args) < len(cls._ast_fields):
+            args = args + (name if name is not None else 'value',)
+        return super(DistributionMeta2, cls).__call__(*args)
+
+
+class Distribution2(Funsor, metaclass=DistributionMeta2):
     """
     Different design for the Distribution Funsor wrapper,
     closer to Gaussian or Delta in which the value is a fresh input.
@@ -82,7 +89,7 @@ def make_dist(pyro_dist_class, param_names=()):
 
     @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, name='value')")
     def dist_init(self, *args, **kwargs):
-        return Distribution2.__init__(self, *map(to_funsor, list(kwargs.values())[:-1]), name='value')
+        return Distribution2.__init__(self, *map(to_funsor, list(kwargs.values())[:-1]), name=kwargs['name'])
 
     dist_class = FunsorMeta(pyro_dist_class.__name__, (Distribution2,), {
         'dist_class': pyro_dist_class,

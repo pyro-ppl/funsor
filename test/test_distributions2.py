@@ -39,7 +39,7 @@ def test_beta_density(batch_shape):
     expected = beta(concentration1, concentration0, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.Beta(concentration1, concentration0, 'value')(value=value)
+    actual = dist.Beta(concentration1, concentration0, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -60,7 +60,7 @@ def test_bernoulli_probs_density(batch_shape):
     expected = bernoulli(probs, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.BernoulliProbs(probs, 'value')(value=value)
+    actual = dist.BernoulliProbs(probs, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -81,7 +81,7 @@ def test_bernoulli_logits_density(batch_shape):
     expected = bernoulli(logits, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.BernoulliLogits(logits, 'value')(value=value)
+    actual = dist.BernoulliLogits(logits, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -105,7 +105,7 @@ def test_categorical_probs_density(size, batch_shape):
     expected = categorical_probs(probs, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.CategoricalProbs(probs, 'value')(value=value)
+    actual = dist.CategoricalProbs(probs, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -129,7 +129,7 @@ def test_categorical_logits_density(size, batch_shape):
     expected = categorical_logits(logits, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.CategoricalLogits(logits, 'value')(value=value)
+    actual = dist.CategoricalLogits(logits, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -152,7 +152,7 @@ def test_dirichlet_density(batch_shape, event_shape):
     value = Tensor(value_data, inputs)
     expected = dirichlet(concentration, value)
     check_funsor(expected, inputs, reals())
-    actual = dist.Dirichlet(concentration, 'value')(value=value)
+    actual = dist.Dirichlet(concentration, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -174,7 +174,7 @@ def test_normal_density(batch_shape):
     expected = normal(loc, scale, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.Normal(loc, scale, 'value')(value=value)
+    actual = dist.Normal(loc, scale, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -195,7 +195,7 @@ def test_poisson_density(batch_shape):
     expected = poisson(rate, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.Poisson(rate, 'value')(value=value)
+    actual = dist.Poisson(rate, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -217,7 +217,7 @@ def test_gamma_density(batch_shape):
     expected = gamma(concentration, rate, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.Gamma(concentration, rate, 'value')(value=value)
+    actual = dist.Gamma(concentration, rate, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
 
@@ -239,6 +239,6 @@ def test_von_mises_density(batch_shape):
     expected = von_mises(loc, concentration, value)
     check_funsor(expected, inputs, reals())
 
-    actual = dist.VonMises(loc, concentration, 'value')(value=value)
+    actual = dist.VonMises(loc, concentration, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
