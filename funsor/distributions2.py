@@ -7,6 +7,7 @@ from collections import OrderedDict
 import makefun
 import torch
 import pyro.distributions as dist
+from pyro.distributions.torch_distribution import MaskedDistribution
 from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
@@ -77,27 +78,9 @@ class Distribution2(Funsor, metaclass=DistributionMeta2):
             raise NotImplementedError("not implemented")
 
 
-################################################################################
-# Distribution Wrappers
-################################################################################
-
-def make_dist(pyro_dist_class, param_names=()):
-
-    if not param_names:
-        param_names = tuple(pyro_dist_class.arg_constraints.keys())
-    assert all(name in pyro_dist_class.arg_constraints for name in param_names)
-
-    @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, name='value')")
-    def dist_init(self, *args, **kwargs):
-        return Distribution2.__init__(self, *map(to_funsor, list(kwargs.values())[:-1]), name=kwargs['name'])
-
-    dist_class = FunsorMeta(pyro_dist_class.__name__, (Distribution2,), {
-        'dist_class': pyro_dist_class,
-        '__init__': dist_init,
-    })
-
-    return dist_class
-
+######################################
+# Converting distributions to funsors
+######################################
 
 @to_funsor.register(torch.distributions.Distribution)
 def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
@@ -117,7 +100,7 @@ def indepdist_to_funsor(pyro_dist, output=None, dim_to_name=None):
     return result
 
 
-@to_funsor.register(pyro.distributions.MaskedDistribution)
+@to_funsor.register(MaskedDistribution)
 def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
     mask = to_funsor(pyro_dist._mask.float(), output=output, dim_to_name=dim_to_name)
     funsor_base_dist = to_funsor(pyro_dist.base_dist, output=output, dim_to_name=dim_to_name)
@@ -128,6 +111,10 @@ def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
 def transformeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
     raise NotImplementedError("TODO")
 
+
+###########################################################
+# Converting distribution funsors to PyTorch distributions
+###########################################################
 
 @to_data.register(Distribution2)
 def distribution_to_data(funsor_dist, name_to_dim=None):
@@ -140,6 +127,33 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     if pyro_dist.event_shape != funsor_event_shape:
         raise ValueError("Event shapes don't match, something went wrong")
     return pyro_dist
+
+
+@to_data.register(Independent)
+def indep_to_data(funsor_dist, name_to_dim=None):
+    raise NotImplementedError("TODO")
+
+
+################################################################################
+# Distribution Wrappers
+################################################################################
+
+def make_dist(pyro_dist_class, param_names=()):
+
+    if not param_names:
+        param_names = tuple(pyro_dist_class.arg_constraints.keys())
+    assert all(name in pyro_dist_class.arg_constraints for name in param_names)
+
+    @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, name='value')")
+    def dist_init(self, *args, **kwargs):
+        return Distribution2.__init__(self, *map(to_funsor, list(kwargs.values())[:-1]), name=kwargs['name'])
+
+    dist_class = DistributionMeta2(pyro_dist_class.__name__, (Distribution2,), {
+        'dist_class': pyro_dist_class,
+        '__init__': dist_init,
+    })
+
+    return dist_class
 
 
 class BernoulliProbs(dist.Bernoulli):
