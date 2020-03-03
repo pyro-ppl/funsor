@@ -6,16 +6,17 @@ from collections import OrderedDict
 
 import makefun
 import pyro.distributions as dist
+from pyro.distributions.torch_distribution import MaskedDistribution
 import torch
 
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
-from funsor.domains import Domain, bint, reals
+from funsor.domains import Domain, reals
 from funsor.gaussian import Gaussian
-from funsor.interpreter import gensym, interpretation
+from funsor.interpreter import gensym
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
-from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
 from funsor.util import broadcast_shape
 
 
@@ -51,7 +52,6 @@ class DistributionMeta(FunsorMeta):
         value = kwargs.pop('value', 'value')
         kwargs = OrderedDict((k, to_funsor(v)) for k, v in kwargs.items())
         value = to_funsor(value, output=cls._infer_value_domain(**kwargs))
-
         args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
         return super(DistributionMeta, cls).__call__(*args)
 
@@ -158,7 +158,7 @@ _wrapped_pyro_dists = [
     (BernoulliProbs, ('probs',)),
     (BernoulliLogits, ('logits',)),
     (dist.Binomial, ('total_count', 'probs')),
-    (dist.Multinomial, ('total_count', 'probs')),  # TODO
+    (dist.Multinomial, ('total_count', 'probs')),
     (dist.Categorical, ('probs',)),
     (CategoricalLogits, ('logits',)),
     (dist.Poisson, ()),
@@ -175,7 +175,58 @@ for pyro_dist_class, param_names in _wrapped_pyro_dists:
     locals()[pyro_dist_class.__name__.split(".")[-1]] = make_dist(pyro_dist_class, param_names)
 
 
-####################
+######################################
+# Converting distributions to funsors
+######################################
+
+@to_funsor.register(torch.distributions.Distribution)
+def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    import funsor.distributions  # TODO find a better way to do this lookup
+    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__)
+    params = [to_funsor(getattr(pyro_dist, param_name), dim_to_name=dim_to_name)
+              for param_name in funsor_dist_class._ast_fields if param_name != 'value']
+    return funsor_dist_class(*params)
+
+
+@to_funsor.register(torch.distributions.Independent)
+def indepdist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    result = to_funsor(pyro_dist.base_dist, dim_to_name=dim_to_name)
+    for i in range(pyro_dist.reinterpreted_batch_ndims):
+        name = ...  # XXX what is this? read off from result?
+        result = funsor.terms.Independent(result, "value", name, "value")
+    return result
+
+
+@to_funsor.register(MaskedDistribution)
+def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    mask = to_funsor(pyro_dist._mask.float(), output=output, dim_to_name=dim_to_name)
+    funsor_base_dist = to_funsor(pyro_dist.base_dist, output=output, dim_to_name=dim_to_name)
+    return mask * funsor_base_dist
+
+
+###########################################################
+# Converting distribution funsors to PyTorch distributions
+###########################################################
+
+@to_data.register(Distribution)
+def distribution_to_data(funsor_dist, name_to_dim=None):
+    pyro_dist_class = funsor_dist.dist_class
+    params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
+              for param_name in funsor_dist._ast_fields if param_name != 'value']
+    pyro_dist = pyro_dist_class(*params)
+    funsor_event_shape = funsor_dist.value.output.shape
+    pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
+    if pyro_dist.event_shape != funsor_event_shape:
+        raise ValueError("Event shapes don't match, something went wrong")
+    return pyro_dist
+
+
+@to_data.register(Independent)
+def indep_to_data(funsor_dist, name_to_dim=None):
+    return to_data(funsor_dist.term, name_to_dim).to_event(len(funsor_dist.value.output.shape))
+
+
+################################################
 
 def Bernoulli(probs=None, logits=None, value='value'):
     """
