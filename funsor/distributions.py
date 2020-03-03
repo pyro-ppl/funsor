@@ -108,6 +108,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         out_shape = instance.event_shape
         if isinstance(instance.support, torch.distributions.constraints._IntegerInterval):
             out_dtype = int(instance.support.upper_bound + 1)
+            # this is a hack, but we don't really care about precise dtypes except for Categorical
             out_dtype = 'real' if out_dtype == 1 else out_dtype
         else:
             out_dtype = 'real'
@@ -178,57 +179,8 @@ for pyro_dist_class, param_names in _wrapped_pyro_dists:
 Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'].output)
 
 
-######################################
-# Converting distributions to funsors
-######################################
-
-@to_funsor.register(torch.distributions.Distribution)
-def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    import funsor.distributions  # TODO find a better way to do this lookup
-    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__)
-    params = [to_funsor(getattr(pyro_dist, param_name), dim_to_name=dim_to_name)
-              for param_name in funsor_dist_class._ast_fields if param_name != 'value']
-    return funsor_dist_class(*params)
-
-
-@to_funsor.register(torch.distributions.Independent)
-def indepdist_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    result = to_funsor(pyro_dist.base_dist, dim_to_name=dim_to_name)
-    for i in range(pyro_dist.reinterpreted_batch_ndims):
-        name = ...  # XXX what is this? read off from result?
-        result = funsor.terms.Independent(result, "value", name, "value")
-    return result
-
-
-@to_funsor.register(MaskedDistribution)
-def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    mask = to_funsor(pyro_dist._mask.float(), output=output, dim_to_name=dim_to_name)
-    funsor_base_dist = to_funsor(pyro_dist.base_dist, output=output, dim_to_name=dim_to_name)
-    return mask * funsor_base_dist
-
-
-###########################################################
-# Converting distribution funsors to PyTorch distributions
-###########################################################
-
-@to_data.register(Distribution)
-def distribution_to_data(funsor_dist, name_to_dim=None):
-    pyro_dist_class = funsor_dist.dist_class
-    params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
-              for param_name in funsor_dist._ast_fields if param_name != 'value']
-    pyro_dist = pyro_dist_class(*params)
-    funsor_event_shape = funsor_dist.value.output.shape
-    pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
-    if pyro_dist.event_shape != funsor_event_shape:
-        raise ValueError("Event shapes don't match, something went wrong")
-    return pyro_dist
-
-
-@to_data.register(Independent)
-def indep_to_data(funsor_dist, name_to_dim=None):
-    return to_data(funsor_dist.term, name_to_dim).to_event(len(funsor_dist.value.output.shape))
-
-
+################################################
+# Backend-agnostic distribution patterns
 ################################################
 
 def Bernoulli(probs=None, logits=None, value='value'):
