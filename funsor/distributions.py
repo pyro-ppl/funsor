@@ -20,7 +20,8 @@ from funsor.util import broadcast_shape
 
 
 def _dummy_tensor(domain):
-    return torch.tensor(0.1 if domain.dtype == 'real' else 1).expand(domain.shape)
+    value = 0.1 if domain.dtype == 'real' else 1
+    return torch.tensor(value).expand(domain.shape) if domain.shape else value
 
 
 def numbers_to_tensors(*args):
@@ -48,10 +49,10 @@ class DistributionMeta(FunsorMeta):
     def __call__(cls, *args, **kwargs):
         kwargs.update(zip(cls._ast_fields, args))
         value = kwargs.pop('value', 'value')
-        kwargs = OrderedDict(zip(kwargs.keys(), numbers_to_tensors(*map(to_funsor, kwargs.values()))))
-        value = to_funsor(value, output=cls._infer_value_shape(**kwargs))
+        kwargs = OrderedDict((k, to_funsor(v)) for k, v in kwargs.items())
+        value = to_funsor(value, output=cls._infer_value_domain(**kwargs))
 
-        args = tuple(kwargs.values()) + (value,)
+        args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
         return super(DistributionMeta, cls).__call__(*args)
 
 
@@ -101,12 +102,13 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return super().__getattribute__(attr)
 
     @classmethod
-    def _infer_value_shape(cls, **kwargs):
+    def _infer_value_domain(cls, **kwargs):
         # rely on the underlying distribution's logic to infer the event_shape
         instance = cls.dist_class(**{k: _dummy_tensor(v.output) for k, v in kwargs.items()}, validate_args=False)
         out_shape = instance.event_shape
         if isinstance(instance.support, torch.distributions.constraints._IntegerInterval):
-            out_dtype = instance.support.upper_bound + 1
+            out_dtype = int(instance.support.upper_bound + 1)
+            out_dtype = 'real' if out_dtype == 1 else out_dtype
         else:
             out_dtype = 'real'
         return Domain(dtype=out_dtype, shape=out_shape)
@@ -120,7 +122,7 @@ def make_dist(pyro_dist_class, param_names=()):
 
     if not param_names:
         param_names = tuple(pyro_dist_class.arg_constraints.keys())
-    assert all(name in pyro_dist_class.arg_constraints for name in param_names)
+    # assert all(name in pyro_dist_class.arg_constraints for name in param_names)
 
     @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
     def dist_init(self, *args, **kwargs):
@@ -156,14 +158,14 @@ _wrapped_pyro_dists = [
     (BernoulliProbs, ('probs',)),
     (BernoulliLogits, ('logits',)),
     (dist.Binomial, ('total_count', 'probs')),
-    # (dist.Multinomial, ('total_count', 'probs')),  # TODO
+    (dist.Multinomial, ('total_count', 'probs')),  # TODO
     (dist.Categorical, ('probs',)),
     (CategoricalLogits, ('logits',)),
     (dist.Poisson, ()),
     (dist.Gamma, ()),
     (dist.VonMises, ()),
     (dist.Dirichlet, ()),
-    # (dist.DirichletMultinomial, ()),
+    (dist.DirichletMultinomial, ()),
     (dist.Normal, ()),
     (dist.MultivariateNormal, ('loc', 'scale_tril')),
     (dist.Delta, ()),
@@ -204,6 +206,18 @@ def eager_binomial(total_count, probs, value):
     probs = stack((1 - probs, probs))
     value = stack((total_count - value, value))
     return Multinomial(total_count, probs, value=value)
+
+
+@eager.register(Multinomial, Tensor, Tensor, Tensor)
+def eager_multinomial(total_count, probs, value):
+    # Multinomial.log_prob() supports inhomogeneous total_count only by
+    # avoiding passing total_count to the constructor.
+    inputs, (total_count, probs, value) = align_tensors(total_count, probs, value)
+    shape = broadcast_shape(total_count.shape + (1,), probs.shape, value.shape)
+    probs = Tensor(probs.expand(shape), inputs)
+    value = Tensor(value.expand(shape), inputs)
+    total_count = Number(total_count.max().item())  # Used by distributions validation code.
+    return Multinomial.eager_log_prob(total_count, probs, value)
 
 
 @eager.register(Categorical, Funsor, Tensor)
@@ -250,7 +264,8 @@ def LogNormal(loc, scale, value='value'):
         distribution.
     :param Funsor value: Optional real observation.
     """
-    loc, scale, y = Normal._fill_defaults(loc, scale, value)
+    loc, scale = to_funsor(loc), to_funsor(scale)
+    y = to_funsor(value, output=loc.output)
     t = ops.exp
     x = t.inv(y)
     log_abs_det_jacobian = t.log_abs_det_jacobian(x, y)
@@ -292,23 +307,3 @@ def eager_mvn(loc, scale_tril, value):
     inputs[var] = reals(scale_diag.shape[0])
     gaussian = log_prob + Gaussian(info_vec, precision, inputs)
     return gaussian(**{var: value - loc})
-
-
-# __all__ = [
-#     'Bernoulli',
-#     'BernoulliLogits',
-#     'Beta',
-#     'Binomial',
-#     'Categorical',
-#     'Delta',
-#     'Dirichlet',
-#     'DirichletMultinomial',
-#     'Distribution',
-#     'Gamma',
-#     'LogNormal',
-#     'Multinomial',
-#     'MultivariateNormal',
-#     'Normal',
-#     'Poisson',
-#     'VonMises',
-# ]
