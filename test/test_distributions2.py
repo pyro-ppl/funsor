@@ -244,6 +244,7 @@ def test_von_mises_density(batch_shape):
     assert_close(actual, expected)
 
 
+@pytest.mark.xfail(reason="output shape inference not implemented")
 @pytest.mark.parametrize("event_shape", [
     (),  # (5,), (4, 3),
 ], ids=str)
@@ -269,3 +270,106 @@ def test_normal_funsor_normal(batch_shape, event_shape):
     expected_funsor_log_prob = funsor.to_funsor(actual_log_prob, reals(), dim_to_name)
     actual_funsor_log_prob = f(value=funsor.to_funsor(value, reals(*event_shape), dim_to_name))
     assert_close(actual_funsor_log_prob, expected_funsor_log_prob)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_normal_gaussian_1(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.randn(batch_shape).exp(), inputs)
+    value = Tensor(torch.randn(batch_shape), inputs)
+
+    expected = dist.Normal(loc, scale)(value=value)
+    assert isinstance(expected, Tensor)
+    check_funsor(expected, inputs, reals())
+
+    g = dist.Normal(loc, scale)(value='value')
+    assert isinstance(g, Contraction)
+    actual = g(value=value)
+    check_funsor(actual, inputs, reals())
+
+    assert_close(actual, expected, atol=1e-4)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_normal_gaussian_2(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.randn(batch_shape).exp(), inputs)
+    value = Tensor(torch.randn(batch_shape), inputs)
+
+    expected = dist.Normal(loc, scale)(value=value)
+    assert isinstance(expected, Tensor)
+    check_funsor(expected, inputs, reals())
+
+    g = dist.Normal(Variable('value', reals()), scale, 'loc')(loc=loc)
+    assert isinstance(g, Contraction)
+    actual = g(value=value)
+    check_funsor(actual, inputs, reals())
+
+    assert_close(actual, expected, atol=1e-4)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_normal_gaussian_3(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.randn(batch_shape).exp(), inputs)
+    value = Tensor(torch.randn(batch_shape), inputs)
+
+    expected = dist.Normal(loc, scale)(value=value)
+    assert isinstance(expected, Tensor)
+    check_funsor(expected, inputs, reals())
+
+    g = dist.Normal(Variable('loc', reals()), scale)(value='value')
+    assert isinstance(g, Contraction)
+    actual = g(loc=loc, value=value)
+    check_funsor(actual, inputs, reals())
+
+    assert_close(actual, expected, atol=1e-4)
+
+
+NORMAL_AFFINE_TESTS = [
+    'dist.Normal(x+2, scale)(value=y+2)',
+    'dist.Normal(y, scale)(value=x)',
+    'dist.Normal(x - y, scale)(value=0)',
+    'dist.Normal(0, scale)(value=y - x)',
+    'dist.Normal(2 * x - y, scale)(value=x)',
+    'dist.Normal(0, 1)(value=(x - y) / scale) - scale.log()',
+    'dist.Normal(2 * y, 2 * scale)(value=2 * x) + math.log(2)',
+]
+
+
+@pytest.mark.parametrize('expr', NORMAL_AFFINE_TESTS)
+def test_normal_affine(expr):
+
+    scale = Tensor(torch.tensor(0.3), OrderedDict())
+    x = Variable('x', reals())
+    y = Variable('y', reals())
+
+    expected = dist.Normal(x, scale)(value=y)
+    actual = eval(expr)
+
+    assert isinstance(actual, Contraction)
+    assert dict(actual.inputs) == dict(expected.inputs), (actual.inputs, expected.inputs)
+
+    for ta, te in zip(actual.terms, expected.terms):
+        assert_close(ta.align(tuple(te.inputs)), te)
+
+
+def test_normal_independent():
+    loc = random_tensor(OrderedDict(), reals(2))
+    scale = random_tensor(OrderedDict(), reals(2)).exp()
+    fn = dist.Normal(loc['i'], scale['i'], 'z_i')
+    assert fn.inputs['z_i'] == reals()
+    d = Independent(fn, 'z', 'i', 'z_i')
+    assert d.inputs['z'] == reals(2)
+    sample = d.sample(frozenset(['z']))
+    assert isinstance(sample, Contraction)
+    assert sample.inputs['z'] == reals(2)
