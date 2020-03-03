@@ -92,23 +92,21 @@ def make_dist(pyro_dist_class, param_names=()):
     return dist_class
 
 
-# @to_funsor.register(dist.TorchDistribution)
-# def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
-#     import funsor.distributions  # TODO find a better way to do this lookup
-#     funsor_dist = getattr(funsor.distributions, type(pyro_dist).__name__)
-#     params = [to_funsor(getattr(pyro_dist, param_name), dim_to_name=dim_to_name)
-#               for param_name in funsor_dist._ast_fields if param_name != 'value']
-#     return funsor_dist(*params)
-# 
-# 
-# @to_data.register(Distribution2)
-# def distribution_to_data(funsor_dist, name_to_dim=None):
-#     pyro_dist = funsor_dist.dist_class
-#     assert 'value' not in name_to_dim
-#     assert funsor_dist.inputs['value'].shape == ()  # TODO convert properly
-#     params = [to_data(getattr(pyro_dist, param_name), name_to_dim=name_to_dim)
-#               for param_name in funsor_dist._ast_fields if param_name != 'value']
-#     return pyro_dist(*params)
+@to_funsor.register(dist.TorchDistribution)
+def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    import funsor.distributions2  # TODO find a better way to do this lookup
+    funsor_dist = getattr(funsor.distributions2, type(pyro_dist).__name__)
+    params = [to_funsor(getattr(pyro_dist, param_name), dim_to_name=dim_to_name)
+              for param_name in funsor_dist_class._ast_fields if param_name != 'name']
+    return funsor_dist_class(*params)
+
+
+@to_data.register(Distribution2)
+def distribution_to_data(funsor_dist, name_to_dim=None):
+    pyro_dist_class = funsor_dist.dist_class
+    params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
+              for param_name in funsor_dist._ast_fields if param_name != 'name']
+    return pyro_dist_class(*params)
 
 
 class BernoulliProbs(dist.Bernoulli):
