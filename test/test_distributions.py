@@ -20,8 +20,6 @@ from funsor.terms import Independent, Variable, lazy
 from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor
 from funsor.util import get_backend
 
-funsor.set_backend("torch")
-
 pytestmark = pytest.mark.skipif(get_backend() != "torch",
                                 reason="numpy/jax backend requires refactoring funsor.distributions")
 

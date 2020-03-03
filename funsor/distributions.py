@@ -6,7 +6,6 @@ from collections import OrderedDict
 
 import makefun
 import pyro.distributions as dist
-from pyro.distributions.torch_distribution import MaskedDistribution
 import torch
 
 import funsor.delta
@@ -16,7 +15,7 @@ from funsor.domains import Domain, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
-from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, to_funsor
 from funsor.util import broadcast_shape
 
 
@@ -123,7 +122,6 @@ def make_dist(pyro_dist_class, param_names=()):
 
     if not param_names:
         param_names = tuple(pyro_dist_class.arg_constraints.keys())
-    # assert all(name in pyro_dist_class.arg_constraints for name in param_names)
 
     @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
     def dist_init(self, *args, **kwargs):
