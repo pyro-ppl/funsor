@@ -89,9 +89,8 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 
     @classmethod
     def eager_log_prob(cls, *params):
-        params = dict(zip(cls._ast_fields, params))
-        inputs, tensors = align_tensors(*params.values())
-        params = dict(zip(params, tensors))
+        inputs, tensors = align_tensors(*params)
+        params = dict(zip(cls._ast_fields, tensors))
         value = params.pop('value')
         data = cls.dist_class(**params).log_prob(value)
         return Tensor(data, inputs)
@@ -104,7 +103,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
     @classmethod
     def _infer_value_shape(cls, **kwargs):
         # rely on the underlying distribution's logic to infer the event_shape
-        instance = cls.dist_class(**{k: _dummy_tensor(v.output) for k, v in kwargs.items()})
+        instance = cls.dist_class(**{k: _dummy_tensor(v.output) for k, v in kwargs.items()}, validate_args=False)
         out_shape = instance.event_shape
         if isinstance(instance.support, torch.distributions.constraints._IntegerInterval):
             out_dtype = instance.support.upper_bound + 1
