@@ -5,18 +5,14 @@ import math
 from collections import OrderedDict
 
 import makefun
-import pyro.distributions as dist
 import torch
+import pyro.distributions as dist
 from pyro.distributions.util import broadcast_shape
 
-import funsor.delta
 import funsor.ops as ops
-from funsor.affine import is_affine
 from funsor.domains import Domain, bint, reals
-from funsor.gaussian import Gaussian
-from funsor.interpreter import gensym, interpretation
-from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
-from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_data, to_funsor
+from funsor.tensor import Tensor, align_tensors
+from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
 
 
 def _dummy_tensor(domain):
@@ -110,6 +106,27 @@ def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
     params = [to_funsor(getattr(pyro_dist, param_name), dim_to_name=dim_to_name)
               for param_name in funsor_dist_class._ast_fields if param_name != 'name']
     return funsor_dist_class(*params)
+
+
+@to_funsor.register(torch.distributions.Independent)
+def indepdist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    result = to_funsor(pyro_dist.base_dist, dim_to_name=dim_to_name)
+    for i in range(pyro_dist.reinterpreted_batch_ndims):
+        name = ...  # XXX what is this? read off from result?
+        result = funsor.terms.Independent(result, "value", name, "value")
+    return result
+
+
+@to_funsor.register(pyro.distributions.MaskedDistribution)
+def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    mask = to_funsor(pyro_dist._mask.float(), output=output, dim_to_name=dim_to_name)
+    funsor_base_dist = to_funsor(pyro_dist.base_dist, output=output, dim_to_name=dim_to_name)
+    return mask * funsor_base_dist
+
+
+@to_funsor.register(torch.distributions.TransformedDistribution)
+def transformeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    raise NotImplementedError("TODO")
 
 
 @to_data.register(Distribution2)
