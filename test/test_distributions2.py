@@ -242,3 +242,30 @@ def test_von_mises_density(batch_shape):
     actual = dist.VonMises(loc, concentration, name='value')(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("event_shape", [
+    (),  # (5,), (4, 3),
+], ids=str)
+@pytest.mark.parametrize("batch_shape", [
+    (), (2,), (2, 3),
+], ids=str)
+def test_normal_funsor_normal(batch_shape, event_shape):
+    loc = torch.randn(batch_shape + event_shape)
+    scale = torch.randn(batch_shape + event_shape).exp()
+    d = pyro.distributions.Normal(loc, scale).to_event(len(event_shape))
+    value = d.sample()
+    name_to_dim = OrderedDict(
+        (f'{v}', v) for v in range(-len(batch_shape), 0) if batch_shape[v] > 1)
+    dim_to_name = OrderedDict((v, k) for k, v in name_to_dim.items())
+    f = funsor.to_funsor(d, reals(), dim_to_name=dim_to_name)
+    d2 = funsor.to_data(f, name_to_dim=name_to_dim)
+    assert type(d) == type(d2)
+    assert d.batch_shape == d2.batch_shape
+    assert d.event_shape == d2.event_shape
+    expected_log_prob = d.log_prob(value)
+    actual_log_prob = d2.log_prob(value)
+    assert_close(actual_log_prob, expected_log_prob)
+    expected_funsor_log_prob = funsor.to_funsor(actual_log_prob, reals(), dim_to_name)
+    actual_funsor_log_prob = f(value=funsor.to_funsor(value, reals(*event_shape), dim_to_name))
+    assert_close(actual_funsor_log_prob, expected_funsor_log_prob)

@@ -52,6 +52,11 @@ class Distribution2(Funsor, metaclass=DistributionMeta2):
         self.params = params
         self.name = name
 
+    def __getattribute__(self, attr):
+        if attr in type(self)._ast_fields and attr != 'name':
+            return self.params[attr]
+        return super().__getattribute__(attr)
+
     @classmethod
     def _infer_value_shape(cls, **kwargs):
         # rely on the underlying distribution's logic to infer the event_shape
@@ -99,7 +104,7 @@ def make_dist(pyro_dist_class, param_names=()):
     return dist_class
 
 
-@to_funsor.register(dist.TorchDistribution)
+@to_funsor.register(torch.distributions.Distribution)
 def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
     import funsor.distributions2  # TODO find a better way to do this lookup
     funsor_dist_class = getattr(funsor.distributions2, type(pyro_dist).__name__)
@@ -152,6 +157,7 @@ _wrapped_pyro_dists = [
     (dist.VonMises, ()),
     (dist.Dirichlet, ()),
     (dist.Normal, ()),
+    (dist.MultivariateNormal, ('loc', 'scale_tril')),
 ]
 
 for pyro_dist_class, param_names in _wrapped_pyro_dists:
