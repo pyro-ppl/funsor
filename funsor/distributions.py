@@ -6,7 +6,9 @@ from collections import OrderedDict
 
 import makefun
 import pyro.distributions as dist
+from pyro.distributions.torch_distribution import MaskedDistribution
 import torch
+import torch.distributions.constraints as constraints
 
 import funsor.delta
 import funsor.ops as ops
@@ -15,7 +17,7 @@ from funsor.domains import Domain, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
-from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
 from funsor.util import broadcast_shape
 
 
@@ -49,7 +51,8 @@ class DistributionMeta(FunsorMeta):
     def __call__(cls, *args, **kwargs):
         kwargs.update(zip(cls._ast_fields, args))
         value = kwargs.pop('value', 'value')
-        kwargs = OrderedDict((k, to_funsor(v)) for k, v in kwargs.items())
+        kwargs = OrderedDict((k, to_funsor(v, output=cls._infer_param_domain(k, v)))
+                             for k, v in kwargs.items())
         value = to_funsor(value, output=cls._infer_value_domain(**kwargs))
         args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
         return super(DistributionMeta, cls).__call__(*args)
@@ -105,13 +108,29 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         # rely on the underlying distribution's logic to infer the event_shape
         instance = cls.dist_class(**{k: _dummy_tensor(v.output) for k, v in kwargs.items()}, validate_args=False)
         out_shape = instance.event_shape
-        if isinstance(instance.support, torch.distributions.constraints._IntegerInterval):
+        if isinstance(instance.support, constraints._IntegerInterval):
             out_dtype = int(instance.support.upper_bound + 1)
             # this is a hack, but we don't really care about precise dtypes except for Categorical
             out_dtype = 'real' if out_dtype == 1 else out_dtype
         else:
             out_dtype = 'real'
         return Domain(dtype=out_dtype, shape=out_shape)
+
+    @classmethod
+    def _infer_param_domain(cls, name, raw_value):
+        support = cls.dist_class.arg_constraints.get(name, None)
+        if isinstance(support, constraints._Simplex):
+            output = reals(raw_value.shape[-1])
+        elif isinstance(support, constraints._RealVector):
+            output = reals(raw_value.shape[-1])
+        elif isinstance(support, (constraints._LowerCholesky, constraints._PositiveDefinite)):
+            output = reals(*raw_value.shape[-2:])
+        elif isinstance(support, constraints._Real) and name == "logits" and \
+                isinstance(cls.dist_class.arg_constraints["probs"], constraints._Simplex):
+            output = reals(raw_value.shape[-1])
+        else:
+            output = None
+        return output
 
 
 ################################################################################
@@ -127,7 +146,7 @@ def make_dist(pyro_dist_class, param_names=()):
     def dist_init(self, *args, **kwargs):
         return Distribution.__init__(self, *tuple(kwargs.values()))
 
-    dist_class = DistributionMeta(pyro_dist_class.__name__, (Distribution,), {
+    dist_class = DistributionMeta(pyro_dist_class.__name__.strip("_"), (Distribution,), {
         'dist_class': pyro_dist_class,
         '__init__': dist_init,
     })
@@ -137,29 +156,29 @@ def make_dist(pyro_dist_class, param_names=()):
     return dist_class
 
 
-class BernoulliProbs(dist.Bernoulli):
+class _BernoulliProbs(dist.Bernoulli):
     def __init__(self, probs, validate_args=None):
         return super().__init__(probs=probs, validate_args=validate_args)
 
 
-class BernoulliLogits(dist.Bernoulli):
+class _BernoulliLogits(dist.Bernoulli):
     def __init__(self, logits, validate_args=None):
         return super().__init__(logits=logits, validate_args=validate_args)
 
 
-class CategoricalLogits(dist.Categorical):
+class _CategoricalLogits(dist.Categorical):
     def __init__(self, logits, validate_args=None):
         return super().__init__(logits=logits, validate_args=validate_args)
 
 
 _wrapped_pyro_dists = [
     (dist.Beta, ()),
-    (BernoulliProbs, ('probs',)),
-    (BernoulliLogits, ('logits',)),
+    (_BernoulliProbs, ('probs',)),
+    (_BernoulliLogits, ('logits',)),
     (dist.Binomial, ('total_count', 'probs')),
     (dist.Multinomial, ('total_count', 'probs')),
     (dist.Categorical, ('probs',)),
-    (CategoricalLogits, ('logits',)),
+    (_CategoricalLogits, ('logits',)),
     (dist.Poisson, ()),
     (dist.Gamma, ()),
     (dist.VonMises, ()),
@@ -171,7 +190,7 @@ _wrapped_pyro_dists = [
 ]
 
 for pyro_dist_class, param_names in _wrapped_pyro_dists:
-    locals()[pyro_dist_class.__name__.split(".")[-1]] = make_dist(pyro_dist_class, param_names)
+    locals()[pyro_dist_class.__name__.strip("_").split(".")[-1]] = make_dist(pyro_dist_class, param_names)
 
 # Delta has to be treated specially because of its weird shape inference semantics
 Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'].output)
@@ -184,8 +203,10 @@ Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'].output
 @to_funsor.register(torch.distributions.Distribution)
 def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
     import funsor.distributions  # TODO find a better way to do this lookup
-    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__)
-    params = [to_funsor(getattr(pyro_dist, param_name), dim_to_name=dim_to_name)
+    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__.strip("_"))
+    params = [to_funsor(getattr(pyro_dist, param_name),
+                        output=funsor_dist_class._infer_param_domain(param_name, getattr(pyro_dist, param_name)),
+                        dim_to_name=dim_to_name)
               for param_name in funsor_dist_class._ast_fields if param_name != 'value']
     return funsor_dist_class(*params)
 
@@ -204,6 +225,12 @@ def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
     mask = to_funsor(pyro_dist._mask.float(), output=output, dim_to_name=dim_to_name)
     funsor_base_dist = to_funsor(pyro_dist.base_dist, output=output, dim_to_name=dim_to_name)
     return mask * funsor_base_dist
+
+
+@to_funsor.register(dist.Bernoulli)
+def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    new_pyro_dist = _BernoulliLogits(logits=pyro_dist.logits)
+    return torchdistribution_to_funsor(new_pyro_dist, output, dim_to_name)
 
 
 ###########################################################
@@ -226,6 +253,7 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
 @to_data.register(Independent)
 def indep_to_data(funsor_dist, name_to_dim=None):
     return to_data(funsor_dist.term, name_to_dim).to_event(len(funsor_dist.value.output.shape))
+
 
 ################################################
 # Backend-agnostic distribution patterns

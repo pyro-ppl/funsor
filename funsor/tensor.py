@@ -420,9 +420,12 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
                              .format(output.shape, result.output.shape))
         return result
     else:
-        assert output is not None  # TODO attempt to infer output
         assert all(isinstance(k, int) and k < 0 and isinstance(v, str)
                    for k, v in dim_to_name.items())
+
+        if output is None:
+            output = reals(*x.shape[:len(x.shape) + min(dim_to_name.keys())])
+
         # logic very similar to pyro.ops.packed.pack
         # this should not touch memory, only reshape
         # pack the tensor according to the dim => name mapping in inputs
