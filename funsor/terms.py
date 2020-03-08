@@ -1093,7 +1093,7 @@ class Number(Funsor, metaclass=NumberMeta):
 
 
 @to_funsor.register(numbers.Number)
-def number_to_funsor(x, output=None):
+def number_to_funsor(x, output=None, dim_to_name=None):
     if output is None:
         return Number(x)
     if output.shape:
@@ -1102,7 +1102,7 @@ def number_to_funsor(x, output=None):
 
 
 @to_data.register(Number)
-def _to_data_number(x):
+def _to_data_number(x, name_to_dim=None):
     return x.data
 
 
