@@ -166,6 +166,7 @@ def test_categorical_density(size, batch_shape):
 def test_delta_defaults():
     v = Variable('v', reals())
     log_density = Variable('log_density', reals())
+    assert isinstance(dist.Delta(v, log_density), dist.Delta)
     value = Variable('value', reals())
     assert dist.Delta(v, log_density, 'value') is dist.Delta(v, log_density, value)
 

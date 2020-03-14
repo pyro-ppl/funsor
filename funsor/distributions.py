@@ -1,6 +1,8 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import functools
+import inspect
 import math
 from collections import OrderedDict
 
@@ -51,9 +53,9 @@ class DistributionMeta(FunsorMeta):
     def __call__(cls, *args, **kwargs):
         kwargs.update(zip(cls._ast_fields, args))
         value = kwargs.pop('value', 'value')
-        kwargs = OrderedDict((k, to_funsor(v, output=cls._infer_param_domain(k, v)))
-                             for k, v in kwargs.items())
-        value = to_funsor(value, output=cls._infer_value_domain(**kwargs))
+        kwargs = OrderedDict((k, to_funsor(kwargs[k], output=cls._infer_param_domain(k, kwargs[k])))
+                             for k in cls._ast_fields if k != 'value')
+        value = to_funsor(value, output=cls._infer_value_domain(**{k: v.output for k, v in kwargs.items()}))
         args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
         return super(DistributionMeta, cls).__call__(*args)
 
@@ -66,7 +68,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         funsors or objects that can be coerced to funsors via
         :func:`~funsor.terms.to_funsor` . See derived classes for details.
     """
-    dist_class = "defined by derived classes"
+    dist_class = dist.Distribution
 
     def __init__(self, *args):
         params = tuple(zip(self._ast_fields, args))
@@ -104,14 +106,13 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return super().__getattribute__(attr)
 
     @classmethod
+    @functools.lru_cache(maxsize=None)
     def _infer_value_domain(cls, **kwargs):
-        # rely on the underlying distribution's logic to infer the event_shape
-        instance = cls.dist_class(**{k: _dummy_tensor(v.output) for k, v in kwargs.items()}, validate_args=False)
+        # rely on the underlying distribution's logic to infer the event_shape given param domains
+        instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
         out_shape = instance.event_shape
         if isinstance(instance.support, constraints._IntegerInterval):
             out_dtype = int(instance.support.upper_bound + 1)
-            # this is a hack, but we don't really care about precise dtypes except for Categorical
-            out_dtype = 'real' if out_dtype == 1 else out_dtype
         else:
             out_dtype = 'real'
         return Domain(dtype=out_dtype, shape=out_shape)
@@ -140,11 +141,12 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 def make_dist(pyro_dist_class, param_names=()):
 
     if not param_names:
-        param_names = tuple(pyro_dist_class.arg_constraints.keys())
+        param_names = tuple(name for name in inspect.getfullargspec(pyro_dist_class.__init__)[0][1:]
+                            if name in pyro_dist_class.arg_constraints)
 
     @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
-    def dist_init(self, *args, **kwargs):
-        return Distribution.__init__(self, *tuple(kwargs.values()))
+    def dist_init(self, **kwargs):
+        return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
     dist_class = DistributionMeta(pyro_dist_class.__name__.split("__")[-1], (Distribution,), {
         'dist_class': pyro_dist_class,
@@ -193,7 +195,19 @@ for pyro_dist_class, param_names in _wrapped_pyro_dists:
     locals()[pyro_dist_class.__name__.split("__")[-1].split(".")[-1]] = make_dist(pyro_dist_class, param_names)
 
 # Delta has to be treated specially because of its weird shape inference semantics
-Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'].output)
+Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])
+
+
+# Multinomial and related dists have dependent bint dtypes, so we just make them 'real'
+@functools.lru_cache(maxsize=None)
+def _multinomial_infer_value_domain(cls, **kwargs):
+    instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
+    return reals(*instance.event_shape)
+
+
+Binomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
+Multinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
+DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
 
 
 ###############################################
@@ -335,6 +349,11 @@ def eager_delta(v, log_density, value):
 def eager_delta(v, log_density, value):
     assert v.output == value.output
     return funsor.delta.Delta(v.name, value, log_density)
+
+
+@eager.register(Delta, Variable, Variable, Variable)
+def eager_delta(v, log_density, value):
+    return None
 
 
 def LogNormal(loc, scale, value='value'):
