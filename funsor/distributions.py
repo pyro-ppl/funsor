@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import functools
 import inspect
 import math
 from collections import OrderedDict
@@ -52,7 +53,7 @@ class DistributionMeta(FunsorMeta):
         kwargs.update(zip(cls._ast_fields, args))
         value = kwargs.pop('value', 'value')
         kwargs = OrderedDict((k, to_funsor(kwargs[k])) for k in cls._ast_fields if k != 'value')
-        value = to_funsor(value, output=cls._infer_value_domain(**kwargs))
+        value = to_funsor(value, output=cls._infer_value_domain(**{k: v.output for k, v in kwargs.items()}))
         args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
         return super(DistributionMeta, cls).__call__(*args)
 
@@ -103,9 +104,10 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return super().__getattribute__(attr)
 
     @classmethod
+    @functools.lru_cache(maxsize=None)
     def _infer_value_domain(cls, **kwargs):
-        # rely on the underlying distribution's logic to infer the event_shape
-        instance = cls.dist_class(**{k: _dummy_tensor(v.output) for k, v in kwargs.items()}, validate_args=False)
+        # rely on the underlying distribution's logic to infer the event_shape given param domains
+        instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
         out_shape = instance.event_shape
         if isinstance(instance.support, constraints._IntegerInterval):
             out_dtype = int(instance.support.upper_bound + 1)
@@ -177,7 +179,7 @@ for pyro_dist_class, param_names in _wrapped_pyro_dists:
     locals()[pyro_dist_class.__name__.split("__")[-1].split(".")[-1]] = make_dist(pyro_dist_class, param_names)
 
 # Delta has to be treated specially because of its weird shape inference semantics
-Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'].output)
+Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])
 
 
 ################################################
