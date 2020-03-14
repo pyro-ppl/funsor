@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import inspect
 import math
 from collections import OrderedDict
 
@@ -50,7 +51,7 @@ class DistributionMeta(FunsorMeta):
     def __call__(cls, *args, **kwargs):
         kwargs.update(zip(cls._ast_fields, args))
         value = kwargs.pop('value', 'value')
-        kwargs = OrderedDict((k, to_funsor(v)) for k, v in kwargs.items())
+        kwargs = OrderedDict((k, to_funsor(kwargs[k])) for k in cls._ast_fields if k != 'value')
         value = to_funsor(value, output=cls._infer_value_domain(**kwargs))
         args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
         return super(DistributionMeta, cls).__call__(*args)
@@ -64,7 +65,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         funsors or objects that can be coerced to funsors via
         :func:`~funsor.terms.to_funsor` . See derived classes for details.
     """
-    dist_class = "defined by derived classes"
+    dist_class = dist.Distribution
 
     def __init__(self, *args):
         params = tuple(zip(self._ast_fields, args))
@@ -122,11 +123,12 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 def make_dist(pyro_dist_class, param_names=()):
 
     if not param_names:
-        param_names = tuple(pyro_dist_class.arg_constraints.keys())
+        param_names = tuple(name for name in inspect.getfullargspec(pyro_dist_class.__init__)[0][1:]
+                            if name in pyro_dist_class.arg_constraints)
 
     @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
-    def dist_init(self, *args, **kwargs):
-        return Distribution.__init__(self, *tuple(kwargs.values()))
+    def dist_init(self, **kwargs):
+        return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
     dist_class = DistributionMeta(pyro_dist_class.__name__.split("__")[-1], (Distribution,), {
         'dist_class': pyro_dist_class,
