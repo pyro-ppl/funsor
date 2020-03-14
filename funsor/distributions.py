@@ -111,8 +111,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         out_shape = instance.event_shape
         if isinstance(instance.support, constraints._IntegerInterval):
             out_dtype = int(instance.support.upper_bound + 1)
-            # this is a hack, but we don't really care about precise dtypes except for Categorical
-            out_dtype = 'real' if out_dtype == 1 else out_dtype
         else:
             out_dtype = 'real'
         return Domain(dtype=out_dtype, shape=out_shape)
@@ -180,6 +178,18 @@ for pyro_dist_class, param_names in _wrapped_pyro_dists:
 
 # Delta has to be treated specially because of its weird shape inference semantics
 Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])
+
+
+# Multinomial and related dists have dependent bint dtypes, so we just make them 'real'
+@functools.lru_cache(maxsize=None)
+def _multinomial_infer_value_domain(cls, **kwargs):
+    instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
+    return reals(*instance.event_shape)
+
+
+Binomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
+Multinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
+DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
 
 
 ################################################
