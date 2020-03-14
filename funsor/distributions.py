@@ -7,6 +7,7 @@ from collections import OrderedDict
 import makefun
 import pyro.distributions as dist
 import torch
+import torch.distributions.constraints as constraints
 
 import funsor.delta
 import funsor.ops as ops
@@ -105,7 +106,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         # rely on the underlying distribution's logic to infer the event_shape
         instance = cls.dist_class(**{k: _dummy_tensor(v.output) for k, v in kwargs.items()}, validate_args=False)
         out_shape = instance.event_shape
-        if isinstance(instance.support, torch.distributions.constraints._IntegerInterval):
+        if isinstance(instance.support, constraints._IntegerInterval):
             out_dtype = int(instance.support.upper_bound + 1)
             # this is a hack, but we don't really care about precise dtypes except for Categorical
             out_dtype = 'real' if out_dtype == 1 else out_dtype
@@ -127,7 +128,7 @@ def make_dist(pyro_dist_class, param_names=()):
     def dist_init(self, *args, **kwargs):
         return Distribution.__init__(self, *tuple(kwargs.values()))
 
-    dist_class = DistributionMeta(pyro_dist_class.__name__, (Distribution,), {
+    dist_class = DistributionMeta(pyro_dist_class.__name__.split("__")[-1], (Distribution,), {
         'dist_class': pyro_dist_class,
         '__init__': dist_init,
     })
@@ -137,29 +138,29 @@ def make_dist(pyro_dist_class, param_names=()):
     return dist_class
 
 
-class BernoulliProbs(dist.Bernoulli):
+class __BernoulliProbs(dist.Bernoulli):
     def __init__(self, probs, validate_args=None):
         return super().__init__(probs=probs, validate_args=validate_args)
 
 
-class BernoulliLogits(dist.Bernoulli):
+class __BernoulliLogits(dist.Bernoulli):
     def __init__(self, logits, validate_args=None):
         return super().__init__(logits=logits, validate_args=validate_args)
 
 
-class CategoricalLogits(dist.Categorical):
+class __CategoricalLogits(dist.Categorical):
     def __init__(self, logits, validate_args=None):
         return super().__init__(logits=logits, validate_args=validate_args)
 
 
 _wrapped_pyro_dists = [
     (dist.Beta, ()),
-    (BernoulliProbs, ('probs',)),
-    (BernoulliLogits, ('logits',)),
+    (__BernoulliProbs, ('probs',)),
+    (__BernoulliLogits, ('logits',)),
     (dist.Binomial, ('total_count', 'probs')),
     (dist.Multinomial, ('total_count', 'probs')),
     (dist.Categorical, ('probs',)),
-    (CategoricalLogits, ('logits',)),
+    (__CategoricalLogits, ('logits',)),
     (dist.Poisson, ()),
     (dist.Gamma, ()),
     (dist.VonMises, ()),
@@ -171,7 +172,7 @@ _wrapped_pyro_dists = [
 ]
 
 for pyro_dist_class, param_names in _wrapped_pyro_dists:
-    locals()[pyro_dist_class.__name__.split(".")[-1]] = make_dist(pyro_dist_class, param_names)
+    locals()[pyro_dist_class.__name__.split("__")[-1].split(".")[-1]] = make_dist(pyro_dist_class, param_names)
 
 # Delta has to be treated specially because of its weird shape inference semantics
 Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'].output)
