@@ -274,6 +274,11 @@ def eager_delta(v, log_density, value):
     return funsor.delta.Delta(v.name, value, log_density)
 
 
+@eager.register(Delta, Variable, Variable, Variable)
+def eager_delta(v, log_density, value):
+    return None
+
+
 def LogNormal(loc, scale, value='value'):
     """
     Wraps :class:`pyro.distributions.LogNormal` .
