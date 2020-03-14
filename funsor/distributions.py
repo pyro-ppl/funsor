@@ -203,7 +203,7 @@ Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'].output
 @to_funsor.register(torch.distributions.Distribution)
 def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
     import funsor.distributions  # TODO find a better way to do this lookup
-    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__.strip("_"))
+    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__.split("__")[-1])
     params = [to_funsor(getattr(pyro_dist, param_name),
                         output=funsor_dist_class._infer_param_domain(param_name, getattr(pyro_dist, param_name)),
                         dim_to_name=dim_to_name)
