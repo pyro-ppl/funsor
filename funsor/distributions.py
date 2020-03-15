@@ -54,8 +54,9 @@ class DistributionMeta(FunsorMeta):
     def __call__(cls, *args, **kwargs):
         kwargs.update(zip(cls._ast_fields, args))
         value = kwargs.pop('value', 'value')
-        kwargs = OrderedDict((k, to_funsor(kwargs[k], output=cls._infer_param_domain(k, getattr(kwargs[k], "shape", ()))))
-                             for k in cls._ast_fields if k != 'value')
+        kwargs = OrderedDict(
+            (k, to_funsor(kwargs[k], output=cls._infer_param_domain(k, getattr(kwargs[k], "shape", ()))))
+            for k in cls._ast_fields if k != 'value')
         value = to_funsor(value, output=cls._infer_value_domain(**{k: v.output for k, v in kwargs.items()}))
         args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
         return super(DistributionMeta, cls).__call__(*args)
@@ -222,7 +223,8 @@ def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
     funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__.split("__")[-1])
     params = [to_funsor(
             getattr(pyro_dist, param_name),
-            output=funsor_dist_class._infer_param_domain(param_name, getattr(getattr(pyro_dist, param_name), "shape", ())),
+            output=funsor_dist_class._infer_param_domain(
+                param_name, getattr(getattr(pyro_dist, param_name), "shape", ())),
             dim_to_name=dim_to_name)
         for param_name in funsor_dist_class._ast_fields if param_name != 'value']
     return funsor_dist_class(*params)
