@@ -202,7 +202,7 @@ Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])
 
 
 # Multinomial and related dists have dependent bint dtypes, so we just make them 'real'
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=5000)
 def _multinomial_infer_value_domain(cls, **kwargs):
     instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
     return reals(*instance.event_shape)
