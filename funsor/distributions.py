@@ -54,7 +54,7 @@ class DistributionMeta(FunsorMeta):
     def __call__(cls, *args, **kwargs):
         kwargs.update(zip(cls._ast_fields, args))
         value = kwargs.pop('value', 'value')
-        kwargs = OrderedDict((k, to_funsor(kwargs[k], output=cls._infer_param_domain(k, kwargs[k])))
+        kwargs = OrderedDict((k, to_funsor(kwargs[k], output=cls._infer_param_domain(k, getattr(kwargs[k], "shape", ()))))
                              for k in cls._ast_fields if k != 'value')
         value = to_funsor(value, output=cls._infer_value_domain(**{k: v.output for k, v in kwargs.items()}))
         args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
@@ -107,7 +107,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return super().__getattribute__(attr)
 
     @classmethod
-    @functools.lru_cache(maxsize=None)
+    @functools.lru_cache(maxsize=5000)
     def _infer_value_domain(cls, **kwargs):
         # rely on the underlying distribution's logic to infer the event_shape given param domains
         instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
@@ -119,17 +119,18 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return Domain(dtype=out_dtype, shape=out_shape)
 
     @classmethod
-    def _infer_param_domain(cls, name, raw_value):
+    @functools.lru_cache(maxsize=5000)
+    def _infer_param_domain(cls, name, raw_shape):
         support = cls.dist_class.arg_constraints.get(name, None)
         if isinstance(support, constraints._Simplex):
-            output = reals(raw_value.shape[-1])
+            output = reals(raw_shape[-1])
         elif isinstance(support, constraints._RealVector):
-            output = reals(raw_value.shape[-1])
+            output = reals(raw_shape[-1])
         elif isinstance(support, (constraints._LowerCholesky, constraints._PositiveDefinite)):
-            output = reals(*raw_value.shape[-2:])
+            output = reals(*raw_shape[-2:])
         elif isinstance(support, constraints._Real) and name == "logits" and \
                 isinstance(cls.dist_class.arg_constraints["probs"], constraints._Simplex):
-            output = reals(raw_value.shape[-1])
+            output = reals(raw_shape[-1])
         else:
             output = None
         return output
@@ -219,10 +220,11 @@ DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_
 def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
     import funsor.distributions  # TODO find a better way to do this lookup
     funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__.split("__")[-1])
-    params = [to_funsor(getattr(pyro_dist, param_name),
-                        output=funsor_dist_class._infer_param_domain(param_name, getattr(pyro_dist, param_name)),
-                        dim_to_name=dim_to_name)
-              for param_name in funsor_dist_class._ast_fields if param_name != 'value']
+    params = [to_funsor(
+            getattr(pyro_dist, param_name),
+            output=funsor_dist_class._infer_param_domain(param_name, getattr(getattr(pyro_dist, param_name), "shape", ())),
+            dim_to_name=dim_to_name)
+        for param_name in funsor_dist_class._ast_fields if param_name != 'value']
     return funsor_dist_class(*params)
 
 
