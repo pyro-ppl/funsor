@@ -227,9 +227,12 @@ def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
 
 @to_funsor.register(torch.distributions.Independent)
 def indepdist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    dim_to_name = OrderedDict((dim - pyro_dist.reinterpreted_batch_ndims, name)
+                              for dim, name in dim_to_name.items())
+    dim_to_name.update(OrderedDict((i, f"_pyro_event_dim_{i}") for i in range(-pyro_dist.reinterpreted_batch_ndims, 0)))
     result = to_funsor(pyro_dist.base_dist, dim_to_name=dim_to_name)
-    for i in range(pyro_dist.reinterpreted_batch_ndims):
-        name = f"dim_{i}"  # XXX what is this? read off from dim_to_name? does it matter?
+    for i in reversed(range(-pyro_dist.reinterpreted_batch_ndims, 0)):
+        name = f"_pyro_event_dim_{i}"
         result = funsor.terms.Independent(result, "value", name, "value")
     return result
 
