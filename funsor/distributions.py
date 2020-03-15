@@ -4,6 +4,7 @@
 import functools
 import inspect
 import math
+import typing
 from collections import OrderedDict
 
 import makefun
@@ -267,9 +268,9 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     return pyro_dist
 
 
-@to_data.register(Independent)
+@to_data.register(Independent[typing.Union[Independent, Distribution], str, str, str])
 def indep_to_data(funsor_dist, name_to_dim=None):
-    return to_data(funsor_dist.term, name_to_dim).to_event(len(funsor_dist.value.output.shape))
+    raise NotImplementedError("TODO implement conversion of Independent")
 
 
 ################################################
