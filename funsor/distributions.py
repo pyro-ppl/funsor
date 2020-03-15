@@ -249,10 +249,15 @@ def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
     return mask * funsor_base_dist
 
 
-@to_funsor.register(dist.Bernoulli)
+@to_funsor.register(torch.distributions.Bernoulli)
 def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = __BernoulliLogits(logits=pyro_dist.logits)
     return torchdistribution_to_funsor(new_pyro_dist, output, dim_to_name)
+
+
+@to_funsor.register(torch.distributions.TransformedDistribution)
+def transformeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    raise NotImplementedError("TODO implement conversion of TransformedDistribution")
 
 
 ###########################################################
