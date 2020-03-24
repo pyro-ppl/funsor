@@ -85,11 +85,11 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         inputs = OrderedDict(inputs)
         output = reals()
         super(Distribution, self).__init__(inputs, output)
-        self.params = params
+        self.params = OrderedDict(params)
 
     def __repr__(self):
         return '{}({})'.format(type(self).__name__,
-                               ', '.join('{}={}'.format(*kv) for kv in self.params))
+                               ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
@@ -103,6 +103,19 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         value = params.pop('value')
         data = cls.dist_class(**params).log_prob(value)
         return Tensor(data, inputs)
+
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        params = OrderedDict(self.params)
+        value = params.pop("value")
+        assert all(isinstance(v, (Number, Tensor)) for v in params.values())
+        assert isinstance(value, Variable) and value.name in sampled_vars
+        inputs_, tensors = align_tensors(*params.values())
+        raw_sample = self.dist_class(
+            **dict(zip(self._ast_fields[:-1], tensors))
+        ).sample(tuple(v.dtype for v in sample_inputs.values()))
+        inputs = OrderedDict((k, v) for k, v in sample_inputs.items())
+        inputs.update(inputs_)
+        return funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
 
     def __getattribute__(self, attr):
         if attr in type(self)._ast_fields and attr != 'name':
