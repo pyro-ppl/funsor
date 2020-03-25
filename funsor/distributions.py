@@ -110,12 +110,16 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         assert all(isinstance(v, (Number, Tensor)) for v in params.values())
         assert isinstance(value, Variable) and value.name in sampled_vars
         inputs_, tensors = align_tensors(*params.values())
-        raw_sample = self.dist_class(
-            **dict(zip(self._ast_fields[:-1], tensors))
-        ).sample(tuple(v.dtype for v in sample_inputs.values()))
+        raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
+        raw_sample = raw_dist.sample(tuple(v.dtype for v in sample_inputs.values()))
+        raw_score_function = raw_dist.score_parts(raw_sample).score_function
         inputs = OrderedDict((k, v) for k, v in sample_inputs.items())
         inputs.update(inputs_)
-        return funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
+        result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
+        if not dist.util.is_identically_zero(raw_score_function):
+            dice_factor = Tensor(raw_score_function - raw_score_function.detach(), inputs, reals())
+            result = dice_factor + result
+        return result
 
     def __getattribute__(self, attr):
         if attr in type(self)._ast_fields and attr != 'name':
