@@ -130,7 +130,7 @@ def make_dist(pyro_dist_class, param_names=()):
     def dist_init(self, **kwargs):
         return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
-    dist_class = DistributionMeta(pyro_dist_class.__name__.split("__")[-1], (Distribution,), {
+    dist_class = DistributionMeta(pyro_dist_class.__name__.split("_PyroWrapper_")[-1], (Distribution,), {
         'dist_class': pyro_dist_class,
         '__init__': dist_init,
     })
@@ -140,29 +140,29 @@ def make_dist(pyro_dist_class, param_names=()):
     return dist_class
 
 
-class __BernoulliProbs(dist.Bernoulli):
+class _PyroWrapper_BernoulliProbs(dist.Bernoulli):
     def __init__(self, probs, validate_args=None):
         return super().__init__(probs=probs, validate_args=validate_args)
 
 
-class __BernoulliLogits(dist.Bernoulli):
+class _PyroWrapper_BernoulliLogits(dist.Bernoulli):
     def __init__(self, logits, validate_args=None):
         return super().__init__(logits=logits, validate_args=validate_args)
 
 
-class __CategoricalLogits(dist.Categorical):
+class _PyroWrapper_CategoricalLogits(dist.Categorical):
     def __init__(self, logits, validate_args=None):
         return super().__init__(logits=logits, validate_args=validate_args)
 
 
 _wrapped_pyro_dists = [
     (dist.Beta, ()),
-    (__BernoulliProbs, ('probs',)),
-    (__BernoulliLogits, ('logits',)),
+    (_PyroWrapper_BernoulliProbs, ('probs',)),
+    (_PyroWrapper_BernoulliLogits, ('logits',)),
     (dist.Binomial, ('total_count', 'probs')),
     (dist.Multinomial, ('total_count', 'probs')),
     (dist.Categorical, ('probs',)),
-    (__CategoricalLogits, ('logits',)),
+    (_PyroWrapper_CategoricalLogits, ('logits',)),
     (dist.Poisson, ()),
     (dist.Gamma, ()),
     (dist.VonMises, ()),
@@ -174,13 +174,15 @@ _wrapped_pyro_dists = [
 ]
 
 for pyro_dist_class, param_names in _wrapped_pyro_dists:
-    locals()[pyro_dist_class.__name__.split("__")[-1].split(".")[-1]] = make_dist(pyro_dist_class, param_names)
+    locals()[pyro_dist_class.__name__.split("_PyroWrapper_")[-1].split(".")[-1]] = \
+        make_dist(pyro_dist_class, param_names)
 
 # Delta has to be treated specially because of its weird shape inference semantics
 Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])
 
 
 # Multinomial and related dists have dependent bint dtypes, so we just make them 'real'
+# See issue: https://github.com/pyro-ppl/funsor/issues/322
 @functools.lru_cache(maxsize=None)
 def _multinomial_infer_value_domain(cls, **kwargs):
     instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
