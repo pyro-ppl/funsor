@@ -658,10 +658,10 @@ def test_von_mises_probs_density(batch_shape, syntax):
     assert_close(actual, expected)
 
 
-@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj')])
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_gamma_sample_mean(batch_shape, sample_inputs):
-    sample_inputs = OrderedDict((k, bint(1000)) for k in sample_inputs)
+def test_gamma_sample_shape(batch_shape, sample_inputs):
+    sample_inputs = OrderedDict((k, bint(10)) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
@@ -675,12 +675,25 @@ def test_gamma_sample_mean(batch_shape, sample_inputs):
     )
     check_funsor(sample_value, expected_inputs, reals())
 
-    if sample_inputs:
-        mc_mean = Integrate(
-            sample_value, Variable('value', funsor_dist.value.output), frozenset(['value'])
-        ).reduce(ops.add, frozenset(sample_inputs))
 
-        inputs, tensors = align_tensors(concentration, rate)
-        expected_mean = Tensor(funsor_dist.dist_class(*tensors).mean, inputs)
+@pytest.mark.parametrize('sample_inputs', [('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_gamma_sample_mean(batch_shape, sample_inputs):
+    sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-        assert_close(mc_mean, expected_mean, atol=1e-2, rtol=1e-2)
+    concentration = Tensor(torch.rand(batch_shape), inputs)
+    rate = Tensor(torch.rand(batch_shape), inputs)
+    funsor_dist = dist.Gamma(concentration, rate)
+
+    sample_value = funsor_dist.sample(frozenset(['value']), sample_inputs)
+    mc_mean = Integrate(
+        sample_value, Variable('value', funsor_dist.value.output), frozenset(['value'])
+    ).reduce(ops.add, frozenset(sample_inputs))
+
+    inputs, tensors = align_tensors(concentration, rate)
+    expected_mean = Tensor(funsor_dist.dist_class(*tensors).mean, inputs)
+
+    # TODO check gradients as well
+    assert_close(mc_mean, expected_mean, atol=1e-2, rtol=1e-2)
