@@ -117,8 +117,9 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         inputs.update(inputs_)
         result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
         if not dist.util.is_identically_zero(raw_score_function):
+            # scaling of dice_factor by num samples should already be handled by Funsor.sample
             dice_factor = Tensor(raw_score_function - raw_score_function.detach(), inputs, reals())
-            result = dice_factor + result
+            result += dice_factor
         return result
 
     def __getattribute__(self, attr):
