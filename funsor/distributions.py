@@ -253,7 +253,7 @@ def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
 
 @to_funsor.register(torch.distributions.Bernoulli)
 def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    new_pyro_dist = __BernoulliLogits(logits=pyro_dist.logits)
+    new_pyro_dist = _PyroWrapper_BernoulliLogits(logits=pyro_dist.logits)
     return torchdistribution_to_funsor(new_pyro_dist, output, dim_to_name)
 
 
