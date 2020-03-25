@@ -222,7 +222,7 @@ DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_
 @to_funsor.register(torch.distributions.Distribution)
 def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
     import funsor.distributions  # TODO find a better way to do this lookup
-    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__.split("__")[-1])
+    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__.split("_PyroWrapper_")[-1])
     params = [to_funsor(
             getattr(pyro_dist, param_name),
             output=funsor_dist_class._infer_param_domain(
