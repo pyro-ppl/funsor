@@ -723,7 +723,6 @@ def test_dirichlet_sample(batch_shape, sample_inputs, event_shape):
     _check_sample(funsor_dist, sample_inputs, inputs)
 
 
-@pytest.mark.xfail(reason="incorrect output somehow?")
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_bernoullilogits_sample(batch_shape, sample_inputs):
