@@ -658,27 +658,30 @@ def test_von_mises_probs_density(batch_shape, syntax):
     assert_close(actual, expected)
 
 
-@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_gamma_sample_shape(batch_shape, sample_inputs):
-    sample_inputs = OrderedDict((k, bint(10)) for k in sample_inputs)
-    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
-
-    concentration = Tensor(torch.rand(batch_shape), inputs)
-    rate = Tensor(torch.rand(batch_shape), inputs)
-    funsor_dist = dist.Gamma(concentration, rate)
-
+def _check_sample(funsor_dist, sample_inputs, inputs):
+    """utility that compares a Monte Carlo estimate of a distribution mean with the true mean"""
     sample_value = funsor_dist.sample(frozenset(['value']), sample_inputs)
     expected_inputs = OrderedDict(
-        tuple(sample_inputs.items()) + tuple(inputs.items()) + (('value', funsor_dist.value.output),)
+        tuple(sample_inputs.items()) + tuple(inputs.items()) + (('value', funsor_dist.inputs['value']),)
     )
     check_funsor(sample_value, expected_inputs, reals())
 
+    if sample_inputs:
+        actual_mean = Integrate(
+            sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
+        ).reduce(ops.add, frozenset(sample_inputs))
 
-@pytest.mark.parametrize('sample_inputs', [('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+        inputs, tensors = align_tensors(*list(funsor_dist.params.values())[:-1])
+        expected_mean = Tensor(funsor_dist.dist_class(*tensors).mean, inputs)
+
+        # TODO check gradients as well
+        check_funsor(actual_mean, expected_mean.inputs, expected_mean.output)
+        assert_close(actual_mean, expected_mean, atol=1e-2, rtol=1e-2)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_gamma_sample_mean(batch_shape, sample_inputs):
+def test_gamma_sample(batch_shape, sample_inputs):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -687,13 +690,48 @@ def test_gamma_sample_mean(batch_shape, sample_inputs):
     rate = Tensor(torch.rand(batch_shape), inputs)
     funsor_dist = dist.Gamma(concentration, rate)
 
-    sample_value = funsor_dist.sample(frozenset(['value']), sample_inputs)
-    mc_mean = Integrate(
-        sample_value, Variable('value', funsor_dist.value.output), frozenset(['value'])
-    ).reduce(ops.add, frozenset(sample_inputs))
+    _check_sample(funsor_dist, sample_inputs, inputs)
 
-    inputs, tensors = align_tensors(concentration, rate)
-    expected_mean = Tensor(funsor_dist.dist_class(*tensors).mean, inputs)
 
-    # TODO check gradients as well
-    assert_close(mc_mean, expected_mean, atol=1e-2, rtol=1e-2)
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
+def test_mvn_sample(batch_shape, sample_inputs, event_shape):
+    sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape + event_shape), inputs)
+    scale_tril = Tensor(_random_scale_tril(batch_shape + event_shape * 2), inputs)
+    with interpretation(lazy):
+        funsor_dist = dist.MultivariateNormal(loc, scale_tril)
+
+    _check_sample(funsor_dist, sample_inputs, inputs)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
+def test_dirichlet_sample(batch_shape, sample_inputs, event_shape):
+    sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    concentration = Tensor(torch.randn(batch_shape + event_shape).exp(), inputs)
+    funsor_dist = dist.Dirichlet(concentration)
+
+    _check_sample(funsor_dist, sample_inputs, inputs)
+
+
+@pytest.mark.xfail(reason="incorrect output somehow?")
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_bernoullilogits_sample(batch_shape, sample_inputs):
+    sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    logits = Tensor(torch.rand(batch_shape), inputs)
+    funsor_dist = dist.Bernoulli(logits=logits)
+
+    _check_sample(funsor_dist, sample_inputs, inputs)
