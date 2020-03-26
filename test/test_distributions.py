@@ -734,3 +734,33 @@ def test_bernoullilogits_sample(batch_shape, sample_inputs):
     funsor_dist = dist.Bernoulli(logits=logits)
 
     _check_sample(funsor_dist, sample_inputs, inputs)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_beta_sample(batch_shape, sample_inputs):
+    sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    concentration1 = Tensor(torch.randn(batch_shape).exp(), inputs)
+    concentration0 = Tensor(torch.randn(batch_shape).exp(), inputs)
+    funsor_dist = dist.Beta(concentration1, concentration0)
+
+    _check_sample(funsor_dist, sample_inputs, inputs)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_binomial_sample(batch_shape, sample_inputs):
+    sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    max_count = 10
+    total_count_data = random_tensor(inputs, bint(max_count)).data.float()
+    total_count = Tensor(total_count_data, inputs)
+    probs = Tensor(torch.rand(batch_shape), inputs)
+    funsor_dist = dist.Binomial(total_count, probs)
+
+    _check_sample(funsor_dist, sample_inputs, inputs)
