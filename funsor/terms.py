@@ -759,7 +759,7 @@ interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
 @singledispatch
-def to_funsor(x, output=None, dim_to_name=None):
+def to_funsor(x, output=None, dim_to_name=None, **kwargs):
     """
     Convert to a :class:`Funsor` .
     Only :class:`Funsor` s and scalars are accepted.
@@ -784,7 +784,7 @@ def funsor_to_funsor(x, output=None, dim_to_name=None):
 
 
 @singledispatch
-def to_data(x, name_to_dim=None):
+def to_data(x, name_to_dim=None, **kwargs):
     """
     Extract a python object from a :class:`Funsor`.
 

@@ -16,9 +16,11 @@ import torch.distributions.constraints as constraints
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
+from funsor.cnf import GaussianMixture
 from funsor.domains import Domain, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
+from funsor.ops import cholesky
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
 from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
 from funsor.util import broadcast_shape
@@ -262,6 +264,17 @@ def transformeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
     raise NotImplementedError("TODO implement conversion of TransformedDistribution")
 
 
+@to_funsor.register(torch.distributions.MultivariateNormal)
+def torchmvn_to_funsor(pyro_dist, output=None, dim_to_name=None, real_inputs=OrderedDict()):
+    funsor_dist = torchdistribution_to_funsor(pyro_dist, output=output, dim_to_name=dim_to_name)
+    if len(real_inputs) == 0:
+        return funsor_dist
+    discrete, gaussian = funsor_dist(value="value").terms
+    inputs = OrderedDict((k, v) for k, v in gaussian.inputs.items() if v.dtype != 'real')
+    inputs.update(real_inputs)
+    return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
+
+
 ###########################################################
 # Converting distribution funsors to PyTorch distributions
 ###########################################################
@@ -282,6 +295,26 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
 @to_data.register(Independent[typing.Union[Independent, Distribution], str, str, str])
 def indep_to_data(funsor_dist, name_to_dim=None):
     raise NotImplementedError("TODO implement conversion of Independent")
+
+
+@to_data.register(Gaussian)
+def gaussian_to_data(funsor_dist, name_to_dim=None, normalized=False):
+    if normalized:
+        return to_data(funsor_dist.log_normalizer + funsor_dist, name_to_dim=name_to_dim)
+    loc = funsor_dist.info_vec.unsqueeze(-1).cholesky_solve(cholesky(funsor_dist.precision)).squeeze(-1)
+    int_inputs = OrderedDict((k, d) for k, d in funsor_dist.inputs.items() if d.dtype != "real")
+    loc = to_data(Tensor(loc, int_inputs), name_to_dim)
+    precision = to_data(Tensor(funsor_dist.precision, int_inputs), name_to_dim)
+    return dist.MultivariateNormal(loc, precision_matrix=precision)
+
+
+@to_data.register(GaussianMixture)
+def gaussianmixture_to_data(funsor_dist, name_to_dim=None):
+    discrete, gaussian = funsor_dist.terms
+    cat = dist.Categorical(logits=to_data(
+        discrete + gaussian.log_normalizer, name_to_dim=name_to_dim))
+    mvn = to_data(gaussian, name_to_dim=name_to_dim)
+    return cat, mvn
 
 
 ################################################
