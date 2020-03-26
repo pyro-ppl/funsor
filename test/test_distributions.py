@@ -19,7 +19,7 @@ from funsor.integrate import Integrate
 from funsor.pyro.convert import dist_to_funsor
 from funsor.tensor import Einsum, Tensor, align_tensors
 from funsor.terms import Independent, Variable, lazy
-from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor
+from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor, xfail_param
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() != "torch",
@@ -693,32 +693,34 @@ def test_gamma_sample(batch_shape, sample_inputs):
     _check_sample(funsor_dist, sample_inputs, inputs)
 
 
+@pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_normal_sample(batch_shape, sample_inputs):
+def test_normal_sample(with_lazy, batch_shape, sample_inputs):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
     loc = Tensor(torch.randn(batch_shape), inputs)
     scale = Tensor(torch.rand(batch_shape), inputs)
-    with interpretation(lazy):
+    with interpretation(lazy if with_lazy else eager):
         funsor_dist = dist.Normal(loc, scale)
 
     _check_sample(funsor_dist, sample_inputs, inputs)
 
 
+@pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
-def test_mvn_sample(batch_shape, sample_inputs, event_shape):
+def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
     loc = Tensor(torch.randn(batch_shape + event_shape), inputs)
     scale_tril = Tensor(_random_scale_tril(batch_shape + event_shape * 2), inputs)
-    with interpretation(lazy):
+    with interpretation(lazy if with_lazy else eager):
         funsor_dist = dist.MultivariateNormal(loc, scale_tril)
 
     _check_sample(funsor_dist, sample_inputs, inputs)
@@ -764,23 +766,26 @@ def test_bernoulliprobs_sample(batch_shape, sample_inputs):
     _check_sample(funsor_dist, sample_inputs, inputs)
 
 
+@pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_beta_sample(batch_shape, sample_inputs):
+def test_beta_sample(with_lazy, batch_shape, sample_inputs):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
     concentration1 = Tensor(torch.randn(batch_shape).exp(), inputs)
     concentration0 = Tensor(torch.randn(batch_shape).exp(), inputs)
-    funsor_dist = dist.Beta(concentration1, concentration0)
+    with interpretation(lazy if with_lazy else eager):
+        funsor_dist = dist.Beta(concentration1, concentration0)
 
     _check_sample(funsor_dist, sample_inputs, inputs)
 
 
+@pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_binomial_sample(batch_shape, sample_inputs):
+def test_binomial_sample(with_lazy, batch_shape, sample_inputs):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -789,7 +794,8 @@ def test_binomial_sample(batch_shape, sample_inputs):
     total_count_data = random_tensor(inputs, bint(max_count)).data.float()
     total_count = Tensor(total_count_data, inputs)
     probs = Tensor(torch.rand(batch_shape), inputs)
-    funsor_dist = dist.Binomial(total_count, probs)
+    with interpretation(lazy if with_lazy else eager):
+        funsor_dist = dist.Binomial(total_count, probs)
 
     _check_sample(funsor_dist, sample_inputs, inputs)
 
