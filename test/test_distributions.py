@@ -18,7 +18,7 @@ from funsor.interpreter import interpretation, reinterpret
 from funsor.integrate import Integrate
 from funsor.pyro.convert import dist_to_funsor
 from funsor.tensor import Einsum, Tensor, align_tensors
-from funsor.terms import Independent, Variable, lazy
+from funsor.terms import Independent, Variable, eager, lazy
 from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor, xfail_param
 from funsor.util import get_backend
 
