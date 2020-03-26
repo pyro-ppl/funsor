@@ -738,6 +738,19 @@ def test_bernoullilogits_sample(batch_shape, sample_inputs):
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_bernoulliprobs_sample(batch_shape, sample_inputs):
+    sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    probs = Tensor(torch.rand(batch_shape), inputs)
+    funsor_dist = dist.Bernoulli(probs=probs)
+
+    _check_sample(funsor_dist, sample_inputs, inputs)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_beta_sample(batch_shape, sample_inputs):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
