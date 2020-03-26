@@ -658,7 +658,7 @@ def test_von_mises_probs_density(batch_shape, syntax):
     assert_close(actual, expected)
 
 
-def _check_sample(funsor_dist, sample_inputs, inputs):
+def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2, rtol=1e-2):
     """utility that compares a Monte Carlo estimate of a distribution mean with the true mean"""
     sample_value = funsor_dist.sample(frozenset(['value']), sample_inputs)
     expected_inputs = OrderedDict(
@@ -676,7 +676,7 @@ def _check_sample(funsor_dist, sample_inputs, inputs):
 
         # TODO check gradients as well
         check_funsor(actual_mean, expected_mean.inputs, expected_mean.output)
-        assert_close(actual_mean, expected_mean, atol=1e-2, rtol=1e-2)
+        assert_close(actual_mean, expected_mean, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
