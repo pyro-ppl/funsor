@@ -695,6 +695,21 @@ def test_gamma_sample(batch_shape, sample_inputs):
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_normal_sample(batch_shape, sample_inputs):
+    sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.rand(batch_shape), inputs)
+    with interpretation(lazy):
+        funsor_dist = dist.Normal(loc, scale)
+
+    _check_sample(funsor_dist, sample_inputs, inputs)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
 def test_mvn_sample(batch_shape, sample_inputs, event_shape):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
