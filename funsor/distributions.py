@@ -9,6 +9,7 @@ from collections import OrderedDict
 
 import makefun
 import pyro.distributions as dist
+import pyro.distributions.testing.fakes as fakes
 from pyro.distributions.torch_distribution import MaskedDistribution
 import torch
 import torch.distributions.constraints as constraints
@@ -111,7 +112,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         assert isinstance(value, Variable) and value.name in sampled_vars
         inputs_, tensors = align_tensors(*params.values())
         raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
-        if raw_dist.has_rsample:
+        if getattr(raw_dist, "has_rsample", False):
             raw_sample = raw_dist.rsample(tuple(v.dtype for v in sample_inputs.values()))
         else:
             raw_sample = raw_dist.sample(tuple(v.dtype for v in sample_inputs.values()))
@@ -215,6 +216,9 @@ _wrapped_pyro_dists = [
     (dist.Normal, ()),
     (dist.MultivariateNormal, ('loc', 'scale_tril')),
     (dist.Delta, ()),
+    (fakes.NonreparameterizedGamma, ()),
+    (fakes.NonreparameterizedNormal, ()),
+    (fakes.NonreparameterizedDirichlet, ()),
 ]
 
 for pyro_dist_class, param_names in _wrapped_pyro_dists:

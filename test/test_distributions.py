@@ -703,14 +703,15 @@ def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2, rtol=1e-2):
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_gamma_sample(batch_shape, sample_inputs):
+@pytest.mark.parametrize('reparametrized', [True, False])
+def test_gamma_sample(batch_shape, sample_inputs, reparametrized):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
     concentration = Tensor(torch.rand(batch_shape), inputs)
     rate = Tensor(torch.rand(batch_shape), inputs)
-    funsor_dist = dist.Gamma(concentration, rate)
+    funsor_dist = (dist.Gamma if reparametrized else dist.NonreparameterizedGamma)(concentration, rate)
 
     _check_sample(funsor_dist, sample_inputs, inputs)
 
@@ -718,7 +719,8 @@ def test_gamma_sample(batch_shape, sample_inputs):
 @pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_normal_sample(with_lazy, batch_shape, sample_inputs):
+@pytest.mark.parametrize('reparametrized', [True, False])
+def test_normal_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -726,7 +728,7 @@ def test_normal_sample(with_lazy, batch_shape, sample_inputs):
     loc = Tensor(torch.randn(batch_shape), inputs)
     scale = Tensor(torch.rand(batch_shape), inputs)
     with interpretation(lazy if with_lazy else eager):
-        funsor_dist = dist.Normal(loc, scale)
+        funsor_dist = (dist.Normal if reparametrized else dist.NonreparameterizedNormal)(loc, scale)
 
     _check_sample(funsor_dist, sample_inputs, inputs)
 
@@ -751,13 +753,14 @@ def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
-def test_dirichlet_sample(batch_shape, sample_inputs, event_shape):
+@pytest.mark.parametrize('reparametrized', [True, False])
+def test_dirichlet_sample(batch_shape, sample_inputs, event_shape, reparametrized):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
     concentration = Tensor(torch.randn(batch_shape + event_shape).exp(), inputs)
-    funsor_dist = dist.Dirichlet(concentration)
+    funsor_dist = (dist.Dirichlet if reparametrized else dist.NonreparameterizedDirichlet)(concentration)
 
     _check_sample(funsor_dist, sample_inputs, inputs)
 
@@ -791,7 +794,8 @@ def test_bernoulliprobs_sample(batch_shape, sample_inputs):
 @pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-def test_beta_sample(with_lazy, batch_shape, sample_inputs):
+@pytest.mark.parametrize('reparametrized', [True, False])
+def test_beta_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
     sample_inputs = OrderedDict((k, bint(10 ** (6 // len(sample_inputs)))) for k in sample_inputs)
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -799,7 +803,8 @@ def test_beta_sample(with_lazy, batch_shape, sample_inputs):
     concentration1 = Tensor(torch.randn(batch_shape).exp(), inputs)
     concentration0 = Tensor(torch.randn(batch_shape).exp(), inputs)
     with interpretation(lazy if with_lazy else eager):
-        funsor_dist = dist.Beta(concentration1, concentration0)
+        funsor_dist = (dist.Beta if reparametrized else dist.NonreparameterizedBeta)(
+            concentration1, concentration0)
 
     _check_sample(funsor_dist, sample_inputs, inputs)
 
