@@ -216,6 +216,7 @@ _wrapped_pyro_dists = [
     (dist.Normal, ()),
     (dist.MultivariateNormal, ('loc', 'scale_tril')),
     (dist.Delta, ()),
+    (fakes.NonreparameterizedBeta, ()),
     (fakes.NonreparameterizedGamma, ()),
     (fakes.NonreparameterizedNormal, ()),
     (fakes.NonreparameterizedDirichlet, ()),
