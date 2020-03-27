@@ -816,7 +816,7 @@ def test_beta_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
         funsor_dist = (dist.Beta if reparametrized else dist.NonreparameterizedBeta)(
             concentration1, concentration0)
 
-    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000)
+    _check_sample(funsor_dist, sample_inputs, inputs, statistic="variance", num_samples=100000)
 
 
 @pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
