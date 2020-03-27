@@ -660,6 +660,9 @@ def test_von_mises_probs_density(batch_shape, syntax):
 
 def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2, rtol=1e-2):
     """utility that compares a Monte Carlo estimate of a distribution mean with the true mean"""
+    for tensor in list(funsor_dist.params.values())[:-1]:
+        tensor.data.requires_grad_()
+
     sample_value = funsor_dist.sample(frozenset(['value']), sample_inputs)
     expected_inputs = OrderedDict(
         tuple(sample_inputs.items()) + tuple(inputs.items()) + (('value', funsor_dist.inputs['value']),)
@@ -667,6 +670,7 @@ def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2, rtol=1e-2):
     check_funsor(sample_value, expected_inputs, reals())
 
     if sample_inputs:
+
         actual_mean = Integrate(
             sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
         ).reduce(ops.add, frozenset(sample_inputs))
@@ -674,9 +678,26 @@ def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2, rtol=1e-2):
         inputs, tensors = align_tensors(*list(funsor_dist.params.values())[:-1])
         expected_mean = Tensor(funsor_dist.dist_class(*tensors).mean, inputs)
 
-        # TODO check gradients as well
         check_funsor(actual_mean, expected_mean.inputs, expected_mean.output)
         assert_close(actual_mean, expected_mean, atol=atol, rtol=rtol)
+
+        actual_variance = Integrate(
+            sample_value,
+            (Variable('value', funsor_dist.inputs['value']) - actual_mean) ** 2,
+            frozenset(['value'])
+        ).reduce(ops.add, frozenset(sample_inputs))
+        grad_targets = [v.data for v in list(funsor_dist.params.values())[:-1]]
+        actual_grads = torch.autograd.grad(actual_variance.reduce(ops.add).data, grad_targets, allow_unused=True)
+        expected_variance = Tensor(funsor_dist.dist_class(*tensors).variance, inputs)
+        expected_grads = torch.autograd.grad(expected_variance.reduce(ops.add).data, grad_targets, allow_unused=True)
+
+        assert_close(actual_variance, expected_variance, atol=atol, rtol=rtol)
+
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            if expected_grad is not None:
+                assert_close(actual_grad, expected_grad, atol=atol, rtol=rtol)
+            else:
+                assert_close(actual_grad, torch.zeros_like(actual_grad), atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])

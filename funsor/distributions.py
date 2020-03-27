@@ -111,7 +111,10 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         assert isinstance(value, Variable) and value.name in sampled_vars
         inputs_, tensors = align_tensors(*params.values())
         raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
-        raw_sample = raw_dist.sample(tuple(v.dtype for v in sample_inputs.values()))
+        if raw_dist.has_rsample:
+            raw_sample = raw_dist.rsample(tuple(v.dtype for v in sample_inputs.values()))
+        else:
+            raw_sample = raw_dist.sample(tuple(v.dtype for v in sample_inputs.values()))
         raw_score_function = raw_dist.score_parts(raw_sample).score_function
         inputs = OrderedDict((k, v) for k, v in sample_inputs.items())
         inputs.update(inputs_)
