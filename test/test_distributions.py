@@ -762,7 +762,7 @@ def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
     with interpretation(lazy if with_lazy else eager):
         funsor_dist = dist.MultivariateNormal(loc, scale_tril)
 
-    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000)
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=5e-2, num_samples=200000)
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
