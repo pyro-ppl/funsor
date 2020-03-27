@@ -658,7 +658,7 @@ def test_von_mises_probs_density(batch_shape, syntax):
     assert_close(actual, expected)
 
 
-def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-1, rtol=None,
+def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2, rtol=None,
                   num_samples=100000, statistic="mean", skip_grad=False):
     """utility that compares a Monte Carlo estimate of a distribution mean with the true mean"""
     samples_per_dim = int(num_samples ** (1./max(1, len(sample_inputs))))
@@ -729,7 +729,8 @@ def test_gamma_sample(batch_shape, sample_inputs, reparametrized):
     rate = Tensor(torch.rand(batch_shape), inputs)
     funsor_dist = (dist.Gamma if reparametrized else dist.NonreparameterizedGamma)(concentration, rate)
 
-    _check_sample(funsor_dist, sample_inputs, inputs)
+    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000,
+                  atol=5e-2 if reparametrized else 1e-1)
 
 
 @pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
@@ -745,7 +746,7 @@ def test_normal_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
     with interpretation(lazy if with_lazy else eager):
         funsor_dist = (dist.Normal if reparametrized else dist.NonreparameterizedNormal)(loc, scale)
 
-    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000)
+    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000, atol=1e-2 if reparametrized else 1e-1)
 
 
 @pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
@@ -761,7 +762,7 @@ def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
     with interpretation(lazy if with_lazy else eager):
         funsor_dist = dist.MultivariateNormal(loc, scale_tril)
 
-    _check_sample(funsor_dist, sample_inputs, inputs)
+    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000)
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
@@ -775,7 +776,7 @@ def test_dirichlet_sample(batch_shape, sample_inputs, event_shape, reparametrize
     concentration = Tensor(torch.randn(batch_shape + event_shape).exp(), inputs)
     funsor_dist = (dist.Dirichlet if reparametrized else dist.NonreparameterizedDirichlet)(concentration)
 
-    _check_sample(funsor_dist, sample_inputs, inputs)
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2 if reparametrized else 1e-1)
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
@@ -816,7 +817,8 @@ def test_beta_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
         funsor_dist = (dist.Beta if reparametrized else dist.NonreparameterizedBeta)(
             concentration1, concentration0)
 
-    _check_sample(funsor_dist, sample_inputs, inputs, statistic="variance", num_samples=100000)
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2 if reparametrized else 1e-1,
+                  statistic="variance", num_samples=100000)
 
 
 @pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
