@@ -111,18 +111,21 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         assert all(isinstance(v, (Number, Tensor)) for v in params.values())
         assert isinstance(value, Variable) and value.name in sampled_vars
         inputs_, tensors = align_tensors(*params.values())
+        inputs = OrderedDict(sample_inputs.items())
+        inputs.update(inputs_)
+        sample_shape = tuple(v.dtype for v in sample_inputs.values())
+
         raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
         if getattr(raw_dist, "has_rsample", False):
-            raw_sample = raw_dist.rsample(tuple(v.dtype for v in sample_inputs.values()))
+            raw_sample = raw_dist.rsample(sample_shape)
         else:
-            raw_sample = raw_dist.sample(tuple(v.dtype for v in sample_inputs.values()))
-        raw_score_function = raw_dist.score_parts(raw_sample).score_function
-        inputs = OrderedDict((k, v) for k, v in sample_inputs.items())
-        inputs.update(inputs_)
+            raw_sample = raw_dist.sample(sample_shape)
+
         result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
-        if not dist.util.is_identically_zero(raw_score_function):
+        if not getattr(raw_dist, "has_rsample", False):
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
-            dice_factor = Tensor(raw_score_function - raw_score_function.detach(), inputs)
+            raw_log_prob = raw_dist.log_prob(raw_sample)
+            dice_factor = Tensor(raw_log_prob - raw_log_prob.detach(), inputs)
             result += dice_factor
         return result
 
