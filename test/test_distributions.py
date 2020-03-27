@@ -687,9 +687,10 @@ def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2, rtol=1e-2):
             frozenset(['value'])
         ).reduce(ops.add, frozenset(sample_inputs))
         grad_targets = [v.data for v in list(funsor_dist.params.values())[:-1]]
-        actual_grads = torch.autograd.grad(actual_variance.reduce(ops.add).data, grad_targets, allow_unused=True)
+        actual_grads = torch.autograd.grad(actual_variance.reduce(ops.add).sum().data, grad_targets, allow_unused=True)
         expected_variance = Tensor(funsor_dist.dist_class(*tensors).variance, inputs)
-        expected_grads = torch.autograd.grad(expected_variance.reduce(ops.add).data, grad_targets, allow_unused=True)
+        expected_grads = torch.autograd.grad(
+            expected_variance.reduce(ops.add).sum().data, grad_targets, allow_unused=True)
 
         assert_close(actual_variance, expected_variance, atol=atol, rtol=rtol)
 
