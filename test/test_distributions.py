@@ -658,7 +658,7 @@ def test_von_mises_probs_density(batch_shape, syntax):
     assert_close(actual, expected)
 
 
-def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-1, rtol=None, statistic="mean"):
+def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-1, rtol=None, statistic="mean", skip_grad=False):
     """utility that compares a Monte Carlo estimate of a distribution mean with the true mean"""
     num_samples = 100000
     samples_per_dim = int(num_samples ** (1./max(1, len(sample_inputs))))
@@ -680,11 +680,13 @@ def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-1, rtol=None, stat
         ).reduce(ops.add, frozenset(sample_inputs))
 
         inputs, tensors = align_tensors(*list(funsor_dist.params.values())[:-1])
-        expected_mean = Tensor(funsor_dist.dist_class(*tensors).mean, inputs)
+        raw_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], tensors)))
+        expected_mean = Tensor(raw_dist.mean, inputs)
 
         check_funsor(actual_mean, expected_mean.inputs, expected_mean.output)
         assert_close(actual_mean, expected_mean, atol=atol, rtol=rtol)
 
+    if sample_inputs and not skip_grad:
         if statistic == "mean":
             actual_stat, expected_stat = actual_mean, expected_mean
         elif statistic == "variance":
@@ -693,12 +695,12 @@ def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-1, rtol=None, stat
                 (Variable('value', funsor_dist.inputs['value']) - actual_mean) ** 2,
                 frozenset(['value'])
             ).reduce(ops.add, frozenset(sample_inputs))
-            expected_stat = Tensor(funsor_dist.dist_class(*tensors).variance, inputs)
+            expected_stat = Tensor(raw_dist.variance, inputs)
         elif statistic == "entropy":
             actual_stat = -Integrate(
                 sample_value, funsor_dist, frozenset(['value'])
             ).reduce(ops.add, frozenset(sample_inputs))
-            expected_stat = Tensor(funsor_dist.dist_class(*tensors).entropy(), inputs)
+            expected_stat = Tensor(raw_dist.entropy(), inputs)
         else:
             raise ValueError("invalid test statistic")
 
@@ -831,7 +833,7 @@ def test_binomial_sample(with_lazy, batch_shape, sample_inputs):
     with interpretation(lazy if with_lazy else eager):
         funsor_dist = dist.Binomial(total_count, probs)
 
-    _check_sample(funsor_dist, sample_inputs, inputs)
+    _check_sample(funsor_dist, sample_inputs, inputs, skip_grad=True)
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
@@ -843,4 +845,4 @@ def test_poisson_sample(batch_shape, sample_inputs):
     rate = Tensor(torch.rand(batch_shape), inputs)
     funsor_dist = dist.Poisson(rate)
 
-    _check_sample(funsor_dist, sample_inputs, inputs)
+    _check_sample(funsor_dist, sample_inputs, inputs, skip_grad=True)
