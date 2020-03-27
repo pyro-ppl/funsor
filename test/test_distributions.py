@@ -788,7 +788,7 @@ def test_bernoullilogits_sample(batch_shape, sample_inputs):
     logits = Tensor(torch.rand(batch_shape), inputs)
     funsor_dist = dist.Bernoulli(logits=logits)
 
-    _check_sample(funsor_dist, sample_inputs, inputs)
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=5e-2, num_samples=100000)
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
@@ -800,7 +800,7 @@ def test_bernoulliprobs_sample(batch_shape, sample_inputs):
     probs = Tensor(torch.rand(batch_shape), inputs)
     funsor_dist = dist.Bernoulli(probs=probs)
 
-    _check_sample(funsor_dist, sample_inputs, inputs)
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=5e-2, num_samples=100000)
 
 
 @pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
