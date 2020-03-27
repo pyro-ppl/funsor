@@ -658,9 +658,9 @@ def test_von_mises_probs_density(batch_shape, syntax):
     assert_close(actual, expected)
 
 
-def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-1, rtol=None, statistic="mean", skip_grad=False):
+def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-1, rtol=None,
+                  num_samples=100000, statistic="mean", skip_grad=False):
     """utility that compares a Monte Carlo estimate of a distribution mean with the true mean"""
-    num_samples = 100000
     samples_per_dim = int(num_samples ** (1./max(1, len(sample_inputs))))
     sample_inputs = OrderedDict((k, bint(samples_per_dim)) for k in sample_inputs)
 
@@ -745,7 +745,7 @@ def test_normal_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
     with interpretation(lazy if with_lazy else eager):
         funsor_dist = (dist.Normal if reparametrized else dist.NonreparameterizedNormal)(loc, scale)
 
-    _check_sample(funsor_dist, sample_inputs, inputs)
+    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000)
 
 
 @pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
@@ -816,7 +816,7 @@ def test_beta_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
         funsor_dist = (dist.Beta if reparametrized else dist.NonreparameterizedBeta)(
             concentration1, concentration0)
 
-    _check_sample(funsor_dist, sample_inputs, inputs)
+    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000)
 
 
 @pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
