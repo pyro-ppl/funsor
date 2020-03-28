@@ -1,8 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-from collections import OrderedDict
-
 import jax.numpy as np
 import numpy as onp
 from jax import lax
@@ -13,7 +11,6 @@ from jax.scipy.special import expit, logsumexp
 
 import funsor.ops as ops
 from funsor.adjoint import adjoint_ops
-from funsor.domains import bint, reals
 from funsor.interpreter import children, recursion_reinterpret
 from funsor.terms import Funsor, to_funsor
 from funsor.tensor import Tensor, tensor_to_funsor
