@@ -424,6 +424,8 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
                    for k, v in dim_to_name.items())
 
         if output is None:
+            # Assume the leftmost dim_to_name key refers to the leftmost dim of x
+            # when there is ambiguity about event shape
             batch_ndims = min(-min(dim_to_name.keys()), len(x.shape))
             output = reals(*x.shape[batch_ndims:])
 
