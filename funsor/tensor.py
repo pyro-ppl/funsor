@@ -424,11 +424,8 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
                    for k, v in dim_to_name.items())
 
         if output is None:
-            batch_ndims = max(dim_to_name.keys()) - min(dim_to_name.keys())
-            offset = 0
-            while len(x.shape[offset:]) > batch_ndims and x.shape[offset] == 1:
-                offset += 1
-            output = reals(*x.shape[offset + batch_ndims + 1:])
+            batch_ndims = min(-min(dim_to_name.keys()), len(x.shape))
+            output = reals(*x.shape[batch_ndims:])
 
         # logic very similar to pyro.ops.packed.pack
         # this should not touch memory, only reshape
