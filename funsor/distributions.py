@@ -113,7 +113,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         inputs_, tensors = align_tensors(*params.values())
         inputs = OrderedDict(sample_inputs.items())
         inputs.update(inputs_)
-        sample_shape = tuple(v.dtype for v in sample_inputs.values())
+        sample_shape = tuple(v.size for v in sample_inputs.values())
 
         raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
         if getattr(raw_dist, "has_rsample", False):
