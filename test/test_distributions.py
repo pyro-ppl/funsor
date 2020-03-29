@@ -10,14 +10,16 @@ import torch
 
 import funsor
 import funsor.distributions as dist
+import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import bint, reals
 from funsor.interpreter import interpretation, reinterpret
+from funsor.integrate import Integrate
 from funsor.pyro.convert import dist_to_funsor
-from funsor.tensor import Einsum, Tensor
-from funsor.terms import Independent, Variable, lazy
-from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor
+from funsor.tensor import Einsum, Tensor, align_tensors
+from funsor.terms import Independent, Variable, eager, lazy
+from funsor.testing import assert_close, check_funsor, random_mvn, random_tensor, xfail_param
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() != "torch",
@@ -654,3 +656,195 @@ def test_von_mises_probs_density(batch_shape, syntax):
         actual = dist.VonMises(loc, concentration, d)(value=value)
     check_funsor(actual, inputs, reals())
     assert_close(actual, expected)
+
+
+def _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2, rtol=None,
+                  num_samples=100000, statistic="mean", skip_grad=False):
+    """utility that compares a Monte Carlo estimate of a distribution mean with the true mean"""
+    samples_per_dim = int(num_samples ** (1./max(1, len(sample_inputs))))
+    sample_inputs = OrderedDict((k, bint(samples_per_dim)) for k in sample_inputs)
+
+    for tensor in list(funsor_dist.params.values())[:-1]:
+        tensor.data.requires_grad_()
+
+    sample_value = funsor_dist.sample(frozenset(['value']), sample_inputs)
+    expected_inputs = OrderedDict(
+        tuple(sample_inputs.items()) + tuple(inputs.items()) + (('value', funsor_dist.inputs['value']),)
+    )
+    check_funsor(sample_value, expected_inputs, reals())
+
+    if sample_inputs:
+
+        actual_mean = Integrate(
+            sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
+        ).reduce(ops.add, frozenset(sample_inputs))
+
+        inputs, tensors = align_tensors(*list(funsor_dist.params.values())[:-1])
+        raw_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], tensors)))
+        expected_mean = Tensor(raw_dist.mean, inputs)
+
+        check_funsor(actual_mean, expected_mean.inputs, expected_mean.output)
+        assert_close(actual_mean, expected_mean, atol=atol, rtol=rtol)
+
+    if sample_inputs and not skip_grad:
+        if statistic == "mean":
+            actual_stat, expected_stat = actual_mean, expected_mean
+        elif statistic == "variance":
+            actual_stat = Integrate(
+                sample_value,
+                (Variable('value', funsor_dist.inputs['value']) - actual_mean) ** 2,
+                frozenset(['value'])
+            ).reduce(ops.add, frozenset(sample_inputs))
+            expected_stat = Tensor(raw_dist.variance, inputs)
+        elif statistic == "entropy":
+            actual_stat = -Integrate(
+                sample_value, funsor_dist, frozenset(['value'])
+            ).reduce(ops.add, frozenset(sample_inputs))
+            expected_stat = Tensor(raw_dist.entropy(), inputs)
+        else:
+            raise ValueError("invalid test statistic")
+
+        grad_targets = [v.data for v in list(funsor_dist.params.values())[:-1]]
+        actual_grads = torch.autograd.grad(actual_stat.reduce(ops.add).sum().data, grad_targets, allow_unused=True)
+        expected_grads = torch.autograd.grad(
+            expected_stat.reduce(ops.add).sum().data, grad_targets, allow_unused=True)
+
+        assert_close(actual_stat, expected_stat, atol=atol, rtol=rtol)
+
+        for actual_grad, expected_grad in zip(actual_grads, expected_grads):
+            if expected_grad is not None:
+                assert_close(actual_grad, expected_grad, atol=atol, rtol=rtol)
+            else:
+                assert_close(actual_grad, torch.zeros_like(actual_grad), atol=atol, rtol=rtol)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('reparametrized', [True, False])
+def test_gamma_sample(batch_shape, sample_inputs, reparametrized):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    concentration = Tensor(torch.rand(batch_shape), inputs)
+    rate = Tensor(torch.rand(batch_shape), inputs)
+    funsor_dist = (dist.Gamma if reparametrized else dist.NonreparameterizedGamma)(concentration, rate)
+
+    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000,
+                  atol=5e-2 if reparametrized else 1e-1)
+
+
+@pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('reparametrized', [True, False])
+def test_normal_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape), inputs)
+    scale = Tensor(torch.rand(batch_shape), inputs)
+    with interpretation(lazy if with_lazy else eager):
+        funsor_dist = (dist.Normal if reparametrized else dist.NonreparameterizedNormal)(loc, scale)
+
+    _check_sample(funsor_dist, sample_inputs, inputs, num_samples=200000, atol=1e-2 if reparametrized else 1e-1)
+
+
+@pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
+def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(torch.randn(batch_shape + event_shape), inputs)
+    scale_tril = Tensor(_random_scale_tril(batch_shape + event_shape * 2), inputs)
+    with interpretation(lazy if with_lazy else eager):
+        funsor_dist = dist.MultivariateNormal(loc, scale_tril)
+
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=5e-2, num_samples=200000)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
+@pytest.mark.parametrize('reparametrized', [True, False])
+def test_dirichlet_sample(batch_shape, sample_inputs, event_shape, reparametrized):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    concentration = Tensor(torch.randn(batch_shape + event_shape).exp(), inputs)
+    funsor_dist = (dist.Dirichlet if reparametrized else dist.NonreparameterizedDirichlet)(concentration)
+
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2 if reparametrized else 1e-1)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_bernoullilogits_sample(batch_shape, sample_inputs):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    logits = Tensor(torch.rand(batch_shape), inputs)
+    funsor_dist = dist.Bernoulli(logits=logits)
+
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=5e-2, num_samples=100000)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_bernoulliprobs_sample(batch_shape, sample_inputs):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    probs = Tensor(torch.rand(batch_shape), inputs)
+    funsor_dist = dist.Bernoulli(probs=probs)
+
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=5e-2, num_samples=100000)
+
+
+@pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('reparametrized', [True, False])
+def test_beta_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    concentration1 = Tensor(torch.randn(batch_shape).exp(), inputs)
+    concentration0 = Tensor(torch.randn(batch_shape).exp(), inputs)
+    with interpretation(lazy if with_lazy else eager):
+        funsor_dist = (dist.Beta if reparametrized else dist.NonreparameterizedBeta)(
+            concentration1, concentration0)
+
+    _check_sample(funsor_dist, sample_inputs, inputs, atol=1e-2 if reparametrized else 1e-1,
+                  statistic="variance", num_samples=100000)
+
+
+@pytest.mark.parametrize("with_lazy", [True, xfail_param(False, reason="missing pattern")])
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_binomial_sample(with_lazy, batch_shape, sample_inputs):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    max_count = 10
+    total_count_data = random_tensor(inputs, bint(max_count)).data.float()
+    total_count = Tensor(total_count_data, inputs)
+    probs = Tensor(torch.rand(batch_shape), inputs)
+    with interpretation(lazy if with_lazy else eager):
+        funsor_dist = dist.Binomial(total_count, probs)
+
+    _check_sample(funsor_dist, sample_inputs, inputs, skip_grad=True)
+
+
+@pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_poisson_sample(batch_shape, sample_inputs):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    rate = Tensor(torch.rand(batch_shape), inputs)
+    funsor_dist = dist.Poisson(rate)
+
+    _check_sample(funsor_dist, sample_inputs, inputs, skip_grad=True)

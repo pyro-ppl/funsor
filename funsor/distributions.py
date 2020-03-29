@@ -9,6 +9,7 @@ from collections import OrderedDict
 
 import makefun
 import pyro.distributions as dist
+import pyro.distributions.testing.fakes as fakes
 from pyro.distributions.torch_distribution import MaskedDistribution
 import torch
 import torch.distributions.constraints as constraints
@@ -85,11 +86,11 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         inputs = OrderedDict(inputs)
         output = reals()
         super(Distribution, self).__init__(inputs, output)
-        self.params = params
+        self.params = OrderedDict(params)
 
     def __repr__(self):
         return '{}({})'.format(type(self).__name__,
-                               ', '.join('{}={}'.format(*kv) for kv in self.params))
+                               ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
@@ -103,6 +104,30 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         value = params.pop('value')
         data = cls.dist_class(**params).log_prob(value)
         return Tensor(data, inputs)
+
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        params = OrderedDict(self.params)
+        value = params.pop("value")
+        assert all(isinstance(v, (Number, Tensor)) for v in params.values())
+        assert isinstance(value, Variable) and value.name in sampled_vars
+        inputs_, tensors = align_tensors(*params.values())
+        inputs = OrderedDict(sample_inputs.items())
+        inputs.update(inputs_)
+        sample_shape = tuple(v.size for v in sample_inputs.values())
+
+        raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
+        if getattr(raw_dist, "has_rsample", False):
+            raw_sample = raw_dist.rsample(sample_shape)
+        else:
+            raw_sample = raw_dist.sample(sample_shape)
+
+        result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
+        if not getattr(raw_dist, "has_rsample", False):
+            # scaling of dice_factor by num samples should already be handled by Funsor.sample
+            raw_log_prob = raw_dist.log_prob(raw_sample)
+            dice_factor = Tensor(raw_log_prob - raw_log_prob.detach(), inputs)
+            result += dice_factor
+        return result
 
     def __getattribute__(self, attr):
         if attr in type(self)._ast_fields and attr != 'name':
@@ -194,6 +219,10 @@ _wrapped_pyro_dists = [
     (dist.Normal, ()),
     (dist.MultivariateNormal, ('loc', 'scale_tril')),
     (dist.Delta, ()),
+    (fakes.NonreparameterizedBeta, ()),
+    (fakes.NonreparameterizedGamma, ()),
+    (fakes.NonreparameterizedNormal, ()),
+    (fakes.NonreparameterizedDirichlet, ()),
 ]
 
 for pyro_dist_class, param_names in _wrapped_pyro_dists:
@@ -284,7 +313,7 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     pyro_dist_class = funsor_dist.dist_class
     params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
               for param_name in funsor_dist._ast_fields if param_name != 'value']
-    pyro_dist = pyro_dist_class(*params)
+    pyro_dist = pyro_dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     funsor_event_shape = funsor_dist.value.output.shape
     pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
     if pyro_dist.event_shape != funsor_event_shape:
