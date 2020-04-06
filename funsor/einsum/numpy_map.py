@@ -14,7 +14,6 @@ def einsum(equation, *operands):
     Forward-max-sum backward-argmax implementation of einsum.
     This assumes all operands have a ``._pyro_dims`` attribute set.
     """
-    # TODO: the implementation skips "backward" logic
     equation = rename_equation(equation, *operands)
     inputs, output = equation.split('->')
 
