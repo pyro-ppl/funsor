@@ -936,3 +936,11 @@ def test_ops_expand(expand_shape):
     x = randn((3, 2))
     actual = ops.expand(x, expand_shape)
     assert actual.shape == (4, 3, 2)
+
+
+def test_tensor_to_funsor_ambiguous_output():
+    x = randn((2, 1))
+    f = funsor.to_funsor(x, output=None, dim_to_name=OrderedDict({-2: 'a'}))
+    f2 = funsor.to_funsor(x, output=reals(), dim_to_name=OrderedDict({-2: 'a'}))
+    assert f.inputs == f2.inputs == OrderedDict(a=bint(2))
+    assert f.output.shape == () == f2.output.shape

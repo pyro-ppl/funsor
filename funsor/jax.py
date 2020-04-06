@@ -1,8 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-from collections import OrderedDict
-
 import jax.numpy as np
 import numpy as onp
 from jax import lax
@@ -13,10 +11,9 @@ from jax.scipy.special import expit, logsumexp
 
 import funsor.ops as ops
 from funsor.adjoint import adjoint_ops
-from funsor.domains import bint, reals
 from funsor.interpreter import children, recursion_reinterpret
 from funsor.terms import Funsor, to_funsor
-from funsor.tensor import Tensor
+from funsor.tensor import Tensor, tensor_to_funsor
 from funsor.util import quote
 
 
@@ -37,32 +34,8 @@ def _children_ground(x):
     return ()
 
 
-@to_funsor.register(DeviceArray)
-@to_funsor.register(Tracer)
-def tensor_to_funsor(x, output=None, dim_to_name=None):
-    if not dim_to_name:
-        output = output if output is not None else reals(*x.shape)
-        result = Tensor(x, dtype=output.dtype)
-        if result.output != output:
-            raise ValueError("Invalid shape: expected {}, actual {}"
-                             .format(output.shape, result.output.shape))
-        return result
-    else:
-        assert output is not None  # TODO attempt to infer output
-        assert all(isinstance(k, int) and k < 0 and isinstance(v, str)
-                   for k, v in dim_to_name.items())
-        # logic very similar to pyro.ops.packed.pack
-        # this should not touch memory, only reshape
-        # pack the tensor according to the dim => name mapping in inputs
-        packed_inputs = OrderedDict()
-        for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
-            name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
-            if name is not None and size > 1:
-                packed_inputs[name] = bint(size)
-        shape = tuple(d.size for d in packed_inputs.values()) + output.shape
-        if x.shape != shape:
-            x = x.reshape(shape)
-        return Tensor(x, packed_inputs, dtype=output.dtype)
+to_funsor.register(DeviceArray)(tensor_to_funsor)
+to_funsor.register(Tracer)(tensor_to_funsor)
 
 
 @quote.register(DeviceArray)

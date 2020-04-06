@@ -424,9 +424,15 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
                              .format(output.shape, result.output.shape))
         return result
     else:
-        assert output is not None  # TODO attempt to infer output
         assert all(isinstance(k, int) and k < 0 and isinstance(v, str)
                    for k, v in dim_to_name.items())
+
+        if output is None:
+            # Assume the leftmost dim_to_name key refers to the leftmost dim of x
+            # when there is ambiguity about event shape
+            batch_ndims = min(-min(dim_to_name.keys()), len(x.shape))
+            output = reals(*x.shape[batch_ndims:])
+
         # logic very similar to pyro.ops.packed.pack
         # this should not touch memory, only reshape
         # pack the tensor according to the dim => name mapping in inputs

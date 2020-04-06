@@ -1,21 +1,35 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import functools
+import inspect
 import math
+import typing
 from collections import OrderedDict
 
+import makefun
 import pyro.distributions as dist
+import pyro.distributions.testing.fakes as fakes
+from pyro.distributions.torch_distribution import MaskedDistribution
 import torch
+import torch.distributions.constraints as constraints
 
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
-from funsor.domains import bint, reals
+from funsor.cnf import GaussianMixture
+from funsor.domains import Domain, reals
 from funsor.gaussian import Gaussian
-from funsor.interpreter import gensym, interpretation
+from funsor.interpreter import gensym
+from funsor.ops import cholesky
 from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
-from funsor.terms import Funsor, FunsorMeta, Number, Variable, eager, lazy, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
 from funsor.util import broadcast_shape
+
+
+def _dummy_tensor(domain):
+    value = 0.1 if domain.dtype == 'real' else 1
+    return torch.tensor(value).expand(domain.shape) if domain.shape else value
 
 
 def numbers_to_tensors(*args):
@@ -42,17 +56,13 @@ class DistributionMeta(FunsorMeta):
     """
     def __call__(cls, *args, **kwargs):
         kwargs.update(zip(cls._ast_fields, args))
-        args = cls._fill_defaults(**kwargs)
-        args = numbers_to_tensors(*args)
-
-        # If value was explicitly specified, evaluate under current interpretation.
-        if 'value' in kwargs:
-            return super(DistributionMeta, cls).__call__(*args)
-
-        # Otherwise lazily construct a distribution instance.
-        # This makes it cheaper to construct observations in minipyro.
-        with interpretation(lazy):
-            return super(DistributionMeta, cls).__call__(*args)
+        value = kwargs.pop('value', 'value')
+        kwargs = OrderedDict(
+            (k, to_funsor(kwargs[k], output=cls._infer_param_domain(k, getattr(kwargs[k], "shape", ()))))
+            for k in cls._ast_fields if k != 'value')
+        value = to_funsor(value, output=cls._infer_value_domain(**{k: v.output for k, v in kwargs.items()}))
+        args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
+        return super(DistributionMeta, cls).__call__(*args)
 
 
 class Distribution(Funsor, metaclass=DistributionMeta):
@@ -63,7 +73,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         funsors or objects that can be coerced to funsors via
         :func:`~funsor.terms.to_funsor` . See derived classes for details.
     """
-    dist_class = "defined by derived classes"
+    dist_class = dist.Distribution
 
     def __init__(self, *args):
         params = tuple(zip(self._ast_fields, args))
@@ -76,11 +86,11 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         inputs = OrderedDict(inputs)
         output = reals()
         super(Distribution, self).__init__(inputs, output)
-        self.params = params
+        self.params = OrderedDict(params)
 
     def __repr__(self):
         return '{}({})'.format(type(self).__name__,
-                               ', '.join('{}={}'.format(*kv) for kv in self.params))
+                               ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
@@ -88,68 +98,257 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return super(Distribution, self).eager_reduce(op, reduced_vars)
 
     @classmethod
-    def eager_log_prob(cls, **params):
-        inputs, tensors = align_tensors(*params.values())
-        params = dict(zip(params, tensors))
+    def eager_log_prob(cls, *params):
+        inputs, tensors = align_tensors(*params)
+        params = dict(zip(cls._ast_fields, tensors))
         value = params.pop('value')
         data = cls.dist_class(**params).log_prob(value)
         return Tensor(data, inputs)
+
+    def unscaled_sample(self, sampled_vars, sample_inputs):
+        params = OrderedDict(self.params)
+        value = params.pop("value")
+        assert all(isinstance(v, (Number, Tensor)) for v in params.values())
+        assert isinstance(value, Variable) and value.name in sampled_vars
+        inputs_, tensors = align_tensors(*params.values())
+        inputs = OrderedDict(sample_inputs.items())
+        inputs.update(inputs_)
+        sample_shape = tuple(v.size for v in sample_inputs.values())
+
+        raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
+        if getattr(raw_dist, "has_rsample", False):
+            raw_sample = raw_dist.rsample(sample_shape)
+        else:
+            raw_sample = raw_dist.sample(sample_shape)
+
+        result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
+        if not getattr(raw_dist, "has_rsample", False):
+            # scaling of dice_factor by num samples should already be handled by Funsor.sample
+            raw_log_prob = raw_dist.log_prob(raw_sample)
+            dice_factor = Tensor(raw_log_prob - raw_log_prob.detach(), inputs)
+            result += dice_factor
+        return result
+
+    def __getattribute__(self, attr):
+        if attr in type(self)._ast_fields and attr != 'name':
+            return self.params[attr]
+        return super().__getattribute__(attr)
+
+    @classmethod
+    @functools.lru_cache(maxsize=5000)
+    def _infer_value_domain(cls, **kwargs):
+        # rely on the underlying distribution's logic to infer the event_shape given param domains
+        instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
+        out_shape = instance.event_shape
+        if isinstance(instance.support, constraints._IntegerInterval):
+            out_dtype = int(instance.support.upper_bound + 1)
+        else:
+            out_dtype = 'real'
+        return Domain(dtype=out_dtype, shape=out_shape)
+
+    @classmethod
+    @functools.lru_cache(maxsize=5000)
+    def _infer_param_domain(cls, name, raw_shape):
+        support = cls.dist_class.arg_constraints.get(name, None)
+        if isinstance(support, constraints._Simplex):
+            output = reals(raw_shape[-1])
+        elif isinstance(support, constraints._RealVector):
+            output = reals(raw_shape[-1])
+        elif isinstance(support, (constraints._LowerCholesky, constraints._PositiveDefinite)):
+            output = reals(*raw_shape[-2:])
+        elif isinstance(support, constraints._Real) and name == "logits" and \
+                isinstance(cls.dist_class.arg_constraints["probs"], constraints._Simplex):
+            output = reals(raw_shape[-1])
+        else:
+            output = None
+        return output
 
 
 ################################################################################
 # Distribution Wrappers
 ################################################################################
 
-class BernoulliProbs(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Bernoulli` .
+def make_dist(pyro_dist_class, param_names=()):
 
-    :param Funsor probs: Probability of 1.
-    :param Funsor value: Optional observation in ``{0,1}``.
-    """
-    dist_class = dist.Bernoulli
+    if not param_names:
+        param_names = tuple(name for name in inspect.getfullargspec(pyro_dist_class.__init__)[0][1:]
+                            if name in pyro_dist_class.arg_constraints)
 
-    @staticmethod
-    def _fill_defaults(probs, value='value'):
-        probs = to_funsor(probs)
-        assert probs.dtype == "real"
-        value = to_funsor(value, reals())
-        return probs, value
+    @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
+    def dist_init(self, **kwargs):
+        return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
-    def __init__(self, probs, value=None):
-        super(BernoulliProbs, self).__init__(probs, value)
+    dist_class = DistributionMeta(pyro_dist_class.__name__.split("_PyroWrapper_")[-1], (Distribution,), {
+        'dist_class': pyro_dist_class,
+        '__init__': dist_init,
+    })
 
+    eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
 
-@eager.register(BernoulliProbs, Tensor, Tensor)
-def eager_bernoulli(probs, value):
-    return BernoulliProbs.eager_log_prob(probs=probs, value=value)
+    return dist_class
 
 
-class BernoulliLogits(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Bernoulli` .
-
-    :param Funsor logits: Log likelihood ratio of 1.
-        This should equal ``log(p1 / p0)``.
-    :param Funsor value: Optional observation in ``{0,1}``.
-    """
-    dist_class = dist.Bernoulli
-
-    @staticmethod
-    def _fill_defaults(logits, value='value'):
-        logits = to_funsor(logits)
-        assert logits.dtype == "real"
-        value = to_funsor(value, reals())
-        return logits, value
-
-    def __init__(self, logits, value=None):
-        super(BernoulliLogits, self).__init__(logits, value)
+class _PyroWrapper_BernoulliProbs(dist.Bernoulli):
+    def __init__(self, probs, validate_args=None):
+        return super().__init__(probs=probs, validate_args=validate_args)
 
 
-@eager.register(BernoulliLogits, Tensor, Tensor)
-def eager_bernoulli_logits(logits, value):
-    return BernoulliLogits.eager_log_prob(logits=logits, value=value)
+class _PyroWrapper_BernoulliLogits(dist.Bernoulli):
+    def __init__(self, logits, validate_args=None):
+        return super().__init__(logits=logits, validate_args=validate_args)
 
+
+class _PyroWrapper_CategoricalLogits(dist.Categorical):
+    def __init__(self, logits, validate_args=None):
+        return super().__init__(logits=logits, validate_args=validate_args)
+
+
+_wrapped_pyro_dists = [
+    (dist.Beta, ()),
+    (_PyroWrapper_BernoulliProbs, ('probs',)),
+    (_PyroWrapper_BernoulliLogits, ('logits',)),
+    (dist.Binomial, ('total_count', 'probs')),
+    (dist.Multinomial, ('total_count', 'probs')),
+    (dist.Categorical, ('probs',)),
+    (_PyroWrapper_CategoricalLogits, ('logits',)),
+    (dist.Poisson, ()),
+    (dist.Gamma, ()),
+    (dist.VonMises, ()),
+    (dist.Dirichlet, ()),
+    (dist.DirichletMultinomial, ()),
+    (dist.Normal, ()),
+    (dist.MultivariateNormal, ('loc', 'scale_tril')),
+    (dist.Delta, ()),
+    (fakes.NonreparameterizedBeta, ()),
+    (fakes.NonreparameterizedGamma, ()),
+    (fakes.NonreparameterizedNormal, ()),
+    (fakes.NonreparameterizedDirichlet, ()),
+]
+
+for pyro_dist_class, param_names in _wrapped_pyro_dists:
+    locals()[pyro_dist_class.__name__.split("_PyroWrapper_")[-1].split(".")[-1]] = \
+        make_dist(pyro_dist_class, param_names)
+
+# Delta has to be treated specially because of its weird shape inference semantics
+Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])
+
+
+# Multinomial and related dists have dependent bint dtypes, so we just make them 'real'
+# See issue: https://github.com/pyro-ppl/funsor/issues/322
+@functools.lru_cache(maxsize=5000)
+def _multinomial_infer_value_domain(cls, **kwargs):
+    instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
+    return reals(*instance.event_shape)
+
+
+Binomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
+Multinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
+DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
+
+
+###############################################
+# Converting PyTorch Distributions to funsors
+###############################################
+
+@to_funsor.register(torch.distributions.Distribution)
+def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    import funsor.distributions  # TODO find a better way to do this lookup
+    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__.split("_PyroWrapper_")[-1])
+    params = [to_funsor(
+            getattr(pyro_dist, param_name),
+            output=funsor_dist_class._infer_param_domain(
+                param_name, getattr(getattr(pyro_dist, param_name), "shape", ())),
+            dim_to_name=dim_to_name)
+        for param_name in funsor_dist_class._ast_fields if param_name != 'value']
+    return funsor_dist_class(*params)
+
+
+@to_funsor.register(torch.distributions.Independent)
+def indepdist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    dim_to_name = OrderedDict((dim - pyro_dist.reinterpreted_batch_ndims, name)
+                              for dim, name in dim_to_name.items())
+    dim_to_name.update(OrderedDict((i, f"_pyro_event_dim_{i}") for i in range(-pyro_dist.reinterpreted_batch_ndims, 0)))
+    result = to_funsor(pyro_dist.base_dist, dim_to_name=dim_to_name)
+    for i in reversed(range(-pyro_dist.reinterpreted_batch_ndims, 0)):
+        name = f"_pyro_event_dim_{i}"
+        result = funsor.terms.Independent(result, "value", name, "value")
+    return result
+
+
+@to_funsor.register(MaskedDistribution)
+def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    mask = to_funsor(pyro_dist._mask.float(), output=output, dim_to_name=dim_to_name)
+    funsor_base_dist = to_funsor(pyro_dist.base_dist, output=output, dim_to_name=dim_to_name)
+    return mask * funsor_base_dist
+
+
+@to_funsor.register(torch.distributions.Bernoulli)
+def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    new_pyro_dist = _PyroWrapper_BernoulliLogits(logits=pyro_dist.logits)
+    return torchdistribution_to_funsor(new_pyro_dist, output, dim_to_name)
+
+
+@to_funsor.register(torch.distributions.TransformedDistribution)
+def transformeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    raise NotImplementedError("TODO implement conversion of TransformedDistribution")
+
+
+@to_funsor.register(torch.distributions.MultivariateNormal)
+def torchmvn_to_funsor(pyro_dist, output=None, dim_to_name=None, real_inputs=OrderedDict()):
+    funsor_dist = torchdistribution_to_funsor(pyro_dist, output=output, dim_to_name=dim_to_name)
+    if len(real_inputs) == 0:
+        return funsor_dist
+    discrete, gaussian = funsor_dist(value="value").terms
+    inputs = OrderedDict((k, v) for k, v in gaussian.inputs.items() if v.dtype != 'real')
+    inputs.update(real_inputs)
+    return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
+
+
+###########################################################
+# Converting distribution funsors to PyTorch distributions
+###########################################################
+
+@to_data.register(Distribution)
+def distribution_to_data(funsor_dist, name_to_dim=None):
+    pyro_dist_class = funsor_dist.dist_class
+    params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
+              for param_name in funsor_dist._ast_fields if param_name != 'value']
+    pyro_dist = pyro_dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
+    funsor_event_shape = funsor_dist.value.output.shape
+    pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
+    if pyro_dist.event_shape != funsor_event_shape:
+        raise ValueError("Event shapes don't match, something went wrong")
+    return pyro_dist
+
+
+@to_data.register(Independent[typing.Union[Independent, Distribution], str, str, str])
+def indep_to_data(funsor_dist, name_to_dim=None):
+    raise NotImplementedError("TODO implement conversion of Independent")
+
+
+@to_data.register(Gaussian)
+def gaussian_to_data(funsor_dist, name_to_dim=None, normalized=False):
+    if normalized:
+        return to_data(funsor_dist.log_normalizer + funsor_dist, name_to_dim=name_to_dim)
+    loc = funsor_dist.info_vec.unsqueeze(-1).cholesky_solve(cholesky(funsor_dist.precision)).squeeze(-1)
+    int_inputs = OrderedDict((k, d) for k, d in funsor_dist.inputs.items() if d.dtype != "real")
+    loc = to_data(Tensor(loc, int_inputs), name_to_dim)
+    precision = to_data(Tensor(funsor_dist.precision, int_inputs), name_to_dim)
+    return dist.MultivariateNormal(loc, precision_matrix=precision)
+
+
+@to_data.register(GaussianMixture)
+def gaussianmixture_to_data(funsor_dist, name_to_dim=None):
+    discrete, gaussian = funsor_dist.terms
+    cat = dist.Categorical(logits=to_data(
+        discrete + gaussian.log_normalizer, name_to_dim=name_to_dim))
+    mvn = to_data(gaussian, name_to_dim=name_to_dim)
+    return cat, mvn
+
+
+################################################
+# Backend-agnostic distribution patterns
+################################################
 
 def Bernoulli(probs=None, logits=None, value='value'):
     """
@@ -168,66 +367,11 @@ def Bernoulli(probs=None, logits=None, value='value'):
     raise ValueError('Either probs or logits must be specified')
 
 
-class Beta(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Beta` .
-
-    :param Funsor concentration1: Positive concentration parameter.
-    :param Funsor concentration0: Positive concentration parameter.
-    :param Funsor value: Optional observation in ``(0,1)``.
-    """
-    dist_class = dist.Beta
-
-    @staticmethod
-    def _fill_defaults(concentration1, concentration0, value='value'):
-        concentration1 = to_funsor(concentration1, reals())
-        concentration0 = to_funsor(concentration0, reals())
-        value = to_funsor(value, reals())
-        return concentration1, concentration0, value
-
-    def __init__(self, concentration1, concentration0, value=None):
-        super(Beta, self).__init__(concentration1, concentration0, value)
-
-
-@eager.register(Beta, Tensor, Tensor, Tensor)
-def eager_beta(concentration1, concentration0, value):
-    return Beta.eager_log_prob(concentration1=concentration1,
-                               concentration0=concentration0,
-                               value=value)
-
-
 @eager.register(Beta, Funsor, Funsor, Funsor)
 def eager_beta(concentration1, concentration0, value):
     concentration = stack((concentration0, concentration1))
     value = stack((1 - value, value))
     return Dirichlet(concentration, value=value)
-
-
-class Binomial(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Binomial` .
-
-    :param Funsor total_count: Total number of trials.
-    :param Funsor probs: Probability of each positive trial.
-    :param Funsor value: Optional integer observation (encoded as "real").
-    """
-    dist_class = dist.Binomial
-
-    @staticmethod
-    def _fill_defaults(total_count, probs, value='value'):
-        total_count = to_funsor(total_count, reals())
-        probs = to_funsor(probs)
-        assert probs.dtype == "real"
-        value = to_funsor(value, reals())
-        return total_count, probs, value
-
-    def __init__(self, total_count, probs, value=None):
-        super(Binomial, self).__init__(total_count, probs, value)
-
-
-@eager.register(Binomial, Tensor, Tensor, Tensor)
-def eager_binomial(total_count, probs, value):
-    return Binomial.eager_log_prob(total_count=total_count, probs=probs, value=value)
 
 
 @eager.register(Binomial, Funsor, Funsor, Funsor)
@@ -237,24 +381,16 @@ def eager_binomial(total_count, probs, value):
     return Multinomial(total_count, probs, value=value)
 
 
-class Categorical(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Categorical` .
-
-    :param Funsor probs: Probability vector over outcomes.
-    :param Funsor value: Optional bouded integer observation.
-    """
-    dist_class = dist.Categorical
-
-    @staticmethod
-    def _fill_defaults(probs, value='value'):
-        probs = to_funsor(probs)
-        assert probs.dtype == "real"
-        value = to_funsor(value, bint(probs.output.shape[0]))
-        return probs, value
-
-    def __init__(self, probs, value='value'):
-        super(Categorical, self).__init__(probs, value)
+@eager.register(Multinomial, Tensor, Tensor, Tensor)
+def eager_multinomial(total_count, probs, value):
+    # Multinomial.log_prob() supports inhomogeneous total_count only by
+    # avoiding passing total_count to the constructor.
+    inputs, (total_count, probs, value) = align_tensors(total_count, probs, value)
+    shape = broadcast_shape(total_count.shape + (1,), probs.shape, value.shape)
+    probs = Tensor(probs.expand(shape), inputs)
+    value = Tensor(value.expand(shape), inputs)
+    total_count = Number(total_count.max().item())  # Used by distributions validation code.
+    return Multinomial.eager_log_prob(total_count, probs, value)
 
 
 @eager.register(Categorical, Funsor, Tensor)
@@ -262,37 +398,10 @@ def eager_categorical(probs, value):
     return probs[value].log()
 
 
-@eager.register(Categorical, Tensor, Tensor)
-def eager_categorical(probs, value):
-    return Categorical.eager_log_prob(probs=probs, value=value)
-
-
 @eager.register(Categorical, Tensor, Variable)
 def eager_categorical(probs, value):
     value = probs.materialize(value)
-    return Categorical.eager_log_prob(probs=probs, value=value)
-
-
-class Delta(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Delta` .
-
-    :param Funsor v: The unique point of concentration.
-    :param Funsor log_density: Optional density (used by transformed
-        distributions).
-    :param Funsor value: Optional observation of similar domain as ``v``.
-    """
-    dist_class = dist.Delta
-
-    @staticmethod
-    def _fill_defaults(v, log_density=0, value='value'):
-        v = to_funsor(v)
-        log_density = to_funsor(log_density, reals())
-        value = to_funsor(value, v.output)
-        return v, log_density, value
-
-    def __init__(self, v, log_density=0, value='value'):
-        return super(Delta, self).__init__(v, log_density, value)
+    return Categorical(probs=probs, value=value)
 
 
 @eager.register(Delta, Tensor, Tensor, Tensor)
@@ -319,61 +428,9 @@ def eager_delta(v, log_density, value):
     return funsor.delta.Delta(v.name, value, log_density)
 
 
-class Dirichlet(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Dirichlet` .
-
-    :param Funsor concentration: Positive concentration vector.
-    :param Funsor value: Optional observation in the unit simplex.
-    """
-    dist_class = dist.Dirichlet
-
-    @staticmethod
-    def _fill_defaults(concentration, value='value'):
-        concentration = to_funsor(concentration)
-        assert concentration.dtype == "real"
-        assert len(concentration.output.shape) == 1
-        dim = concentration.output.shape[0]
-        value = to_funsor(value, reals(dim))
-        return concentration, value
-
-    def __init__(self, concentration, value='value'):
-        super(Dirichlet, self).__init__(concentration, value)
-
-
-@eager.register(Dirichlet, Tensor, Tensor)
-def eager_dirichlet(concentration, value):
-    return Dirichlet.eager_log_prob(concentration=concentration, value=value)
-
-
-class DirichletMultinomial(Distribution):
-    """
-    Wraps :class:`pyro.distributions.DirichletMultinomial` .
-
-    :param Funsor concentration: Positive concentration vector.
-    :param Funsor total_count: Total number of trials.
-    :param Funsor value: Optional observation in the unit simplex.
-    """
-    dist_class = dist.DirichletMultinomial
-
-    @staticmethod
-    def _fill_defaults(concentration, total_count=1, value='value'):
-        concentration = to_funsor(concentration)
-        assert concentration.dtype == "real"
-        assert len(concentration.output.shape) == 1
-        total_count = to_funsor(total_count, reals())
-        dim = concentration.output.shape[0]
-        value = to_funsor(value, reals(dim))  # Should this be bint(total_count)?
-        return concentration, total_count, value
-
-    def __init__(self, concentration, total_count, value='value'):
-        super(DirichletMultinomial, self).__init__(concentration, total_count, value)
-
-
-@eager.register(DirichletMultinomial, Tensor, Tensor, Tensor)
-def eager_dirichlet_multinomial(concentration, total_count, value):
-    return DirichletMultinomial.eager_log_prob(
-        concentration=concentration, total_count=total_count, value=value)
+@eager.register(Delta, Variable, Variable, Variable)
+def eager_delta(v, log_density, value):
+    return None
 
 
 def LogNormal(loc, scale, value='value'):
@@ -385,72 +442,12 @@ def LogNormal(loc, scale, value='value'):
         distribution.
     :param Funsor value: Optional real observation.
     """
-    loc, scale, y = Normal._fill_defaults(loc, scale, value)
+    loc, scale = to_funsor(loc), to_funsor(scale)
+    y = to_funsor(value, output=loc.output)
     t = ops.exp
     x = t.inv(y)
     log_abs_det_jacobian = t.log_abs_det_jacobian(x, y)
     return Normal(loc, scale, x) - log_abs_det_jacobian
-
-
-class Multinomial(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Multinomial` .
-
-    :param Funsor probs: Probability vector over outcomes.
-    :param Funsor total_count: Total number of trials.
-    :param Funsor value: Optional value in the unit simplex.
-    """
-    dist_class = dist.Multinomial
-
-    @staticmethod
-    def _fill_defaults(total_count, probs, value='value'):
-        total_count = to_funsor(total_count, reals())
-        probs = to_funsor(probs)
-        assert probs.dtype == "real"
-        assert len(probs.output.shape) == 1
-        value = to_funsor(value, probs.output)
-        return total_count, probs, value
-
-    def __init__(self, total_count, probs, value=None):
-        super(Multinomial, self).__init__(total_count, probs, value)
-
-
-@eager.register(Multinomial, Tensor, Tensor, Tensor)
-def eager_multinomial(total_count, probs, value):
-    # Multinomial.log_prob() supports inhomogeneous total_count only by
-    # avoiding passing total_count to the constructor.
-    inputs, (total_count, probs, value) = align_tensors(total_count, probs, value)
-    shape = broadcast_shape(total_count.shape + (1,), probs.shape, value.shape)
-    probs = Tensor(probs.expand(shape), inputs)
-    value = Tensor(value.expand(shape), inputs)
-    total_count = Number(total_count.max().item())  # Used by distributions validation code.
-    return Multinomial.eager_log_prob(total_count=total_count, probs=probs, value=value)
-
-
-class Normal(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Normal` .
-
-    :param Funsor loc: Mean.
-    :param Funsor scale: Standard deviation.
-    :param Funsor value: Optional real observation.
-    """
-    dist_class = dist.Normal
-
-    @staticmethod
-    def _fill_defaults(loc, scale, value='value'):
-        loc = to_funsor(loc, reals())
-        scale = to_funsor(scale, reals())
-        value = to_funsor(value, reals())
-        return loc, scale, value
-
-    def __init__(self, loc, scale, value='value'):
-        super(Normal, self).__init__(loc, scale, value)
-
-
-@eager.register(Normal, Tensor, Tensor, Tensor)
-def eager_normal(loc, scale, value):
-    return Normal.eager_log_prob(loc=loc, scale=scale, value=value)
 
 
 @eager.register(Normal, Funsor, Tensor, Funsor)
@@ -471,37 +468,6 @@ def eager_normal(loc, scale, value):
     return gaussian(**{var: value - loc})
 
 
-class MultivariateNormal(Distribution):
-    """
-    Wraps :class:`pyro.distributions.MultivariateNormal` .
-
-    :param Funsor loc: Mean vector.
-    :param Funsor scale_tril: Lower Cholesky factor of the covariance matrix.
-    :param Funsor value: Optional real vector observation.
-    """
-    dist_class = dist.MultivariateNormal
-
-    @staticmethod
-    def _fill_defaults(loc, scale_tril, value='value'):
-        loc = to_funsor(loc)
-        scale_tril = to_funsor(scale_tril)
-        assert loc.dtype == 'real'
-        assert scale_tril.dtype == 'real'
-        assert len(loc.output.shape) == 1
-        dim = loc.output.shape[0]
-        assert scale_tril.output.shape == (dim, dim)
-        value = to_funsor(value, loc.output)
-        return loc, scale_tril, value
-
-    def __init__(self, loc, scale_tril, value='value'):
-        super(MultivariateNormal, self).__init__(loc, scale_tril, value)
-
-
-@eager.register(MultivariateNormal, Tensor, Tensor, Tensor)
-def eager_mvn(loc, scale_tril, value):
-    return MultivariateNormal.eager_log_prob(loc=loc, scale_tril=scale_tril, value=value)
-
-
 @eager.register(MultivariateNormal, Funsor, Tensor, Funsor)
 def eager_mvn(loc, scale_tril, value):
     assert len(loc.shape) == 1
@@ -519,104 +485,3 @@ def eager_mvn(loc, scale_tril, value):
     inputs[var] = reals(scale_diag.shape[0])
     gaussian = log_prob + Gaussian(info_vec, precision, inputs)
     return gaussian(**{var: value - loc})
-
-
-class Poisson(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Poisson` .
-
-    :param Funsor rate: Mean parameter.
-    :param Funsor value: Optional integer observation (coded as "real").
-    """
-    dist_class = dist.Poisson
-
-    @staticmethod
-    def _fill_defaults(rate, value='value'):
-        rate = to_funsor(rate)
-        assert rate.dtype == "real"
-        value = to_funsor(value, reals())
-        return rate, value
-
-    def __init__(self, rate, value=None):
-        super().__init__(rate, value)
-
-
-@eager.register(Poisson, Tensor, Tensor)
-def eager_poisson(rate, value):
-    return Poisson.eager_log_prob(rate=rate, value=value)
-
-
-class Gamma(Distribution):
-    """
-    Wraps :class:`pyro.distributions.Gamma` .
-
-    :param Funsor concentration: Positive concentration parameter.
-    :param Funsor rate: Positive rate parameter.
-    :param Funsor value: Optional positive observation.
-    """
-    dist_class = dist.Gamma
-
-    @staticmethod
-    def _fill_defaults(concentration, rate, value='value'):
-        concentration = to_funsor(concentration)
-        assert concentration.dtype == "real"
-        rate = to_funsor(rate)
-        assert rate.dtype == "real"
-        value = to_funsor(value, reals())
-        return concentration, rate, value
-
-    def __init__(self, concentration, rate, value=None):
-        super().__init__(concentration, rate, value)
-
-
-@eager.register(Gamma, Tensor, Tensor, Tensor)
-def eager_gamma(concentration, rate, value):
-    return Gamma.eager_log_prob(concentration=concentration, rate=rate, value=value)
-
-
-class VonMises(Distribution):
-    """
-    Wraps :class:`pyro.distributions.VonMises` .
-
-    :param Funsor loc: A location angle.
-    :param Funsor concentration: Positive concentration parameter.
-    :param Funsor value: Optional angular observation.
-    """
-    dist_class = dist.VonMises
-
-    @staticmethod
-    def _fill_defaults(loc, concentration, value='value'):
-        loc = to_funsor(loc)
-        assert loc.dtype == "real"
-        concentration = to_funsor(concentration)
-        assert concentration.dtype == "real"
-        value = to_funsor(value, reals())
-        return loc, concentration, value
-
-    def __init__(self, loc, concentration, value=None):
-        super().__init__(loc, concentration, value)
-
-
-@eager.register(VonMises, Tensor, Tensor, Tensor)
-def eager_vonmises(loc, concentration, value):
-    return VonMises.eager_log_prob(loc=loc, concentration=concentration, value=value)
-
-
-__all__ = [
-    'Bernoulli',
-    'BernoulliLogits',
-    'Beta',
-    'Binomial',
-    'Categorical',
-    'Delta',
-    'Dirichlet',
-    'DirichletMultinomial',
-    'Distribution',
-    'Gamma',
-    'LogNormal',
-    'Multinomial',
-    'MultivariateNormal',
-    'Normal',
-    'Poisson',
-    'VonMises',
-]

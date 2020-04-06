@@ -11,7 +11,7 @@ from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import bint
 from funsor.pyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
-from funsor.terms import Funsor
+from funsor.terms import Funsor, to_funsor
 
 
 class FunsorDistribution(dist.TorchDistribution):
@@ -94,3 +94,8 @@ class FunsorDistribution(dist.TorchDistribution):
             funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
         new.validate_args = self.__dict__.get('_validate_args')
         return new
+
+
+@to_funsor.register(FunsorDistribution)
+def funsordistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    raise NotImplementedError("TODO implement conversion for FunsorDistribution")
