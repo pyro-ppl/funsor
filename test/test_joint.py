@@ -17,8 +17,8 @@ from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo_interpretation
 from funsor.tensor import Tensor
 from funsor.terms import Number, Variable, eager, moment_matching
-from funsor.testing import (assert_close, numeric_array, randn,
-                            random_gaussian, random_tensor, zeros, xfail_if_not_implemented)
+from funsor.testing import (assert_close, randn, random_gaussian, random_tensor,
+                            zeros, xfail_if_not_implemented)
 from funsor.util import get_backend
 
 

@@ -22,14 +22,20 @@ from funsor.domains import Domain, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.ops import cholesky
-from funsor.tensor import Tensor, align_tensors, ignore_jit_warnings, stack
+from funsor.tensor import Tensor, align_tensors, get_default_prototype, ignore_jit_warnings, numeric_array, stack
 from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
-from funsor.util import broadcast_shape
+from funsor.util import broadcast_shape, get_backend
 
 
-def _dummy_tensor(domain):
+BACKEND_TO_DISTRIBUTION_BACKEND = {
+    "torch": "pyro.distributions",
+    "numpy": "numpyro.distributions",
+}
+
+
+def _dummy_numeric_array(domain):
     value = 0.1 if domain.dtype == 'real' else 1
-    return torch.tensor(value).expand(domain.shape) if domain.shape else value
+    return ops.expand(numeric_array(value), domain.shape) if domain.shape else value
 
 
 def numbers_to_tensors(*args):
@@ -38,13 +44,14 @@ def numbers_to_tensors(*args):
     using any provided tensor as a prototype, if available.
     """
     if any(isinstance(x, Number) for x in args):
-        options = dict(dtype=torch.get_default_dtype())
+        prototype = get_default_prototype()
+        options = dict(dtype=prototype.dtype)
         for x in args:
             if isinstance(x, Tensor):
-                options = dict(dtype=x.data.dtype, device=x.data.device)
+                options = dict(dtype=x.data.dtype, device=getattr(x.data, "device", None))
                 break
         with ignore_jit_warnings():
-            args = tuple(Tensor(torch.tensor(x.data, **options), dtype=x.dtype)
+            args = tuple(Tensor(numeric_array(x.data, **options), dtype=x.dtype)
                          if isinstance(x, Number) else x
                          for x in args)
     return args
@@ -138,7 +145,8 @@ class Distribution(Funsor, metaclass=DistributionMeta):
     @functools.lru_cache(maxsize=5000)
     def _infer_value_domain(cls, **kwargs):
         # rely on the underlying distribution's logic to infer the event_shape given param domains
-        instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
+        instance = cls.dist_class(**{k: _dummy_numeric_array(domain) for k, domain in kwargs.items()},
+                                  validate_args=False)
         out_shape = instance.event_shape
         if isinstance(instance.support, constraints._IntegerInterval):
             out_dtype = int(instance.support.upper_bound + 1)
@@ -237,7 +245,7 @@ Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])
 # See issue: https://github.com/pyro-ppl/funsor/issues/322
 @functools.lru_cache(maxsize=5000)
 def _multinomial_infer_value_domain(cls, **kwargs):
-    instance = cls.dist_class(**{k: _dummy_tensor(domain) for k, domain in kwargs.items()}, validate_args=False)
+    instance = cls.dist_class(**{k: _dummy_numeric_array(domain) for k, domain in kwargs.items()}, validate_args=False)
     return reals(*instance.event_shape)
 
 

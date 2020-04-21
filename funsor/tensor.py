@@ -44,6 +44,16 @@ def get_default_prototype():
         return np.array([])
 
 
+def numeric_array(x, dtype=None, device=None):
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.tensor(x, dtype=dtype, device=device)
+    else:
+        return np.array(x, dtype=dtype)
+
+
 def _nameof(fn):
     return getattr(fn, '__name__', type(fn).__name__)
 

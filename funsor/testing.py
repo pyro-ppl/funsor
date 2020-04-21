@@ -298,16 +298,6 @@ def empty(*args):
         return np.empty(shape)
 
 
-def numeric_array(x):
-    backend = get_backend()
-    if backend == "torch":
-        import torch
-
-        return torch.tensor(x)
-    else:
-        return np.array(x)
-
-
 def astype(x, dtype):
     backend = get_backend()
     if backend == "torch":

@@ -14,8 +14,8 @@ from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import (assert_close, assert_equiv, astype, check_funsor, empty,
-                            numeric_array, rand, randn, random_tensor, zeros)
-from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, stack, tensordot
+                            rand, randn, random_tensor, zeros)
+from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, numeric_array, stack, tensordot
 from funsor.util import get_backend
 
 
