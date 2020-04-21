@@ -332,7 +332,6 @@ prod = Op(np.prod)
 stack = Dispatcher("ops.stack")
 sum = Op(np.sum)
 transpose = Dispatcher("ops.transpose")
-triangular_solve_op = Dispatcher("ops.triangular_solve_op")
 
 array = (np.ndarray, np.generic)
 
@@ -505,17 +504,11 @@ def _transpose(x, dim1, dim2):
     return np.swapaxes(x, dim1, dim2)
 
 
-# FIXME: contruct TriangularSolveMeta and TriangularSolveOp to cache
-# implementations of each value of transpose and upper
-@triangular_solve_op.register(array, array, bool, bool)
-def _triangular_solve(x, y, upper, transpose):
+@Op
+def triangular_solve(x, y, upper=False, transpose=False):
     if transpose:
         y = np.swapaxes(y, -2, -1)
     return np.linalg.inv(y) @ x
-
-
-def triangular_solve(x, y, upper=False, transpose=False):
-    return triangular_solve_op(x, y, upper, transpose)
 
 
 @Op

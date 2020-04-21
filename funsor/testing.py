@@ -196,9 +196,11 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
     for dims in inputs:
         shape = tuple(sizes[dim] for dim in dims)
         x = randn(shape)
-        operands.append(x if fill is None else (x - x + fill))
-        if get_backend() == "torch":
-            operands[-1]._pyro_dims = dims
+        operand = x if fill is None else (x - x + fill)
+        # no need to use pyro_dims for numpy backend
+        if not isinstance(operand, np.ndarray):
+            operand._pyro_dims = dims
+        operands.append(operand)
     funsor_operands = [
         Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)

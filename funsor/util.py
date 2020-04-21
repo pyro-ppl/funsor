@@ -146,11 +146,17 @@ def broadcast_shape(*shapes, **kwargs):
 
 def set_backend(backend):
     """
-    Set backend for Funsor. Currently, only three backends
-    are supported: "numpy", "torch", and "jax".
+    Set backend for Funsor. Currently, only three backends are supported:
+    "numpy", "torch", and "jax". And Funsor only runs with one backend
+    at a time.
+
+    The default backend will be "numpy". We can change the default backend
+    by specifying a new one in the environment variable `FUNSOR_BACKEND`,
+    e.g. `FUNSOR_BACKEND=torch`.
 
     .. note: When `jax` backend is set, we cannot revert back to the default
-    `numpy` backend.
+    `numpy` backend because we dispatch to using `jax.numpy` all ops with
+    `numpy.ndarray` or `numpy.generic` inputs.
 
     :param str backend: either "numpy", "torch", or "jax".
     """

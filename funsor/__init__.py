@@ -30,6 +30,8 @@ from . import (
     testing,
 )
 
+# TODO: move to `funsor.util` when the following circular import issue is resolved
+# funsor.domains -> funsor.util -> set_backend -> funsor.torch -> funsor.domains
 set_backend(get_backend())
 
 

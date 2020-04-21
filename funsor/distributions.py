@@ -458,8 +458,8 @@ def eager_normal(loc, scale, value):
     if not is_affine(loc) or not is_affine(value):
         return None  # lazy
 
-    info_vec = scale.data.new_zeros(scale.data.shape + (1,))
-    precision = scale.data.pow(-2).reshape(scale.data.shape + (1, 1))
+    info_vec = ops.new_zeros(scale.data, scale.data.shape + (1,))
+    precision = ops.pow(scale.data, -2).reshape(scale.data.shape + (1, 1))
     log_prob = -0.5 * math.log(2 * math.pi) - scale.log().sum()
     inputs = scale.inputs.copy()
     var = gensym('value')

@@ -454,8 +454,15 @@ BACKEND_TO_EINSUM_BACKEND = {
     "torch": "torch",
     "jax": "jax.numpy",
 }
+# NB: numpy_log, numpy_map is backend-agnostic so they also work for torch backend;
+# however, we might need to profile to make a switch
 BACKEND_TO_LOGSUMEXP_BACKEND = {
     "numpy": "funsor.einsum.numpy_log",
     "torch": "pyro.ops.einsum.torch_log",
-    "jax": "funsor.einsum.jax_log",
+    "jax": "funsor.einsum.numpy_log",
+}
+BACKEND_TO_MAP_BACKEND = {
+    "numpy": "funsor.einsum.numpy_map",
+    "torch": "pyro.ops.einsum.torch_map",
+    "jax": "funsor.einsum.numpy_map",
 }

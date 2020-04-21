@@ -3,12 +3,16 @@
 
 import numpy as np
 
-from funsor.util import get_backend
+import funsor.util
+
+
+def _disallow_set_backend(*args):
+    raise ValueError("set_backend() cannot be called during tests")
 
 
 def pytest_runtest_setup(item):
     np.random.seed(0)
-    backend = get_backend()
+    backend = funsor.util.get_backend()
     if backend == "torch":
         import pyro
 
@@ -18,3 +22,5 @@ def pytest_runtest_setup(item):
         from jax.config import config
 
         config.update('jax_platform_name', 'cpu')
+
+    funsor.util.set_backend = _disallow_set_backend
