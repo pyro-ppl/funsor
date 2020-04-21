@@ -1,8 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import numpy as np
-
 from funsor import ops
 
 EINSUM_SYMBOLS_BASE = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -62,46 +60,25 @@ class Tensordot:
         return self.einsum(einsum_str, x, y)
 
 
-def rename_equation(equation, *operands):
-    """
-    Renames symbols in an einsum/ubersum equation to match the
-    ``.pyro_dims`` attributes of packed ``operands``.
-    """
-    inputs, outputs = equation.split('->')
-    inputs = inputs.split(',')
-    assert len(inputs) == len(operands)
-    rename = {old: new
-              for input_, operand in zip(inputs, operands)
-              for old, new in zip(input_, operand._pyro_dims)}
-    return ''.join(rename.get(s, s) for s in equation)
-
-
-class Array(np.ndarray):
-    pass
-
-
 def broadcast_all(*values, **kwargs):
     """
     Packed broadcasting of multiple tensors.
     """
+    inputs = kwargs.get('inputs')
     dims = kwargs.get('dims')
-    sizes = {dim: size for value in values for dim, size in zip(value._pyro_dims, value.shape)}
+    sizes = {dim: size for value, old_dims in zip(values, inputs)
+             for dim, size in zip(old_dims, value.shape)}
     if dims is None:
         dims = ''.join(sorted(sizes))
     else:
         assert set(dims) == set(sizes)
     shape = tuple(sizes[dim] for dim in dims)
     values = list(values)
-    for i, x in enumerate(values):
-        old_dims = x._pyro_dims
+    for i, (x, old_dims) in enumerate(zip(values, inputs)):
         if old_dims != dims:
             x = ops.permute(x, tuple(old_dims.index(dim) for dim in dims if dim in old_dims))
             x = x.reshape(tuple(sizes[dim] if dim in old_dims else 1 for dim in dims))
             x = ops.expand(x, shape)
-            # workaround: ndarray does not allow setting attribute "_pyro_dims"
-            if isinstance(x, np.ndarray):
-                x = x.view(Array)
-            x._pyro_dims = dims
-            assert len(x.shape) == len(x._pyro_dims)
+            assert len(x.shape) == len(dims)
             values[i] = x
     return tuple(values)

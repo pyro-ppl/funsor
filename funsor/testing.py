@@ -18,7 +18,6 @@ import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, reals
-from funsor.einsum.util import Array
 from funsor.gaussian import Gaussian
 from funsor.terms import Funsor, Number
 from funsor.tensor import Tensor
@@ -198,10 +197,6 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
         shape = tuple(sizes[dim] for dim in dims)
         x = randn(shape)
         operand = x if fill is None else (x - x + fill)
-        # workaround: ndarray does not allow setting attribute "_pyro_dims"
-        if isinstance(operand, np.ndarray):
-            operand = operand.view(Array)
-        operand._pyro_dims = dims
         operands.append(operand)
     funsor_operands = [
         Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
