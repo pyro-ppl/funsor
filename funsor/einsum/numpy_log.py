@@ -1,19 +1,20 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import numpy as np
-
+import funsor.ops as ops
 from funsor.einsum.util import Tensordot
+from funsor.util import get_backend
 
 
 def einsum(equation, *operands):
     """
     Log-sum-exp implementation of einsum.
     """
-    # NB: rename symbols to support NumPy, which allow only symbols a-z.
-    symbols = sorted(set(equation) - set(',->'))
-    rename = dict(zip(symbols, 'abcdefghijklmnopqrstuvwxyz'))
-    equation = ''.join(rename.get(s, s) for s in equation)
+    if get_backend() != "jax":
+        # NB: rename symbols to support NumPy, which allow only symbols a-z.
+        symbols = sorted(set(equation) - set(',->'))
+        rename = dict(zip(symbols, 'abcdefghijklmnopqrstuvwxyz'))
+        equation = ''.join(rename.get(s, s) for s in equation)
 
     inputs, output = equation.split('->')
     if inputs == output:
@@ -26,25 +27,25 @@ def einsum(equation, *operands):
         shift = operand
         for i, dim in enumerate(dims):
             if dim not in output:
-                shift = np.max(shift, i, keepdims=True)
+                shift = ops.amax(shift, i, keepdims=True)
         # avoid nan due to -inf - -inf
-        shift = np.clip(shift, a_min=np.finfo(shift.dtype).min, a_max=None)
-        exp_operands.append(np.exp(operand - shift))
+        shift = ops.clamp(shift, ops.finfo(shift).min, None)
+        exp_operands.append(ops.exp(operand - shift))
 
         # permute shift to match output
         shift = shift.reshape([size for size, dim in zip(operand.shape, dims) if dim in output])
-        if shift.ndim:
+        if len(shift.shape) > 0:
             shift = shift.reshape((1,) * (len(output) - shift.ndim) + shift.shape)
             dims = [dim for dim in dims if dim in output]
             dims = [dim for dim in output if dim not in dims] + dims
-            shift = np.transpose(shift, [dims.index(dim) for dim in output])
+            shift = ops.permute(shift, [dims.index(dim) for dim in output])
         shifts.append(shift)
 
-    result = np.log(np.einsum(equation, *exp_operands))
+    result = ops.log(ops.einsum(equation, *exp_operands))
     return sum(shifts + [result])
 
 
 tensordot = Tensordot(einsum)
-transpose = np.transpose
+transpose = ops.permute
 
 __all__ = ["einsum", "tensordot", "transpose"]

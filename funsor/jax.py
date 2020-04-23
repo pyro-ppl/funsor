@@ -70,13 +70,13 @@ def _all(x, dim):
 
 
 @ops.amax.register(array, (int, type(None)))
-def _amax(x, dim):
-    return np.amax(x, axis=dim)
+def _amax(x, dim, keepdims=False):
+    return np.amax(x, axis=dim, keepdims=keepdims)
 
 
 @ops.amin.register(array, (int, type(None)))
-def _amin(x, dim):
-    return np.amin(x, axis=dim)
+def _amin(x, dim, keepdims=False):
+    return np.amin(x, axis=dim, keepdims=keepdims)
 
 
 @ops.any.register(array, (int, type(None)))
@@ -249,8 +249,8 @@ def _sum(x, dim):
     return np.sum(x, axis=dim)
 
 
-@ops.triangular_solve_op.register(array, array, bool, bool)
-def _triangular_solve(x, y, upper, transpose):
+@ops.triangular_solve.register(array, array)
+def _triangular_solve(x, y, upper=False, transpose=False):
     assert np.ndim(x) >= 2 and np.ndim(y) >= 2
     n, m = x.shape[-2:]
     assert y.shape[-2:] == (n, n)
