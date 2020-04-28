@@ -4,8 +4,8 @@
 from jax.core import Tracer
 from jax.interpreters.xla import DeviceArray
 
-import funsor.backends.jax.distributions  # noqa: F401
-import funsor.backends.jax.ops  # noqa: F401
+import funsor.jax.distributions  # noqa: F401
+import funsor.jax.ops  # noqa: F401
 import funsor.ops as ops
 from funsor.adjoint import adjoint_ops
 from funsor.interpreter import children, recursion_reinterpret

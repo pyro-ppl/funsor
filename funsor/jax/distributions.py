@@ -2,20 +2,22 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import inspect
 
+import makefun
 import numpyro.distributions as dist
 
 from funsor.distributions import (
+    Distribution,
+    DistributionMeta,
     FUNSOR_DIST_NAMES,
-    backenddist_to_funsor,
     indepdist_to_funsor,
-    make_backend_dist,
     mvndist_to_funsor,
     transformeddist_to_funsor,
 )
 from funsor.domains import reals
-from funsor.tensor import dummy_numeric_array
-from funsor.terms import to_funsor
+from funsor.tensor import Tensor, dummy_numeric_array
+from funsor.terms import eager, to_funsor
 
 
 ################################################################################
@@ -28,12 +30,29 @@ class _NumPyroWrapper_Categorical(dist.CategoricalProbs):
 
 
 def _get_numpyro_dist(dist_name):
-    if dist_name in ['BernoulliProbs', 'BernoulliLogits', 'CategoricalLogits']:
-        return locals()['_PyroWrapper_' + dist_name]
-    elif dist_name.startswith('Nonreparameterized'):
-        return None
+    if dist_name in ['Categorical']:
+        return globals().get('_NumPyroWrapper_' + dist_name)
     else:
         return getattr(dist, dist_name)
+
+
+def make_dist(backend_dist_class, param_names=()):
+    if not param_names:
+        param_names = tuple(name for name in inspect.getfullargspec(backend_dist_class.__init__)[0][1:]
+                            if name in backend_dist_class.arg_constraints)
+
+    @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
+    def dist_init(self, **kwargs):
+        return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
+
+    dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {
+        'dist_class': backend_dist_class,
+        '__init__': dist_init,
+    })
+
+    eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
+
+    return dist_class
 
 
 for dist_name, param_names in FUNSOR_DIST_NAMES.items():

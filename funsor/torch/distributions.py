@@ -2,24 +2,27 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import inspect
 
+import makefun
 import pyro.distributions as dist
 import pyro.distributions.testing.fakes as fakes
 from pyro.distributions.torch_distribution import MaskedDistribution
 import torch
 
 from funsor.distributions import (
+    Distribution,
+    DistributionMeta,
     FUNSOR_DIST_NAMES,
     backenddist_to_funsor,
     indepdist_to_funsor,
-    make_backend_dist,
     maskeddist_to_funsor,
     mvndist_to_funsor,
     transformeddist_to_funsor,
 )
 from funsor.domains import reals
-from funsor.tensor import dummy_numeric_array
-from funsor.terms import to_funsor
+from funsor.tensor import Tensor, dummy_numeric_array
+from funsor.terms import eager, to_funsor
 
 
 ################################################################################
@@ -44,15 +47,35 @@ class _PyroWrapper_CategoricalLogits(dist.Categorical):
 
 def _get_pyro_dist(dist_name):
     if dist_name in ['BernoulliProbs', 'BernoulliLogits', 'CategoricalLogits']:
-        return locals()['_PyroWrapper_' + dist_name]
+        return globals().get('_PyroWrapper_' + dist_name)
     elif dist_name.startswith('Nonreparameterized'):
         return getattr(fakes, dist_name)
     else:
         return getattr(dist, dist_name)
 
 
+def make_dist(backend_dist_class, param_names=()):
+    if not param_names:
+        param_names = tuple(name for name in inspect.getfullargspec(backend_dist_class.__init__)[0][1:]
+                            if name in backend_dist_class.arg_constraints)
+
+    @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
+    def dist_init(self, **kwargs):
+        return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
+
+    dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {
+        'dist_class': backend_dist_class,
+        '__init__': dist_init,
+    })
+
+    eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
+
+    return dist_class
+
+
 for dist_name, param_names in FUNSOR_DIST_NAMES.items():
-    locals()[dist_name] = make_backend_dist(_get_pyro_dist(dist_name), param_names)
+    locals()[dist_name] = make_dist(_get_pyro_dist(dist_name), param_names)
+
 
 # Delta has to be treated specially because of its weird shape inference semantics
 Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])  # noqa: F821
@@ -75,11 +98,11 @@ DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_
 # Converting PyTorch Distributions to funsors
 ###############################################
 
-to_funsor.register(dist.Distribution)(backenddist_to_funsor)
-to_funsor.register(dist.Indepdent)(indepdist_to_funsor)
+to_funsor.register(torch.distributions.Distribution)(backenddist_to_funsor)
+to_funsor.register(torch.distributions.Independent)(indepdist_to_funsor)
 to_funsor.register(MaskedDistribution)(maskeddist_to_funsor)
-to_funsor.register(dist.TransformedDistribution)(transformeddist_to_funsor)
-to_funsor.register(dist.MultivariateNormal)(mvndist_to_funsor)
+to_funsor.register(torch.distributions.TransformedDistribution)(transformeddist_to_funsor)
+to_funsor.register(torch.distributions.MultivariateNormal)(mvndist_to_funsor)
 
 
 @to_funsor.register(torch.distributions.Bernoulli)

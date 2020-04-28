@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
-import inspect
 import math
 import typing
 from collections import OrderedDict
@@ -175,30 +174,13 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 ################################################################################
 
 
-def make_backend_dist(backend_dist_class, param_names=()):
-    if not param_names:
-        param_names = tuple(name for name in inspect.getfullargspec(backend_dist_class.__init__)[0][1:]
-                            if name in backend_dist_class.arg_constraints)
-
-    @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
-    def dist_init(self, **kwargs):
-        return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
-
-    dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {
-        'dist_class': backend_dist_class,
-        '__init__': dist_init,
-    })
-
-    eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
-
-    return dist_class
-
-
 def make_dist(dist_name, param_names):
     @makefun.with_signature(f"{dist_name}({', '.join(param_names)}, value='value')")
-    def dist_fn(**kwargs):
+    def dist_fn(*args, **kwargs):
         backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
-        return getattr(backend_dist_module, dist_name)
+        return getattr(backend_dist_module, dist_name)(*args, **kwargs)
+
+    return dist_fn
 
 
 FUNSOR_DIST_NAMES = {
@@ -226,51 +208,6 @@ FUNSOR_DIST_NAMES = {
 
 for dist_name, param_names in FUNSOR_DIST_NAMES.items():
     locals()[dist_name] = make_dist(dist_name, param_names)
-
-
-###############################################################
-# Converting distribution funsors to backend distributions
-###############################################################
-
-@to_data.register(Distribution)
-def distribution_to_data(funsor_dist, name_to_dim=None):
-    pyro_dist_class = funsor_dist.dist_class
-    params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
-              for param_name in funsor_dist._ast_fields if param_name != 'value']
-    pyro_dist = pyro_dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
-    funsor_event_shape = funsor_dist.value.output.shape
-    pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
-    if pyro_dist.event_shape != funsor_event_shape:
-        raise ValueError("Event shapes don't match, something went wrong")
-    return pyro_dist
-
-
-@to_data.register(Independent[typing.Union[Independent, Distribution], str, str, str])
-def indep_to_data(funsor_dist, name_to_dim=None):
-    raise NotImplementedError("TODO implement conversion of Independent")
-
-
-@to_data.register(Gaussian)
-def gaussian_to_data(funsor_dist, name_to_dim=None, normalized=False):
-    if normalized:
-        return to_data(funsor_dist.log_normalizer + funsor_dist, name_to_dim=name_to_dim)
-    loc = ops.cholesky_solve(ops.unsqueeze(funsor_dist.info_vec, -1),
-                             ops.cholesky(funsor_dist.precision)).squeeze(-1)
-    int_inputs = OrderedDict((k, d) for k, d in funsor_dist.inputs.items() if d.dtype != "real")
-    loc = to_data(Tensor(loc, int_inputs), name_to_dim)
-    precision = to_data(Tensor(funsor_dist.precision, int_inputs), name_to_dim)
-    backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
-    return backend_dist_module.MultivariateNormal.dist_class(loc, precision_matrix=precision)
-
-
-@to_data.register(GaussianMixture)
-def gaussianmixture_to_data(funsor_dist, name_to_dim=None):
-    discrete, gaussian = funsor_dist.terms
-    backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
-    cat = backend_dist_module.Categorical.dist_class(logits=to_data(
-        discrete + gaussian.log_normalizer, name_to_dim=name_to_dim))
-    mvn = to_data(gaussian, name_to_dim=name_to_dim)
-    return cat, mvn
 
 
 ###############################################
@@ -319,6 +256,51 @@ def mvndist_to_funsor(backend_dist, output=None, dim_to_name=None, real_inputs=O
     inputs = OrderedDict((k, v) for k, v in gaussian.inputs.items() if v.dtype != 'real')
     inputs.update(real_inputs)
     return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
+
+
+###############################################################
+# Converting distribution funsors to backend distributions
+###############################################################
+
+@to_data.register(Distribution)
+def distribution_to_data(funsor_dist, name_to_dim=None):
+    pyro_dist_class = funsor_dist.dist_class
+    params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
+              for param_name in funsor_dist._ast_fields if param_name != 'value']
+    pyro_dist = pyro_dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
+    funsor_event_shape = funsor_dist.value.output.shape
+    pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
+    if pyro_dist.event_shape != funsor_event_shape:
+        raise ValueError("Event shapes don't match, something went wrong")
+    return pyro_dist
+
+
+@to_data.register(Independent[typing.Union[Independent, Distribution], str, str, str])
+def indep_to_data(funsor_dist, name_to_dim=None):
+    raise NotImplementedError("TODO implement conversion of Independent")
+
+
+@to_data.register(Gaussian)
+def gaussian_to_data(funsor_dist, name_to_dim=None, normalized=False):
+    if normalized:
+        return to_data(funsor_dist.log_normalizer + funsor_dist, name_to_dim=name_to_dim)
+    loc = ops.cholesky_solve(ops.unsqueeze(funsor_dist.info_vec, -1),
+                             ops.cholesky(funsor_dist.precision)).squeeze(-1)
+    int_inputs = OrderedDict((k, d) for k, d in funsor_dist.inputs.items() if d.dtype != "real")
+    loc = to_data(Tensor(loc, int_inputs), name_to_dim)
+    precision = to_data(Tensor(funsor_dist.precision, int_inputs), name_to_dim)
+    backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    return backend_dist_module.MultivariateNormal.dist_class(loc, precision_matrix=precision)
+
+
+@to_data.register(GaussianMixture)
+def gaussianmixture_to_data(funsor_dist, name_to_dim=None):
+    discrete, gaussian = funsor_dist.terms
+    backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    cat = backend_dist_module.Categorical.dist_class(logits=to_data(
+        discrete + gaussian.log_normalizer, name_to_dim=name_to_dim))
+    mvn = to_data(gaussian, name_to_dim=name_to_dim)
+    return cat, mvn
 
 
 ################################################

@@ -4,8 +4,8 @@
 import torch
 from multipledispatch import dispatch
 
-import funsor.backends.torch.distributions  # noqa: F401
-import funsor.backends.torch.ops  # noqa: F401
+import funsor.torch.distributions  # noqa: F401
+import funsor.torch.ops  # noqa: F401
 import funsor.ops as ops
 from funsor.adjoint import adjoint_ops
 from funsor.interpreter import children, recursion_reinterpret
