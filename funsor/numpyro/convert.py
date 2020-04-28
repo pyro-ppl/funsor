@@ -70,8 +70,8 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
     assert ops.is_numeric_array(tensor)
     assert isinstance(event_inputs, tuple)
     assert isinstance(event_output, int) and event_output >= 0
-    inputs_shape = tensor.shape[:tensor.dim() - event_output]
-    output = Domain(dtype=dtype, shape=tensor.shape[tensor.dim() - event_output:])
+    inputs_shape = tensor.shape[:len(tensor.shape) - event_output]
+    output = Domain(dtype=dtype, shape=tensor.shape[len(tensor.shape) - event_output:])
     dim_to_name = default_dim_to_name(inputs_shape, event_inputs)
     return to_funsor(tensor, output, dim_to_name)
 
@@ -94,9 +94,9 @@ def funsor_to_tensor(funsor_, ndims, event_inputs=()):
 
     tensor = to_data(funsor_, default_name_to_dim(event_inputs))
 
-    if ndims != tensor.dim():
-        tensor = tensor.reshape((1,) * (ndims - tensor.dim()) + tensor.shape)
-    assert tensor.dim() == ndims
+    if ndims != len(tensor.shape):
+        tensor = tensor.reshape((1,) * (ndims - len(tensor.shape)) + tensor.shape)
+    assert len(tensor.shape) == ndims
     return tensor
 
 

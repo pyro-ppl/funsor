@@ -6,13 +6,9 @@ import inspect
 import math
 import typing
 from collections import OrderedDict
+from importlib import import_module
 
 import makefun
-import pyro.distributions as dist
-import pyro.distributions.testing.fakes as fakes
-from pyro.distributions.torch_distribution import MaskedDistribution
-import torch
-import torch.distributions.constraints as constraints
 
 import funsor.delta
 import funsor.ops as ops
@@ -21,21 +17,16 @@ from funsor.cnf import GaussianMixture
 from funsor.domains import Domain, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
-from funsor.ops import cholesky
-from funsor.tensor import Tensor, align_tensors, get_default_prototype, ignore_jit_warnings, numeric_array, stack
+from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
+                           ignore_jit_warnings, numeric_array, stack)
 from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend
 
 
-BACKEND_TO_DISTRIBUTION_BACKEND = {
-    "torch": "pyro.distributions",
-    "numpy": "numpyro.distributions",
+BACKEND_TO_DISTRIBUTIONS_BACKEND = {
+    "torch": "funsor.torch.distributions",
+    "jax": "funsor.jax.distributions",
 }
-
-
-def _dummy_numeric_array(domain):
-    value = 0.1 if domain.dtype == 'real' else 1
-    return ops.expand(numeric_array(value), domain.shape) if domain.shape else value
 
 
 def numbers_to_tensors(*args):
@@ -74,13 +65,13 @@ class DistributionMeta(FunsorMeta):
 
 class Distribution(Funsor, metaclass=DistributionMeta):
     r"""
-    Funsor backed by a PyTorch distribution object.
+    Funsor backed by a PyTorch/JAX distribution object.
 
     :param \*args: Distribution-dependent parameters.  These can be either
         funsors or objects that can be coerced to funsors via
         :func:`~funsor.terms.to_funsor` . See derived classes for details.
     """
-    dist_class = dist.Distribution
+    dist_class = "defined by derived classes"
 
     def __init__(self, *args):
         params = tuple(zip(self._ast_fields, args))
@@ -112,7 +103,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         data = cls.dist_class(**params).log_prob(value)
         return Tensor(data, inputs)
 
-    def unscaled_sample(self, sampled_vars, sample_inputs):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         params = OrderedDict(self.params)
         value = params.pop("value")
         assert all(isinstance(v, (Number, Tensor)) for v in params.values())
@@ -126,14 +117,15 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         if getattr(raw_dist, "has_rsample", False):
             raw_sample = raw_dist.rsample(sample_shape)
         else:
-            raw_sample = raw_dist.sample(sample_shape)
+            sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
+            raw_sample = raw_dist.sample(*sample_args)
 
         result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
         if not getattr(raw_dist, "has_rsample", False):
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
             raw_log_prob = raw_dist.log_prob(raw_sample)
-            dice_factor = Tensor(raw_log_prob - raw_log_prob.detach(), inputs)
-            result += dice_factor
+            dice_factor = Tensor(raw_log_prob - ops.detach(raw_log_prob), inputs)
+            result = result + dice_factor
         return result
 
     def __getattribute__(self, attr):
@@ -145,10 +137,10 @@ class Distribution(Funsor, metaclass=DistributionMeta):
     @functools.lru_cache(maxsize=5000)
     def _infer_value_domain(cls, **kwargs):
         # rely on the underlying distribution's logic to infer the event_shape given param domains
-        instance = cls.dist_class(**{k: _dummy_numeric_array(domain) for k, domain in kwargs.items()},
+        instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()},
                                   validate_args=False)
         out_shape = instance.event_shape
-        if isinstance(instance.support, constraints._IntegerInterval):
+        if type(instance.support).__name__ == "_IntegerInterval":
             out_dtype = int(instance.support.upper_bound + 1)
         else:
             out_dtype = 'real'
@@ -158,14 +150,19 @@ class Distribution(Funsor, metaclass=DistributionMeta):
     @functools.lru_cache(maxsize=5000)
     def _infer_param_domain(cls, name, raw_shape):
         support = cls.dist_class.arg_constraints.get(name, None)
-        if isinstance(support, constraints._Simplex):
+        # XXX: if the backend does not have the same definition of constraints, we should
+        # define backend-specific distributions and overide these `infer_value_domain`,
+        # `infer_param_domain` methods.
+        # Because NumPyro and Pyro have the same pattern, we use name check for simplicity.
+        support_name = type(support).__name__
+        if support_name == "_Simplex":
             output = reals(raw_shape[-1])
-        elif isinstance(support, constraints._RealVector):
+        elif support_name == "_RealVector":
             output = reals(raw_shape[-1])
-        elif isinstance(support, (constraints._LowerCholesky, constraints._PositiveDefinite)):
+        elif support_name in ["_LowerCholesky", "_PositiveDefinite"]:
             output = reals(*raw_shape[-2:])
-        elif isinstance(support, constraints._Real) and name == "logits" and \
-                isinstance(cls.dist_class.arg_constraints["probs"], constraints._Simplex):
+        elif support_name == "_Real" and name == "logits" and \
+                type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex":
             output = reals(raw_shape[-1])
         else:
             output = None
@@ -176,18 +173,19 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 # Distribution Wrappers
 ################################################################################
 
-def make_dist(pyro_dist_class, param_names=()):
 
+# XXX: we might move this function to backend-specific implementations
+def make_dist(backend_dist_class, param_names=()):
     if not param_names:
-        param_names = tuple(name for name in inspect.getfullargspec(pyro_dist_class.__init__)[0][1:]
-                            if name in pyro_dist_class.arg_constraints)
+        param_names = tuple(name for name in inspect.getfullargspec(backend_dist_class.__init__)[0][1:]
+                            if name in backend_dist_class.arg_constraints)
 
     @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
     def dist_init(self, **kwargs):
         return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
-    dist_class = DistributionMeta(pyro_dist_class.__name__.split("_PyroWrapper_")[-1], (Distribution,), {
-        'dist_class': pyro_dist_class,
+    dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {
+        'dist_class': backend_dist_class,
         '__init__': dist_init,
     })
 
@@ -196,125 +194,36 @@ def make_dist(pyro_dist_class, param_names=()):
     return dist_class
 
 
-class _PyroWrapper_BernoulliProbs(dist.Bernoulli):
-    def __init__(self, probs, validate_args=None):
-        return super().__init__(probs=probs, validate_args=validate_args)
+def make_backend_dist():
+    pass
 
 
-class _PyroWrapper_BernoulliLogits(dist.Bernoulli):
-    def __init__(self, logits, validate_args=None):
-        return super().__init__(logits=logits, validate_args=validate_args)
-
-
-class _PyroWrapper_CategoricalLogits(dist.Categorical):
-    def __init__(self, logits, validate_args=None):
-        return super().__init__(logits=logits, validate_args=validate_args)
-
-
-_wrapped_pyro_dists = [
-    (dist.Beta, ()),
-    (_PyroWrapper_BernoulliProbs, ('probs',)),
-    (_PyroWrapper_BernoulliLogits, ('logits',)),
-    (dist.Binomial, ('total_count', 'probs')),
-    (dist.Multinomial, ('total_count', 'probs')),
-    (dist.Categorical, ('probs',)),
-    (_PyroWrapper_CategoricalLogits, ('logits',)),
-    (dist.Poisson, ()),
-    (dist.Gamma, ()),
-    (dist.VonMises, ()),
-    (dist.Dirichlet, ()),
-    (dist.DirichletMultinomial, ()),
-    (dist.Normal, ()),
-    (dist.MultivariateNormal, ('loc', 'scale_tril')),
-    (dist.Delta, ()),
-    (fakes.NonreparameterizedBeta, ()),
-    (fakes.NonreparameterizedGamma, ()),
-    (fakes.NonreparameterizedNormal, ()),
-    (fakes.NonreparameterizedDirichlet, ()),
+_wrapped_backend_dists = [
+    ('Beta', ()),
+    ('BernoulliProbs', ('probs',)),
+    ('BernoulliLogits', ('logits',)),
+    ('Binomial', ('total_count', 'probs')),
+    ('Multinomial', ('total_count', 'probs')),
+    ('Categorical', ('probs',)),
+    ('CategoricalLogits', ('logits',)),
+    ('Poisson', ('rate')),
+    ('Gamma', ('rate')),
+    ('VonMises', ('rate')),
+    ('Dirichlet', ('rate')),
+    ('DirichletMultinomial', ()),
+    ('Normal', ()),
+    ('MultivariateNormal', ('loc', 'scale_tril')),
+    ('Delta', ()),
+    ('NonreparameterizedBeta', ()),
+    ('NonreparameterizedGamma', ()),
+    ('NonreparameterizedNormal', ()),
+    ('NonreparameterizedDirichlet', ()),
 ]
 
-for pyro_dist_class, param_names in _wrapped_pyro_dists:
-    locals()[pyro_dist_class.__name__.split("_PyroWrapper_")[-1].split(".")[-1]] = \
-        make_dist(pyro_dist_class, param_names)
 
-# Delta has to be treated specially because of its weird shape inference semantics
-Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])
-
-
-# Multinomial and related dists have dependent bint dtypes, so we just make them 'real'
-# See issue: https://github.com/pyro-ppl/funsor/issues/322
-@functools.lru_cache(maxsize=5000)
-def _multinomial_infer_value_domain(cls, **kwargs):
-    instance = cls.dist_class(**{k: _dummy_numeric_array(domain) for k, domain in kwargs.items()}, validate_args=False)
-    return reals(*instance.event_shape)
-
-
-Binomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
-Multinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
-DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)
-
-
-###############################################
-# Converting PyTorch Distributions to funsors
-###############################################
-
-@to_funsor.register(torch.distributions.Distribution)
-def torchdistribution_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    import funsor.distributions  # TODO find a better way to do this lookup
-    funsor_dist_class = getattr(funsor.distributions, type(pyro_dist).__name__.split("_PyroWrapper_")[-1])
-    params = [to_funsor(
-            getattr(pyro_dist, param_name),
-            output=funsor_dist_class._infer_param_domain(
-                param_name, getattr(getattr(pyro_dist, param_name), "shape", ())),
-            dim_to_name=dim_to_name)
-        for param_name in funsor_dist_class._ast_fields if param_name != 'value']
-    return funsor_dist_class(*params)
-
-
-@to_funsor.register(torch.distributions.Independent)
-def indepdist_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    dim_to_name = OrderedDict((dim - pyro_dist.reinterpreted_batch_ndims, name)
-                              for dim, name in dim_to_name.items())
-    dim_to_name.update(OrderedDict((i, f"_pyro_event_dim_{i}") for i in range(-pyro_dist.reinterpreted_batch_ndims, 0)))
-    result = to_funsor(pyro_dist.base_dist, dim_to_name=dim_to_name)
-    for i in reversed(range(-pyro_dist.reinterpreted_batch_ndims, 0)):
-        name = f"_pyro_event_dim_{i}"
-        result = funsor.terms.Independent(result, "value", name, "value")
-    return result
-
-
-@to_funsor.register(MaskedDistribution)
-def maskeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    mask = to_funsor(pyro_dist._mask.float(), output=output, dim_to_name=dim_to_name)
-    funsor_base_dist = to_funsor(pyro_dist.base_dist, output=output, dim_to_name=dim_to_name)
-    return mask * funsor_base_dist
-
-
-@to_funsor.register(torch.distributions.Bernoulli)
-def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    new_pyro_dist = _PyroWrapper_BernoulliLogits(logits=pyro_dist.logits)
-    return torchdistribution_to_funsor(new_pyro_dist, output, dim_to_name)
-
-
-@to_funsor.register(torch.distributions.TransformedDistribution)
-def transformeddist_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    raise NotImplementedError("TODO implement conversion of TransformedDistribution")
-
-
-@to_funsor.register(torch.distributions.MultivariateNormal)
-def torchmvn_to_funsor(pyro_dist, output=None, dim_to_name=None, real_inputs=OrderedDict()):
-    funsor_dist = torchdistribution_to_funsor(pyro_dist, output=output, dim_to_name=dim_to_name)
-    if len(real_inputs) == 0:
-        return funsor_dist
-    discrete, gaussian = funsor_dist(value="value").terms
-    inputs = OrderedDict((k, v) for k, v in gaussian.inputs.items() if v.dtype != 'real')
-    inputs.update(real_inputs)
-    return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
-
-
-###########################################################
-# Converting distribution funsors to PyTorch distributions
-###########################################################
+###############################################################
+# Converting distribution funsors to backend distributions
+###############################################################
 
 @to_data.register(Distribution)
 def distribution_to_data(funsor_dist, name_to_dim=None):
@@ -338,20 +247,71 @@ def indep_to_data(funsor_dist, name_to_dim=None):
 def gaussian_to_data(funsor_dist, name_to_dim=None, normalized=False):
     if normalized:
         return to_data(funsor_dist.log_normalizer + funsor_dist, name_to_dim=name_to_dim)
-    loc = funsor_dist.info_vec.unsqueeze(-1).cholesky_solve(cholesky(funsor_dist.precision)).squeeze(-1)
+    loc = ops.cholesky_solve(ops.unsqueeze(funsor_dist.info_vec, -1),
+                             ops.cholesky(funsor_dist.precision)).squeeze(-1)
     int_inputs = OrderedDict((k, d) for k, d in funsor_dist.inputs.items() if d.dtype != "real")
     loc = to_data(Tensor(loc, int_inputs), name_to_dim)
     precision = to_data(Tensor(funsor_dist.precision, int_inputs), name_to_dim)
-    return dist.MultivariateNormal(loc, precision_matrix=precision)
+    backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    return backend_dist_module.MultivariateNormal.dist_class(loc, precision_matrix=precision)
 
 
 @to_data.register(GaussianMixture)
 def gaussianmixture_to_data(funsor_dist, name_to_dim=None):
     discrete, gaussian = funsor_dist.terms
-    cat = dist.Categorical(logits=to_data(
+    backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    cat = backend_dist_module.Categorical.dist_class(logits=to_data(
         discrete + gaussian.log_normalizer, name_to_dim=name_to_dim))
     mvn = to_data(gaussian, name_to_dim=name_to_dim)
     return cat, mvn
+
+
+###############################################
+# Converting backend Distributions to funsors
+###############################################
+
+def backenddist_to_funsor(backend_dist, output=None, dim_to_name=None):
+    funsor_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    funsor_dist_class = getattr(funsor_dist, type(backend_dist).__name__.split("Wrapper_")[-1])
+    params = [to_funsor(
+            getattr(backend_dist, param_name),
+            output=funsor_dist_class._infer_param_domain(
+                param_name, getattr(getattr(backend_dist, param_name), "shape", ())),
+            dim_to_name=dim_to_name)
+        for param_name in funsor_dist_class._ast_fields if param_name != 'value']
+    return funsor_dist_class(*params)
+
+
+def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
+    dim_to_name = OrderedDict((dim - backend_dist.reinterpreted_batch_ndims, name)
+                              for dim, name in dim_to_name.items())
+    dim_to_name.update(OrderedDict((i, f"_pyro_event_dim_{i}")
+                                   for i in range(-backend_dist.reinterpreted_batch_ndims, 0)))
+    result = to_funsor(backend_dist.base_dist, dim_to_name=dim_to_name)
+    for i in reversed(range(-backend_dist.reinterpreted_batch_ndims, 0)):
+        name = f"_pyro_event_dim_{i}"
+        result = funsor.terms.Independent(result, "value", name, "value")
+    return result
+
+
+def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
+    mask = to_funsor(backend_dist._mask.float(), output=output, dim_to_name=dim_to_name)
+    funsor_base_dist = to_funsor(backend_dist.base_dist, output=output, dim_to_name=dim_to_name)
+    return mask * funsor_base_dist
+
+
+def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
+    raise NotImplementedError("TODO implement conversion of TransformedDistribution")
+
+
+def mvndist_to_funsor(backend_dist, output=None, dim_to_name=None, real_inputs=OrderedDict()):
+    funsor_dist = backenddist_to_funsor(backend_dist, output=output, dim_to_name=dim_to_name)
+    if len(real_inputs) == 0:
+        return funsor_dist
+    discrete, gaussian = funsor_dist(value="value").terms
+    inputs = OrderedDict((k, v) for k, v in gaussian.inputs.items() if v.dtype != 'real')
+    inputs.update(real_inputs)
+    return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
 
 
 ################################################
@@ -369,74 +329,75 @@ def Bernoulli(probs=None, logits=None, value='value'):
     :param Funsor value: Optional observation in ``{0,1}``.
     """
     if probs is not None:
-        return BernoulliProbs(probs, value)
+        return BernoulliProbs(probs, value)  # noqa: F821
     if logits is not None:
-        return BernoulliLogits(logits, value)
+        return BernoulliLogits(logits, value)  # noqa: F821
     raise ValueError('Either probs or logits must be specified')
 
 
-@eager.register(Beta, Funsor, Funsor, Funsor)
+@eager.register(Beta, Funsor, Funsor, Funsor)  # noqa: F821
 def eager_beta(concentration1, concentration0, value):
     concentration = stack((concentration0, concentration1))
     value = stack((1 - value, value))
-    return Dirichlet(concentration, value=value)
+    return Dirichlet(concentration, value=value)  # noqa: F821
 
 
-@eager.register(Binomial, Funsor, Funsor, Funsor)
+@eager.register(Binomial, Funsor, Funsor, Funsor)  # noqa: F821
 def eager_binomial(total_count, probs, value):
     probs = stack((1 - probs, probs))
     value = stack((total_count - value, value))
-    return Multinomial(total_count, probs, value=value)
+    return Multinomial(total_count, probs, value=value)  # noqa: F821
 
 
-@eager.register(Multinomial, Tensor, Tensor, Tensor)
+@eager.register(Multinomial, Tensor, Tensor, Tensor)  # noqa: F821
 def eager_multinomial(total_count, probs, value):
     # Multinomial.log_prob() supports inhomogeneous total_count only by
     # avoiding passing total_count to the constructor.
     inputs, (total_count, probs, value) = align_tensors(total_count, probs, value)
     shape = broadcast_shape(total_count.shape + (1,), probs.shape, value.shape)
-    probs = Tensor(probs.expand(shape), inputs)
-    value = Tensor(value.expand(shape), inputs)
-    total_count = Number(total_count.max().item())  # Used by distributions validation code.
-    return Multinomial.eager_log_prob(total_count, probs, value)
+    probs = Tensor(ops.expand(probs, shape), inputs)
+    value = Tensor(ops.expand(value, shape), inputs)
+    total_count = Number(ops.amax(total_count).item())  # Used by distributions validation code.
+    return Multinomial.eager_log_prob(total_count, probs, value)  # noqa: F821
 
 
-@eager.register(Categorical, Funsor, Tensor)
+@eager.register(Categorical, Funsor, Tensor)  # noqa: F821
 def eager_categorical(probs, value):
     return probs[value].log()
 
 
-@eager.register(Categorical, Tensor, Variable)
+@eager.register(Categorical, Tensor, Variable)  # noqa: F821
 def eager_categorical(probs, value):
     value = probs.materialize(value)
-    return Categorical(probs=probs, value=value)
+    return Categorical(probs=probs, value=value)  # noqa: F821
 
 
-@eager.register(Delta, Tensor, Tensor, Tensor)
+@eager.register(Delta, Tensor, Tensor, Tensor)  # noqa: F821
 def eager_delta(v, log_density, value):
     # This handles event_dim specially, and hence cannot use the
     # generic Delta.eager_log_prob() method.
     assert v.output == value.output
     event_dim = len(v.output.shape)
     inputs, (v, log_density, value) = align_tensors(v, log_density, value)
-    data = dist.Delta(v, log_density, event_dim).log_prob(value)
+    backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    data = backend_dist.dist_class.Delta(v, log_density, event_dim).log_prob(value)  # noqa: F821
     return Tensor(data, inputs)
 
 
-@eager.register(Delta, Funsor, Funsor, Variable)
-@eager.register(Delta, Variable, Funsor, Variable)
+@eager.register(Delta, Funsor, Funsor, Variable)  # noqa: F821
+@eager.register(Delta, Variable, Funsor, Variable)  # noqa: F821
 def eager_delta(v, log_density, value):
     assert v.output == value.output
     return funsor.delta.Delta(value.name, v, log_density)
 
 
-@eager.register(Delta, Variable, Funsor, Funsor)
+@eager.register(Delta, Variable, Funsor, Funsor)  # noqa: F821
 def eager_delta(v, log_density, value):
     assert v.output == value.output
     return funsor.delta.Delta(v.name, value, log_density)
 
 
-@eager.register(Delta, Variable, Variable, Variable)
+@eager.register(Delta, Variable, Variable, Variable)  # noqa: F821
 def eager_delta(v, log_density, value):
     return None
 
@@ -455,10 +416,10 @@ def LogNormal(loc, scale, value='value'):
     t = ops.exp
     x = t.inv(y)
     log_abs_det_jacobian = t.log_abs_det_jacobian(x, y)
-    return Normal(loc, scale, x) - log_abs_det_jacobian
+    return Normal(loc, scale, x) - log_abs_det_jacobian  # noqa: F821
 
 
-@eager.register(Normal, Funsor, Tensor, Funsor)
+@eager.register(Normal, Funsor, Tensor, Funsor)  # noqa: F821
 def eager_normal(loc, scale, value):
     assert loc.output == reals()
     assert scale.output == reals()
@@ -468,7 +429,7 @@ def eager_normal(loc, scale, value):
 
     info_vec = ops.new_zeros(scale.data, scale.data.shape + (1,))
     precision = ops.pow(scale.data, -2).reshape(scale.data.shape + (1, 1))
-    log_prob = -0.5 * math.log(2 * math.pi) - scale.log().sum()
+    log_prob = -0.5 * math.log(2 * math.pi) - ops.log(scale).sum()
     inputs = scale.inputs.copy()
     var = gensym('value')
     inputs[var] = reals()
@@ -476,7 +437,7 @@ def eager_normal(loc, scale, value):
     return gaussian(**{var: value - loc})
 
 
-@eager.register(MultivariateNormal, Funsor, Tensor, Funsor)
+@eager.register(MultivariateNormal, Funsor, Tensor, Funsor)  # noqa: F821
 def eager_mvn(loc, scale_tril, value):
     assert len(loc.shape) == 1
     assert len(scale_tril.shape) == 2
@@ -484,10 +445,10 @@ def eager_mvn(loc, scale_tril, value):
     if not is_affine(loc) or not is_affine(value):
         return None  # lazy
 
-    info_vec = scale_tril.data.new_zeros(scale_tril.data.shape[:-1])
+    info_vec = ops.new_zeros(scale_tril.data, scale_tril.data.shape[:-1])
     precision = ops.cholesky_inverse(scale_tril.data)
-    scale_diag = Tensor(scale_tril.data.diagonal(dim1=-1, dim2=-2), scale_tril.inputs)
-    log_prob = -0.5 * scale_diag.shape[0] * math.log(2 * math.pi) - scale_diag.log().sum()
+    scale_diag = Tensor(ops.diagonal(scale_tril.data, -1, -2), scale_tril.inputs)
+    log_prob = -0.5 * scale_diag.shape[0] * math.log(2 * math.pi) - ops.log(scale_diag).sum()
     inputs = scale_tril.inputs.copy()
     var = gensym('value')
     inputs[var] = reals(scale_diag.shape[0])

@@ -4,8 +4,8 @@
 from collections import OrderedDict
 from importlib import import_module
 
+import numpy as np
 import pytest
-from pyro.distributions.torch_distribution import MaskedDistribution
 
 import funsor.ops as ops
 from funsor.distributions import BACKEND_TO_DISTRIBUTION_BACKEND
@@ -25,11 +25,20 @@ from funsor.terms import Funsor, Variable
 from funsor.testing import assert_close, astype, ones, randn, random_mvn, random_tensor
 from funsor.util import get_backend
 
+pytestmark = pytest.mark.skipif(get_backend() == "numpy",
+                                reason="numpy backend does not have distributions implemented")
 dist = import_module(BACKEND_TO_DISTRIBUTION_BACKEND[get_backend()])
 
 EVENT_SHAPES = [(), (1,), (5,), (4, 3)]
 BATCH_SHAPES = [(), (1,), (4,), (2, 3), (1, 2, 1, 3, 1)]
 REAL_SIZES = [(1,), (1, 1), (1, 1, 1), (1, 2), (2, 1), (2, 3), (3, 1, 2)]
+
+
+def get_rng_key(seed=0):
+    if get_backend == "jax":
+        return np.array([0, seed], dtype=np.uint32),
+    else:
+        return ()
 
 
 @pytest.mark.parametrize("event_shape,event_output", [
@@ -42,7 +51,7 @@ def test_tensor_funsor_tensor(batch_shape, event_shape, event_output):
     event_inputs = ("foo", "bar", "baz")[:len(event_shape) - event_output]
     t = randn(batch_shape + event_shape)
     f = tensor_to_funsor(t, event_inputs, event_output)
-    t2 = funsor_to_tensor(f, t.dim(), event_inputs)
+    t2 = funsor_to_tensor(f, len(t.shape), event_inputs)
     assert_close(t2, t)
 
 
@@ -67,7 +76,7 @@ def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
         assert k in f.inputs
         assert f.inputs[k] == d
 
-    value = mvn.sample()
+    value = mvn.sample(*get_rng_key())
     subs = {}
     beg = 0
     for k, d in real_inputs.items():
@@ -237,7 +246,7 @@ def test_dist_to_funsor_bernoulli(batch_shape):
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(*get_rng_key())
     actual_log_prob = f(value=tensor_to_funsor(value))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob)
@@ -251,7 +260,7 @@ def test_dist_to_funsor_normal(batch_shape):
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(*get_rng_key())
     actual_log_prob = f(value=tensor_to_funsor(value))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob, rtol=1e-5)
@@ -268,7 +277,7 @@ def test_dist_to_funsor_mvn(batch_shape, event_size):
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(*get_rng_key())
     actual_log_prob = f(value=tensor_to_funsor(value, event_output=1))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob)
@@ -283,7 +292,7 @@ def test_dist_to_funsor_independent(batch_shape, event_shape):
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(*get_rng_key())
     funsor_value = tensor_to_funsor(value, event_output=len(event_shape))
     actual_log_prob = f(value=funsor_value)
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
@@ -296,11 +305,11 @@ def test_dist_to_funsor_masked(batch_shape):
     scale = randn(batch_shape).exp()
     mask = astype(dist.Bernoulli(ones(batch_shape) * 0.5), 'uint8')
     d = dist.Normal(loc, scale).mask(mask)
-    assert isinstance(d, MaskedDistribution)
+    assert isinstance(d, dist.MaskedDistribution)
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(*get_rng_key())
     actual_log_prob = f(value=tensor_to_funsor(value))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob)

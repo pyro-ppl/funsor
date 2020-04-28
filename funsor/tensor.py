@@ -54,6 +54,11 @@ def numeric_array(x, dtype=None, device=None):
         return np.array(x, dtype=dtype)
 
 
+def dummy_numeric_array(domain):
+    value = 0.1 if domain.dtype == 'real' else 1
+    return ops.expand(numeric_array(value), domain.shape) if domain.shape else value
+
+
 def _nameof(fn):
     return getattr(fn, '__name__', type(fn).__name__)
 
