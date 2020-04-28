@@ -2,33 +2,25 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-This module follows a convention for converting between funsors and PyTorch
-distribution objects. This convention is compatible with NumPy/PyTorch-style
-broadcasting. Following PyTorch distributions (and Tensorflow distributions),
-we consider "event shapes" to be on the right and broadcast-compatible "batch
-shapes" to be on the left.
-
-This module also aims to be forgiving in inputs and pedantic in outputs:
-methods accept either the superclass :class:`torch.distributions.Distribution`
-objects or the subclass :class:`pyro.distributions.TorchDistribution` objects.
-Methods return only the narrower subclass
-:class:`pyro.distributions.TorchDistribution` objects.
+Like funsor.pyro.convert
 """
+# TODO: add docs and rename pyro_foo variables
 
 import math
 from collections import OrderedDict
-from importlib import import_module
+
+import numpyro.distributions as dist
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
-from funsor.distributions import BACKEND_TO_DISTRIBUTION_BACKEND, Normal
+from funsor.distributions import Normal
 from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import Tensor, align_tensors
 from funsor.terms import Funsor, Independent, Variable, eager, to_data, to_funsor
-from funsor.util import broadcast_shape, get_backend
+from funsor.util import broadcast_shape
 
 # Conversion functions use fixed names for Pyro batch dims, but
 # accept an event_inputs tuple for custom event dim names.
@@ -51,22 +43,6 @@ def default_name_to_dim(event_inputs):
 
 
 def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
-    """
-    Convert a :class:`torch.Tensor` to a :class:`funsor.tensor.Tensor` .
-
-    Note this should not touch data, but may trigger a
-    :meth:`torch.Tensor.reshape` op.
-
-    :param torch.Tensor tensor: A PyTorch tensor.
-    :param tuple event_inputs: A tuple of names for rightmost tensor
-        dimensions.  If ``tensor`` has these names, they will be converted to
-        ``result.inputs``.
-    :param int event_output: The number of tensor dimensions assigned to
-        ``result.output``. These must be on the right of any ``event_input``
-        dimensions.
-    :return: A funsor.
-    :rtype: funsor.tensor.Tensor
-    """
     assert ops.is_numeric_array(tensor)
     assert isinstance(event_inputs, tuple)
     assert isinstance(event_output, int) and event_output >= 0
@@ -77,18 +53,6 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
 
 
 def funsor_to_tensor(funsor_, ndims, event_inputs=()):
-    """
-    Convert a :class:`funsor.tensor.Tensor` to a :class:`torch.Tensor` .
-
-    Note this should not touch data, but may trigger a
-    :meth:`torch.Tensor.reshape` op.
-
-    :param funsor.tensor.Tensor funsor_: A funsor.
-    :param int ndims: The number of result dims, ``== result.dim()``.
-    :param tuple event_inputs: Names assigned to rightmost dimensions.
-    :return: A PyTorch tensor.
-    :rtype: torch.Tensor
-    """
     assert isinstance(funsor_, Tensor)
     assert all(k.startswith("_pyro_dim_") or k in event_inputs for k in funsor_.inputs)
 
@@ -101,43 +65,12 @@ def funsor_to_tensor(funsor_, ndims, event_inputs=()):
 
 
 def dist_to_funsor(pyro_dist, event_inputs=()):
-    """
-    Convert a PyTorch distribution to a Funsor.
-
-    :param torch.distribution.Distribution: A PyTorch distribution.
-    :return: A funsor.
-    :rtype: funsor.terms.Funsor
-    """
-    dist = import_module(BACKEND_TO_DISTRIBUTION_BACKEND[get_backend()])
     assert isinstance(pyro_dist, dist.Distribution)
     assert isinstance(event_inputs, tuple)
     return to_funsor(pyro_dist, reals(), default_dim_to_name(pyro_dist.batch_shape, event_inputs))
 
 
 def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
-    """
-    Convert a joint :class:`torch.distributions.MultivariateNormal`
-    distribution into a :class:`~funsor.terms.Funsor` with multiple real
-    inputs.
-
-    This should satisfy::
-
-        sum(d.num_elements for d in real_inputs.values())
-          == pyro_dist.event_shape[0]
-
-    :param torch.distributions.MultivariateNormal pyro_dist: A
-        multivariate normal distribution over one or more variables
-        of real or vector or tensor type.
-    :param tuple event_inputs: A tuple of names for rightmost dimensions.
-        These will be assigned to ``result.inputs`` of type ``bint``.
-    :param OrderedDict real_inputs: A dict mapping real variable name
-        to appropriately sized ``reals()``. The sum of all ``.numel()``
-        of all real inputs should be equal to the ``pyro_dist`` dimension.
-    :return: A funsor with given ``real_inputs`` and possibly additional
-        bint inputs.
-    :rtype: funsor.terms.Funsor
-    """
-    dist = import_module(BACKEND_TO_DISTRIBUTION_BACKEND[get_backend()])
     assert isinstance(pyro_dist, dist.MultivariateNormal)
     assert isinstance(event_inputs, tuple)
     assert isinstance(real_inputs, OrderedDict)
@@ -146,19 +79,6 @@ def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
 
 
 def funsor_to_mvn(gaussian, ndims, event_inputs=()):
-    """
-    Convert a :class:`~funsor.terms.Funsor` to a
-    :class:`pyro.distributions.MultivariateNormal` , dropping the normalization
-    constant.
-
-    :param gaussian: A Gaussian funsor.
-    :type gaussian: funsor.gaussian.Gaussian or funsor.joint.Joint
-    :param int ndims: The number of batch dimensions in the result.
-    :param tuple event_inputs: A tuple of names to assign to rightmost
-        dimensions.
-    :return: a multivariate normal distribution.
-    :rtype: pyro.distributions.MultivariateNormal
-    """
     assert sum(1 for d in gaussian.inputs.values() if d.dtype == "real") == 1
     if isinstance(gaussian, Contraction):
         gaussian = [v for v in gaussian.terms if isinstance(v, Gaussian)][0]
@@ -170,17 +90,6 @@ def funsor_to_mvn(gaussian, ndims, event_inputs=()):
 
 
 def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
-    """
-    Converts a labeled gaussian mixture model to a pair of distributions.
-
-    :param funsor.joint.Joint funsor_: A Gaussian mixture funsor.
-    :param int ndims: The number of batch dimensions in the result.
-    :return: A pair ``(cat, mvn)``, where ``cat`` is a
-        :class:`~pyro.distributions.Categorical` distribution over mixture
-        components and ``mvn`` is a
-        :class:`~pyro.distributions.MultivariateNormal` with rightmost batch
-        dimension ranging over mixture components.
-    """
     assert isinstance(funsor_, Contraction), funsor_
     assert sum(1 for d in funsor_.inputs.values() if d.dtype == "real") == 1
     assert event_inputs, "no components name found"
@@ -194,26 +103,6 @@ def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
 
 
 class AffineNormal(Funsor):
-    """
-    Represents a conditional diagonal normal distribution over a random
-    variable ``Y`` whose mean is an affine function of a random variable ``X``.
-    The likelihood of ``X`` is thus::
-
-        AffineNormal(matrix, loc, scale).condition(y).log_density(x)
-
-    which is equivalent to::
-
-        Normal(x @ matrix + loc, scale).to_event(1).log_prob(y)
-
-    :param ~funsor.terms.Funsor matrix: A transformation from ``X`` to ``Y``.
-        Should have rightmost shape ``(x_dim, y_dim)``.
-    :param ~funsor.terms.Funsor loc: A constant offset for ``Y``'s mean.
-        Should have output shape ``(y_dim,)``.
-    :param ~funsor.terms.Funsor scale: Standard deviation for ``Y``.
-        Should have output shape ``(y_dim,)``.
-    :param ~funsor.terms.Funsor value_x: A value ``X``.
-    :param ~funsor.terms.Funsor value_y: A value ``Y``.
-    """
     def __init__(self, matrix, loc, scale, value_x, value_y):
         assert len(matrix.output.shape) == 2
         assert value_x.output == reals(matrix.output.shape[0])
@@ -274,30 +163,6 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
 
 
 def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_name="value_y"):
-    """
-    Convert a noisy affine function to a Gaussian. The noisy affine function is
-    defined as::
-
-        y = x @ matrix + mvn.sample()
-
-    The result is a non-normalized Gaussian funsor with two real inputs,
-    ``x_name`` and ``y_name``, corresponding to a conditional distribution of
-    real vector ``y` given real vector ``x``.
-
-    :param torch.Tensor matrix: A matrix with rightmost shape ``(x_size, y_size)``.
-    :param mvn: A multivariate normal distribution with
-        ``event_shape == (y_size,)``.
-    :type mvn: torch.distributions.MultivariateNormal or
-        torch.distributions.Independent of torch.distributions.Normal
-    :param tuple event_dims: A tuple of names for rightmost dimensions.
-        These will be assigned to ``result.inputs`` of type ``bint``.
-    :param str x_name: The name of the ``x`` random variable.
-    :param str y_name: The name of the ``y`` random variable.
-    :return: A funsor with given ``real_inputs`` and possibly additional
-        bint inputs.
-    :rtype: funsor.terms.Funsor
-    """
-    dist = import_module(BACKEND_TO_DISTRIBUTION_BACKEND[get_backend()])
     assert (isinstance(mvn, dist.MultivariateNormal) or
             (isinstance(mvn, dist.Independent) and
              isinstance(mvn.base_dist, dist.Normal)))

@@ -6,9 +6,10 @@ import functools
 import numpyro.distributions as dist
 
 from funsor.distributions import (
+    FUNSOR_DIST_NAMES,
     backenddist_to_funsor,
     indepdist_to_funsor,
-    make_dist,
+    make_backend_dist,
     mvndist_to_funsor,
     transformeddist_to_funsor,
 )
@@ -26,24 +27,17 @@ class _NumPyroWrapper_Categorical(dist.CategoricalProbs):
     pass
 
 
-_wrapped_backend_dists = [
-    (dist.Beta, ()),
-    (dist.BernoulliProbs, ('probs',)),
-    (dist.BernoulliLogits, ('logits',)),
-    (dist.Binomial, ('total_count', 'probs')),
-    (dist.Multinomial, ('total_count', 'probs')),
-    (_NumPyroWrapper_Categorical, ('probs',)),
-    (dist.CategoricalLogits, ('logits',)),
-    (dist.Poisson, ()),
-    (dist.Gamma, ()),
-    (dist.Dirichlet, ()),
-    (dist.Normal, ()),
-    (dist.MultivariateNormal, ('loc', 'scale_tril')),
-    (dist.Delta, ()),
-]
+def _get_numpyro_dist(dist_name):
+    if dist_name in ['BernoulliProbs', 'BernoulliLogits', 'CategoricalLogits']:
+        return locals()['_PyroWrapper_' + dist_name]
+    elif dist_name.startswith('Nonreparameterized'):
+        return None
+    else:
+        return getattr(dist, dist_name)
 
-for backend_dist_class, param_names in _wrapped_backend_dists:
-    locals()[backend_dist_class.__name__.split("Wrapper_")[-1]] = make_dist(backend_dist_class, param_names)
+
+for dist_name, param_names in FUNSOR_DIST_NAMES.items():
+    locals()[dist_name] = make_backend_dist(_get_numpyro_dist(dist_name), param_names)
 
 # Delta has to be treated specially because of its weird shape inference semantics
 Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])  # noqa: F821

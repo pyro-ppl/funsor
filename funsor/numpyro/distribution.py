@@ -13,19 +13,9 @@ from funsor.terms import Funsor, to_funsor
 
 
 class FunsorDistribution(dist.Distribution):
+    # TODO: add docs
     """
-    :class:`~torch.distributions.Distribution` wrapper around a
-    :class:`~funsor.terms.Funsor` for use in Pyro code. This is typically used
-    as a base class for specific funsor inference algorithms wrapped in a
-    distribution interface.
-
-    :param funsor.terms.Funsor funsor_dist: A funsor with an input named
-        "value" that is treated as a random variable. The distribution should
-        be normalized over "value".
-    :param torch.Size batch_shape: The distribution's batch shape. This must
-        be in the same order as the input of the ``funsor_dist``, but may
-        contain extra dims of size 1.
-    :param event_shape: The distribution's event shape.
+    Like funsor.pyro.distribution.FunsorDistribution.
     """
     arg_constraints = {}
 

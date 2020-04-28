@@ -178,50 +178,6 @@ class GaussianMRF(FunsorDistribution):
 
 
 class SwitchingLinearHMM(FunsorDistribution):
-    r"""
-    Switching Linear Dynamical System represented as a Hidden Markov Model.
-
-    This corresponds to the generative model::
-
-        z = Categorical(logits=initial_logits).sample()
-        y = initial_mvn[z].sample()
-        x = []
-        for t in range(num_steps):
-            z = Categorical(logits=transition_logits[t, z]).sample()
-            y = y @ transition_matrix[t, z] + transition_mvn[t, z].sample()
-            x.append(y @ observation_matrix[t, z] + observation_mvn[t, z].sample())
-
-    Viewed as a dynamic Bayesian network::
-
-        z[t-1] ----> z[t] ---> z[t+1]         Discrete latent class
-           |  \       |  \       |   \
-           | y[t-1] ----> y[t] ----> y[t+1]   Gaussian latent state
-           |   /      |   /      |   /
-           V  /       V  /       V  /
-        x[t-1]       x[t]      x[t+1]         Gaussian observation
-
-    Let ``class`` be the latent class, ``state`` be the latent multivariate
-    normal state, and ``value`` be the observed multivariate normal value.
-
-    :param ~torch.Tensor initial_logits: Represents ``p(class[0])``.
-    :param ~torch.distributions.MultivariateNormal initial_mvn: Represents
-        ``p(state[0] | class[0])``.
-    :param ~torch.Tensor transition_logits: Represents
-        ``p(class[t+1] | class[t])``.
-    :param ~torch.Tensor transition_matrix:
-    :param ~torch.distributions.MultivariateNormal transition_mvn: Together
-        with ``transition_matrix``, this represents
-        ``p(state[t], state[t+1] | class[t])``.
-    :param ~torch.Tensor observation_matrix:
-    :param ~torch.distributions.MultivariateNormal observation_mvn: Together
-        with ``observation_matrix``, this represents
-        ``p(value[t+1], state[t+1] | class[t+1])``.
-    :param bool exact: If True, perform exact inference at cost exponential in
-        ``num_steps``. If False, use a :func:`~funsor.terms.moment_matching`
-        approximation and use parallel scan algorithm to reduce parallel
-        complexity to logarithmic in ``num_steps``. Defaults to False.
-    """
-    has_rsample = True
     arg_constraints = {}
 
     def __init__(self, initial_logits, initial_mvn,

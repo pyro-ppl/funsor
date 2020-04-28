@@ -121,6 +121,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             raw_sample = raw_dist.sample(*sample_args)
 
         result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
+        # FIXME: do we need to have `has_rsample` attribution in NumPyro?
         if not getattr(raw_dist, "has_rsample", False):
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
             raw_log_prob = raw_dist.log_prob(raw_sample)
@@ -174,8 +175,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 ################################################################################
 
 
-# XXX: we might move this function to backend-specific implementations
-def make_dist(backend_dist_class, param_names=()):
+def make_backend_dist(backend_dist_class, param_names=()):
     if not param_names:
         param_names = tuple(name for name in inspect.getfullargspec(backend_dist_class.__init__)[0][1:]
                             if name in backend_dist_class.arg_constraints)
@@ -194,31 +194,38 @@ def make_dist(backend_dist_class, param_names=()):
     return dist_class
 
 
-def make_backend_dist():
-    pass
+def make_dist(dist_name, param_names):
+    @makefun.with_signature(f"{dist_name}({', '.join(param_names)}, value='value')")
+    def dist_fn(**kwargs):
+        backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        return getattr(backend_dist_module, dist_name)
 
 
-_wrapped_backend_dists = [
-    ('Beta', ()),
-    ('BernoulliProbs', ('probs',)),
-    ('BernoulliLogits', ('logits',)),
-    ('Binomial', ('total_count', 'probs')),
-    ('Multinomial', ('total_count', 'probs')),
-    ('Categorical', ('probs',)),
-    ('CategoricalLogits', ('logits',)),
-    ('Poisson', ('rate')),
-    ('Gamma', ('rate')),
-    ('VonMises', ('rate')),
-    ('Dirichlet', ('rate')),
-    ('DirichletMultinomial', ()),
-    ('Normal', ()),
-    ('MultivariateNormal', ('loc', 'scale_tril')),
-    ('Delta', ()),
-    ('NonreparameterizedBeta', ()),
-    ('NonreparameterizedGamma', ()),
-    ('NonreparameterizedNormal', ()),
-    ('NonreparameterizedDirichlet', ()),
-]
+FUNSOR_DIST_NAMES = {
+    'Beta': ('concentration1', 'concentration0'),
+    'BernoulliProbs': ('probs',),
+    'BernoulliLogits': ('logits',),
+    'Binomial': ('total_count', 'probs'),
+    'Categorical': ('probs',),
+    'CategoricalLogits': ('logits',),
+    'Delta': ('v', 'log_density'),
+    'Dirichlet': ('concentration',),
+    'DirichletMultinomial': ('concentration', 'total_count'),
+    'Gamma': ('concentration', 'rate'),
+    'Multinomial': ('total_count', 'probs'),
+    'MultivariateNormal': ('loc', 'scale_tril'),
+    'NonreparameterizedBeta': ('concentration1', 'concentration0'),
+    'NonreparameterizedDirichlet': ('concentration',),
+    'NonreparameterizedGamma': ('concentration', 'rate'),
+    'NonreparameterizedNormal': ('loc', 'scale'),
+    'Normal': ('loc', 'scale'),
+    'Poisson': ('rate'),
+    'VonMises': ('loc', 'concentration'),
+}
+
+
+for dist_name, param_names in FUNSOR_DIST_NAMES.items():
+    locals()[dist_name] = make_dist(dist_name, param_names)
 
 
 ###############################################################
