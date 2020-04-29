@@ -300,16 +300,6 @@ def empty(*args):
         return np.empty(shape)
 
 
-def astype(x, dtype):
-    backend = get_backend()
-    if backend == "torch":
-        if dtype == 'uint8':
-            return x.byte()
-        return x.type(dtype)
-    else:
-        return x.astype(dtype)
-
-
 def random_tensor(inputs, output=reals()):
     """
     Creates a random :class:`funsor.tensor.Tensor` with given inputs and output.

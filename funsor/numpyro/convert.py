@@ -147,7 +147,7 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     matrix, loc, scale, value_y = tensors
 
     assert value_y.shape[-1] == loc.shape[-1]
-    prec_sqrt = matrix / scale.unsqueeze(-2)
+    prec_sqrt = matrix / ops.unsqueeze(scale, -2)
     precision = ops.matmul(prec_sqrt, ops.transpose(prec_sqrt, -1, -2))
     delta = (value_y - loc) / scale
     info_vec = ops.matmul(prec_sqrt, ops.unsqueeze(delta, -1)).squeeze(-1)

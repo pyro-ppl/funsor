@@ -37,8 +37,9 @@ class FunsorDistribution(dist.Distribution):
             return dist.constraints.integer_interval(0, self.dtype - 1)
 
     def log_prob(self, value):
-        ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
-        value = tensor_to_funsor(value, event_output=self.event_dim, dtype=self.dtype)
+        event_dim = len(self.event_shape)
+        ndims = max(len(self.batch_shape), len(value.shape) - event_dim)
+        value = tensor_to_funsor(value, event_output=event_dim, dtype=self.dtype)
         log_prob = self.funsor_dist(value=value)
         log_prob = funsor_to_tensor(log_prob, ndims=ndims)
         return log_prob

@@ -1,9 +1,10 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import pyro
+import numpy as np
+import numpyro
 
 
 def pytest_runtest_setup(item):
-    pyro.set_rng_seed(0)
-    pyro.enable_validation(True)
+    np.random.seed(0)
+    numpyro.set_platform("cpu")

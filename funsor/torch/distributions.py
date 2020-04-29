@@ -15,6 +15,17 @@ from funsor.distributions import (
     DistributionMeta,
     FUNSOR_DIST_NAMES,
     backenddist_to_funsor,
+    eager_beta,
+    eager_binomial,
+    eager_categorical_funsor,
+    eager_categorical_tensor,
+    eager_delta_funsor_funsor,
+    eager_delta_funsor_variable,
+    eager_delta_tensor,
+    eager_delta_variable_variable,
+    eager_multinomial,
+    eager_mvn,
+    eager_normal,
     indepdist_to_funsor,
     maskeddist_to_funsor,
     mvndist_to_funsor,
@@ -22,7 +33,7 @@ from funsor.distributions import (
 )
 from funsor.domains import reals
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import eager, to_funsor
+from funsor.terms import Funsor, Variable, eager, to_funsor
 
 
 ################################################################################
@@ -109,3 +120,17 @@ to_funsor.register(torch.distributions.MultivariateNormal)(mvndist_to_funsor)
 def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _PyroWrapper_BernoulliLogits(logits=pyro_dist.logits)
     return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
+
+
+eager.register(Beta, Funsor, Funsor, Funsor)(eager_beta)  # noqa: F821)
+eager.register(Binomial, Funsor, Funsor, Funsor)(eager_binomial)  # noqa: F821
+eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: F821)
+eager.register(Categorical, Funsor, Tensor)(eager_categorical_funsor)  # noqa: F821)
+eager.register(Categorical, Tensor, Variable)(eager_categorical_tensor)  # noqa: F821)
+eager.register(Delta, Tensor, Tensor, Tensor)(eager_delta_tensor)  # noqa: F821
+eager.register(Delta, Funsor, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821
+eager.register(Delta, Variable, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821
+eager.register(Delta, Variable, Funsor, Funsor)(eager_delta_funsor_funsor)  # noqa: F821
+eager.register(Delta, Variable, Variable, Variable)(eager_delta_variable_variable)  # noqa: F821
+eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
+eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821

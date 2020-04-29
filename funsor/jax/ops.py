@@ -50,6 +50,11 @@ def _any(x, dim):
     return np.any(x, axis=dim)
 
 
+@ops.astype.register(array, str)
+def _astype(x, dtype):
+    return x.astype(dtype)
+
+
 @ops.cat.register(int, [array])
 def _cat(dim, *x):
     if len(x) == 1:

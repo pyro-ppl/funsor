@@ -3,13 +3,13 @@
 
 from collections import OrderedDict
 
-import pyro.distributions as dist
+import numpy as np
+import numpyro.distributions as dist
 import pytest
-import torch
-from pyro.distributions.torch_distribution import MaskedDistribution
 
+import funsor.ops as ops
 from funsor.domains import bint, reals
-from funsor.pyro.convert import (
+from funsor.numpyro.convert import (
     AffineNormal,
     dist_to_funsor,
     funsor_to_cat_and_mvn,
@@ -21,11 +21,24 @@ from funsor.pyro.convert import (
 )
 from funsor.tensor import Tensor
 from funsor.terms import Funsor, Variable
-from funsor.testing import assert_close, random_mvn, random_tensor
+from funsor.testing import assert_close, ones, randn, random_mvn, random_tensor
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif(get_backend() != "jax", reason="only test for jax backend")
 
 EVENT_SHAPES = [(), (1,), (5,), (4, 3)]
 BATCH_SHAPES = [(), (1,), (4,), (2, 3), (1, 2, 1, 3, 1)]
 REAL_SIZES = [(1,), (1, 1), (1, 1, 1), (1, 2), (2, 1), (2, 3), (3, 1, 2)]
+
+
+def get_rng_key(seed=0):
+    return np.array([0, seed], dtype=np.uint32)
+
+
+def get_unexpanded_dist(d):
+    if isinstance(d, dist.ExpandedDistribution):
+        return get_unexpanded_dist(d.base_dist)
+    return d
 
 
 @pytest.mark.parametrize("event_shape,event_output", [
@@ -36,9 +49,9 @@ REAL_SIZES = [(1,), (1, 1), (1, 1, 1), (1, 2), (2, 1), (2, 3), (3, 1, 2)]
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_tensor_funsor_tensor(batch_shape, event_shape, event_output):
     event_inputs = ("foo", "bar", "baz")[:len(event_shape) - event_output]
-    t = torch.randn(batch_shape + event_shape)
+    t = randn(batch_shape + event_shape)
     f = tensor_to_funsor(t, event_inputs, event_output)
-    t2 = funsor_to_tensor(f, t.dim(), event_inputs)
+    t2 = funsor_to_tensor(f, len(t.shape), event_inputs)
     assert_close(t2, t)
 
 
@@ -63,7 +76,7 @@ def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
         assert k in f.inputs
         assert f.inputs[k] == d
 
-    value = mvn.sample()
+    value = mvn.sample(get_rng_key())
     subs = {}
     beg = 0
     for k, d in real_inputs.items():
@@ -72,7 +85,7 @@ def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
         beg = end
     actual_log_prob = f(**subs)
     expected_log_prob = tensor_to_funsor(mvn.log_prob(value), tuple(int_inputs))
-    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-5)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=1e-3)
 
 
 @pytest.mark.parametrize("x_size", [1, 2])
@@ -116,7 +129,7 @@ def test_affine_normal(matrix_shape, loc_shape, scale_shape, x_shape, y_shape,
 @pytest.mark.parametrize("event_shape", EVENT_SHAPES, ids=str)
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_matrix_and_mvn_to_funsor(batch_shape, event_shape, x_size, y_size):
-    matrix = torch.randn(batch_shape + event_shape + (x_size, y_size))
+    matrix = randn(batch_shape + event_shape + (x_size, y_size))
     y_mvn = random_mvn(batch_shape + event_shape, y_size)
     xy_mvn = random_mvn(batch_shape + event_shape, x_size + y_size)
     int_inputs = OrderedDict((k, bint(size)) for k, size in zip("abc", event_shape))
@@ -134,9 +147,9 @@ def test_matrix_and_mvn_to_funsor(batch_shape, event_shape, x_size, y_size):
     assert f.inputs["x"] == reals(x_size)
     assert f.inputs["y"] == reals(y_size)
 
-    xy = torch.randn(x_size + y_size)
+    xy = randn(x_size + y_size)
     x, y = xy[:x_size], xy[x_size:]
-    y_pred = x.unsqueeze(-2).matmul(matrix).squeeze(-2)
+    y_pred = ops.matmul(ops.unsqueeze(x, -2), matrix).squeeze(-2)
     actual_log_prob = f(x=x, y=y)
     expected_log_prob = tensor_to_funsor(
         xy_mvn.log_prob(xy) + y_mvn.log_prob(y - y_pred), tuple(int_inputs))
@@ -147,9 +160,9 @@ def test_matrix_and_mvn_to_funsor(batch_shape, event_shape, x_size, y_size):
 @pytest.mark.parametrize("x_size", [1, 2, 3])
 @pytest.mark.parametrize("y_size", [1, 2, 3])
 def test_matrix_and_mvn_to_funsor_diag(batch_shape, x_size, y_size):
-    matrix = torch.randn(batch_shape + (x_size, y_size))
-    loc = torch.randn(batch_shape + (y_size,))
-    scale = torch.randn(batch_shape + (y_size,)).exp()
+    matrix = randn(batch_shape + (x_size, y_size))
+    loc = randn(batch_shape + (y_size,))
+    scale = randn(batch_shape + (y_size,)).exp()
 
     normal = dist.Normal(loc, scale).to_event(1)
     actual = matrix_and_mvn_to_funsor(matrix, normal)
@@ -158,12 +171,12 @@ def test_matrix_and_mvn_to_funsor_diag(batch_shape, x_size, y_size):
     mvn = dist.MultivariateNormal(loc, scale_tril=scale.diag_embed())
     expected = matrix_and_mvn_to_funsor(matrix, mvn)
 
-    y = tensor_to_funsor(torch.randn(batch_shape + (y_size,)), (), 1)
+    y = tensor_to_funsor(randn(batch_shape + (y_size,)), (), 1)
     actual_like = actual(value_y=y)
     expected_like = expected(value_y=y)
     assert_close(actual_like, expected_like, atol=1e-4, rtol=1e-4)
 
-    x = tensor_to_funsor(torch.randn(batch_shape + (x_size,)), (), 1)
+    x = tensor_to_funsor(randn(batch_shape + (x_size,)), (), 1)
     actual_norm = actual_like(value_x=x)
     expected_norm = expected_like(value_x=x)
     assert_close(actual_norm, expected_norm, atol=1e-4, rtol=1e-4)
@@ -181,10 +194,12 @@ def test_funsor_to_mvn(batch_shape, event_shape, real_size):
     assert isinstance(funsor_, Funsor)
 
     actual = funsor_to_mvn(funsor_, ndims, event_dims)
-    assert isinstance(actual, dist.MultivariateNormal)
+    base_dist = get_unexpanded_dist(actual)
+    assert isinstance(base_dist, dist.MultivariateNormal)
     assert actual.batch_shape == expected.batch_shape
-    assert_close(actual.loc, expected.loc, atol=1e-3, rtol=None)
-    assert_close(actual.precision_matrix,
+    assert_close(ops.expand(base_dist.loc, expected.loc.shape),
+                 expected.loc, atol=1e-3, rtol=None)
+    assert_close(ops.expand(base_dist.precision_matrix, expected.precision_matrix.shape),
                  expected.precision_matrix, atol=1e-3, rtol=None)
 
 
@@ -193,7 +208,7 @@ def test_funsor_to_mvn(batch_shape, event_shape, real_size):
 @pytest.mark.parametrize("event_shape", EVENT_SHAPES, ids=str)
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_funsor_to_cat_and_mvn(batch_shape, event_shape, int_size, real_size):
-    logits = torch.randn(batch_shape + event_shape + (int_size,))
+    logits = randn(batch_shape + event_shape + (int_size,))
     expected_cat = dist.Categorical(logits=logits)
     expected_mvn = random_mvn(batch_shape + event_shape + (int_size,), real_size)
     event_dims = tuple("abc"[:len(event_shape)]) + ("component",)
@@ -204,37 +219,40 @@ def test_funsor_to_cat_and_mvn(batch_shape, event_shape, int_size, real_size):
     assert isinstance(funsor_, Funsor)
 
     actual_cat, actual_mvn = funsor_to_cat_and_mvn(funsor_, ndims, event_dims)
-    assert isinstance(actual_cat, dist.Categorical)
-    assert isinstance(actual_mvn, dist.MultivariateNormal)
+    cat_base_dist = get_unexpanded_dist(actual_cat)
+    mvn_base_dist = get_unexpanded_dist(actual_mvn)
+    assert isinstance(cat_base_dist, dist.CategoricalLogits)
+    assert isinstance(mvn_base_dist, dist.MultivariateNormal)
     assert actual_cat.batch_shape == expected_cat.batch_shape
     assert actual_mvn.batch_shape == expected_mvn.batch_shape
-    assert_close(actual_cat.logits, expected_cat.logits, atol=1e-4, rtol=None)
-    assert_close(actual_mvn.loc, expected_mvn.loc, atol=1e-4, rtol=None)
-    assert_close(actual_mvn.precision_matrix,
+    assert_close(ops.expand(cat_base_dist.logits, expected_cat.logits.shape),
+                 expected_cat.logits, atol=1e-4, rtol=None)
+    assert_close(ops.expand(mvn_base_dist.loc, expected_mvn.loc.shape),
+                 expected_mvn.loc, atol=1e-4, rtol=None)
+    assert_close(ops.expand(mvn_base_dist.precision_matrix, expected_mvn.precision_matrix.shape),
                  expected_mvn.precision_matrix, atol=1e-4, rtol=None)
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 @pytest.mark.parametrize("cardinality", [2, 3, 5])
 def test_dist_to_funsor_categorical(batch_shape, cardinality):
-    logits = torch.randn(batch_shape + (cardinality,))
-    logits -= logits.logsumexp(dim=-1, keepdim=True)
+    logits = randn(batch_shape + (cardinality,))
+    logits -= ops.logsumexp(logits, -1)[..., None]
     d = dist.Categorical(logits=logits)
     f = dist_to_funsor(d)
     assert isinstance(f, Tensor)
     expected = tensor_to_funsor(logits, ("value",))
-    print(f, expected)
     assert_close(f, expected)
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_dist_to_funsor_bernoulli(batch_shape):
-    logits = torch.randn(batch_shape)
+    logits = randn(batch_shape)
     d = dist.Bernoulli(logits=logits)
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(get_rng_key())
     actual_log_prob = f(value=tensor_to_funsor(value))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob)
@@ -242,13 +260,13 @@ def test_dist_to_funsor_bernoulli(batch_shape):
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_dist_to_funsor_normal(batch_shape):
-    loc = torch.randn(batch_shape)
-    scale = torch.randn(batch_shape).exp()
+    loc = randn(batch_shape)
+    scale = ops.exp(randn(batch_shape))
     d = dist.Normal(loc, scale)
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(get_rng_key())
     actual_log_prob = f(value=tensor_to_funsor(value))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob, rtol=1e-5)
@@ -257,15 +275,15 @@ def test_dist_to_funsor_normal(batch_shape):
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 @pytest.mark.parametrize("event_size", [2, 3, 5])
 def test_dist_to_funsor_mvn(batch_shape, event_size):
-    loc = torch.randn(batch_shape + (event_size,))
-    cov = torch.randn(batch_shape + (event_size, 2 * event_size))
-    cov = cov.matmul(cov.transpose(-1, -2))
-    scale_tril = torch.cholesky(cov)
+    loc = randn(batch_shape + (event_size,))
+    cov = randn(batch_shape + (event_size, 2 * event_size))
+    cov = ops.matmul(cov, ops.transpose(cov, -1, -2))
+    scale_tril = ops.cholesky(cov)
     d = dist.MultivariateNormal(loc, scale_tril=scale_tril)
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(get_rng_key())
     actual_log_prob = f(value=tensor_to_funsor(value, event_output=1))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob)
@@ -274,13 +292,13 @@ def test_dist_to_funsor_mvn(batch_shape, event_size):
 @pytest.mark.parametrize("event_shape", [(), (6,), (3, 2)], ids=str)
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_dist_to_funsor_independent(batch_shape, event_shape):
-    loc = torch.randn(batch_shape + event_shape)
-    scale = torch.randn(batch_shape + event_shape).exp()
+    loc = randn(batch_shape + event_shape)
+    scale = ops.exp(randn(batch_shape + event_shape))
     d = dist.Normal(loc, scale).to_event(len(event_shape))
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(get_rng_key())
     funsor_value = tensor_to_funsor(value, event_output=len(event_shape))
     actual_log_prob = f(value=funsor_value)
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
@@ -289,15 +307,15 @@ def test_dist_to_funsor_independent(batch_shape, event_shape):
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_dist_to_funsor_masked(batch_shape):
-    loc = torch.randn(batch_shape)
-    scale = torch.randn(batch_shape).exp()
-    mask = torch.bernoulli(torch.full(batch_shape, 0.5)).byte()
+    loc = randn(batch_shape)
+    scale = ops.exp(randn(batch_shape))
+    mask = ops.astype(dist.Bernoulli(ones(batch_shape) * 0.5).sample(get_rng_key()), 'uint8')
     d = dist.Normal(loc, scale).mask(mask)
-    assert isinstance(d, MaskedDistribution)
+    assert isinstance(d, dist.MaskedDistribution)
     f = dist_to_funsor(d)
     assert isinstance(f, Funsor)
 
-    value = d.sample()
+    value = d.sample(get_rng_key())
     actual_log_prob = f(value=tensor_to_funsor(value))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
     assert_close(actual_log_prob, expected_log_prob)

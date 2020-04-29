@@ -41,6 +41,11 @@ def _any(x, dim):
     return x.any() if dim is None else x.any(dim=dim)
 
 
+@ops.astype.register(torch.Tensor, str)
+def _astype(x, dtype):
+    return x.type(getattr(torch, dtype))
+
+
 @ops.cat.register(int, [torch.Tensor])
 def _cat(dim, *x):
     if len(x) == 1:

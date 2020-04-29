@@ -13,6 +13,7 @@ import opt_einsum
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
+import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals

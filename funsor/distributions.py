@@ -162,7 +162,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         elif support_name in ["_LowerCholesky", "_PositiveDefinite"]:
             output = reals(*raw_shape[-2:])
         elif support_name == "_Real" and name == "logits" and \
-                type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex":
+                "Categorical" in cls.dist_class.__name__:
             output = reals(raw_shape[-1])
         else:
             output = None
@@ -239,7 +239,7 @@ def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
 
 
 def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
-    mask = to_funsor(backend_dist._mask.float(), output=output, dim_to_name=dim_to_name)
+    mask = to_funsor(ops.astype(backend_dist._mask, 'float32'), output=output, dim_to_name=dim_to_name)
     funsor_base_dist = to_funsor(backend_dist.base_dist, output=output, dim_to_name=dim_to_name)
     return mask * funsor_base_dist
 
@@ -297,7 +297,7 @@ def gaussian_to_data(funsor_dist, name_to_dim=None, normalized=False):
 def gaussianmixture_to_data(funsor_dist, name_to_dim=None):
     discrete, gaussian = funsor_dist.terms
     backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
-    cat = backend_dist_module.Categorical.dist_class(logits=to_data(
+    cat = backend_dist_module.CategoricalLogits.dist_class(logits=to_data(
         discrete + gaussian.log_normalizer, name_to_dim=name_to_dim))
     mvn = to_data(gaussian, name_to_dim=name_to_dim)
     return cat, mvn
@@ -324,21 +324,18 @@ def Bernoulli(probs=None, logits=None, value='value'):
     raise ValueError('Either probs or logits must be specified')
 
 
-@eager.register(Beta, Funsor, Funsor, Funsor)  # noqa: F821
 def eager_beta(concentration1, concentration0, value):
     concentration = stack((concentration0, concentration1))
     value = stack((1 - value, value))
     return Dirichlet(concentration, value=value)  # noqa: F821
 
 
-@eager.register(Binomial, Funsor, Funsor, Funsor)  # noqa: F821
 def eager_binomial(total_count, probs, value):
     probs = stack((1 - probs, probs))
     value = stack((total_count - value, value))
     return Multinomial(total_count, probs, value=value)  # noqa: F821
 
 
-@eager.register(Multinomial, Tensor, Tensor, Tensor)  # noqa: F821
 def eager_multinomial(total_count, probs, value):
     # Multinomial.log_prob() supports inhomogeneous total_count only by
     # avoiding passing total_count to the constructor.
@@ -350,19 +347,16 @@ def eager_multinomial(total_count, probs, value):
     return Multinomial.eager_log_prob(total_count, probs, value)  # noqa: F821
 
 
-@eager.register(Categorical, Funsor, Tensor)  # noqa: F821
-def eager_categorical(probs, value):
+def eager_categorical_funsor(probs, value):
     return probs[value].log()
 
 
-@eager.register(Categorical, Tensor, Variable)  # noqa: F821
-def eager_categorical(probs, value):
+def eager_categorical_tensor(probs, value):
     value = probs.materialize(value)
     return Categorical(probs=probs, value=value)  # noqa: F821
 
 
-@eager.register(Delta, Tensor, Tensor, Tensor)  # noqa: F821
-def eager_delta(v, log_density, value):
+def eager_delta_tensor(v, log_density, value):
     # This handles event_dim specially, and hence cannot use the
     # generic Delta.eager_log_prob() method.
     assert v.output == value.output
@@ -373,21 +367,17 @@ def eager_delta(v, log_density, value):
     return Tensor(data, inputs)
 
 
-@eager.register(Delta, Funsor, Funsor, Variable)  # noqa: F821
-@eager.register(Delta, Variable, Funsor, Variable)  # noqa: F821
-def eager_delta(v, log_density, value):
+def eager_delta_funsor_variable(v, log_density, value):
     assert v.output == value.output
     return funsor.delta.Delta(value.name, v, log_density)
 
 
-@eager.register(Delta, Variable, Funsor, Funsor)  # noqa: F821
-def eager_delta(v, log_density, value):
+def eager_delta_funsor_funsor(v, log_density, value):
     assert v.output == value.output
     return funsor.delta.Delta(v.name, value, log_density)
 
 
-@eager.register(Delta, Variable, Variable, Variable)  # noqa: F821
-def eager_delta(v, log_density, value):
+def eager_delta_variable_variable(v, log_density, value):
     return None
 
 
@@ -408,7 +398,6 @@ def LogNormal(loc, scale, value='value'):
     return Normal(loc, scale, x) - log_abs_det_jacobian  # noqa: F821
 
 
-@eager.register(Normal, Funsor, Tensor, Funsor)  # noqa: F821
 def eager_normal(loc, scale, value):
     assert loc.output == reals()
     assert scale.output == reals()
@@ -426,7 +415,6 @@ def eager_normal(loc, scale, value):
     return gaussian(**{var: value - loc})
 
 
-@eager.register(MultivariateNormal, Funsor, Tensor, Funsor)  # noqa: F821
 def eager_mvn(loc, scale_tril, value):
     assert len(loc.shape) == 1
     assert len(scale_tril.shape) == 2
