@@ -18,7 +18,7 @@ from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
                            ignore_jit_warnings, numeric_array, stack)
-from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend
 
 

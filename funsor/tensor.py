@@ -291,8 +291,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             return Tensor(data, inputs, self.dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
-    # TODO: support a `key` kwarg to get samples from numpyro distributions
-    def unscaled_sample(self, sampled_vars, sample_inputs):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         assert self.output == reals()
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
@@ -316,17 +315,11 @@ class Tensor(Funsor, metaclass=TensorMeta):
         sample_shape = tuple(d.dtype for d in sample_inputs.values())
 
         backend = get_backend()
-        if backend == "torch":
-            import torch
-
-            flat_sample = torch.distributions.Categorical(logits=flat_logits).sample(sample_shape)
-        elif backend == "jax":
-            import jax
-            import numpyro
-
-            # TODO: use unscaled_sample key instead of random key here, this won't work under jit
-            key = jax.random.PRNGKey(np.random.randint(0, np.iinfo(np.int32).max))
-            flat_sample = numpyro.distributions.Categorical(logits=flat_logits).sample(key, sample_shape)
+        if backend != "numpy":
+            from importlib import import_module
+            dist = import_module(funsor.distributions.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend])
+            sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
+            flat_sample = dist.CategoricalLogits.dist_class(logits=flat_logits).sample(*sample_args)
         else:  # default numpy backend
             assert backend == "numpy"
             shape = sample_shape + flat_logits.shape[:-1]

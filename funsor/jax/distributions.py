@@ -29,7 +29,6 @@ from funsor.distributions import (
     transformeddist_to_funsor,
 )
 from funsor.domains import reals
-from funsor.ops import sigmoid
 from funsor.tensor import Tensor, dummy_numeric_array
 from funsor.terms import Funsor, Variable, eager, to_funsor
 
