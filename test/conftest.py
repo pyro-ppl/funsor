@@ -4,6 +4,7 @@
 import numpy as np
 
 import funsor.util
+funsor.util.set_backend("jax")
 
 
 def _disallow_set_backend(*args):

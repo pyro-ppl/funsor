@@ -190,11 +190,11 @@ class SwitchingLinearHMM(FunsorDistribution):
         assert isinstance(transition_mvn, dist.MultivariateNormal)
         assert ops.is_numeric_array(observation_matrix)
         assert isinstance(observation_mvn, dist.MultivariateNormal)
-        hidden_cardinality = initial_logits.size(-1)
+        hidden_cardinality = initial_logits.shape[-1]
         hidden_dim, obs_dim = observation_matrix.shape[-2:]
         assert obs_dim >= hidden_dim // 2, "obs_dim must be at least half of hidden_dim"
         assert initial_mvn.event_shape[0] == hidden_dim
-        assert transition_logits.size(-1) == hidden_cardinality
+        assert transition_logits.shape[-1] == hidden_cardinality
         assert transition_matrix.shape[-2:] == (hidden_dim, hidden_dim)
         assert transition_mvn.event_shape[0] == hidden_dim
         assert observation_mvn.event_shape[0] == obs_dim
@@ -241,7 +241,7 @@ class SwitchingLinearHMM(FunsorDistribution):
 
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
-        ndims = max(len(self.batch_shape), value.dim() - 2)
+        ndims = max(len(self.batch_shape), len(value.shape) - 2)
         time = Variable("time", bint(self.event_shape[0]))
         value = tensor_to_funsor(value, ("time",), 1)
 
@@ -275,7 +275,7 @@ class SwitchingLinearHMM(FunsorDistribution):
             used to initialize a sequential Pyro model for prediction.
         :rtype: tuple
         """
-        ndims = max(len(self.batch_shape), value.dim() - 2)
+        ndims = max(len(self.batch_shape), len(value.shape) - 2)
         time = Variable("time", bint(self.event_shape[0]))
         value = tensor_to_funsor(value, ("time",), 1)
 
@@ -288,6 +288,7 @@ class SwitchingLinearHMM(FunsorDistribution):
             logp = logp.reduce(ops.logaddexp, frozenset(["class", "state"]))
 
         cat, mvn = funsor_to_cat_and_mvn(logp, ndims, ("class(time=1)",))
+        cat_base_dist = cat.base_dist if isinstance(cat, dist.ExpandedDistribution) else cat
         cat = cat.expand(self.batch_shape)
-        mvn = mvn.expand(self.batch_shape + cat.logits.shape[-1:])
+        mvn = mvn.expand(self.batch_shape + cat_base_dist.logits.shape[-1:])
         return cat, mvn
