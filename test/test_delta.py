@@ -6,9 +6,9 @@ import pytest
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import reals
-from funsor.tensor import Tensor
+from funsor.tensor import Tensor, numeric_array
 from funsor.terms import Number, Variable
-from funsor.testing import assert_close, check_funsor, numeric_array, randn
+from funsor.testing import assert_close, check_funsor, randn
 
 
 def test_eager_subs_variable():

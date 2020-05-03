@@ -5,6 +5,8 @@ import math
 from collections import OrderedDict, defaultdict
 from functools import reduce
 
+import numpy as np
+
 import funsor
 import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
@@ -13,7 +15,7 @@ from funsor.domains import reals
 from funsor.ops import AddOp, NegOp, SubOp
 from funsor.tensor import Tensor, align_tensor, align_tensors
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
-from funsor.util import broadcast_shape, get_tracing_state, lazy_property
+from funsor.util import broadcast_shape, get_backend, get_tracing_state, lazy_property
 
 
 def _log_det_tri(x):
@@ -578,7 +580,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         return None  # defer to default implementation
 
-    def unscaled_sample(self, sampled_vars, sample_inputs):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
@@ -598,8 +600,16 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         if sampled_vars == frozenset(real_inputs):
             shape = sample_shape + self.info_vec.shape
-            # TODO: revise the logic here; `key` is required for JAX normal sampler
-            white_noise = funsor.testing.randn(shape + (1,))
+            backend = get_backend()
+            if backend != "numpy":
+                from importlib import import_module
+                dist = import_module(funsor.distributions.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend])
+                sample_args = (shape,) if rng_key is None else (rng_key, shape)
+                white_noise = dist.Normal.dist_class(0, 1).sample(*sample_args)
+            else:
+                white_noise = np.random.randn(*shape)
+            white_noise = ops.unsqueeze(white_noise, -1)
+
             white_vec = ops.triangular_solve(self.info_vec[..., None], self._precision_chol)
             sample = ops.triangular_solve(white_noise + white_vec, self._precision_chol, transpose=True)[..., 0]
             offsets, _ = _compute_offsets(real_inputs)

@@ -9,8 +9,9 @@ from funsor.distributions import Normal
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.memoize import memoize
+from funsor.tensor import numeric_array
 from funsor.terms import reflect
-from funsor.testing import make_einsum_example, numeric_array, xfail_param
+from funsor.testing import make_einsum_example, xfail_param
 from funsor.util import get_backend
 
 

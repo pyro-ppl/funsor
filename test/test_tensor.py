@@ -13,9 +13,9 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
-from funsor.testing import (assert_close, assert_equiv, astype, check_funsor, empty,
-                            numeric_array, rand, randn, random_tensor, zeros)
-from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, stack, tensordot
+from funsor.testing import (assert_close, assert_equiv, check_funsor, empty,
+                            rand, randn, random_tensor, zeros)
+from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, numeric_array, stack, tensordot
 from funsor.util import get_backend
 
 
@@ -30,19 +30,10 @@ def test_quote(output_shape, inputs):
     assert_close(eval(s), x)
 
 
-def _get_dtypes(backend):
-    if backend == "torch":
-        import torch
-
-        return [torch.float, torch.long, torch.uint8, torch.bool]
-    else:
-        return [np.float32, np.float64, np.int32, np.int64, np.uint8]
-
-
 @pytest.mark.parametrize('shape', [(), (4,), (3, 2)])
-@pytest.mark.parametrize('dtype', _get_dtypes(get_backend()))
+@pytest.mark.parametrize('dtype', ['float32', 'float64', 'int32', 'int64', 'uint8', 'bool'])
 def test_to_funsor(shape, dtype):
-    t = astype(randn(shape), dtype)
+    t = ops.astype(randn(shape), dtype)
     f = funsor.to_funsor(t)
     assert isinstance(f, Tensor)
     assert funsor.to_funsor(t, reals(*shape)) is f
@@ -298,7 +289,7 @@ def test_unary(symbol, dims):
     dtype = 'real'
     data = rand(shape) + 0.5
     if symbol == '~':
-        data = astype(data, 'uint8')
+        data = ops.astype(data, 'uint8')
         dtype = 2
     if get_backend() != "torch" and symbol in ["abs", "sqrt", "exp", "log", "log1p", "sigmoid"]:
         expected_data = getattr(ops, symbol)(data)
@@ -339,8 +330,8 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
     dtype = 'real'
     if symbol in BOOLEAN_OPS:
         dtype = 2
-        data1 = astype(data1, 'uint8')
-        data2 = astype(data2, 'uint8')
+        data1 = ops.astype(data1, 'uint8')
+        data2 = ops.astype(data2, 'uint8')
     x1 = Tensor(data1, inputs1, dtype)
     x2 = Tensor(data2, inputs2, dtype)
     inputs, aligned = align_tensors(x1, x2)
@@ -563,7 +554,7 @@ def test_reduce_all(dims, op):
     inputs = OrderedDict((d, bint(sizes[d])) for d in dims)
     data = rand(shape) + 0.5
     if op in [ops.and_, ops.or_]:
-        data = astype(data, 'uint8')
+        data = ops.astype(data, 'uint8')
     expected_data = REDUCE_OP_TO_NUMERIC[op](data, None)
 
     x = Tensor(data, inputs)
@@ -586,7 +577,7 @@ def test_reduce_subset(dims, reduced_vars, op):
     data = rand(shape) + 0.5
     dtype = 'real'
     if op in [ops.and_, ops.or_]:
-        data = astype(data, 'uint8')
+        data = ops.astype(data, 'uint8')
         dtype = 2
     x = Tensor(data, inputs, dtype)
     actual = x.reduce(op, reduced_vars)
@@ -619,7 +610,7 @@ def test_reduce_event(op, event_shape, dims):
     data = rand(shape) + 0.5
     dtype = 'real'
     if op in [ops.and_, ops.or_]:
-        data = astype(data, 'uint8')
+        data = ops.astype(data, 'uint8')
     expected_data = numeric_op(data.reshape(batch_shape + (-1,)), -1)
 
     x = Tensor(data, inputs, dtype=dtype)

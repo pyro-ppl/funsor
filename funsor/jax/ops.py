@@ -10,40 +10,6 @@ from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, logsumexp
 
 import funsor.ops as ops
-from funsor.adjoint import adjoint_ops
-from funsor.interpreter import children, recursion_reinterpret
-from funsor.terms import Funsor, to_funsor
-from funsor.tensor import Tensor, tensor_to_funsor
-from funsor.util import quote
-
-
-@adjoint_ops.register(Tensor, ops.AssociativeOp, ops.AssociativeOp, Funsor, (DeviceArray, Tracer), tuple, object)
-def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
-    return {}
-
-
-@recursion_reinterpret.register(DeviceArray)
-@recursion_reinterpret.register(Tracer)
-def _recursion_reinterpret_ground(x):
-    return x
-
-
-@children.register(DeviceArray)
-@children.register(Tracer)
-def _children_ground(x):
-    return ()
-
-
-to_funsor.register(DeviceArray)(tensor_to_funsor)
-to_funsor.register(Tracer)(tensor_to_funsor)
-
-
-@quote.register(DeviceArray)
-def _quote(x, indent, out):
-    """
-    Work around JAX's DeviceArray not supporting reproducible repr.
-    """
-    out.append((indent, f"np.array({repr(x.copy().tolist())}, dtype=np.{x.dtype})"))
 
 
 ################################################################################
@@ -82,6 +48,11 @@ def _amin(x, dim, keepdims=False):
 @ops.any.register(array, (int, type(None)))
 def _any(x, dim):
     return np.any(x, axis=dim)
+
+
+@ops.astype.register(array, str)
+def _astype(x, dtype):
+    return x.astype(dtype)
 
 
 @ops.cat.register(int, [array])
