@@ -235,6 +235,16 @@ def rand(*args):
         return np.array(np.random.rand(*shape))
 
 
+def randint(low, high, size):
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.randint(low, high, size=size)
+    else:
+        return np.random.randint(low, high, size=size)
+
+
 def randn(*args):
     if isinstance(args[0], tuple):
         assert len(args) == 1

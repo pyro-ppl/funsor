@@ -113,14 +113,13 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         sample_shape = tuple(v.size for v in sample_inputs.values())
 
         raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
+        sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
         if getattr(raw_dist, "has_rsample", False):
-            raw_sample = raw_dist.rsample(sample_shape)
+            raw_sample = raw_dist.rsample(*sample_args)
         else:
-            sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
-            raw_sample = raw_dist.sample(*sample_args)
+            raw_sample = ops.detach(raw_dist.sample(*sample_args))
 
         result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
-        # FIXME: do we need to have `has_rsample` attribution in NumPyro?
         if not getattr(raw_dist, "has_rsample", False):
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
             raw_log_prob = raw_dist.log_prob(raw_sample)
@@ -174,8 +173,14 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 ################################################################################
 
 
+def _eager_log_prob(dist_name, *params):
+    backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    return getattr(backend_dist_module, dist_name).eager_log_prob(*params)
+
+
 def make_dist(dist_name, param_names):
-    @makefun.with_signature(f"{dist_name}({', '.join(param_names)}, value='value')")
+    @makefun.with_signature(f"{dist_name}({', '.join(param_names)}, value='value')",
+                            eager_log_prob=functools.partial(_eager_log_prob, dist_name))
     def dist_fn(*args, **kwargs):
         backend_dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
         return getattr(backend_dist_module, dist_name)(*args, **kwargs)
@@ -201,7 +206,7 @@ FUNSOR_DIST_NAMES = {
     'NonreparameterizedGamma': ('concentration', 'rate'),
     'NonreparameterizedNormal': ('loc', 'scale'),
     'Normal': ('loc', 'scale'),
-    'Poisson': ('rate'),
+    'Poisson': ('rate',),
     'VonMises': ('loc', 'concentration'),
 }
 
@@ -343,7 +348,10 @@ def eager_multinomial(total_count, probs, value):
     shape = broadcast_shape(total_count.shape + (1,), probs.shape, value.shape)
     probs = Tensor(ops.expand(probs, shape), inputs)
     value = Tensor(ops.expand(value, shape), inputs)
-    total_count = Number(ops.amax(total_count).item())  # Used by distributions validation code.
+    if get_backend() == "torch":
+        total_count = Number(ops.amax(total_count, None).item())  # Used by distributions validation code.
+    else:
+        total_count = Tensor(ops.expand(total_count, shape[:-1]), inputs)
     return Multinomial.eager_log_prob(total_count, probs, value)  # noqa: F821
 
 
@@ -363,7 +371,7 @@ def eager_delta_tensor(v, log_density, value):
     event_dim = len(v.output.shape)
     inputs, (v, log_density, value) = align_tensors(v, log_density, value)
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
-    data = backend_dist.dist_class.Delta(v, log_density, event_dim).log_prob(value)  # noqa: F821
+    data = backend_dist.Delta.dist_class(v, log_density, event_dim).log_prob(value)  # noqa: F821
     return Tensor(data, inputs)
 
 

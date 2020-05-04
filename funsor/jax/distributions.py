@@ -38,12 +38,36 @@ from funsor.terms import Funsor, Variable, eager, to_funsor
 ################################################################################
 
 
+class _NumPyroWrapper_Binomial(dist.BinomialProbs):
+    pass
+
+
 class _NumPyroWrapper_Categorical(dist.CategoricalProbs):
     pass
 
 
+class _NumPyroWrapper_Multinomial(dist.MultinomialProbs):
+    pass
+
+
+class _NumPyroWrapper_NonreparameterizedBeta(dist.Beta):
+    has_rsample = False
+
+
+class _NumPyroWrapper_NonreparameterizedDirichletl(dist.Dirichlet):
+    has_rsample = False
+
+
+class _NumPyroWrapper_NonreparameterizedGamma(dist.Gamma):
+    has_rsample = False
+
+
+class _NumPyroWrapper_NonreparameterizedNormal(dist.Normal):
+    has_rsample = False
+
+
 def _get_numpyro_dist(dist_name):
-    if dist_name in ['Categorical']:
+    if dist_name in ['Binomial', 'Categorical', 'Multinomial'] or dist_name.startswith('Nonreparameterized'):
         return globals().get('_NumPyroWrapper_' + dist_name)
     else:
         return getattr(dist, dist_name, None)
@@ -71,6 +95,11 @@ def make_dist(backend_dist_class, param_names=()):
 for dist_name, param_names in FUNSOR_DIST_NAMES.items():
     numpyro_dist = _get_numpyro_dist(dist_name)
     if numpyro_dist is not None:
+        # resolve numpyro distributions do not have `has_rsample` attributes
+        has_rsample = getattr(numpyro_dist, 'has_rsample', not numpyro_dist.is_discrete)
+        if has_rsample:
+            numpyro_dist.has_rsample = True
+            numpyro_dist.rsample = numpyro_dist.sample
         locals()[dist_name] = make_dist(numpyro_dist, param_names)
 
 # Delta has to be treated specially because of its weird shape inference semantics
@@ -100,12 +129,26 @@ to_funsor.register(dist.TransformedDistribution)(transformeddist_to_funsor)
 to_funsor.register(dist.MultivariateNormal)(mvndist_to_funsor)
 
 
+@to_funsor.register(dist.BinomialProbs)
+@to_funsor.register(dist.BinomialLogits)
+def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
+    new_pyro_dist = _NumPyroWrapper_Binomial(probs=numpyro_dist.probs)
+    return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
+
+
 @to_funsor.register(dist.CategoricalProbs)
 # XXX: in Pyro backend, we always convert pyro.distributions.Categorical
 # to funsor.distributions.Categorical
 @to_funsor.register(dist.CategoricalLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Categorical(probs=numpyro_dist.probs)
+    return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
+
+
+@to_funsor.register(dist.MultinomialProbs)
+@to_funsor.register(dist.MultinomialLogits)
+def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
+    new_pyro_dist = _NumPyroWrapper_Multinomial(probs=numpyro_dist.probs)
     return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
 
 
