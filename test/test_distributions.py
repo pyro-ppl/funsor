@@ -26,7 +26,8 @@ from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
                                 reason="numpy does not have distributions backend")
-backend_dist = getattr(import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]), "dist")
+if get_backend() != "numpy":
+    backend_dist = getattr(import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]), "dist")
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)

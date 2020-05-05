@@ -96,6 +96,7 @@ def test_einsum_complete_sharing_reuse_cache(equation, plates, backend, einsum_i
 
 @pytest.mark.parametrize('check_sample', [
     False, xfail_param(True, reason="Joint.sample cannot directly be memoized in this way yet")])
+@pytest.mark.skipif(get_backend() == "numpy", reason="there is no numpy distributions backend")
 def test_memoize_sample(check_sample):
 
     with memoize():
