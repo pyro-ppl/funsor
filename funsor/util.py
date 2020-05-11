@@ -179,8 +179,8 @@ def set_backend(backend):
         import jax  # noqa: F401
         import funsor.jax  # noqa: F401
     else:
-        raise ValueError(f"backend should be either 'numpy', 'torch', or 'jax'"
-                         ", got {backend}")
+        raise ValueError("backend should be either 'numpy', 'torch', or 'jax'"
+                         ", got {}".format(backend))
 
 
 def get_backend():
