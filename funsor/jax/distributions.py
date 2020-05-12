@@ -2,15 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
-import inspect
 
-import makefun
 import numpyro.distributions as dist
 
-from funsor.distributions import (
-    Distribution,
-    DistributionMeta,
+from funsor.distribution import (  # noqa: F401
+    Bernoulli,
     FUNSOR_DIST_NAMES,
+    LogNormal,
     backenddist_to_funsor,
     eager_beta,
     eager_binomial,
@@ -24,6 +22,7 @@ from funsor.distributions import (
     eager_mvn,
     eager_normal,
     indepdist_to_funsor,
+    make_dist,
     maskeddist_to_funsor,
     mvndist_to_funsor,
     transformeddist_to_funsor,
@@ -71,25 +70,6 @@ def _get_numpyro_dist(dist_name):
         return globals().get('_NumPyroWrapper_' + dist_name)
     else:
         return getattr(dist, dist_name, None)
-
-
-def make_dist(backend_dist_class, param_names=()):
-    if not param_names:
-        param_names = tuple(name for name in inspect.getfullargspec(backend_dist_class.__init__)[0][1:]
-                            if name in backend_dist_class.arg_constraints)
-
-    @makefun.with_signature(f"__init__(self, {', '.join(param_names)}, value='value')")
-    def dist_init(self, **kwargs):
-        return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
-
-    dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {
-        'dist_class': backend_dist_class,
-        '__init__': dist_init,
-    })
-
-    eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
-
-    return dist_class
 
 
 for dist_name, param_names in FUNSOR_DIST_NAMES.items():

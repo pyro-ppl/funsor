@@ -317,7 +317,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         backend = get_backend()
         if backend != "numpy":
             from importlib import import_module
-            dist = import_module(funsor.distributions.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend])
+            dist = import_module(funsor.distribution.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend])
             sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
             flat_sample = dist.CategoricalLogits.dist_class(logits=flat_logits).sample(*sample_args)
         else:  # default numpy backend

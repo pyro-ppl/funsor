@@ -10,11 +10,10 @@ import numpy as np
 import pytest
 
 import funsor
-import funsor.distributions as dist
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
-from funsor.distributions import BACKEND_TO_DISTRIBUTIONS_BACKEND
+from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.domains import bint, reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.integrate import Integrate
@@ -27,7 +26,8 @@ from funsor.util import get_backend
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
                                 reason="numpy does not have distributions backend")
 if get_backend() != "numpy":
-    backend_dist = getattr(import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]), "dist")
+    dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    backend_dist = dist.dist
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
@@ -445,7 +445,8 @@ def test_normal_independent():
     assert fn.inputs['z_i'] == reals()
     d = Independent(fn, 'z', 'i', 'z_i')
     assert d.inputs['z'] == reals(2)
-    sample = d.sample(frozenset(['z']))
+    rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
+    sample = d.sample(frozenset(['z']), rng_key=rng_key)
     assert isinstance(sample, Contraction)
     assert sample.inputs['z'] == reals(2)
 
@@ -510,7 +511,8 @@ def test_mvn_gaussian(batch_shape):
 
 
 def _check_mvn_affine(d1, data):
-    assert isinstance(d1, dist.MultivariateNormal)
+    backend_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    assert isinstance(d1, backend_module.MultivariateNormal)
     d2 = reinterpret(d1)
     assert issubclass(type(d2), GaussianMixture)
     actual = d2(**data)
@@ -608,7 +610,7 @@ def test_poisson_probs_density(batch_shape, syntax):
     check_funsor(poisson, {'rate': reals(), 'value': reals()}, reals())
 
     rate = Tensor(rand(batch_shape), inputs)
-    value = Tensor(randn(batch_shape).exp().round(), inputs)
+    value = Tensor(ops.astype(ops.astype(ops.exp(randn(batch_shape)), 'int32'), 'float32'), inputs)
     expected = poisson(rate, value)
     check_funsor(expected, inputs, reals())
 
@@ -736,8 +738,9 @@ def _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=1e-2,
         for param in params:
             param.requires_grad_()
 
-        diff_sum, diff = _get_stat_diff_fn(params)
+        res = _get_stat_diff_fn(params)
         if sample_inputs:
+            diff_sum, diff = res
             assert_close(diff, ops.new_zeros(diff, diff.shape), atol=atol, rtol=None)
             if not skip_grad:
                 diff_grads = torch.autograd.grad(diff_sum, params, allow_unused=True)

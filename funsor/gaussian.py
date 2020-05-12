@@ -603,7 +603,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             backend = get_backend()
             if backend != "numpy":
                 from importlib import import_module
-                dist = import_module(funsor.distributions.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend])
+                dist = import_module(funsor.distribution.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend])
                 sample_args = (shape,) if rng_key is None else (rng_key, shape)
                 white_noise = dist.Normal.dist_class(0, 1).sample(*sample_args)
             else:
