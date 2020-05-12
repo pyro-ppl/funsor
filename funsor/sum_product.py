@@ -427,7 +427,7 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
 
 @quote.register(MarkovProduct)
 def _(arg, indent, out):
-    line = f"{type(arg).__name__}({repr(arg.sum_op)}, {repr(arg.prod_op)},"
+    line = "{}({}, {},".format(type(arg).__name__, repr(arg.sum_op), repr(arg.prod_op))
     out.append((indent, line))
     for value in arg._ast_values[2:]:
         quote.inplace(value, indent + 1, out)

@@ -802,8 +802,8 @@ def to_data(x, name_to_dim=None, **kwargs):
 @to_data.register(Funsor)
 def _to_data_funsor(x, name_to_dim=None):
     if name_to_dim is None and x.inputs:
-        raise ValueError(f"cannot convert {type(x)} to data due to lazy inputs: {set(x.inputs)}")
-    raise PatternMissingError(r"cannot convert to a non-Funsor: {repr(x)}")
+        raise ValueError("cannot convert {} to data due to lazy inputs: {}".format(type(x), set(x.inputs)))
+    raise PatternMissingError("cannot convert to a non-Funsor: {}".format(repr(x)))
 
 
 class Variable(Funsor):
@@ -833,7 +833,7 @@ class Variable(Funsor):
 @to_funsor.register(str)
 def name_to_funsor(name, output=None):
     if output is None:
-        raise ValueError(f"Missing output: {name}")
+        raise ValueError("Missing output: {}".format(name))
     return Variable(name, output)
 
 
@@ -1565,7 +1565,7 @@ def quote_inplace_oneline(arg, indent, out):
 @quote.register(Cat)
 @quote.register(Lambda)
 def quote_inplace_first_arg_on_first_line(arg, indent, out):
-    line = f"{type(arg).__name__}({repr(arg._ast_values[0])},"
+    line = "{}({},".format(type(arg).__name__, repr(arg._ast_values[0]))
     out.append((indent, line))
     for value in arg._ast_values[1:-1]:
         quote.inplace(value, indent + 1, out)

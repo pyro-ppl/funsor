@@ -17,7 +17,7 @@ def test_all_modules_are_imported():
             continue
         if name.startswith('__'):
             continue
-        assert hasattr(import_module('funsor'), name), f'funsor/__init__.py does not import {name}'
+        assert hasattr(import_module('funsor'), name), 'funsor/__init__.py does not import {}'.format(name)
         actual = getattr(import_module('funsor'), name)
-        expected = import_module(f'funsor.{name}')
+        expected = import_module('funsor.{}'.format(name))
         assert actual == expected

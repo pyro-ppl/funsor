@@ -117,7 +117,7 @@ def _quote(arg, indent, out):
     """
     Work around NumPy ndarray not supporting reproducible repr.
     """
-    out.append((indent, f"np.array({repr(arg.tolist())}, dtype=np.{arg.dtype})"))
+    out.append((indent, "np.array({}, dtype=np.{})".format(repr(arg.tolist()), arg.dtype)))
 
 
 def broadcast_shape(*shapes, **kwargs):

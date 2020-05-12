@@ -154,7 +154,7 @@ def extract_affine(fn):
         inputs1 = ''.join(map(opt_einsum.get_symbol, range(len(coeff.shape))))
         inputs2 = inputs1[:len(v.shape)]
         output = inputs1[len(v.shape):]
-        eqn = f'{inputs1},{inputs2}->{output}'
+        eqn = '{},{}->{}'.format(inputs1, inputs2, output)
         coeffs[k] = coeff, eqn
     return const, coeffs
 

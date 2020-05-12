@@ -13,7 +13,7 @@ from setuptools import find_packages, setup
 try:
     long_description = open('README.md', encoding='utf-8').read()
 except Exception as e:
-    sys.stderr.write(f'Failed to convert README.md to rst:\n  {e}\n')
+    sys.stderr.write('Failed to convert README.md to rst:\n  {}\n'.format(e))
     sys.stderr.flush()
     long_description = ''
 

@@ -34,7 +34,7 @@ def _quote(x, indent, out):
     """
     Work around PyTorch not supporting reproducible repr.
     """
-    out.append((indent, f"torch.tensor({repr(x.tolist())}, dtype={x.dtype})"))
+    out.append((indent, "torch.tensor({}, dtype={})".format(repr(x.tolist()), x.dtype)))
 
 
 to_funsor.register(torch.Tensor)(tensor_to_funsor)
