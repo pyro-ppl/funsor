@@ -327,7 +327,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         for name, domain in reversed(list(event_inputs.items())):
             size = domain.dtype
             point = Tensor(mod_sample % size, sb_inputs, size)
-            mod_sample = mod_sample / size
+            mod_sample = mod_sample // size
             results.append(Delta(name, point))
 
         # Account for the log normalizer factor.
