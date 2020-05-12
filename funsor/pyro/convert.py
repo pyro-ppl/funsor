@@ -19,7 +19,6 @@ import math
 from collections import OrderedDict
 
 import torch
-from pyro.distributions.util import broadcast_shape
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta
@@ -29,6 +28,7 @@ from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import Tensor, align_tensors
 from funsor.terms import Funsor, Independent, Variable, eager, to_data, to_funsor
+from funsor.util import broadcast_shape
 
 # Conversion functions use fixed names for Pyro batch dims, but
 # accept an event_inputs tuple for custom event dim names.

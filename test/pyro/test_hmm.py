@@ -4,10 +4,10 @@
 import pyro.distributions as dist
 import pytest
 import torch
-from pyro.distributions.util import broadcast_shape
 
 from funsor.pyro.hmm import DiscreteHMM, GaussianHMM, GaussianMRF, SwitchingLinearHMM
 from funsor.testing import assert_close, random_mvn
+from funsor.util import broadcast_shape
 
 
 def check_expand(old_dist, old_data):

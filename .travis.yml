@@ -29,5 +29,5 @@ branches:
 
 jobs:
     include:
-        - python: 3.6
+        - python: 3.5
           script: make test
