@@ -116,8 +116,8 @@ class SLDS(nn.Module):
 
         for t, y in enumerate(data):
             # construct free variables for s_t and x_t
-            s_vars[t] = funsor.Variable(f's_{t}', funsor.bint(self.num_components))
-            x_vars[t] = funsor.Variable(f'x_{t}', funsor.reals(self.hidden_dim))
+            s_vars[t] = funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components))
+            x_vars[t] = funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim))
 
             # incorporate the discrete switching dynamics
             log_prob += dist.Categorical(trans_probs(s=s_vars[t - 1]), value=s_vars[t])
@@ -166,8 +166,8 @@ class SLDS(nn.Module):
         test_LLs = []
 
         for t, y in enumerate(data):
-            s_vars[t] = funsor.Variable(f's_{t}', funsor.bint(self.num_components))
-            x_vars[t] = funsor.Variable(f'x_{t}', funsor.reals(self.hidden_dim))
+            s_vars[t] = funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components))
+            x_vars[t] = funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim))
 
             log_prob += dist.Categorical(trans_probs(s=s_vars[t - 1]), value=s_vars[t])
 
@@ -185,7 +185,8 @@ class SLDS(nn.Module):
                 _log_prob = log_prob - log_prob.reduce(ops.logaddexp)
                 predictive_y_dist = y_dist(s=s_vars[t], x=x_vars[t]) + _log_prob
                 test_LLs.append(predictive_y_dist(y=y).reduce(ops.logaddexp).data.item())
-                predictive_y_dist = predictive_y_dist.reduce(ops.logaddexp, frozenset([f"x_{t}", f"s_{t}"]))
+                predictive_y_dist = predictive_y_dist.reduce(
+                    ops.logaddexp, frozenset(["x_{}".format(t), "s_{}".format(t)]))
                 predictive_y_dists.append(funsor_to_mvn(predictive_y_dist, 0, ()))
 
             log_prob += y_dist(s=s_vars[t], x=x_vars[t], y=y)
@@ -200,8 +201,8 @@ class SLDS(nn.Module):
             smoothing_dists = [filtering_dists[-1]]
             T = data.size(0)
 
-            s_vars = {t: funsor.Variable(f's_{t}', funsor.bint(self.num_components)) for t in range(T)}
-            x_vars = {t: funsor.Variable(f'x_{t}', funsor.reals(self.hidden_dim)) for t in range(T)}
+            s_vars = {t: funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components)) for t in range(T)}
+            x_vars = {t: funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim)) for t in range(T)}
 
             # do the backward recursion.
             # let p[t|t-1] be the predictive distribution at time step t.
@@ -225,7 +226,7 @@ class SLDS(nn.Module):
 
         if smoothing:
             # compute smoothed mean function
-            smoothing_dists = [funsor_to_cat_and_mvn(d, 0, (f"s_{t}",))
+            smoothing_dists = [funsor_to_cat_and_mvn(d, 0, ("s_{}".format(t),))
                                for t, d in enumerate(reversed(smoothing_dists))]
             means = torch.stack([d[1].mean for d in smoothing_dists])  # T 2 xdim
             means = torch.matmul(means.unsqueeze(-2), self.observation_matrix).squeeze(-2)  # T 2 ydim

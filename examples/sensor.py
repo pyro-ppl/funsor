@@ -131,7 +131,7 @@ class Model(nn.Module):
         curr = "state_init"
         logp += self.init(state=curr)
         for t, x in enumerate(observations):
-            prev, curr = curr, f"state_{t}"
+            prev, curr = curr, "state_{}".format(t)
             logp += self.trans_dist(prev=prev, curr=curr)
             logp += self.observation_dist(state=curr, obs=x)
             # marginalize out previous state
@@ -140,7 +140,7 @@ class Model(nn.Module):
         logp = logp.reduce(ops.logaddexp, "bias")
 
         # save posterior over the final state
-        assert set(logp.inputs) == {f'state_{len(observations) - 1}'}
+        assert set(logp.inputs) == {'state_{}'.format(len(observations) - 1)}
         posterior = funsor_to_mvn(logp, ndims=0)
 
         # marginalize out remaining variables
@@ -155,7 +155,7 @@ def track(args):
         torch.manual_seed(seed)
         observations, states, sensor_bias = generate_data(max(args.num_frames), args.num_sensors)
         for bias, num_frames in itertools.product(args.bias, args.num_frames):
-            print(f'tracking with seed={seed}, bias={bias}, num_frames={num_frames}')
+            print('tracking with seed={}, bias={}, num_frames={}'.format(seed, bias, num_frames))
             model = Model(args.num_sensors)
             optim = Adam(model.parameters(), lr=args.lr, betas=(0.5, 0.8))
             losses = []
@@ -181,7 +181,7 @@ def track(args):
             final_vel_est = final_state_est[2:]
             final_pos_error = float(torch.norm(final_pos_true - final_pos_est))
             final_vel_error = float(torch.norm(final_vel_true - final_vel_est))
-            print(f'final_pos_error = {final_pos_error}')
+            print('final_pos_error = {}'.format(final_pos_error))
 
             results[seed, bias, num_frames] = {
                 "args": args,
@@ -197,7 +197,7 @@ def track(args):
                 "final_vel_error": final_vel_error,
             }
         if args.metrics_filename:
-            print(f'saving output to: {args.metrics_filename}')
+            print('saving output to: {}'.format(args.metrics_filename))
             torch.save(results, args.metrics_filename)
     return results
 
