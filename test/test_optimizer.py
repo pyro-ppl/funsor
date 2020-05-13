@@ -8,7 +8,7 @@ import torch
 from pyro.ops.contract import einsum as pyro_einsum
 
 import funsor
-from funsor.distributions import Categorical
+from funsor.torch.distributions import Categorical
 from funsor.domains import bint
 from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
@@ -18,6 +18,7 @@ from funsor.terms import Variable, normalize, reflect
 from funsor.testing import assert_close, make_chain_einsum, make_einsum_example, make_hmm_einsum, make_plated_hmm_einsum
 from funsor.util import get_backend
 
+# TODO: make this file backend agnostic
 pytestmark = pytest.mark.skipif(get_backend() != "torch",
                                 reason="numpy/jax backend requires porting pyro.ops.einsum")
 

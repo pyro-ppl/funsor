@@ -72,7 +72,10 @@ def _get_numpyro_dist(dist_name):
         return getattr(dist, dist_name, None)
 
 
-for dist_name, param_names in FUNSOR_DIST_NAMES.items():
+NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES
+
+
+for dist_name, param_names in NUMPYRO_DIST_NAMES:
     numpyro_dist = _get_numpyro_dist(dist_name)
     if numpyro_dist is not None:
         # resolve numpyro distributions do not have `has_rsample` attributes

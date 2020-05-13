@@ -6,7 +6,6 @@ from collections import OrderedDict
 
 import numpy as np
 import pytest
-import torch
 
 import funsor
 import funsor.ops as ops
@@ -669,7 +668,9 @@ def test_function_lazy_matmul():
 
 
 def _numeric_max_and_argmax(x):
-    if torch.is_tensor(x):
+    if get_backend() == "torch":
+        import torch
+
         return torch.max(x, dim=-1)
     else:
         return np.max(x, axis=-1), np.argmax(x, axis=-1)
@@ -801,7 +802,9 @@ def test_batched_einsum(equation, batch1, batch2):
 
 
 def _numeric_tensordot(x, y, dim):
-    if torch.is_tensor(x):
+    if get_backend() == "torch":
+        import torch
+
         return torch.tensordot(x, y, dim)
     else:
         return np.tensordot(x, y, axes=dim)

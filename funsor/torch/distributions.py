@@ -64,7 +64,13 @@ def _get_pyro_dist(dist_name):
         return getattr(dist, dist_name)
 
 
-for dist_name, param_names in FUNSOR_DIST_NAMES.items():
+PYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
+    ('DirichletMultinomial', ('concentration', 'total_count')),
+    ('VonMises', ('loc', 'concentration')),
+]
+
+
+for dist_name, param_names in PYRO_DIST_NAMES:
     locals()[dist_name] = make_dist(_get_pyro_dist(dist_name), param_names)
 
 

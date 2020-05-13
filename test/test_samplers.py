@@ -7,7 +7,6 @@ from importlib import import_module
 
 import numpy as np
 import pytest
-from torch.autograd import grad
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
@@ -233,21 +232,35 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
     batch_inputs = OrderedDict(batch_inputs)
     event_inputs = OrderedDict(event_inputs)
     sampled_vars = frozenset(event_inputs)
-    p = random_tensor(be_inputs)
-    p.data.requires_grad_(test_grad)
+    p_data = random_tensor(be_inputs).data
+    rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
+    probe = randn(p_data.shape)
 
-    q = p.sample(sampled_vars, sample_inputs)
-    mq = p.materialize(q).reduce(ops.logaddexp, 'n')
-    mq = mq.align(tuple(p.inputs))
-    assert_close(mq, p, atol=0.1, rtol=None)
+    def diff_fn(p_data):
+        p = Tensor(p_data, be_inputs)
+        q = p.sample(sampled_vars, sample_inputs, rng_key=rng_key)
+        mq = p.materialize(q).reduce(ops.logaddexp, 'n')
+        mq = mq.align(tuple(p.inputs))
 
-    if test_grad:
         _, (p_data, mq_data) = align_tensors(p, mq)
         assert p_data.shape == mq_data.shape
-        probe = randn(p_data.shape)
-        expected = grad((p_data.exp() * probe).sum(), [p.data])[0]
-        actual = grad((mq_data.exp() * probe).sum(), [p.data])[0]
-        assert_close(actual, expected, atol=0.1, rtol=None)
+        return (ops.exp(mq_data) * probe).sum() - (ops.exp(p_data) * probe).sum(), mq
+
+    if test_grad:
+        if get_backend() == "jax":
+            import jax
+
+            diff_grad, mq = jax.grad(diff_fn, has_aux=True)(p_data)
+        else:
+            import torch
+
+            p_data.requires_grad_(True)
+            diff_grad = torch.autograd.grad(diff_fn(p_data)[0], [p_data])[0]
+
+        assert_close(diff_grad, ops.new_zeros(diff_grad, diff_grad.shape), atol=0.1, rtol=None)
+    else:
+        _, mq = diff_fn(p_data)
+        assert_close(mq, Tensor(p_data, be_inputs), atol=0.1, rtol=None)
 
 
 @pytest.mark.parametrize('batch_inputs', [

@@ -6,7 +6,7 @@ from collections import OrderedDict
 import pytest
 import torch
 
-import funsor.distributions as dist
+import funsor.torch.distributions as dist
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
