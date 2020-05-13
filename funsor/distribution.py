@@ -161,9 +161,11 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             output = reals(raw_shape[-1])
         elif support_name in ["_LowerCholesky", "_PositiveDefinite"]:
             output = reals(*raw_shape[-2:])
+        # resolve the issue: logits's constraints are real (instead of real_vector)
+        # for discrete multivariate distributions in Pyro
         elif support_name == "_Real" and name == "logits" and (
-                "probs" not in cls.dist_class.arg_constraints
-                or type(cls.dist_class.arg_constraints["probs'"]) == "_Simplex"):
+                "probs" in cls.dist_class.arg_constraints
+                and type(cls.dist_class.arg_constraints["probs"]) == "_Simplex"):
             output = reals(raw_shape[-1])
         else:
             output = None

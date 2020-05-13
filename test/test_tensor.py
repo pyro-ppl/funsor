@@ -21,6 +21,9 @@ from funsor.util import get_backend
 @pytest.mark.parametrize('output_shape', [(), (2,), (3, 2)], ids=str)
 @pytest.mark.parametrize('inputs', [(), ('a',), ('a', 'b'), ('b', 'a', 'c')], ids=str)
 def test_quote(output_shape, inputs):
+    if get_backend() == "torch":
+        import torch  # noqa: F401
+
     sizes = {'a': 4, 'b': 5, 'c': 6}
     inputs = OrderedDict((k, bint(sizes[k])) for k in inputs)
     x = random_tensor(inputs, reals(*output_shape))
