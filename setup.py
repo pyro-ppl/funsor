@@ -56,7 +56,7 @@ setup(
         'test': [
             'flake8',
             'pandas',
-            'pyro-api>=0.1',
+            'pyro-api==0.1.1',
             'pytest-xdist==1.27.0',
             'pillow-simd',
             'scipy',
