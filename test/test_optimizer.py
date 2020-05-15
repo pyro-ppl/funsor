@@ -5,7 +5,6 @@ from collections import OrderedDict
 
 import pytest
 import torch
-from pyro.ops.contract import einsum as pyro_einsum
 
 import funsor
 from funsor.torch.distributions import Categorical
@@ -20,7 +19,9 @@ from funsor.util import get_backend
 
 # TODO: make this file backend agnostic
 pytestmark = pytest.mark.skipif(get_backend() != "torch",
-                                reason="numpy/jax backend requires porting pyro.ops.einsum")
+                                reason="jax backend does not have pyro.ops.contract.einsum equivalent")
+if get_backend() == "torch":
+    from pyro.ops.contract import einsum as pyro_einsum
 
 OPTIMIZED_EINSUM_EXAMPLES = [
     make_chain_einsum(t) for t in range(2, 50, 10)

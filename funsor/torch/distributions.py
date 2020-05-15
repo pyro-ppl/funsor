@@ -44,15 +44,29 @@ class _PyroWrapper_BernoulliProbs(dist.Bernoulli):
     def __init__(self, probs, validate_args=None):
         return super().__init__(probs=probs, validate_args=validate_args)
 
+    # XXX: subclasses of Pyro distribution which defines a custom __init__ method
+    # should also have `expand` implemented.
+    def expand(self, batch_shape, _instance=None):
+        new = self._get_checked_instance(_PyroWrapper_BernoulliProbs, _instance)
+        return super().expand(batch_shape, _instance=new)
+
 
 class _PyroWrapper_BernoulliLogits(dist.Bernoulli):
     def __init__(self, logits, validate_args=None):
         return super().__init__(logits=logits, validate_args=validate_args)
 
+    def expand(self, batch_shape, _instance=None):
+        new = self._get_checked_instance(_PyroWrapper_BernoulliLogits, _instance)
+        return super().expand(batch_shape, _instance=new)
+
 
 class _PyroWrapper_CategoricalLogits(dist.Categorical):
     def __init__(self, logits, validate_args=None):
         return super().__init__(logits=logits, validate_args=validate_args)
+
+    def expand(self, batch_shape, _instance=None):
+        new = self._get_checked_instance(_PyroWrapper_CategoricalLogits, _instance)
+        return super().expand(batch_shape, _instance=new)
 
 
 def _get_pyro_dist(dist_name):
