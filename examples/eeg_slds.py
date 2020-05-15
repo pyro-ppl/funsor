@@ -251,7 +251,7 @@ def main(args):
         print("[raw data shape] {}".format(data.shape))
         data = data[::20, :]
         print("[data shape after thinning] {}".format(data.shape))
-        eye_state = [int(l) for l in data[:, -1].tolist()]
+        eye_state = [int(d) for d in data[:, -1].tolist()]
         data = torch.tensor(data[:, :-1]).float()
     # in test mode (for continuous integration on github) so create fake data
     else:

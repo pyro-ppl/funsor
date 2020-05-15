@@ -10,7 +10,7 @@ docs: FORCE
 	$(MAKE) -C docs html
 
 lint: FORCE
-	flake8 --per-file-ignores='funsor/distributions.py:F821'
+	flake8
 
 license: FORCE
 	python scripts/update_headers.py
