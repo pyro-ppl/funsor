@@ -22,7 +22,7 @@ from . import (
     interpreter,
     joint,
     memoize,
-    minipyro,
+    # minipyro,  # TODO: enable when minipyro is backend-agnostic
     montecarlo,
     ops,
     sum_product,
@@ -65,7 +65,7 @@ __all__ = [
     'interpreter',
     'joint',
     'memoize',
-    'minipyro',
+    # 'minipyro',  # TODO: enable when minipyro is backend-agnostic
     'montecarlo',
     'of_shape',
     'ops',

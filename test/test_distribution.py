@@ -17,7 +17,6 @@ from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.domains import bint, reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.integrate import Integrate
-from funsor.pyro.convert import dist_to_funsor
 from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array
 from funsor.terms import Independent, Variable, eager, lazy
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_mvn, random_tensor, xfail_param
@@ -28,6 +27,9 @@ pytestmark = pytest.mark.skipif(get_backend() == "numpy",
 if get_backend() != "numpy":
     dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     backend_dist = dist.dist
+
+if get_backend() == "torch":
+    from funsor.pyro.convert import dist_to_funsor
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)

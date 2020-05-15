@@ -4,10 +4,8 @@
 from collections import OrderedDict
 
 import pytest
-import torch
 
 import funsor
-from funsor.torch.distributions import Categorical
 from funsor.domains import bint
 from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
@@ -21,6 +19,9 @@ from funsor.util import get_backend
 pytestmark = pytest.mark.skipif(get_backend() != "torch",
                                 reason="jax backend does not have pyro.ops.contract.einsum equivalent")
 if get_backend() == "torch":
+    import torch
+    from funsor.torch.distributions import Categorical
+
     from pyro.ops.contract import einsum as pyro_einsum
 
 OPTIMIZED_EINSUM_EXAMPLES = [
