@@ -53,7 +53,7 @@ class _NumPyroWrapper_NonreparameterizedBeta(dist.Beta):
     has_rsample = False
 
 
-class _NumPyroWrapper_NonreparameterizedDirichletl(dist.Dirichlet):
+class _NumPyroWrapper_NonreparameterizedDirichlet(dist.Dirichlet):
     has_rsample = False
 
 

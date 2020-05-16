@@ -138,7 +138,7 @@ def test_binomial_density(batch_shape, eager):
     actual = dist.Binomial(total_count, probs, value) if eager else \
         dist.Binomial(total_count, probs, m)(value=value)
     check_funsor(actual, inputs, reals())
-    assert_close(actual, expected)
+    assert_close(actual, expected, rtol=1e-5)
 
 
 def test_categorical_defaults():
@@ -722,7 +722,7 @@ def _get_stat_diff(funsor_dist_class, sample_inputs, inputs, num_samples, statis
         else:
             raise ValueError("invalid test statistic")
 
-        diff = (actual_stat - expected_stat).reduce(ops.add).data
+        diff = actual_stat.reduce(ops.add).data - expected_stat.reduce(ops.add).data
         return diff.sum(), diff
 
 
@@ -753,7 +753,7 @@ def _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=1e-2,
 
         if sample_inputs:
             if skip_grad:
-                diff = _get_stat_diff_fn(params)
+                _, diff = _get_stat_diff_fn(params)
                 assert_close(diff, ops.new_zeros(diff, diff.shape), atol=atol, rtol=None)
             else:
                 (_, diff), diff_grads = jax.value_and_grad(_get_stat_diff_fn, has_aux=True)(params)
@@ -879,7 +879,9 @@ def test_binomial_sample(with_lazy, batch_shape, sample_inputs):
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
     max_count = 10
-    total_count_data = random_tensor(inputs, bint(max_count)).data.float()
+    total_count_data = random_tensor(inputs, bint(max_count)).data
+    if get_backend() == "torch":
+        total_count_data = ops.astype(total_count_data, 'float')
     total_count = total_count_data
     probs = rand(batch_shape)
     funsor_dist_class = dist.Binomial
