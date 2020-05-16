@@ -241,7 +241,7 @@ def test_dirichlet_density(batch_shape, event_shape):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
-@pytest.mark.xfail(raises=AttributeError, reason="DirichletMultinomial is not implemented yet in NumPyro")
+@pytest.mark.xfail(get_backend() != 'torch', reason="DirichletMultinomial is not implemented yet in NumPyro")
 def test_dirichlet_multinomial_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -654,7 +654,7 @@ def test_gamma_probs_density(batch_shape, syntax):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('syntax', ['eager', 'lazy'])
-@pytest.mark.xfail(raises=AttributeError, reason="VonMises is not implemented yet in NumPyro")
+@pytest.mark.xfail(get_backend() != 'torch', reason="VonMises is not implemented yet in NumPyro")
 def test_von_mises_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
