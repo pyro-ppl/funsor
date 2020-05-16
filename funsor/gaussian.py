@@ -129,11 +129,13 @@ class BlockVector(object):
         vector = BlockVector(shape)
         a = self.parts
         b = other.parts
-        for j in set(a.keys()) - set(b.keys()):
+        a_keys = set(a.keys())
+        b_keys = set(b.keys())
+        for j in a_keys - b_keys:
             vector.parts[j] = a[j]
-        for j in set(a.keys()) & set(b.keys()):
+        for j in a_keys & b_keys:
             vector.parts[j] = a[j] + b[j]
-        for j in set(b.keys()) - set(a.keys()):
+        for j in b_keys - a_keys:
             vector.parts[j] = b[j]
         return vector
 
@@ -177,7 +179,9 @@ class BlockMatrix(object):
         #   all inputs are contiguous, thereby saving a memcopy.
         contiguous = False
         if contiguous:
-            result = ops.cat(-2, *[v for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
+            result = ops.cat(-2, *[
+                v.expand(self.shape[:-2] + v.shape[-2:])
+                for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
             n = len(self.parts)
             a, b = prototype.shape[-2:]
             result = result.reshape(result.shape[:-2] + (n, -1, a, b))
@@ -198,11 +202,13 @@ class BlockMatrix(object):
         for part in set(self.parts.keys()) | set(other.parts.keys()):
             a = self.parts[part]
             b = other.parts[part]
-            for j in set(a.keys()) - set(b.keys()):
+            a_keys = set(a.keys())
+            b_keys = set(b.keys())
+            for j in a_keys - b_keys:
                 matrix.parts[part][j] = a[j]
-            for j in set(a.keys()) & set(b.keys()):
+            for j in a_keys & b_keys:
                 matrix.parts[part][j] = a[j] + b[j]
-            for j in set(b.keys()) - set(a.keys()):
+            for j in b_keys - a_keys:
                 matrix.parts[part][j] = b[j]
         return matrix
 
