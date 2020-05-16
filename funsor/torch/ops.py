@@ -11,7 +11,6 @@ import funsor.ops as ops
 ################################################################################
 
 ops.abs.register(torch.Tensor)(torch.abs)
-ops.cholesky_solve.register(torch.Tensor, torch.Tensor)(torch.cholesky_solve)
 ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
 ops.exp.register(torch.Tensor)(torch.exp)
 ops.full_like.register(torch.Tensor, object)(torch.full_like)
@@ -69,9 +68,20 @@ def _cholesky_inverse(x):
     """
     Like :func:`torch.cholesky_inverse` but supports batching and gradients.
     """
-    if x.dim() == 2:
+    if x.size(-1) == 1:
+        return (x * x).reciprocal()
+    elif x.dim() == 2:
         return x.cholesky_inverse()
+
     return torch.eye(x.size(-1)).cholesky_solve(x)
+
+
+@ops.cholesky_solve.register(torch.Tensor, torch.Tensor)
+def _cholesky_solve(x, y):
+    if y.shape[-1] == 1:
+        return x / (y * y)
+
+    return x.cholesky_solve(y)
 
 
 @ops.detach.register(torch.Tensor)
@@ -224,4 +234,7 @@ def _sum(x, dim):
 
 @ops.triangular_solve.register(torch.Tensor, torch.Tensor)
 def _triangular_solve(x, y, upper=False, transpose=False):
+    if y.size(-1) == 1:
+        return x / y
+
     return x.triangular_solve(y, upper, transpose).solution

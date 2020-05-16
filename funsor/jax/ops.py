@@ -69,6 +69,7 @@ def _cholesky(x):
     """
     if x.shape[-1] == 1:
         return np.sqrt(x)
+
     return np.linalg.cholesky(x)
 
 
@@ -82,6 +83,9 @@ def _cholesky_inverse(x):
 
 @ops.cholesky_solve.register(array, array)
 def _cholesky_solve(x, y):
+    if y.shape[-1] == 1:
+        return x / (y * y)
+
     return cho_solve((y, True), x)
 
 
@@ -222,6 +226,9 @@ def _sum(x, dim):
 
 @ops.triangular_solve.register(array, array)
 def _triangular_solve(x, y, upper=False, transpose=False):
+    if y.shape[-1] == 1:
+        return x / y
+
     assert np.ndim(x) >= 2 and np.ndim(y) >= 2
     n, m = x.shape[-2:]
     assert y.shape[-2:] == (n, n)

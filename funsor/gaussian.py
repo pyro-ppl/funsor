@@ -114,14 +114,28 @@ class BlockVector(object):
         prototype = next(iter(self.parts.values()))
         for i in _find_intervals(self.parts.keys(), self.shape[-1]):
             if i not in self.parts:
-                self.parts[i] = ops.new_zeros(prototype, self.shape[:-1] + (i[1] - i[0],))
+                self.parts[i] = ops.new_zeros(prototype, (i[1] - i[0],))
 
         # Concatenate parts.
-        parts = [v for k, v in sorted(self.parts.items())]
+        parts = [ops.expand(v, self.shape[:-1] + v.shape[-1:]) for k, v in sorted(self.parts.items())]
         result = ops.cat(-1, *parts)
         if not get_tracing_state():
             assert result.shape == self.shape
         return result
+
+    def __add__(self, other):
+        assert isinstance(other, BlockVector)
+        shape = broadcast_shape(self.shape, other.shape)
+        vector = BlockVector(shape)
+        a = self.parts
+        b = other.parts
+        for j in set(a.keys()) - set(b.keys()):
+            vector.parts[j] = a[j]
+        for j in set(a.keys()) & set(b.keys()):
+            vector.parts[j] = a[j] + b[j]
+        for j in set(b.keys()) - set(a.keys()):
+            vector.parts[j] = b[j]
+        return vector
 
 
 class BlockMatrix(object):
@@ -155,21 +169,45 @@ class BlockMatrix(object):
         for i in rows:
             for j in cols:
                 if j not in self.parts[i]:
-                    shape = self.shape[:-2] + (i[1] - i[0], j[1] - j[0])
+                    shape = (i[1] - i[0], j[1] - j[0])
                     self.parts[i][j] = ops.new_zeros(prototype, shape)
 
         # Concatenate parts.
         # TODO This could be optimized into a single .reshape().cat().reshape() if
         #   all inputs are contiguous, thereby saving a memcopy.
-        columns = {i: ops.cat(-1, *[v for j, v in sorted(part.items())])
-                   for i, part in self.parts.items()}
-        result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
+        contiguous = False
+        if contiguous:
+            result = ops.cat(-2, *[v for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
+            n = len(self.parts)
+            a, b = prototype.shape[-2:]
+            result = result.reshape(result.shape[:-2] + (n, -1, a, b))
+            result = ops.transpose(result, -2, -3).reshape(result.shape[:-4] + (n * a, -1))
+        else:
+            columns = {i: ops.cat(-1, *[v.expand(self.shape[:-2] + v.shape[-2:]) for j, v in sorted(part.items())])
+                       for i, part in self.parts.items()}
+            result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
+
         if not get_tracing_state():
             assert result.shape == self.shape
         return result
 
+    def __add__(self, other):
+        assert isinstance(other, BlockMatrix)
+        shape = broadcast_shape(self.shape, other.shape)
+        matrix = BlockMatrix(shape)
+        for part in set(self.parts.keys()) | set(other.parts.keys()):
+            a = self.parts[part]
+            b = other.parts[part]
+            for j in set(a.keys()) - set(b.keys()):
+                matrix.parts[part][j] = a[j]
+            for j in set(a.keys()) & set(b.keys()):
+                matrix.parts[part][j] = a[j] + b[j]
+            for j in set(b.keys()) - set(a.keys()):
+                matrix.parts[part][j] = b[j]
+        return matrix
 
-def align_gaussian(new_inputs, old):
+
+def align_gaussian(new_inputs, old, try_keeping_block_form=False):
     """
     Align data of a Gaussian distribution to a new ``inputs`` shape.
     """
@@ -212,8 +250,9 @@ def align_gaussian(new_inputs, old):
                 old_slice2 = slice(offset2, offset2 + num_elements2)
                 new_slice2 = slice(new_offset2, new_offset2 + num_elements2)
                 precision[..., new_slice1, new_slice2] = old_precision[..., old_slice1, old_slice2]
-        info_vec = info_vec.as_tensor()
-        precision = precision.as_tensor()
+        if not try_keeping_block_form:
+            info_vec = info_vec.as_tensor()
+            precision = precision.as_tensor()
 
     return info_vec, precision
 
@@ -635,12 +674,21 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     # Align data.
     inputs = lhs.inputs.copy()
     inputs.update(rhs.inputs)
-    lhs_info_vec, lhs_precision = align_gaussian(inputs, lhs)
-    rhs_info_vec, rhs_precision = align_gaussian(inputs, rhs)
+    lhs_info_vec, lhs_precision = align_gaussian(inputs, lhs, try_keeping_block_form=True)
+    keep_block = isinstance(lhs_info_vec, BlockVector)
+    rhs_info_vec, rhs_precision = align_gaussian(inputs, rhs, try_keeping_block_form=keep_block)
+
+    if keep_block and not isinstance(rhs_info_vec, BlockVector):
+        lhs_info_vec = lhs_info_vec.as_tensor()
+        lhs_precision = lhs_precision.as_tensor()
 
     # Fuse aligned Gaussians.
     info_vec = lhs_info_vec + rhs_info_vec
     precision = lhs_precision + rhs_precision
+
+    if isinstance(info_vec, BlockVector):
+        info_vec = info_vec.as_tensor()
+        precision = precision.as_tensor()
     return Gaussian(info_vec, precision, inputs)
 
 
