@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 
 import funsor
-import funsor.distributions as dist
+import funsor.torch.distributions as dist
 import funsor.ops as ops
 from funsor.pyro.convert import funsor_to_cat_and_mvn, funsor_to_mvn, matrix_and_mvn_to_funsor, mvn_to_funsor
 

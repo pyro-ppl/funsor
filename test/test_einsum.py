@@ -5,13 +5,10 @@ from collections import OrderedDict
 
 import opt_einsum
 import pytest
-import torch
-from pyro.ops.contract import einsum as pyro_einsum
 
 import funsor
 import funsor.ops as ops
 from funsor.cnf import BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND, BACKEND_TO_MAP_BACKEND
-from funsor.distributions import Categorical
 from funsor.domains import bint
 from funsor.einsum import naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
@@ -36,11 +33,6 @@ def backend_to_einsum_backends(backend):
     backends = [BACKEND_TO_EINSUM_BACKEND[get_backend()],
                 BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()]]
     map_backend = BACKEND_TO_MAP_BACKEND[get_backend()]
-    if backend == "jax":
-        map_backend = pytest.param(
-            map_backend,
-            marks=pytest.mark.xfail(reason="Can't set attribute '_pyro_dims' to DeviceArray")
-        )
     backends.append(map_backend)
     return backends
 
@@ -74,9 +66,14 @@ def test_einsum(equation, backend):
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.skipif(get_backend() != "torch",
-                    reason="funsor.distributions does not support numpy/jax backend")
+@pytest.mark.skipif(get_backend() == "numpy",
+                    reason="funsor.distribution does not support numpy backend")
 def test_einsum_categorical(equation):
+    if get_backend() == "jax":
+        from funsor.jax.distributions import Categorical
+    else:
+        from funsor.torch.distributions import Categorical
+
     inputs, outputs, sizes, operands, _ = make_einsum_example(equation)
     operands = [ops.abs(operand) / ops.abs(operand).sum(-1)[..., None]
                 for operand in operands]
@@ -108,7 +105,7 @@ def test_einsum_categorical(equation):
     assert_close(actual, actual_optimized, atol=1e-4)
 
     assert expected.shape == actual.data.shape
-    assert torch.allclose(expected, actual.data)
+    assert_close(expected, actual.data)
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
@@ -136,6 +133,8 @@ PLATED_EINSUM_EXAMPLES = [
 @pytest.mark.skipif(get_backend() != "torch",
                     reason="pyro.ops.contract.einsum does not work with numpy/jax backend.")
 def test_plated_einsum(equation, plates, backend):
+    from pyro.ops.contract import einsum as pyro_einsum
+
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = pyro_einsum(equation, *operands, plates=plates, backend=backend, modulo_total=False)[0]
     with interpretation(reflect):
@@ -151,7 +150,7 @@ def test_plated_einsum(equation, plates, backend):
     assert_close(actual, actual_optimized, atol=1e-3 if backend == 'torch' else 1e-4)
 
     assert expected.shape == actual.data.shape
-    assert torch.allclose(expected, actual.data)
+    assert_close(expected, actual.data)
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs

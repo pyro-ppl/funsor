@@ -5,12 +5,12 @@ import pytest
 
 import funsor.ops as ops
 from funsor.cnf import BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND
-from funsor.distributions import Normal
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.memoize import memoize
+from funsor.tensor import numeric_array
 from funsor.terms import reflect
-from funsor.testing import make_einsum_example, numeric_array, xfail_param
+from funsor.testing import make_einsum_example, xfail_param
 from funsor.util import get_backend
 
 
@@ -95,7 +95,12 @@ def test_einsum_complete_sharing_reuse_cache(equation, plates, backend, einsum_i
 
 @pytest.mark.parametrize('check_sample', [
     False, xfail_param(True, reason="Joint.sample cannot directly be memoized in this way yet")])
+@pytest.mark.skipif(get_backend() == "numpy", reason="there is no numpy distributions backend")
 def test_memoize_sample(check_sample):
+    if get_backend() == "jax":
+        from funsor.jax.distributions import Normal
+    else:
+        from funsor.torch.distributions import Normal
 
     with memoize():
         m, s = numeric_array(0.), numeric_array(1.)
