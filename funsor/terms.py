@@ -743,7 +743,7 @@ class Funsor(object, metaclass=FunsorMeta):
 @quote.register(Funsor)
 def _(arg, indent, out):
     name = type(arg).__name__
-    if type(arg).__module__ == 'funsor.distributions':
+    if type(arg).__module__ in ['funsor.torch.distributions', 'funsor.jax.distributions']:
         name = 'dist.' + name
     out.append((indent, name + "("))
     for value in arg._ast_values[:-1]:

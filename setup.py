@@ -48,7 +48,7 @@ setup(
         'jax': [
             'jax>=0.1.65',
             'jaxlib>=0.1.45',
-            'numpyro @ git+https://github.com/pyro-ppl/numpyro.git@0bd25294b982ec675d049fbbdca617a9070742f4#egg=numpyro'
+            'numpyro @ git+https://github.com/pyro-ppl/numpyro.git@e3accb5c71c8e96991abe9dd1f823e4435a40618#egg=numpyro'
         ],
         'test': [
             'flake8',

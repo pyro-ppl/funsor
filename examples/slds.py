@@ -6,7 +6,7 @@ import argparse
 import torch
 
 import funsor
-import funsor.distributions as dist
+import funsor.torch.distributions as dist
 import funsor.ops as ops
 
 
