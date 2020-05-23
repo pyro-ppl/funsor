@@ -20,7 +20,7 @@ format: FORCE
 
 test: lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)
-	pytest -v -n auto test/*py
+	pytest -v -n auto test/
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
@@ -43,11 +43,11 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/sensor.py --seed=0 --num-frames=2 -n 1
 	@echo PASS
 else ifeq (${FUNSOR_BACKEND}, jax)
-	pytest -v -n auto test/*py
+	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi
 	@echo PASS
 else
 	# default backend
-	pytest -v -n auto test/*py
+	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi
 	@echo PASS
 endif
 

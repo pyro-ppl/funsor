@@ -32,19 +32,18 @@ branches:
 
 jobs:
     include:
-        - stage: numpy
+        - stage: default
           name: numpy
           python: 3.6
           script:
               - make test
-        - stage: torch
+        - stage: backend
           name: torch
           python: 3.6
           script:
               - pip install -e .[torch]
               - FUNSOR_BACKEND=torch make test
-        - stage: jax
-          name: jax
+        - name: jax
           python: 3.6
           script:
               - pip install -e .[jax]
