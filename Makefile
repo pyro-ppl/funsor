@@ -42,10 +42,7 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/sensor.py --seed=0 --num-frames=2 -n 1
 	@echo PASS
 else ifeq (${FUNSOR_BACKEND}, jax)
-	pytest -v test/test_tensor.py
-	pytest -v test/test_gaussian.py
-	pytest -v test/test_einsum.py
-	pytest -v test/test_distribution.py
+	pytest -v -n auto test/*py
 	@echo PASS
 else
 	# default backend
