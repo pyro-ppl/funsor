@@ -111,8 +111,8 @@ def test_memoize_sample(check_sample):
         j1 = Normal(m, s, 'x')
         j2 = Normal(m, s, 'x')
         x1 = j1.sample(frozenset({'x'}), rng_key=rng_keys[0])
-        x12 = j1.sample(frozenset({'x'}), rng_key=rng_keys[0])
-        x2 = j2.sample(frozenset({'x'}), rng_key=rng_keys[0])
+        x12 = j1.sample(frozenset({'x'}), rng_key=rng_keys[1])
+        x2 = j2.sample(frozenset({'x'}), rng_key=rng_keys[2])
 
     # this assertion now passes
     assert j1 is j2
