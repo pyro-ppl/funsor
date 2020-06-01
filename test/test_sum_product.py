@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
+import os
 from collections import OrderedDict
 from functools import partial, reduce
 
@@ -25,6 +26,9 @@ from funsor.sum_product import (
 from funsor.tensor import Tensor, get_default_prototype
 from funsor.terms import Variable, eager_or_die, moment_matching, reflect
 from funsor.testing import assert_close, random_gaussian, random_tensor
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif((get_backend() == 'jax') and ('CI' in os.environ), reason='slow tests')
 
 
 @pytest.mark.parametrize('inputs,dims,expected_num_components', [

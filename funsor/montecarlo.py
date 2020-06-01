@@ -44,6 +44,7 @@ def monte_carlo_interpretation(**sample_inputs):
 
 @monte_carlo.register(Integrate, Funsor, Funsor, frozenset)
 def monte_carlo_integrate(log_measure, integrand, reduced_vars):
+    # FIXME: how to pass rng_key to here?
     sample = log_measure.sample(reduced_vars, monte_carlo.sample_inputs)
     if sample is log_measure:
         return None  # cannot progress

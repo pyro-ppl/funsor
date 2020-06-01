@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import numpy as np
 import pytest
 
 import funsor.ops as ops
@@ -102,13 +103,16 @@ def test_memoize_sample(check_sample):
     else:
         from funsor.torch.distributions import Normal
 
+    rng_keys = (None, None, None) if get_backend() == "torch" \
+        else np.array([[0, 1], [0, 2], [0, 3]], dtype=np.uint32)
+
     with memoize():
         m, s = numeric_array(0.), numeric_array(1.)
         j1 = Normal(m, s, 'x')
         j2 = Normal(m, s, 'x')
-        x1 = j1.sample(frozenset({'x'}))
-        x12 = j1.sample(frozenset({'x'}))
-        x2 = j2.sample(frozenset({'x'}))
+        x1 = j1.sample(frozenset({'x'}), rng_key=rng_keys[0])
+        x12 = j1.sample(frozenset({'x'}), rng_key=rng_keys[1])
+        x2 = j2.sample(frozenset({'x'}), rng_key=rng_keys[2])
 
     # this assertion now passes
     assert j1 is j2

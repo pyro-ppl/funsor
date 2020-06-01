@@ -158,7 +158,7 @@ def test_reduce_logaddexp(int_inputs, real_inputs):
     actual = state.reduce(ops.logaddexp, frozenset(truth))
 
     expected = t + g(**truth)
-    assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+    assert_close(actual, expected, atol=1e-5, rtol=1e-4 if get_backend() == "jax" else 1e-5)
 
 
 def test_reduce_logaddexp_deltas_lazy():
