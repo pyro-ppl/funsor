@@ -142,6 +142,8 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         out_shape = instance.event_shape
         if type(instance.support).__name__ == "_IntegerInterval":
             out_dtype = int(instance.support.upper_bound + 1)
+        elif type(instance.support).__name__ == "_Boolean":
+            out_dtype = int(2)
         else:
             out_dtype = 'real'
         return Domain(dtype=out_dtype, shape=out_shape)
