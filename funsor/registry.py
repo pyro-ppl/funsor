@@ -4,6 +4,7 @@
 from collections import defaultdict
 
 from multipledispatch import Dispatcher
+from multipledispatch.conflict import supercedes
 
 
 class PartialDispatcher(Dispatcher):
@@ -50,8 +51,11 @@ class KeyedRegistry(object):
         register = self.registry[key].register
         if self.default:
             objects = (object,) * len(types)
-            if objects != types:
-                register(*objects)(self.default)
+            try:
+                if objects != types and supercedes(types, objects):
+                    register(*objects)(self.default)
+            except TypeError:
+                pass  # mysterious source of ambiguity in Python 3.5 breaks this
 
         # This decorator supports stacking multiple decorators, which is not
         # supported by multipledipatch (which returns a Dispatch object rather
