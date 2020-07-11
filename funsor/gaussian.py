@@ -177,19 +177,9 @@ class BlockMatrix(object):
         # Concatenate parts.
         # TODO This could be optimized into a single .reshape().cat().reshape() if
         #   all inputs are contiguous, thereby saving a memcopy.
-        contiguous = False
-        if contiguous:
-            result = ops.cat(-2, *[
-                v.expand(self.shape[:-2] + v.shape[-2:])
-                for _, part in sorted(self.parts.items()) for _, v in sorted(part.items())])
-            n = len(self.parts)
-            a, b = prototype.shape[-2:]
-            result = result.reshape(result.shape[:-2] + (n, -1, a, b))
-            result = ops.transpose(result, -2, -3).reshape(result.shape[:-4] + (n * a, -1))
-        else:
-            columns = {i: ops.cat(-1, *[v.expand(self.shape[:-2] + v.shape[-2:]) for j, v in sorted(part.items())])
-                       for i, part in self.parts.items()}
-            result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
+        columns = {i: ops.cat(-1, *[ops.expand(v, self.shape[:-2] + v.shape[-2:]) for j, v in sorted(part.items())])
+                   for i, part in self.parts.items()}
+        result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
 
         if not get_tracing_state():
             assert result.shape == self.shape
