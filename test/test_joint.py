@@ -15,10 +15,10 @@ from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo_interpretation
-from funsor.tensor import Tensor
+from funsor.tensor import Tensor, numeric_array
 from funsor.terms import Number, Variable, eager, moment_matching
-from funsor.testing import (assert_close, numeric_array, randn,
-                            random_gaussian, random_tensor, zeros, xfail_if_not_implemented)
+from funsor.testing import (assert_close, randn, random_gaussian, random_tensor,
+                            zeros, xfail_if_not_implemented)
 from funsor.util import get_backend
 
 
@@ -158,7 +158,7 @@ def test_reduce_logaddexp(int_inputs, real_inputs):
     actual = state.reduce(ops.logaddexp, frozenset(truth))
 
     expected = t + g(**truth)
-    assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+    assert_close(actual, expected, atol=1e-5, rtol=1e-4 if get_backend() == "jax" else 1e-5)
 
 
 def test_reduce_logaddexp_deltas_lazy():

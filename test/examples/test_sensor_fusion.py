@@ -6,7 +6,7 @@ from collections import OrderedDict
 import pytest
 import torch
 
-import funsor.distributions as dist
+import funsor.torch.distributions as dist
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import bint, reals
@@ -17,7 +17,7 @@ from funsor.terms import Subs, Variable
 from funsor.testing import random_mvn
 
 
-# This version constructs factors using funsor.distributions.
+# This version constructs factors using funsor.torch.distributions.
 @pytest.mark.parametrize('state_dim,obs_dim', [(3, 2), (2, 3)])
 def test_distributions(state_dim, obs_dim):
     data = Tensor(torch.randn(2, obs_dim))["time"]

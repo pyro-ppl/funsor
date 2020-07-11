@@ -27,9 +27,9 @@ PyTorch
     :show-inheritance:
     :member-order: bysource
 
-NumPy
------
-.. automodule:: funsor.numpy
+JAX
+---
+.. automodule:: funsor.jax
     :members:
     :undoc-members:
     :show-inheritance:

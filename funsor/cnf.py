@@ -79,21 +79,33 @@ class Contraction(Funsor):
         self.terms = terms
         self.reduced_vars = reduced_vars
 
-    def unscaled_sample(self, sampled_vars, sample_inputs):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
 
         if self.red_op in (ops.logaddexp, nullop):
             if self.bin_op in (ops.nullop, ops.logaddexp):
+                if rng_key is not None:
+                    import jax
+                    rng_keys = jax.random.split(rng_key, len(self.terms))
+                else:
+                    rng_keys = [None] * len(self.terms)
+
                 # Design choice: we sample over logaddexp reductions, but leave logaddexp
                 # binary choices symbolic.
                 terms = [
                     term.unscaled_sample(sampled_vars.intersection(term.inputs), sample_inputs)
-                    for term in self.terms]
+                    for term, rng_key in zip(self.terms, rng_keys)]
                 return Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
 
             if self.bin_op is ops.add:
+                if rng_key is not None:
+                    import jax
+                    rng_keys = jax.random.split(rng_key)
+                else:
+                    rng_keys = [None] * 2
+
                 # Sample variables greedily in order of the terms in which they appear.
                 for term in self.terms:
                     greedy_vars = sampled_vars.intersection(term.inputs)
@@ -104,7 +116,7 @@ class Contraction(Funsor):
                     (terms if greedy_vars.isdisjoint(term.inputs) else greedy_terms).append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
-                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs))
+                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0]))
                     result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
                 elif (len(greedy_terms) == 2 and
                         isinstance(greedy_terms[0], Tensor) and
@@ -113,12 +125,12 @@ class Contraction(Funsor):
                     term = discrete + gaussian.log_normalizer
                     terms.append(gaussian)
                     terms.append(-gaussian.log_normalizer)
-                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs))
+                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0]))
                     result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
                 else:
                     raise NotImplementedError('Unhandled case: {}'.format(
                         ', '.join(str(type(t)) for t in greedy_terms)))
-                return result.unscaled_sample(sampled_vars - greedy_vars, sample_inputs)
+                return result.unscaled_sample(sampled_vars - greedy_vars, sample_inputs, rng_keys[1])
 
         raise TypeError("Cannot sample through ops ({}, {})".format(self.red_op, self.bin_op))
 

@@ -12,10 +12,14 @@ from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo
 from funsor.terms import Variable, eager, lazy, moment_matching, normalize, reflect
 from funsor.testing import assert_close, random_tensor
+from funsor.util import get_backend
 
 
 @pytest.mark.parametrize('interp', [
-    reflect, lazy, normalize, eager, moment_matching, monte_carlo])
+    reflect, lazy, normalize, eager, moment_matching,
+    pytest.param(monte_carlo, marks=pytest.mark.xfail(
+        get_backend() == "jax", reason="Lacking pattern to pass rng_key"))
+])
 def test_integrate(interp):
     log_measure = random_tensor(OrderedDict([('i', bint(2)), ('j', bint(3))]))
     integrand = random_tensor(OrderedDict([('j', bint(3)), ('k', bint(4))]))

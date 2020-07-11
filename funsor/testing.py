@@ -78,6 +78,8 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     elif isinstance(actual, Contraction) and isinstance(actual.terms[0], Tensor) \
             and is_array(actual.terms[0].data):
         assert isinstance(expected, Contraction) and is_array(expected.terms[0].data)
+    elif isinstance(actual, Gaussian) and is_array(actual.info_vec):
+        assert isinstance(expected, Gaussian) and is_array(expected.info_vec)
     else:
         assert type(actual) == type(expected), msg
 
@@ -235,6 +237,16 @@ def rand(*args):
         return np.array(np.random.rand(*shape))
 
 
+def randint(low, high, size):
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.randint(low, high, size=size)
+    else:
+        return np.random.randint(low, high, size=size)
+
+
 def randn(*args):
     if isinstance(args[0], tuple):
         assert len(args) == 1
@@ -298,26 +310,6 @@ def empty(*args):
         return torch.empty(shape)
     else:
         return np.empty(shape)
-
-
-def numeric_array(x):
-    backend = get_backend()
-    if backend == "torch":
-        import torch
-
-        return torch.tensor(x)
-    else:
-        return np.array(x)
-
-
-def astype(x, dtype):
-    backend = get_backend()
-    if backend == "torch":
-        if dtype == 'uint8':
-            return x.byte()
-        return x.type(dtype)
-    else:
-        return x.astype(dtype)
 
 
 def random_tensor(inputs, output=reals()):

@@ -5,6 +5,7 @@ import itertools
 from collections import OrderedDict
 from functools import reduce
 
+import numpy as np
 import pytest
 
 import funsor.ops as ops
@@ -12,10 +13,10 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import bint, reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
-from funsor.tensor import Einsum, Tensor
+from funsor.tensor import Einsum, Tensor, numeric_array
 from funsor.terms import Number, Variable
 from funsor.testing import (assert_close, id_from_inputs, ones, randn, random_gaussian,
-                            random_tensor, zeros, numeric_array)
+                            random_tensor, zeros)
 from funsor.util import get_backend
 
 assert Einsum  # flake8
@@ -497,7 +498,8 @@ def test_integrate_variable(int_inputs, real_inputs):
     integrand = reduce(ops.add, [Variable(k, d) for k, d in real_inputs.items()])
     reduced_vars = frozenset(real_inputs)
 
-    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(100000)))
+    rng_key = None if get_backend() != 'jax' else np.array([0, 0], dtype=np.uint32)
+    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(100000)), rng_key=rng_key)
     approx = Integrate(sampled_log_measure, integrand, reduced_vars | {'particle'})
     assert isinstance(approx, Tensor)
 
@@ -528,7 +530,8 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     integrand = random_gaussian(inputs)
     reduced_vars = frozenset(real_inputs)
 
-    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(100000)))
+    rng_key = None if get_backend() != 'jax' else np.array([0, 0], dtype=np.uint32)
+    sampled_log_measure = log_measure.sample(reduced_vars, OrderedDict(particle=bint(100000)), rng_key=rng_key)
     approx = Integrate(sampled_log_measure, integrand, reduced_vars | {'particle'})
     assert isinstance(approx, Tensor)
 
@@ -537,13 +540,14 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     assert_close(approx, exact, atol=0.1, rtol=0.1)
 
 
-@pytest.mark.xfail(reason="numerically unstable")
-def test_mc_plate_gaussian(backend):
+@pytest.mark.xfail(get_backend() == 'torch', reason="numerically unstable in torch backend")
+def test_mc_plate_gaussian():
     log_measure = Gaussian(numeric_array([0.]), numeric_array([[1.]]),
                            (('loc', reals()),)) + numeric_array(-0.9189)
     integrand = Gaussian(randn((100, 1)) + 3., ones((100, 1, 1)),
                          (('data', bint(100)), ('loc', reals())))
 
-    res = Integrate(log_measure.sample('loc'), integrand, 'loc')
+    rng_key = None if get_backend() != 'jax' else np.array([0, 0], dtype=np.uint32)
+    res = Integrate(log_measure.sample('loc', rng_key=rng_key), integrand, 'loc')
     res = res.reduce(ops.mul, 'data')
-    assert not ops.any((res == float('inf')) | (res == float('-inf')))
+    assert not ((res == float('inf')) | (res == float('-inf'))).any()

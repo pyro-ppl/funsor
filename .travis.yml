@@ -12,15 +12,11 @@ cache:
 
 install:
     - pip install -U pip
-    - pip install torch==1.4.0+cpu torchvision==0.5.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
-
-    # Keep track of Pyro dev branch
-    - pip install https://github.com/pyro-ppl/pyro/archive/dev.zip
 
     # Keep track of pyro-api master branch
     - pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
 
-    - pip install .[torch,jax,test]
+    - pip install .[test]
     - pip freeze
 
 branches:
@@ -29,5 +25,23 @@ branches:
 
 jobs:
     include:
-        - python: 3.5
-          script: make test
+        - stage: default
+          name: numpy
+          python: 3.6
+          script:
+              - make test
+        - name: torch
+          python: 3.6
+          script:
+              - pip install torch==1.5.0+cpu torchvision==0.6.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
+              # Keep track of Pyro dev branch
+              - pip install https://github.com/pyro-ppl/pyro/archive/dev.zip
+              - pip install -e .[torch]
+              - FUNSOR_BACKEND=torch make test
+        - name: jax
+          python: 3.6
+          script:
+              - pip install -e .[jax]
+              # Keep track of NumPyro master branch
+              - pip install https://github.com/pyro-ppl/numpyro/archive/master.zip
+              - CI=1 FUNSOR_BACKEND=jax make test

@@ -101,4 +101,4 @@ def test_eager_contract_tensor_tensor(red_op, bin_op, x_inputs, x_shape, y_input
             print("reduced_vars = {}".format(reduced_vars))
             expected = xy.reduce(red_op, reduced_vars)
             actual = Contraction(red_op, bin_op, reduced_vars, (x, y))
-            assert_close(actual, expected, atol=1e-4, rtol=5e-4 if backend == "jax" else 1e-4)
+            assert_close(actual, expected, atol=1e-4, rtol=1e-3 if backend == "jax" else 1e-4)

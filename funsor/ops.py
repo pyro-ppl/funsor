@@ -323,6 +323,7 @@ all = Op(np.all)
 amax = Op(np.amax)
 amin = Op(np.amin)
 any = Op(np.any)
+astype = Dispatcher("ops.astype")
 cat = Dispatcher("ops.cat")
 clamp = Dispatcher("ops.clamp")
 diagonal = Dispatcher("ops.diagonal")
@@ -334,6 +335,11 @@ sum = Op(np.sum)
 transpose = Dispatcher("ops.transpose")
 
 array = (np.ndarray, np.generic)
+
+
+@astype.register(array, str)
+def _astype(x, dtype):
+    return x.astype(dtype)
 
 
 @cat.register(int, [array])
@@ -539,6 +545,7 @@ __all__ = [
     'amin',
     'and_',
     'any',
+    'astype',
     'cat',
     'cholesky',
     'cholesky_inverse',

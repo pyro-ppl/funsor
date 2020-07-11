@@ -4,9 +4,6 @@
 from collections import OrderedDict
 
 import pytest
-import torch
-from pyro.ops.contract import einsum as pyro_einsum
-from pyro.ops.einsum.adjoint import require_backward as pyro_require_backward
 
 import funsor
 import funsor.ops as ops
@@ -30,6 +27,10 @@ from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() != "torch",
                                 reason="numpy/jax backend requires porting pyro.ops.einsum")
+if get_backend() == "torch":
+    import torch
+    from pyro.ops.contract import einsum as pyro_einsum
+    from pyro.ops.einsum.adjoint import require_backward as pyro_require_backward
 
 EINSUM_EXAMPLES = [
     "a->",
