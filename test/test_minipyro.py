@@ -154,10 +154,10 @@ def test_generate_data_plate(backend):
 @pytest.mark.parametrize("jit", [False, True], ids=["py", "jit"])
 @pytest.mark.parametrize("backend,optim_name", [
     ("pyro", "Adam"),
-    # ("pyro", "ClippedAdam"),
+    ("pyro", "ClippedAdam"),
     ("minipyro", "Adam"),
     ("funsor", "Adam"),
-    # ("funsor", "ClippedAdam"),
+    ("funsor", "ClippedAdam"),
 ])
 def test_optimizer(backend, optim_name, jit):
 

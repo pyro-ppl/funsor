@@ -20,8 +20,8 @@ import weakref
 from collections import OrderedDict, namedtuple
 
 import torch
-# TODO reinstate this after resolving circular dependency issues
-# from pyro.distributions import validation_enabled
+from pyro.distributions import validation_enabled
+from pyro.optim.clipped_adam import ClippedAdam as _ClippedAdam
 
 import funsor
 
@@ -374,9 +374,8 @@ class Adam(PyroOptim):
     TorchOptimizer = torch.optim.Adam
 
 
-# TODO reinstate this when dependency issues have been resolved
-# class ClippedAdam(PyroOptim):
-#     TorchOptimizer = _ClippedAdam
+class ClippedAdam(PyroOptim):
+    TorchOptimizer = _ClippedAdam
 
 
 # This is a unified interface for stochastic variational inference in Pyro.
@@ -565,7 +564,7 @@ class Jit(object):
                 assert result.output == funsor.reals()
                 return funsor.to_data(result)
 
-            with warnings.catch_warnings():  # , validation_enabled(False):
+            with validation_enabled(False), warnings.catch_warnings():
                 if self.ignore_jit_warnings:
                     warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
                 self._compiled = torch.jit.trace(compiled, params_and_args, check_trace=False)
