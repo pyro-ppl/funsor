@@ -121,7 +121,7 @@ def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
 
 @to_funsor.register(dist.CategoricalProbs)
 # XXX: in Pyro backend, we always convert pyro.distributions.Categorical
-# to funsor.distributions.Categorical
+# to funsor.torch.distributions.Categorical
 @to_funsor.register(dist.CategoricalLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Categorical(probs=numpyro_dist.probs)

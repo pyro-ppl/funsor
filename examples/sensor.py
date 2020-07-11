@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 
-import funsor.distributions as f_dist
+import funsor.torch.distributions as f_dist
 import funsor.ops as ops
 from funsor.domains import reals
 from funsor.pyro.convert import dist_to_funsor, funsor_to_mvn

@@ -165,7 +165,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         # for discrete multivariate distributions in Pyro
         elif support_name == "_Real" and name == "logits" and (
                 "probs" in cls.dist_class.arg_constraints
-                and type(cls.dist_class.arg_constraints["probs"]) == "_Simplex"):
+                and type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex"):
             output = reals(raw_shape[-1])
         else:
             output = None
@@ -316,10 +316,10 @@ def gaussianmixture_to_data(funsor_dist, name_to_dim=None):
 
 def Bernoulli(probs=None, logits=None, value='value'):
     """
-    Wraps :class:`pyro.distributions.Bernoulli` .
+    Wraps backend `Bernoulli` distributions.
 
-    This dispatches to either :class:`BernoulliProbs` or
-    :class:`BernoulliLogits` to accept either ``probs`` or ``logits`` args.
+    This dispatches to either `BernoulliProbs` or `BernoulliLogits`
+    to accept either ``probs`` or ``logits`` args.
 
     :param Funsor probs: Probability of 1.
     :param Funsor value: Optional observation in ``{0,1}``.
@@ -334,7 +334,7 @@ def Bernoulli(probs=None, logits=None, value='value'):
 
 def LogNormal(loc, scale, value='value'):
     """
-    Wraps :class:`pyro.distributions.LogNormal` .
+    Wraps backend `LogNormal` distributions.
 
     :param Funsor loc: Mean of the untransformed Normal distribution.
     :param Funsor scale: Standard deviation of the untransformed Normal

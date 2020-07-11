@@ -78,6 +78,8 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     elif isinstance(actual, Contraction) and isinstance(actual.terms[0], Tensor) \
             and is_array(actual.terms[0].data):
         assert isinstance(expected, Contraction) and is_array(expected.terms[0].data)
+    elif isinstance(actual, Gaussian) and is_array(actual.info_vec):
+        assert isinstance(expected, Gaussian) and is_array(expected.info_vec)
     else:
         assert type(actual) == type(expected), msg
 
