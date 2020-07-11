@@ -236,11 +236,11 @@ def backenddist_to_funsor(backend_dist, output=None, dim_to_name=None):
 def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
     dim_to_name = OrderedDict((dim - backend_dist.reinterpreted_batch_ndims, name)
                               for dim, name in dim_to_name.items())
-    dim_to_name.update(OrderedDict((i, f"_pyro_event_dim_{i}")
+    dim_to_name.update(OrderedDict((i, "_pyro_event_dim_{}".format(i))
                                    for i in range(-backend_dist.reinterpreted_batch_ndims, 0)))
     result = to_funsor(backend_dist.base_dist, dim_to_name=dim_to_name)
     for i in reversed(range(-backend_dist.reinterpreted_batch_ndims, 0)):
-        name = f"_pyro_event_dim_{i}"
+        name = "_pyro_event_dim_{}".format(i)
         result = funsor.terms.Independent(result, "value", name, "value")
     return result
 
