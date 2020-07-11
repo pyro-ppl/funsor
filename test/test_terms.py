@@ -47,7 +47,7 @@ np.seterr(all='ignore')
 
 # have to make this deterministic for pytest collection to work
 SORTED_REDUCE_OP_TO_NUMERIC = OrderedDict(
-    sorted(REDUCE_OP_TO_NUMERIC.items(), key=lambda op: op.__name__))
+    sorted(REDUCE_OP_TO_NUMERIC.items(), key=lambda ops_: ops_[0].__name__))
 
 
 def test_to_funsor():
