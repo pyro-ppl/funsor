@@ -111,9 +111,9 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     (ops.logaddexp, ops.add, reals(2)),
 ], ids=str)
 @pytest.mark.parametrize('batch_inputs', [
-    {},
-    {"foo": bint(5)},
-    {"foo": bint(2), "bar": bint(4)},
+    OrderedDict(),
+    OrderedDict([("foo", bint(5))]),
+    OrderedDict([("foo", bint(2)), ("bar", bint(4))]),
 ], ids=lambda d: ",".join(d.keys()))
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
@@ -154,9 +154,9 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 6)))
 @pytest.mark.parametrize('batch_inputs', [
-    {},
-    {"foo": bint(5)},
-    {"foo": bint(2), "bar": bint(4)},
+    OrderedDict(),
+    OrderedDict([("foo", bint(5))]),
+    OrderedDict([("foo", bint(2)), ("bar", bint(4))]),
 ], ids=lambda d: ",".join(d.keys()))
 @pytest.mark.parametrize('x_domain,y_domain', [
     (bint(2), bint(3)),
