@@ -173,9 +173,9 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     (ops.logaddexp, ops.add, reals(2)),
 ], ids=str)
 @pytest.mark.parametrize('batch_inputs', [
-    {},
-    {"foo": bint(5)},
-    {"foo": bint(2), "bar": bint(4)},
+    OrderedDict(),
+    OrderedDict([("foo", bint(5))]),
+    OrderedDict([("foo", bint(2)), ("bar", bint(4))]),
 ], ids=lambda d: ",".join(d.keys()))
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
