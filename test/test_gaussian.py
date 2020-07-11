@@ -515,8 +515,7 @@ def test_integrate_variable(int_inputs, real_inputs):
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
     OrderedDict([('x', reals())]),
-    OrderedDict([('x', reals(4))]),
-    OrderedDict([('x', reals(2, 3))]),
+    OrderedDict([('x', reals(2))]),
     OrderedDict([('x', reals()), ('y', reals())]),
     OrderedDict([('x', reals(2)), ('y', reals(3))]),
     OrderedDict([('x', reals(4)), ('y', reals(2, 3))]),
