@@ -102,12 +102,9 @@ def test_memoize_sample(check_sample):
         from funsor.jax.distributions import Normal
     else:
         from funsor.torch.distributions import Normal
-<<<<<<< HEAD
-=======
 
     rng_keys = (None, None, None) if get_backend() == "torch" \
         else np.array([[0, 1], [0, 2], [0, 3]], dtype=np.uint32)
->>>>>>> master
 
     with memoize():
         m, s = numeric_array(0.), numeric_array(1.)

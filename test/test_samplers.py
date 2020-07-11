@@ -319,7 +319,6 @@ def test_gaussian_mixture_distribution(batch_inputs, event_inputs):
     batch_inputs = OrderedDict(batch_inputs)
     event_inputs = OrderedDict(event_inputs)
     sampled_vars = frozenset(['f'])
-    np.random.seed(1)  # the default random seed generate bad gaussian in jax backend
     p = random_gaussian(be_inputs) + 0.5 * random_tensor(int_inputs)
     p_marginal = p.reduce(ops.logaddexp, 'e')
     assert isinstance(p_marginal, Tensor)
