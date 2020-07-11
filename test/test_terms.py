@@ -521,7 +521,7 @@ def test_not_parametric_subclass(subcls_expr, cls_expr):
 def test_cat_slice_tensor(start, stop, step):
 
     terms = tuple(
-        random_tensor(OrderedDict(t=bint(t), a=bint(2)))
+        random_tensor(OrderedDict([('t', bint(t)), ('a', bint(2))]))
         for t in [2, 1, 3, 4, 1, 3])
     dtype = sum(term.inputs['t'].dtype for term in terms)
     sub = Slice('t', start, stop, step, dtype)
