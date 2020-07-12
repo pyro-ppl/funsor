@@ -40,7 +40,7 @@ def getargspec(fn):
         match = re.match(r"\s*{}\(([^)]*)\)".format(fn.__name__), fn.__doc__)
         if match is None:
             raise
-        parts = re.sub(r"[[\]]", "", match.group(1)).split(", ")
+        parts = re.sub(r"[\[\]]", "", match.group(1)).split(", ")
         args = [a.split("=")[0] for a in parts if a not in ["/", "*"]]
         if not all(re.match(r"^[^\d\W]\w*\Z", arg) for arg in args):
             raise
@@ -117,7 +117,7 @@ def _quote(arg, indent, out):
     """
     Work around NumPy ndarray not supporting reproducible repr.
     """
-    out.append((indent, f"np.array({repr(arg.tolist())}, dtype=np.{arg.dtype})"))
+    out.append((indent, "np.array({}, dtype=np.{})".format(repr(arg.tolist()), arg.dtype)))
 
 
 def broadcast_shape(*shapes, **kwargs):

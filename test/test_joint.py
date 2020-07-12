@@ -127,17 +127,17 @@ def test_smoke(expr, expected_type):
 
 
 @pytest.mark.parametrize('int_inputs', [
-    {},
-    {'i': bint(2)},
-    {'i': bint(2), 'j': bint(3)},
+    OrderedDict(),
+    OrderedDict([('i', bint(2))]),
+    OrderedDict([('i', bint(2)), ('j', bint(3))]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
-    {'x': reals()},
-    {'x': reals(4)},
-    {'x': reals(2, 3)},
-    {'x': reals(), 'y': reals()},
-    {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    OrderedDict([('x', reals())]),
+    OrderedDict([('x', reals(4))]),
+    OrderedDict([('x', reals(2, 3))]),
+    OrderedDict([('x', reals()), ('y', reals())]),
+    OrderedDict([('x', reals(2)), ('y', reals(3))]),
+    OrderedDict([('x', reals(4)), ('y', reals(2, 3)), ('z', reals())]),
 ], ids=id_from_inputs)
 def test_reduce_logaddexp(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))

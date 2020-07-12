@@ -45,6 +45,11 @@ assert Contraction  # flake8
 np.seterr(all='ignore')
 
 
+# have to make this deterministic for pytest collection to work
+SORTED_REDUCE_OP_TO_NUMERIC = OrderedDict(
+    sorted(REDUCE_OP_TO_NUMERIC.items(), key=lambda ops_: ops_[0].__name__))
+
+
 def test_to_funsor():
     assert to_funsor(0) is Number(0)
 
@@ -241,8 +246,8 @@ def test_binary(symbol, data1, data2):
     assert actual.output == actual_reflect.output
 
 
-@pytest.mark.parametrize('op', REDUCE_OP_TO_NUMERIC,
-                         ids=[op.__name__ for op in REDUCE_OP_TO_NUMERIC])
+@pytest.mark.parametrize('op', SORTED_REDUCE_OP_TO_NUMERIC,
+                         ids=[op.__name__ for op in SORTED_REDUCE_OP_TO_NUMERIC])
 def test_reduce_all(op):
     x = Variable('x', bint(2))
     y = Variable('y', bint(3))
@@ -271,8 +276,8 @@ def test_reduce_all(op):
     for num_reduced in range(3 + 1)
     for reduced_vars in itertools.combinations('xyz', num_reduced)
 ])
-@pytest.mark.parametrize('op', REDUCE_OP_TO_NUMERIC,
-                         ids=[op.__name__ for op in REDUCE_OP_TO_NUMERIC])
+@pytest.mark.parametrize('op', SORTED_REDUCE_OP_TO_NUMERIC,
+                         ids=[op.__name__ for op in SORTED_REDUCE_OP_TO_NUMERIC])
 def test_reduce_subset(op, reduced_vars):
     reduced_vars = frozenset(reduced_vars)
     x = Variable('x', bint(2))
@@ -516,7 +521,7 @@ def test_not_parametric_subclass(subcls_expr, cls_expr):
 def test_cat_slice_tensor(start, stop, step):
 
     terms = tuple(
-        random_tensor(OrderedDict(t=bint(t), a=bint(2)))
+        random_tensor(OrderedDict([('t', bint(t)), ('a', bint(2))]))
         for t in [2, 1, 3, 4, 1, 3])
     dtype = sum(term.inputs['t'].dtype for term in terms)
     sub = Slice('t', start, stop, step, dtype)

@@ -13,7 +13,7 @@ from setuptools import find_packages, setup
 try:
     long_description = open('README.md', encoding='utf-8').read()
 except Exception as e:
-    sys.stderr.write(f'Failed to convert README.md to rst:\n  {e}\n')
+    sys.stderr.write('Failed to convert README.md to rst:\n  {}\n'.format(e))
     sys.stderr.flush()
     long_description = ''
 
@@ -32,7 +32,7 @@ setup(
     },
     author='Uber AI Labs',
     author_email='fritzo@uber.com',
-    python_requires=">=3.6",
+    python_requires=">=3.5",
     install_requires=[
         'makefun',
         'multipledispatch',
@@ -81,6 +81,6 @@ setup(
         'License :: OSI Approved :: Apache License 2.0',
         'Operating System :: POSIX :: Linux',
         'Operating System :: MacOS :: MacOS X',
-        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.5',
     ],
 )

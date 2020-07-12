@@ -3,9 +3,9 @@
 
 from collections import OrderedDict
 
-import pyro.distributions as dist
 import torch
 from torch.distributions import constraints
+from pyro.distributions import TorchDistribution
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta
@@ -14,7 +14,7 @@ from funsor.pyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
 from funsor.terms import Funsor, to_funsor
 
 
-class FunsorDistribution(dist.TorchDistribution):
+class FunsorDistribution(TorchDistribution):
     """
     :class:`~torch.distributions.Distribution` wrapper around a
     :class:`~funsor.terms.Funsor` for use in Pyro code. This is typically used

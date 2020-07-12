@@ -207,17 +207,17 @@ def test_smoke(expr, expected_type):
 
 
 @pytest.mark.parametrize('int_inputs', [
-    {},
-    {'i': bint(2)},
-    {'i': bint(2), 'j': bint(3)},
+    OrderedDict(),
+    OrderedDict([('i', bint(2))]),
+    OrderedDict([('i', bint(2)), ('j', bint(3))]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
-    {'x': reals()},
-    {'x': reals(4)},
-    {'x': reals(2, 3)},
-    {'x': reals(), 'y': reals()},
-    {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    OrderedDict([('x', reals())]),
+    OrderedDict([('x', reals(4))]),
+    OrderedDict([('x', reals(2, 3))]),
+    OrderedDict([('x', reals()), ('y', reals())]),
+    OrderedDict([('x', reals(2)), ('y', reals(3))]),
+    OrderedDict([('x', reals(4)), ('y', reals(2, 3)), ('z', reals())]),
 ], ids=id_from_inputs)
 def test_align(int_inputs, real_inputs):
     inputs1 = OrderedDict(list(sorted(int_inputs.items())) +
@@ -231,17 +231,17 @@ def test_align(int_inputs, real_inputs):
 
 
 @pytest.mark.parametrize('int_inputs', [
-    {},
-    {'i': bint(2)},
-    {'i': bint(2), 'j': bint(3)},
+    OrderedDict(),
+    OrderedDict([('i', bint(2))]),
+    OrderedDict([('i', bint(2)), ('j', bint(3))]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
-    {'x': reals()},
-    {'x': reals(4)},
-    {'x': reals(2, 3)},
-    {'x': reals(), 'y': reals()},
-    {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    OrderedDict([('x', reals())]),
+    OrderedDict([('x', reals(4))]),
+    OrderedDict([('x', reals(2, 3))]),
+    OrderedDict([('x', reals()), ('y', reals())]),
+    OrderedDict([('x', reals(2)), ('y', reals(3))]),
+    OrderedDict([('x', reals(4)), ('y', reals(2, 3)), ('z', reals())]),
 ], ids=id_from_inputs)
 def test_eager_subs_origin(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
@@ -259,17 +259,17 @@ def test_eager_subs_origin(int_inputs, real_inputs):
 
 
 @pytest.mark.parametrize('int_inputs', [
-    {},
-    {'i': bint(2)},
-    {'i': bint(2), 'j': bint(3)},
+    OrderedDict(),
+    OrderedDict([('i', bint(2))]),
+    OrderedDict([('i', bint(2)), ('j', bint(3))]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
-    {'x': reals()},
-    {'x': reals(4)},
-    {'x': reals(2, 3)},
-    {'x': reals(), 'y': reals()},
-    {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    OrderedDict([('x', reals())]),
+    OrderedDict([('x', reals(4))]),
+    OrderedDict([('x', reals(2, 3))]),
+    OrderedDict([('x', reals()), ('y', reals())]),
+    OrderedDict([('x', reals(2)), ('y', reals(3))]),
+    OrderedDict([('x', reals(4)), ('y', reals(2, 3)), ('z', reals())]),
 ], ids=id_from_inputs)
 def test_eager_subs(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
@@ -353,17 +353,17 @@ def test_eager_subs_affine(subs, g_ints, subs_ints):
 
 
 @pytest.mark.parametrize('int_inputs', [
-    {},
-    {'i': bint(2)},
-    {'i': bint(2), 'j': bint(3)},
+    OrderedDict(),
+    OrderedDict([('i', bint(2))]),
+    OrderedDict([('i', bint(2)), ('j', bint(3))]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
-    {'x': reals()},
-    {'x': reals(4)},
-    {'x': reals(2, 3)},
-    {'x': reals(), 'y': reals()},
-    {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    OrderedDict([('x', reals())]),
+    OrderedDict([('x', reals(4))]),
+    OrderedDict([('x', reals(2, 3))]),
+    OrderedDict([('x', reals()), ('y', reals())]),
+    OrderedDict([('x', reals(2)), ('y', reals(3))]),
+    OrderedDict([('x', reals(4)), ('y', reals(2, 3)), ('z', reals())]),
 ], ids=id_from_inputs)
 def test_add_gaussian_number(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
@@ -382,17 +382,17 @@ def test_add_gaussian_number(int_inputs, real_inputs):
 
 
 @pytest.mark.parametrize('int_inputs', [
-    {},
-    {'i': bint(2)},
-    {'i': bint(2), 'j': bint(3)},
+    OrderedDict(),
+    OrderedDict([('i', bint(2))]),
+    OrderedDict([('i', bint(2)), ('j', bint(3))]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
-    {'x': reals()},
-    {'x': reals(4)},
-    {'x': reals(2, 3)},
-    {'x': reals(), 'y': reals()},
-    {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    OrderedDict([('x', reals())]),
+    OrderedDict([('x', reals(4))]),
+    OrderedDict([('x', reals(2, 3))]),
+    OrderedDict([('x', reals()), ('y', reals())]),
+    OrderedDict([('x', reals(2)), ('y', reals(3))]),
+    OrderedDict([('x', reals(4)), ('y', reals(2, 3)), ('z', reals())]),
 ], ids=id_from_inputs)
 def test_add_gaussian_tensor(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
@@ -411,18 +411,18 @@ def test_add_gaussian_tensor(int_inputs, real_inputs):
 
 
 @pytest.mark.parametrize('lhs_inputs', [
-    {'x': reals()},
-    {'y': reals(4)},
-    {'z': reals(2, 3)},
-    {'x': reals(), 'y': reals(4)},
-    {'y': reals(4), 'z': reals(2, 3)},
+    OrderedDict([('x', reals())]),
+    OrderedDict([('y', reals(4))]),
+    OrderedDict([('z', reals(2, 3))]),
+    OrderedDict([('x', reals()), ('y', reals(4))]),
+    OrderedDict([('y', reals(4)), ('z', reals(2, 3))]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('rhs_inputs', [
-    {'x': reals()},
-    {'y': reals(4)},
-    {'z': reals(2, 3)},
-    {'x': reals(), 'y': reals(4)},
-    {'y': reals(4), 'z': reals(2, 3)},
+    OrderedDict([('x', reals())]),
+    OrderedDict([('y', reals(4))]),
+    OrderedDict([('z', reals(2, 3))]),
+    OrderedDict([('x', reals()), ('y', reals(4))]),
+    OrderedDict([('y', reals(4)), ('z', reals(2, 3))]),
 ], ids=id_from_inputs)
 def test_add_gaussian_gaussian(lhs_inputs, rhs_inputs):
     lhs_inputs = OrderedDict(sorted(lhs_inputs.items()))
@@ -457,15 +457,15 @@ def test_reduce_add(inputs):
 
 
 @pytest.mark.parametrize('int_inputs', [
-    {},
-    {'i': bint(2)},
-    {'i': bint(2), 'j': bint(3)},
+    OrderedDict(),
+    OrderedDict([('i', bint(2))]),
+    OrderedDict([('i', bint(2)), ('j', bint(3))]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
-    {'x': reals(), 'y': reals()},
-    {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 3), 'z': reals()},
-    {'w': reals(5), 'x': reals(4), 'y': reals(2, 3), 'z': reals()},
+    OrderedDict([('x', reals()), ('y', reals())]),
+    OrderedDict([('x', reals(2)), ('y', reals(3))]),
+    OrderedDict([('x', reals(4)), ('y', reals(2, 3)), ('z', reals())]),
+    OrderedDict([('w', reals(5)), ('x', reals(4)), ('y', reals(2, 3)), ('z', reals())]),
 ], ids=id_from_inputs)
 def test_reduce_logsumexp(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
@@ -509,16 +509,16 @@ def test_integrate_variable(int_inputs, real_inputs):
 
 
 @pytest.mark.parametrize('int_inputs', [
-    {},
-    {'i': bint(2)},
-    {'i': bint(2), 'j': bint(3)},
+    OrderedDict(),
+    OrderedDict([('i', bint(2))]),
+    OrderedDict([('i', bint(2)), ('j', bint(3))]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
-    {'x': reals()},
-    {'x': reals(2)},
-    {'x': reals(), 'y': reals()},
-    {'x': reals(2), 'y': reals(3)},
-    {'x': reals(4), 'y': reals(2, 3)},
+    OrderedDict([('x', reals())]),
+    OrderedDict([('x', reals(2))]),
+    OrderedDict([('x', reals()), ('y', reals())]),
+    OrderedDict([('x', reals(2)), ('y', reals(3))]),
+    OrderedDict([('x', reals(4)), ('y', reals(2, 3))]),
 ], ids=id_from_inputs)
 def test_integrate_gaussian(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))

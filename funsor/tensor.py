@@ -524,7 +524,7 @@ def align_tensors(*args, **kwargs):
 def tensor_to_data(x, name_to_dim=None):
     if not name_to_dim or not x.inputs:
         if x.inputs:
-            raise ValueError(f"cannot convert Tensor to data due to lazy inputs: {set(x.inputs)}")
+            raise ValueError("cannot convert Tensor to data due to lazy inputs: {}".format(set(x.inputs)))
         return x.data
     else:
         assert all(isinstance(k, str) and isinstance(v, int) and v < 0
@@ -786,7 +786,7 @@ class Function(Funsor):
 
 @quote.register(Function)
 def _(arg, indent, out):
-    out.append((indent, f"Function({_nameof(arg.fn)},"))
+    out.append((indent, "Function({},".format(_nameof(arg.fn))))
     quote.inplace(arg.output, indent + 1, out)
     i, line = out[-1]
     out[-1] = i, line + ","
@@ -819,7 +819,7 @@ def _nested_function(fn, args, output):
         result = []
         for i, output_i in enumerate(output):
             fn_i = functools.partial(_select, fn, i)
-            fn_i.__name__ = f"{_nameof(fn)}_{i}"
+            fn_i.__name__ = "{}_{}".format(_nameof(fn), i)
             result.append(_nested_function(fn_i, args, output_i))
         return LazyTuple(result)
     raise ValueError("Invalid output: {}".format(output))

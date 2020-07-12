@@ -19,7 +19,7 @@ def test_all_modules_are_imported():
             continue
         if name == "minipyro":
             continue  # TODO: enable when minipyro is backend-agnostic
-        assert hasattr(import_module('funsor'), name), f'funsor/__init__.py does not import {name}'
+        assert hasattr(import_module('funsor'), name), 'funsor/__init__.py does not import {}'.format(name)
         actual = getattr(import_module('funsor'), name)
-        expected = import_module(f'funsor.{name}')
+        expected = import_module('funsor.{}'.format(name))
         assert actual == expected

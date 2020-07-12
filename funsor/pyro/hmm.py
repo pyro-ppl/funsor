@@ -4,7 +4,6 @@
 from collections import OrderedDict
 
 import torch
-from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
@@ -20,6 +19,7 @@ from funsor.pyro.convert import (
 from funsor.pyro.distribution import FunsorDistribution
 from funsor.sum_product import MarkovProduct, naive_sequential_sum_product, sequential_sum_product
 from funsor.terms import Variable, eager, lazy, moment_matching
+from funsor.util import broadcast_shape
 
 
 class DiscreteHMM(FunsorDistribution):

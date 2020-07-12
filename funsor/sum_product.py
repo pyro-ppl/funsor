@@ -4,8 +4,7 @@
 import re
 from collections import OrderedDict, defaultdict
 from functools import reduce
-
-import numpy as np
+from math import gcd
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
@@ -267,7 +266,7 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
     if not lags:
         return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, {})
 
-    period = int(np.lcm.reduce(list(lags)))
+    period = int(reduce(lambda a, b: a * b // gcd(a, b), list(lags)))
 
     duration = trans.inputs[time].size
     if duration % period:
@@ -309,7 +308,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     if not lags:
         return sequential_sum_product(sum_op, prod_op, trans, time_var, {})
 
-    period = int(np.lcm.reduce(list(lags)))
+    period = int(reduce(lambda a, b: a * b // gcd(a, b), list(lags)))
     original_names = frozenset(name for name in trans.inputs
                                if name != time and name not in global_vars
                                and not name.startswith("P"))
@@ -427,7 +426,7 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
 
 @quote.register(MarkovProduct)
 def _(arg, indent, out):
-    line = f"{type(arg).__name__}({repr(arg.sum_op)}, {repr(arg.prod_op)},"
+    line = "{}({}, {},".format(type(arg).__name__, repr(arg.sum_op), repr(arg.prod_op))
     out.append((indent, line))
     for value in arg._ast_values[2:]:
         quote.inplace(value, indent + 1, out)

@@ -606,5 +606,5 @@ Built-in operations
 
 Operation classes
 -----------------
-""".format("\n".join(f".. autodata:: {_name}\n"
+""".format("\n".join(".. autodata:: {}\n".format(_name)
                      for _name in __all__ if isinstance(globals()[_name], Op)))

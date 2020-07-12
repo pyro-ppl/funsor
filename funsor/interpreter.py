@@ -326,7 +326,7 @@ def dispatched_interpretation(fn):
 
 class PatternMissingError(NotImplementedError):
     def __str__(self):
-        return f"{super().__str__()}\nThis is most likely due to a missing pattern."
+        return "{}\nThis is most likely due to a missing pattern.".format(super().__str__())
 
 
 __all__ = [

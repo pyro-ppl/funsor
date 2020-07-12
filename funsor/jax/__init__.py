@@ -40,4 +40,4 @@ def _quote(x, indent, out):
     """
     Work around JAX's DeviceArray not supporting reproducible repr.
     """
-    out.append((indent, f"np.array({repr(x.copy().tolist())}, dtype=np.{x.dtype})"))
+    out.append((indent, "np.array({}, dtype=np.{})".format(repr(x.copy().tolist()), x.dtype)))
