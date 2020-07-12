@@ -10,7 +10,6 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
-import pytest
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
@@ -29,6 +28,7 @@ def xfail_if_not_implemented(msg="Not implemented"):
     try:
         yield
     except NotImplementedError as e:
+        import pytest
         pytest.xfail(reason='{}:\n{}'.format(msg, e))
 
 
@@ -185,6 +185,7 @@ def check_funsor(x, inputs, output, data=None):
 
 
 def xfail_param(*args, **kwargs):
+    import pytest
     return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
 
 
