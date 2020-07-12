@@ -212,7 +212,7 @@ def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, sta
         expected = expected.align(tuple(actual.inputs.keys()))
 
     # check forward pass (sanity check)
-    assert_close(actual, expected, rtol=5e-4 * num_steps)
+    assert_close(actual, expected, rtol=5e-3 * num_steps)
 
     # perform backward passes only after the sanity check
     expected_bwds = expected_tape.adjoint(sum_op, prod_op, expected, operands)
@@ -223,4 +223,4 @@ def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, sta
         actual_bwd_t = actual_bwd(time=t, prev="t_{}".format(t), curr="t_{}".format(t+1))
         expected_bwd = expected_bwds[operand].align(tuple(actual_bwd_t.inputs.keys()))
         check_funsor(actual_bwd_t, expected_bwd.inputs, expected_bwd.output)
-        assert_close(actual_bwd_t, expected_bwd, rtol=5e-4 * num_steps)
+        assert_close(actual_bwd_t, expected_bwd, rtol=5e-3 * num_steps)
