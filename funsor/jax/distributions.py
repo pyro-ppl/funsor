@@ -73,13 +73,15 @@ def _get_numpyro_dist(dist_name):
 
 
 NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES
+_HAS_RSAMPLE_DISTS = ['Dirichlet', 'Gamma', 'Normal', 'MultivariateNormal']
 
 
 for dist_name, param_names in NUMPYRO_DIST_NAMES:
     numpyro_dist = _get_numpyro_dist(dist_name)
     if numpyro_dist is not None:
         # resolve numpyro distributions do not have `has_rsample` attributes
-        has_rsample = getattr(numpyro_dist, 'has_rsample', not numpyro_dist.is_discrete)
+        has_rsample = getattr(numpyro_dist, 'has_rsample',
+                              not getattr(numpyro_dist, "is_discrete", dist_name not in _HAS_RSAMPLE_DISTS)
         if has_rsample:
             numpyro_dist.has_rsample = True
             numpyro_dist.rsample = numpyro_dist.sample
