@@ -45,9 +45,9 @@ setup(
             'torch>=1.3.0',
         ],
         'jax': [
+            'numpyro>=0.2.4',
             'jax>=0.1.57',
             'jaxlib>=0.1.37',
-            'numpyro>=0.2.4',
         ],
         'test': [
             'flake8',
