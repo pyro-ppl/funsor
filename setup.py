@@ -36,8 +36,8 @@ setup(
     install_requires=[
         'makefun',
         'multipledispatch',
-        'numpy==1.16.2',
-        'opt_einsum==3.2.1',
+        'numpy>=1.16.2',
+        'opt_einsum>=3.2.1',
     ],
     extras_require={
         'torch': [
