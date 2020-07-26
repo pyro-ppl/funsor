@@ -36,7 +36,7 @@ setup(
     install_requires=[
         'makefun',
         'multipledispatch',
-        'numpy==1.16.2',
+        'numpy>=1.7',
         'opt_einsum>=2.3.2',
     ],
     extras_require={
@@ -63,7 +63,7 @@ setup(
             'flake8',
             'isort',
             'pandas',
-            'pytest>=4.1',
+            'pytest==4.3.1',
             'pytest-xdist==1.27.0',
             'scipy',
             'sphinx>=2.0',
