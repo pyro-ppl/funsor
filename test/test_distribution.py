@@ -813,10 +813,22 @@ def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
     _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=7e-2, num_samples=200000, with_lazy=with_lazy)
 
 
+def _skip_for_numpyro_2_4():
+    if get_backend() == "jax":
+        import numpyro
+
+        if numpyro.__version__ == "0.2.4":
+            return True
+
+    return False
+
+
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
 @pytest.mark.parametrize('reparametrized', [True, False])
+@pytest.mark.skipif(_skip_for_numpyro_2_4(),
+                    reason="Dirichlet samples might take 0/1 values in NumPyro 0.2.4")
 def test_dirichlet_sample(batch_shape, sample_inputs, event_shape, reparametrized):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
@@ -858,6 +870,8 @@ def test_bernoulliprobs_sample(batch_shape, sample_inputs):
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('reparametrized', [True, False])
+@pytest.mark.skipif(_skip_for_numpyro_2_4(),
+                    reason="Dirichlet samples might take 0/1 values in NumPyro 0.2.4")
 def test_beta_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))

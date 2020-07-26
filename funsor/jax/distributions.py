@@ -42,7 +42,10 @@ class _NumPyroWrapper_Binomial(dist.BinomialProbs):
 
 
 class _NumPyroWrapper_Categorical(dist.CategoricalProbs):
-    pass
+    # this fix is not available in NumPyro 0.2.4
+    @property
+    def support(self):
+        return dist.constraints.integer_interval(0, self.probs.shape[-1] - 1)
 
 
 class _NumPyroWrapper_Multinomial(dist.MultinomialProbs):
@@ -73,7 +76,7 @@ def _get_numpyro_dist(dist_name):
 
 
 NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES
-_HAS_RSAMPLE_DISTS = ['Dirichlet', 'Gamma', 'Normal', 'MultivariateNormal']
+_HAS_RSAMPLE_DISTS = ['Beta', 'Dirichlet', 'Gamma', 'Normal', 'MultivariateNormal']
 
 
 for dist_name, param_names in NUMPYRO_DIST_NAMES:
@@ -81,7 +84,7 @@ for dist_name, param_names in NUMPYRO_DIST_NAMES:
     if numpyro_dist is not None:
         # resolve numpyro distributions do not have `has_rsample` attributes
         has_rsample = getattr(numpyro_dist, 'has_rsample',
-                              not getattr(numpyro_dist, "is_discrete", dist_name not in _HAS_RSAMPLE_DISTS)
+                              not getattr(numpyro_dist, "is_discrete", dist_name not in _HAS_RSAMPLE_DISTS))
         if has_rsample:
             numpyro_dist.has_rsample = True
             numpyro_dist.rsample = numpyro_dist.sample
@@ -109,7 +112,8 @@ Multinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)  
 
 to_funsor.register(dist.Distribution)(backenddist_to_funsor)
 to_funsor.register(dist.Independent)(indepdist_to_funsor)
-to_funsor.register(dist.MaskedDistribution)(maskeddist_to_funsor)
+if hasattr(dist, "MaskedDistribution"):
+    to_funsor.register(dist.MaskedDistribution)(maskeddist_to_funsor)
 to_funsor.register(dist.TransformedDistribution)(transformeddist_to_funsor)
 to_funsor.register(dist.MultivariateNormal)(mvndist_to_funsor)
 
