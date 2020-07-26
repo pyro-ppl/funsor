@@ -29,7 +29,7 @@ jobs:
           name: numpy
           python: 3.6
           script:
-              - make test  # this fails
+              - make test
         - name: torch
           python: 3.6
           script:
