@@ -42,8 +42,6 @@ jobs:
           python: 3.6
           script:
               - pip install -e .[jax]
-              # Keep track of NumPyro master branch
-              - pip install https://github.com/pyro-ppl/numpyro/archive/master.zip
               - CI=1 FUNSOR_BACKEND=jax make test
         - name: torch35
           python: 3.5
