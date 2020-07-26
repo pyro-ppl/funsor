@@ -45,9 +45,9 @@ setup(
             'torch>=1.3.0',
         ],
         'jax': [
-            'jax>=0.1.65',
-            'jaxlib>=0.1.45',
-            'numpyro @ git+https://github.com/pyro-ppl/numpyro.git@e3accb5c71c8e96991abe9dd1f823e4435a40618#egg=numpyro'
+            'numpyro>=0.2.4',
+            'jax>=0.1.57',
+            'jaxlib>=0.1.37',
         ],
         'test': [
             'flake8',
