@@ -63,7 +63,7 @@ setup(
             'flake8',
             'isort',
             'pandas',
-            'pytest>=4.1',
+            'pytest>=4.1<5',
             'pytest-xdist==1.27.0',
             'scipy',
             'sphinx>=2.0',
