@@ -36,8 +36,8 @@ setup(
     install_requires=[
         'makefun',
         'multipledispatch',
-        'numpy>=1.16.2',
-        'opt_einsum>=3.2.1',
+        'numpy>=1.7',
+        'opt_einsum>=2.3.2',
     ],
     extras_require={
         'torch': [
@@ -56,7 +56,7 @@ setup(
             'pytest==4.3.1',
             'pytest-xdist==1.27.0',
             'pillow-simd',
-            'scipy==1.5.1',
+            'scipy',
             'torchvision',
         ],
         'dev': [
