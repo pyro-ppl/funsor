@@ -914,4 +914,4 @@ def test_poisson_sample(batch_shape, sample_inputs):
     funsor_dist_class = dist.Poisson
     params = (rate,)
 
-    _check_sample(funsor_dist_class, params, sample_inputs, inputs, skip_grad=True)
+    _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=2e-2, skip_grad=True)
