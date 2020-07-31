@@ -106,7 +106,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
     Operators like ``matmul`` and ``.sum()`` operate only on the output shape,
     and will not change the named inputs.
 
-   :param numeric_array data: A PyTorch tensor or NumPy ndarray.
+    :param numeric_array data: A PyTorch tensor or NumPy ndarray.
     :param OrderedDict inputs: An optional mapping from input name (str) to
         datatype (:class:`~funsor.domains.Domain` ). Defaults to empty.
     :param dtype: optional output datatype. Defaults to "real".
