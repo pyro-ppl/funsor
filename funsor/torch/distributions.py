@@ -35,6 +35,9 @@ from funsor.tensor import Tensor, dummy_numeric_array
 from funsor.terms import Funsor, Variable, eager, to_funsor
 
 
+__all__ = list(x[0] for x in FUNSOR_DIST_NAMES)
+
+
 ################################################################################
 # Distribution Wrappers
 ################################################################################
