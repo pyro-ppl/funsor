@@ -103,6 +103,14 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         data = cls.dist_class(**params).log_prob(value)
         return Tensor(data, inputs)
 
+    @property
+    def has_rsample(self):
+        return getattr(self.dist_class, "has_rsample", False)
+
+    @property
+    def has_enumerate_support(self):
+        return getattr(self.dist_class, "has_enumerate_support", False)
+
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         params = OrderedDict(self.params)
         value = params.pop("value")
@@ -115,18 +123,30 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 
         raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
         sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
-        if getattr(raw_dist, "has_rsample", False):
+        if self.has_rsample:
             raw_sample = raw_dist.rsample(*sample_args)
         else:
             raw_sample = ops.detach(raw_dist.sample(*sample_args))
 
         result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
-        if not getattr(raw_dist, "has_rsample", False):
+        if not self.has_rsample:
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
             raw_log_prob = raw_dist.log_prob(raw_sample)
             dice_factor = Tensor(raw_log_prob - ops.detach(raw_log_prob), inputs)
             result = result + dice_factor
         return result
+
+    def enumerate_support(self, expand=False):
+        if not self.has_enumerate_support or not isinstance(self.value, Variable):
+            raise ValueError("cannot enumerate support of {}".format(repr(self)))
+        # arbitrary name-dim mapping, since we're converting back to a funsor anyway
+        name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(self.inputs.items())
+                       if isinstance(domain.dtype, int) and name != self.value.name}
+        raw_dist = to_data(self, name_to_dim=name_to_dim)
+        raw_value = raw_dist.enumerate_support(expand=expand)
+        dim_to_name = {dim: name for name, dim in name_to_dim.items()}
+        dim_to_name[min(dim_to_name.keys(), default=0)-1] = self.value.name
+        return to_funsor(raw_value, output=self.value.output, dim_to_name=dim_to_name)
 
     def __getattribute__(self, attr):
         if attr in type(self)._ast_fields and attr != 'name':
