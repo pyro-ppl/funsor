@@ -915,3 +915,75 @@ def test_poisson_sample(batch_shape, sample_inputs):
     params = (rate,)
 
     _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=2e-2, skip_grad=True)
+
+
+@pytest.mark.parametrize('expand', [False, True])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_categoricallogits_enumerate_support(expand, batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    logits = funsor.Tensor(rand(batch_shape + (3,)), inputs, 'real')
+    with interpretation(lazy):
+        d = dist.CategoricalLogits(logits)
+    x = d.enumerate_support(expand=expand)
+    actual_log_prob = d(value=x).reduce(ops.logaddexp, 'value')
+
+    raw_dist = d.dist_class(logits=logits.data)
+    raw_value = raw_dist.enumerate_support(expand=expand)
+    expected_inputs = OrderedDict([('value', bint(raw_value.shape[0]))])
+    expected_inputs.update(inputs)
+    expected_log_prob = funsor.Tensor(raw_dist.log_prob(raw_value), expected_inputs).reduce(ops.logaddexp, 'value')
+
+    assert d.has_enumerate_support
+    assert x.output == d.value.output
+    assert set(x.inputs) == {'value'} | (set(batch_dims) if expand else set())
+    assert_close(expected_log_prob, actual_log_prob)
+
+
+@pytest.mark.parametrize('expand', [False, True])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_categoricalprobs_enumerate_support(expand, batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    probs = funsor.Tensor(rand(batch_shape + (3,)), inputs, 'real')
+    with interpretation(lazy):
+        d = dist.Categorical(probs=probs)
+    x = d.enumerate_support(expand=expand)
+    actual_log_prob = d(value=x).reduce(ops.logaddexp, 'value')
+
+    raw_dist = d.dist_class(probs=probs.data)
+    raw_value = raw_dist.enumerate_support(expand=expand)
+    expected_inputs = OrderedDict([('value', bint(raw_value.shape[0]))])
+    expected_inputs.update(inputs)
+    expected_log_prob = funsor.Tensor(raw_dist.log_prob(raw_value), expected_inputs).reduce(ops.logaddexp, 'value')
+
+    assert d.has_enumerate_support
+    assert x.output == d.value.output
+    assert set(x.inputs) == {'value'} | (set(batch_dims) if expand else set())
+    assert_close(expected_log_prob, actual_log_prob)
+
+
+@pytest.mark.parametrize('expand', [False, True])
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_bernoullilogits_enumerate_support(expand, batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+
+    logits = funsor.Tensor(rand(batch_shape), inputs, 'real')
+    with interpretation(lazy):
+        d = dist.BernoulliLogits(logits)
+    x = d.enumerate_support(expand=expand)
+    actual_log_prob = d(value='value2')(value2=x).reduce(ops.logaddexp, 'value')
+
+    raw_dist = d.dist_class(logits=logits.data)
+    raw_value = raw_dist.enumerate_support(expand=expand)
+    expected_inputs = OrderedDict([('value', bint(raw_value.shape[0]))])
+    expected_inputs.update(inputs)
+    expected_log_prob = funsor.Tensor(raw_dist.log_prob(raw_value), expected_inputs).reduce(ops.logaddexp, 'value')
+
+    assert d.has_enumerate_support
+    assert x.output == d.value.output
+    assert set(x.inputs) == {'value'} | (set(batch_dims) if expand else set())
+    assert_close(expected_log_prob, actual_log_prob)
