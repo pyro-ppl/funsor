@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+from typing import Tuple, Union
 
 import pyro.distributions as dist
 import pyro.distributions.testing.fakes as fakes
 from pyro.distributions.torch_distribution import MaskedDistribution
 import torch
 
+from funsor.cnf import Contraction
 from funsor.distribution import (  # noqa: F401
     Bernoulli,
     FUNSOR_DIST_NAMES,
@@ -31,8 +33,9 @@ from funsor.distribution import (  # noqa: F401
     transformeddist_to_funsor,
 )
 from funsor.domains import reals
+import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Funsor, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Variable, eager, to_funsor
 
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES)
@@ -137,3 +140,32 @@ eager.register(Delta, Variable, Funsor, Funsor)(eager_delta_funsor_funsor)  # no
 eager.register(Delta, Variable, Variable, Variable)(eager_delta_variable_variable)  # noqa: F821
 eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
+
+
+@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)  # noqa: F821
+def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
+    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if dirichlet_reduction:
+        return DirichletMultinomial(concentration=x.concentration,  # noqa: F821
+                                    total_count=y.total_count,
+                                    value=y.value)
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
+JointDirichletMultinomial = Contraction[
+    Union[ops.LogAddExpOp, ops.NullOp],
+    ops.AddOp,
+    frozenset,
+    Tuple[Dirichlet, Multinomial],  # noqa: F821
+]
+
+
+@eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)  # noqa: F821
+def eager_dirichlet_posterior(op, c, z):
+    if (z.concentration is c.terms[0].concentration) and (c.terms[1].total_count is z.total_count):
+        return Dirichlet(  # noqa: F821
+            concentration=z.concentration + c.terms[1].value,
+            value=c.terms[0].value)
+    else:
+        return None

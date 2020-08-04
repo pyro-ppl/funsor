@@ -269,6 +269,33 @@ def test_dirichlet_multinomial_density(batch_shape, event_shape):
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(2,), (4,), (5,)], ids=str)
+@pytest.mark.xfail(get_backend() != 'torch', reason="DirichletMultinmial is not implemented yet in NumPyro")
+def test_dirichlet_multinomial_conjugate(batch_shape, event_shape):
+    max_count = 10
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape + event_shape
+    prior = Variable("prior", reals(*full_shape))[batch_dims]
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    value_data = ops.astype(randint(0, max_count, size=full_shape), 'float32')
+    value = Tensor(value_data, inputs)
+    total_count_data = value_data.sum(-1) + ops.astype(randint(0, max_count, size=batch_shape), 'float32')
+    total_count = Tensor(total_count_data, inputs)
+    p = dist.Dirichlet(concentration, value=prior)
+    p += dist.Multinomial(probs=prior, total_count=total_count)
+    marginalized = p.reduce(ops.logaddexp, set(["value"]))
+    assert isinstance(marginalized, dist.Dirichlet)
+    reduced = p.reduce(ops.logaddexp, set(["prior"]))
+    assert isinstance(reduced, dist.DirichletMultinomial)
+    assert_close(reduced.concentration, concentration)
+    assert_close(reduced.total_count, total_count)
+    result = (p - reduced)(value=value)
+    assert isinstance(result, dist.Dirichlet)
+    assert_close(result.concentration, concentration + value)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_lognormal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
