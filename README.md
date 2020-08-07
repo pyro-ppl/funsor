@@ -40,7 +40,7 @@ Funsor can be used through a number of interfaces:
     [pcfg](examples/pcfg.py),
     [sensor](examples/sensor.py),
     [slds](examples/slds.py), and
-    [vae](examples/slds.py).
+    [vae](examples/vae.py).
 -   Funsors can be used to implement custom inference algorithms within Pyro,
     using custom elbo implementations in standard
     [pyro.infer.SVI](http://docs.pyro.ai/en/stable/inference_algos.html#pyro.infer.svi.SVI)

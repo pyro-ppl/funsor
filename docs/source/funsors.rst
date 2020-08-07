@@ -9,8 +9,6 @@ Basic Funsors
     :show-inheritance:
     :member-order: bysource
 
-.. autofunction:: funsor.terms.to_funsor
-
 Delta
 -----
 .. automodule:: funsor.delta
@@ -19,17 +17,9 @@ Delta
     :show-inheritance:
     :member-order: bysource
 
-PyTorch
--------
-.. automodule:: funsor.torch
-    :members:
-    :undoc-members:
-    :show-inheritance:
-    :member-order: bysource
-
-NumPy
------
-.. automodule:: funsor.numpy
+Tensor
+------
+.. automodule:: funsor.tensor
     :members:
     :undoc-members:
     :show-inheritance:

@@ -7,7 +7,7 @@ import pyro
 import torch
 from torch.distributions import constraints
 
-import funsor.distributions as dist
+import funsor.torch.distributions as dist
 import funsor.ops as ops
 from funsor.domains import bint, reals
 from funsor.tensor import Tensor
@@ -366,7 +366,7 @@ class Model(object):
         if self.config["zeroinflation"]:
             step_zi = dist.Categorical(probs=self.params["zi_step"]["zi_param"](y_curr=y))(
                 value="zi_step")
-            step_zi_dist = plate_g + plate_i + dist.Delta(self.config["MISSING"])(
+            step_zi_dist = plate_g + plate_i + dist.Delta(self.config["MISSING"], 0.)(
                 value=self.observations["step"])
             step_dist = (step_zi + Stack("zi_step", (step_dist, step_zi_dist))).reduce(ops.logaddexp, "zi_step")
 
@@ -384,7 +384,7 @@ class Model(object):
         if self.config["zeroinflation"]:
             omega_zi = dist.Categorical(probs=self.params["zi_omega"]["zi_param"](y_curr=y))(
                 value="zi_omega")
-            omega_zi_dist = plate_g + plate_i + dist.Delta(self.config["MISSING"])(
+            omega_zi_dist = plate_g + plate_i + dist.Delta(self.config["MISSING"], 0.)(
                 value=self.observations["omega"])
             omega_dist = (omega_zi + Stack("zi_omega", (omega_dist, omega_zi_dist))).reduce(ops.logaddexp, "zi_omega")
 

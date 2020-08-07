@@ -5,11 +5,9 @@ import operator
 from collections import namedtuple
 from functools import reduce
 
-import torch
-from pyro.distributions.util import broadcast_shape
-
+import funsor
 import funsor.ops as ops
-from funsor.util import lazy_property, quote
+from funsor.util import broadcast_shape, get_tracing_state, lazy_property, quote
 
 
 class Domain(namedtuple('Domain', ['shape', 'dtype'])):
@@ -19,7 +17,8 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     """
     def __new__(cls, shape, dtype):
         assert isinstance(shape, tuple)
-        if torch._C._get_tracing_state():
+        # in some JAX versions, shape can be np.int64 type
+        if get_tracing_state() or funsor.get_backend() == "jax":
             shape = tuple(map(int, shape))
         assert all(isinstance(size, int) for size in shape), shape
         if isinstance(dtype, int):
@@ -72,7 +71,7 @@ def bint(size):
     """
     Construct a bounded integer domain of scalar shape.
     """
-    if torch._C._get_tracing_state():
+    if get_tracing_state() or funsor.get_backend() == "jax":
         size = int(size)
     assert isinstance(size, int) and size >= 0
     return Domain((), size)

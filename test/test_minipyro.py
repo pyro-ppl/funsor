@@ -4,16 +4,23 @@
 import warnings
 
 import pytest
-import torch
-from pyro.ops.indexing import Vindex as _Vindex
-from pyroapi import distributions as dist
-from pyroapi import handlers, infer, optim, pyro, pyro_backend
-from torch.autograd import grad
-from torch.distributions import constraints, kl_divergence
 
 import funsor
-import funsor.compat.ops as ops
 from funsor.testing import xfail_param
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif(get_backend() != "torch",
+                                reason="numpy/jax backend requires porting pyro.ops.einsum")
+if get_backend() == "torch":
+    import torch
+    from pyro.ops.indexing import Vindex as _Vindex
+    from pyroapi import distributions as dist
+    from pyroapi import handlers, infer, optim, pyro, pyro_backend
+    from torch.autograd import grad
+    from torch.distributions import constraints, kl_divergence
+
+    import funsor.compat.ops as ops
+
 
 # This file tests a variety of model,guide pairs with valid and invalid structure.
 # See https://github.com/pyro-ppl/pyro/blob/0.3.1/tests/infer/test_valid_models.py

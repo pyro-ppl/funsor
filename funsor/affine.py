@@ -5,10 +5,9 @@ from collections import OrderedDict
 from functools import reduce, singledispatch
 
 import opt_einsum
-import torch
 
 from funsor.interpreter import gensym
-from funsor.tensor import Einsum, Tensor
+from funsor.tensor import Einsum, Tensor, get_default_prototype
 from funsor.terms import Binary, Funsor, Lambda, Reduce, Unary, Variable, bint
 
 from . import ops
@@ -135,10 +134,12 @@ def extract_affine(fn):
         ``(coefficient, eqn)`` pair in einsum form.
     :rtype: tuple
     """
+    # NB: this depends on the global default backend.
+    prototype = get_default_prototype()
     # Determine constant part by evaluating fn at zero.
     inputs = affine_inputs(fn)
     inputs = OrderedDict((k, v) for k, v in fn.inputs.items() if k in inputs)
-    zeros = {k: Tensor(torch.zeros(v.shape)) for k, v in inputs.items()}
+    zeros = {k: Tensor(ops.new_zeros(prototype, v.shape)) for k, v in inputs.items()}
     const = fn(**zeros)
 
     # Determine linear coefficients by evaluating fn on basis vectors.
@@ -148,12 +149,12 @@ def extract_affine(fn):
         dim = v.num_elements
         var = Variable(name, bint(dim))
         subs = zeros.copy()
-        subs[k] = Tensor(torch.eye(dim).reshape((dim,) + v.shape))[var]
+        subs[k] = Tensor(ops.new_eye(prototype, (dim,)).reshape((dim,) + v.shape))[var]
         coeff = Lambda(var, fn(**subs) - const).reshape(v.shape + const.shape)
         inputs1 = ''.join(map(opt_einsum.get_symbol, range(len(coeff.shape))))
         inputs2 = inputs1[:len(v.shape)]
         output = inputs1[len(v.shape):]
-        eqn = f'{inputs1},{inputs2}->{output}'
+        eqn = '{},{}->{}'.format(inputs1, inputs2, output)
         coeffs[k] = coeff, eqn
     return const, coeffs
 

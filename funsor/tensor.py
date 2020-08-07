@@ -10,10 +10,10 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
-import torch
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
+import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import Domain, bint, find_domain, reals
@@ -32,10 +32,32 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec, quote
+from funsor.util import getargspec, get_backend, get_tracing_state, is_nn_module, quote
 
 
-numeric_array = (torch.Tensor, np.ndarray, np.generic)
+def get_default_prototype():
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.tensor([])
+    else:
+        return np.array([])
+
+
+def numeric_array(x, dtype=None, device=None):
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.tensor(x, dtype=dtype, device=device)
+    else:
+        return np.array(x, dtype=dtype)
+
+
+def dummy_numeric_array(domain):
+    value = 0.1 if domain.dtype == 'real' else 1
+    return ops.expand(numeric_array(value), domain.shape) if domain.shape else value
 
 
 def _nameof(fn):
@@ -45,7 +67,10 @@ def _nameof(fn):
 @contextmanager
 def ignore_jit_warnings():
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+        if get_backend() == "torch":
+            import torch
+
+            warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
         yield
 
 
@@ -54,13 +79,14 @@ class TensorMeta(FunsorMeta):
     Wrapper to fill in default args and convert between OrderedDict and tuple.
     """
     def __call__(cls, data, inputs=None, dtype="real"):
-        # XXX: convert NumPy scalar to ndarray
-        if isinstance(data, np.generic):
-            data = data.__array__()
         if inputs is None:
             inputs = tuple()
         elif isinstance(inputs, OrderedDict):
             inputs = tuple(inputs.items())
+        # XXX: memoize tests fail for np.generic because those scalar values are hashable?
+        # it seems that there is no harm with the conversion generic -> ndarray here
+        if isinstance(data, np.generic):
+            data = data.__array__()
         return super(TensorMeta, cls).__call__(data, inputs, dtype)
 
 
@@ -80,16 +106,16 @@ class Tensor(Funsor, metaclass=TensorMeta):
     Operators like ``matmul`` and ``.sum()`` operate only on the output shape,
     and will not change the named inputs.
 
-   :param numeric_array data: A PyTorch tensor or NumPy ndarray.
+    :param numeric_array data: A PyTorch tensor or NumPy ndarray.
     :param OrderedDict inputs: An optional mapping from input name (str) to
         datatype (:class:`~funsor.domains.Domain` ). Defaults to empty.
     :param dtype: optional output datatype. Defaults to "real".
     :type dtype: int or the string "real".
     """
     def __init__(self, data, inputs=None, dtype="real"):
-        assert isinstance(data, numeric_array)
+        assert ops.is_numeric_array(data)
         assert isinstance(inputs, tuple)
-        if not torch._C._get_tracing_state():
+        if not get_tracing_state():
             assert len(inputs) <= len(data.shape)
             for (k, d), size in zip(inputs, data.shape):
                 assert d.dtype == size
@@ -265,8 +291,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             return Tensor(data, inputs, self.dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
-    # TODO: support a `key` kwarg to get samples from numpyro distributions
-    def unscaled_sample(self, sampled_vars, sample_inputs):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         assert self.output == reals()
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
@@ -288,15 +313,30 @@ class Tensor(Funsor, metaclass=TensorMeta):
         batch_shape = logits.shape[:len(batch_inputs)]
         flat_logits = logits.reshape(batch_shape + (-1,))
         sample_shape = tuple(d.dtype for d in sample_inputs.values())
-        # TODO: make distribution agnostic
-        flat_sample = torch.distributions.Categorical(logits=flat_logits).sample(sample_shape)
+
+        backend = get_backend()
+        if backend != "numpy":
+            from importlib import import_module
+            dist = import_module(funsor.distribution.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend])
+            sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
+            flat_sample = dist.CategoricalLogits.dist_class(logits=flat_logits).sample(*sample_args)
+        else:  # default numpy backend
+            assert backend == "numpy"
+            shape = sample_shape + flat_logits.shape[:-1]
+            logit_max = np.amax(flat_logits, -1, keepdims=True)
+            probs = np.exp(flat_logits - logit_max)
+            probs = probs / np.sum(probs, -1, keepdims=True)
+            s = np.cumsum(probs, -1)
+            r = np.random.rand(*shape)
+            flat_sample = np.sum(s < np.expand_dims(r, -1), axis=-1)
+
         assert flat_sample.shape == sample_shape + batch_shape
         results = []
         mod_sample = flat_sample
         for name, domain in reversed(list(event_inputs.items())):
             size = domain.dtype
             point = Tensor(mod_sample % size, sb_inputs, size)
-            mod_sample = mod_sample / size
+            mod_sample = mod_sample // size
             results.append(Delta(name, point))
 
         # Account for the log normalizer factor.
@@ -312,18 +352,18 @@ class Tensor(Funsor, metaclass=TensorMeta):
         #   Then g is an unbiased estimator of f in value and all derivatives.
         #   In the special case f = detach(f), we can simplify to
         #       g = delta(x=x0) |f|.
-        if flat_logits.requires_grad:
+        if (backend == "torch" and flat_logits.requires_grad) or backend == "jax":
             # Apply a dice factor to preserve differentiability.
             index = [ops.new_arange(self.data, n).reshape((n,) + (1,) * (len(flat_logits.shape) - i - 2))
                      for i, n in enumerate(flat_logits.shape[:-1])]
             index.append(flat_sample)
-            log_prob = flat_logits[index]
+            log_prob = flat_logits[tuple(index)]
             assert log_prob.shape == flat_sample.shape
-            results.append(Tensor(flat_logits.detach().logsumexp(-1) +
-                                  (log_prob - log_prob.detach()), sb_inputs))
+            results.append(Tensor(ops.logsumexp(ops.detach(flat_logits), -1) +
+                                  (log_prob - ops.detach(log_prob)), sb_inputs))
         else:
             # This is the special case f = detach(f).
-            results.append(Tensor(flat_logits.logsumexp(-1), batch_inputs))
+            results.append(Tensor(ops.logsumexp(flat_logits, -1), batch_inputs))
 
         return reduce(ops.add, results)
 
@@ -382,18 +422,38 @@ class Tensor(Funsor, metaclass=TensorMeta):
         return substitute(x, subs)
 
 
-@dispatch(numeric_array)
-def to_funsor(x):
-    return Tensor(x)
+@to_funsor.register(np.ndarray)
+@to_funsor.register(np.generic)
+def tensor_to_funsor(x, output=None, dim_to_name=None):
+    if not dim_to_name:
+        output = output if output is not None else reals(*x.shape)
+        result = Tensor(x, dtype=output.dtype)
+        if result.output != output:
+            raise ValueError("Invalid shape: expected {}, actual {}"
+                             .format(output.shape, result.output.shape))
+        return result
+    else:
+        assert all(isinstance(k, int) and k < 0 and isinstance(v, str)
+                   for k, v in dim_to_name.items())
 
+        if output is None:
+            # Assume the leftmost dim_to_name key refers to the leftmost dim of x
+            # when there is ambiguity about event shape
+            batch_ndims = min(-min(dim_to_name.keys()), len(x.shape))
+            output = reals(*x.shape[batch_ndims:])
 
-@dispatch(numeric_array, Domain)
-def to_funsor(x, output):
-    result = Tensor(x, dtype=output.dtype)
-    if result.output != output:
-        raise ValueError("Invalid shape: expected {}, actual {}"
-                         .format(output.shape, result.output.shape))
-    return result
+        # logic very similar to pyro.ops.packed.pack
+        # this should not touch memory, only reshape
+        # pack the tensor according to the dim => name mapping in inputs
+        packed_inputs = OrderedDict()
+        for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
+            name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
+            if name is not None and size > 1:
+                packed_inputs[name] = bint(size)
+        shape = tuple(d.size for d in packed_inputs.values()) + output.shape
+        if x.shape != shape:
+            x = x.reshape(shape)
+        return Tensor(x, packed_inputs, dtype=output.dtype)
 
 
 def align_tensor(new_inputs, x, expand=False):
@@ -461,10 +521,28 @@ def align_tensors(*args, **kwargs):
 
 
 @to_data.register(Tensor)
-def _to_data_tensor(x):
-    if x.inputs:
-        raise ValueError(f"cannot convert Tensor to data due to lazy inputs: {set(x.inputs)}")
-    return x.data
+def tensor_to_data(x, name_to_dim=None):
+    if not name_to_dim or not x.inputs:
+        if x.inputs:
+            raise ValueError("cannot convert Tensor to data due to lazy inputs: {}".format(set(x.inputs)))
+        return x.data
+    else:
+        assert all(isinstance(k, str) and isinstance(v, int) and v < 0
+                   for k, v in name_to_dim.items())
+        # logic very similar to pyro.ops.packed.unpack
+        # first collapse input domains into single dimensions
+        data = x.data.reshape(tuple(d.dtype for d in x.inputs.values()) + x.output.shape)
+        # permute packed dimensions to correct order
+        unsorted_dims = [name_to_dim[name] for name in x.inputs]
+        dims = sorted(unsorted_dims)
+        permutation = [unsorted_dims.index(dim) for dim in dims] + \
+            list(range(len(dims), len(dims) + len(x.output.shape)))
+        data = ops.permute(data, permutation)
+        # expand
+        batch_shape = [1] * -min(dims)
+        for dim, size in zip(dims, data.shape):
+            batch_shape[dim] = size
+        return data.reshape(tuple(batch_shape) + x.output.shape)
 
 
 @eager.register(Binary, Op, Tensor, Number)
@@ -708,7 +786,7 @@ class Function(Funsor):
 
 @quote.register(Function)
 def _(arg, indent, out):
-    out.append((indent, f"Function({_nameof(arg.fn)},"))
+    out.append((indent, "Function({},".format(_nameof(arg.fn))))
     quote.inplace(arg.output, indent + 1, out)
     i, line = out[-1]
     out[-1] = i, line + ","
@@ -741,7 +819,7 @@ def _nested_function(fn, args, output):
         result = []
         for i, output_i in enumerate(output):
             fn_i = functools.partial(_select, fn, i)
-            fn_i.__name__ = f"{_nameof(fn)}_{i}"
+            fn_i.__name__ = "{}_{}".format(_nameof(fn), i)
             result.append(_nested_function(fn_i, args, output_i))
         return LazyTuple(result)
     raise ValueError("Invalid output: {}".format(output))
@@ -767,7 +845,7 @@ class _Memoized(object):
 
 
 def _function(inputs, output, fn):
-    if isinstance(fn, torch.nn.Module):
+    if is_nn_module(fn):
         names = getargspec(fn.forward)[0][1:]
     else:
         names = getargspec(fn)[0]

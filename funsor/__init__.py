@@ -7,14 +7,14 @@ from funsor.interpreter import reinterpret
 from funsor.sum_product import MarkovProduct
 from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.tensor import Tensor, function
-from funsor.util import pretty, quote
+from funsor.util import set_backend, get_backend, pretty, quote
 
 from . import (
     adjoint,
     affine,
     cnf,
     delta,
-    distributions,
+    distribution,
     domains,
     einsum,
     gaussian,
@@ -22,15 +22,18 @@ from . import (
     interpreter,
     joint,
     memoize,
-    minipyro,
+    # minipyro,  # TODO: enable when minipyro is backend-agnostic
     montecarlo,
-    numpy,
     ops,
     sum_product,
     terms,
     testing,
-    torch
 )
+
+# TODO: move to `funsor.util` when the following circular import issue is resolved
+# funsor.domains -> funsor.util -> set_backend -> funsor.torch -> funsor.domains
+set_backend(get_backend())
+
 
 __all__ = [
     'Cat',
@@ -51,29 +54,29 @@ __all__ = [
     'bint',
     'cnf',
     'delta',
-    'distributions',
+    'distribution',
     'domains',
     'einsum',
     'find_domain',
     'function',
     'gaussian',
+    'get_backend',
     'integrate',
     'interpreter',
     'joint',
     'memoize',
-    'minipyro',
+    # 'minipyro',  # TODO: enable when minipyro is backend-agnostic
     'montecarlo',
-    'numpy',
     'of_shape',
     'ops',
     'pretty',
     'quote',
     'reals',
     'reinterpret',
+    'set_backend',
     'sum_product',
     'terms',
     'testing',
     'to_data',
     'to_funsor',
-    'torch',
 ]

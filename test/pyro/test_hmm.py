@@ -4,10 +4,10 @@
 import pyro.distributions as dist
 import pytest
 import torch
-from pyro.distributions.util import broadcast_shape
 
 from funsor.pyro.hmm import DiscreteHMM, GaussianHMM, GaussianMRF, SwitchingLinearHMM
 from funsor.testing import assert_close, random_mvn
+from funsor.util import broadcast_shape
 
 
 def check_expand(old_dist, old_data):
@@ -86,7 +86,7 @@ def test_discrete_normal_log_prob(init_shape, trans_shape, obs_shape, state_dim)
     data = data[(slice(None),) * len(batch_shape) + (0,)]
     actual_log_prob = actual_dist.log_prob(data)
     expected_log_prob = expected_dist.log_prob(data)
-    assert_close(actual_log_prob, expected_log_prob)
+    assert_close(actual_log_prob, expected_log_prob, rtol=5e-5)
     check_expand(actual_dist, data)
 
 

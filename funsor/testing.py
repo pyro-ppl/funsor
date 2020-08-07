@@ -10,8 +10,6 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
-import pytest
-import torch
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic
 
@@ -22,6 +20,7 @@ from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.terms import Funsor, Number
 from funsor.tensor import Tensor
+from funsor.util import get_backend
 
 
 @contextlib.contextmanager
@@ -29,6 +28,7 @@ def xfail_if_not_implemented(msg="Not implemented"):
     try:
         yield
     except NotImplementedError as e:
+        import pytest
         pytest.xfail(reason='{}:\n{}'.format(msg, e))
 
 
@@ -58,11 +58,6 @@ def allclose(a, b, rtol=1e-05, atol=1e-08):
 dispatch(np.ndarray, np.ndarray, Variadic[float])(np.allclose)
 
 
-@dispatch(torch.Tensor, torch.Tensor, Variadic[float])
-def allclose(a, b, rtol=1e-05, atol=1e-08):
-    return torch.allclose(a, b, rtol=rtol, atol=atol)
-
-
 @dispatch(Tensor, Tensor, Variadic[float])
 def allclose(a, b, rtol=1e-05, atol=1e-08):
     if a.inputs != b.inputs or a.output != b.output:
@@ -70,9 +65,24 @@ def allclose(a, b, rtol=1e-05, atol=1e-08):
     return allclose(a.data, b.data, rtol=rtol, atol=atol)
 
 
+def is_array(x):
+    return isinstance(x, (np.ndarray, np.generic)) or type(x).__name__ == "DeviceArray"
+
+
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     msg = ActualExpected(actual, expected)
-    assert type(actual) == type(expected), msg
+    if is_array(actual):
+        assert is_array(expected), msg
+    elif isinstance(actual, Tensor) and is_array(actual.data):
+        assert isinstance(expected, Tensor) and is_array(expected.data)
+    elif isinstance(actual, Contraction) and isinstance(actual.terms[0], Tensor) \
+            and is_array(actual.terms[0].data):
+        assert isinstance(expected, Contraction) and is_array(expected.terms[0].data)
+    elif isinstance(actual, Gaussian) and is_array(actual.info_vec):
+        assert isinstance(expected, Gaussian) and is_array(expected.info_vec)
+    else:
+        assert type(actual) == type(expected), msg
+
     if isinstance(actual, Funsor):
         assert isinstance(actual, Funsor)
         assert isinstance(expected, Funsor)
@@ -100,7 +110,10 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert len(actual.terms) == len(expected.terms)
         for ta, te in zip(actual.terms, expected.terms):
             assert_close(ta, te, atol, rtol)
-    elif isinstance(actual, torch.Tensor):
+    elif type(actual).__name__ == "Tensor":
+        assert get_backend() == "torch"
+        import torch
+
         assert actual.dtype == expected.dtype, msg
         assert actual.shape == expected.shape, msg
         if actual.dtype in (torch.long, torch.uint8, torch.bool):
@@ -117,12 +130,20 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
                 assert (diff / (atol + expected.detach().abs())).max() < rtol, msg
             elif atol is not None:
                 assert diff.max() < atol, msg
-    elif isinstance(actual, (np.ndarray, np.generic)):
-        assert actual.dtype == expected.dtype, msg
+    elif is_array(actual):
+        if isinstance(actual, (np.ndarray, np.generic)):
+            assert actual.dtype == expected.dtype, msg
+        else:
+            assert get_backend() == "jax"
+            import jax
+
+            assert actual.dtype == jax.dtypes.canonicalize_dtype(expected.dtype), msg
+
         assert actual.shape == expected.shape, msg
         if actual.dtype in (np.int32, np.int64, np.uint8, np.bool):
             assert (actual == expected).all(), msg
         else:
+            actual, expected = np.asarray(actual), np.asarray(expected)
             eq = (actual == expected)
             if eq.all():
                 return
@@ -164,6 +185,7 @@ def check_funsor(x, inputs, output, data=None):
 
 
 def xfail_param(*args, **kwargs):
+    import pytest
     return pytest.param(*args, marks=[pytest.mark.xfail(**kwargs)])
 
 
@@ -176,8 +198,12 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
     operands = []
     for dims in inputs:
         shape = tuple(sizes[dim] for dim in dims)
-        operands.append(torch.randn(shape) if fill is None else torch.full(shape, fill))
-        operands[-1]._pyro_dims = dims
+        x = randn(shape)
+        operand = x if fill is None else (x - x + fill)
+        # no need to use pyro_dims for numpy backend
+        if not isinstance(operand, np.ndarray):
+            operand._pyro_dims = dims
+        operands.append(operand)
     funsor_operands = [
         Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
         for inp, operand in zip(inputs, operands)
@@ -195,45 +221,113 @@ def assert_equiv(x, y):
     check_funsor(x, y.inputs, y.output, y.data)
 
 
-def rand(shape, backend="torch"):
-    assert backend in ["torch", "numpy"]
+def rand(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
+    backend = get_backend()
     if backend == "torch":
+        import torch
+
         return torch.rand(shape)
     else:
         # work around numpy random returns float object instead of np.ndarray object when shape == ()
         return np.array(np.random.rand(*shape))
 
 
-def randn(shape, backend="torch"):
-    assert backend in ["torch", "numpy"]
+def randint(low, high, size):
+    backend = get_backend()
     if backend == "torch":
+        import torch
+
+        return torch.randint(low, high, size=size)
+    else:
+        return np.random.randint(low, high, size=size)
+
+
+def randn(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
         return torch.randn(shape)
     else:
         # work around numpy random returns float object instead of np.ndarray object when shape == ()
         return np.array(np.random.randn(*shape))
 
 
-def astype(x, dtype):
-    if torch.is_tensor(x):
-        if dtype == 'uint8':
-            return x.byte()
-        return x.type(dtype)
+def zeros(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
     else:
-        return x.astype(dtype)
+        shape = args
+
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.zeros(shape)
+    else:
+        return np.zeros(shape)
 
 
-def random_tensor(inputs, output=reals(), backend="torch"):
+def ones(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.ones(shape)
+    else:
+        return np.ones(shape)
+
+
+def empty(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
+    backend = get_backend()
+    if backend == "torch":
+        import torch
+
+        return torch.empty(shape)
+    else:
+        return np.empty(shape)
+
+
+def random_tensor(inputs, output=reals()):
     """
-    Creates a random :class:`funsor.torch.Tensor` with given inputs and output.
+    Creates a random :class:`funsor.tensor.Tensor` with given inputs and output.
     """
+    backend = get_backend()
     assert isinstance(inputs, OrderedDict)
     assert isinstance(output, Domain)
     shape = tuple(d.dtype for d in inputs.values()) + output.shape
     if output.dtype == 'real':
-        data = torch.randn(shape) if backend == "torch" else np.array(np.random.randn(*shape))
+        data = randn(shape)
     else:
         num_elements = reduce(operator.mul, shape, 1)
         if backend == "torch":
+            import torch
+
             data = torch.multinomial(torch.ones(output.dtype), num_elements, replacement=True)
         else:
             data = np.random.choice(output.dtype, num_elements, replace=True)
@@ -248,11 +342,11 @@ def random_gaussian(inputs):
     assert isinstance(inputs, OrderedDict)
     batch_shape = tuple(d.dtype for d in inputs.values() if d.dtype != 'real')
     event_shape = (sum(d.num_elements for d in inputs.values() if d.dtype == 'real'),)
-    prec_sqrt = torch.randn(batch_shape + event_shape + event_shape)
-    precision = torch.matmul(prec_sqrt, prec_sqrt.transpose(-1, -2))
-    precision = precision + 0.05 * torch.eye(event_shape[0])
-    loc = torch.randn(batch_shape + event_shape)
-    info_vec = precision.matmul(loc.unsqueeze(-1)).squeeze(-1)
+    prec_sqrt = randn(batch_shape + event_shape + event_shape)
+    precision = ops.matmul(prec_sqrt, ops.transpose(prec_sqrt, -1, -2))
+    precision = precision + 0.5 * ops.new_eye(precision, event_shape[:1])
+    loc = randn(batch_shape + event_shape)
+    info_vec = ops.matmul(precision, ops.unsqueeze(loc, -1)).squeeze(-1)
     return Gaussian(info_vec, precision, inputs)
 
 
@@ -260,13 +354,21 @@ def random_mvn(batch_shape, dim, diag=False):
     """
     Generate a random :class:`torch.distributions.MultivariateNormal` with given shape.
     """
+    backend = get_backend()
     rank = dim + dim
-    loc = torch.randn(batch_shape + (dim,))
-    cov = torch.randn(batch_shape + (dim, rank))
-    cov = cov.matmul(cov.transpose(-1, -2))
+    loc = randn(batch_shape + (dim,))
+    cov = randn(batch_shape + (dim, rank))
+    cov = cov @ ops.transpose(cov, -1, -2)
     if diag:
-        cov = cov * torch.eye(dim)
-    return torch.distributions.MultivariateNormal(loc, cov)
+        cov = cov * ops.new_eye(cov, (dim,))
+    if backend == "torch":
+        import pyro
+
+        return pyro.distributions.MultivariateNormal(loc, cov)
+    elif backend == "jax":
+        import numpyro
+
+        return numpyro.distributions.MultivariateNormal(loc, cov)
 
 
 def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):

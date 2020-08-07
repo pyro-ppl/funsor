@@ -9,7 +9,6 @@ from typing import Tuple, Union
 
 import opt_einsum
 from multipledispatch.variadic import Variadic
-from pyro.distributions.util import broadcast_shape
 
 import funsor.ops as ops
 from funsor.affine import affine_inputs
@@ -33,7 +32,7 @@ from funsor.terms import (
     reflect,
     to_funsor
 )
-from funsor.util import quote
+from funsor.util import broadcast_shape, get_backend, quote
 
 
 class Contraction(Funsor):
@@ -80,21 +79,33 @@ class Contraction(Funsor):
         self.terms = terms
         self.reduced_vars = reduced_vars
 
-    def unscaled_sample(self, sampled_vars, sample_inputs):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
 
         if self.red_op in (ops.logaddexp, nullop):
             if self.bin_op in (ops.nullop, ops.logaddexp):
+                if rng_key is not None:
+                    import jax
+                    rng_keys = jax.random.split(rng_key, len(self.terms))
+                else:
+                    rng_keys = [None] * len(self.terms)
+
                 # Design choice: we sample over logaddexp reductions, but leave logaddexp
                 # binary choices symbolic.
                 terms = [
                     term.unscaled_sample(sampled_vars.intersection(term.inputs), sample_inputs)
-                    for term in self.terms]
+                    for term, rng_key in zip(self.terms, rng_keys)]
                 return Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
 
             if self.bin_op is ops.add:
+                if rng_key is not None:
+                    import jax
+                    rng_keys = jax.random.split(rng_key)
+                else:
+                    rng_keys = [None] * 2
+
                 # Sample variables greedily in order of the terms in which they appear.
                 for term in self.terms:
                     greedy_vars = sampled_vars.intersection(term.inputs)
@@ -105,7 +116,7 @@ class Contraction(Funsor):
                     (terms if greedy_vars.isdisjoint(term.inputs) else greedy_terms).append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
-                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs))
+                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0]))
                     result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
                 elif (len(greedy_terms) == 2 and
                         isinstance(greedy_terms[0], Tensor) and
@@ -114,12 +125,12 @@ class Contraction(Funsor):
                     term = discrete + gaussian.log_normalizer
                     terms.append(gaussian)
                     terms.append(-gaussian.log_normalizer)
-                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs))
+                    terms.append(term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0]))
                     result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
                 else:
                     raise NotImplementedError('Unhandled case: {}'.format(
                         ', '.join(str(type(t)) for t in greedy_terms)))
-                return result.unscaled_sample(sampled_vars - greedy_vars, sample_inputs)
+                return result.unscaled_sample(sampled_vars - greedy_vars, sample_inputs, rng_keys[1])
 
         raise TypeError("Cannot sample through ops ({}, {})".format(self.red_op, self.bin_op))
 
@@ -148,7 +159,8 @@ GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozens
 
 @quote.register(Contraction)
 def _(arg, indent, out):
-    line = f"{type(arg).__name__}({repr(arg.red_op)}, {repr(arg.bin_op)},"
+    line = "{}({}, {},".format(
+        type(arg).__name__, repr(arg.red_op), repr(arg.bin_op))
     out.append((indent, line))
     quote.inplace(arg.reduced_vars, indent + 1, out)
     i, line = out[-1]
@@ -231,14 +243,16 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
-    return _eager_contract_tensors(reduced_vars, terms, backend="torch")
+    backend = BACKEND_TO_EINSUM_BACKEND[get_backend()]
+    return _eager_contract_tensors(reduced_vars, terms, backend=backend)
 
 
 @eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Tensor, Tensor)
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
-    return _eager_contract_tensors(reduced_vars, terms, backend="pyro.ops.einsum.torch_log")
+    backend = BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()]
+    return _eager_contract_tensors(reduced_vars, terms, backend=backend)
 
 
 # TODO Consider using this for more than binary contractions.
@@ -258,7 +272,7 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
 
         # Squeeze absent event dims to be compatible with einsum.
         data = term.data
-        batch_shape = data.shape[:data.dim() - len(term.shape)]
+        batch_shape = data.shape[:len(data.shape) - len(term.shape)]
         event_shape = tuple(size for size in term.shape if size != 1)
         data = data.reshape(batch_shape + event_shape)
         operands.append(data)
@@ -446,3 +460,22 @@ def unary_log_exp(op, arg):
 @normalize.register(Unary, ops.NegOp, Contraction[NullOp, ops.AddOp, frozenset, tuple])
 def unary_contract(op, arg):
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *(op(t) for t in arg.terms))
+
+
+BACKEND_TO_EINSUM_BACKEND = {
+    "numpy": "numpy",
+    "torch": "torch",
+    "jax": "jax.numpy",
+}
+# NB: numpy_log, numpy_map is backend-agnostic so they also work for torch backend;
+# however, we might need to profile to make a switch
+BACKEND_TO_LOGSUMEXP_BACKEND = {
+    "numpy": "funsor.einsum.numpy_log",
+    "torch": "pyro.ops.einsum.torch_log",
+    "jax": "funsor.einsum.numpy_log",
+}
+BACKEND_TO_MAP_BACKEND = {
+    "numpy": "funsor.einsum.numpy_map",
+    "torch": "pyro.ops.einsum.torch_map",
+    "jax": "funsor.einsum.numpy_map",
+}

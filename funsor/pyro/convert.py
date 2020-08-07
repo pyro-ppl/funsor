@@ -17,23 +17,19 @@ Methods return only the narrower subclass
 
 import math
 from collections import OrderedDict
-from functools import singledispatch
 
-import pyro.distributions
 import torch
-import torch.distributions as dist
-from pyro.distributions.torch_distribution import MaskedDistribution
-from pyro.distributions.util import broadcast_shape
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta
-from funsor.distributions import BernoulliLogits, MultivariateNormal, Normal
-from funsor.domains import bint, reals
+from funsor.domains import Domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
-from funsor.ops import cholesky
 from funsor.tensor import Tensor, align_tensors
-from funsor.terms import Funsor, Independent, Variable, eager
+from funsor.terms import Funsor, Independent, Variable, eager, to_data, to_funsor
+from funsor.util import broadcast_shape
+from funsor.torch.distributions import Normal
+
 
 # Conversion functions use fixed names for Pyro batch dims, but
 # accept an event_inputs tuple for custom event dim names.
@@ -41,9 +37,23 @@ DIM_TO_NAME = tuple(map("_pyro_dim_{}".format, range(-100, 0)))
 NAME_TO_DIM = dict(zip(DIM_TO_NAME, range(-100, 0)))
 
 
+def default_dim_to_name(inputs_shape, event_inputs):
+    dim_to_name_list = DIM_TO_NAME + event_inputs if event_inputs else DIM_TO_NAME
+    return OrderedDict(zip(
+        range(-len(inputs_shape), 0),
+        dim_to_name_list[len(dim_to_name_list) - len(inputs_shape):]))
+
+
+def default_name_to_dim(event_inputs):
+    if not event_inputs:
+        return NAME_TO_DIM
+    dim_to_name = DIM_TO_NAME + event_inputs
+    return dict(zip(dim_to_name, range(-len(dim_to_name), 0)))
+
+
 def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
     """
-    Convert a :class:`torch.Tensor` to a :class:`funsor.torch.Tensor` .
+    Convert a :class:`torch.Tensor` to a :class:`funsor.tensor.Tensor` .
 
     Note this should not touch data, but may trigger a
     :meth:`torch.Tensor.reshape` op.
@@ -56,38 +66,25 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
         ``result.output``. These must be on the right of any ``event_input``
         dimensions.
     :return: A funsor.
-    :rtype: funsor.torch.Tensor
+    :rtype: funsor.tensor.Tensor
     """
     assert isinstance(tensor, torch.Tensor)
     assert isinstance(event_inputs, tuple)
     assert isinstance(event_output, int) and event_output >= 0
     inputs_shape = tensor.shape[:tensor.dim() - event_output]
-    output_shape = tensor.shape[tensor.dim() - event_output:]
-    dim_to_name = DIM_TO_NAME + event_inputs if event_inputs else DIM_TO_NAME
-
-    # Squeeze shape of inputs.
-    inputs = OrderedDict()
-    squeezed_shape = []
-    for dim, size in enumerate(inputs_shape):
-        if size > 1:
-            name = dim_to_name[dim - len(inputs_shape)]
-            inputs[name] = bint(size)
-            squeezed_shape.append(size)
-    squeezed_shape = torch.Size(squeezed_shape)
-    if squeezed_shape != inputs_shape:
-        tensor = tensor.reshape(squeezed_shape + output_shape)
-
-    return Tensor(tensor, inputs, dtype)
+    output = Domain(dtype=dtype, shape=tensor.shape[tensor.dim() - event_output:])
+    dim_to_name = default_dim_to_name(inputs_shape, event_inputs)
+    return to_funsor(tensor, output, dim_to_name)
 
 
 def funsor_to_tensor(funsor_, ndims, event_inputs=()):
     """
-    Convert a :class:`funsor.torch.Tensor` to a :class:`torch.Tensor` .
+    Convert a :class:`funsor.tensor.Tensor` to a :class:`torch.Tensor` .
 
     Note this should not touch data, but may trigger a
     :meth:`torch.Tensor.reshape` op.
 
-    :param funsor.torch.Tensor funsor_: A funsor.
+    :param funsor.tensor.Tensor funsor_: A funsor.
     :param int ndims: The number of result dims, ``== result.dim()``.
     :param tuple event_inputs: Names assigned to rightmost dimensions.
     :return: A PyTorch tensor.
@@ -95,27 +92,29 @@ def funsor_to_tensor(funsor_, ndims, event_inputs=()):
     """
     assert isinstance(funsor_, Tensor)
     assert all(k.startswith("_pyro_dim_") or k in event_inputs for k in funsor_.inputs)
-    name_to_dim = NAME_TO_DIM
-    if event_inputs:
-        dim_to_name = DIM_TO_NAME + event_inputs
-        name_to_dim = dict(zip(dim_to_name, range(-len(dim_to_name), 0)))
-    names = tuple(sorted(funsor_.inputs, key=name_to_dim.__getitem__))
-    tensor = funsor_.align(names).data
-    if names:
-        # Unsqueeze shape of inputs.
-        dims = list(map(name_to_dim.__getitem__, names))
-        inputs_shape = [1] * (-dims[0])
-        for dim, size in zip(dims, tensor.shape):
-            inputs_shape[dim] = size
-        inputs_shape = torch.Size(inputs_shape)
-        tensor = tensor.reshape(inputs_shape + funsor_.output.shape)
+
+    tensor = to_data(funsor_, default_name_to_dim(event_inputs))
+
     if ndims != tensor.dim():
         tensor = tensor.reshape((1,) * (ndims - tensor.dim()) + tensor.shape)
     assert tensor.dim() == ndims
     return tensor
 
 
-def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
+def dist_to_funsor(pyro_dist, event_inputs=()):
+    """
+    Convert a PyTorch distribution to a Funsor.
+
+    :param torch.distribution.Distribution: A PyTorch distribution.
+    :return: A funsor.
+    :rtype: funsor.terms.Funsor
+    """
+    assert isinstance(pyro_dist, torch.distributions.Distribution)
+    assert isinstance(event_inputs, tuple)
+    return to_funsor(pyro_dist, reals(), default_dim_to_name(pyro_dist.batch_shape, event_inputs))
+
+
+def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
     """
     Convert a joint :class:`torch.distributions.MultivariateNormal`
     distribution into a :class:`~funsor.terms.Funsor` with multiple real
@@ -129,7 +128,7 @@ def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
     :param torch.distributions.MultivariateNormal pyro_dist: A
         multivariate normal distribution over one or more variables
         of real or vector or tensor type.
-    :param tuple event_dims: A tuple of names for rightmost dimensions.
+    :param tuple event_inputs: A tuple of names for rightmost dimensions.
         These will be assigned to ``result.inputs`` of type ``bint``.
     :param OrderedDict real_inputs: A dict mapping real variable name
         to appropriately sized ``reals()``. The sum of all ``.numel()``
@@ -139,20 +138,10 @@ def mvn_to_funsor(pyro_dist, event_dims=(), real_inputs=OrderedDict()):
     :rtype: funsor.terms.Funsor
     """
     assert isinstance(pyro_dist, torch.distributions.MultivariateNormal)
-    assert isinstance(event_dims, tuple)
+    assert isinstance(event_inputs, tuple)
     assert isinstance(real_inputs, OrderedDict)
-    loc = tensor_to_funsor(pyro_dist.loc, event_dims, 1)
-    scale_tril = tensor_to_funsor(pyro_dist.scale_tril, event_dims, 2)
-    precision = tensor_to_funsor(pyro_dist.precision_matrix, event_dims, 2)
-    assert loc.inputs == scale_tril.inputs
-    assert loc.inputs == precision.inputs
-    info_vec = precision.data.matmul(loc.data.unsqueeze(-1)).squeeze(-1)
-    log_prob = (-0.5 * loc.output.shape[0] * math.log(2 * math.pi)
-                - scale_tril.data.diagonal(dim1=-1, dim2=-2).log().sum(-1)
-                - 0.5 * (info_vec * loc.data).sum(-1))
-    inputs = loc.inputs.copy()
-    inputs.update(real_inputs)
-    return Tensor(log_prob, loc.inputs) + Gaussian(info_vec, precision.data, inputs)
+    dim_to_name = default_dim_to_name(pyro_dist.batch_shape, event_inputs)
+    return to_funsor(pyro_dist, reals(), dim_to_name, real_inputs=real_inputs)
 
 
 def funsor_to_mvn(gaussian, ndims, event_inputs=()):
@@ -173,19 +162,10 @@ def funsor_to_mvn(gaussian, ndims, event_inputs=()):
     if isinstance(gaussian, Contraction):
         gaussian = [v for v in gaussian.terms if isinstance(v, Gaussian)][0]
     assert isinstance(gaussian, Gaussian)
-
-    precision = gaussian.precision
-    loc = gaussian.info_vec.unsqueeze(-1).cholesky_solve(cholesky(precision)).squeeze(-1)
-
-    int_inputs = OrderedDict((k, d) for k, d in gaussian.inputs.items() if d.dtype != "real")
-    loc = Tensor(loc, int_inputs)
-    precision = Tensor(precision, int_inputs)
-    assert len(loc.output.shape) == 1
-    assert precision.output.shape == loc.output.shape * 2
-
-    loc = funsor_to_tensor(loc, ndims + 1, event_inputs)
-    precision = funsor_to_tensor(precision, ndims + 2, event_inputs)
-    return pyro.distributions.MultivariateNormal(loc, precision_matrix=precision)
+    result = to_data(gaussian, name_to_dim=default_name_to_dim(event_inputs))
+    if ndims != len(result.batch_shape):
+        result = result.expand((1,) * (ndims - len(result.batch_shape)) + result.batch_shape)
+    return result
 
 
 def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
@@ -204,15 +184,11 @@ def funsor_to_cat_and_mvn(funsor_, ndims, event_inputs):
     assert sum(1 for d in funsor_.inputs.values() if d.dtype == "real") == 1
     assert event_inputs, "no components name found"
     assert not any(isinstance(v, Delta) for v in funsor_.terms)
-    discrete = [v for v in funsor_.terms if isinstance(v, Tensor)][0]
-    gaussian = [v for v in funsor_.terms if isinstance(v, Gaussian)][0]
-    assert isinstance(discrete, Tensor)
-    assert isinstance(gaussian, Gaussian)
-
-    logits = funsor_to_tensor(discrete + gaussian.log_normalizer, ndims + 1, event_inputs)
-    cat = pyro.distributions.Categorical(logits=logits)
-    mvn = funsor_to_mvn(gaussian, ndims + 1, event_inputs)
-    assert cat.batch_shape == mvn.batch_shape[:-1]
+    cat, mvn = to_data(funsor_, name_to_dim=default_name_to_dim(event_inputs))
+    if ndims != len(cat.batch_shape):
+        cat = cat.expand((1,) * (ndims - len(cat.batch_shape)) + cat.batch_shape)
+    if ndims + 1 != len(mvn.batch_shape):
+        mvn = mvn.expand((1,) * (ndims + 1 - len(mvn.batch_shape)) + mvn.batch_shape)
     return cat, mvn
 
 
@@ -358,62 +334,3 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
     inputs[x_name] = reals(x_size)
     inputs[y_name] = reals(y_size)
     return tensor_to_funsor(log_prob, event_dims) + Gaussian(info_vec.data, precision.data, inputs)
-
-
-@singledispatch
-def dist_to_funsor(pyro_dist, event_inputs=()):
-    """
-    Convert a PyTorch distribution to a Funsor.
-
-    This is currently implemented for only a subset of distribution types.
-
-    :param torch.distribution.Distribution: A PyTorch distribution.
-    :return: A funsor.
-    :rtype: funsor.terms.Funsor
-    """
-    assert isinstance(pyro_dist, torch.distributions.Distribution)
-    raise ValueError("Cannot convert {} distribution to a Funsor"
-                     .format(type(pyro_dist).__name__))
-
-
-@dist_to_funsor.register(dist.Independent)
-def _independent_to_funsor(pyro_dist, event_inputs=()):
-    event_names = tuple("_event_{}".format(len(event_inputs) + i)
-                        for i in range(pyro_dist.reinterpreted_batch_ndims))
-    result = dist_to_funsor(pyro_dist.base_dist, event_inputs + event_names)
-    for name in reversed(event_names):
-        result = Independent(result, "value", name, "value")
-    return result
-
-
-@dist_to_funsor.register(MaskedDistribution)
-def _masked_to_funsor(pyro_dist, event_inputs=()):
-    # FIXME This is subject to NANs.
-    mask = tensor_to_funsor(pyro_dist._mask.float(), event_inputs)
-    result = mask * dist_to_funsor(pyro_dist.base_dist, event_inputs)
-    return result
-
-
-@dist_to_funsor.register(dist.Categorical)
-def _categorical_to_funsor(pyro_dist, event_inputs=()):
-    return tensor_to_funsor(pyro_dist.logits, event_inputs + ("value",))
-
-
-@dist_to_funsor.register(dist.Bernoulli)
-def _bernoulli_to_funsor(pyro_dist, event_inputs=()):
-    logits = tensor_to_funsor(pyro_dist.logits, event_inputs)
-    return BernoulliLogits(logits)
-
-
-@dist_to_funsor.register(dist.Normal)
-def _normal_to_funsor(pyro_dist, event_inputs=()):
-    loc = tensor_to_funsor(pyro_dist.loc, event_inputs)
-    scale = tensor_to_funsor(pyro_dist.scale, event_inputs)
-    return Normal(loc, scale)
-
-
-@dist_to_funsor.register(dist.MultivariateNormal)
-def _mvn_to_funsor(pyro_dist, event_inputs=()):
-    loc = tensor_to_funsor(pyro_dist.loc, event_inputs, 1)
-    scale_tril = tensor_to_funsor(pyro_dist.scale_tril, event_inputs, 2)
-    return MultivariateNormal(loc, scale_tril)

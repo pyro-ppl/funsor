@@ -65,7 +65,9 @@ def reflect(cls, *args, **kwargs):
         assert len(new_args) == len(cls._ast_fields)
         _, args = args, new_args
 
-    cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+    # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
+    cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
+                      else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
@@ -441,7 +443,7 @@ class Funsor(object, metaclass=FunsorMeta):
         assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
 
-    def sample(self, sampled_vars, sample_inputs=None):
+    def sample(self, sampled_vars, sample_inputs=None, rng_key=None):
         """
         Create a Monte Carlo approximation to this funsor by replacing
         functions of ``sampled_vars`` with :class:`~funsor.delta.Delta` s.
@@ -465,6 +467,8 @@ class Funsor(object, metaclass=FunsorMeta):
         :param OrderedDict sample_inputs: An optional mapping from variable
             name to :class:`~funsor.domains.Domain` over which samples will
             be batched.
+        :param rng_key: a PRNG state to be used by JAX backend to generate random samples
+        :type rng_key: None or JAX's random.PRNGKey
         """
         assert self.output == reals()
         sampled_vars = _convert_reduced_vars(sampled_vars)
@@ -475,7 +479,7 @@ class Funsor(object, metaclass=FunsorMeta):
         if sampled_vars.isdisjoint(self.inputs):
             return self
 
-        result = interpreter.debug_logged(self.unscaled_sample)(sampled_vars, sample_inputs)
+        result = interpreter.debug_logged(self.unscaled_sample)(sampled_vars, sample_inputs, rng_key)
         if sample_inputs is not None:
             log_scale = 0
             for var, domain in sample_inputs.items():
@@ -485,7 +489,7 @@ class Funsor(object, metaclass=FunsorMeta):
                 result += log_scale
         return result
 
-    def unscaled_sample(self, sampled_vars, sample_inputs):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         """
         Internal method to draw an unscaled sample.
         This should be overridden by subclasses.
@@ -501,7 +505,7 @@ class Funsor(object, metaclass=FunsorMeta):
         """
         Align this funsor to match given ``names``.
         This is mainly useful in preparation for extracting ``.data``
-        of a :class:`funsor.torch.Tensor`.
+        of a :class:`funsor.tensor.Tensor`.
 
         :param tuple names: A tuple of strings representing all names
             but in a new order.
@@ -739,7 +743,7 @@ class Funsor(object, metaclass=FunsorMeta):
 @quote.register(Funsor)
 def _(arg, indent, out):
     name = type(arg).__name__
-    if type(arg).__module__ == 'funsor.distributions':
+    if type(arg).__module__ in ['funsor.torch.distributions', 'funsor.jax.distributions']:
         name = 'dist.' + name
     out.append((indent, name + "("))
     for value in arg._ast_values[:-1]:
@@ -756,14 +760,15 @@ interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funso
 interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
-@dispatch(object)
-def to_funsor(x):
+@singledispatch
+def to_funsor(x, output=None, dim_to_name=None, **kwargs):
     """
     Convert to a :class:`Funsor` .
     Only :class:`Funsor` s and scalars are accepted.
 
     :param x: An object.
     :param funsor.domains.Domain output: An optional output hint.
+    :param OrderedDict dim_to_name: An optional mapping from negative batch dimensions to name strings.
     :return: A Funsor equivalent to ``x``.
     :rtype: Funsor
     :raises: ValueError
@@ -771,36 +776,24 @@ def to_funsor(x):
     raise ValueError("Cannot convert to Funsor: {}".format(repr(x)))
 
 
-@dispatch(object, Domain)
-def to_funsor(x, output):
-    raise ValueError("Cannot convert to Funsor: {}".format(repr(x)))
-
-
-@dispatch(object, object)
-def to_funsor(x, output):
-    raise TypeError("Invalid Domain: {}".format(repr(output)))
-
-
-@dispatch(Funsor)
-def to_funsor(x):
-    return x
-
-
-@dispatch(Funsor, Domain)
-def to_funsor(x, output):
-    if x.output != output:
+@to_funsor.register(Funsor)
+def funsor_to_funsor(x, output=None, dim_to_name=None):
+    if output is not None and x.output != output:
         raise ValueError("Output mismatch: {} vs {}".format(x.output, output))
+    if dim_to_name is not None and list(x.inputs.keys()) != list(dim_to_name.values()):
+        raise ValueError("Inputs mismatch: {} vs {}".format(x.inputs, dim_to_name))
     return x
 
 
 @singledispatch
-def to_data(x):
+def to_data(x, name_to_dim=None, **kwargs):
     """
     Extract a python object from a :class:`Funsor`.
 
     Raises a ``ValueError`` if free variables remain or if the funsor is lazy.
 
     :param x: An object, possibly a :class:`Funsor`.
+    :param OrderedDict name_to_dim: An optional inputs hint.
     :return: A non-funsor equivalent to ``x``.
     :raises: ValueError if any free variables remain.
     :raises: PatternMissingError if funsor is not fully evaluated.
@@ -809,10 +802,10 @@ def to_data(x):
 
 
 @to_data.register(Funsor)
-def _to_data_funsor(x):
-    if x.inputs:
-        raise ValueError(f"cannot convert {type(x)} to data due to lazy inputs: {set(x.inputs)}")
-    raise PatternMissingError(r"cannot convert to a non-Funsor: {repr(x)}")
+def _to_data_funsor(x, name_to_dim=None):
+    if name_to_dim is None and x.inputs:
+        raise ValueError("cannot convert {} to data due to lazy inputs: {}".format(type(x), set(x.inputs)))
+    raise PatternMissingError("cannot convert to a non-Funsor: {}".format(repr(x)))
 
 
 class Lebesgue(Funsor):
@@ -862,8 +855,10 @@ class Variable(Funsor):
         return subs[0][1]
 
 
-@dispatch(str, Domain)
-def to_funsor(name, output):
+@to_funsor.register(str)
+def name_to_funsor(name, output=None):
+    if output is None:
+        raise ValueError("Missing output: {}".format(name))
     return Variable(name, output)
 
 
@@ -916,7 +911,7 @@ class Subs(Funsor, metaclass=SubsMeta):
         subs = tuple((str(alpha_subs.get(k, k)), v) for k, v in subs)
         return arg, subs
 
-    def unscaled_sample(self, sampled_vars, sample_inputs):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         if any(k in sample_inputs for k, v in self.subs.items()):
             raise NotImplementedError('TODO alpha-convert')
         subs_sampled_vars = set()
@@ -930,7 +925,7 @@ class Subs(Funsor, metaclass=SubsMeta):
                     if name in v.inputs:
                         subs_sampled_vars.add(k)
         subs_sampled_vars = frozenset(subs_sampled_vars)
-        arg = self.arg.unscaled_sample(subs_sampled_vars, sample_inputs)
+        arg = self.arg.unscaled_sample(subs_sampled_vars, sample_inputs, rng_key)
         return Subs(arg, tuple(self.subs.items()))
 
 
@@ -1122,20 +1117,17 @@ class Number(Funsor, metaclass=NumberMeta):
         return Number(op(self.data), dtype)
 
 
-@dispatch(numbers.Number)
-def to_funsor(x):
-    return Number(x)
-
-
-@dispatch(numbers.Number, Domain)
-def to_funsor(x, output):
+@to_funsor.register(numbers.Number)
+def number_to_funsor(x, output=None, dim_to_name=None):
+    if output is None:
+        return Number(x)
     if output.shape:
         raise ValueError("Cannot create Number with shape {}".format(output.shape))
     return Number(x, output.dtype)
 
 
 @to_data.register(Number)
-def _to_data_number(x):
+def _to_data_number(x, name_to_dim=None):
     return x.data
 
 
@@ -1212,7 +1204,7 @@ class Slice(Funsor, metaclass=SliceMeta):
         elif isinstance(index, Number):
             data = self.slice.start + self.slice.step * index.data
             return Number(data, self.output.dtype)
-        elif type(index).__name__ == "Tensor":  # avoid importing funsor.torch.Tensor
+        elif type(index).__name__ == "Tensor":  # avoid importing funsor.tensor.Tensor
             data = self.slice.start + self.slice.step * index.data
             return type(index)(data, index.inputs, self.output.dtype)
         elif isinstance(index, Slice):
@@ -1532,12 +1524,12 @@ class Independent(Funsor):
         diag_var = str(alpha_subs.get(diag_var, diag_var))
         return fn, reals_var, bint_var, diag_var
 
-    def unscaled_sample(self, sampled_vars, sample_inputs):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
             raise NotImplementedError('TODO alpha-convert')
         sampled_vars = frozenset(self.diag_var if v == self.reals_var else v
                                  for v in sampled_vars)
-        fn = self.fn.unscaled_sample(sampled_vars, sample_inputs)
+        fn = self.fn.unscaled_sample(sampled_vars, sample_inputs, rng_key)
         return Independent(fn, self.reals_var, self.bint_var, self.diag_var)
 
     def eager_subs(self, subs):
@@ -1598,7 +1590,7 @@ def quote_inplace_oneline(arg, indent, out):
 @quote.register(Cat)
 @quote.register(Lambda)
 def quote_inplace_first_arg_on_first_line(arg, indent, out):
-    line = f"{type(arg).__name__}({repr(arg._ast_values[0])},"
+    line = "{}({},".format(type(arg).__name__, repr(arg._ast_values[0]))
     out.append((indent, line))
     for value in arg._ast_values[1:-1]:
         quote.inplace(value, indent + 1, out)

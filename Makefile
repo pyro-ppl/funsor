@@ -19,6 +19,7 @@ format: FORCE
 	isort -y
 
 test: lint FORCE
+ifeq (${FUNSOR_BACKEND}, torch)
 	pytest -v -n auto test/
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
@@ -36,11 +37,19 @@ test: lint FORCE
 	python examples/slds.py -n 2 -t 50
 	python examples/pcfg.py --size 3
 	python examples/vae.py --smoke-test
-	python examples/eeg_slds.py --num-steps 2 --fon --test 
+	python examples/eeg_slds.py --num-steps 2 --fon --test
 	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --smoke
 	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --parallel --smoke
 	python examples/sensor.py --seed=0 --num-frames=2 -n 1
 	@echo PASS
+else ifeq (${FUNSOR_BACKEND}, jax)
+	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi
+	@echo PASS
+else
+	# default backend
+	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi
+	@echo PASS
+endif
 
 clean: FORCE
 	git clean -dfx -e funsor-egg.info

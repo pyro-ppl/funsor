@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import re
+import os
 from collections import OrderedDict
 from functools import partial, reduce
 
 import pytest
-import torch
 
 import funsor.ops as ops
 from funsor.domains import bint, reals
@@ -23,9 +23,12 @@ from funsor.sum_product import (
     sequential_sum_product,
     sum_product
 )
-from funsor.tensor import Tensor
+from funsor.tensor import Tensor, get_default_prototype
 from funsor.terms import Variable, eager_or_die, moment_matching, reflect
 from funsor.testing import assert_close, random_gaussian, random_tensor
+from funsor.util import get_backend
+
+pytestmark = pytest.mark.skipif((get_backend() == 'jax') and ('CI' in os.environ), reason='slow tests')
 
 
 @pytest.mark.parametrize('inputs,dims,expected_num_components', [
@@ -108,9 +111,9 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     (ops.logaddexp, ops.add, reals(2)),
 ], ids=str)
 @pytest.mark.parametrize('batch_inputs', [
-    {},
-    {"foo": bint(5)},
-    {"foo": bint(2), "bar": bint(4)},
+    OrderedDict(),
+    OrderedDict([("foo", bint(5))]),
+    OrderedDict([("foo", bint(2)), ("bar", bint(4))]),
 ], ids=lambda d: ",".join(d.keys()))
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
@@ -151,9 +154,9 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 6)))
 @pytest.mark.parametrize('batch_inputs', [
-    {},
-    {"foo": bint(5)},
-    {"foo": bint(2), "bar": bint(4)},
+    OrderedDict(),
+    OrderedDict([("foo", bint(5))]),
+    OrderedDict([("foo", bint(2)), ("bar", bint(4))]),
 ], ids=lambda d: ",".join(d.keys()))
 @pytest.mark.parametrize('x_domain,y_domain', [
     (bint(2), bint(3)),
@@ -251,7 +254,8 @@ def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
 
     # Each time step only a single sensor observes x,
     # and each sensor has a different bias.
-    sensor_id = Tensor(torch.arange(num_steps) % 2, OrderedDict(time=bint(num_steps)), dtype=2)
+    sensor_id = Tensor(ops.new_arange(get_default_prototype(), num_steps) % 2,
+                       OrderedDict(time=bint(num_steps)), dtype=2)
     with interpretation(eager_or_die):
         factor = trans + obs(bias=bias[sensor_id]) + bias_dist
     assert set(factor.inputs) == {"time", "bias", "x_prev", "x_curr"}

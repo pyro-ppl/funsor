@@ -250,7 +250,7 @@ def test_dist_to_funsor_normal(batch_shape):
     value = d.sample()
     actual_log_prob = f(value=tensor_to_funsor(value))
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
-    assert_close(actual_log_prob, expected_log_prob)
+    assert_close(actual_log_prob, expected_log_prob, rtol=1e-5)
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
@@ -283,7 +283,7 @@ def test_dist_to_funsor_independent(batch_shape, event_shape):
     funsor_value = tensor_to_funsor(value, event_output=len(event_shape))
     actual_log_prob = f(value=funsor_value)
     expected_log_prob = tensor_to_funsor(d.log_prob(value))
-    assert_close(actual_log_prob, expected_log_prob)
+    assert_close(actual_log_prob, expected_log_prob, rtol=1e-5)
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)

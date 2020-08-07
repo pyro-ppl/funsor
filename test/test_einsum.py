@@ -5,11 +5,10 @@ from collections import OrderedDict
 
 import opt_einsum
 import pytest
-import torch
-from pyro.ops.contract import einsum as pyro_einsum
 
 import funsor
-from funsor.distributions import Categorical
+import funsor.ops as ops
+from funsor.cnf import BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND, BACKEND_TO_MAP_BACKEND
 from funsor.domains import bint
 from funsor.einsum import naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
@@ -17,6 +16,7 @@ from funsor.optimizer import apply_optimizer
 from funsor.tensor import Tensor
 from funsor.terms import Variable, reflect
 from funsor.testing import assert_close, make_einsum_example
+from funsor.util import get_backend
 
 EINSUM_EXAMPLES = [
     "a,b->",
@@ -29,12 +29,16 @@ EINSUM_EXAMPLES = [
 ]
 
 
+def backend_to_einsum_backends(backend):
+    backends = [BACKEND_TO_EINSUM_BACKEND[get_backend()],
+                BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()]]
+    map_backend = BACKEND_TO_MAP_BACKEND[get_backend()]
+    backends.append(map_backend)
+    return backends
+
+
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', [
-    'torch',
-    'pyro.ops.einsum.torch_log',
-    'pyro.ops.einsum.torch_map',
-])
+@pytest.mark.parametrize('backend', backend_to_einsum_backends(get_backend()))
 def test_einsum(equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
@@ -54,7 +58,7 @@ def test_einsum(equation, backend):
 
     assert_close(actual, actual_optimized, atol=1e-4)
     assert expected.shape == actual.data.shape
-    assert torch.allclose(expected, actual.data)
+    assert_close(expected, actual.data, rtol=1e-5, atol=1e-8)
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
@@ -62,12 +66,20 @@ def test_einsum(equation, backend):
 
 
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
+@pytest.mark.skipif(get_backend() == "numpy",
+                    reason="funsor.distribution does not support numpy backend")
 def test_einsum_categorical(equation):
+    if get_backend() == "jax":
+        from funsor.jax.distributions import Categorical
+    else:
+        from funsor.torch.distributions import Categorical
+
     inputs, outputs, sizes, operands, _ = make_einsum_example(equation)
-    operands = [operand.abs() / operand.abs().sum(-1, keepdim=True)
+    operands = [ops.abs(operand) / ops.abs(operand).sum(-1)[..., None]
                 for operand in operands]
 
-    expected = opt_einsum.contract(equation, *operands, backend='torch')
+    expected = opt_einsum.contract(equation, *operands,
+                                   backend=BACKEND_TO_EINSUM_BACKEND[get_backend()])
 
     with interpretation(reflect):
         funsor_operands = [
@@ -93,7 +105,7 @@ def test_einsum_categorical(equation):
     assert_close(actual, actual_optimized, atol=1e-4)
 
     assert expected.shape == actual.data.shape
-    assert torch.allclose(expected, actual.data)
+    assert_close(expected, actual.data)
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs
@@ -114,11 +126,15 @@ PLATED_EINSUM_EXAMPLES = [
 
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', [
-    'torch',
-    'pyro.ops.einsum.torch_log',
-    'pyro.ops.einsum.torch_map',
+    BACKEND_TO_EINSUM_BACKEND[get_backend()],
+    BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()],
+    BACKEND_TO_MAP_BACKEND[get_backend()]
 ])
+@pytest.mark.skipif(get_backend() != "torch",
+                    reason="pyro.ops.contract.einsum does not work with numpy/jax backend.")
 def test_plated_einsum(equation, plates, backend):
+    from pyro.ops.contract import einsum as pyro_einsum
+
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = pyro_einsum(equation, *operands, plates=plates, backend=backend, modulo_total=False)[0]
     with interpretation(reflect):
@@ -134,7 +150,7 @@ def test_plated_einsum(equation, plates, backend):
     assert_close(actual, actual_optimized, atol=1e-3 if backend == 'torch' else 1e-4)
 
     assert expected.shape == actual.data.shape
-    assert torch.allclose(expected, actual.data)
+    assert_close(expected, actual.data)
     for output in outputs:
         for i, output_dim in enumerate(output):
             assert output_dim in actual.inputs

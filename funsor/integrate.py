@@ -137,8 +137,8 @@ def eager_integrate(delta, integrand, reduced_vars):
 def eager_integrate(log_measure, integrand, reduced_vars):
     real_vars = frozenset(k for k in reduced_vars if log_measure.inputs[k].dtype == 'real')
     if real_vars == frozenset([integrand.name]):
-        loc = log_measure.info_vec.unsqueeze(-1).cholesky_solve(log_measure._precision_chol).squeeze(-1)
-        data = loc * log_measure.log_normalizer.data.exp().unsqueeze(-1)
+        loc = ops.cholesky_solve(ops.unsqueeze(log_measure.info_vec, -1), log_measure._precision_chol).squeeze(-1)
+        data = loc * ops.unsqueeze(ops.exp(log_measure.log_normalizer.data), -1)
         data = data.reshape(loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict((k, d) for k, d in log_measure.inputs.items() if d.dtype != 'real')
         result = Tensor(data, inputs)
@@ -163,9 +163,9 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
-            norm = lhs.log_normalizer.data.exp()
+            norm = ops.exp(lhs.log_normalizer.data)
             lhs_cov = ops.cholesky_inverse(lhs._precision_chol)
-            lhs_loc = lhs.info_vec.unsqueeze(-1).cholesky_solve(lhs._precision_chol).squeeze(-1)
+            lhs_loc = ops.cholesky_solve(ops.unsqueeze(lhs.info_vec, -1), lhs._precision_chol).squeeze(-1)
             vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
             data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
             inputs = OrderedDict((k, d) for k, d in inputs.items() if k not in reduced_vars)

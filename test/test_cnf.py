@@ -4,11 +4,11 @@
 import itertools
 from collections import OrderedDict
 
+import numpy as np  # noqa: F401
 import pytest
-import torch  # noqa F403
 
 from funsor import ops
-from funsor.cnf import Contraction
+from funsor.cnf import Contraction, BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND
 from funsor.domains import bint  # noqa F403
 from funsor.domains import reals
 from funsor.einsum import einsum, naive_plated_einsum
@@ -16,7 +16,7 @@ from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Tensor
 from funsor.terms import Number, eager, normalize, reflect
 from funsor.testing import assert_close, check_funsor, make_einsum_example, random_tensor
-from funsor.util import quote
+from funsor.util import get_backend, quote
 
 EINSUM_EXAMPLES = [
     ("a,b->", ''),
@@ -38,9 +38,14 @@ EINSUM_EXAMPLES = [
 
 
 @pytest.mark.parametrize('equation,plates', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', ['torch', 'pyro.ops.einsum.torch_log'])
+@pytest.mark.parametrize('backend', [
+    BACKEND_TO_EINSUM_BACKEND[get_backend()],
+    BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()]])
 @pytest.mark.parametrize('einsum_impl', [einsum, naive_plated_einsum])
 def test_normalize_einsum(equation, plates, backend, einsum_impl):
+    if get_backend() == "torch":
+        import torch  # noqa: F401
+
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
     with interpretation(reflect):
@@ -82,6 +87,7 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
 ])
 @pytest.mark.parametrize("red_op,bin_op", [(ops.add, ops.mul), (ops.logaddexp, ops.add)], ids=str)
 def test_eager_contract_tensor_tensor(red_op, bin_op, x_inputs, x_shape, y_inputs, y_shape):
+    backend = get_backend()
     inputs = OrderedDict([("i", bint(4)), ("j", bint(5)), ("k", bint(6))])
     x_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in x_inputs)
     y_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in y_inputs)
@@ -92,7 +98,7 @@ def test_eager_contract_tensor_tensor(red_op, bin_op, x_inputs, x_shape, y_input
     all_vars = frozenset(x.inputs).union(y.inputs)
     for n in range(len(all_vars)):
         for reduced_vars in map(frozenset, itertools.combinations(all_vars, n)):
-            print(f"reduced_vars = {reduced_vars}")
+            print("reduced_vars = {}".format(reduced_vars))
             expected = xy.reduce(red_op, reduced_vars)
             actual = Contraction(red_op, bin_op, reduced_vars, (x, y))
-            assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+            assert_close(actual, expected, atol=1e-4, rtol=1e-3 if backend == "jax" else 1e-4)
