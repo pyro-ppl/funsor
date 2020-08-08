@@ -14,7 +14,7 @@ funsor.set_backend("torch")
 
 
 # ------------------ cell 2
-i# dx = funsor.Lebesgue('x')
+# dx = funsor.Lebesgue('x')
 dist_x = funsor.torch.distributions.Normal(0., 1., 'x')  # + dx
 exp_transform = funsor.ops.exp(funsor.Variable('y', funsor.reals()))
 
@@ -66,7 +66,8 @@ flow_dist = base_dist(x=spline_transform)
 
 
 # -------------------- cell 8
-# data_funsor = funsor.Tensor(
+# assert X.shape == (100, 2)
+data_funsor = funsor.Tensor(X, OrderedDict(i=funsor.bint(100)))
 loss = -flow_dist(y=data_funsor).reduce(ops.add, frozenset(data_funsor.inputs))
 
 # the reality
@@ -135,14 +136,28 @@ samples_x2_given_x1 = dist_x(x1=x1_data).sample("x2", OrderedDict(i=funsor.bint(
 
 
 # ---------------- alternate version of nn
-theta_nn = funsor.function(funsor.reals(1), funsor.reals(1))(torch.nn.Linear(1, 1))
-dist_x2_given_x1 = dist_base(x=x2_transform, theta=theta_nn)
+dist_base = funsor.torch.distributions.Normal(0., 1., 'x')
+dist_x1 = dist_base(x=funsor.ops.SplineOp(1)(
+    funsor.Variable('x1', funsor.reals(1)),
+    funsor.Variable('theta1', funsor.reals(1))
+))
+
+x2_transform = funsor.ops.SplineOp(1)(
+    funsor.Variable('y', funsor.reals(1)),
+    funsor.Variable('theta', funsor.reals(1))
+)
+
+theta_nn = funsor.function(funsor.reals(1), funsor.reals(1))(
+    torch.nn.Linear(1, 1))('x')
+
+dist_x2_given_x1 = dist_base(x=x2_transform(theta=theta_nn))
 dist_x = dist_x1 + dist_x2_given_x1(y='x2', x='x1')
 
+theta1 = torch.randn(2, requires_grad=True)
 optimizer = torch.optim.Adam(...)
 for step in range(steps):
     optimizer.zero_grad()
     # substituting data triggers neural net evaluation
-    loss = -dist_x(x1=x1_data, x2=x2_data).reduce(ops.add)
+    loss = -dist_x(theta1=theta1, x1=x1_data, x2=x2_data).reduce(ops.add)
     loss.data.backward()
     optimizer.step()
