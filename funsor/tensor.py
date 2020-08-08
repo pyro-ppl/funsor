@@ -7,6 +7,7 @@ import warnings
 from collections import OrderedDict
 from contextlib import contextmanager
 from functools import reduce
+from weakref import WeakKeyDictionary, weakref
 
 import numpy as np
 import opt_einsum
@@ -15,8 +16,9 @@ from multipledispatch.variadic import Variadic
 
 import funsor
 import funsor.ops as ops
-from funsor.delta import Delta
+from funsor.delta import Delta, solve
 from funsor.domains import Domain, bint, find_domain, reals
+from funsor.interpreter import debug_logged
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -761,7 +763,7 @@ class Function(Funsor):
 
     :param callable fn: A native PyTorch or NumPy function to wrap.
     :param funsor.domains.Domain output: An output domain.
-    :param Funsor args: Funsor arguments.
+    :param tuple args: A tuple of Funsor arguments.
     """
     def __init__(self, fn, output, args):
         assert callable(fn)
@@ -881,7 +883,7 @@ def function(*signature):
         def max_and_argmax(x):
             return torch.max(x, dim=-1)
 
-    :param \*signature: A sequence if input domains followed by a final output
+    :param \*signature: A sequence of input domains followed by a final output
         domain or nested tuple of output domains.
     """
     assert signature
@@ -889,6 +891,39 @@ def function(*signature):
     assert all(isinstance(d, Domain) for d in inputs)
     assert isinstance(output, (Domain, tuple))
     return functools.partial(_function, inputs, output)
+
+
+_BIJECTION_TABLE = WeakKeyDictionary()
+
+
+def register_bijection(call, inv, log_abs_det_jacobian):
+    call = weakref.ref(call)
+    inv = weakref.ref(inv)
+    log_abs_det_jacobian = weakref.ref(log_abs_det_jacobian)
+
+    def t(y, x, *args, **kwargs):
+        return -log_abs_det_jacobian()(x, y, *args, **kwargs)
+
+    _BIJECTION_TABLE[call()] = inv, log_abs_det_jacobian
+    _BIJECTION_TABLE[inv()] = call, lambda: t
+
+
+@solve.register(Function, object, Domain, tuple)
+@debug_logged
+def solve_function(fn, output, args, y):
+    try:
+        inv, log_abs_det_jacobian = _BIJECTION_TABLE[fn]
+    except KeyError:
+        return None
+    inv = inv()
+    log_abs_det_jacobian = log_abs_det_jacobian()
+
+    # TODO assert y does not appear in side_inputs
+    arg, side_inputs = args[0], args[1:]
+    x = inv(y, *side_inputs)
+    name, point, log_density = solve(arg, x)
+    log_density += log_abs_det_jacobian(x, y, *side_inputs)
+    return name, point, log_density
 
 
 class Einsum(Funsor):
