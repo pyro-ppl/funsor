@@ -135,6 +135,9 @@ class ReshapeOp(Op, metaclass=ReshapeMeta):
         self.shape = shape
         super().__init__(self._default)
 
+    def __reduce__(self):
+        return ReshapeOp, (self.shape,)
+
     def _default(self, x):
         return x.reshape(self.shape)
 

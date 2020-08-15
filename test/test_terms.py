@@ -123,6 +123,7 @@ EXPR_STRINGS = [
     "Number(1, dtype=10)",
     "-Variable('x', reals())",
     "Variable('x', reals(3))[Variable('i', bint(3))]",
+    "Variable('x', reals(2, 2)).reshape((4,))",
     "Variable('x', reals()) + Variable('y', reals())",
     "Variable('x', reals())(x=Number(0.))",
     "Number(1) / Variable('x', reals())",
