@@ -107,7 +107,7 @@ def _is_numeric_array(x):
 @ops.log.register(torch.Tensor)
 def _log(x):
     if x.dtype in (torch.bool, torch.uint8, torch.long):
-        x = x.float()
+        x = x.to(dtype=torch.get_default_dtype())
     return x.log()
 
 
