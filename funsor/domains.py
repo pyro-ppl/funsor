@@ -62,11 +62,7 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
         return self.dtype
 
 
-def pickle_domain(x):
-    return Domain, (x.shape, x.dtype)
-
-
-copyreg.pickle(Domain, pickle_domain)
+copyreg.pickle(Domain, lambda x: (Domain, (x.shape, x.dtype)))
 
 
 @quote.register(Domain)

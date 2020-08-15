@@ -173,16 +173,6 @@ def moment_matching(cls, *args):
 
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
-FUNSORS = {}
-
-
-def pickle_funsor(x):
-    return unpickle_funsor, (type(x).__name__, x._ast_values)
-
-
-def unpickle_funsor(name, args):
-    return FUNSORS[name](*args)
-
 
 class FunsorMeta(type):
     """
@@ -219,8 +209,7 @@ class FunsorMeta(type):
             cls._type_cache = WeakValueDictionary()
 
         # Support pickling, copy.copy() and copy.deepcopy().
-        copyreg.pickle(cls, pickle_funsor)
-        FUNSORS[cls.__name__] = cls
+        copyreg.pickle(cls, lambda x: (type(x).__origin__, x._ast_values))
 
     def __call__(cls, *args, **kwargs):
         if cls.__args__:

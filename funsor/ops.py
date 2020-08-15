@@ -32,13 +32,13 @@ class Op(Dispatcher):
     def __deepcopy__(self, memo):
         return self
 
+    def __reduce__(self):
+        return self.__name__
+
     def __repr__(self):
         return "ops." + self.__name__
 
     def __str__(self):
-        return self.__name__
-
-    def __reduce__(self):
         return self.__name__
 
 
