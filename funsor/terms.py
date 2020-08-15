@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import copyreg
 import functools
 import itertools
 import math
@@ -172,6 +173,16 @@ def moment_matching(cls, *args):
 
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
+FUNSORS = {}
+
+
+def pickle_funsor(x):
+    return unpickle_funsor, (type(x).__name__, x._ast_values)
+
+
+def unpickle_funsor(name, args):
+    return FUNSORS[name](*args)
+
 
 class FunsorMeta(type):
     """
@@ -182,10 +193,10 @@ class FunsorMeta(type):
         defaults and do type conversion, thereby simplifying logic of
         interpretations.
     2.  Ensure each Funsor class has an attribute ``._ast_fields`` describing
-        its input args and each Funsor instance has an attribute ``._ast_args``
-        with values corresponding to its input args. This allows the instance
-        to be reflectively reconstructed under a different interpretation, and
-        is used by :func:`funsor.interpreter.reinterpret`.
+        its input args and each Funsor instance has an attribute
+        ``._ast_values`` with values corresponding to its input args. This
+        allows the instance to be reflectively reconstructed under a different
+        interpretation, and is used by :func:`funsor.interpreter.reinterpret`.
     3.  Cons-hash construction, so that repeatedly calling the constructor
         with identical args will product the same object. This enables cheap
         syntactic equality testing using the ``is`` operator, which is
@@ -206,6 +217,10 @@ class FunsorMeta(type):
             cls._ast_fields = getargspec(cls.__init__)[0][1:]
             cls._cons_cache = WeakValueDictionary()
             cls._type_cache = WeakValueDictionary()
+
+        # Support pickling, copy.copy() and copy.deepcopy().
+        copyreg.pickle(cls, pickle_funsor)
+        FUNSORS[cls.__name__] = cls
 
     def __call__(cls, *args, **kwargs):
         if cls.__args__:

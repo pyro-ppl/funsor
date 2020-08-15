@@ -17,17 +17,28 @@ _builtin_sum = sum
 
 
 class Op(Dispatcher):
-    def __init__(self, fn):
-        super(Op, self).__init__(fn.__name__)
+    def __init__(self, fn, *, name=None):
+        if name is None:
+            name = fn.__name__
+        super(Op, self).__init__(name)
         # register as default operation
         for nargs in (1, 2):
             default_signature = (object,) * nargs
             self.add(default_signature, fn)
 
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
     def __repr__(self):
         return "ops." + self.__name__
 
     def __str__(self):
+        return self.__name__
+
+    def __reduce__(self):
         return self.__name__
 
 
@@ -264,8 +275,8 @@ def _logaddexp(x, y):
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
-logaddexp = LogAddExpOp(_logaddexp)
-sample = SampleOp(_logaddexp)
+logaddexp = LogAddExpOp(_logaddexp, name="logaddexp")
+sample = SampleOp(_logaddexp, name="sample")
 
 
 @SubOp
