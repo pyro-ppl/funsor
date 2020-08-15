@@ -164,7 +164,7 @@ class GetitemOp(Op, metaclass=GetitemMeta):
         self.__name__ = 'GetitemOp({})'.format(offset)
 
     def __reduce__(self):
-        return GetitemOp, self.offset
+        return GetitemOp, (self.offset,)
 
     def _default(self, x, y):
         return x[self._prefix + (y,)] if self.offset else x[y]
