@@ -941,3 +941,15 @@ def test_tensor_to_funsor_ambiguous_output():
     f2 = funsor.to_funsor(x, output=reals(), dim_to_name=OrderedDict({-2: 'a'}))
     assert f.inputs == f2.inputs == OrderedDict(a=bint(2))
     assert f.output.shape == () == f2.output.shape
+
+
+@pytest.mark.skipif(get_backend() != "torch", reason="torch-specific regression")
+def test_log_correct_dtype():
+    import torch
+    old_dtype = torch.get_default_dtype()
+    torch.set_default_dtype(torch.float64)
+    x = Tensor(torch.rand(3, dtype=torch.get_default_dtype()))
+    try:
+        assert (x == x).all().log().data.dtype is x.data.dtype
+    finally:
+        torch.set_default_dtype(old_dtype)
