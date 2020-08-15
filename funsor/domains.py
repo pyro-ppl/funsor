@@ -1,7 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import copyreg
 import operator
 from collections import namedtuple
 from functools import reduce
@@ -36,6 +35,9 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     def __deepcopy__(self, memo):
         return self
 
+    def __reduce__(self):
+        return Domain, (self.shape, self.dtype)
+
     def __repr__(self):
         shape = tuple(self.shape)
         if isinstance(self.dtype, int):
@@ -60,9 +62,6 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
     def size(self):
         assert isinstance(self.dtype, int)
         return self.dtype
-
-
-copyreg.pickle(Domain, lambda x: (Domain, (x.shape, x.dtype)))
 
 
 @quote.register(Domain)

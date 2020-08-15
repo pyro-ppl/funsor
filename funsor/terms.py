@@ -1,7 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import copyreg
 import functools
 import itertools
 import math
@@ -208,9 +207,6 @@ class FunsorMeta(type):
             cls._cons_cache = WeakValueDictionary()
             cls._type_cache = WeakValueDictionary()
 
-        # Support pickling, copy.copy() and copy.deepcopy().
-        copyreg.pickle(cls, lambda x: (type(x).__origin__, x._ast_values))
-
     def __call__(cls, *args, **kwargs):
         if cls.__args__:
             cls = cls.__origin__
@@ -358,6 +354,12 @@ class Funsor(object, metaclass=FunsorMeta):
     @property
     def shape(self):
         return self.output.shape
+
+    def __copy__(self):
+        return self
+
+    def __reduce__(self):
+        return type(self).__origin__, self._ast_values
 
     def __hash__(self):
         return id(self)
