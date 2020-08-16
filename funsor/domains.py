@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import operator
+import warnings
 from functools import reduce
 from weakref import WeakValueDictionary
 
@@ -18,7 +19,7 @@ class Domain(type):
         return cls.__name__
 
 
-class RealMeta(Domain):
+class RealType(Domain):
     def __getitem__(cls, shape):
         if not isinstance(shape, tuple):
             shape = (shape,)
@@ -30,7 +31,7 @@ class RealMeta(Domain):
             assert cls is Real
             assert all(isinstance(size, int) and size >= 0 for size in shape)
             name = "Real[{}]".format(",".join(map(str, shape)))
-            result = RealMeta(name, (Real,), {"shape": shape})
+            result = RealType(name, (Real,), {"shape": shape})
             Real._type_cache[shape] = result
         return result
 
@@ -38,34 +39,37 @@ class RealMeta(Domain):
     def num_elements(cls):
         return reduce(operator.mul, cls.shape, 1)
 
-    # SHIM
+    # DEPRECATED
     @property
-    def size(self):
-        raise AssertionError("reals() has no .size")
+    def dtype(self):
+        warnings.warn("domain.dtype is deprecated, "
+                      "use isinstance(domain, RealType) instead",
+                      DeprecationWarning)
+        return "real"
 
 
-class Real(type, metaclass=RealMeta):
+class Real(type, metaclass=RealType):
     """
     Type of a real-valued array with known shape::
 
         Real[()] = Real  # scalar
         Real[8]          # vector of length 8
         Real[3,3]        # 3x3 matrix
+
+    To dispatch on domain type, we recommend either ``@singledispatch``,
+    ``@multipledispatch``, or ``isinstance(domain, RealType)``.
     """
     _type_cache = WeakValueDictionary()
     shape = ()
 
     def __reduce__(self):
-        return RealMeta, (self.shape,)
-
-    # SHIM
-    dtype = "real"
+        return RealType, (self.shape,)
 
 
 Real._type_cache[()] = Real  # Real[()] is Real.
 
 
-class BintMeta(Domain):
+class BintType(Domain):
     def __getitem__(cls, size):
         # in some JAX versions, shape can be np.int64 type
         if get_tracing_state() or funsor.get_backend() == "jax":
@@ -75,7 +79,7 @@ class BintMeta(Domain):
             assert cls is Bint
             assert isinstance(size, int) and size >= 0
             name = "Bint[{}]".format(size)
-            result = BintMeta(name, (Bint,), {"size": size})
+            result = BintType(name, (Bint,), {"size": size})
             Bint._type_cache[size] = result
         return result
 
@@ -85,40 +89,56 @@ class BintMeta(Domain):
         from funsor.terms import Number
         return (Number(i, cls.dtype) for i in range(cls.size))
 
-    # SHIM
+    # DEPRECATED
     @property
     def dtype(cls):
+        warnings.warn("domain.dtype is deprecated, "
+                      "use isinstance(domain, BintType) instead",
+                      DeprecationWarning)
         return cls.size
 
+    # DEPRECATED
+    @property
+    def shape(cls):
+        warnings.warn("Bint[n].shape is deprecated",
+                      DeprecationWarning)
+        return ()
 
-class Bint(type, metaclass=BintMeta):
+
+class Bint(type, metaclass=BintType):
     """
     Factory for bounded integer types::
 
         Bint[5]  # integers ranging in {0,1,2,3,4}
+
+    To dispatch on domain type, we recommend either ``@singledispatch``,
+    ``@multipledispatch``, or ``isinstance(domain, BintType)``.
     """
     _type_cache = WeakValueDictionary()
 
     def __reduce__(self):
         size = getattr(self, "size", None)
-        return "Bint" if size is None else (BintMeta, (size,))
-
-    # SHIM
-    shape = ()
+        return "Bint" if size is None else (BintType, (size,))
 
 
-# SHIM
+# DEPRECATED
 def reals(*args):
+    warnings.warn("reals(...) is deprecated, use Real[...] instead",
+                  DeprecationWarning)
     return Real[args]
 
 
-# SHIM
+# DEPRECATED
 def bint(size):
+    warnings.warn("reals(...) is deprecated, use Real[...] instead",
+                  DeprecationWarning)
     return Bint[size]
 
 
-# SHIM
+# DEPRECATED
 def make_domain(shape, dtype):
+    warnings.warn("make_domain is deprecated, use Bint or Real instead",
+                  DeprecationWarning)
     return Real[shape] if dtype == "real" else Bint[dtype]
 
 
@@ -183,8 +203,12 @@ def find_domain(op, *domains):
 
 
 __all__ = [
+    'Bint',
+    'BintType',
     'Domain',
-    'find_domain',
+    'Real',
+    'RealType',
     'bint',
+    'find_domain',
     'reals',
 ]
