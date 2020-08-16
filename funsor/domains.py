@@ -34,7 +34,7 @@ class RealMeta(Domain):
             Real._type_cache[shape] = result
         return result
 
-    @lazy_property
+    @property
     def num_elements(cls):
         return reduce(operator.mul, cls.shape, 1)
 
@@ -118,7 +118,7 @@ def bint(size):
 
 
 # SHIM
-def domain(shape, dtype):
+def make_domain(shape, dtype):
     return Real[shape] if dtype == "real" else Bint[dtype]
 
 

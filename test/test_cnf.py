@@ -9,7 +9,7 @@ import pytest
 
 from funsor import ops
 from funsor.cnf import Contraction, BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND
-from funsor.domains import bint  # noqa F403
+from funsor.domains import Bint, bint  # noqa F403
 from funsor.domains import reals
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
