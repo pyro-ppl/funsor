@@ -152,7 +152,7 @@ def test_pickle(expr):
     pickle.dump(x, f)
     f.seek(0)
     y = pickle.load(f)
-    y is x
+    assert y is x
 
 
 @pytest.mark.parametrize('expr', EXPR_STRINGS)

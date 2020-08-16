@@ -21,4 +21,4 @@ def test_pickle(expr):
     pickle.dump(x, f)
     f.seek(0)
     y = pickle.load(f)
-    y is x
+    assert y == x  # TODO promote to "y is x"
