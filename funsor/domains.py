@@ -29,6 +29,15 @@ class Domain(namedtuple('Domain', ['shape', 'dtype'])):
             raise ValueError(repr(dtype))
         return super(Domain, cls).__new__(cls, shape, dtype)
 
+    def __copy__(self):
+        return self
+
+    def __deepcopy__(self, memo):
+        return self
+
+    def __reduce__(self):
+        return Domain, (self.shape, self.dtype)
+
     def __repr__(self):
         shape = tuple(self.shape)
         if isinstance(self.dtype, int):

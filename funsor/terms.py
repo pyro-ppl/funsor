@@ -182,10 +182,10 @@ class FunsorMeta(type):
         defaults and do type conversion, thereby simplifying logic of
         interpretations.
     2.  Ensure each Funsor class has an attribute ``._ast_fields`` describing
-        its input args and each Funsor instance has an attribute ``._ast_args``
-        with values corresponding to its input args. This allows the instance
-        to be reflectively reconstructed under a different interpretation, and
-        is used by :func:`funsor.interpreter.reinterpret`.
+        its input args and each Funsor instance has an attribute
+        ``._ast_values`` with values corresponding to its input args. This
+        allows the instance to be reflectively reconstructed under a different
+        interpretation, and is used by :func:`funsor.interpreter.reinterpret`.
     3.  Cons-hash construction, so that repeatedly calling the constructor
         with identical args will product the same object. This enables cheap
         syntactic equality testing using the ``is`` operator, which is
@@ -354,6 +354,12 @@ class Funsor(object, metaclass=FunsorMeta):
     @property
     def shape(self):
         return self.output.shape
+
+    def __copy__(self):
+        return self
+
+    def __reduce__(self):
+        return type(self).__origin__, self._ast_values
 
     def __hash__(self):
         return id(self)

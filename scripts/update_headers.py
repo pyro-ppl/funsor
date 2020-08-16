@@ -40,7 +40,6 @@ for basename, comment in file_types:
         lineno += 1
         while lines[lineno].startswith(comment.format("Copyright")):
             lineno += 1
-            changed = True
 
         # Ensure next line is an SPDX short identifier.
         if not lines[lineno].startswith(comment.format("SPDX-License-Identifier")):
@@ -49,7 +48,7 @@ for basename, comment in file_types:
         lineno += 1
 
         # Ensure next line is blank.
-        if not lines[lineno].isspace():
+        if lineno < len(lines) and not lines[lineno].isspace():
             lines.insert(lineno, "\n")
             changed = True
 
