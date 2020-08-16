@@ -92,11 +92,6 @@ class BintType(Domain):
             BintType._type_cache[size] = result
         return result
 
-    def __reduce__(cls):
-        if cls is Bint:
-            return "Bint"
-        return operator.getitem, (BintType, cls.size)
-
     num_elements = 1
 
     def __iter__(cls):
