@@ -16,7 +16,7 @@ from multipledispatch.variadic import Variadic
 import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import Domain, bint, find_domain, reals
+from funsor.domains import Domain, domain, bint, find_domain, reals
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -120,7 +120,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             for (k, d), size in zip(inputs, data.shape):
                 assert d.dtype == size
         inputs = OrderedDict(inputs)
-        output = Domain(data.shape[len(inputs):], dtype)
+        output = domain(data.shape[len(inputs):], dtype)
         fresh = frozenset(inputs.keys())
         bound = frozenset()
         super(Tensor, self).__init__(inputs, output, fresh, bound)
@@ -1018,7 +1018,7 @@ def stack(parts, dim=0):
     assert dim < 0
     split = dim + len(shape) + 1
     shape = shape[:split] + (len(parts),) + shape[split:]
-    output = Domain(shape, parts[0].dtype)
+    output = domain(shape, parts[0].dtype)
     fn = functools.partial(ops.stack, dim)
     return Function(fn, output, parts)
 

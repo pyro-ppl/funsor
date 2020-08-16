@@ -2,79 +2,129 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import operator
-from collections import namedtuple
 from functools import reduce
+from weakref import WeakValueDictionary
 
 import funsor
 import funsor.ops as ops
 from funsor.util import broadcast_shape, get_tracing_state, lazy_property, quote
 
 
-class Domain(namedtuple('Domain', ['shape', 'dtype'])):
-    """
-    An object representing the type and shape of a :class:`Funsor` input or
-    output.
-    """
-    def __new__(cls, shape, dtype):
-        assert isinstance(shape, tuple)
+class Domain(type):
+    def __repr__(cls):
+        return cls.__name__
+
+    def __str__(cls):
+        return cls.__name__
+
+
+class RealMeta(Domain):
+    def __getitem__(cls, shape):
+        if not isinstance(shape, tuple):
+            shape = (shape,)
         # in some JAX versions, shape can be np.int64 type
         if get_tracing_state() or funsor.get_backend() == "jax":
             shape = tuple(map(int, shape))
-        assert all(isinstance(size, int) for size in shape), shape
-        if isinstance(dtype, int):
-            assert not shape
-        elif isinstance(dtype, str):
-            assert dtype == 'real'
-        else:
-            raise ValueError(repr(dtype))
-        return super(Domain, cls).__new__(cls, shape, dtype)
-
-    def __repr__(self):
-        shape = tuple(self.shape)
-        if isinstance(self.dtype, int):
-            if not shape:
-                return 'bint({})'.format(self.dtype)
-            return 'bint({}, {})'.format(self.dtype, shape)
-        if not shape:
-            return 'reals()'
-        return 'reals{}'.format(shape)
-
-    def __iter__(self):
-        if isinstance(self.dtype, int) and not self.shape:
-            from funsor.terms import Number
-            return (Number(i, self.dtype) for i in range(self.dtype))
-        raise NotImplementedError
+        result = Real._type_cache.get(shape, None)
+        if result is None:
+            assert cls is Real
+            assert all(isinstance(size, int) and size >= 0 for size in shape)
+            name = "Real[{}]".format(",".join(map(str, shape)))
+            result = RealMeta(name, (Real,), {"shape": shape})
+            Real._type_cache[shape] = result
+        return result
 
     @lazy_property
-    def num_elements(self):
-        return reduce(operator.mul, self.shape, 1)
+    def num_elements(cls):
+        return reduce(operator.mul, cls.shape, 1)
 
+    # SHIM
     @property
     def size(self):
-        assert isinstance(self.dtype, int)
-        return self.dtype
+        raise AssertionError("reals() has no .size")
+
+
+class Real(type, metaclass=RealMeta):
+    """
+    Type of a real-valued array with known shape::
+
+        Real[()] = Real  # scalar
+        Real[8]          # vector of length 8
+        Real[3,3]        # 3x3 matrix
+    """
+    _type_cache = WeakValueDictionary()
+    shape = ()
+
+    def __reduce__(self):
+        return RealMeta, (self.shape,)
+
+    # SHIM
+    dtype = "real"
+
+
+Real._type_cache[()] = Real  # Real[()] is Real.
+
+
+class BintMeta(Domain):
+    def __getitem__(cls, size):
+        # in some JAX versions, shape can be np.int64 type
+        if get_tracing_state() or funsor.get_backend() == "jax":
+            size = int(size)
+        result = Bint._type_cache.get(size, None)
+        if result is None:
+            assert cls is Bint
+            assert isinstance(size, int) and size >= 0
+            name = "Bint[{}]".format(size)
+            result = BintMeta(name, (Bint,), {"size": size})
+            Bint._type_cache[size] = result
+        return result
+
+    num_elements = 1
+
+    def __iter__(cls):
+        from funsor.terms import Number
+        return (Number(i, cls.dtype) for i in range(cls.size))
+
+    # SHIM
+    @property
+    def dtype(cls):
+        return cls.size
+
+
+class Bint(type, metaclass=BintMeta):
+    """
+    Factory for bounded integer types::
+
+        Bint[5]  # integers ranging in {0,1,2,3,4}
+    """
+    _type_cache = WeakValueDictionary()
+
+    def __reduce__(self):
+        size = getattr(self, "size", None)
+        return "Bint" if size is None else (BintMeta, (size,))
+
+    # SHIM
+    shape = ()
+
+
+# SHIM
+def reals(*args):
+    return Real[args]
+
+
+# SHIM
+def bint(size):
+    return Bint[size]
+
+
+# SHIM
+def domain(shape, dtype):
+    return Real[shape] if dtype == "real" else Bint[dtype]
 
 
 @quote.register(Domain)
 def _(arg, indent, out):
     out.append((indent, repr(arg)))
-
-
-def reals(*shape):
-    """
-    Construct a real domain of given shape.
-    """
-    return Domain(shape, 'real')
-
-
-def bint(size):
-    """
-    Construct a bounded integer domain of scalar shape.
-    """
-    if get_tracing_state() or funsor.get_backend() == "jax":
-        size = int(size)
-    assert isinstance(size, int) and size >= 0
-    return Domain((), size)
 
 
 def find_domain(op, *domains):
@@ -94,13 +144,13 @@ def find_domain(op, *domains):
             shape = op.shape
         elif isinstance(op, ops.AssociativeOp):
             shape = ()
-        return Domain(shape, dtype)
+        return reals(*shape) if dtype == "real" else bint(dtype)
 
     lhs, rhs = domains
     if isinstance(op, ops.GetitemOp):
         dtype = lhs.dtype
         shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
-        return Domain(shape, dtype)
+        return reals(*shape) if dtype == "real" else bint(dtype)
     elif op == ops.matmul:
         assert lhs.shape and rhs.shape
         if len(rhs.shape) == 1:
@@ -112,7 +162,7 @@ def find_domain(op, *domains):
         else:
             assert lhs.shape[-1] == rhs.shape[-2]
             shape = broadcast_shape(lhs.shape[:-1], rhs.shape[:-2] + (1,)) + rhs.shape[-1:]
-        return Domain(shape, 'real')
+        return reals(*shape)
 
     if lhs.dtype == 'real' or rhs.dtype == 'real':
         dtype = 'real'
@@ -129,7 +179,7 @@ def find_domain(op, *domains):
         shape = lhs.shape
     else:
         shape = broadcast_shape(lhs.shape, rhs.shape)
-    return Domain(shape, dtype)
+    return reals(*shape) if dtype == "real" else bint(dtype)
 
 
 __all__ = [
