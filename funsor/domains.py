@@ -7,7 +7,7 @@ from weakref import WeakValueDictionary
 
 import funsor
 import funsor.ops as ops
-from funsor.util import broadcast_shape, get_tracing_state, lazy_property, quote
+from funsor.util import broadcast_shape, get_tracing_state, quote
 
 
 class Domain(type):
