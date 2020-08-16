@@ -115,7 +115,7 @@ class BintType(Domain):
 
 
 @functools.partial(copyreg.pickle, BintType)
-def _pickle_real(cls):
+def _pickle_bint(cls):
     if cls is Bint:
         return "Bint"
     return operator.getitem, (Bint, cls.size)
