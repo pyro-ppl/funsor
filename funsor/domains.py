@@ -1,6 +1,8 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import copyreg
+import functools
 import operator
 import warnings
 from functools import reduce
@@ -20,19 +22,21 @@ class Domain(type):
 
 
 class RealType(Domain):
+    _type_cache = WeakValueDictionary()
+
     def __getitem__(cls, shape):
         if not isinstance(shape, tuple):
             shape = (shape,)
         # in some JAX versions, shape can be np.int64 type
         if get_tracing_state() or funsor.get_backend() == "jax":
             shape = tuple(map(int, shape))
-        result = Real._type_cache.get(shape, None)
+        result = RealType._type_cache.get(shape, None)
         if result is None:
             assert cls is Real
             assert all(isinstance(size, int) and size >= 0 for size in shape)
             name = "Real[{}]".format(",".join(map(str, shape)))
             result = RealType(name, (Real,), {"shape": shape})
-            Real._type_cache[shape] = result
+            RealType._type_cache[shape] = result
         return result
 
     @property
@@ -48,7 +52,14 @@ class RealType(Domain):
         return "real"
 
 
-class Real(type, metaclass=RealType):
+@functools.partial(copyreg.pickle, RealType)
+def _pickle_real(cls):
+    if cls is Real:
+        return "Real"
+    return operator.getitem, (Real, cls.shape)
+
+
+class Real(metaclass=RealType):
     """
     Type of a real-valued array with known shape::
 
@@ -59,29 +70,32 @@ class Real(type, metaclass=RealType):
     To dispatch on domain type, we recommend either ``@singledispatch``,
     ``@multipledispatch``, or ``isinstance(domain, RealType)``.
     """
-    _type_cache = WeakValueDictionary()
     shape = ()
-
-    def __reduce__(self):
-        return RealType, (self.shape,)
 
 
 Real._type_cache[()] = Real  # Real[()] is Real.
 
 
 class BintType(Domain):
+    _type_cache = WeakValueDictionary()
+
     def __getitem__(cls, size):
         # in some JAX versions, shape can be np.int64 type
         if get_tracing_state() or funsor.get_backend() == "jax":
             size = int(size)
-        result = Bint._type_cache.get(size, None)
+        result = BintType._type_cache.get(size, None)
         if result is None:
             assert cls is Bint
             assert isinstance(size, int) and size >= 0
             name = "Bint[{}]".format(size)
             result = BintType(name, (Bint,), {"size": size})
-            Bint._type_cache[size] = result
+            BintType._type_cache[size] = result
         return result
+
+    def __reduce__(cls):
+        if cls is Bint:
+            return "Bint"
+        return operator.getitem, (BintType, cls.size)
 
     num_elements = 1
 
@@ -105,7 +119,14 @@ class BintType(Domain):
         return ()
 
 
-class Bint(type, metaclass=BintType):
+@functools.partial(copyreg.pickle, BintType)
+def _pickle_real(cls):
+    if cls is Bint:
+        return "Bint"
+    return operator.getitem, (Bint, cls.size)
+
+
+class Bint(metaclass=BintType):
     """
     Factory for bounded integer types::
 
@@ -114,11 +135,6 @@ class Bint(type, metaclass=BintType):
     To dispatch on domain type, we recommend either ``@singledispatch``,
     ``@multipledispatch``, or ``isinstance(domain, BintType)``.
     """
-    _type_cache = WeakValueDictionary()
-
-    def __reduce__(self):
-        size = getattr(self, "size", None)
-        return "Bint" if size is None else (BintType, (size,))
 
 
 # DEPRECATED

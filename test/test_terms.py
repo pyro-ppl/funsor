@@ -1,7 +1,10 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import copy
 import itertools
+import io
+import pickle
 import typing
 from collections import OrderedDict
 from functools import reduce
@@ -113,15 +116,46 @@ def test_quote(interp):
         check_quote(Lambda(Variable('i', bint(2)), z))
 
 
-@pytest.mark.parametrize('expr', [
+EXPR_STRINGS = [
     "Variable('x', bint(3))",
     "Variable('x', reals())",
     "Number(0.)",
     "Number(1, dtype=10)",
     "-Variable('x', reals())",
+    "Variable('x', reals(3))[Variable('i', bint(3))]",
+    "Variable('x', reals(2, 2)).reshape((4,))",
     "Variable('x', reals()) + Variable('y', reals())",
     "Variable('x', reals())(x=Number(0.))",
-])
+    "Number(1) / Variable('x', reals())",
+    "Stack('i', (Number(0), Variable('z', reals())))",
+    "Cat('i', (Stack('i', (Number(0),)), Stack('i', (Number(1), Number(2)))))",
+    "Stack('t', (Number(1), Variable('x', reals()))).reduce(ops.logaddexp, 't')",
+]
+
+
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
+def test_copy_immutable(expr):
+    x = eval(expr)
+    assert copy.copy(x) is x
+
+
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
+def test_deepcopy_immutable(expr):
+    x = eval(expr)
+    assert copy.deepcopy(x) is x
+
+
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
+def test_pickle(expr):
+    x = eval(expr)
+    f = io.BytesIO()
+    pickle.dump(x, f)
+    f.seek(0)
+    y = pickle.load(f)
+    assert y is x
+
+
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
 def test_reinterpret(expr):
     x = eval(expr)
     assert funsor.reinterpret(x) is x

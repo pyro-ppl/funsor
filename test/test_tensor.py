@@ -1,7 +1,10 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import copy
 import itertools
+import io
+import pickle
 from collections import OrderedDict
 
 import numpy as np
@@ -59,6 +62,26 @@ def test_to_data_error():
 def test_cons_hash():
     x = randn((3, 3))
     assert Tensor(x) is Tensor(x)
+
+
+def test_copy():
+    data = randn(3, 2)
+    x = Tensor(data)
+    assert copy.copy(x) is x
+
+
+def test_deepcopy():
+    data = randn(3, 2)
+    x = Tensor(data)
+
+    y = copy.deepcopy(x)
+    assert_close(x, y)
+    assert y is not x
+    assert y.data is not x.data
+
+    memo = {id(data): data}
+    z = copy.deepcopy(x, memo)
+    assert z is x
 
 
 def test_indexing():
@@ -953,3 +976,38 @@ def test_log_correct_dtype():
         assert (x == x).all().log().data.dtype is x.data.dtype
     finally:
         torch.set_default_dtype(old_dtype)
+
+
+@pytest.mark.skipif(get_backend() != "numpy", reason="backend-specific")
+def test_pickle():
+    x = Tensor(randn(2, 3))
+    f = io.BytesIO()
+    pickle.dump(x, f)
+    f.seek(0)
+    y = pickle.load(f)
+    assert_close(x, y)
+
+
+@pytest.mark.skipif(get_backend() != "torch", reason="backend-specific")
+def test_torch_save():
+    import torch
+    x = Tensor(randn(2, 3))
+    f = io.BytesIO()
+    torch.save(x, f)
+    f.seek(0)
+    y = torch.load(f)
+    assert_close(x, y)
+
+
+@pytest.mark.skipif(get_backend() != "torch", reason="backend-specific")
+def test_detach():
+    import torch
+    try:
+        from pyro.distributions.util import detach
+    except ImportError:
+        pytest.skip("detach() is not available")
+    x = Tensor(torch.randn(2, 3, requires_grad=True))
+    y = detach(x)
+    assert_close(x, y)
+    assert x.data.requires_grad
+    assert not y.data.requires_grad
