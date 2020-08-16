@@ -71,7 +71,7 @@ def test_to_data_error():
     with pytest.raises(ValueError):
         to_data(Variable('x', Real))
     with pytest.raises(ValueError):
-        to_data(Variable('y', Bint(12)))
+        to_data(Variable('y', Bint[12]))
 
 
 def test_cons_hash():
