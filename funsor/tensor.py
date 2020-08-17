@@ -828,7 +828,7 @@ def _select(fn, i, *args):
 def _nested_function(fn, args, output):
     if isinstance(output, (BintType, RealsType)):
         return Function(fn, output, args)
-    elif output.__origin__ is tuple:
+    elif output.__origin__ in (tuple, typing.Tuple):
         result = []
         for i, output_i in enumerate(output.__args__):
             fn_i = functools.partial(_select, fn, i)
@@ -874,7 +874,7 @@ def _function(inputs, output, fn):
                      for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
     if not isinstance(output, (BintType, RealsType)):
-        assert output.__origin__ is tuple
+        assert output.__origin__ in (tuple, typing.Tuple)
         # Memoize multiple-output functions so that invocations can be shared among
         # all outputs. This is not foolproof, but does work in simple situations.
         fn = _Memoized(fn)
@@ -931,7 +931,8 @@ def function(*signature):
             inputs = typing.get_type_hints(fn)
             output = inputs.pop("return")
             assert all(isinstance(d, Domain) for d in inputs.values())
-            assert isinstance(output, (Domain, tuple)) or output.__origin__ == tuple
+            assert (isinstance(output, (Domain, tuple)) or
+                    output.__origin__ in (tuple, typing.Tuple))
             return _function(inputs, output, fn)
     # Usage @function(input1, ..., inputN, output)
     inputs, output = signature[:-1], signature[-1]
