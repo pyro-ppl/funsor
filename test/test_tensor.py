@@ -12,7 +12,7 @@ import pytest
 
 import funsor
 import funsor.ops as ops
-from funsor.domains import Bint, Real, bint, find_domain, make_domain, reals
+from funsor.domains import Bint, Reals, bint, find_domain, make_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import (assert_close, assert_equiv, check_funsor, empty,
@@ -29,7 +29,7 @@ def test_quote(output_shape, inputs):
 
     sizes = {'a': 4, 'b': 5, 'c': 6}
     inputs = OrderedDict((k, Bint[sizes[k]]) for k in inputs)
-    x = random_tensor(inputs, Real[output_shape])
+    x = random_tensor(inputs, Reals[output_shape])
     s = funsor.quote(x)
     assert isinstance(s, str)
     assert_close(eval(s), x)

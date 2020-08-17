@@ -108,7 +108,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     :param numeric_array data: A PyTorch tensor or NumPy ndarray.
     :param OrderedDict inputs: An optional mapping from input name (str) to
-        datatype (:class:`~funsor.domains.Domain` ). Defaults to empty.
+        datatype (``funsor.domains.Domain``). Defaults to empty.
     :param dtype: optional output datatype. Defaults to "real".
     :type dtype: int or the string "real".
     """
@@ -760,7 +760,7 @@ class Function(Funsor):
     :class:`Function` s are usually created via the :func:`function` decorator.
 
     :param callable fn: A native PyTorch or NumPy function to wrap.
-    :param funsor.domains.Domain output: An output domain.
+    :param type output: An output domain.
     :param Funsor args: Funsor arguments.
     """
     def __init__(self, fn, output, args):
@@ -887,7 +887,7 @@ def function(*signature):
     assert signature
     inputs, output = signature[:-1], signature[-1]
     assert all(isinstance(d, Domain) for d in inputs)
-    assert isinstance(output, (Domain, tuple))
+    assert isinstance(output, tuple) or isinstance(output, Domain)
     return functools.partial(_function, inputs, output)
 
 

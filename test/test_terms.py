@@ -15,7 +15,7 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.domains import Bint, Real, bint, make_domain, reals
+from funsor.domains import Bint, Real, Reals, bint, make_domain, reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
@@ -44,6 +44,7 @@ from funsor.testing import assert_close, check_funsor, random_tensor
 assert Binary  # flake8
 assert Subs  # flake8
 assert Contraction  # flake8
+assert Reals  # flake8
 
 np.seterr(all='ignore')
 

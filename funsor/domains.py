@@ -8,36 +8,42 @@ import warnings
 from functools import reduce
 from weakref import WeakValueDictionary
 
-import funsor
 import funsor.ops as ops
-from funsor.util import broadcast_shape, get_tracing_state, quote
+from funsor.util import broadcast_shape, get_backend, get_tracing_state, quote
 
 
-class Domain(type):
-    def __repr__(cls):
-        return cls.__name__
-
-    def __str__(cls):
-        return cls.__name__
+Domain = type
 
 
-class RealType(Domain):
+class RealsType(Domain):
     _type_cache = WeakValueDictionary()
 
     def __getitem__(cls, shape):
         if not isinstance(shape, tuple):
             shape = (shape,)
         # in some JAX versions, shape can be np.int64 type
-        if get_tracing_state() or funsor.get_backend() == "jax":
+        if get_tracing_state() or get_backend() == "jax":
             shape = tuple(map(int, shape))
-        result = RealType._type_cache.get(shape, None)
+
+        result = RealsType._type_cache.get(shape, None)
         if result is None:
-            assert cls is Real
+            assert cls is Reals
             assert all(isinstance(size, int) and size >= 0 for size in shape)
-            name = "Real[{}]".format(",".join(map(str, shape)))
-            result = RealType(name, (Real,), {"shape": shape})
-            RealType._type_cache[shape] = result
+            name = "Reals[{}]".format(",".join(map(str, shape))) if shape else "Real"
+            result = RealsType(name, (), {"shape": shape})
+            RealsType._type_cache[shape] = result
         return result
+
+    def __subclasscheck__(cls, subcls):
+        if not isinstance(subcls, RealsType):
+            return False
+        return cls is Reals or cls is subcls
+
+    def __repr__(cls):
+        return cls.__name__
+
+    def __str__(cls):
+        return cls.__name__
 
     @property
     def num_elements(cls):
@@ -47,56 +53,65 @@ class RealType(Domain):
     @property
     def dtype(self):
         warnings.warn("domain.dtype is deprecated, "
-                      "use isinstance(domain, RealType) instead",
+                      "use isinstance(domain, RealsType) instead",
                       DeprecationWarning)
         return "real"
 
 
-@functools.partial(copyreg.pickle, RealType)
+@functools.partial(copyreg.pickle, RealsType)
 def _pickle_real(cls):
-    if cls is Real:
-        return "Real"
-    return operator.getitem, (Real, cls.shape)
+    if cls is Reals:
+        return "Reals"
+    return operator.getitem, (Reals, cls.shape)
 
 
-class Real(metaclass=RealType):
+class Reals(metaclass=RealsType):
     """
     Type of a real-valued array with known shape::
 
-        Real[()] = Real  # scalar
-        Real[8]          # vector of length 8
-        Real[3,3]        # 3x3 matrix
+        Reals[()] = Real  # scalar
+        Reals[8]          # vector of length 8
+        Reals[3,3]        # 3x3 matrix
 
     To dispatch on domain type, we recommend either ``@singledispatch``,
-    ``@multipledispatch``, or ``isinstance(domain, RealType)``.
+    ``@multipledispatch``, or ``isinstance(domain, RealsType)``.
     """
-    shape = ()
 
 
-Real._type_cache[()] = Real  # Real[()] is Real.
+Real = Reals[()]  # just an alias
 
 
-class BintType(Domain):
+class BintType(type):
     _type_cache = WeakValueDictionary()
 
     def __getitem__(cls, size):
         # in some JAX versions, shape can be np.int64 type
-        if get_tracing_state() or funsor.get_backend() == "jax":
+        if get_tracing_state() or get_backend() == "jax":
             size = int(size)
+
         result = BintType._type_cache.get(size, None)
         if result is None:
             assert cls is Bint
-            assert isinstance(size, int) and size >= 0
+            assert isinstance(size, int) and size >= 0, size
             name = "Bint[{}]".format(size)
-            result = BintType(name, (Bint,), {"size": size})
+            result = BintType(name, (), {"size": size})
             BintType._type_cache[size] = result
         return result
 
-    num_elements = 1
+    def __subclasscheck__(cls, subcls):
+        if not isinstance(subcls, BintType):
+            return False
+        return cls is Bint or cls is subcls
+
+    def __repr__(cls):
+        return cls.__name__
+
+    def __str__(cls):
+        return cls.__name__
 
     def __iter__(cls):
         from funsor.terms import Number
-        return (Number(i, cls.dtype) for i in range(cls.size))
+        return (Number(i, cls.size) for i in range(cls.size))
 
     # DEPRECATED
     @property
@@ -112,6 +127,12 @@ class BintType(Domain):
         warnings.warn("Bint[n].shape is deprecated",
                       DeprecationWarning)
         return ()
+
+    # DEPRECATED
+    def num_elements(cls):
+        warnings.warn("Bint[n].num_elements is deprecated",
+                      DeprecationWarning)
+        return 1
 
 
 @functools.partial(copyreg.pickle, BintType)
@@ -134,26 +155,27 @@ class Bint(metaclass=BintType):
 
 # DEPRECATED
 def reals(*args):
-    warnings.warn("reals(...) is deprecated, use Real[...] instead",
+    warnings.warn("reals(...) is deprecated, use Reals[...] instead",
                   DeprecationWarning)
-    return Real[args]
+    return Reals[args]
 
 
 # DEPRECATED
 def bint(size):
-    warnings.warn("reals(...) is deprecated, use Real[...] instead",
+    warnings.warn("reals(...) is deprecated, use Reals[...] instead",
                   DeprecationWarning)
     return Bint[size]
 
 
 # DEPRECATED
 def make_domain(shape, dtype):
-    warnings.warn("make_domain is deprecated, use Bint or Real instead",
+    warnings.warn("make_domain is deprecated, use Bint or Reals instead",
                   DeprecationWarning)
-    return Real[shape] if dtype == "real" else Bint[dtype]
+    return Reals[shape] if dtype == "real" else Bint[dtype]
 
 
-@quote.register(Domain)
+@quote.register(BintType)
+@quote.register(RealsType)
 def _(arg, indent, out):
     out.append((indent, repr(arg)))
 
@@ -218,7 +240,8 @@ __all__ = [
     'BintType',
     'Domain',
     'Real',
-    'RealType',
+    'RealsType',
+    'Reals',
     'bint',
     'find_domain',
     'reals',
