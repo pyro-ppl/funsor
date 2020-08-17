@@ -873,7 +873,7 @@ def _function(inputs, output, fn):
         args = tuple(Variable(name, domain)
                      for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
-    if not isinstance(output, Domain):
+    if not isinstance(output, (BintType, RealsType)):
         assert output.__origin__ is tuple
         # Memoize multiple-output functions so that invocations can be shared among
         # all outputs. This is not foolproof, but does work in simple situations.
