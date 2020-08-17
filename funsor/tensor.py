@@ -17,7 +17,7 @@ from multipledispatch.variadic import Variadic
 import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import Domain, bint, find_domain, make_domain, reals
+from funsor.domains import BintType, Domain, RealsType, bint, find_domain, make_domain, reals
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -808,7 +808,7 @@ def _(arg, indent, out):
     out[-1] = i, line + ")"
 
 
-@eager.register(Function, object, Domain, tuple)
+@eager.register(Function, object, (BintType, RealsType), tuple)
 def eager_function(fn, output, args):
     if not all(isinstance(arg, (Number, Tensor)) for arg in args):
         return None  # defer to default implementation
@@ -826,7 +826,7 @@ def _select(fn, i, *args):
 
 
 def _nested_function(fn, args, output):
-    if isinstance(output, Domain):
+    if isinstance(output, (BintType, RealsType)):
         return Function(fn, output, args)
     elif output.__origin__ is tuple:
         result = []
