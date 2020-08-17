@@ -4,7 +4,7 @@
 from collections import OrderedDict
 
 import funsor.ops as ops
-from funsor.domains import Domain, reals
+from funsor.domains import Domain, Real
 from funsor.interpreter import debug_logged
 from funsor.ops import AddOp, SubOp, TransformOp
 from funsor.registry import KeyedRegistry
@@ -90,13 +90,13 @@ class Delta(Funsor, metaclass=DeltaMeta):
             assert isinstance(name, str)
             assert isinstance(point, Funsor)
             assert isinstance(log_density, Funsor)
-            assert log_density.output == reals()
+            assert log_density.output == Real
             assert name not in inputs
             assert name not in point.inputs
             inputs.update({name: point.output})
             inputs.update(point.inputs)
 
-        output = reals()
+        output = Real
         fresh = frozenset(name for name, term in terms)
         bound = frozenset()
         super(Delta, self).__init__(inputs, output, fresh, bound)

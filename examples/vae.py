@@ -14,7 +14,7 @@ from torchvision import datasets, transforms
 import funsor
 import funsor.torch.distributions as dist
 import funsor.ops as ops
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Reals
 
 REPO_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_PATH = os.path.join(REPO_PATH, 'data')
@@ -51,8 +51,8 @@ def main(args):
     encoder = Encoder()
     decoder = Decoder()
 
-    encode = funsor.function(reals(28, 28), (reals(20), reals(20)))(encoder)
-    decode = funsor.function(reals(20), reals(28, 28))(decoder)
+    encode = funsor.function(Reals[28, 28], (Reals[20], Reals[20]))(encoder)
+    decode = funsor.function(Reals[20], Reals[28, 28])(decoder)
 
     @funsor.interpreter.interpretation(funsor.montecarlo.monte_carlo)
     def loss_function(data, subsample_scale):
@@ -87,7 +87,7 @@ def main(args):
         for batch_idx, (data, _) in enumerate(train_loader):
             subsample_scale = float(len(train_loader.dataset) / len(data))
             data = data[:, 0, :, :]
-            data = funsor.Tensor(data, OrderedDict(batch=bint(len(data))))
+            data = funsor.Tensor(data, OrderedDict(batch=Bint[len(data)]))
 
             optimizer.zero_grad()
             loss = loss_function(data, subsample_scale)

@@ -22,7 +22,7 @@ import torch
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta
-from funsor.domains import make_domain, bint, reals
+from funsor.domains import make_domain, Bint, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import Tensor, align_tensors
@@ -111,7 +111,7 @@ def dist_to_funsor(pyro_dist, event_inputs=()):
     """
     assert isinstance(pyro_dist, torch.distributions.Distribution)
     assert isinstance(event_inputs, tuple)
-    return to_funsor(pyro_dist, reals(), default_dim_to_name(pyro_dist.batch_shape, event_inputs))
+    return to_funsor(pyro_dist, Real, default_dim_to_name(pyro_dist.batch_shape, event_inputs))
 
 
 def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
@@ -129,19 +129,19 @@ def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
         multivariate normal distribution over one or more variables
         of real or vector or tensor type.
     :param tuple event_inputs: A tuple of names for rightmost dimensions.
-        These will be assigned to ``result.inputs`` of type ``bint``.
+        These will be assigned to ``result.inputs`` of type ``Bint``.
     :param OrderedDict real_inputs: A dict mapping real variable name
-        to appropriately sized ``reals()``. The sum of all ``.numel()``
+        to appropriately sized ``Real``. The sum of all ``.numel()``
         of all real inputs should be equal to the ``pyro_dist`` dimension.
     :return: A funsor with given ``real_inputs`` and possibly additional
-        bint inputs.
+        Bint inputs.
     :rtype: funsor.terms.Funsor
     """
     assert isinstance(pyro_dist, torch.distributions.MultivariateNormal)
     assert isinstance(event_inputs, tuple)
     assert isinstance(real_inputs, OrderedDict)
     dim_to_name = default_dim_to_name(pyro_dist.batch_shape, event_inputs)
-    return to_funsor(pyro_dist, reals(), dim_to_name, real_inputs=real_inputs)
+    return to_funsor(pyro_dist, Real, dim_to_name, real_inputs=real_inputs)
 
 
 def funsor_to_mvn(gaussian, ndims, event_inputs=()):
@@ -215,12 +215,12 @@ class AffineNormal(Funsor):
     """
     def __init__(self, matrix, loc, scale, value_x, value_y):
         assert len(matrix.output.shape) == 2
-        assert value_x.output == reals(matrix.output.shape[0])
-        assert value_y.output == reals(matrix.output.shape[1])
+        assert value_x.output == Reals[matrix.output.shape[0]]
+        assert value_y.output == Reals[matrix.output.shape[1]]
         inputs = OrderedDict()
         for f in (matrix, loc, scale, value_x, value_y):
             inputs.update(f.inputs)
-        output = reals()
+        output = Real
         super().__init__(inputs, output)
         self.matrix = matrix
         self.loc = loc
@@ -232,15 +232,15 @@ class AffineNormal(Funsor):
 @eager.register(AffineNormal, Tensor, Tensor, Tensor, Tensor, (Funsor, Tensor))
 def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     assert len(matrix.output.shape) == 2
-    assert value_x.output == reals(matrix.output.shape[0])
-    assert value_y.output == reals(matrix.output.shape[1])
+    assert value_x.output == Reals[matrix.output.shape[0]]
+    assert value_y.output == Reals[matrix.output.shape[1]]
     loc += value_x @ matrix
     int_inputs, (loc, scale) = align_tensors(loc, scale, expand=True)
 
     i_name = gensym("i")
     y_name = gensym("y")
     y_i_name = gensym("y_i")
-    int_inputs[i_name] = bint(value_y.output.shape[0])
+    int_inputs[i_name] = Bint[value_y.output.shape[0]]
     loc = Tensor(loc, int_inputs)
     scale = Tensor(scale, int_inputs)
     y_dist = Independent(Normal(loc, scale, y_i_name), y_name, i_name, y_i_name)
@@ -250,8 +250,8 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
 @eager.register(AffineNormal, Tensor, Tensor, Tensor, Funsor, Tensor)
 def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     assert len(matrix.output.shape) == 2
-    assert value_x.output == reals(matrix.output.shape[0])
-    assert value_y.output == reals(matrix.output.shape[1])
+    assert value_x.output == Reals[matrix.output.shape[0]]
+    assert value_y.output == Reals[matrix.output.shape[1]]
     tensors = (matrix, loc, scale, value_y)
     int_inputs, tensors = align_tensors(*tensors)
     matrix, loc, scale, value_y = tensors
@@ -289,11 +289,11 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
     :type mvn: torch.distributions.MultivariateNormal or
         torch.distributions.Independent of torch.distributions.Normal
     :param tuple event_dims: A tuple of names for rightmost dimensions.
-        These will be assigned to ``result.inputs`` of type ``bint``.
+        These will be assigned to ``result.inputs`` of type ``Bint``.
     :param str x_name: The name of the ``x`` random variable.
     :param str y_name: The name of the ``y`` random variable.
     :return: A funsor with given ``real_inputs`` and possibly additional
-        bint inputs.
+        Bint inputs.
     :rtype: funsor.terms.Funsor
     """
     assert (isinstance(mvn, torch.distributions.MultivariateNormal) or
@@ -308,8 +308,8 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
         return AffineNormal(tensor_to_funsor(matrix, event_dims, 2),
                             tensor_to_funsor(mvn.base_dist.loc, event_dims, 1),
                             tensor_to_funsor(mvn.base_dist.scale, event_dims, 1),
-                            Variable(x_name, reals(x_size)),
-                            Variable(y_name, reals(y_size)))
+                            Variable(x_name, Reals[x_size]),
+                            Variable(y_name, Reals[y_size]))
 
     info_vec = mvn.loc.unsqueeze(-1).cholesky_solve(mvn.scale_tril).squeeze(-1)
     log_prob = (-0.5 * y_size * math.log(2 * math.pi)
@@ -331,6 +331,6 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
     info_vec = tensor_to_funsor(info_vec, event_dims, 1)
     precision = tensor_to_funsor(precision, event_dims, 2)
     inputs = info_vec.inputs.copy()
-    inputs[x_name] = reals(x_size)
-    inputs[y_name] = reals(y_size)
+    inputs[x_name] = Reals[x_size]
+    inputs[y_name] = Reals[y_size]
     return tensor_to_funsor(log_prob, event_dims) + Gaussian(info_vec.data, precision.data, inputs)

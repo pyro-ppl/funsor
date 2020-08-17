@@ -6,7 +6,7 @@ from collections import OrderedDict
 import pytest
 
 import funsor
-from funsor.domains import bint
+from funsor.domains import Bint
 from funsor.einsum import einsum, naive_contract_einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
@@ -87,8 +87,8 @@ def test_nested_einsum(eqn1, eqn2, optimize1, optimize2, backend1, backend2, ein
         funsor_operands1 = [
             Categorical(probs=Tensor(
                 operand,
-                inputs=OrderedDict([(d, bint(sizes1[d])) for d in inp[:-1]])
-            ))(value=Variable(inp[-1], bint(sizes1[inp[-1]]))).exp()
+                inputs=OrderedDict([(d, Bint[sizes1[d]]) for d in inp[:-1]])
+            ))(value=Variable(inp[-1], Bint[sizes1[inp[-1]]])).exp()
             for inp, operand in zip(inputs1, operands1)
         ]
 

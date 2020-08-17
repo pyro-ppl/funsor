@@ -6,14 +6,14 @@ import pickle
 
 import pytest
 
-from funsor.domains import Bint, Real, Reals, bint, reals  # noqa F401
+from funsor.domains import Bint, Real, Reals, Bint, Reals  # noqa F401
 
 
 @pytest.mark.parametrize('expr', [
-    "bint(2)",
-    "reals()",
-    "reals(4)",
-    "reals(3, 2)",
+    "Bint[2]",
+    "Real",
+    "Reals[4]",
+    "Reals[3, 2]",
 ])
 def test_pickle(expr):
     x = eval(expr)

@@ -9,7 +9,7 @@ from pyro.distributions import TorchDistribution
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta
-from funsor.domains import bint
+from funsor.domains import Bint
 from funsor.pyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
 from funsor.terms import Funsor, to_funsor
 
@@ -64,7 +64,7 @@ class FunsorDistribution(TorchDistribution):
             shape = sample_shape + self.batch_shape
             for dim in range(-len(shape), -len(self.batch_shape)):
                 if shape[dim] > 1:
-                    sample_inputs[DIM_TO_NAME[dim]] = bint(shape[dim])
+                    sample_inputs[DIM_TO_NAME[dim]] = Bint[shape[dim]]
         delta = self.funsor_dist.sample(frozenset({"value"}), sample_inputs)
         if isinstance(delta, Contraction):
             assert len([d for d in delta.terms if isinstance(d, Delta)]) == 1

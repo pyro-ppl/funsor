@@ -163,7 +163,7 @@ def reals(*args):
 
 # DEPRECATED
 def bint(size):
-    warnings.warn("reals(...) is deprecated, use Reals[...] instead",
+    warnings.warn("bint(...) is deprecated, use Bint[...] instead",
                   DeprecationWarning)
     return Bint[size]
 
@@ -198,13 +198,13 @@ def find_domain(op, *domains):
             shape = op.shape
         elif isinstance(op, ops.AssociativeOp):
             shape = ()
-        return reals(*shape) if dtype == "real" else bint(dtype)
+        return Reals[shape] if dtype == "real" else Bint[dtype]
 
     lhs, rhs = domains
     if isinstance(op, ops.GetitemOp):
         dtype = lhs.dtype
         shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
-        return reals(*shape) if dtype == "real" else bint(dtype)
+        return Reals[shape] if dtype == "real" else Bint[dtype]
     elif op == ops.matmul:
         assert lhs.shape and rhs.shape
         if len(rhs.shape) == 1:
@@ -216,7 +216,7 @@ def find_domain(op, *domains):
         else:
             assert lhs.shape[-1] == rhs.shape[-2]
             shape = broadcast_shape(lhs.shape[:-1], rhs.shape[:-2] + (1,)) + rhs.shape[-1:]
-        return reals(*shape)
+        return Reals[shape]
 
     if lhs.dtype == 'real' or rhs.dtype == 'real':
         dtype = 'real'
@@ -233,7 +233,7 @@ def find_domain(op, *domains):
         shape = lhs.shape
     else:
         shape = broadcast_shape(lhs.shape, rhs.shape)
-    return reals(*shape) if dtype == "real" else bint(dtype)
+    return Reals[shape] if dtype == "real" else Bint[dtype]
 
 
 __all__ = [

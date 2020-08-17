@@ -83,14 +83,14 @@ class SLDS(nn.Module):
 
         # define the prior distribution p(x_0) over the continuous latent at the initial time step t=0
         x_init_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.hidden_dim), torch.eye(self.hidden_dim))
-        self.x_init_mvn = mvn_to_funsor(x_init_mvn, real_inputs=OrderedDict([('x_0', funsor.reals(self.hidden_dim))]))
+        self.x_init_mvn = mvn_to_funsor(x_init_mvn, real_inputs=OrderedDict([('x_0', funsor.Reals[self.hidden_dim])]))
 
     # we construct the various funsors used to compute the marginal log probability and other model quantities.
     # these funsors depend on the various model parameters.
     def get_tensors_and_dists(self):
         # normalize the transition probabilities
         trans_logits = self.transition_logits - self.transition_logits.logsumexp(dim=-1, keepdim=True)
-        trans_probs = funsor.Tensor(trans_logits, OrderedDict([("s", funsor.bint(self.num_components))]))
+        trans_probs = funsor.Tensor(trans_logits, OrderedDict([("s", funsor.Bint[self.num_components])]))
 
         trans_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.hidden_dim),
                                                            self.log_transition_noise.exp().diag_embed())
@@ -116,8 +116,8 @@ class SLDS(nn.Module):
 
         for t, y in enumerate(data):
             # construct free variables for s_t and x_t
-            s_vars[t] = funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components))
-            x_vars[t] = funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim))
+            s_vars[t] = funsor.Variable('s_{}'.format(t), funsor.Bint[self.num_components])
+            x_vars[t] = funsor.Variable('x_{}'.format(t), funsor.Reals[self.hidden_dim])
 
             # incorporate the discrete switching dynamics
             log_prob += dist.Categorical(trans_probs(s=s_vars[t - 1]), value=s_vars[t])
@@ -166,8 +166,8 @@ class SLDS(nn.Module):
         test_LLs = []
 
         for t, y in enumerate(data):
-            s_vars[t] = funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components))
-            x_vars[t] = funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim))
+            s_vars[t] = funsor.Variable('s_{}'.format(t), funsor.Bint[self.num_components])
+            x_vars[t] = funsor.Variable('x_{}'.format(t), funsor.Reals[self.hidden_dim])
 
             log_prob += dist.Categorical(trans_probs(s=s_vars[t - 1]), value=s_vars[t])
 
@@ -201,8 +201,8 @@ class SLDS(nn.Module):
             smoothing_dists = [filtering_dists[-1]]
             T = data.size(0)
 
-            s_vars = {t: funsor.Variable('s_{}'.format(t), funsor.bint(self.num_components)) for t in range(T)}
-            x_vars = {t: funsor.Variable('x_{}'.format(t), funsor.reals(self.hidden_dim)) for t in range(T)}
+            s_vars = {t: funsor.Variable('s_{}'.format(t), funsor.Bint[self.num_components]) for t in range(T)}
+            x_vars = {t: funsor.Variable('x_{}'.format(t), funsor.Reals[self.hidden_dim]) for t in range(T)}
 
             # do the backward recursion.
             # let p[t|t-1] be the predictive distribution at time step t.

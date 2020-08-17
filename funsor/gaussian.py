@@ -11,7 +11,7 @@ import funsor
 import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
-from funsor.domains import reals
+from funsor.domains import Real, Reals
 from funsor.ops import AddOp, NegOp, SubOp
 from funsor.tensor import Tensor, align_tensor, align_tensors
 from funsor.terms import Align, Binary, Funsor, FunsorMeta, Number, Slice, Subs, Unary, Variable, eager, reflect
@@ -266,14 +266,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             assert len(precision.shape) >= 2 and precision.shape[-2:] == (dim, dim)
             assert len(info_vec.shape) >= 1 and info_vec.shape[-1] == dim
 
-        # Compute total shape of all bint inputs.
+        # Compute total shape of all Bint inputs.
         batch_shape = tuple(d.dtype for d in inputs.values()
                             if isinstance(d.dtype, int))
         if not get_tracing_state():
             assert precision.shape == batch_shape + (dim, dim)
             assert info_vec.shape == batch_shape + (dim,)
 
-        output = reals()
+        output = Real
         fresh = frozenset(inputs.keys())
         bound = frozenset()
         super(Gaussian, self).__init__(inputs, output, fresh, bound)
@@ -398,7 +398,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             result = _vv(value, info_vec - 0.5 * _mv(precision, value))
 
             result = Tensor(result, int_inputs)
-            assert result.output == reals()
+            assert result.output == Real
             return Subs(result, remaining_subs) if remaining_subs else result
 
         # Perform a partial substution of a subset of real variables, resulting in a Joint.
@@ -469,7 +469,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             del new_real_inputs[old_k]
             for new_k, (coeff, eqn) in coeffs.items():
                 new_shape = coeff.shape[:len(eqn.split('->')[0].split(',')[1])]
-                new_real_inputs[new_k] = reals(*new_shape)
+                new_real_inputs[new_k] = Reals[new_shape]
         old_offsets, old_dim = _compute_offsets(old_real_inputs)
         new_offsets, new_dim = _compute_offsets(new_real_inputs)
         new_inputs = new_int_inputs.copy()

@@ -26,12 +26,12 @@ def main(args):
 
         trans = dist.Categorical(probs=funsor.Tensor(
             trans_probs,
-            inputs=OrderedDict([('prev', funsor.bint(args.hidden_dim))]),
+            inputs=OrderedDict([('prev', funsor.Bint[args.hidden_dim])]),
         ))
 
         emit = dist.Categorical(probs=funsor.Tensor(
             emit_probs,
-            inputs=OrderedDict([('latent', funsor.bint(args.hidden_dim))]),
+            inputs=OrderedDict([('latent', funsor.Bint[args.hidden_dim])]),
         ))
 
         x_curr = funsor.Number(0, args.hidden_dim)
@@ -39,7 +39,7 @@ def main(args):
             x_prev = x_curr
 
             # A delayed sample statement.
-            x_curr = funsor.Variable('x_{}'.format(t), funsor.bint(args.hidden_dim))
+            x_curr = funsor.Variable('x_{}'.format(t), funsor.Bint[args.hidden_dim])
             log_prob += trans(prev=x_prev, value=x_curr)
 
             if not args.lazy and isinstance(x_prev, funsor.Variable):

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import funsor.ops as ops
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Real, Reals
 from funsor.interpreter import gensym, interpretation, reinterpret
 from funsor.terms import Cat, Independent, Lambda, Number, Slice, Stack, Variable, reflect
 from funsor.testing import assert_close, check_funsor, random_tensor
@@ -15,17 +15,17 @@ from funsor.util import get_backend
 
 
 def test_sample_subs_smoke():
-    x = random_tensor(OrderedDict([('i', bint(3)), ('j', bint(2))]), reals())
+    x = random_tensor(OrderedDict([('i', Bint[3]), ('j', Bint[2])]), Real)
     with interpretation(reflect):
         z = x(i=1)
     rng_key = None if get_backend() == "torch" else np.array([0, 1], dtype=np.uint32)
-    actual = z.sample(frozenset({"j"}), OrderedDict({"i": bint(4)}), rng_key=rng_key)
-    check_funsor(actual, {"j": bint(2), "i": bint(4)}, reals())
+    actual = z.sample(frozenset({"j"}), OrderedDict({"i": Bint[4]}), rng_key=rng_key)
+    check_funsor(actual, {"j": Bint[2], "i": Bint[4]}, Real)
 
 
 def test_subs_reduce():
-    x = random_tensor(OrderedDict([('i', bint(3)), ('j', bint(2))]), reals())
-    ix = random_tensor(OrderedDict([('i', bint(3))]), bint(2))
+    x = random_tensor(OrderedDict([('i', Bint[3]), ('j', Bint[2])]), Real)
+    ix = random_tensor(OrderedDict([('i', Bint[3])]), Bint[2])
     ix2 = ix(i='i2')
     with interpretation(reflect):
         actual = x.reduce(ops.add, frozenset({"i"}))
@@ -39,8 +39,8 @@ def test_subs_reduce():
 def test_distribute_reduce(lhs_vars, rhs_vars):
 
     lhs_vars, rhs_vars = frozenset(lhs_vars), frozenset(rhs_vars)
-    lhs = random_tensor(OrderedDict([('i', bint(3)), ('j', bint(2))]), reals())
-    rhs = random_tensor(OrderedDict([('i', bint(3)), ('j', bint(2))]), reals())
+    lhs = random_tensor(OrderedDict([('i', Bint[3]), ('j', Bint[2])]), Real)
+    rhs = random_tensor(OrderedDict([('i', Bint[3]), ('j', Bint[2])]), Real)
 
     with interpretation(reflect):
         actual_lhs = lhs.reduce(ops.add, lhs_vars) if lhs_vars else lhs
@@ -71,9 +71,9 @@ def test_cat(name):
 
 
 def test_subs_lambda():
-    z = Variable('z', reals())
-    i = Variable('i', bint(5))
-    ix = random_tensor(OrderedDict([('i', bint(5))]), reals())
+    z = Variable('z', Real)
+    i = Variable('i', Bint[5])
+    ix = random_tensor(OrderedDict([('i', Bint[5])]), Real)
     actual = Lambda(i, z)(z=ix)
     expected = Lambda(i(i='j'), z(z=ix))
     check_funsor(actual, expected.inputs, expected.output)
@@ -81,9 +81,9 @@ def test_subs_lambda():
 
 
 def test_slice_lambda():
-    z = Variable('z', reals())
-    i = Variable('i', bint(5))
-    j = Variable('j', bint(7))
+    z = Variable('z', Real)
+    i = Variable('i', Bint[5])
+    j = Variable('j', Bint[7])
     zi = Lambda(i, z)
     zj = Lambda(j, z)
     zij = Lambda(j, zi)
@@ -92,26 +92,26 @@ def test_slice_lambda():
 
 
 def test_subs_independent():
-    f = Variable('x_i', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    f = Variable('x_i', Reals[4, 5]) + random_tensor(OrderedDict(i=Bint[3]))
 
     actual = Independent(f, 'x', 'i', 'x_i')
     assert 'i' not in actual.inputs
     assert 'x_i' not in actual.inputs
 
-    y = Variable('y', reals(3, 4, 5))
-    fsub = y + (0. * random_tensor(OrderedDict(i=bint(7))))
+    y = Variable('y', Reals[3, 4, 5])
+    fsub = y + (0. * random_tensor(OrderedDict(i=Bint[7])))
     actual = actual(x=fsub)
-    assert actual.inputs['i'] == bint(7)
+    assert actual.inputs['i'] == Bint[7]
 
     expected = f(x_i=y['i']).reduce(ops.add, 'i')
 
-    data = random_tensor(OrderedDict(i=bint(7)), y.output)
+    data = random_tensor(OrderedDict(i=Bint[7]), y.output)
     assert_close(actual(y=data), expected(y=data))
 
 
 @pytest.mark.xfail(reason="Independent not quite compatible with sample")
 def test_sample_independent():
-    f = Variable('x_i', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
+    f = Variable('x_i', Reals[4, 5]) + random_tensor(OrderedDict(i=Bint[3]))
     actual = Independent(f, 'x', 'i', 'x_i')
     assert actual.sample('i')
     assert actual.sample('j', {'i': 2})

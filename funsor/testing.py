@@ -16,7 +16,7 @@ from multipledispatch.variadic import Variadic
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
-from funsor.domains import Domain, bint, reals
+from funsor.domains import Domain, Bint, Real
 from funsor.gaussian import Gaussian
 from funsor.terms import Funsor, Number
 from funsor.tensor import Tensor
@@ -205,7 +205,7 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
             operand._pyro_dims = dims
         operands.append(operand)
     funsor_operands = [
-        Tensor(operand, OrderedDict([(d, bint(sizes[d])) for d in inp]))
+        Tensor(operand, OrderedDict([(d, Bint[sizes[d]]) for d in inp]))
         for inp, operand in zip(inputs, operands)
     ]
 
@@ -313,7 +313,7 @@ def empty(*args):
         return np.empty(shape)
 
 
-def random_tensor(inputs, output=reals()):
+def random_tensor(inputs, output=Real):
     """
     Creates a random :class:`funsor.tensor.Tensor` with given inputs and output.
     """

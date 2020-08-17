@@ -6,7 +6,7 @@ from collections import OrderedDict
 import torch
 
 import funsor.ops as ops
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Reals
 from funsor.interpreter import interpretation
 from funsor.pyro.convert import (
     dist_to_funsor,
@@ -109,7 +109,7 @@ class DiscreteHMM(FunsorDistribution):
         if self._validate_args:
             self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
-        time = Variable("time", bint(self.event_shape[0]))
+        time = Variable("time", Bint[self.event_shape[0]])
         value = tensor_to_funsor(value, ("time",), event_output=self.event_dim - 1,
                                  dtype=self.dtype)
 
@@ -235,7 +235,7 @@ class GaussianHMM(FunsorDistribution):
 
         # Construct the joint funsor.
         with interpretation(lazy):
-            value = Variable("value", reals(time_shape[0], obs_dim))
+            value = Variable("value", Reals[time_shape[0], obs_dim])
             result = trans + obs(value=value["time"])
             result = MarkovProduct(ops.logaddexp, ops.add,
                                    result, "time", {"state": "state(time=1)"})
@@ -310,17 +310,17 @@ class GaussianMRF(FunsorDistribution):
         # Convert distributions to funsors.
         init = dist_to_funsor(initial_dist)(value="state")
         trans = mvn_to_funsor(transition_dist, ("time",),
-                              OrderedDict([("state", reals(hidden_dim)),
-                                           ("state(time=1)", reals(hidden_dim))]))
+                              OrderedDict([("state", Reals[hidden_dim]),
+                                           ("state(time=1)", Reals[hidden_dim])]))
         obs = mvn_to_funsor(observation_dist, ("time",),
-                            OrderedDict([("state(time=1)", reals(hidden_dim)),
-                                         ("value", reals(obs_dim))]))
+                            OrderedDict([("state(time=1)", Reals[hidden_dim]),
+                                         ("value", Reals[obs_dim])]))
 
         # Construct the joint funsor.
         # Compare with pyro.distributions.hmm.GaussianMRF.log_prob().
         with interpretation(lazy):
-            time = Variable("time", bint(time_shape[0]))
-            value = Variable("value", reals(time_shape[0], obs_dim))
+            time = Variable("time", Bint[time_shape[0]])
+            value = Variable("value", Reals[time_shape[0], obs_dim])
             logp_oh = trans + obs(value=value["time"])
             logp_oh = MarkovProduct(ops.logaddexp, ops.add,
                                     logp_oh, time, {"state": "state(time=1)"})
@@ -448,7 +448,7 @@ class SwitchingLinearHMM(FunsorDistribution):
     # TODO remove this once self.funsor_dist is defined.
     def log_prob(self, value):
         ndims = max(len(self.batch_shape), value.dim() - 2)
-        time = Variable("time", bint(self.event_shape[0]))
+        time = Variable("time", Bint[self.event_shape[0]])
         value = tensor_to_funsor(value, ("time",), 1)
 
         seq_sum_prod = naive_sequential_sum_product if self.exact else sequential_sum_product
@@ -494,7 +494,7 @@ class SwitchingLinearHMM(FunsorDistribution):
         :rtype: tuple
         """
         ndims = max(len(self.batch_shape), value.dim() - 2)
-        time = Variable("time", bint(self.event_shape[0]))
+        time = Variable("time", Bint[self.event_shape[0]])
         value = tensor_to_funsor(value, ("time",), 1)
 
         seq_sum_prod = naive_sequential_sum_product if self.exact else sequential_sum_product

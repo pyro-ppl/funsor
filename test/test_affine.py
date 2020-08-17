@@ -7,7 +7,7 @@ import pytest
 
 from funsor.affine import extract_affine, is_affine
 from funsor.cnf import Contraction
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Real
 from funsor.terms import Number, Unary, Variable
 from funsor.testing import assert_close, check_funsor, ones, randn, random_gaussian, random_tensor  # noqa: F401
 from funsor.tensor import Einsum, Tensor
@@ -29,16 +29,16 @@ SMOKE_TESTS = [
 @pytest.mark.parametrize('expr,expected_type', SMOKE_TESTS)
 def test_smoke(expr, expected_type):
 
-    t = Tensor(randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
+    t = Tensor(randn(2, 3), OrderedDict([('i', Bint[2]), ('j', Bint[3])]))
     assert isinstance(t, Tensor)
 
     n = Number(2.)
     assert isinstance(n, Number)
 
-    x = Variable('x', reals())
+    x = Variable('x', Real)
     assert isinstance(x, Variable)
 
-    y = Variable('y', reals())
+    y = Variable('y', Real)
     assert isinstance(y, Variable)
 
     result = eval(expr)
@@ -47,33 +47,33 @@ def test_smoke(expr, expected_type):
 
 
 SUBS_TESTS = [
-    ("(t * x)(i=1)", Contraction, {"j": bint(3), "x": reals()}),
-    ("(t * x)(i=1, x=y)", Contraction, {"j": bint(3), "y": reals()}),
-    ("(t * x + n)(x=y)", Contraction, {"y": reals(), "i": bint(2), "j": bint(3)}),
-    ("(x + y)(y=z)", Contraction, {"x": reals(), "z": reals()}),
-    ("(-x)(x=y+z)", Contraction, {"y": reals(), "z": reals()}),
-    ("(t * x + t * y)(x=z)", Contraction, {"y": reals(), "z": reals(), "i": bint(2), "j": bint(3)}),
+    ("(t * x)(i=1)", Contraction, {"j": Bint[3], "x": Real}),
+    ("(t * x)(i=1, x=y)", Contraction, {"j": Bint[3], "y": Real}),
+    ("(t * x + n)(x=y)", Contraction, {"y": Real, "i": Bint[2], "j": Bint[3]}),
+    ("(x + y)(y=z)", Contraction, {"x": Real, "z": Real}),
+    ("(-x)(x=y+z)", Contraction, {"y": Real, "z": Real}),
+    ("(t * x + t * y)(x=z)", Contraction, {"y": Real, "z": Real, "i": Bint[2], "j": Bint[3]}),
 ]
 
 
 @pytest.mark.parametrize("expr,expected_type,expected_inputs", SUBS_TESTS)
 def test_affine_subs(expr, expected_type, expected_inputs):
 
-    expected_output = reals()
+    expected_output = Real
 
-    t = Tensor(randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
+    t = Tensor(randn(2, 3), OrderedDict([('i', Bint[2]), ('j', Bint[3])]))
     assert isinstance(t, Tensor)
 
     n = Number(2.)
     assert isinstance(n, Number)
 
-    x = Variable('x', reals())
+    x = Variable('x', Real)
     assert isinstance(x, Variable)
 
-    y = Variable('y', reals())
+    y = Variable('y', Real)
     assert isinstance(y, Variable)
 
-    z = Variable('z', reals())
+    z = Variable('z', Real)
     assert isinstance(z, Variable)
 
     result = eval(expr)
@@ -83,21 +83,21 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 
 
 @pytest.mark.parametrize('expr', [
-    "-Variable('x', reals())",
-    "Variable('x', reals(2)).sum()",
-    "Variable('x', reals()) + 0.5",
-    "Variable('x', reals(2, 3)) + Variable('y', reals(2, 3))",
-    "Variable('x', reals(2)) + Variable('y', reals(2))",
-    "Variable('x', reals(2)) + ones(2)",
-    "Variable('x', reals(2)) * randn(2)",
-    "Variable('x', reals(2)) * randn(2) + ones(2)",
-    "Variable('x', reals(2)) + Tensor(randn(3, 2), OrderedDict(i=bint(3)))",
+    "-Variable('x', Real)",
+    "Variable('x', Reals[2]).sum()",
+    "Variable('x', Real) + 0.5",
+    "Variable('x', Reals[2, 3]) + Variable('y', Reals[2, 3])",
+    "Variable('x', Reals[2]) + Variable('y', Reals[2])",
+    "Variable('x', Reals[2]) + ones(2)",
+    "Variable('x', Reals[2]) * randn(2)",
+    "Variable('x', Reals[2]) * randn(2) + ones(2)",
+    "Variable('x', Reals[2]) + Tensor(randn(3, 2), OrderedDict(i=Bint[3]))",
     "Einsum('abcd,ac->bd',"
-    " (Tensor(randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
+    " (Tensor(randn(2, 3, 4, 5)), Variable('x', Reals[2, 4])))",
     "Tensor(randn(3, 5)) + Einsum('abcd,ac->bd',"
-    " (Tensor(randn(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
-    "Variable('x', reals(2, 8))[0] + randn(8)",
-    "Variable('x', reals(2, 8))[Variable('i', bint(2))] / 4 - 3.5",
+    " (Tensor(randn(2, 3, 4, 5)), Variable('x', Reals[2, 4])))",
+    "Variable('x', Reals[2, 8])[0] + randn(8)",
+    "Variable('x', Reals[2, 8])[Variable('i', Bint[2])] / 4 - 3.5",
 ])
 def test_extract_affine(expr):
     x = eval(expr)
@@ -126,21 +126,21 @@ def test_extract_affine(expr):
 
 
 @pytest.mark.parametrize("expr", [
-    "Variable('x', reals()).log()",
-    "Variable('x', reals()).exp()",
-    "Variable('x', reals()).sigmoid()",
-    "Variable('x', reals(2)).prod()",
-    "Variable('x', reals()) ** 2",
-    "Variable('x', reals()) ** 2",
-    "2 ** Variable('x', reals())",
-    "Variable('x', reals()) * Variable('x', reals())",
-    "Variable('x', reals()) * Variable('y', reals())",
-    "Variable('x', reals()) / Variable('y', reals())",
-    "Variable('x', reals()) / Variable('y', reals())",
-    "Variable('x', reals(2,3)) @ Variable('y', reals(3,4))",
-    "random_gaussian(OrderedDict(x=reals()))",
+    "Variable('x', Real).log()",
+    "Variable('x', Real).exp()",
+    "Variable('x', Real).sigmoid()",
+    "Variable('x', Reals[2]).prod()",
+    "Variable('x', Real) ** 2",
+    "Variable('x', Real) ** 2",
+    "2 ** Variable('x', Real)",
+    "Variable('x', Real) * Variable('x', Real)",
+    "Variable('x', Real) * Variable('y', Real)",
+    "Variable('x', Real) / Variable('y', Real)",
+    "Variable('x', Real) / Variable('y', Real)",
+    "Variable('x', Reals[2,3]) @ Variable('y', Reals[3,4])",
+    "random_gaussian(OrderedDict(x=Real))",
     "Einsum('abcd,ac->bd',"
-    " (Variable('y', reals(2, 3, 4, 5)), Variable('x', reals(2, 4))))",
+    " (Variable('y', Reals[2, 3, 4, 5]), Variable('x', Reals[2, 4])))",
 ])
 def test_not_is_affine(expr):
     x = eval(expr)
