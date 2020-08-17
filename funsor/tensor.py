@@ -3,6 +3,7 @@
 
 import functools
 import itertools
+import typing
 import warnings
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -32,7 +33,7 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
+from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, lazy_property, quote
 
 
 def get_default_prototype():
@@ -745,11 +746,23 @@ def eager_cat_homogeneous(name, part_name, *parts):
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 
+# TODO Promote this to a Funsor subclass.
 class LazyTuple(tuple):
     def __call__(self, *args, **kwargs):
         return LazyTuple(x(*args, **kwargs) for x in self)
 
+    @lazy_property
+    def __annotations__(self):
+        result = {}
+        output = []
+        for part in self:
+            result.update(part.__annotations__)
+            output.append(result.pop("return"))
+        result["return"] = typing.Tuple[tuple(output)]
+        return result
 
+
+# TODO Move this to terms.py; it is no longer Tensor-specific.
 class Function(Funsor):
     r"""
     Funsor wrapped by a native PyTorch or NumPy function.
@@ -815,9 +828,9 @@ def _select(fn, i, *args):
 def _nested_function(fn, args, output):
     if isinstance(output, Domain):
         return Function(fn, output, args)
-    elif isinstance(output, tuple):
+    elif output.__origin__ is tuple:
         result = []
-        for i, output_i in enumerate(output):
+        for i, output_i in enumerate(output.__args__):
             fn_i = functools.partial(_select, fn, i)
             fn_i.__name__ = "{}_{}".format(_nameof(fn), i)
             result.append(_nested_function(fn_i, args, output_i))
@@ -843,51 +856,88 @@ class _Memoized(object):
     def __name__(self):
         return _nameof(self.fn)
 
+    @property
+    def __annotations__(self):
+        return self.fn.__annotations__
+
 
 def _function(inputs, output, fn):
     if is_nn_module(fn):
         names = getargspec(fn.forward)[0][1:]
     else:
         names = getargspec(fn)[0]
-    args = tuple(Variable(name, domain) for (name, domain) in zip(names, inputs))
+    if isinstance(inputs, dict):
+        args = tuple(Variable(name, inputs[name])
+                     for name in names if name in inputs)
+    else:
+        args = tuple(Variable(name, domain)
+                     for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
     if not isinstance(output, Domain):
-        assert isinstance(output, tuple)
+        assert output.__origin__ is tuple
         # Memoize multiple-output functions so that invocations can be shared among
         # all outputs. This is not foolproof, but does work in simple situations.
         fn = _Memoized(fn)
     return _nested_function(fn, args, output)
 
 
+def _tuple_to_Tuple(tp):
+    if isinstance(tp, tuple):
+        warnings.warn("tuple types like (reals(), reals(2)) are deprecated, "
+                      "use Tuple[Real, Reals[2]] instead",
+                      DeprecationWarning)
+        tp = tuple(map(_tuple_to_Tuple, tp))
+        return typing.Tuple[tp]
+    return tp
+
+
 def function(*signature):
     r"""
-    Decorator to wrap a PyTorch/NumPy function.
+    Decorator to wrap a PyTorch/NumPy function, using either type hints or
+    explicit type annotations.
 
     Example::
 
-        @funsor.torch.function(reals(3,4), reals(4,5), reals(3,5))
+        # Using type hints:
+        @funsor.tensor.function
+        def matmul(x: Reals[3, 4], y: Reals[4, 5]) -> Reals[3, 5]:
+            return torch.matmul(x, y)
+
+        # Using explicit type annotations:
+        @funsor.tensor.function(Reals[3, 4], Reals[4, 5], Reals[3, 5])
         def matmul(x, y):
             return torch.matmul(x, y)
 
-        @funsor.torch.function(reals(10), reals(10, 10), reals())
+        @funsor.tensor.function(Reals[10], Reals[10, 10], Reals[10], Real)
         def mvn_log_prob(loc, scale_tril, x):
             d = torch.distributions.MultivariateNormal(loc, scale_tril)
             return d.log_prob(x)
 
     To support functions that output nested tuples of tensors, specify a nested
-    tuple of output types, for example::
+    :py:class:`~typing.Tuple` of output types, for example::
 
-        @funsor.torch.function(reals(8), (reals(), bint(8)))
-        def max_and_argmax(x):
+        @funsor.tensor.function
+        def max_and_argmax(x: Reals[8]) -> Tuple[Real, Bint[8]]:
             return torch.max(x, dim=-1)
 
     :param \*signature: A sequence if input domains followed by a final output
         domain or nested tuple of output domains.
     """
     assert signature
+    if len(signature) == 1:
+        fn = signature[0]
+        if callable(fn) and not isinstance(fn, Domain):
+            # Usage: @function
+            inputs = typing.get_type_hints(fn)
+            output = inputs.pop("return")
+            assert all(isinstance(d, Domain) for d in inputs.values())
+            assert isinstance(output, (Domain, tuple)) or output.__origin__ == tuple
+            return _function(inputs, output, fn)
+    # Usage @function(input1, ..., inputN, output)
     inputs, output = signature[:-1], signature[-1]
+    output = _tuple_to_Tuple(output)
     assert all(isinstance(d, Domain) for d in inputs)
-    assert isinstance(output, tuple) or isinstance(output, Domain)
+    assert isinstance(output, (Domain, tuple)) or output.__origin__ == tuple
     return functools.partial(_function, inputs, output)
 
 

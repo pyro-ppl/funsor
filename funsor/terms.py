@@ -6,6 +6,7 @@ import itertools
 import math
 import numbers
 import typing
+import warnings
 from collections import Hashable, OrderedDict
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
@@ -363,6 +364,12 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def __hash__(self):
         return id(self)
+
+    @lazy_property
+    def __annotations__(self):
+        type_hints = dict(self.inputs)
+        type_hints["return"] = self.output
+        return type_hints
 
     def __repr__(self):
         return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_values)))
@@ -1537,21 +1544,56 @@ def eager_independent_trivial(fn, reals_var, bint_var, diag_var):
     return None
 
 
-def _of_shape(fn, shape):
+def _symbolic(inputs, output, fn):
     args, vargs, kwargs, defaults = getargspec(fn)
     assert not vargs
     assert not kwargs
     names = tuple(args)
-    args = [Variable(name, size) for name, size in zip(names, shape)]
-    return to_funsor(fn(*args)).align(names)
+    if isinstance(inputs, dict):
+        args = tuple(Variable(name, inputs[name])
+                     for name in names if name in inputs)
+    else:
+        args = tuple(Variable(name, domain)
+                     for (name, domain) in zip(names, inputs))
+    assert len(args) == len(inputs)
+    return to_funsor(fn(*args), output).align(names)
 
 
+def symbolic(*signature):
+    r"""
+    Decorator to construct a symbolic :class:`Funsor` with one free
+    :class:`Variable` per function arg. This can be used either with explicit
+    types or with type hints::
+
+        # Using type hints:
+        @symbolic
+        def xpyi(x: Real, y: Reals[3], i: Bint[3]):
+            return x + y[i]
+
+        # Using explicit type annotations:
+        @symbolic(Real, Reals[3], Bint[3])
+        def xpyi(x: Real, y: Reals[3], i: Bint[3]):
+            return x + y[i]
+
+    :param \*signature: A sequence if input domains.
+    """
+    if len(signature) == 1:
+        fn = signature[0]
+        if callable(fn) and not isinstance(fn, Domain):
+            # Usage: @symbolic
+            inputs = typing.get_type_hints(fn)
+            output = inputs.pop("return", None)
+            return _symbolic(inputs, output, fn)
+    # Usage: @symbolic(Real, Reals[3], Bint[3])
+    output = None
+    return functools.partial(_symbolic, inputs, output)
+
+
+# DEPRECATED
 def of_shape(*shape):
-    """
-    Decorator to construct a :class:`Funsor` with one free :class:`Variable`
-    per function arg.
-    """
-    return functools.partial(_of_shape, shape=shape)
+    warnings.warn("@of_shape is deprecated, use @symbolic instead",
+                  DeprecationWarning)
+    return symbolic(*shape)
 
 
 ################################################################################

@@ -14,7 +14,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Real, Reals, bint, reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.integrate import Integrate
 from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array
@@ -38,8 +38,8 @@ def test_beta_density(batch_shape, eager):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def beta(concentration1, concentration0, value):
+    @funsor.function
+    def beta(concentration1: Real, concentration0: Real, value: Real) -> Real:
         return backend_dist.Beta(concentration1, concentration0).log_prob(value)
 
     check_funsor(beta, {'concentration1': reals(), 'concentration0': reals(), 'value': reals()}, reals())
@@ -63,8 +63,8 @@ def test_bernoulli_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals())
-    def bernoulli(probs, value):
+    @funsor.function
+    def bernoulli(probs: Real, value: Real) -> Real:
         return backend_dist.Bernoulli(probs).log_prob(value)
 
     check_funsor(bernoulli, {'probs': reals(), 'value': reals()}, reals())
@@ -91,8 +91,8 @@ def test_bernoulli_logits_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals())
-    def bernoulli(logits, value):
+    @funsor.function
+    def bernoulli(logits: Real, value: Real) -> Real:
         return backend_dist.Bernoulli(logits=logits).log_prob(value)
 
     check_funsor(bernoulli, {'logits': reals(), 'value': reals()}, reals())
@@ -120,8 +120,8 @@ def test_binomial_density(batch_shape, eager):
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def binomial(total_count, probs, value):
+    @funsor.function
+    def binomial(total_count: Real, probs: Real, value: Real) -> Real:
         return backend_dist.Binomial(total_count, probs).log_prob(value)
 
     check_funsor(binomial, {'total_count': reals(), 'probs': reals(), 'value': reals()}, reals())
@@ -153,8 +153,8 @@ def test_categorical_density(size, batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.of_shape(reals(size), bint(size))
-    def categorical(probs, value):
+    @funsor.symbolic
+    def categorical(probs: Reals[size], value: Bint[size]):
         return probs[value].log()
 
     check_funsor(categorical, {'probs': reals(size), 'value': bint(size)}, reals())
@@ -186,8 +186,8 @@ def test_delta_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(*event_shape), reals(), reals(*event_shape), reals())
-    def delta(v, log_density, value):
+    @funsor.function
+    def delta(v: Reals[event_shape], log_density: Real, value: Reals[event_shape]) -> Real:
         eq = (v == value)
         for _ in range(len(event_shape)):
             eq = ops.all(eq, -1)
@@ -222,8 +222,9 @@ def test_dirichlet_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(*event_shape), reals(*event_shape), reals())
-    def dirichlet(concentration, value):
+    @funsor.function
+    def dirichlet(concentration: Reals[event_shape],
+                  value: Reals[event_shape]) -> Real:
         return backend_dist.Dirichlet(concentration).log_prob(value)
 
     check_funsor(dirichlet, {'concentration': reals(*event_shape), 'value': reals(*event_shape)}, reals())
@@ -247,8 +248,9 @@ def test_dirichlet_multinomial_density(batch_shape, event_shape):
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.function(reals(*event_shape), reals(), reals(*event_shape), reals())
-    def dirichlet_multinomial(concentration, total_count, value):
+    @funsor.function
+    def dirichlet_multinomial(concentration: Reals[event_shape], total_count: Real,
+                              value: Reals[event_shape]) -> Real:
         return backend_dist.DirichletMultinomial(concentration, total_count).log_prob(value)
 
     check_funsor(dirichlet_multinomial, {'concentration': reals(*event_shape),
@@ -300,8 +302,8 @@ def test_lognormal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def log_normal(loc, scale, value):
+    @funsor.function
+    def log_normal(loc: Real, scale: Real, value: Real) -> Real:
         return backend_dist.LogNormal(loc, scale).log_prob(value)
 
     check_funsor(log_normal, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
@@ -324,8 +326,8 @@ def test_multinomial_density(batch_shape, event_shape):
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.function(reals(), reals(*event_shape), reals(*event_shape), reals())
-    def multinomial(total_count, probs, value):
+    @funsor.function
+    def multinomial(total_count: Real, probs: Reals[event_shape], value: Reals[event_shape]) -> Real:
         if get_backend() == "torch":
             total_count = total_count.max().item()
         return backend_dist.Multinomial(total_count, probs).log_prob(value)
@@ -359,8 +361,8 @@ def test_normal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.of_shape(reals(), reals(), reals())
-    def normal(loc, scale, value):
+    @funsor.symbolic
+    def normal(loc: Real, scale: Real, value: Real):
         return -((value - loc) ** 2) / (2 * scale ** 2) - scale.log() - math.log(math.sqrt(2 * math.pi))
 
     check_funsor(normal, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
@@ -501,8 +503,8 @@ def test_mvn_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(3), reals(3, 3), reals(3), reals())
-    def mvn(loc, scale_tril, value):
+    @funsor.function
+    def mvn(loc: Reals[3], scale_tril: Reals[3, 3], value: Reals[3]) -> Real:
         return backend_dist.MultivariateNormal(loc, scale_tril=scale_tril).log_prob(value)
 
     check_funsor(mvn, {'loc': reals(3), 'scale_tril': reals(3, 3), 'value': reals(3)}, reals())
@@ -632,8 +634,8 @@ def test_poisson_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals())
-    def poisson(rate, value):
+    @funsor.function
+    def poisson(rate: Real, value: Real) -> Real:
         return backend_dist.Poisson(rate).log_prob(value)
 
     check_funsor(poisson, {'rate': reals(), 'value': reals()}, reals())
@@ -658,8 +660,8 @@ def test_gamma_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def gamma(concentration, rate, value):
+    @funsor.function
+    def gamma(concentration: Real, rate: Real, value: Real) -> Real:
         return backend_dist.Gamma(concentration, rate).log_prob(value)
 
     check_funsor(gamma, {'concentration': reals(), 'rate': reals(), 'value': reals()}, reals())
@@ -686,8 +688,8 @@ def test_von_mises_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def von_mises(loc, concentration, value):
+    @funsor.function
+    def von_mises(loc: Real, concentration: Real, value: Real) -> Real:
         return backend_dist.VonMises(loc, concentration).log_prob(value)
 
     check_funsor(von_mises, {'concentration': reals(), 'loc': reals(), 'value': reals()}, reals())

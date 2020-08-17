@@ -5,11 +5,24 @@ from funsor.domains import Domain, bint, find_domain, make_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
 from funsor.sum_product import MarkovProduct
-from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
 from funsor.tensor import Tensor, function
-from funsor.util import set_backend, get_backend, pretty, quote
+from funsor.terms import (
+    Cat,
+    Funsor,
+    Independent,
+    Lambda,
+    Number,
+    Slice,
+    Stack,
+    Variable,
+    of_shape,
+    symbolic,
+    to_data,
+    to_funsor
+)
+from funsor.util import get_backend, pretty, quote, set_backend
 
-from . import (
+from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     adjoint,
     affine,
     cnf,
@@ -22,12 +35,11 @@ from . import (
     interpreter,
     joint,
     memoize,
-    # minipyro,  # TODO: enable when minipyro is backend-agnostic
     montecarlo,
     ops,
     sum_product,
     terms,
-    testing,
+    testing
 )
 
 # TODO: move to `funsor.util` when the following circular import issue is resolved
@@ -76,6 +88,7 @@ __all__ = [
     'reinterpret',
     'set_backend',
     'sum_product',
+    'symbolic',
     'terms',
     'testing',
     'to_data',
