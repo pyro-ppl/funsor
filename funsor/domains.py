@@ -129,6 +129,7 @@ class BintType(type):
         return ()
 
     # DEPRECATED
+    @property
     def num_elements(cls):
         warnings.warn("Bint[n].num_elements is deprecated",
                       DeprecationWarning)
