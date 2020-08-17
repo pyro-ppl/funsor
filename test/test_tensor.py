@@ -43,7 +43,7 @@ def test_to_funsor(shape, dtype):
     assert isinstance(f, Tensor)
     assert funsor.to_funsor(t, Reals[shape]) is f
     with pytest.raises(ValueError):
-        funsor.to_funsor(t, Reals[shape])
+        funsor.to_funsor(t, Reals[(5,) + shape])
 
 
 def test_to_data():
@@ -448,7 +448,7 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     ((2, 3, 2), (2, 2, 3)),
 ])
 def test_reshape(batch_shape, old_shape, new_shape):
-    inputs = OrderedDict(zip("abc", map(Bint, batch_shape)))
+    inputs = OrderedDict(zip("abc", map(Bint.__getitem__, batch_shape)))
     old = random_tensor(inputs, Reals[old_shape])
     assert old.reshape(old.shape) is old
 

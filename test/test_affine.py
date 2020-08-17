@@ -7,7 +7,7 @@ import pytest
 
 from funsor.affine import extract_affine, is_affine
 from funsor.cnf import Contraction
-from funsor.domains import Bint, Real
+from funsor.domains import Bint, Real, Reals  # noqa: F401
 from funsor.terms import Number, Unary, Variable
 from funsor.testing import assert_close, check_funsor, ones, randn, random_gaussian, random_tensor  # noqa: F401
 from funsor.tensor import Einsum, Tensor
