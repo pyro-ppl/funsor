@@ -16,7 +16,7 @@ from multipledispatch.variadic import Variadic
 import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import Domain, bint, find_domain, reals
+from funsor.domains import Domain, bint, find_domain, make_domain, reals
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -32,7 +32,7 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec, get_backend, get_tracing_state, is_nn_module, quote
+from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
 
 
 def get_default_prototype():
@@ -108,7 +108,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     :param numeric_array data: A PyTorch tensor or NumPy ndarray.
     :param OrderedDict inputs: An optional mapping from input name (str) to
-        datatype (:class:`~funsor.domains.Domain` ). Defaults to empty.
+        datatype (``funsor.domains.Domain``). Defaults to empty.
     :param dtype: optional output datatype. Defaults to "real".
     :type dtype: int or the string "real".
     """
@@ -120,7 +120,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             for (k, d), size in zip(inputs, data.shape):
                 assert d.dtype == size
         inputs = OrderedDict(inputs)
-        output = Domain(data.shape[len(inputs):], dtype)
+        output = make_domain(data.shape[len(inputs):], dtype)
         fresh = frozenset(inputs.keys())
         bound = frozenset()
         super(Tensor, self).__init__(inputs, output, fresh, bound)
@@ -760,7 +760,7 @@ class Function(Funsor):
     :class:`Function` s are usually created via the :func:`function` decorator.
 
     :param callable fn: A native PyTorch or NumPy function to wrap.
-    :param funsor.domains.Domain output: An output domain.
+    :param type output: An output domain.
     :param Funsor args: Funsor arguments.
     """
     def __init__(self, fn, output, args):
@@ -887,7 +887,7 @@ def function(*signature):
     assert signature
     inputs, output = signature[:-1], signature[-1]
     assert all(isinstance(d, Domain) for d in inputs)
-    assert isinstance(output, (Domain, tuple))
+    assert isinstance(output, tuple) or isinstance(output, Domain)
     return functools.partial(_function, inputs, output)
 
 
@@ -1018,7 +1018,7 @@ def stack(parts, dim=0):
     assert dim < 0
     split = dim + len(shape) + 1
     shape = shape[:split] + (len(parts),) + shape[split:]
-    output = Domain(shape, parts[0].dtype)
+    output = make_domain(shape, parts[0].dtype)
     fn = functools.partial(ops.stack, dim)
     return Function(fn, output, parts)
 

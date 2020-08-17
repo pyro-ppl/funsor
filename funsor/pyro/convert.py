@@ -22,7 +22,7 @@ import torch
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta
-from funsor.domains import Domain, bint, reals
+from funsor.domains import make_domain, bint, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import Tensor, align_tensors
@@ -72,7 +72,7 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
     assert isinstance(event_inputs, tuple)
     assert isinstance(event_output, int) and event_output >= 0
     inputs_shape = tensor.shape[:tensor.dim() - event_output]
-    output = Domain(dtype=dtype, shape=tensor.shape[tensor.dim() - event_output:])
+    output = make_domain(dtype=dtype, shape=tensor.shape[tensor.dim() - event_output:])
     dim_to_name = default_dim_to_name(inputs_shape, event_inputs)
     return to_funsor(tensor, output, dim_to_name)
 

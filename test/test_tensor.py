@@ -12,7 +12,7 @@ import pytest
 
 import funsor
 import funsor.ops as ops
-from funsor.domains import Domain, bint, find_domain, reals
+from funsor.domains import Bint, Reals, bint, find_domain, make_domain, reals
 from funsor.interpreter import interpretation
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
 from funsor.testing import (assert_close, assert_equiv, check_funsor, empty,
@@ -28,8 +28,8 @@ def test_quote(output_shape, inputs):
         import torch  # noqa: F401
 
     sizes = {'a': 4, 'b': 5, 'c': 6}
-    inputs = OrderedDict((k, bint(sizes[k])) for k in inputs)
-    x = random_tensor(inputs, reals(*output_shape))
+    inputs = OrderedDict((k, Bint[sizes[k]]) for k in inputs)
+    x = random_tensor(inputs, Reals[output_shape])
     s = funsor.quote(x)
     assert isinstance(s, str)
     assert_close(eval(s), x)
@@ -323,7 +323,7 @@ def test_unary(symbol, dims):
 
     x = Tensor(data, inputs, dtype)
     actual = unary_eval(symbol, x)
-    check_funsor(actual, inputs, funsor.Domain((), dtype), expected_data)
+    check_funsor(actual, inputs, funsor.make_domain((), dtype), expected_data)
 
 
 BINARY_OPS = [
@@ -363,7 +363,7 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
     expected_data = binary_eval(symbol, aligned[0], aligned[1])
 
     actual = binary_eval(symbol, x1, x2)
-    check_funsor(actual, inputs, Domain((), dtype), expected_data)
+    check_funsor(actual, inputs, make_domain((), dtype), expected_data)
 
 
 @pytest.mark.parametrize('output_shape2', [(), (2,), (3, 2)], ids=str)
@@ -618,7 +618,7 @@ def test_reduce_subset(dims, reduced_vars, op):
         else:
             for pos in reversed(sorted(map(dims.index, reduced_vars))):
                 data = REDUCE_OP_TO_NUMERIC[op](data, pos)
-        check_funsor(actual, expected_inputs, Domain((), dtype))
+        check_funsor(actual, expected_inputs, make_domain((), dtype))
         assert_close(actual, Tensor(data, expected_inputs, dtype),
                      atol=1e-5, rtol=1e-5)
 
@@ -641,7 +641,7 @@ def test_reduce_event(op, event_shape, dims):
     x = Tensor(data, inputs, dtype=dtype)
     op_name = numeric_op.__name__[1:] if op in [ops.min, ops.max] else numeric_op.__name__
     actual = getattr(x, op_name)()
-    check_funsor(actual, inputs, Domain((), dtype), expected_data)
+    check_funsor(actual, inputs, make_domain((), dtype), expected_data)
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (2, 3)])

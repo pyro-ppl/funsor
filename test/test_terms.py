@@ -15,7 +15,7 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.domains import Domain, bint, reals
+from funsor.domains import Bint, Real, Reals, bint, make_domain, reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
@@ -44,6 +44,7 @@ from funsor.testing import assert_close, check_funsor, random_tensor
 assert Binary  # flake8
 assert Subs  # flake8
 assert Contraction  # flake8
+assert Reals  # flake8
 
 np.seterr(all='ignore')
 
@@ -72,9 +73,9 @@ def test_to_data():
 
 def test_to_data_error():
     with pytest.raises(ValueError):
-        to_data(Variable('x', reals()))
+        to_data(Variable('x', Real))
     with pytest.raises(ValueError):
-        to_data(Variable('y', bint(12)))
+        to_data(Variable('y', Bint[12]))
 
 
 def test_cons_hash():
@@ -239,7 +240,7 @@ def test_unary(symbol, data):
 
     x = Number(data, dtype)
     actual = unary_eval(symbol, x)
-    check_funsor(actual, {}, Domain((), dtype), expected_data)
+    check_funsor(actual, {}, make_domain((), dtype), expected_data)
 
 
 BINARY_OPS = [
@@ -274,7 +275,7 @@ def test_binary(symbol, data1, data2):
     x1 = Number(data1, dtype)
     x2 = Number(data2, dtype)
     actual = binary_eval(symbol, x1, x2)
-    check_funsor(actual, {}, Domain((), dtype), expected_data)
+    check_funsor(actual, {}, make_domain((), dtype), expected_data)
     with interpretation(normalize):
         actual_reflect = binary_eval(symbol, x1, x2)
     assert actual.output == actual_reflect.output
@@ -292,7 +293,7 @@ def test_reduce_all(op):
     with interpretation(sequential):
         f = x * y + z
         dtype = f.dtype
-        check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
+        check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, make_domain((), dtype))
         actual = f.reduce(op)
 
     with interpretation(sequential):
@@ -319,7 +320,7 @@ def test_reduce_subset(op, reduced_vars):
     z = Variable('z', bint(4))
     f = x * y + z
     dtype = f.dtype
-    check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
+    check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, make_domain((), dtype))
     if isinstance(op, ops.LogAddExpOp):
         pytest.skip()  # not defined for integers
 

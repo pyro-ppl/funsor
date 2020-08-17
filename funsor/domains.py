@@ -1,89 +1,184 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import copyreg
+import functools
 import operator
-from collections import namedtuple
+import warnings
 from functools import reduce
+from weakref import WeakValueDictionary
 
-import funsor
 import funsor.ops as ops
-from funsor.util import broadcast_shape, get_tracing_state, lazy_property, quote
+from funsor.util import broadcast_shape, get_backend, get_tracing_state, quote
 
 
-class Domain(namedtuple('Domain', ['shape', 'dtype'])):
-    """
-    An object representing the type and shape of a :class:`Funsor` input or
-    output.
-    """
-    def __new__(cls, shape, dtype):
-        assert isinstance(shape, tuple)
+Domain = type
+
+
+class RealsType(Domain):
+    _type_cache = WeakValueDictionary()
+
+    def __getitem__(cls, shape):
+        if not isinstance(shape, tuple):
+            shape = (shape,)
         # in some JAX versions, shape can be np.int64 type
-        if get_tracing_state() or funsor.get_backend() == "jax":
+        if get_tracing_state() or get_backend() == "jax":
             shape = tuple(map(int, shape))
-        assert all(isinstance(size, int) for size in shape), shape
-        if isinstance(dtype, int):
-            assert not shape
-        elif isinstance(dtype, str):
-            assert dtype == 'real'
-        else:
-            raise ValueError(repr(dtype))
-        return super(Domain, cls).__new__(cls, shape, dtype)
 
-    def __copy__(self):
-        return self
+        result = RealsType._type_cache.get(shape, None)
+        if result is None:
+            assert cls is Reals
+            assert all(isinstance(size, int) and size >= 0 for size in shape)
+            name = "Reals[{}]".format(",".join(map(str, shape))) if shape else "Real"
+            result = RealsType(name, (), {"shape": shape})
+            RealsType._type_cache[shape] = result
+        return result
 
-    def __deepcopy__(self, memo):
-        return self
+    def __subclasscheck__(cls, subcls):
+        if not isinstance(subcls, RealsType):
+            return False
+        return cls is Reals or cls is subcls
 
-    def __reduce__(self):
-        return Domain, (self.shape, self.dtype)
+    def __repr__(cls):
+        return cls.__name__
 
-    def __repr__(self):
-        shape = tuple(self.shape)
-        if isinstance(self.dtype, int):
-            if not shape:
-                return 'bint({})'.format(self.dtype)
-            return 'bint({}, {})'.format(self.dtype, shape)
-        if not shape:
-            return 'reals()'
-        return 'reals{}'.format(shape)
-
-    def __iter__(self):
-        if isinstance(self.dtype, int) and not self.shape:
-            from funsor.terms import Number
-            return (Number(i, self.dtype) for i in range(self.dtype))
-        raise NotImplementedError
-
-    @lazy_property
-    def num_elements(self):
-        return reduce(operator.mul, self.shape, 1)
+    def __str__(cls):
+        return cls.__name__
 
     @property
-    def size(self):
-        assert isinstance(self.dtype, int)
-        return self.dtype
+    def num_elements(cls):
+        return reduce(operator.mul, cls.shape, 1)
+
+    # DEPRECATED
+    @property
+    def dtype(self):
+        warnings.warn("domain.dtype is deprecated, "
+                      "use isinstance(domain, RealsType) instead",
+                      DeprecationWarning)
+        return "real"
 
 
-@quote.register(Domain)
+@functools.partial(copyreg.pickle, RealsType)
+def _pickle_real(cls):
+    if cls is Reals:
+        return "Reals"
+    return operator.getitem, (Reals, cls.shape)
+
+
+class Reals(metaclass=RealsType):
+    """
+    Type of a real-valued array with known shape::
+
+        Reals[()] = Real  # scalar
+        Reals[8]          # vector of length 8
+        Reals[3,3]        # 3x3 matrix
+
+    To dispatch on domain type, we recommend either ``@singledispatch``,
+    ``@multipledispatch``, or ``isinstance(domain, RealsType)``.
+    """
+
+
+Real = Reals[()]  # just an alias
+
+
+class BintType(type):
+    _type_cache = WeakValueDictionary()
+
+    def __getitem__(cls, size):
+        # in some JAX versions, shape can be np.int64 type
+        if get_tracing_state() or get_backend() == "jax":
+            size = int(size)
+
+        result = BintType._type_cache.get(size, None)
+        if result is None:
+            assert cls is Bint
+            assert isinstance(size, int) and size >= 0, size
+            name = "Bint[{}]".format(size)
+            result = BintType(name, (), {"size": size})
+            BintType._type_cache[size] = result
+        return result
+
+    def __subclasscheck__(cls, subcls):
+        if not isinstance(subcls, BintType):
+            return False
+        return cls is Bint or cls is subcls
+
+    def __repr__(cls):
+        return cls.__name__
+
+    def __str__(cls):
+        return cls.__name__
+
+    def __iter__(cls):
+        from funsor.terms import Number
+        return (Number(i, cls.size) for i in range(cls.size))
+
+    # DEPRECATED
+    @property
+    def dtype(cls):
+        warnings.warn("domain.dtype is deprecated, "
+                      "use isinstance(domain, BintType) instead",
+                      DeprecationWarning)
+        return cls.size
+
+    # DEPRECATED
+    @property
+    def shape(cls):
+        warnings.warn("Bint[n].shape is deprecated",
+                      DeprecationWarning)
+        return ()
+
+    # DEPRECATED
+    @property
+    def num_elements(cls):
+        warnings.warn("Bint[n].num_elements is deprecated",
+                      DeprecationWarning)
+        return 1
+
+
+@functools.partial(copyreg.pickle, BintType)
+def _pickle_bint(cls):
+    if cls is Bint:
+        return "Bint"
+    return operator.getitem, (Bint, cls.size)
+
+
+class Bint(metaclass=BintType):
+    """
+    Factory for bounded integer types::
+
+        Bint[5]  # integers ranging in {0,1,2,3,4}
+
+    To dispatch on domain type, we recommend either ``@singledispatch``,
+    ``@multipledispatch``, or ``isinstance(domain, BintType)``.
+    """
+
+
+# DEPRECATED
+def reals(*args):
+    warnings.warn("reals(...) is deprecated, use Reals[...] instead",
+                  DeprecationWarning)
+    return Reals[args]
+
+
+# DEPRECATED
+def bint(size):
+    warnings.warn("reals(...) is deprecated, use Reals[...] instead",
+                  DeprecationWarning)
+    return Bint[size]
+
+
+# DEPRECATED
+def make_domain(shape, dtype):
+    warnings.warn("make_domain is deprecated, use Bint or Reals instead",
+                  DeprecationWarning)
+    return Reals[shape] if dtype == "real" else Bint[dtype]
+
+
+@quote.register(BintType)
+@quote.register(RealsType)
 def _(arg, indent, out):
     out.append((indent, repr(arg)))
-
-
-def reals(*shape):
-    """
-    Construct a real domain of given shape.
-    """
-    return Domain(shape, 'real')
-
-
-def bint(size):
-    """
-    Construct a bounded integer domain of scalar shape.
-    """
-    if get_tracing_state() or funsor.get_backend() == "jax":
-        size = int(size)
-    assert isinstance(size, int) and size >= 0
-    return Domain((), size)
 
 
 def find_domain(op, *domains):
@@ -103,13 +198,13 @@ def find_domain(op, *domains):
             shape = op.shape
         elif isinstance(op, ops.AssociativeOp):
             shape = ()
-        return Domain(shape, dtype)
+        return reals(*shape) if dtype == "real" else bint(dtype)
 
     lhs, rhs = domains
     if isinstance(op, ops.GetitemOp):
         dtype = lhs.dtype
         shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
-        return Domain(shape, dtype)
+        return reals(*shape) if dtype == "real" else bint(dtype)
     elif op == ops.matmul:
         assert lhs.shape and rhs.shape
         if len(rhs.shape) == 1:
@@ -121,7 +216,7 @@ def find_domain(op, *domains):
         else:
             assert lhs.shape[-1] == rhs.shape[-2]
             shape = broadcast_shape(lhs.shape[:-1], rhs.shape[:-2] + (1,)) + rhs.shape[-1:]
-        return Domain(shape, 'real')
+        return reals(*shape)
 
     if lhs.dtype == 'real' or rhs.dtype == 'real':
         dtype = 'real'
@@ -138,12 +233,17 @@ def find_domain(op, *domains):
         shape = lhs.shape
     else:
         shape = broadcast_shape(lhs.shape, rhs.shape)
-    return Domain(shape, dtype)
+    return reals(*shape) if dtype == "real" else bint(dtype)
 
 
 __all__ = [
+    'Bint',
+    'BintType',
     'Domain',
-    'find_domain',
+    'Real',
+    'RealsType',
+    'Reals',
     'bint',
+    'find_domain',
     'reals',
 ]

@@ -1070,7 +1070,7 @@ class Number(Funsor, metaclass=NumberMeta):
             assert isinstance(dtype, str) and dtype == "real"
             data = float(data)
         inputs = OrderedDict()
-        output = Domain((), dtype)
+        output = reals() if dtype == "real" else bint(dtype)
         super(Number, self).__init__(inputs, output)
         self.data = data
 
@@ -1434,7 +1434,7 @@ class Lambda(Funsor):
         inputs = expr.inputs.copy()
         inputs.pop(var.name, None)
         shape = (var.dtype,) + expr.output.shape
-        output = Domain(shape, expr.dtype)
+        output = reals(*shape) if expr.dtype == "real" else bint(expr.size)
         fresh = frozenset()
         bound = frozenset({var.name})
         super(Lambda, self).__init__(inputs, output, fresh, bound)

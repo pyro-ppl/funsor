@@ -14,7 +14,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.cnf import GaussianMixture
-from funsor.domains import Domain, reals
+from funsor.domains import make_domain, reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
@@ -164,7 +164,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             out_dtype = int(instance.support.upper_bound + 1)
         else:
             out_dtype = 'real'
-        return Domain(dtype=out_dtype, shape=out_shape)
+        return make_domain(dtype=out_dtype, shape=out_shape)
 
     @classmethod
     @functools.lru_cache(maxsize=5000)
