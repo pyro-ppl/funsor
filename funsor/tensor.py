@@ -938,7 +938,8 @@ def function(*signature):
     inputs, output = signature[:-1], signature[-1]
     output = _tuple_to_Tuple(output)
     assert all(isinstance(d, ArrayType) for d in inputs)
-    assert isinstance(output, (ArrayType, tuple)) or output.__origin__ == tuple
+    assert (isinstance(output, (ArrayType, tuple)) or
+            output.__origin__ in (tuple, typing.Tuple))
     return functools.partial(_function, inputs, output)
 
 
