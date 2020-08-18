@@ -16,7 +16,7 @@ from multipledispatch.variadic import Variadic, isvariadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Domain, bint, find_domain, reals
+from funsor.domains import Bint, Domain, Real, Reals, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, lazy_property, pretty, quote
@@ -483,7 +483,7 @@ class Funsor(object, metaclass=FunsorMeta):
         :param rng_key: a PRNG state to be used by JAX backend to generate random samples
         :type rng_key: None or JAX's random.PRNGKey
         """
-        assert self.output == reals()
+        assert self.output == Real
         sampled_vars = _convert_reduced_vars(sampled_vars)
         assert isinstance(sampled_vars, frozenset)
         if sample_inputs is None:
@@ -507,7 +507,7 @@ class Funsor(object, metaclass=FunsorMeta):
         Internal method to draw an unscaled sample.
         This should be overridden by subclasses.
         """
-        assert self.output == reals()
+        assert self.output == Real
         assert isinstance(sampled_vars, frozenset)
         assert isinstance(sample_inputs, OrderedDict)
         if sampled_vars.isdisjoint(self.inputs):
@@ -718,7 +718,7 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def __getitem__(self, other):
         if type(other) is not tuple:
-            other = to_funsor(other, bint(self.output.shape[0]))
+            other = to_funsor(other, Bint[self.output.shape[0]])
             return Binary(ops.getitem, self, other)
 
         # Handle Ellipsis slicing.
@@ -748,7 +748,7 @@ class Funsor(object, metaclass=FunsorMeta):
                     raise NotImplementedError('TODO support nontrivial slicing')
                 offset += 1
             else:
-                part = to_funsor(part, bint(result.output.shape[offset]))
+                part = to_funsor(part, Bint[result.output.shape[offset]])
                 result = Binary(GetitemOp(offset), result, part)
         return result
 
@@ -1077,7 +1077,7 @@ class Number(Funsor, metaclass=NumberMeta):
             assert isinstance(dtype, str) and dtype == "real"
             data = float(data)
         inputs = OrderedDict()
-        output = reals() if dtype == "real" else bint(dtype)
+        output = Real if dtype == "real" else Bint[dtype]
         super(Number, self).__init__(inputs, output)
         self.data = data
 
@@ -1174,8 +1174,8 @@ class Slice(Funsor, metaclass=SliceMeta):
         assert isinstance(step, int) and step > 0
         assert isinstance(dtype, int)
         size = max(0, (stop + step - 1 - start) // step)
-        inputs = OrderedDict([(name, bint(size))])
-        output = bint(dtype)
+        inputs = OrderedDict([(name, Bint[size])])
+        output = Bint[dtype]
         fresh = frozenset({name})
         super().__init__(inputs, output, fresh)
         self.name = name
@@ -1273,7 +1273,7 @@ class Stack(Funsor):
         assert not any(name in x.inputs for x in parts)
         assert len(set(x.output for x in parts)) == 1
         output = parts[0].output
-        domain = bint(len(parts))
+        domain = Bint[len(parts)]
         inputs = OrderedDict([(name, domain)])
         for x in parts:
             inputs.update(x.inputs)
@@ -1287,7 +1287,7 @@ class Stack(Funsor):
         index = subs[0][1]
 
         # Try to eagerly select an index.
-        assert index.output == bint(len(self.parts))
+        assert index.output == Bint[len(self.parts)]
 
         if isinstance(index, Number):
             # Select a single part.
@@ -1354,7 +1354,7 @@ class Cat(Funsor, metaclass=CatMeta):
         for x in parts:
             inputs.update(x.inputs)
         del inputs[part_name]
-        inputs[name] = bint(sum(x.inputs[part_name].size for x in parts))
+        inputs[name] = Bint[sum(x.inputs[part_name].size for x in parts)]
         fresh = frozenset({name})
         bound = frozenset({part_name})
         super().__init__(inputs, output, fresh, bound)
@@ -1441,7 +1441,7 @@ class Lambda(Funsor):
         inputs = expr.inputs.copy()
         inputs.pop(var.name, None)
         shape = (var.dtype,) + expr.output.shape
-        output = reals(*shape) if expr.dtype == "real" else bint(expr.size)
+        output = Reals[shape] if expr.dtype == "real" else Bint[expr.size]
         fresh = frozenset()
         bound = frozenset({var.name})
         super(Lambda, self).__init__(inputs, output, fresh, bound)
@@ -1469,15 +1469,15 @@ class Independent(Funsor):
     This is equivalent to substitution followed by reduction::
 
         f = ...  # a batched distribution
-        assert f.inputs['x_i'] == reals(4, 5)
-        assert f.inputs['i'] == bint(3)
+        assert f.inputs['x_i'] == Reals[4, 5]
+        assert f.inputs['i'] == Bint[3]
 
         g = Independent(f, 'x', 'i', 'x_i')
-        assert g.inputs['x'] == reals(3, 4, 5)
+        assert g.inputs['x'] == Reals[3, 4, 5]
         assert 'x_i' not in g.inputs
         assert 'i' not in g.inputs
 
-        x = Variable('x', reals(3, 4, 5))
+        x = Variable('x', Reals[3, 4, 5])
         g == f(x_i=x['i']).reduce(ops.logaddexp, 'i')
 
     :param Funsor fn: A funsor.
@@ -1497,7 +1497,7 @@ class Independent(Funsor):
         inputs = fn.inputs.copy()
         shape = (inputs.pop(bint_var).dtype,) + inputs.pop(diag_var).shape
         assert reals_var not in inputs
-        inputs[reals_var] = reals(*shape)
+        inputs[reals_var] = Reals[shape]
         fresh = frozenset({reals_var})
         bound = frozenset({bint_var, diag_var})
         super(Independent, self).__init__(inputs, fn.output, fresh, bound)

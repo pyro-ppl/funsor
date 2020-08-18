@@ -12,7 +12,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.montecarlo import monte_carlo_interpretation
 from funsor.tensor import Tensor, align_tensors
@@ -29,17 +29,17 @@ if get_backend() != "numpy":
 
 @pytest.mark.parametrize('sample_inputs', [
     (),
-    (('s', bint(6)),),
-    (('s', bint(6)), ('t', bint(7))),
+    (('s', Bint[6]),),
+    (('s', Bint[6]), ('t', Bint[7])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('batch_inputs', [
     (),
-    (('b', bint(4)),),
-    (('b', bint(4)), ('c', bint(5))),
+    (('b', Bint[4]),),
+    (('b', Bint[4]), ('c', Bint[5])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('event_inputs', [
-    (('e', bint(2)),),
-    (('e', bint(2)), ('f', bint(3))),
+    (('e', Bint[2]),),
+    (('e', Bint[2]), ('f', Bint[3])),
 ], ids=id_from_inputs)
 def test_tensor_shape(sample_inputs, batch_inputs, event_inputs):
     be_inputs = OrderedDict(batch_inputs + event_inputs)
@@ -69,18 +69,18 @@ def test_tensor_shape(sample_inputs, batch_inputs, event_inputs):
 
 @pytest.mark.parametrize('sample_inputs', [
     (),
-    (('s', bint(3)),),
-    (('s', bint(3)), ('t', bint(4))),
+    (('s', Bint[3]),),
+    (('s', Bint[3]), ('t', Bint[4])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('batch_inputs', [
     (),
-    (('b', bint(2)),),
-    (('c', reals()),),
-    (('b', bint(2)), ('c', reals())),
+    (('b', Bint[2]),),
+    (('c', Real),),
+    (('b', Bint[2]), ('c', Real)),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('event_inputs', [
-    (('e', reals()),),
-    (('e', reals()), ('f', reals(2))),
+    (('e', Real),),
+    (('e', Real), ('f', Reals[2])),
 ], ids=id_from_inputs)
 def test_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
     be_inputs = OrderedDict(batch_inputs + event_inputs)
@@ -117,18 +117,18 @@ def test_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
 
 @pytest.mark.parametrize('sample_inputs', [
     (),
-    (('s', bint(3)),),
-    (('s', bint(3)), ('t', bint(4))),
+    (('s', Bint[3]),),
+    (('s', Bint[3]), ('t', Bint[4])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('batch_inputs', [
     (),
-    (('b', bint(2)),),
-    (('c', reals()),),
-    (('b', bint(2)), ('c', reals())),
+    (('b', Bint[2]),),
+    (('c', Real),),
+    (('b', Bint[2]), ('c', Real)),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('event_inputs', [
-    (('e', reals()),),
-    (('e', reals()), ('f', reals(2))),
+    (('e', Real),),
+    (('e', Real), ('f', Reals[2])),
 ], ids=id_from_inputs)
 def test_transformed_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
     be_inputs = OrderedDict(batch_inputs + event_inputs)
@@ -169,17 +169,17 @@ def test_transformed_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
 
 @pytest.mark.parametrize('sample_inputs', [
     (),
-    (('s', bint(6)),),
-    (('s', bint(6)), ('t', bint(7))),
+    (('s', Bint[6]),),
+    (('s', Bint[6]), ('t', Bint[7])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('int_event_inputs', [
     (),
-    (('d', bint(2)),),
-    (('d', bint(2)), ('e', bint(3))),
+    (('d', Bint[2]),),
+    (('d', Bint[2]), ('e', Bint[3])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_event_inputs', [
-    (('g', reals()),),
-    (('g', reals()), ('h', reals(4))),
+    (('g', Real),),
+    (('g', Real), ('h', Reals[4])),
 ], ids=id_from_inputs)
 def test_joint_shape(sample_inputs, int_event_inputs, real_event_inputs):
     event_inputs = int_event_inputs + real_event_inputs
@@ -217,17 +217,17 @@ def test_joint_shape(sample_inputs, int_event_inputs, real_event_inputs):
 
 @pytest.mark.parametrize('batch_inputs', [
     (),
-    (('b', bint(4)),),
-    (('b', bint(2)), ('c', bint(2))),
+    (('b', Bint[4]),),
+    (('b', Bint[2]), ('c', Bint[2])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('event_inputs', [
-    (('e', bint(3)),),
-    (('e', bint(2)), ('f', bint(2))),
+    (('e', Bint[3]),),
+    (('e', Bint[2]), ('f', Bint[2])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('test_grad', [False, True], ids=['value', 'grad'])
 def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
     num_samples = 50000
-    sample_inputs = OrderedDict(n=bint(num_samples))
+    sample_inputs = OrderedDict(n=Bint[num_samples])
     be_inputs = OrderedDict(batch_inputs + event_inputs)
     batch_inputs = OrderedDict(batch_inputs)
     event_inputs = OrderedDict(event_inputs)
@@ -265,16 +265,16 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
 
 @pytest.mark.parametrize('batch_inputs', [
     (),
-    (('b', bint(3)),),
-    (('b', bint(3)), ('c', bint(4))),
+    (('b', Bint[3]),),
+    (('b', Bint[3]), ('c', Bint[4])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('event_inputs', [
-    (('e', reals()),),
-    (('e', reals()), ('f', reals(2))),
+    (('e', Real),),
+    (('e', Real), ('f', Reals[2])),
 ], ids=id_from_inputs)
 def test_gaussian_distribution(event_inputs, batch_inputs):
     num_samples = 100000
-    sample_inputs = OrderedDict(particle=bint(num_samples))
+    sample_inputs = OrderedDict(particle=Bint[num_samples])
     be_inputs = OrderedDict(batch_inputs + event_inputs)
     batch_inputs = OrderedDict(batch_inputs)
     event_inputs = OrderedDict(event_inputs)
@@ -303,16 +303,16 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
 
 @pytest.mark.parametrize('batch_inputs', [
     (),
-    (('b', bint(3)),),
-    (('b', bint(3)), ('c', bint(2))),
+    (('b', Bint[3]),),
+    (('b', Bint[3]), ('c', Bint[2])),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('event_inputs', [
-    (('e', reals()), ('f', bint(3))),
-    (('e', reals(2)), ('f', bint(2))),
+    (('e', Real), ('f', Bint[3])),
+    (('e', Reals[2]), ('f', Bint[2])),
 ], ids=id_from_inputs)
 def test_gaussian_mixture_distribution(batch_inputs, event_inputs):
     num_samples = 100000
-    sample_inputs = OrderedDict(particle=bint(num_samples))
+    sample_inputs = OrderedDict(particle=Bint[num_samples])
     be_inputs = OrderedDict(batch_inputs + event_inputs)
     int_inputs = OrderedDict((k, d) for k, d in be_inputs.items()
                              if d.dtype != 'real')
@@ -335,13 +335,13 @@ def test_gaussian_mixture_distribution(batch_inputs, event_inputs):
 @pytest.mark.parametrize('moment', [0, 1, 2, 3])
 def test_lognormal_distribution(moment):
     num_samples = 100000
-    inputs = OrderedDict(batch=bint(10))
+    inputs = OrderedDict(batch=Bint[10])
     loc = random_tensor(inputs)
     scale = random_tensor(inputs).exp()
 
     log_measure = dist.LogNormal(loc, scale)(value='x')
-    probe = Variable('x', reals()) ** moment
-    with monte_carlo_interpretation(particle=bint(num_samples)):
+    probe = Variable('x', Real) ** moment
+    with monte_carlo_interpretation(particle=Bint[num_samples]):
         with xfail_if_not_implemented():
             actual = Integrate(log_measure, probe, frozenset(['x']))
 

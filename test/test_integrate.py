@@ -6,7 +6,7 @@ from collections import OrderedDict
 import pytest
 
 from funsor import ops
-from funsor.domains import bint
+from funsor.domains import Bint
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo
@@ -21,16 +21,16 @@ from funsor.util import get_backend
         get_backend() == "jax", reason="Lacking pattern to pass rng_key"))
 ])
 def test_integrate(interp):
-    log_measure = random_tensor(OrderedDict([('i', bint(2)), ('j', bint(3))]))
-    integrand = random_tensor(OrderedDict([('j', bint(3)), ('k', bint(4))]))
+    log_measure = random_tensor(OrderedDict([('i', Bint[2]), ('j', Bint[3])]))
+    integrand = random_tensor(OrderedDict([('j', Bint[3]), ('k', Bint[4])]))
     with interpretation(interp):
         Integrate(log_measure, integrand, {'i', 'j', 'k'})
 
 
 def test_syntactic_sugar():
-    i = Variable("i", bint(3))
-    log_measure = random_tensor(OrderedDict(i=bint(3)))
-    integrand = random_tensor(OrderedDict(i=bint(3)))
+    i = Variable("i", Bint[3])
+    log_measure = random_tensor(OrderedDict(i=Bint[3]))
+    integrand = random_tensor(OrderedDict(i=Bint[3]))
     expected = (log_measure.exp() * integrand).reduce(ops.add, "i")
     assert_close(Integrate(log_measure, integrand, "i"), expected)
     assert_close(Integrate(log_measure, integrand, {"i"}), expected)

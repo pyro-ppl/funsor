@@ -9,7 +9,7 @@ from functools import partial, reduce
 import pytest
 
 import funsor.ops as ops
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Real, Reals
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
@@ -54,7 +54,7 @@ pytestmark = pytest.mark.skipif((get_backend() == 'jax') and ('CI' in os.environ
 ])
 def test_partition(inputs, dims, expected_num_components):
     sizes = dict(zip('abc', [2, 3, 4]))
-    terms = [random_tensor(OrderedDict((s, bint(sizes[s])) for s in input_))
+    terms = [random_tensor(OrderedDict((s, Bint[sizes[s]]) for s in input_))
              for input_ in inputs]
     components = list(_partition(terms, dims))
 
@@ -88,7 +88,7 @@ def test_partition(inputs, dims, expected_num_components):
 ])
 def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     inputs = inputs.split(',')
-    factors = [random_tensor(OrderedDict((d, bint(2)) for d in ds)) for ds in inputs]
+    factors = [random_tensor(OrderedDict((d, Bint[2]) for d in ds)) for ds in inputs]
     plates = frozenset(plates)
     vars1 = frozenset(vars1)
     vars2 = frozenset(vars2)
@@ -103,17 +103,17 @@ def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 13)))
 @pytest.mark.parametrize('sum_op,prod_op,state_domain', [
-    (ops.add, ops.mul, bint(2)),
-    (ops.add, ops.mul, bint(3)),
-    (ops.logaddexp, ops.add, bint(2)),
-    (ops.logaddexp, ops.add, bint(3)),
-    (ops.logaddexp, ops.add, reals()),
-    (ops.logaddexp, ops.add, reals(2)),
+    (ops.add, ops.mul, Bint[2]),
+    (ops.add, ops.mul, Bint[3]),
+    (ops.logaddexp, ops.add, Bint[2]),
+    (ops.logaddexp, ops.add, Bint[3]),
+    (ops.logaddexp, ops.add, Real),
+    (ops.logaddexp, ops.add, Reals[2]),
 ], ids=str)
 @pytest.mark.parametrize('batch_inputs', [
     OrderedDict(),
-    OrderedDict([("foo", bint(5))]),
-    OrderedDict([("foo", bint(2)), ("bar", bint(4))]),
+    OrderedDict([("foo", Bint[5])]),
+    OrderedDict([("foo", Bint[2]), ("bar", Bint[4])]),
 ], ids=lambda d: ",".join(d.keys()))
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
@@ -128,12 +128,12 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
     if num_steps is None:
         num_steps = 1
     else:
-        inputs["time"] = bint(num_steps)
+        inputs["time"] = Bint[num_steps]
     if state_domain.dtype == "real":
         trans = random_gaussian(inputs)
     else:
         trans = random_tensor(inputs)
-    time = Variable("time", bint(num_steps))
+    time = Variable("time", Bint[num_steps])
 
     actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
     expected_inputs = batch_inputs.copy()
@@ -155,13 +155,13 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 6)))
 @pytest.mark.parametrize('batch_inputs', [
     OrderedDict(),
-    OrderedDict([("foo", bint(5))]),
-    OrderedDict([("foo", bint(2)), ("bar", bint(4))]),
+    OrderedDict([("foo", Bint[5])]),
+    OrderedDict([("foo", Bint[2]), ("bar", Bint[4])]),
 ], ids=lambda d: ",".join(d.keys()))
 @pytest.mark.parametrize('x_domain,y_domain', [
-    (bint(2), bint(3)),
-    (reals(), reals(2, 2)),
-    (bint(2), reals(2)),
+    (Bint[2], Bint[3]),
+    (Real, Reals[2, 2]),
+    (Bint[2], Reals[2]),
 ], ids=str)
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
@@ -179,12 +179,12 @@ def test_sequential_sum_product_multi(impl, x_domain, y_domain, batch_inputs, nu
     if num_steps is None:
         num_steps = 1
     else:
-        inputs["time"] = bint(num_steps)
+        inputs["time"] = Bint[num_steps]
     if any(v.dtype == "real" for v in inputs.values()):
         trans = random_gaussian(inputs)
     else:
         trans = random_tensor(inputs)
-    time = Variable("time", bint(num_steps))
+    time = Variable("time", Bint[num_steps])
     step = {"x_prev": "x_curr", "y_prev": "y_curr"}
 
     with interpretation(moment_matching):
@@ -210,19 +210,19 @@ def test_sequential_sum_product_multi(impl, x_domain, y_domain, batch_inputs, nu
 @pytest.mark.parametrize("num_steps", [1, 2, 3, 10])
 @pytest.mark.parametrize("dim", [1, 2, 3])
 def test_sequential_sum_product_bias_1(num_steps, dim):
-    time = Variable("time", bint(num_steps))
+    time = Variable("time", Bint[num_steps])
     bias_dist = random_gaussian(OrderedDict([
-        ("bias", reals(dim)),
+        ("bias", Reals[dim]),
     ]))
     trans = random_gaussian(OrderedDict([
-        ("time", bint(num_steps)),
-        ("x_prev", reals(dim)),
-        ("x_curr", reals(dim)),
+        ("time", Bint[num_steps]),
+        ("x_prev", Reals[dim]),
+        ("x_curr", Reals[dim]),
     ]))
     obs = random_gaussian(OrderedDict([
-        ("time", bint(num_steps)),
-        ("x_curr", reals(dim)),
-        ("bias", reals(dim)),
+        ("time", Bint[num_steps]),
+        ("x_curr", Reals[dim]),
+        ("bias", Reals[dim]),
     ]))
     factor = trans + obs + bias_dist
     assert set(factor.inputs) == {"time", "bias", "x_prev", "x_curr"}
@@ -236,26 +236,26 @@ def test_sequential_sum_product_bias_1(num_steps, dim):
 @pytest.mark.parametrize("num_sensors", [2])
 @pytest.mark.parametrize("dim", [1, 2, 3])
 def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
-    time = Variable("time", bint(num_steps))
-    bias = Variable("bias", reals(num_sensors, dim))
+    time = Variable("time", Bint[num_steps])
+    bias = Variable("bias", Reals[num_sensors, dim])
     bias_dist = random_gaussian(OrderedDict([
-        ("bias", reals(num_sensors, dim)),
+        ("bias", Reals[num_sensors, dim]),
     ]))
     trans = random_gaussian(OrderedDict([
-        ("time", bint(num_steps)),
-        ("x_prev", reals(dim)),
-        ("x_curr", reals(dim)),
+        ("time", Bint[num_steps]),
+        ("x_prev", Reals[dim]),
+        ("x_curr", Reals[dim]),
     ]))
     obs = random_gaussian(OrderedDict([
-        ("time", bint(num_steps)),
-        ("x_curr", reals(dim)),
-        ("bias", reals(dim)),
+        ("time", Bint[num_steps]),
+        ("x_curr", Reals[dim]),
+        ("bias", Reals[dim]),
     ]))
 
     # Each time step only a single sensor observes x,
     # and each sensor has a different bias.
     sensor_id = Tensor(ops.new_arange(get_default_prototype(), num_steps) % 2,
-                       OrderedDict(time=bint(num_steps)), dtype=2)
+                       OrderedDict(time=Bint[num_steps]), dtype=2)
     with interpretation(eager_or_die):
         factor = trans + obs(bias=bias[sensor_id]) + bias_dist
     assert set(factor.inputs) == {"time", "bias", "x_prev", "x_curr"}
@@ -270,7 +270,7 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
 
     assert "time" in trans.inputs
     duration = trans.inputs["time"].dtype
-    time_var = Variable("time", bint(duration))
+    time_var = Variable("time", Bint[duration])
 
     expected = naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars)
     assert dict(expected.inputs) == expected_inputs
@@ -287,12 +287,12 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
 def test_sarkka_bilmes_example_0(duration):
 
     trans = random_tensor(OrderedDict({
-        "time": bint(duration),
-        "a": bint(3),
+        "time": Bint[duration],
+        "a": Bint[3],
     }))
 
     expected_inputs = {
-        "a": bint(3),
+        "a": Bint[3],
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
@@ -302,16 +302,16 @@ def test_sarkka_bilmes_example_0(duration):
 def test_sarkka_bilmes_example_1(duration):
 
     trans = random_tensor(OrderedDict({
-        "time": bint(duration),
-        "a": bint(3),
-        "b": bint(2),
-        "Pb": bint(2),
+        "time": Bint[duration],
+        "a": Bint[3],
+        "b": Bint[2],
+        "Pb": Bint[2],
     }))
 
     expected_inputs = {
-        "a": bint(3),
-        "b": bint(2),
-        "Pb": bint(2),
+        "a": Bint[3],
+        "b": Bint[2],
+        "Pb": Bint[2],
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
@@ -321,21 +321,21 @@ def test_sarkka_bilmes_example_1(duration):
 def test_sarkka_bilmes_example_2(duration):
 
     trans = random_tensor(OrderedDict({
-        "time": bint(duration),
-        "a": bint(4),
-        "b": bint(3),
-        "Pb": bint(3),
-        "c": bint(2),
-        "PPc": bint(2),
+        "time": Bint[duration],
+        "a": Bint[4],
+        "b": Bint[3],
+        "Pb": Bint[3],
+        "c": Bint[2],
+        "PPc": Bint[2],
     }))
 
     expected_inputs = {
-        "a": bint(4),
-        "b": bint(3),
-        "Pb": bint(3),
-        "c": bint(2),
-        "PPc": bint(2),
-        "Pc": bint(2),
+        "a": Bint[4],
+        "b": Bint[3],
+        "Pb": Bint[3],
+        "c": Bint[2],
+        "PPc": Bint[2],
+        "Pc": Bint[2],
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
@@ -345,17 +345,17 @@ def test_sarkka_bilmes_example_2(duration):
 def test_sarkka_bilmes_example_3(duration):
 
     trans = random_tensor(OrderedDict({
-        "time": bint(duration),
-        "a": bint(4),
-        "c": bint(2),
-        "PPc": bint(2),
+        "time": Bint[duration],
+        "a": Bint[4],
+        "c": Bint[2],
+        "PPc": Bint[2],
     }))
 
     expected_inputs = {
-        "a": bint(4),
-        "c": bint(2),
-        "PPc": bint(2),
-        "Pc": bint(2),
+        "a": Bint[4],
+        "c": Bint[2],
+        "PPc": Bint[2],
+        "Pc": Bint[2],
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
@@ -365,17 +365,17 @@ def test_sarkka_bilmes_example_3(duration):
 def test_sarkka_bilmes_example_4(duration):
 
     trans = random_tensor(OrderedDict({
-        "time": bint(duration),
-        "a": bint(2),
-        "Pa": bint(2),
-        "PPPa": bint(2),
+        "time": Bint[duration],
+        "a": Bint[2],
+        "Pa": Bint[2],
+        "PPPa": Bint[2],
     }))
 
     expected_inputs = {
-        "a": bint(2),
-        "PPa": bint(2),
-        "PPPa": bint(2),
-        "Pa": bint(2),
+        "a": Bint[2],
+        "PPa": Bint[2],
+        "PPPa": Bint[2],
+        "Pa": Bint[2],
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
@@ -385,16 +385,16 @@ def test_sarkka_bilmes_example_4(duration):
 def test_sarkka_bilmes_example_5(duration):
 
     trans = random_tensor(OrderedDict({
-        "time": bint(duration),
-        "a": bint(3),
-        "Pa": bint(3),
-        "x": bint(2),
+        "time": Bint[duration],
+        "a": Bint[3],
+        "Pa": Bint[3],
+        "x": Bint[2],
     }))
 
     expected_inputs = {
-        "a": bint(3),
-        "Pa": bint(3),
-        "x": bint(2),
+        "a": Bint[3],
+        "Pa": Bint[3],
+        "x": Bint[2],
     }
 
     global_vars = frozenset(["x"])
@@ -406,19 +406,19 @@ def test_sarkka_bilmes_example_5(duration):
 def test_sarkka_bilmes_example_6(duration):
 
     trans = random_tensor(OrderedDict({
-        "time": bint(duration),
-        "a": bint(2),
-        "Pa": bint(2),
-        "PPPa": bint(2),
-        "x": bint(3),
+        "time": Bint[duration],
+        "a": Bint[2],
+        "Pa": Bint[2],
+        "PPPa": Bint[2],
+        "x": Bint[3],
     }))
 
     expected_inputs = {
-        "a": bint(2),
-        "PPa": bint(2),
-        "PPPa": bint(2),
-        "Pa": bint(2),
-        "x": bint(3),
+        "a": Bint[2],
+        "PPa": Bint[2],
+        "PPPa": Bint[2],
+        "Pa": Bint[2],
+        "x": Bint[3],
     }
 
     global_vars = frozenset(["x"])
@@ -426,31 +426,31 @@ def test_sarkka_bilmes_example_6(duration):
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
 
 
-@pytest.mark.parametrize("time_input", [("time", bint(t)) for t in range(2, 10)])
+@pytest.mark.parametrize("time_input", [("time", Bint[t]) for t in range(2, 10)])
 @pytest.mark.parametrize("global_inputs", [
     (),
-    (("x", bint(2)),),
+    (("x", Bint[2]),),
 ])
 @pytest.mark.parametrize("local_inputs", [
     # tensor
-    (("a", bint(2)),),
-    (("a", bint(2)), ("Pa", bint(2))),
-    (("a", bint(2)), ("b", bint(2)), ("Pb", bint(2))),
-    (("a", bint(2)), ("b", bint(2)), ("PPb", bint(2))),
-    (("a", bint(2)), ("b", bint(2)), ("Pb", bint(2)), ("c", bint(2)), ("PPc", bint(2))),
-    (("a", bint(2)), ("Pa", bint(2)), ("PPPa", bint(2))),
-    (("a", bint(2)), ("b", bint(2)), ("PPb", bint(2)), ("PPPa", bint(2))),
+    (("a", Bint[2]),),
+    (("a", Bint[2]), ("Pa", Bint[2])),
+    (("a", Bint[2]), ("b", Bint[2]), ("Pb", Bint[2])),
+    (("a", Bint[2]), ("b", Bint[2]), ("PPb", Bint[2])),
+    (("a", Bint[2]), ("b", Bint[2]), ("Pb", Bint[2]), ("c", Bint[2]), ("PPc", Bint[2])),
+    (("a", Bint[2]), ("Pa", Bint[2]), ("PPPa", Bint[2])),
+    (("a", Bint[2]), ("b", Bint[2]), ("PPb", Bint[2]), ("PPPa", Bint[2])),
     # gaussian
-    (("a", reals()),),
-    (("a", reals()), ("Pa", reals())),
-    (("a", reals()), ("b", reals()), ("Pb", reals())),
-    (("a", reals()), ("b", reals()), ("PPb", reals())),
-    (("a", reals()), ("b", reals()), ("Pb", reals()), ("c", reals()), ("PPc", reals())),
-    (("a", reals()), ("Pa", reals()), ("PPPa", reals())),
-    (("a", reals()), ("b", reals()), ("PPb", reals()), ("PPPa", reals())),
+    (("a", Real),),
+    (("a", Real), ("Pa", Real)),
+    (("a", Real), ("b", Real), ("Pb", Real)),
+    (("a", Real), ("b", Real), ("PPb", Real)),
+    (("a", Real), ("b", Real), ("Pb", Real), ("c", Real), ("PPc", Real)),
+    (("a", Real), ("Pa", Real), ("PPPa", Real)),
+    (("a", Real), ("b", Real), ("PPb", Real), ("PPPa", Real)),
     # mv gaussian
-    (("a", reals(2)), ("b", reals(2)), ("Pb", reals(2))),
-    (("a", reals(2)), ("b", reals(2)), ("PPb", reals(2))),
+    (("a", Reals[2]), ("b", Reals[2]), ("Pb", Reals[2])),
+    (("a", Reals[2]), ("b", Reals[2]), ("PPb", Reals[2])),
 ])
 @pytest.mark.parametrize("num_periods", [1, 2])
 def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_periods):
@@ -490,12 +490,12 @@ def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_peri
 def test_mixed_sequential_sum_product(duration, num_segments):
 
     sum_op, prod_op = ops.logaddexp, ops.add
-    time_var = Variable("time", bint(duration))
+    time_var = Variable("time", Bint[duration])
     step = {"Px": "x"}
 
-    trans_inputs = ((time_var.name, bint(duration)),) + \
-        tuple((k, bint(2)) for k in step.keys()) + \
-        tuple((v, bint(2)) for v in step.values())
+    trans_inputs = ((time_var.name, Bint[duration]),) + \
+        tuple((k, Bint[2]) for k in step.keys()) + \
+        tuple((v, Bint[2]) for v in step.values())
 
     trans = random_tensor(OrderedDict(trans_inputs))
 

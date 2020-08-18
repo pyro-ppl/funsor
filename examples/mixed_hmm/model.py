@@ -9,7 +9,7 @@ from torch.distributions import constraints
 
 import funsor.torch.distributions as dist
 import funsor.ops as ops
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Reals
 from funsor.tensor import Tensor
 from funsor.terms import Stack, Variable, to_funsor
 
@@ -37,14 +37,14 @@ class Guide(object):
             params["eps_g"]["loc"] = Tensor(
                 pyro.param("loc_group",
                            lambda: torch.zeros((N_state, N_state))),
-                OrderedDict([("y_prev", bint(N_state))]),
+                OrderedDict([("y_prev", Bint[N_state])]),
             )
 
             params["eps_g"]["scale"] = Tensor(
                 pyro.param("scale_group",
                            lambda: torch.ones((N_state, N_state)),
                            constraint=constraints.positive),
-                OrderedDict([("y_prev", bint(N_state))]),
+                OrderedDict([("y_prev", Bint[N_state])]),
             )
 
         # initialize individual-level random effect parameters
@@ -54,14 +54,14 @@ class Guide(object):
             params["eps_i"]["loc"] = Tensor(
                 pyro.param("loc_individual",
                            lambda: torch.zeros((N_c, N_state, N_state))),
-                OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
+                OrderedDict([("g", Bint[N_c]), ("y_prev", Bint[N_state])]),
             )
 
             params["eps_i"]["scale"] = Tensor(
                 pyro.param("scale_individual",
                            lambda: torch.ones((N_c, N_state, N_state)),
                            constraint=constraints.positive),
-                OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
+                OrderedDict([("g", Bint[N_c]), ("y_prev", Bint[N_state])]),
             )
 
         self.params = params
@@ -78,8 +78,8 @@ class Guide(object):
 
         log_prob = Tensor(torch.tensor(0.), OrderedDict())
 
-        plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", bint(N_c))]))
-        plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", bint(N_s))]))
+        plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", Bint[N_c])]))
+        plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", Bint[N_s])]))
 
         if self.config["group"]["random"] == "continuous":
             eps_g_dist = plate_g + dist.Normal(**self.params["eps_g"])(value="eps_g")
@@ -135,7 +135,7 @@ class Model(object):
             params["eps_g"]["theta"] = Tensor(
                 pyro.param("theta_g",
                            lambda: torch.randn((N_v, N_state, N_state))),
-                OrderedDict([("e_g", bint(N_v)), ("y_prev", bint(N_state))]),
+                OrderedDict([("e_g", Bint[N_v]), ("y_prev", Bint[N_state])]),
             )
 
         elif self.config["group"]["random"] == "continuous":
@@ -143,12 +143,12 @@ class Model(object):
             # note these are prior values, trainable versions live in guide
             params["eps_g"]["loc"] = Tensor(
                 torch.zeros((N_state, N_state)),
-                OrderedDict([("y_prev", bint(N_state))]),
+                OrderedDict([("y_prev", Bint[N_state])]),
             )
 
             params["eps_g"]["scale"] = Tensor(
                 torch.ones((N_state, N_state)),
-                OrderedDict([("y_prev", bint(N_state))]),
+                OrderedDict([("y_prev", Bint[N_state])]),
             )
 
         # initialize individual-level random effect parameters
@@ -159,25 +159,25 @@ class Model(object):
                 pyro.param("probs_e_i",
                            lambda: torch.randn((N_c, N_v,)).abs(),
                            constraint=constraints.simplex),
-                OrderedDict([("g", bint(N_c))]),  # different value per group
+                OrderedDict([("g", Bint[N_c])]),  # different value per group
             )
 
             params["eps_i"]["theta"] = Tensor(
                 pyro.param("theta_i",
                            lambda: torch.randn((N_c, N_v, N_state, N_state))),
-                OrderedDict([("g", bint(N_c)), ("e_i", bint(N_v)), ("y_prev", bint(N_state))]),
+                OrderedDict([("g", Bint[N_c]), ("e_i", Bint[N_v]), ("y_prev", Bint[N_state])]),
             )
 
         elif self.config["individual"]["random"] == "continuous":
 
             params["eps_i"]["loc"] = Tensor(
                 torch.zeros((N_c, N_state, N_state)),
-                OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
+                OrderedDict([("g", Bint[N_c]), ("y_prev", Bint[N_state])]),
             )
 
             params["eps_i"]["scale"] = Tensor(
                 torch.ones((N_c, N_state, N_state)),
-                OrderedDict([("g", bint(N_c)), ("y_prev", bint(N_state))]),
+                OrderedDict([("g", Bint[N_c]), ("y_prev", Bint[N_state])]),
             )
 
         # initialize likelihood parameters
@@ -186,21 +186,21 @@ class Model(object):
             pyro.param("step_zi_param",
                        lambda: torch.ones((N_state, 2)),
                        constraint=constraints.simplex),
-            OrderedDict([("y_curr", bint(N_state))]),
+            OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["step"]["concentration"] = Tensor(
             pyro.param("step_param_concentration",
                        lambda: torch.randn((N_state,)).abs(),
                        constraint=constraints.positive),
-            OrderedDict([("y_curr", bint(N_state))]),
+            OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["step"]["rate"] = Tensor(
             pyro.param("step_param_rate",
                        lambda: torch.randn((N_state,)).abs(),
                        constraint=constraints.positive),
-            OrderedDict([("y_curr", bint(N_state))]),
+            OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         # observation 2: step angle (angle ~ VonMises)
@@ -208,13 +208,13 @@ class Model(object):
             pyro.param("angle_param_concentration",
                        lambda: torch.randn((N_state,)).abs(),
                        constraint=constraints.positive),
-            OrderedDict([("y_curr", bint(N_state))]),
+            OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["angle"]["loc"] = Tensor(
             pyro.param("angle_param_loc",
                        lambda: torch.randn((N_state,)).abs()),
-            OrderedDict([("y_curr", bint(N_state))]),
+            OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         # observation 3: dive activity (omega ~ Beta)
@@ -222,21 +222,21 @@ class Model(object):
             pyro.param("omega_zi_param",
                        lambda: torch.ones((N_state, 2)),
                        constraint=constraints.simplex),
-            OrderedDict([("y_curr", bint(N_state))]),
+            OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["omega"]["concentration0"] = Tensor(
             pyro.param("omega_param_concentration0",
                        lambda: torch.randn((N_state,)).abs(),
                        constraint=constraints.positive),
-            OrderedDict([("y_curr", bint(N_state))]),
+            OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["omega"]["concentration1"] = Tensor(
             pyro.param("omega_param_concentration1",
                        lambda: torch.randn((N_state,)).abs(),
                        constraint=constraints.positive),
-            OrderedDict([("y_curr", bint(N_state))]),
+            OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         self.params = params
@@ -247,9 +247,9 @@ class Model(object):
         Convert raw observation tensors into funsor.tensor.Tensors
         """
         batch_inputs = OrderedDict([
-            ("i", bint(self.config["sizes"]["individual"])),
-            ("g", bint(self.config["sizes"]["group"])),
-            ("t", bint(self.config["sizes"]["timesteps"])),
+            ("i", Bint[self.config["sizes"]["individual"]]),
+            ("g", Bint[self.config["sizes"]["group"]]),
+            ("t", Bint[self.config["sizes"]["timesteps"]]),
         ])
 
         observations = {}
@@ -264,9 +264,9 @@ class Model(object):
         Convert raw raggedness tensors into funsor.tensor.Tensors
         """
         batch_inputs = OrderedDict([
-            ("i", bint(self.config["sizes"]["individual"])),
-            ("g", bint(self.config["sizes"]["group"])),
-            ("t", bint(self.config["sizes"]["timesteps"])),
+            ("i", Bint[self.config["sizes"]["individual"]]),
+            ("g", Bint[self.config["sizes"]["group"]]),
+            ("t", Bint[self.config["sizes"]["timesteps"]]),
         ])
 
         raggedness_masks = {}
@@ -294,19 +294,19 @@ class Model(object):
         # initialize gamma to uniform
         gamma = Tensor(
             torch.zeros((N_state, N_state)),
-            OrderedDict([("y_prev", bint(N_state))]),
+            OrderedDict([("y_prev", Bint[N_state])]),
         )
 
         N_v = self.config["sizes"]["random"]
         N_c = self.config["sizes"]["group"]
         log_prob = []
 
-        plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", bint(N_c))]))
+        plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", Bint[N_c])]))
 
         # group-level random effects
         if self.config["group"]["random"] == "discrete":
             # group-level discrete effect
-            e_g = Variable("e_g", bint(N_v))
+            e_g = Variable("e_g", Bint[N_v])
             e_g_dist = plate_g + dist.Categorical(**self.params["e_g"])(value=e_g)
 
             log_prob.append(e_g_dist)
@@ -314,7 +314,7 @@ class Model(object):
             eps_g = (plate_g + self.params["eps_g"]["theta"])(e_g=e_g)
 
         elif self.config["group"]["random"] == "continuous":
-            eps_g = Variable("eps_g", reals(N_state))
+            eps_g = Variable("eps_g", Reals[N_state])
             eps_g_dist = plate_g + dist.Normal(**self.params["eps_g"])(value=eps_g)
 
             log_prob.append(eps_g_dist)
@@ -323,11 +323,11 @@ class Model(object):
 
         N_s = self.config["sizes"]["individual"]
 
-        plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", bint(N_s))]))
+        plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", Bint[N_s])]))
         # individual-level random effects
         if self.config["individual"]["random"] == "discrete":
             # individual-level discrete effect
-            e_i = Variable("e_i", bint(N_v))
+            e_i = Variable("e_i", Bint[N_v])
             e_i_dist = plate_g + plate_i + dist.Categorical(
                 **self.params["e_i"]
             )(value=e_i) * self.raggedness_masks["individual"](t=0)
@@ -337,7 +337,7 @@ class Model(object):
             eps_i = (plate_i + plate_g + self.params["eps_i"]["theta"](e_i=e_i))
 
         elif self.config["individual"]["random"] == "continuous":
-            eps_i = Variable("eps_i", reals(N_state))
+            eps_i = Variable("eps_i", Reals[N_state])
             eps_i_dist = plate_g + plate_i + dist.Normal(**self.params["eps_i"])(value=eps_i)
 
             log_prob.append(eps_i_dist)
@@ -352,7 +352,7 @@ class Model(object):
         # we've accounted for all effects, now actually compute gamma_y
         gamma_y = gamma(y_prev="y(t=1)")
 
-        y = Variable("y", bint(N_state))
+        y = Variable("y", Bint[N_state])
         y_dist = plate_g + plate_i + dist.Categorical(
             probs=gamma_y.exp() / gamma_y.exp().sum()
         )(value=y)

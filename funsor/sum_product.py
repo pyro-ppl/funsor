@@ -8,7 +8,7 @@ from math import gcd
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.domains import bint
+from funsor.domains import Bint
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Stack, Subs, Variable, eager, substitute, to_funsor
 from funsor.util import quote
@@ -214,11 +214,11 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step, num_segment
         remainder = trans(**{time: Slice(time, duration - duration % num_segments, duration, 1, duration)})
         initial = trans(**{time: Slice(time, 0, duration - duration % num_segments, 1, duration)})
         initial_eliminated = mixed_sequential_sum_product(
-            sum_op, prod_op, initial, Variable(time, bint(duration - duration % num_segments)), step,
+            sum_op, prod_op, initial, Variable(time, Bint[duration - duration % num_segments]), step,
             num_segments=num_segments)
         final = Cat(time, (Stack(time, (initial_eliminated,)), remainder))
         final_eliminated = naive_sequential_sum_product(
-            sum_op, prod_op, final, Variable(time, bint(1 + duration % num_segments)), step)
+            sum_op, prod_op, final, Variable(time, Bint[1 + duration % num_segments]), step)
         return final_eliminated
 
     # handle degenerate cases that reduce to a single stage
@@ -234,11 +234,11 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step, num_segment
 
     first_stage_result = naive_sequential_sum_product(
         sum_op, prod_op, Stack(time + "__SEGMENTED", tuple(segments)),
-        Variable(time, bint(segment_length)), step)
+        Variable(time, Bint[segment_length]), step)
 
     second_stage_result = sequential_sum_product(
         sum_op, prod_op, first_stage_result,
-        Variable(time + "__SEGMENTED", bint(num_segments)), step)
+        Variable(time + "__SEGMENTED", Bint[num_segments]), step)
 
     return second_stage_result
 
@@ -326,7 +326,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     block_trans = reduce(prod_op, renamed_factors)
     block_step = {shift_name(name, period): name for name in block_trans.inputs
                   if name != time and name not in global_vars and get_shift(name) < period}
-    block_time_var = Variable(time_var.name, bint(duration // period))
+    block_time_var = Variable(time_var.name, Bint[duration // period])
     final_chunk = mixed_sequential_sum_product(
         sum_op, prod_op, block_trans, block_time_var, block_step,
         num_segments=max(1, duration // (period * num_periods)))

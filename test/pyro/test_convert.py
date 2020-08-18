@@ -8,7 +8,7 @@ import pytest
 import torch
 from pyro.distributions.torch_distribution import MaskedDistribution
 
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Reals
 from funsor.pyro.convert import (
     AffineNormal,
     dist_to_funsor,
@@ -48,8 +48,8 @@ def test_tensor_funsor_tensor(batch_shape, event_shape, event_output):
 def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
     event_size = sum(event_sizes)
     mvn = random_mvn(batch_shape + event_shape, event_size)
-    int_inputs = OrderedDict((k, bint(size)) for k, size in zip("abc", event_shape))
-    real_inputs = OrderedDict((k, reals(size)) for k, size in zip("xyz", event_sizes))
+    int_inputs = OrderedDict((k, Bint[size]) for k, size in zip("abc", event_shape))
+    real_inputs = OrderedDict((k, Reals[size]) for k, size in zip("xyz", event_sizes))
 
     f = mvn_to_funsor(mvn, tuple(int_inputs), real_inputs)
     assert isinstance(f, Funsor)
@@ -91,8 +91,8 @@ def test_affine_normal(matrix_shape, loc_shape, scale_shape, x_shape, y_shape,
                        x_size, y_size):
 
     def _rand(batch_shape, *event_shape):
-        inputs = OrderedDict(zip("abcdef", map(bint, reversed(batch_shape))))
-        return random_tensor(inputs, reals(*event_shape))
+        inputs = OrderedDict(zip("abcdef", map(Bint.__getitem__, reversed(batch_shape))))
+        return random_tensor(inputs, Reals[event_shape])
 
     matrix = _rand(matrix_shape, x_size, y_size)
     loc = _rand(loc_shape, y_size)
@@ -101,8 +101,8 @@ def test_affine_normal(matrix_shape, loc_shape, scale_shape, x_shape, y_shape,
     value_y = _rand(y_shape, y_size)
 
     f = AffineNormal(matrix, loc, scale,
-                     Variable("x", reals(x_size)),
-                     Variable("y", reals(y_size)))
+                     Variable("x", Reals[x_size]),
+                     Variable("y", Reals[y_size]))
     assert isinstance(f, AffineNormal)
 
     # Evaluate via two different patterns.
@@ -119,8 +119,8 @@ def test_matrix_and_mvn_to_funsor(batch_shape, event_shape, x_size, y_size):
     matrix = torch.randn(batch_shape + event_shape + (x_size, y_size))
     y_mvn = random_mvn(batch_shape + event_shape, y_size)
     xy_mvn = random_mvn(batch_shape + event_shape, x_size + y_size)
-    int_inputs = OrderedDict((k, bint(size)) for k, size in zip("abc", event_shape))
-    real_inputs = OrderedDict([("x", reals(x_size)), ("y", reals(y_size))])
+    int_inputs = OrderedDict((k, Bint[size]) for k, size in zip("abc", event_shape))
+    real_inputs = OrderedDict([("x", Reals[x_size]), ("y", Reals[y_size])])
 
     f = (matrix_and_mvn_to_funsor(matrix, y_mvn, tuple(int_inputs), "x", "y") +
          mvn_to_funsor(xy_mvn, tuple(int_inputs), real_inputs))
@@ -131,8 +131,8 @@ def test_matrix_and_mvn_to_funsor(batch_shape, event_shape, x_size, y_size):
         else:
             assert k in f.inputs
             assert f.inputs[k] == d
-    assert f.inputs["x"] == reals(x_size)
-    assert f.inputs["y"] == reals(y_size)
+    assert f.inputs["x"] == Reals[x_size]
+    assert f.inputs["y"] == Reals[y_size]
 
     xy = torch.randn(x_size + y_size)
     x, y = xy[:x_size], xy[x_size:]

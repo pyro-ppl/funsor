@@ -10,7 +10,7 @@ import pytest
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
@@ -95,13 +95,13 @@ SMOKE_TESTS = [
 
 @pytest.mark.parametrize('expr,expected_type', SMOKE_TESTS)
 def test_smoke(expr, expected_type):
-    dx = Delta('x', Tensor(randn(2, 3), OrderedDict([('i', bint(2))])))
+    dx = Delta('x', Tensor(randn(2, 3), OrderedDict([('i', Bint[2])])))
     assert isinstance(dx, Delta)
 
-    dy = Delta('y', Tensor(randn(3, 4), OrderedDict([('j', bint(3))])))
+    dy = Delta('y', Tensor(randn(3, 4), OrderedDict([('j', Bint[3])])))
     assert isinstance(dy, Delta)
 
-    t = Tensor(randn(2, 3), OrderedDict([('i', bint(2)), ('j', bint(3))]))
+    t = Tensor(randn(2, 3), OrderedDict([('i', Bint[2]), ('j', Bint[3])]))
     assert isinstance(t, Tensor)
 
     g = Gaussian(
@@ -113,7 +113,7 @@ def test_smoke(expr, expected_type):
                                  [[1.0, 0.1, 0.2],
                                   [0.1, 1.0, 0.3],
                                   [0.2, 0.3, 1.0]]]),
-        inputs=OrderedDict([('i', bint(2)), ('x', reals(3))]))
+        inputs=OrderedDict([('i', Bint[2]), ('x', Reals[3])]))
     assert isinstance(g, Gaussian)
 
     i0 = Number(1, 2)
@@ -128,16 +128,16 @@ def test_smoke(expr, expected_type):
 
 @pytest.mark.parametrize('int_inputs', [
     OrderedDict(),
-    OrderedDict([('i', bint(2))]),
-    OrderedDict([('i', bint(2)), ('j', bint(3))]),
+    OrderedDict([('i', Bint[2])]),
+    OrderedDict([('i', Bint[2]), ('j', Bint[3])]),
 ], ids=id_from_inputs)
 @pytest.mark.parametrize('real_inputs', [
-    OrderedDict([('x', reals())]),
-    OrderedDict([('x', reals(4))]),
-    OrderedDict([('x', reals(2, 3))]),
-    OrderedDict([('x', reals()), ('y', reals())]),
-    OrderedDict([('x', reals(2)), ('y', reals(3))]),
-    OrderedDict([('x', reals(4)), ('y', reals(2, 3)), ('z', reals())]),
+    OrderedDict([('x', Real)]),
+    OrderedDict([('x', Reals[4])]),
+    OrderedDict([('x', Reals[2, 3])]),
+    OrderedDict([('x', Real), ('y', Real)]),
+    OrderedDict([('x', Reals[2]), ('y', Reals[3])]),
+    OrderedDict([('x', Reals[4]), ('y', Reals[2, 3]), ('z', Real)]),
 ], ids=id_from_inputs)
 def test_reduce_logaddexp(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
@@ -162,8 +162,8 @@ def test_reduce_logaddexp(int_inputs, real_inputs):
 
 
 def test_reduce_logaddexp_deltas_lazy():
-    a = Delta('a', Tensor(randn(3, 2), OrderedDict(i=bint(3))))
-    b = Delta('b', Tensor(randn(3), OrderedDict(i=bint(3))))
+    a = Delta('a', Tensor(randn(3, 2), OrderedDict(i=Bint[3])))
+    b = Delta('b', Tensor(randn(3), OrderedDict(i=Bint[3])))
     x = a + b
     assert isinstance(x, Delta)
     assert set(x.inputs) == {'a', 'b', 'i'}
@@ -175,9 +175,9 @@ def test_reduce_logaddexp_deltas_lazy():
 
 
 def test_reduce_logaddexp_deltas_discrete_lazy():
-    a = Delta('a', Tensor(randn(3, 2), OrderedDict(i=bint(3))))
-    b = Delta('b', Tensor(randn(3), OrderedDict(i=bint(3))))
-    c = Tensor(randn(3), OrderedDict(i=bint(3)))
+    a = Delta('a', Tensor(randn(3, 2), OrderedDict(i=Bint[3])))
+    b = Delta('b', Tensor(randn(3), OrderedDict(i=Bint[3])))
+    c = Tensor(randn(3), OrderedDict(i=Bint[3]))
     x = a + b + c
     assert isinstance(x, Contraction)
     assert set(x.inputs) == {'a', 'b', 'i'}
@@ -189,8 +189,8 @@ def test_reduce_logaddexp_deltas_discrete_lazy():
 
 
 def test_reduce_logaddexp_gaussian_lazy():
-    a = random_gaussian(OrderedDict(i=bint(3), a=reals(2)))
-    b = random_tensor(OrderedDict(i=bint(3), b=bint(2)))
+    a = random_gaussian(OrderedDict(i=Bint[3], a=Reals[2]))
+    b = random_tensor(OrderedDict(i=Bint[3], b=Bint[2]))
     x = a + b
     assert isinstance(x, Contraction)
     assert set(x.inputs) == {'a', 'b', 'i'}
@@ -202,12 +202,12 @@ def test_reduce_logaddexp_gaussian_lazy():
 
 
 @pytest.mark.parametrize('inputs', [
-    OrderedDict([('i', bint(2)), ('x', reals())]),
-    OrderedDict([('i', bint(3)), ('x', reals())]),
-    OrderedDict([('i', bint(2)), ('x', reals(2))]),
-    OrderedDict([('i', bint(2)), ('x', reals()), ('y', reals())]),
-    OrderedDict([('i', bint(3)), ('j', bint(4)), ('x', reals(2))]),
-    OrderedDict([('j', bint(2)), ('i', bint(3)), ('k', bint(2)), ('x', reals(2))]),
+    OrderedDict([('i', Bint[2]), ('x', Real)]),
+    OrderedDict([('i', Bint[3]), ('x', Real)]),
+    OrderedDict([('i', Bint[2]), ('x', Reals[2])]),
+    OrderedDict([('i', Bint[2]), ('x', Real), ('y', Real)]),
+    OrderedDict([('i', Bint[3]), ('j', Bint[4]), ('x', Reals[2])]),
+    OrderedDict([('j', Bint[2]), ('i', Bint[3]), ('k', Bint[2]), ('x', Reals[2])]),
 ], ids=id_from_inputs)
 def test_reduce_add(inputs):
     int_inputs = OrderedDict((k, d) for k, d in inputs.items() if d.dtype != 'real')
@@ -221,8 +221,8 @@ def test_reduce_add(inputs):
 
 
 def test_reduce_moment_matching_univariate():
-    int_inputs = [('i', bint(2))]
-    real_inputs = [('x', reals())]
+    int_inputs = [('i', Bint[2])]
+    real_inputs = [('x', Real)]
     inputs = OrderedDict(int_inputs + real_inputs)
     int_inputs = OrderedDict(int_inputs)
     real_inputs = OrderedDict(real_inputs)
@@ -262,8 +262,8 @@ def _inverse(x):
 
 
 def test_reduce_moment_matching_multivariate():
-    int_inputs = [('i', bint(4))]
-    real_inputs = [('x', reals(2))]
+    int_inputs = [('i', Bint[4])]
+    real_inputs = [('x', Reals[2])]
     inputs = OrderedDict(int_inputs + real_inputs)
     int_inputs = OrderedDict(int_inputs)
     real_inputs = OrderedDict(real_inputs)
@@ -294,11 +294,11 @@ def test_reduce_moment_matching_multivariate():
 @pytest.mark.parametrize('interp', [eager, moment_matching],
                          ids=lambda f: f.__name__)
 def test_reduce_moment_matching_shape(interp):
-    delta = Delta('x', random_tensor(OrderedDict([('h', bint(7))])))
+    delta = Delta('x', random_tensor(OrderedDict([('h', Bint[7])])))
     discrete = random_tensor(OrderedDict(
-        [('h', bint(7)), ('i', bint(6)), ('j', bint(5)), ('k', bint(4))]))
+        [('h', Bint[7]), ('i', Bint[6]), ('j', Bint[5]), ('k', Bint[4])]))
     gaussian = random_gaussian(OrderedDict(
-        [('k', bint(4)), ('l', bint(3)), ('m', bint(2)), ('y', reals()), ('z', reals(2))]))
+        [('k', Bint[4]), ('l', Bint[3]), ('m', Bint[2]), ('y', Real), ('z', Reals[2])]))
     reduced_vars = frozenset(['i', 'k', 'l'])
     real_vars = frozenset(k for k, d in gaussian.inputs.items() if d.dtype == "real")
     joint = delta + discrete + gaussian
@@ -311,12 +311,12 @@ def test_reduce_moment_matching_shape(interp):
 
 @pytest.mark.xfail(reason="missing pattern")
 def test_reduce_moment_matching_moments():
-    x = Variable('x', reals(2))
+    x = Variable('x', Reals[2])
     gaussian = random_gaussian(OrderedDict(
-        [('i', bint(2)), ('j', bint(3)), ('x', reals(2))]))
+        [('i', Bint[2]), ('j', Bint[3]), ('x', Reals[2])]))
     with interpretation(moment_matching):
         approx = gaussian.reduce(ops.logaddexp, 'j')
-    with monte_carlo_interpretation(s=bint(100000)):
+    with monte_carlo_interpretation(s=Bint[100000]):
         actual = Integrate(approx, Number(1.), 'x')
         expected = Integrate(gaussian, Number(1.), {'j', 'x'})
         assert_close(actual, expected, atol=1e-3, rtol=1e-3)
@@ -331,11 +331,11 @@ def test_reduce_moment_matching_moments():
 
 
 def test_reduce_moment_matching_finite():
-    delta = Delta('x', random_tensor(OrderedDict([('h', bint(7))])))
+    delta = Delta('x', random_tensor(OrderedDict([('h', Bint[7])])))
     discrete = random_tensor(OrderedDict(
-        [('i', bint(6)), ('j', bint(5)), ('k', bint(3))]))
+        [('i', Bint[6]), ('j', Bint[5]), ('k', Bint[3])]))
     gaussian = random_gaussian(OrderedDict(
-        [('k', bint(3)), ('l', bint(2)), ('y', reals()), ('z', reals(2))]))
+        [('k', Bint[3]), ('l', Bint[2]), ('y', Real), ('z', Reals[2])]))
 
     discrete.data[1:, :] = -float('inf')
     discrete.data[:, 1:] = -float('inf')

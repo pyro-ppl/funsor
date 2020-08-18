@@ -14,7 +14,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.cnf import GaussianMixture
-from funsor.domains import Array, reals
+from funsor.domains import Array, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
@@ -82,7 +82,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             assert isinstance(value, Funsor)
             inputs.update(value.inputs)
         inputs = OrderedDict(inputs)
-        output = reals()
+        output = Real
         super(Distribution, self).__init__(inputs, output)
         self.params = OrderedDict(params)
 
@@ -176,17 +176,17 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         # Because NumPyro and Pyro have the same pattern, we use name check for simplicity.
         support_name = type(support).__name__
         if support_name == "_Simplex":
-            output = reals(raw_shape[-1])
+            output = Reals[raw_shape[-1]]
         elif support_name == "_RealVector":
-            output = reals(raw_shape[-1])
+            output = Reals[raw_shape[-1]]
         elif support_name in ["_LowerCholesky", "_PositiveDefinite"]:
-            output = reals(*raw_shape[-2:])
+            output = Reals[raw_shape[-2:]]
         # resolve the issue: logits's constraints are real (instead of real_vector)
         # for discrete multivariate distributions in Pyro
         elif support_name == "_Real" and name == "logits" and (
                 "probs" in cls.dist_class.arg_constraints
                 and type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex"):
-            output = reals(raw_shape[-1])
+            output = Reals[raw_shape[-1]]
         else:
             output = None
         return output
@@ -435,9 +435,9 @@ def eager_delta_variable_variable(v, log_density, value):
 
 
 def eager_normal(loc, scale, value):
-    assert loc.output == reals()
-    assert scale.output == reals()
-    assert value.output == reals()
+    assert loc.output == Real
+    assert scale.output == Real
+    assert value.output == Real
     if not is_affine(loc) or not is_affine(value):
         return None  # lazy
 
@@ -446,7 +446,7 @@ def eager_normal(loc, scale, value):
     log_prob = -0.5 * math.log(2 * math.pi) - ops.log(scale).sum()
     inputs = scale.inputs.copy()
     var = gensym('value')
-    inputs[var] = reals()
+    inputs[var] = Real
     gaussian = log_prob + Gaussian(info_vec, precision, inputs)
     return gaussian(**{var: value - loc})
 
@@ -464,6 +464,6 @@ def eager_mvn(loc, scale_tril, value):
     log_prob = -0.5 * scale_diag.shape[0] * math.log(2 * math.pi) - ops.log(scale_diag).sum()
     inputs = scale_tril.inputs.copy()
     var = gensym('value')
-    inputs[var] = reals(scale_diag.shape[0])
+    inputs[var] = Reals[scale_diag.shape[0]]
     gaussian = log_prob + Gaussian(info_vec, precision, inputs)
     return gaussian(**{var: value - loc})

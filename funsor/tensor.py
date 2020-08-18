@@ -17,7 +17,7 @@ from multipledispatch.variadic import Variadic
 import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import Array, ArrayType, bint, find_domain, reals
+from funsor.domains import Array, ArrayType, Bint, Real, Reals, find_domain
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -101,8 +101,8 @@ class Tensor(Funsor, metaclass=TensorMeta):
     For example::
 
         data = torch.zeros(5,4,3,2)
-        x = Tensor(data, OrderedDict([("i", bint(5)), ("j", bint(4))]))
-        assert x.output == reals(3, 2)
+        x = Tensor(data, OrderedDict([("i", Bint[5]), ("j", Bint[4])]))
+        assert x.output == Reals[3, 2]
 
     Operators like ``matmul`` and ``.sum()`` operate only on the output shape,
     and will not change the named inputs.
@@ -293,7 +293,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
-        assert self.output == reals()
+        assert self.output == Real
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
@@ -401,7 +401,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             raise ValueError
         stop = min(dtype, max(start, stop))
         data = ops.new_arange(self.data, start, stop, step)
-        inputs = OrderedDict([(name, bint(len(data)))])
+        inputs = OrderedDict([(name, Bint[len(data)])])
         return Tensor(data, inputs, dtype=dtype)
 
     def materialize(self, x):
@@ -427,7 +427,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
 @to_funsor.register(np.generic)
 def tensor_to_funsor(x, output=None, dim_to_name=None):
     if not dim_to_name:
-        output = output if output is not None else reals(*x.shape)
+        output = output if output is not None else Reals[x.shape]
         result = Tensor(x, dtype=output.dtype)
         if result.output != output:
             raise ValueError("Invalid shape: expected {}, actual {}"
@@ -441,7 +441,7 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
             # Assume the leftmost dim_to_name key refers to the leftmost dim of x
             # when there is ambiguity about event shape
             batch_ndims = min(-min(dim_to_name.keys()), len(x.shape))
-            output = reals(*x.shape[batch_ndims:])
+            output = Reals[x.shape[batch_ndims:]]
 
         # logic very similar to pyro.ops.packed.pack
         # this should not touch memory, only reshape
@@ -450,7 +450,7 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
         for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
             name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
             if name is not None and size > 1:
-                packed_inputs[name] = bint(size)
+                packed_inputs[name] = Bint[size]
         shape = tuple(d.size for d in packed_inputs.values()) + output.shape
         if x.shape != shape:
             x = x.reshape(shape)
@@ -645,7 +645,7 @@ def eager_getitem_tensor_number(op, lhs, rhs):
 @eager.register(Binary, GetitemOp, Tensor, Variable)
 def eager_getitem_tensor_variable(op, lhs, rhs):
     assert op.offset < len(lhs.output.shape)
-    assert rhs.output == bint(lhs.output.shape[op.offset])
+    assert rhs.output == Bint[lhs.output.shape[op.offset]]
     assert rhs.name not in lhs.inputs
 
     # Convert a positional event dimension to a named batch dimension.
@@ -665,7 +665,7 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
 @eager.register(Binary, GetitemOp, Tensor, Tensor)
 def eager_getitem_tensor_tensor(op, lhs, rhs):
     assert op.offset < len(lhs.output.shape)
-    assert rhs.output == bint(lhs.output.shape[op.offset])
+    assert rhs.output == Bint[lhs.output.shape[op.offset]]
 
     # Compute inputs and outputs.
     if lhs.inputs == rhs.inputs:
@@ -718,7 +718,7 @@ def eager_stack_homogeneous(name, *parts):
     shape = tuple(d.size for d in part_inputs.values()) + output.shape
     data = ops.stack(0, *[ops.expand(align_tensor(part_inputs, part), shape)
                           for part in parts])
-    inputs = OrderedDict([(name, bint(len(parts)))])
+    inputs = OrderedDict([(name, Bint[len(parts)])])
     inputs.update(part_inputs)
     return Tensor(data, inputs, dtype=output.dtype)
 
@@ -742,7 +742,7 @@ def eager_cat_homogeneous(name, part_name, *parts):
 
     dim = 0
     tensor = ops.cat(dim, *tensors)
-    inputs = OrderedDict([(name, bint(tensor.shape[dim]))] + list(inputs.items()))
+    inputs = OrderedDict([(name, Bint[tensor.shape[dim]])] + list(inputs.items()))
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 
@@ -883,7 +883,7 @@ def _function(inputs, output, fn):
 
 def _tuple_to_Tuple(tp):
     if isinstance(tp, tuple):
-        warnings.warn("tuple types like (reals(), reals(2)) are deprecated, "
+        warnings.warn("tuple types like (Real, Reals[2]) are deprecated, "
                       "use Tuple[Real, Reals[2]] instead",
                       DeprecationWarning)
         tp = tuple(map(_tuple_to_Tuple, tp))
@@ -972,7 +972,7 @@ class Einsum(Funsor):
                 if other_size != size:
                     raise ValueError("Size mismatch at {}: {} vs {}"
                                      .format(name, size, other_size))
-        output = reals(*(size_dict[d] for d in ein_output))
+        output = Reals[tuple(size_dict[d] for d in ein_output)]
         super(Einsum, self).__init__(inputs, output)
         self.equation = equation
         self.operands = operands

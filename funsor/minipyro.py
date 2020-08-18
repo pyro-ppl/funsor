@@ -62,9 +62,9 @@ class Distribution(object):
     # Similar to torch.distributions.Distribution.expand().
     def expand_inputs(self, name, size):
         if name in self.funsor_dist.inputs:
-            assert self.funsor_dist.inputs[name] == funsor.bint(int(size))
+            assert self.funsor_dist.inputs[name] == funsor.Bint[int(size)]
             return self
-        inputs = OrderedDict([(name, funsor.bint(int(size)))])
+        inputs = OrderedDict([(name, funsor.Bint[int(size)])])
         if self.sample_inputs:
             inputs.update(self.sample_inputs)
         return Distribution(self.funsor_dist, sample_inputs=inputs)
@@ -211,7 +211,7 @@ def tensor_to_funsor(value, cond_indep_stack, output):
         else:
             frame = cond_indep_stack[dim - len(batch_shape)]
             assert size == frame.size, (size, frame)
-            inputs[frame.name] = funsor.bint(int(size))
+            inputs[frame.name] = funsor.Bint[int(size)]
     value = funsor.tensor.Tensor(data, inputs, output.dtype)
     assert value.output == output
     return value
@@ -298,7 +298,7 @@ def param(name, init_value=None, constraint=torch.distributions.constraints.real
     if init_value is not None:
         if event_dim is None:
             event_dim = init_value.dim()
-        output = funsor.reals(*init_value.shape[init_value.dim() - event_dim:])
+        output = funsor.Reals[init_value.shape[init_value.dim() - event_dim:]]
 
     def fn(init_value, constraint):
         if name in PARAM_STORE:
@@ -561,7 +561,7 @@ class Jit(object):
                     self._param_trace[name]["value"] = constrained_param
                 result = replay(self.fn, guide_trace=self._param_trace)(*args)
                 assert not result.inputs
-                assert result.output == funsor.reals()
+                assert result.output == funsor.Real
                 return funsor.to_data(result)
 
             with validation_enabled(False), warnings.catch_warnings():

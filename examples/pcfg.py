@@ -9,7 +9,7 @@ import torch
 
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import bint
+from funsor.domains import Bint
 from funsor.tensor import Tensor
 from funsor.terms import Number, Stack, Variable
 
@@ -19,12 +19,12 @@ def Uniform(components):
     size = len(components)
     if size == 1:
         return components[0]
-    var = Variable('v', bint(size))
+    var = Variable('v', Bint[size])
     return (Stack(var.name, components).reduce(ops.logaddexp, var.name)
             - math.log(size))
 
 
-# @of_shape(*([bint(2)] * size))
+# @of_shape(*([Bint[2]] * size))
 def model(size, position=0):
     if size == 1:
         name = str(position)
@@ -42,7 +42,7 @@ def main(args):
     print_('Data:')
     data = torch.distributions.Categorical(torch.ones(2)).sample((args.size,))
     assert data.shape == (args.size,)
-    data = Tensor(data, OrderedDict(i=bint(args.size)), dtype=2)
+    data = Tensor(data, OrderedDict(i=Bint[args.size]), dtype=2)
     print_(data)
 
     print_('Model:')

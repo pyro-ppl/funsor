@@ -27,7 +27,7 @@ from funsor.distribution import (  # noqa: F401
     mvndist_to_funsor,
     transformeddist_to_funsor,
 )
-from funsor.domains import reals
+from funsor.domains import Reals
 from funsor.tensor import Tensor, dummy_numeric_array
 from funsor.terms import Funsor, Variable, eager, to_funsor
 
@@ -94,12 +94,12 @@ for dist_name, param_names in NUMPYRO_DIST_NAMES:
 Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])  # noqa: F821
 
 
-# Multinomial and related dists have dependent bint dtypes, so we just make them 'real'
+# Multinomial and related dists have dependent Bint dtypes, so we just make them 'real'
 # See issue: https://github.com/pyro-ppl/funsor/issues/322
 @functools.lru_cache(maxsize=5000)
 def _multinomial_infer_value_domain(cls, **kwargs):
     instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()}, validate_args=False)
-    return reals(*instance.event_shape)
+    return Reals[instance.event_shape]
 
 
 Binomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)  # noqa: F821

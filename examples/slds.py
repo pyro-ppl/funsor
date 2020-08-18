@@ -38,11 +38,11 @@ def main(args):
             x_prev = x_curr
 
             # A delayed sample statement.
-            s_curr = funsor.Variable('s_{}'.format(t), funsor.bint(2))
+            s_curr = funsor.Variable('s_{}'.format(t), funsor.Bint[2])
             log_prob += dist.Categorical(trans_probs[s_prev], value=s_curr)
 
             # A delayed sample statement.
-            x_curr = funsor.Variable('x_{}'.format(t), funsor.reals())
+            x_curr = funsor.Variable('x_{}'.format(t), funsor.Real)
             log_prob += dist.Normal(x_prev, trans_noise[s_curr], value=x_curr)
 
             # Marginalize out previous delayed sample statements.
