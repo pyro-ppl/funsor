@@ -21,6 +21,8 @@ class ArrayType(Domain):
 
     def __getitem__(cls, dtype_shape):
         dtype, shape = dtype_shape
+        assert dtype is not None
+        assert shape is not None
 
         # in some JAX versions, shape can be np.int64 type
         if get_tracing_state() or get_backend() == "jax":
@@ -29,18 +31,14 @@ class ArrayType(Domain):
             if shape is not None:
                 shape = tuple(map(int, shape))
 
-        assert cls.dtype in (dtype, None)
-        assert cls.shape in (shape, None)
-
+        assert cls.dtype in (None, dtype)
+        assert cls.shape in (None, shape)
         key = dtype, shape
         result = ArrayType._type_cache.get(key, None)
         if result is None:
             if dtype == "real":
-                if shape:
-                    assert all(isinstance(size, int) and size >= 0 for size in shape)
-                    name = "Reals[{}]".format(",".join(map(str, shape)))
-                else:
-                    name = "Real"
+                assert all(isinstance(size, int) and size >= 0 for size in shape)
+                name = "Reals[{}]".format(",".join(map(str, shape))) if shape else "Real"
                 result = RealsType(name, (), {"shape": shape})
             elif isinstance(dtype, int):
                 assert dtype >= 0
@@ -52,7 +50,7 @@ class ArrayType(Domain):
         return result
 
     def __subclasscheck__(cls, subcls):
-        if not isinstance(subcls, type(subcls)):
+        if not isinstance(subcls, ArrayType):
             return False
         if cls.dtype not in (None, subcls.dtype):
             return False
@@ -75,7 +73,18 @@ class RealsType(ArrayType):
     dtype = "real"
 
     def __getitem__(cls, shape):
+        if not isinstance(shape, tuple):
+            shape = (shape,)
         return super().__getitem__(("real", shape))
+
+    def __subclasscheck__(cls, subcls):
+        if not isinstance(subcls, RealsType):
+            return False
+        if cls.dtype not in (None, subcls.dtype):
+            return False
+        if cls.shape not in (None, subcls.shape):
+            return False
+        return True
 
 
 class BintType(ArrayType):
@@ -85,6 +94,15 @@ class BintType(ArrayType):
         else:
             size, shape = size_shape, ()
         return super().__getitem__((size, shape))
+
+    def __subclasscheck__(cls, subcls):
+        if not isinstance(subcls, BintType):
+            return False
+        if cls.dtype not in (None, subcls.dtype):
+            return False
+        if cls.shape not in (None, subcls.shape):
+            return False
+        return True
 
     @property
     def size(cls):
@@ -108,23 +126,30 @@ copyreg.pickle(BintType, _pickle_array)
 # Singletons
 Array = ArrayType("Array", (), {"dtype": None, "shape": None})
 
-Real = Array["real", ()]
-Reals = Array["real", None]
-Reals.__doc__ = """
-Type of a real-valued array with known shape::
 
-    Reals[()] = Real  # scalar
-    Reals[8]          # vector of length 8
-    Reals[3,3]        # 3x3 matrix
-"""
+class Reals(metaclass=RealsType):
+    """
+    Type of a real-valued array with known shape::
 
-Bint = BintType("Bint", (), {"dtype": None, "shape": None})
-Bint.__doc__ = """
-Factory for bounded integer types::
+        Reals[()] = Real  # scalar
+        Reals[8]          # vector of length 8
+        Reals[3,3]        # 3x3 matrix
+    """
+    shape = None
 
-    Bint[5]        # integers ranging in {0,1,2,3,4}
-    Bint[2, 3, 3]  # 3x3 matrices with entries in {0,1}
-"""
+
+Real = Reals[()]
+
+
+class Bint(metaclass=BintType):
+    """
+    Factory for bounded integer types::
+
+        Bint[5]        # integers ranging in {0,1,2,3,4}
+        Bint[2, 3, 3]  # 3x3 matrices with entries in {0,1}
+    """
+    dtype = None
+    shape = None
 
 
 # DEPRECATED

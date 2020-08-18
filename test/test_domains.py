@@ -47,9 +47,9 @@ def test_subclass():
     assert issubclass(Reals[2], Reals)
     assert issubclass(Reals[2], Reals[2])
     assert not issubclass(Reals, Real)
-    assert not issubclass(Reals, Real[2])
+    assert not issubclass(Reals, Reals[2])
     assert not issubclass(Real, Reals[2])
-    assert not issubclass(Real[2], Real)
+    assert not issubclass(Reals[2], Real)
 
     assert not issubclass(Reals, Bint)
     assert not issubclass(Bint, Reals)
