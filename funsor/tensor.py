@@ -17,7 +17,7 @@ from multipledispatch.variadic import Variadic
 import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import Bint, BintType, Domain, Real, Reals, RealsType, find_domain, make_domain
+from funsor.domains import Array, ArrayType, Bint, Real, Reals, find_domain
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -121,7 +121,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             for (k, d), size in zip(inputs, data.shape):
                 assert d.dtype == size
         inputs = OrderedDict(inputs)
-        output = make_domain(data.shape[len(inputs):], dtype)
+        output = Array[dtype, data.shape[len(inputs):]]
         fresh = frozenset(inputs.keys())
         bound = frozenset()
         super(Tensor, self).__init__(inputs, output, fresh, bound)
@@ -808,7 +808,7 @@ def _(arg, indent, out):
     out[-1] = i, line + ")"
 
 
-@eager.register(Function, object, (BintType, RealsType), tuple)
+@eager.register(Function, object, ArrayType, tuple)
 def eager_function(fn, output, args):
     if not all(isinstance(arg, (Number, Tensor)) for arg in args):
         return None  # defer to default implementation
@@ -826,7 +826,7 @@ def _select(fn, i, *args):
 
 
 def _nested_function(fn, args, output):
-    if isinstance(output, (BintType, RealsType)):
+    if isinstance(output, ArrayType):
         return Function(fn, output, args)
     elif output.__origin__ in (tuple, typing.Tuple):
         result = []
@@ -873,7 +873,7 @@ def _function(inputs, output, fn):
         args = tuple(Variable(name, domain)
                      for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
-    if not isinstance(output, (BintType, RealsType)):
+    if not isinstance(output, ArrayType):
         assert output.__origin__ in (tuple, typing.Tuple)
         # Memoize multiple-output functions so that invocations can be shared among
         # all outputs. This is not foolproof, but does work in simple situations.
@@ -926,19 +926,20 @@ def function(*signature):
     assert signature
     if len(signature) == 1:
         fn = signature[0]
-        if callable(fn) and not isinstance(fn, Domain):
+        if callable(fn) and not isinstance(fn, ArrayType):
             # Usage: @function
             inputs = typing.get_type_hints(fn)
             output = inputs.pop("return")
-            assert all(isinstance(d, Domain) for d in inputs.values())
-            assert (isinstance(output, (Domain, tuple)) or
+            assert all(isinstance(d, ArrayType) for d in inputs.values())
+            assert (isinstance(output, (ArrayType, tuple)) or
                     output.__origin__ in (tuple, typing.Tuple))
             return _function(inputs, output, fn)
     # Usage @function(input1, ..., inputN, output)
     inputs, output = signature[:-1], signature[-1]
     output = _tuple_to_Tuple(output)
-    assert all(isinstance(d, Domain) for d in inputs)
-    assert isinstance(output, (Domain, tuple)) or output.__origin__ == tuple
+    assert all(isinstance(d, ArrayType) for d in inputs)
+    assert (isinstance(output, (ArrayType, tuple)) or
+            output.__origin__ in (tuple, typing.Tuple))
     return functools.partial(_function, inputs, output)
 
 
@@ -1069,7 +1070,7 @@ def stack(parts, dim=0):
     assert dim < 0
     split = dim + len(shape) + 1
     shape = shape[:split] + (len(parts),) + shape[split:]
-    output = make_domain(shape, parts[0].dtype)
+    output = Array[parts[0].dtype, shape]
     fn = functools.partial(ops.stack, dim)
     return Function(fn, output, parts)
 

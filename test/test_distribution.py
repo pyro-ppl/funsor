@@ -14,9 +14,9 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.domains import Bint, Real, Reals, Bint, Reals
-from funsor.interpreter import interpretation, reinterpret
+from funsor.domains import Bint, Real, Reals
 from funsor.integrate import Integrate
+from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array
 from funsor.terms import Independent, Variable, eager, lazy
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_mvn, random_tensor, xfail_param

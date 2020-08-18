@@ -12,7 +12,7 @@ from functools import singledispatch
 
 import numpy as np
 
-from funsor.domains import BintType, RealsType
+from funsor.domains import ArrayType
 from funsor.ops import Op, is_numeric_array
 from funsor.registry import KeyedRegistry
 from funsor.util import is_nn_module
@@ -151,8 +151,7 @@ _ground_types = (
     functools.partial,
     types.FunctionType,
     types.BuiltinFunctionType,
-    BintType,
-    RealsType,
+    ArrayType,
     Op,
     np.generic,
     np.ndarray,

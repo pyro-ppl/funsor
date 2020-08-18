@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import copyreg
-import functools
 import operator
 import warnings
 from functools import reduce
@@ -11,33 +10,53 @@ from weakref import WeakValueDictionary
 import funsor.ops as ops
 from funsor.util import broadcast_shape, get_backend, get_tracing_state, quote
 
-
 Domain = type
 
 
-class RealsType(Domain):
+class ArrayType(Domain):
+    """
+    Base class of array-like domains.
+    """
     _type_cache = WeakValueDictionary()
 
-    def __getitem__(cls, shape):
-        if not isinstance(shape, tuple):
-            shape = (shape,)
+    def __getitem__(cls, dtype_shape):
+        dtype, shape = dtype_shape
+        assert dtype is not None
+        assert shape is not None
+
         # in some JAX versions, shape can be np.int64 type
         if get_tracing_state() or get_backend() == "jax":
-            shape = tuple(map(int, shape))
+            if dtype not in (None, "real"):
+                dtype = int(dtype)
+            if shape is not None:
+                shape = tuple(map(int, shape))
 
-        result = RealsType._type_cache.get(shape, None)
+        assert cls.dtype in (None, dtype)
+        assert cls.shape in (None, shape)
+        key = dtype, shape
+        result = ArrayType._type_cache.get(key, None)
         if result is None:
-            assert cls is Reals
-            assert all(isinstance(size, int) and size >= 0 for size in shape)
-            name = "Reals[{}]".format(",".join(map(str, shape))) if shape else "Real"
-            result = RealsType(name, (), {"shape": shape})
-            RealsType._type_cache[shape] = result
+            if dtype == "real":
+                assert all(isinstance(size, int) and size >= 0 for size in shape)
+                name = "Reals[{}]".format(",".join(map(str, shape))) if shape else "Real"
+                result = RealsType(name, (), {"shape": shape})
+            elif isinstance(dtype, int):
+                assert dtype >= 0
+                name = "Bint[{}, {}]".format(dtype, ",".join(map(str, shape)))
+                result = BintType(name, (), {"dtype": dtype, "shape": shape})
+            else:
+                raise ValueError("invalid dtype: {}".format(dtype))
+            ArrayType._type_cache[key] = result
         return result
 
     def __subclasscheck__(cls, subcls):
-        if not isinstance(subcls, RealsType):
+        if not isinstance(subcls, ArrayType):
             return False
-        return cls is Reals or cls is subcls
+        if cls.dtype not in (None, subcls.dtype):
+            return False
+        if cls.shape not in (None, subcls.shape):
+            return False
+        return True
 
     def __repr__(cls):
         return cls.__name__
@@ -49,20 +68,82 @@ class RealsType(Domain):
     def num_elements(cls):
         return reduce(operator.mul, cls.shape, 1)
 
-    # DEPRECATED
+
+class BintType(ArrayType):
+    def __getitem__(cls, size_shape):
+        if isinstance(size_shape, tuple):
+            size, shape = size_shape[0], size_shape[1:]
+        else:
+            size, shape = size_shape, ()
+        return super().__getitem__((size, shape))
+
+    def __subclasscheck__(cls, subcls):
+        if not isinstance(subcls, BintType):
+            return False
+        if cls.dtype not in (None, subcls.dtype):
+            return False
+        if cls.shape not in (None, subcls.shape):
+            return False
+        return True
+
     @property
-    def dtype(self):
-        warnings.warn("domain.dtype is deprecated, "
-                      "use isinstance(domain, RealsType) instead",
-                      DeprecationWarning)
-        return "real"
+    def size(cls):
+        return cls.dtype
+
+    def __iter__(cls):
+        from funsor.terms import Number
+        return (Number(i, cls.size) for i in range(cls.size))
 
 
-@functools.partial(copyreg.pickle, RealsType)
-def _pickle_real(cls):
-    if cls is Reals:
-        return "Reals"
-    return operator.getitem, (Reals, cls.shape)
+class RealsType(ArrayType):
+    dtype = "real"
+
+    def __getitem__(cls, shape):
+        if not isinstance(shape, tuple):
+            shape = (shape,)
+        return super().__getitem__(("real", shape))
+
+    def __subclasscheck__(cls, subcls):
+        if not isinstance(subcls, RealsType):
+            return False
+        if cls.dtype not in (None, subcls.dtype):
+            return False
+        if cls.shape not in (None, subcls.shape):
+            return False
+        return True
+
+
+def _pickle_array(cls):
+    if cls in (Array, Bint, Real, Reals):
+        return cls.__name__
+    return operator.getitem, (Array, (cls.dtype, cls.shape))
+
+
+copyreg.pickle(ArrayType, _pickle_array)
+copyreg.pickle(BintType, _pickle_array)
+copyreg.pickle(RealsType, _pickle_array)
+
+
+class Array(metaclass=ArrayType):
+    """
+    Generic factory for :class:`Reals` or :class:`Bint`.
+
+        Arary["real", (3, 3)] = Reals[3, 3]
+        Array["real", ()] = Real
+    """
+    dtype = None
+    shape = None
+
+
+class Bint(metaclass=BintType):
+    """
+    Factory for bounded integer types::
+
+        Bint[5]           # integers ranging in {0,1,2,3,4}
+        Bint[2, 3, 3]     # 3x3 matrices with entries in {0,1}
+    """
+    dtype = None
+    shape = None
 
 
 class Reals(metaclass=RealsType):
@@ -71,92 +152,17 @@ class Reals(metaclass=RealsType):
 
         Reals[()] = Real  # scalar
         Reals[8]          # vector of length 8
-        Reals[3,3]        # 3x3 matrix
-
-    To dispatch on domain type, we recommend either ``@singledispatch``,
-    ``@multipledispatch``, or ``isinstance(domain, RealsType)``.
+        Reals[3, 3]       # 3x3 matrix
     """
+    shape = None
 
 
-Real = Reals[()]  # just an alias
-
-
-class BintType(type):
-    _type_cache = WeakValueDictionary()
-
-    def __getitem__(cls, size):
-        # in some JAX versions, shape can be np.int64 type
-        if get_tracing_state() or get_backend() == "jax":
-            size = int(size)
-
-        result = BintType._type_cache.get(size, None)
-        if result is None:
-            assert cls is Bint
-            assert isinstance(size, int) and size >= 0, size
-            name = "Bint[{}]".format(size)
-            result = BintType(name, (), {"size": size})
-            BintType._type_cache[size] = result
-        return result
-
-    def __subclasscheck__(cls, subcls):
-        if not isinstance(subcls, BintType):
-            return False
-        return cls is Bint or cls is subcls
-
-    def __repr__(cls):
-        return cls.__name__
-
-    def __str__(cls):
-        return cls.__name__
-
-    def __iter__(cls):
-        from funsor.terms import Number
-        return (Number(i, cls.size) for i in range(cls.size))
-
-    # DEPRECATED
-    @property
-    def dtype(cls):
-        warnings.warn("domain.dtype is deprecated, "
-                      "use isinstance(domain, BintType) instead",
-                      DeprecationWarning)
-        return cls.size
-
-    # DEPRECATED
-    @property
-    def shape(cls):
-        warnings.warn("Bint[n].shape is deprecated",
-                      DeprecationWarning)
-        return ()
-
-    # DEPRECATED
-    @property
-    def num_elements(cls):
-        warnings.warn("Bint[n].num_elements is deprecated",
-                      DeprecationWarning)
-        return 1
-
-
-@functools.partial(copyreg.pickle, BintType)
-def _pickle_bint(cls):
-    if cls is Bint:
-        return "Bint"
-    return operator.getitem, (Bint, cls.size)
-
-
-class Bint(metaclass=BintType):
-    """
-    Factory for bounded integer types::
-
-        Bint[5]  # integers ranging in {0,1,2,3,4}
-
-    To dispatch on domain type, we recommend either ``@singledispatch``,
-    ``@multipledispatch``, or ``isinstance(domain, BintType)``.
-    """
+Real = Reals[()]
 
 
 # DEPRECATED
 def reals(*args):
-    warnings.warn("reals(...) is deprecated, use Reals[...] instead",
+    warnings.warn("reals(...) is deprecated, use Real or Reals[...] instead",
                   DeprecationWarning)
     return Reals[args]
 
@@ -166,13 +172,6 @@ def bint(size):
     warnings.warn("bint(...) is deprecated, use Bint[...] instead",
                   DeprecationWarning)
     return Bint[size]
-
-
-# DEPRECATED
-def make_domain(shape, dtype):
-    warnings.warn("make_domain is deprecated, use Bint or Reals instead",
-                  DeprecationWarning)
-    return Reals[shape] if dtype == "real" else Bint[dtype]
 
 
 @quote.register(BintType)
