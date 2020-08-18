@@ -91,7 +91,7 @@ def test_affine_normal(matrix_shape, loc_shape, scale_shape, x_shape, y_shape,
                        x_size, y_size):
 
     def _rand(batch_shape, *event_shape):
-        inputs = OrderedDict(zip("abcdef", map(Bint, reversed(batch_shape))))
+        inputs = OrderedDict(zip("abcdef", map(Bint.__getitem__, reversed(batch_shape))))
         return random_tensor(inputs, Reals[event_shape])
 
     matrix = _rand(matrix_shape, x_size, y_size)
