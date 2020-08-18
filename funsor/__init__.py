@@ -1,7 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-from funsor.domains import Domain, bint, find_domain, make_domain, reals
+from funsor.domains import Array, Bint, Domain, Real, Reals, bint, find_domain, reals
 from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
 from funsor.sum_product import MarkovProduct
@@ -48,6 +48,8 @@ set_backend(get_backend())
 
 
 __all__ = [
+    'Array',
+    'Bint',
     'Cat',
     'Domain',
     'Funsor',
@@ -56,6 +58,8 @@ __all__ = [
     'Lambda',
     'MarkovProduct',
     'Number',
+    'Real',
+    'Reals',
     'Slice',
     'Stack',
     'Tensor',
@@ -76,7 +80,6 @@ __all__ = [
     'integrate',
     'interpreter',
     'joint',
-    'make_domain',
     'memoize',
     # 'minipyro',  # TODO: enable when minipyro is backend-agnostic
     'montecarlo',
