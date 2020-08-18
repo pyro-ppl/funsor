@@ -69,24 +69,6 @@ class ArrayType(Domain):
         return reduce(operator.mul, cls.shape, 1)
 
 
-class RealsType(ArrayType):
-    dtype = "real"
-
-    def __getitem__(cls, shape):
-        if not isinstance(shape, tuple):
-            shape = (shape,)
-        return super().__getitem__(("real", shape))
-
-    def __subclasscheck__(cls, subcls):
-        if not isinstance(subcls, RealsType):
-            return False
-        if cls.dtype not in (None, subcls.dtype):
-            return False
-        if cls.shape not in (None, subcls.shape):
-            return False
-        return True
-
-
 class BintType(ArrayType):
     def __getitem__(cls, size_shape):
         if isinstance(size_shape, tuple):
@@ -113,18 +95,55 @@ class BintType(ArrayType):
         return (Number(i, cls.size) for i in range(cls.size))
 
 
+class RealsType(ArrayType):
+    dtype = "real"
+
+    def __getitem__(cls, shape):
+        if not isinstance(shape, tuple):
+            shape = (shape,)
+        return super().__getitem__(("real", shape))
+
+    def __subclasscheck__(cls, subcls):
+        if not isinstance(subcls, RealsType):
+            return False
+        if cls.dtype not in (None, subcls.dtype):
+            return False
+        if cls.shape not in (None, subcls.shape):
+            return False
+        return True
+
+
 def _pickle_array(cls):
-    if cls in (Array, Real, Reals, Bint):
+    if cls in (Array, Bint, Real, Reals):
         return cls.__name__
     return operator.getitem, (Array, (cls.dtype, cls.shape))
 
 
 copyreg.pickle(ArrayType, _pickle_array)
-copyreg.pickle(RealsType, _pickle_array)
 copyreg.pickle(BintType, _pickle_array)
+copyreg.pickle(RealsType, _pickle_array)
 
-# Singletons
-Array = ArrayType("Array", (), {"dtype": None, "shape": None})
+
+class Array(metaclass=ArrayType):
+    """
+    Generic factory for :class:`Reals` or :class:`Bint`.
+
+        Arary["real", (3, 3)] = Reals[3, 3]
+        Array["real", ()] = Real
+    """
+    dtype = None
+    shape = None
+
+
+class Bint(metaclass=BintType):
+    """
+    Factory for bounded integer types::
+
+        Bint[5]           # integers ranging in {0,1,2,3,4}
+        Bint[2, 3, 3]     # 3x3 matrices with entries in {0,1}
+    """
+    dtype = None
+    shape = None
 
 
 class Reals(metaclass=RealsType):
@@ -133,7 +152,7 @@ class Reals(metaclass=RealsType):
 
         Reals[()] = Real  # scalar
         Reals[8]          # vector of length 8
-        Reals[3,3]        # 3x3 matrix
+        Reals[3, 3]       # 3x3 matrix
     """
     shape = None
 
@@ -141,27 +160,16 @@ class Reals(metaclass=RealsType):
 Real = Reals[()]
 
 
-class Bint(metaclass=BintType):
-    """
-    Factory for bounded integer types::
-
-        Bint[5]        # integers ranging in {0,1,2,3,4}
-        Bint[2, 3, 3]  # 3x3 matrices with entries in {0,1}
-    """
-    dtype = None
-    shape = None
-
-
 # DEPRECATED
 def reals(*args):
-    warnings.warn("reals(...) is deprecated, use Reals[...] instead",
+    warnings.warn("reals(...) is deprecated, use Real or Reals[...] instead",
                   DeprecationWarning)
     return Reals[args]
 
 
 # DEPRECATED
 def bint(size):
-    warnings.warn("reals(...) is deprecated, use Reals[...] instead",
+    warnings.warn("bint(...) is deprecated, use Bint[...] instead",
                   DeprecationWarning)
     return Bint[size]
 
