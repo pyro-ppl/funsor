@@ -6,7 +6,20 @@ from funsor.integrate import Integrate
 from funsor.interpreter import reinterpret
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Tensor, function
-from funsor.terms import Cat, Funsor, Independent, Lambda, Number, Slice, Stack, Variable, of_shape, to_data, to_funsor
+from funsor.terms import (
+    Cat,
+    Funsor,
+    Independent,
+    Lambda,
+    Number,
+    Slice,
+    Stack,
+    Variable,
+    of_shape,
+    symbolic,
+    to_data,
+    to_funsor
+)
 from funsor.util import get_backend, pretty, quote, set_backend
 
 from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
@@ -78,6 +91,7 @@ __all__ = [
     'reinterpret',
     'set_backend',
     'sum_product',
+    'symbolic',
     'terms',
     'testing',
     'to_data',

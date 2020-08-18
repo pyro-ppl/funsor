@@ -162,6 +162,15 @@ def test_reinterpret(expr):
     assert funsor.reinterpret(x) is x
 
 
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
+def test_type_hints(expr):
+    x = eval(expr)
+    inputs = typing.get_type_hints(x)
+    output = inputs.pop("return")
+    assert inputs == dict(x.inputs)
+    assert output == x.output
+
+
 @pytest.mark.parametrize("expr", [
     "Variable('x', reals())",
     "Number(1)",

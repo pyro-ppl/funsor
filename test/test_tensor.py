@@ -6,13 +6,14 @@ import io
 import itertools
 import pickle
 from collections import OrderedDict
+from typing import Tuple, get_type_hints
 
 import numpy as np
 import pytest
 
 import funsor
 import funsor.ops as ops
-from funsor.domains import Array, Bint, Reals, bint, find_domain, reals
+from funsor.domains import Array, Bint, Real, Reals, bint, find_domain, reals
 from funsor.interpreter import interpretation
 from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, numeric_array, stack, tensordot
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
@@ -660,6 +661,22 @@ def test_all_equal(shape):
     assert (x1 != x2).any()
 
 
+def test_function_hint_matmul():
+    @funsor.function
+    def matmul(x: Reals[3, 4], y: Reals[4, 5]) -> Reals[3, 5]:
+        return x @ y
+
+    assert get_type_hints(matmul) == get_type_hints(matmul.fn)
+
+    check_funsor(matmul, {'x': reals(3, 4), 'y': reals(4, 5)}, reals(3, 5))
+
+    x = Tensor(randn((3, 4)))
+    y = Tensor(randn((4, 5)))
+    actual = matmul(x, y)
+    expected_data = x.data @ y.data
+    check_funsor(actual, {}, reals(3, 5), expected_data)
+
+
 def test_function_matmul():
     @funsor.function(reals(3, 4), reals(4, 5), reals(3, 5))
     def matmul(x, y):
@@ -699,6 +716,26 @@ def _numeric_max_and_argmax(x):
         return torch.max(x, dim=-1)
     else:
         return np.max(x, axis=-1), np.argmax(x, axis=-1)
+
+
+def test_function_nested_eager_hint():
+
+    @funsor.function
+    def max_and_argmax(x: Reals[8]) -> Tuple[Real, Bint[8]]:
+        return tuple(_numeric_max_and_argmax(x))
+
+    expected = {"x": Reals[8], "return": Tuple[Real, Bint[8]]}
+    assert get_type_hints(max_and_argmax) == expected
+
+    inputs = OrderedDict([('i', bint(2)), ('j', bint(3))])
+    x = Tensor(randn((2, 3, 8)), inputs)
+    m, a = _numeric_max_and_argmax(x.data)
+    expected_max = Tensor(m, inputs, 'real')
+    expected_argmax = Tensor(a, inputs, 8)
+
+    actual_max, actual_argmax = max_and_argmax(x)
+    assert_close(actual_max, expected_max)
+    assert_close(actual_argmax, expected_argmax)
 
 
 def test_function_nested_eager():
