@@ -928,7 +928,10 @@ def function(*signature):
         fn = signature[0]
         if callable(fn) and not isinstance(fn, ArrayType):
             # Usage: @function
-            inputs = typing.get_type_hints(fn)
+            if is_nn_module(fn):
+                inputs = typing.get_type_hints(fn.forward)
+            else:
+                inputs = typing.get_type_hints(fn)
             output = inputs.pop("return")
             assert all(isinstance(d, ArrayType) for d in inputs.values())
             assert (isinstance(output, (ArrayType, tuple)) or
