@@ -7,6 +7,7 @@ import math
 import typing
 from collections import OrderedDict
 from importlib import import_module
+from typing import Generic, TypeVar
 
 import makefun
 
@@ -206,6 +207,8 @@ def make_dist(backend_dist_class, param_names=()):
     def dist_init(self, **kwargs):
         return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
+    typevars = tuple(TypeVar(name, bound=Funsor) for name in param_names + ("value",))
+    generic_base = Generic[typevars]
     dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {
         'dist_class': backend_dist_class,
         '__init__': dist_init,
@@ -302,7 +305,7 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     return pyro_dist
 
 
-@to_data.register(Independent[typing.Union[Independent, Distribution], str, str, str])
+#@to_data.register(Independent[typing.Union[Independent, Distribution], str, str, str])
 def indep_to_data(funsor_dist, name_to_dim=None):
     raise NotImplementedError("TODO implement conversion of Independent")
 
@@ -320,7 +323,7 @@ def gaussian_to_data(funsor_dist, name_to_dim=None, normalized=False):
     return backend_dist.MultivariateNormal.dist_class(loc, precision_matrix=precision)
 
 
-@to_data.register(GaussianMixture)
+# @to_data.register(GaussianMixture)
 def gaussianmixture_to_data(funsor_dist, name_to_dim=None):
     discrete, gaussian = funsor_dist.terms
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])

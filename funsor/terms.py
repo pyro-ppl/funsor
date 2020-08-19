@@ -5,11 +5,13 @@ import functools
 import itertools
 import math
 import numbers
-import typing
+import typing_extensions
 from collections import Hashable, OrderedDict
 from functools import reduce, singledispatch
+from typing import *
 from weakref import WeakValueDictionary
 
+import pytypes
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic, isvariadic
 
@@ -18,7 +20,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, lazy_property, pretty, quote
+from funsor.util import getargspec, lazy_property, pretty, quote, safe_get_origin
 
 
 def substitute(expr, subs):
@@ -71,11 +73,12 @@ def reflect(cls, *args, **kwargs):
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
-    arg_types = tuple(typing.Tuple[tuple(map(type, arg))]
-                      if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
-                      else typing.Tuple if (type(arg) is tuple and not arg)
-                      else type(arg) for arg in args)
-    cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
+    arg_types = tuple(map(pytypes.deep_type, args))
+    if typing_extensions.get_origin(cls):
+        cls_specific = typing_extensions.get_origin(cls)[arg_types]
+    else:
+        cls_specific = cls
+
     result = super(FunsorMeta, cls_specific).__call__(*args)
     result._ast_values = args
 
@@ -197,19 +200,11 @@ class FunsorMeta(type):
     """
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
-        if not hasattr(cls, "__args__"):
-            cls.__args__ = ()
-        if cls.__args__:
-            base, = bases
-            cls.__origin__ = base
-        else:
-            cls._ast_fields = getargspec(cls.__init__)[0][1:]
-            cls._cons_cache = WeakValueDictionary()
-            cls._type_cache = WeakValueDictionary()
+        cls._ast_fields = getargspec(cls.__init__)[0][1:]
+        cls._cons_cache = WeakValueDictionary()
 
     def __call__(cls, *args, **kwargs):
-        if cls.__args__:
-            cls = cls.__origin__
+        cls = safe_get_origin(cls)
 
         # Convert kwargs to args.
         if kwargs:
@@ -221,76 +216,29 @@ class FunsorMeta(type):
 
         return interpret(cls, *args)
 
-    def __getitem__(cls, arg_types):
-        if not isinstance(arg_types, tuple):
-            arg_types = (arg_types,)
-        assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
-        # switch tuple to typing.Tuple
-        arg_types = tuple(typing.Tuple if arg_type is tuple else arg_type for arg_type in arg_types)
-        if arg_types not in cls._type_cache:
-            assert not cls.__args__, "cannot subscript a subscripted type {}".format(cls)
-            assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
-            new_dct = cls.__dict__.copy()
-            new_dct.update({"__args__": arg_types})
-            # type(cls) to handle FunsorMeta subclasses
-            cls._type_cache[arg_types] = type(cls)(cls.__name__, (cls,), new_dct)
-        return cls._type_cache[arg_types]
-
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
         if cls is subcls:
             return True
-        if not isinstance(subcls, FunsorMeta):
-            return super(FunsorMeta, getattr(cls, "__origin__", cls)).__subclasscheck__(subcls)
 
-        cls_origin = getattr(cls, "__origin__", cls)
-        subcls_origin = getattr(subcls, "__origin__", subcls)
+        cls_origin = safe_get_origin(cls)
+        subcls_origin = safe_get_origin(subcls)
+        if not isinstance(subcls_origin, FunsorMeta):
+            return super(FunsorMeta, cls_origin).__subclasscheck__(subcls)
+
         if not super(FunsorMeta, cls_origin).__subclasscheck__(subcls_origin):
             return False
 
-        if cls.__args__:
-            if not subcls.__args__:
-                return False
-            if len(cls.__args__) != len(subcls.__args__):
-                return False
-            for subcls_param, param in zip(subcls.__args__, cls.__args__):
-                if not _issubclass_tuple(subcls_param, param):
-                    return False
+        cls_args = typing_extensions.get_args(cls)
+        subcls_args = typing_extensions.get_args(subcls)
+        if cls_args:
+            return pytypes.is_subtype(Tuple[subcls_args], Tuple[cls_args])
         return True
 
     @lazy_property
     def classname(cls):
         return cls.__name__ + "[{}]".format(", ".join(
             str(getattr(t, "classname", t))  # Tuple doesn't have __name__
-            for t in cls.__args__))
-
-
-def _issubclass_tuple(subcls, cls):
-    """
-    utility for pattern matching with tuple subexpressions
-    """
-    # so much boilerplate...
-    cls_is_union = hasattr(cls, "__origin__") and (cls.__origin__ or cls) is typing.Union
-    if isinstance(cls, tuple) or cls_is_union:
-        return any(_issubclass_tuple(subcls, option)
-                   for option in (getattr(cls, "__args__", []) if cls_is_union else cls))
-
-    subcls_is_union = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) is typing.Union
-    if isinstance(subcls, tuple) or subcls_is_union:
-        return any(_issubclass_tuple(option, cls)
-                   for option in (getattr(subcls, "__args__", []) if subcls_is_union else subcls))
-
-    subcls_is_tuple = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) in (tuple, typing.Tuple)
-    cls_is_tuple = hasattr(cls, "__origin__") and (cls.__origin__ or cls) in (tuple, typing.Tuple)
-    if subcls_is_tuple != cls_is_tuple:
-        return False
-    if not cls_is_tuple:
-        return issubclass(subcls, cls)
-    if not cls.__args__:
-        return True
-    if not subcls.__args__ or len(subcls.__args__) != len(cls.__args__):
-        return False
-
-    return all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__))
+            for t in typing_extensions.get_args(cls)))
 
 
 def _convert_reduced_vars(reduced_vars):
@@ -359,7 +307,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return self
 
     def __reduce__(self):
-        return type(self).__origin__, self._ast_values
+        return safe_get_origin(type(self)), self._ast_values
 
     def __hash__(self):
         return id(self)
@@ -855,7 +803,11 @@ class SubsMeta(FunsorMeta):
         return super().__call__(arg, subs)
 
 
-class Subs(Funsor, metaclass=SubsMeta):
+T_arg = TypeVar("T_arg", bound=Funsor)
+T_subs = TypeVar("T_subs", bound=Tuple[Tuple[str, Funsor], ...])
+
+
+class Subs(Funsor, Generic[T_arg, T_subs], metaclass=SubsMeta):
     """
     Lazy substitution of the form ``x(u=y, v=z)``.
 
@@ -864,7 +816,7 @@ class Subs(Funsor, metaclass=SubsMeta):
         string and ``value`` can be coerced to a :class:`Funsor` via
         :func:`to_funsor`.
     """
-    def __init__(self, arg, subs):
+    def __init__(self, arg: T_arg, subs: T_subs):
         assert isinstance(arg, Funsor)
         assert isinstance(subs, tuple)
         for key, value in subs:
@@ -926,15 +878,18 @@ _PREFIX = {
     ops.invert: '~',
 }
 
+T_op = TypeVar("T_op", bound=ops.Op)
+T_arg = TypeVar("T_arg", bound=Funsor)
 
-class Unary(Funsor):
+
+class Unary(Funsor, Generic[T_op, T_arg]):
     """
     Lazy unary operation.
 
     :param ~funsor.ops.Op op: A unary operator.
     :param Funsor arg: An argument.
     """
-    def __init__(self, op, arg):
+    def __init__(self, op: T_op, arg: T_arg):
         assert callable(op)
         assert isinstance(arg, Funsor)
         output = find_domain(op, arg.output)
@@ -968,8 +923,12 @@ _INFIX = {
     ops.pow: '**',
 }
 
+T_op = TypeVar("T_op", bound=ops.Op)
+T_lhs = TypeVar("T_lhs", bound=Funsor)
+T_rhs = TypeVar("T_rhs", bound=Funsor)
 
-class Binary(Funsor):
+
+class Binary(Funsor, Generic[T_op, T_lhs, T_rhs]):
     """
     Lazy binary operation.
 
@@ -977,7 +936,7 @@ class Binary(Funsor):
     :param Funsor lhs: A left hand side argument.
     :param Funsor rhs: A right hand side argument.
     """
-    def __init__(self, op, lhs, rhs):
+    def __init__(self, op: T_op, lhs: T_lhs, rhs: T_rhs):
         assert callable(op)
         assert isinstance(lhs, Funsor)
         assert isinstance(rhs, Funsor)
@@ -995,7 +954,12 @@ class Binary(Funsor):
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
 
 
-class Reduce(Funsor):
+T_op = TypeVar("T_op", bound=ops.AssociativeOp)
+T_arg = TypeVar("T_arg", bound=Funsor)
+T_reduced_vars = TypeVar("T_reduced_vars", bound=FrozenSet[str])
+
+
+class Reduce(Funsor, Generic[T_op, T_arg, T_reduced_vars]):
     """
     Lazy reduction over multiple variables.
 
@@ -1003,7 +967,7 @@ class Reduce(Funsor):
     :param funsor arg: An argument to be reduced.
     :param frozenset reduced_vars: A set of variable names over which to reduce.
     """
-    def __init__(self, op, arg, reduced_vars):
+    def __init__(self, op: T_op, arg: T_arg, reduced_vars: T_reduced_vars):
         assert callable(op)
         assert isinstance(arg, Funsor)
         assert isinstance(reduced_vars, frozenset)
@@ -1199,14 +1163,18 @@ class Slice(Funsor, metaclass=SliceMeta):
             raise NotImplementedError('TODO support substitution of {} into Slice'.format(type(index)))
 
 
-class Align(Funsor):
+T_arg = TypeVar("T_arg", bound=Funsor)
+T_names = TypeVar("T_names", bound=Tuple[str, ...])
+
+
+class Align(Funsor, Generic[T_arg, T_names]):
     """
     Lazy call to ``.align(...)``.
 
     :param Funsor arg: A funsor to align.
     :param tuple names: A tuple of input names whose order to follow.
     """
-    def __init__(self, arg, names):
+    def __init__(self, arg: T_arg, names: T_names):
         assert isinstance(arg, Funsor)
         assert isinstance(names, tuple)
         assert all(isinstance(name, str) for name in names)
@@ -1252,14 +1220,18 @@ def eager_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
 
 
-class Stack(Funsor):
+T_name = TypeVar("T_name", bound=str)
+T_parts = TypeVar("T_parts", bound=Tuple[Funsor, ...])
+
+
+class Stack(Funsor, Generic[T_name, T_parts]):
     """
     Stack of funsors along a new input dimension.
 
     :param str name: The name of the new input variable along which to stack.
     :param tuple parts: A tuple of Funsors of homogenous output domain.
     """
-    def __init__(self, name, parts):
+    def __init__(self, name: T_name, parts: T_parts):
         assert isinstance(name, str)
         assert isinstance(parts, tuple)
         assert parts
@@ -1326,14 +1298,18 @@ class CatMeta(FunsorMeta):
         return super().__call__(name, parts, part_name)
 
 
-class Cat(Funsor, metaclass=CatMeta):
+T_name = TypeVar("T_name", bound=str)
+T_parts = TypeVar("T_parts", bound=Tuple[Funsor, ...])
+
+
+class Cat(Funsor, Generic[T_name, T_parts], metaclass=CatMeta):
     """
     Concatenate funsors along an existing input dimension.
 
     :param str name: The name of the input variable along which to concatenate.
     :param tuple parts: A tuple of Funsors of homogenous output domain.
     """
-    def __init__(self, name, parts, part_name=None):
+    def __init__(self, name: T_name, parts: T_parts, part_name=None):
         assert isinstance(name, str)
         assert isinstance(parts, tuple)
         assert isinstance(part_name, str)
@@ -1417,7 +1393,11 @@ def eager_cat_homogeneous(name, part_name, *parts):
     return None  # defer to default implementation
 
 
-class Lambda(Funsor):
+T_var = TypeVar("T_var", bound=Variable)
+T_expr = TypeVar("T_expr", bound=Funsor)
+
+
+class Lambda(Funsor, Generic[T_var, T_expr]):
     """
     Lazy inverse to ``ops.getitem``.
 
@@ -1427,7 +1407,7 @@ class Lambda(Funsor):
     :param Variable var: A variable to bind.
     :param funsor expr: A funsor.
     """
-    def __init__(self, var, expr):
+    def __init__(self, var: T_var, expr: T_expr):
         assert isinstance(var, Variable)
         assert isinstance(var.dtype, int)
         assert isinstance(expr, Funsor)
@@ -1455,7 +1435,13 @@ def eager_getitem_lambda(op, lhs, rhs):
     return Lambda(lhs.var, expr)
 
 
-class Independent(Funsor):
+T_fn = TypeVar("T_fn", bound=Funsor)
+T_reals_var = TypeVar("T_reals_var", bound=str)
+T_bint_var = TypeVar("T_bint_var", bound=str)
+T_diag_var = TypeVar("T_diag_var", bound=str)
+
+
+class Independent(Funsor, Generic[T_fn, T_reals_var, T_bint_var, T_diag_var]):
     """
     Creates an independent diagonal distribution.
 
@@ -1478,7 +1464,7 @@ class Independent(Funsor):
     :param str bint_var: The name of a new batch input of ``fn``.
     :param diag_var: The name of a smaller-shape real input of ``fn``.
     """
-    def __init__(self, fn, reals_var, bint_var, diag_var):
+    def __init__(self, fn: T_fn, reals_var: T_reals_var, bint_var: T_bint_var, diag_var: T_diag_var):
         assert isinstance(fn, Funsor)
         assert isinstance(reals_var, str)
         assert isinstance(bint_var, str)

@@ -5,7 +5,7 @@ import functools
 import itertools
 from collections import OrderedDict, defaultdict
 from functools import reduce
-from typing import Tuple, Union
+from typing import *  # Tuple, Union
 
 import opt_einsum
 from multipledispatch.variadic import Variadic
@@ -32,10 +32,16 @@ from funsor.terms import (
     reflect,
     to_funsor
 )
-from funsor.util import broadcast_shape, get_backend, quote
+from funsor.util import broadcast_shape, get_backend, quote, safe_get_origin
 
 
-class Contraction(Funsor):
+T_red_op = TypeVar("T_red_op", bound=AssociativeOp)
+T_bin_op = TypeVar("T_bin_op", bound=AssociativeOp)
+T_reduced_vars = TypeVar("T_reduced_vars", bound=FrozenSet[str])
+T_terms = TypeVar("T_terms", bound=Tuple[Funsor, ...])
+
+
+class Contraction(Funsor, Generic[T_red_op, T_bin_op, T_reduced_vars, T_terms]):
     """
     Declarative representation of a finitary sum-product operation.
 
@@ -320,7 +326,7 @@ def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_va
     # when bin_op is commutative, put terms into a canonical order for pattern matching
     new_terms = tuple(
         v for i, v in sorted(enumerate(terms),
-                             key=lambda t: (ORDERING.get(type(t[1]).__origin__, -1), t[0]))
+                             key=lambda t: (ORDERING.get(safe_get_origin(type(t[1])), -1), t[0]))
     )
     if any(v is not vv for v, vv in zip(terms, new_terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)

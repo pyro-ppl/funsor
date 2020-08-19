@@ -1,10 +1,14 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import typing
+import typing_extensions
 from collections import defaultdict
 
 from multipledispatch import Dispatcher
 from multipledispatch.conflict import supercedes
+
+from .util import safe_get_origin
 
 
 class PartialDispatcher(Dispatcher):
@@ -47,10 +51,10 @@ class KeyedRegistry(object):
         self.registry = defaultdict(lambda: PartialDispatcher('f'))
 
     def register(self, key, *types):
-        key = getattr(key, "__origin__", key)
+        key = safe_get_origin(key)  # getattr(key, "__origin__", key)
         register = self.registry[key].register
         if self.default:
-            objects = (object,) * len(types)
+            objects = (typing.Any,) * len(types)
             try:
                 if objects != types and supercedes(types, objects):
                     register(*objects)(self.default)
@@ -70,7 +74,7 @@ class KeyedRegistry(object):
         return key in self.registry
 
     def __getitem__(self, key):
-        key = getattr(key, "__origin__", key)
+        key = safe_get_origin(key)  # getattr(key, "__origin__", key)
         if self.default is None:
             return self.registry[key]
         return self.registry.get(key, self.default)

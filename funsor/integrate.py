@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import OrderedDict
-from typing import Union
+from typing import Generic, TypeVar, Union
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
@@ -33,7 +33,11 @@ class IntegrateMeta(FunsorMeta):
         return super().__call__(log_measure, integrand, reduced_vars)
 
 
-class Integrate(Funsor, metaclass=IntegrateMeta):
+T_log_measure = TypeVar("T_log_measure", bound=Funsor)
+T_integrand = TypeVar("T_integrand", bound=Funsor)
+T_reduced_vars = TypeVar("T_reduced_vars", bound=frozenset)
+
+class Integrate(Funsor, Generic[T_log_measure, T_integrand, T_reduced_vars], metaclass=IntegrateMeta):
     """
     Funsor representing an integral wrt a log density funsor.
 

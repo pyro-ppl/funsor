@@ -5,6 +5,7 @@ import functools
 import inspect
 import re
 import os
+import typing_extensions
 
 import numpy as np
 
@@ -212,3 +213,8 @@ def is_nn_module(x):
 
         return isinstance(x, torch.nn.Module)
     return False
+
+
+def safe_get_origin(cls):
+    maybe_origin = typing_extensions.get_origin(cls)
+    return maybe_origin if maybe_origin is not None else cls
