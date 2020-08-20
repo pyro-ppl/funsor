@@ -74,7 +74,6 @@ def reflect(cls, *args, **kwargs):
         return cls._cons_cache[cache_key]
 
     # arg_types = tuple(map(pytypes.deep_type, args))  # XXX way too expensive
-    # XXX how to get this line to work????
     result = super(FunsorMeta, cls).__call__(*args)
     result._ast_values = args
     if pytypes.is_Generic(cls):
