@@ -8,7 +8,7 @@ from collections import defaultdict
 from multipledispatch import Dispatcher
 from multipledispatch.conflict import supercedes
 
-from .util import safe_get_origin
+from .util import get_specific_type, safe_get_origin
 
 
 class PartialDispatcher(Dispatcher):
@@ -19,7 +19,7 @@ class PartialDispatcher(Dispatcher):
         """
         Likde :meth:`__call__` but avoids calling ``func()``.
         """
-        types = tuple(map(type, args))
+        types = tuple(map(get_specific_type, args))
         try:
             func = self._cache[types]
         except KeyError:

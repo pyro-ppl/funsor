@@ -20,7 +20,7 @@ import funsor.ops as ops
 from funsor.domains import Domain, bint, find_domain, reals
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, lazy_property, pretty, quote, safe_get_origin
+from funsor.util import get_specific_type, getargspec, lazy_property, pretty, quote, safe_get_origin
 
 
 def substitute(expr, subs):
@@ -73,18 +73,12 @@ def reflect(cls, *args, **kwargs):
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
-    arg_types = tuple(Tuple[tuple(map(type, arg))]
-                      if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
-                      else Tuple if (type(arg) is tuple and not arg)
-                      else type(arg) for arg in args)
-    # arg_types = tuple(map(pytypes.deep_type, args))
-    if typing_extensions.get_origin(cls):
-        cls_specific = typing_extensions.get_origin(cls)[arg_types]
-    else:
-        cls_specific = cls
-
-    result = super(FunsorMeta, cls_specific).__call__(*args)
+    # arg_types = tuple(map(pytypes.deep_type, args))  # XXX way too expensive
+    # XXX how to get this line to work????
+    result = super(FunsorMeta, cls).__call__(*args)
     result._ast_values = args
+    if pytypes.is_Generic(cls):
+        result._specific_type = safe_get_origin(cls)[tuple(map(get_specific_type, args))]
 
     # alpha-convert eagerly upon binding any variable
     result = _alpha_mangle(result)
@@ -960,7 +954,7 @@ class Binary(Funsor, Generic[T_op, T_lhs, T_rhs]):
 
 T_op = TypeVar("T_op", bound=ops.AssociativeOp)
 T_arg = TypeVar("T_arg", bound=Funsor)
-T_reduced_vars = TypeVar("T_reduced_vars", bound=FrozenSet[str])
+T_reduced_vars = TypeVar("T_reduced_vars", bound=frozenset)
 
 
 class Reduce(Funsor, Generic[T_op, T_arg, T_reduced_vars]):
@@ -1304,16 +1298,17 @@ class CatMeta(FunsorMeta):
 
 T_name = TypeVar("T_name", bound=str)
 T_parts = TypeVar("T_parts", bound=Tuple[Funsor, ...])
+T_part_name = TypeVar("T_part_name", bound=str)
 
 
-class Cat(Funsor, Generic[T_name, T_parts], metaclass=CatMeta):
+class Cat(Funsor, Generic[T_name, T_parts, T_part_name], metaclass=CatMeta):
     """
     Concatenate funsors along an existing input dimension.
 
     :param str name: The name of the input variable along which to concatenate.
     :param tuple parts: A tuple of Funsors of homogenous output domain.
     """
-    def __init__(self, name: T_name, parts: T_parts, part_name=None):
+    def __init__(self, name: T_name, parts: T_parts, part_name: T_part_name = None):
         assert isinstance(name, str)
         assert isinstance(parts, tuple)
         assert isinstance(part_name, str)

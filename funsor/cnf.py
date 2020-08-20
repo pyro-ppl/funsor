@@ -37,7 +37,7 @@ from funsor.util import broadcast_shape, get_backend, quote, safe_get_origin
 
 T_red_op = TypeVar("T_red_op", bound=AssociativeOp)
 T_bin_op = TypeVar("T_bin_op", bound=AssociativeOp)
-T_reduced_vars = TypeVar("T_reduced_vars", bound=FrozenSet[str])
+T_reduced_vars = TypeVar("T_reduced_vars", bound=frozenset)
 T_terms = TypeVar("T_terms", bound=Tuple[Funsor, ...])
 
 

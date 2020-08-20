@@ -801,7 +801,7 @@ def _(arg, indent, out):
     out[-1] = i, line + ")"
 
 
-@eager.register(Function, Any, Domain, Tuple[Funsor, ...])
+@eager.register(Function, Any, Domain, tuple)  # Tuple[Funsor, ...])
 def eager_function(fn, output, args):
     if not all(isinstance(arg, (Number, Tensor)) for arg in args):
         return None  # defer to default implementation

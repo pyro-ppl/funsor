@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import operator
+import typing
 from numbers import Number
 
 import numpy as np
@@ -23,7 +24,7 @@ class Op(Dispatcher):
         super(Op, self).__init__(name)
         # register as default operation
         for nargs in (1, 2):
-            default_signature = (object,) * nargs
+            default_signature = (typing.Any,) * nargs
             self.add(default_signature, fn)
 
     def __copy__(self):

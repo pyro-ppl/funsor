@@ -6,11 +6,13 @@ import itertools
 import io
 import pickle
 import typing
+import typing_extensions
 from collections import OrderedDict
 from functools import reduce
 
 import numpy as np
 import pytest
+import pytypes
 
 import funsor
 import funsor.ops as ops
@@ -519,8 +521,8 @@ def test_parametric_subclass(subcls_expr, cls_expr):
     cls = eval(cls_expr)
     print(subcls.classname)
     print(cls.classname)
-    assert issubclass(cls, (Funsor, Reduce)) and not issubclass(subcls, typing.Tuple)  # appease flake8
-    assert issubclass(subcls, cls)
+    assert pytypes.is_subtype(cls, typing.Union[Funsor, Reduce]) and not pytypes.is_subtype(subcls, typing.Tuple)  # appease flake8
+    assert pytypes.is_subtype(subcls, cls)
 
 
 @pytest.mark.parametrize("subcls_expr,cls_expr", [
@@ -546,8 +548,8 @@ def test_not_parametric_subclass(subcls_expr, cls_expr):
     cls = eval(cls_expr)
     print(subcls.classname)
     print(cls.classname)
-    assert issubclass(cls, (Funsor, Reduce)) and not issubclass(subcls, typing.Tuple)  # appease flake8
-    assert not issubclass(subcls, cls)
+    assert pytypes.is_subtype(cls, typing.Union[Funsor, Reduce]) and not pytypes.is_subtype(subcls, typing.Tuple)  # appease flake8
+    assert not pytypes.is_subtype(subcls, cls)
 
 
 @pytest.mark.parametrize("start,stop", [
