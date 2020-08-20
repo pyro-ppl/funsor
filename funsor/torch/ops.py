@@ -89,7 +89,7 @@ def _einsum(equation, *operands):
     return torch.einsum(equation, *operands)
 
 
-@ops.expand.register(torch.Tensor, tuple)
+@ops.expand.register(torch.Tensor, (torch.Size, tuple))
 def _expand(x, shape):
     return x.expand(shape)
 
@@ -156,12 +156,12 @@ def _new_arange(x, stop):
     return torch.arange(stop)
 
 
-@ops.new_eye.register(torch.Tensor, tuple)
+@ops.new_eye.register(torch.Tensor, (torch.Size, tuple))
 def _new_eye(x, shape):
     return torch.eye(shape[-1]).expand(shape + (-1,))
 
 
-@ops.new_zeros.register(torch.Tensor, tuple)
+@ops.new_zeros.register(torch.Tensor, (torch.Size, tuple))
 def _new_zeros(x, shape):
     return x.new_zeros(shape)
 

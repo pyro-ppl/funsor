@@ -7,6 +7,7 @@ import warnings
 from collections import OrderedDict
 from contextlib import contextmanager
 from functools import reduce
+from typing import Any, Callable, Generic, Tuple, TypeVar
 
 import numpy as np
 import opt_einsum
@@ -750,7 +751,12 @@ class LazyTuple(tuple):
         return LazyTuple(x(*args, **kwargs) for x in self)
 
 
-class Function(Funsor):
+T_fn = TypeVar("fn", bound=Callable)
+T_output = TypeVar("output", bound=Domain)
+T_args = TypeVar("args", bound=Tuple[Funsor, ...])
+
+
+class Function(Funsor, Generic[T_fn, T_output, T_args]):
     r"""
     Funsor wrapped by a native PyTorch or NumPy function.
 
@@ -763,7 +769,7 @@ class Function(Funsor):
     :param funsor.domains.Domain output: An output domain.
     :param Funsor args: Funsor arguments.
     """
-    def __init__(self, fn, output, args):
+    def __init__(self, fn: T_fn, output: T_output, args: T_args):
         assert callable(fn)
         assert not isinstance(fn, Function)
         assert isinstance(args, tuple)
@@ -795,7 +801,7 @@ def _(arg, indent, out):
     out[-1] = i, line + ")"
 
 
-@eager.register(Function, object, Domain, tuple)
+@eager.register(Function, Any, Domain, Tuple[Funsor, ...])
 def eager_function(fn, output, args):
     if not all(isinstance(arg, (Number, Tensor)) for arg in args):
         return None  # defer to default implementation
@@ -891,7 +897,11 @@ def function(*signature):
     return functools.partial(_function, inputs, output)
 
 
-class Einsum(Funsor):
+T_equation = TypeVar("equation", bound=str)
+T_operands = TypeVar("operands", bound=Tuple[Funsor, ...])
+
+
+class Einsum(Funsor, Generic[T_equation, T_operands]):
     """
     Wrapper around :func:`torch.einsum` or :func:`np.einsum` to operate on real-valued Funsors.
 
@@ -902,7 +912,7 @@ class Einsum(Funsor):
     :param str equation: An :func:`torch.einsum` or :func:`np.einsum` equation.
     :param tuple operands: A tuple of input funsors.
     """
-    def __init__(self, equation, operands):
+    def __init__(self, equation: T_equation, operands: T_operands):
         assert isinstance(equation, str)
         assert isinstance(operands, tuple)
         assert all(isinstance(x, Funsor) for x in operands)

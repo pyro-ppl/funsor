@@ -4,6 +4,7 @@
 import functools
 import inspect
 import math
+import types
 import typing
 from collections import OrderedDict
 from importlib import import_module
@@ -207,12 +208,13 @@ def make_dist(backend_dist_class, param_names=()):
     def dist_init(self, **kwargs):
         return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
+    # XXX here be dragons
     typevars = tuple(TypeVar(name, bound=Funsor) for name in param_names + ("value",))
     generic_base = Generic[typevars]
-    dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {
+    dist_class = types.new_class(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution, generic_base), {"metaclass": DistributionMeta}, lambda ns: ns.update({
         'dist_class': backend_dist_class,
         '__init__': dist_init,
-    })
+    }))
 
     eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
 

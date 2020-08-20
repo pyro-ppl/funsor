@@ -73,7 +73,11 @@ def reflect(cls, *args, **kwargs):
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
-    arg_types = tuple(map(pytypes.deep_type, args))
+    arg_types = tuple(Tuple[tuple(map(type, arg))]
+                      if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
+                      else Tuple if (type(arg) is tuple and not arg)
+                      else type(arg) for arg in args)
+    # arg_types = tuple(map(pytypes.deep_type, args))
     if typing_extensions.get_origin(cls):
         cls_specific = typing_extensions.get_origin(cls)[arg_types]
     else:
@@ -864,8 +868,8 @@ class Subs(Funsor, Generic[T_arg, T_subs], metaclass=SubsMeta):
         return Subs(arg, tuple(self.subs.items()))
 
 
-@lazy.register(Subs, Funsor, object)
-@eager.register(Subs, Funsor, object)
+@lazy.register(Subs, Funsor, Tuple)
+@eager.register(Subs, Funsor, Tuple)
 def eager_subs(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
