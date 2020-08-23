@@ -21,6 +21,7 @@ import torch
 import torch.nn as nn
 
 import funsor
+import funsor.expectation_propagation
 import funsor.torch.distributions as dist
 import funsor.ops as ops
 from funsor.pyro.convert import funsor_to_cat_and_mvn, funsor_to_mvn, matrix_and_mvn_to_funsor, mvn_to_funsor
@@ -242,6 +243,41 @@ class SLDS(nn.Module):
         else:
             return predictive_mse, torch.tensor(np.array(test_LLs))
 
+    @funsor.interpreter.interpretation(funsor.terms.normalize)
+    def log_prob_lazy(self, data):
+        trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist = self.get_tensors_and_dists()
+
+        log_prob = funsor.Number(0.)
+
+        s_vars = {-1: funsor.Tensor(torch.tensor(0), dtype=self.num_components)}
+        x_vars = {}
+
+        for t, y in enumerate(data):
+            # construct free variables for s_t and x_t
+            s_vars[t] = funsor.Variable('s_{}'.format(t), funsor.Bint[self.num_components])
+            x_vars[t] = funsor.Variable('x_{}'.format(t), funsor.Reals[self.hidden_dim])
+
+            # incorporate the discrete switching dynamics
+            log_prob += dist.Categorical(trans_probs(s=s_vars[t - 1]), value=s_vars[t])
+
+            # incorporate the prior term p(x_t | x_{t-1})
+            if t == 0:
+                log_prob += self.x_init_mvn(value=x_vars[t])
+            else:
+                log_prob += x_trans_dist(s=s_vars[t], x=x_vars[t - 1], y=x_vars[t])
+
+            # incorporate the observation p(y_t | x_t, s_t)
+            log_prob += y_dist(s=s_vars[t], x=x_vars[t], y=y)
+
+        return log_prob
+
+    @funsor.interpreter.interpretation(funsor.expectation_propagation.message_passing)
+    def log_prob_ep(self, data):
+        log_prob_lazy = self.log_prob_lazy(data)
+        return funsor.to_data(funsor.cnf.Contraction(
+            ops.logaddexp, ops.add, frozenset(log_prob_lazy.inputs), log_prob_lazy.terms)
+        )
+
 
 def main(args):
     # download and pre-process EEG data if not in test mode
@@ -292,7 +328,7 @@ def main(args):
 
     # training loop
     for step in range(args.num_steps):
-        nll = -slds.log_prob(data[0:N_train, :]) / N_train
+        nll = -(slds.log_prob_ep if args.ep else slds.log_prob)(data[0:N_train, :]) / N_train
         nll.backward()
 
         if step == 5:
@@ -375,6 +411,7 @@ if __name__ == '__main__':
     parser.add_argument("--fom", action='store_true')
     parser.add_argument("--ftn", action='store_true')
     parser.add_argument("--test", action='store_true')
+    parser.add_argument("--ep", action='store_true')
     args = parser.parse_args()
 
     main(args)

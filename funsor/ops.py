@@ -326,8 +326,8 @@ UNITS = {
 
 
 PRODUCT_INVERSES = {
-    mul: safediv,
-    add: safesub,
+    mul: truediv,  # safediv,
+    add: sub,  # safesub,
 }
 
 
