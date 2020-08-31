@@ -8,11 +8,14 @@ from pyro.generic import distributions as dist
 from pyro.generic import infer, optim, pyro, pyro_backend
 from torch.distributions import constraints
 
+import funsor
 from funsor.interpreter import interpretation
 from funsor.montecarlo import monte_carlo
 
 
 def main(args):
+    funsor.set_backend("torch")
+
     # Define a basic model with a single Normal latent random variable `loc`
     # and a batch of Normally distributed observations.
     def model(data):

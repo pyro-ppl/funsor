@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 
+import funsor
 import funsor.torch.distributions as f_dist
 import funsor.ops as ops
 from funsor.domains import Reals
@@ -203,6 +204,7 @@ def track(args):
 
 
 def main(args):
+    funsor.set_backend("torch")
     if args.force or not args.metrics_filename or not os.path.exists(args.metrics_filename):
         results = track(args)
     else:
