@@ -11,6 +11,8 @@ import funsor.ops as ops
 
 
 def main(args):
+    funsor.set_backend("torch")
+
     # Declare parameters.
     trans_probs = funsor.Tensor(torch.tensor([[0.9, 0.1],
                                               [0.1, 0.9]], requires_grad=True))

@@ -14,6 +14,8 @@ from funsor.terms import lazy
 
 
 def main(args):
+    funsor.set_backend("torch")
+
     # Declare parameters.
     trans_noise = torch.tensor(0.1, requires_grad=True)
     emit_noise = torch.tensor(0.5, requires_grad=True)

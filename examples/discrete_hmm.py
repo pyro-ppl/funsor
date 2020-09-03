@@ -15,6 +15,8 @@ from funsor.terms import lazy
 
 
 def main(args):
+    funsor.set_backend("torch")
+
     # Declare parameters.
     trans_probs = torch.tensor([[0.2, 0.8], [0.7, 0.3]], requires_grad=True)
     emit_probs = torch.tensor([[0.4, 0.6], [0.1, 0.9]], requires_grad=True)

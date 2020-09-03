@@ -7,6 +7,7 @@ from collections import OrderedDict
 
 import torch
 
+import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
 from funsor.domains import Bint
@@ -36,6 +37,7 @@ def model(size, position=0):
 
 
 def main(args):
+    funsor.set_backend("torch")
     torch.manual_seed(args.seed)
 
     print_ = print if args.verbose else lambda msg: None

@@ -244,6 +244,8 @@ class SLDS(nn.Module):
 
 
 def main(args):
+    funsor.set_backend("torch")
+
     # download and pre-process EEG data if not in test mode
     if not args.test:
         download_data()

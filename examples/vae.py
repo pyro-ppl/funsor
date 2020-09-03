@@ -48,6 +48,8 @@ class Decoder(nn.Module):
 
 
 def main(args):
+    funsor.set_backend("torch")
+
     encoder = Encoder()
     decoder = Decoder()
 
