@@ -319,25 +319,34 @@ class CoerceToFunsor:
         module_name = BACKEND_TO_DISTRIBUTIONS_BACKEND[self.backend]
         self.module = importlib.import_module(module_name)
 
-    @functools.lru_cache
-    def _get_metadata(self, cls):
-        ast_fields = getargspec(cls.__init__)[0][1:]
-        arg_constraints = getattr(cls, "arg_constraints", {})
-        funsor_cls = getattr(self.module, cls.__name__, None)
-        return ast_fields, arg_constraints, funsor_cls
-
     def __call__(self, cls, args, kwargs):
-        ast_fields, arg_constraints, funsor_cls = self._get_metadata(cls)
+        # Check whether distribution class takes any tensor inputs.
+        arg_constraints = getattr(cls, "arg_constraints", None)
         if not arg_constraints:
             return
-        if not any(isinstance(value, (str, Funsor))
+
+        # Check whether any tensor inputs are actually funsors.
+        try:
+            ast_fields = cls._funsor_ast_fields
+        except AttributeError:
+            ast_fields = cls._funsor_ast_fields = getargspec(cls.__init__)[0][1:]
+        if not any(isinstance(value, Funsor)
                    for pairs in (zip(ast_fields, args), kwargs.items())
-                   for name, value in pairs if name in arg_constraints):
+                   for name, value in pairs
+                   if name in arg_constraints):
             return
+
+        # Check for a corresponding funsor class.
+        try:
+            funsor_cls = cls._funsor_cls
+        except AttributeError:
+            funsor_cls = cls._funsor_cls = getattr(self.module, cls.__name__, None)
         if funsor_cls is None:
             warnings.warn("missing funsor for {}".format(cls.__name__),
                           RuntimeWarning)
             return
+
+        # Coerce to funsor.
         return funsor_cls(*args, **kwargs)
 
 
