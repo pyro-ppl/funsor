@@ -19,7 +19,8 @@ from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
                            ignore_jit_warnings, numeric_array, stack)
-from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Independent, Lebesgue, Number, Variable, \
+    eager, normalize, reflect, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend
 
 
@@ -121,17 +122,23 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         inputs.update(inputs_)
         sample_shape = tuple(v.size for v in sample_inputs.values())
 
-        raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
-        sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
-        if self.has_rsample:
-            raw_sample = raw_dist.rsample(*sample_args)
-        else:
-            raw_sample = ops.detach(raw_dist.sample(*sample_args))
+        # arbitrary name-dim mapping, since we're converting back to a funsor anyway
+        name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(self.inputs.items())
+                       if isinstance(domain.dtype, int) and name != self.value.name}
+        dim_to_name = {dim: name for name, dim in name_to_dim.items()}
+        dim_to_name[min(dim_to_name.keys(), default=0)-1] = self.value.name
 
-        result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
+        raw_dist = to_data(self, name_to_dim=name_to_dim)
+
+        sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
+        raw_value = raw_dist.rsample(*sample_args) if self.has_rsample else \
+            ops.detach(raw_dist.sample(*sample_args))
+
+        funsor_sample = to_funsor(raw_value, output=self.value.output, dim_to_name=dim_to_name)
+        result = funsor.delta.Delta(value.name, funsor_value)
         if not self.has_rsample:
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
-            raw_log_prob = raw_dist.log_prob(raw_sample)
+            raw_log_prob = raw_dist.log_prob(raw_value)
             dice_factor = Tensor(raw_log_prob - ops.detach(raw_log_prob), inputs)
             result = result + dice_factor
         return result
@@ -196,7 +203,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 # Distribution Wrappers
 ################################################################################
 
-
 def make_dist(backend_dist_class, param_names=()):
     if not param_names:
         param_names = tuple(name for name in inspect.getfullargspec(backend_dist_class.__init__)[0][1:]
@@ -206,12 +212,17 @@ def make_dist(backend_dist_class, param_names=()):
     def dist_init(self, **kwargs):
         return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
+    def normalize_dist_lebesgue(*args):
+        name, domain = [(k, v) for k, v in args[-1].inputs if not isinstance(v, funsor.domains.BintType)][0]
+        return Lebesgue(name, domain) + reflect(dist_class, *args)
+
     dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {
         'dist_class': backend_dist_class,
         '__init__': dist_init,
     })
 
     eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
+    normalize.register(dist_class, *((Funsor,) * (len(param_names) + 1)))(normalize_dist_lebesgue)
 
     return dist_class
 
@@ -271,8 +282,16 @@ def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     return mask * funsor_base_dist
 
 
+# @to_funsor.register(TransformedDistribution)
 def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
-    raise NotImplementedError("TODO implement conversion of TransformedDistribution")
+    base_dist, transforms = backend_dist, []
+    while isinstance(base_dist, TransformedDistribution):
+        transforms.append(base_dist.transform)
+        base_dist = base_dist.base_dist
+    funsor_base_dist = to_funsor(base_dist, output=output, dim_to_name=dim_to_name)
+    inv_transform = reduce(lambda tfm, expr: op.inv(expr), transforms,
+                           to_funsor("value", output=funsor_base_dist.inputs["value"]))
+    return funsor_base_dist(value=inv_transform)
 
 
 def mvndist_to_funsor(backend_dist, output=None, dim_to_name=None, real_inputs=OrderedDict()):

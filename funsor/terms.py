@@ -821,6 +821,32 @@ def _to_data_funsor(x, name_to_dim=None):
     raise PatternMissingError("cannot convert to a non-Funsor: {}".format(repr(x)))
 
 
+class Lebesgue(Funsor):
+    """
+    This is used to mark measures as distinct from densities. For example we
+    can represent ``dx = Lebesgue("x", reals())`` and
+    ``d/dx = -Lebesgue("x", reals())``.
+    """
+    def __init__(self, name, domain):
+        assert isinstance(name, str)
+        # assert isinstance(domain, DomainType)
+        inputs = OrderedDict([(name, domain)])
+        output = reals()
+        fresh = frozenset({name})
+        super().__init__(inputs, output, fresh)
+        self.name = name
+        self.domain = domain
+
+    def eager_subs(self, subs):
+        assert len(subs) == 1 and subs[0][0] == self.name
+        value = subs[0][1]
+
+        from funsor.delta import solve  # TODO refactor
+        var = Variable(self.name, self.inputs[self.name])
+        name, point, log_density = solve(value, var)
+        return log_density
+
+
 class Variable(Funsor):
     """
     Funsor representing a single free variable.
