@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import importlib
 import inspect
 import math
 import typing
+import warnings
 from collections import OrderedDict
 from importlib import import_module
 
@@ -20,7 +22,7 @@ from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
                            ignore_jit_warnings, numeric_array, stack)
 from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
-from funsor.util import broadcast_shape, get_backend
+from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
 
 BACKEND_TO_DISTRIBUTIONS_BACKEND = {
@@ -285,6 +287,75 @@ def mvndist_to_funsor(backend_dist, output=None, dim_to_name=None, real_inputs=O
     return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
 
 
+class BackendDistributionMeta(type):
+    """
+    Metaclass class for backend distribution libraries.
+
+    Example::
+
+        # in foo/distributions.py
+        class DistributionMeta(BackendDistributionMeta):
+            _funsor_backend = "foo"
+
+        class Distribution(metaclass=DistributionMeta):
+            ...
+    """
+    _funsor_backend = "defined by derived class"
+
+    def __init__(cls, name, bases, dct):
+        super().__init__(name, bases, dct)
+        cls._funsor_args = getargspec(cls.__init__)[0][1:]
+
+    def __call__(cls, *args, **kwargs):
+        arg_constraints = getattr(cls, "arg_constraints", ())
+        if arg_constraints:
+            if any(isinstance(value, (str, Funsor))
+                   for pairs in (zip(cls._funsor_args, args), kwargs.items())
+                   for name, value in pairs if name in arg_constraints):
+                funsor_cls = cls._funsor_class
+                if funsor_cls is not None:
+                    return cls._funsor_class(*args, **kwargs)
+                warnings.warn("missing funsor for {}".format(cls.__name__), RuntimeWarning)
+        return super().__call__(*args, **kwargs)
+
+    @lazy_property
+    def _funsor_class(cls):
+        module_name = BACKEND_TO_DISTRIBUTIONS_BACKEND[cls._funsor_backend]
+        dist = importlib.import_module(module_name)
+        return getattr(dist, cls.__name__, None)
+
+
+class CoerceToFunsor:
+    """
+    """
+    def __init__(self, self.backend):
+        self.backend = backend
+
+    @lazy_property
+    def module(self):
+        funsor.set_backend(self.backend)
+        module_name = BACKEND_TO_DISTRIBUTIONS_BACKEND[self.backend]
+        self.module = importlib.import_module(module_name)
+
+    @functools.lru_cache
+    def _get_metadata(self, cls):
+        ast_fields = getargspec(cls.__init__)[0][1:]
+        arg_constraints = getattr(cls, "arg_constraints", {})
+        funsor_cls = getattr(self.module, cls.__name__, None)
+        return ast_fields, arg_constraints, funsor_cls
+
+    def __call__(self, cls, args, kwargs):
+        ast_fields, arg_constraints, funsor_cls = self._get_metadata(cls)
+        if not arg_constraints:
+            ast_fields, funsor_cls = self._get_metadata(cls)
+            if any(isinstance(value, (str, Funsor))
+                   for pairs in (zip(ast_fields, args), kwargs.items())
+                   for name, value in pairs if name in arg_constraints):
+                if funsor_cls is not None:
+                    return funsor_cls(*args, **kwargs)
+                warnings.warn("missing funsor for {}".format(cls.__name__), RuntimeWarning)
+
+
 ###############################################################
 # Converting distribution funsors to backend distributions
 ###############################################################
@@ -346,8 +417,10 @@ def Bernoulli(probs=None, logits=None, value='value'):
     """
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     if probs is not None:
+        probs = to_funsor(probs, output=Real)
         return backend_dist.BernoulliProbs(probs, value)  # noqa: F821
     if logits is not None:
+        logits = to_funsor(logits, output=Real)
         return backend_dist.BernoulliLogits(logits, value)  # noqa: F821
     raise ValueError('Either probs or logits must be specified')
 
