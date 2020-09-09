@@ -287,48 +287,30 @@ def mvndist_to_funsor(backend_dist, output=None, dim_to_name=None, real_inputs=O
     return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
 
 
-class BackendDistributionMeta(type):
+class CoerceToFunsor:
     """
-    Metaclass class for backend distribution libraries.
+    Handler to reinterpret a backend distribution ``D`` as a corresponding
+    funsor during ``type(D).__call__()`` in case any constructor args are
+    funsors rather than backend tensors.
 
-    Example::
+    Example usage::
 
-        # in foo/distributions.py
-        class DistributionMeta(BackendDistributionMeta):
-            _funsor_backend = "foo"
+        # in foo/distribution.py
+        coerce_to_funsor = CoerceToFunsor("foo")
+
+        class DistributionMeta(type):
+            def __call__(cls, *args, **kwargs):
+                result = coerce_to_funsor(cls, args, kwargs)
+                if result is not None:
+                    return result
+                return super().__call__(*args, **kwargs)
 
         class Distribution(metaclass=DistributionMeta):
             ...
+
+    :param str backend: Name of a funsor backend.
     """
-    _funsor_backend = "defined by derived class"
-
-    def __init__(cls, name, bases, dct):
-        super().__init__(name, bases, dct)
-        cls._funsor_args = getargspec(cls.__init__)[0][1:]
-
-    def __call__(cls, *args, **kwargs):
-        arg_constraints = getattr(cls, "arg_constraints", ())
-        if arg_constraints:
-            if any(isinstance(value, (str, Funsor))
-                   for pairs in (zip(cls._funsor_args, args), kwargs.items())
-                   for name, value in pairs if name in arg_constraints):
-                funsor_cls = cls._funsor_class
-                if funsor_cls is not None:
-                    return cls._funsor_class(*args, **kwargs)
-                warnings.warn("missing funsor for {}".format(cls.__name__), RuntimeWarning)
-        return super().__call__(*args, **kwargs)
-
-    @lazy_property
-    def _funsor_class(cls):
-        module_name = BACKEND_TO_DISTRIBUTIONS_BACKEND[cls._funsor_backend]
-        dist = importlib.import_module(module_name)
-        return getattr(dist, cls.__name__, None)
-
-
-class CoerceToFunsor:
-    """
-    """
-    def __init__(self, self.backend):
+    def __init__(self, backend):
         self.backend = backend
 
     @lazy_property
@@ -347,13 +329,16 @@ class CoerceToFunsor:
     def __call__(self, cls, args, kwargs):
         ast_fields, arg_constraints, funsor_cls = self._get_metadata(cls)
         if not arg_constraints:
-            ast_fields, funsor_cls = self._get_metadata(cls)
-            if any(isinstance(value, (str, Funsor))
+            return
+        if not any(isinstance(value, (str, Funsor))
                    for pairs in (zip(ast_fields, args), kwargs.items())
                    for name, value in pairs if name in arg_constraints):
-                if funsor_cls is not None:
-                    return funsor_cls(*args, **kwargs)
-                warnings.warn("missing funsor for {}".format(cls.__name__), RuntimeWarning)
+            return
+        if funsor_cls is None:
+            warnings.warn("missing funsor for {}".format(cls.__name__),
+                          RuntimeWarning)
+            return
+        return funsor_cls(*args, **kwargs)
 
 
 ###############################################################
