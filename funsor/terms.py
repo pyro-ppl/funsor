@@ -831,7 +831,7 @@ class Lebesgue(Funsor):
         assert isinstance(name, str)
         # assert isinstance(domain, DomainType)
         inputs = OrderedDict([(name, domain)])
-        output = reals()
+        output = Real
         fresh = frozenset({name})
         super().__init__(inputs, output, fresh)
         self.name = name
@@ -840,6 +840,8 @@ class Lebesgue(Funsor):
     def eager_subs(self, subs):
         assert len(subs) == 1 and subs[0][0] == self.name
         value = subs[0][1]
+        if not any(v == self.domain for v in value.inputs.values()):
+            return to_funsor(0.)
 
         from funsor.delta import solve  # TODO refactor
         var = Variable(self.name, self.inputs[self.name])

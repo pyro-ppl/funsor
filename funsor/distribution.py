@@ -117,16 +117,15 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         value = params.pop("value")
         assert all(isinstance(v, (Number, Tensor)) for v in params.values())
         assert isinstance(value, Variable) and value.name in sampled_vars
-        inputs_, tensors = align_tensors(*params.values())
-        inputs = OrderedDict(sample_inputs.items())
-        inputs.update(inputs_)
+        inputs, tensors = align_tensors(*params.values())
+        inputs.update(sample_inputs)
         sample_shape = tuple(v.size for v in sample_inputs.values())
+        value_name = [name for name, domain in value.inputs.items()  # TODO is this right?
+                      if domain == value.output][0]
 
         # arbitrary name-dim mapping, since we're converting back to a funsor anyway
-        name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(self.inputs.items())
-                       if isinstance(domain.dtype, int) and name != self.value.name}
+        name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(inputs.items())}
         dim_to_name = {dim: name for name, dim in name_to_dim.items()}
-        dim_to_name[min(dim_to_name.keys(), default=0)-1] = self.value.name
 
         raw_dist = to_data(self, name_to_dim=name_to_dim)
 
@@ -134,12 +133,13 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         raw_value = raw_dist.rsample(*sample_args) if self.has_rsample else \
             ops.detach(raw_dist.sample(*sample_args))
 
-        funsor_sample = to_funsor(raw_value, output=self.value.output, dim_to_name=dim_to_name)
-        result = funsor.delta.Delta(value.name, funsor_value)
+        funsor_value = to_funsor(raw_value, output=self.value.output, dim_to_name=dim_to_name)
+        result = funsor.delta.Delta(value_name, funsor_value)
         if not self.has_rsample:
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
             raw_log_prob = raw_dist.log_prob(raw_value)
-            dice_factor = Tensor(raw_log_prob - ops.detach(raw_log_prob), inputs)
+            dice_factor = to_funsor(raw_log_prob - ops.detach(raw_log_prob),
+                                    output=self.output, dim_to_name=dim_to_name)
             result = result + dice_factor
         return result
 
@@ -213,7 +213,7 @@ def make_dist(backend_dist_class, param_names=()):
         return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
     def normalize_dist_lebesgue(*args):
-        name, domain = [(k, v) for k, v in args[-1].inputs if not isinstance(v, funsor.domains.BintType)][0]
+        name, domain = [(k, v) for k, v in args[-1].inputs.items() if not isinstance(v, funsor.domains.BintType)][0]
         return Lebesgue(name, domain) + reflect(dist_class, *args)
 
     dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {

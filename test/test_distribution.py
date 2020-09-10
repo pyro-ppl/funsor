@@ -730,8 +730,8 @@ def _get_stat_diff(funsor_dist_class, sample_inputs, inputs, num_samples, statis
             sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
         ).reduce(ops.add, frozenset(sample_inputs))
 
-        inputs, tensors = align_tensors(*list(funsor_dist.params.values())[:-1])
-        raw_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], tensors)))
+        inputs, tensors = align_tensors(*params)
+        raw_dist = funsor_dist_class.dist_class(*tensors)
         expected_mean = Tensor(raw_dist.mean, inputs)
 
         if statistic == "mean":

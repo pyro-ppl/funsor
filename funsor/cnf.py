@@ -110,10 +110,12 @@ class Contraction(Funsor):
                 # Sample variables greedily in order of the terms in which they appear.
                 for term in self.terms:
                     greedy_vars = sampled_vars.intersection(term.inputs)
-                    if greedy_vars:
+                    if greedy_vars and not isinstance(term, Lebesgue):
                         break
                 greedy_terms, terms = [], []
                 for term in self.terms:
+                    if isinstance(term, Lebesgue) and term.name in sampled_vars:
+                        continue
                     (terms if greedy_vars.isdisjoint(term.inputs) else greedy_terms).append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
