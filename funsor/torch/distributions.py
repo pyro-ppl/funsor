@@ -32,7 +32,7 @@ from funsor.distribution import (  # noqa: F401
     mvndist_to_funsor,
     transformeddist_to_funsor,
 )
-from funsor.domains import Reals
+from funsor.domains import Real, Reals
 import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
 from funsor.terms import Binary, Funsor, Variable, eager, to_funsor
@@ -121,6 +121,20 @@ def _dirichlet_infer_param_domain(cls, name, raw_shape):
 
 
 Dirichlet._infer_param_domain = _dirichlet_infer_param_domain
+
+
+# TODO fix DirichletMultinomial.arg_constraints["concentration"] to be a
+# constraints.independent[constraints.positive]
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _dirichlet_multinomial_infer_param_domain(cls, name, raw_shape):
+    if name == "concentration":
+        return Reals[raw_shape[-1]]
+    assert name == "total_count"
+    return Real
+
+
+DirichletMultinomial._infer_param_domain = _dirichlet_multinomial_infer_param_domain
 
 
 ###############################################
