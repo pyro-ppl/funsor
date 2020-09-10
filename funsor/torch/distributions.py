@@ -111,6 +111,18 @@ Multinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)  
 DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)  # noqa: F821
 
 
+# TODO fix Dirichlet.arg_constraints["concentration"] to be a
+# constraints.independent[constraints.positive]
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _dirichlet_infer_param_domain(cls, name, raw_shape):
+    assert name == "concentration"
+    return Reals[raw_shape[-1]]
+
+
+Dirichlet._infer_param_domain = _dirichlet_infer_param_domain
+
+
 ###############################################
 # Converting PyTorch Distributions to funsors
 ###############################################

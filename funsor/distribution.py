@@ -185,10 +185,15 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             output = Reals[raw_shape[-2:]]
         # resolve the issue: logits's constraints are real (instead of real_vector)
         # for discrete multivariate distributions in Pyro
-        elif support_name == "_Real" and name == "logits" and (
-                "probs" in cls.dist_class.arg_constraints
-                and type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex"):
-            output = Reals[raw_shape[-1]]
+        elif support_name == "_Real":
+            if name == "logits" and (
+                    "probs" in cls.dist_class.arg_constraints
+                    and type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex"):
+                output = Reals[raw_shape[-1]]
+            else:
+                output = Real
+        elif support_name in ("_Interval", "_GreaterThan", "_LessThan"):
+            output = Real
         else:
             output = None
         return output
@@ -317,7 +322,7 @@ class CoerceToFunsor:
     def module(self):
         funsor.set_backend(self.backend)
         module_name = BACKEND_TO_DISTRIBUTIONS_BACKEND[self.backend]
-        self.module = importlib.import_module(module_name)
+        return importlib.import_module(module_name)
 
     def __call__(self, cls, args, kwargs):
         # Check whether distribution class takes any tensor inputs.
@@ -330,7 +335,7 @@ class CoerceToFunsor:
             ast_fields = cls._funsor_ast_fields
         except AttributeError:
             ast_fields = cls._funsor_ast_fields = getargspec(cls.__init__)[0][1:]
-        if not any(isinstance(value, Funsor)
+        if not any(isinstance(value, (str, Funsor))
                    for pairs in (zip(ast_fields, args), kwargs.items())
                    for name, value in pairs
                    if name in arg_constraints):
