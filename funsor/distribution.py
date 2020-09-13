@@ -212,17 +212,12 @@ def make_dist(backend_dist_class, param_names=()):
     def dist_init(self, **kwargs):
         return Distribution.__init__(self, *tuple(kwargs[k] for k in self._ast_fields))
 
-    def normalize_dist_lebesgue(*args):
-        name, domain = [(k, v) for k, v in args[-1].inputs.items() if not isinstance(v, funsor.domains.BintType)][0]
-        return Lebesgue(name, domain) + reflect(dist_class, *args)
-
     dist_class = DistributionMeta(backend_dist_class.__name__.split("Wrapper_")[-1], (Distribution,), {
         'dist_class': backend_dist_class,
         '__init__': dist_init,
     })
 
     eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
-    normalize.register(dist_class, *((Funsor,) * (len(param_names) + 1)))(normalize_dist_lebesgue)
 
     return dist_class
 
