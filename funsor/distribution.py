@@ -291,7 +291,7 @@ def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     funsor_base_dist = to_funsor(base_dist, output=output, dim_to_name=dim_to_name)
     inv_transform = reduce(lambda tfm, expr: tfm_to_op(tfm).inv(expr), transforms,
                            to_funsor("value", output=funsor_base_dist.inputs["value"]))
-    return funsor_base_dist(value=inv_transform)
+    return (Lebesgue("value", funsor_base_dist.inputs["value"]) + funsor_base_dist)(value=inv_transform)
 
 
 def mvndist_to_funsor(backend_dist, output=None, dim_to_name=None, real_inputs=OrderedDict()):
