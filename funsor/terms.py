@@ -829,7 +829,7 @@ class Lebesgue(Funsor):
     """
     def __init__(self, name, domain):
         assert isinstance(name, str)
-        # assert isinstance(domain, DomainType)
+        assert isinstance(domain, funsor.domains.RealsType)
         inputs = OrderedDict([(name, domain)])
         output = Real
         fresh = frozenset({name})

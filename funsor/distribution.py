@@ -279,6 +279,7 @@ def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
 
 @functools.singledispatch
 def transform_to_op(tfm):
+    # backend-specific
     raise NotImplementedError("Could not convert {} to a Funsor op".format(tfm))
 
 
@@ -316,6 +317,13 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     pyro_dist = pyro_dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     funsor_event_shape = funsor_dist.value.output.shape
     pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
+
+    # TODO get this working for all backends
+    # if not isinstance(funsor_dist.value, Variable):
+    #     inv_value = solve(funsor_dist.value, Variable("value"))
+    #     transforms = to_data(inv_value, name_to_dim=name_to_dim)
+    #     pyro_dist = TransformedDistribution(pyro_dist, transforms)
+
     if pyro_dist.event_shape != funsor_event_shape:
         raise ValueError("Event shapes don't match, something went wrong")
     return pyro_dist
