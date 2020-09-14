@@ -7,6 +7,8 @@ from numbers import Number
 import numpy as np
 from multipledispatch import Dispatcher
 
+from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, Op, TransformOp
+
 _builtin_abs = abs
 _builtin_all = all
 _builtin_any = any
@@ -14,60 +16,6 @@ _builtin_max = max
 _builtin_min = min
 _builtin_pow = pow
 _builtin_sum = sum
-
-
-class Op(Dispatcher):
-    def __init__(self, fn, *, name=None):
-        if name is None:
-            name = fn.__name__
-        super(Op, self).__init__(name)
-        # register as default operation
-        for nargs in (1, 2):
-            default_signature = (object,) * nargs
-            self.add(default_signature, fn)
-
-    def __copy__(self):
-        return self
-
-    def __deepcopy__(self, memo):
-        return self
-
-    def __reduce__(self):
-        return self.__name__
-
-    def __repr__(self):
-        return "ops." + self.__name__
-
-    def __str__(self):
-        return self.__name__
-
-
-class TransformOp(Op):
-    def set_inv(self, fn):
-        """
-        :param callable fn: A function that inputs an arg ``y`` and outputs a
-            value ``x`` such that ``y=self(x)``.
-        """
-        assert callable(fn)
-        self.inv = fn
-        return fn
-
-    def set_log_abs_det_jacobian(self, fn):
-        """
-        :param callable fn: A function that inputs two args ``x, y``, where
-            ``y=self(x)``, and returns ``log(abs(det(dy/dx)))``.
-        """
-        assert callable(fn)
-        self.log_abs_det_jacobian = fn
-        return fn
-
-    @staticmethod
-    def inv(x):
-        raise NotImplementedError
-
-    @staticmethod
-    def log_abs_det_jacobian(x, y):
-        raise NotImplementedError
 
 
 # FIXME Most code assumes this is an AssociativeCommutativeOp.
@@ -308,27 +256,19 @@ def reciprocal(x):
     raise ValueError("No reciprocal for type {}".format(type(x)))
 
 
-DISTRIBUTIVE_OPS = frozenset([
-    (logaddexp, add),
-    (add, mul),
-    (max, mul),
-    (min, mul),
-    (max, add),
-    (min, add),
-    (sample, add),
-])
+DISTRIBUTIVE_OPS.add((logaddexp, add))
+DISTRIBUTIVE_OPS.add((add, mul))
+DISTRIBUTIVE_OPS.add((max, mul))
+DISTRIBUTIVE_OPS.add((min, mul))
+DISTRIBUTIVE_OPS.add((max, add))
+DISTRIBUTIVE_OPS.add((min, add))
+DISTRIBUTIVE_OPS.add((sample, add))
 
+UNITS[mul] = 1.
+UNITS[add] = 0.
 
-UNITS = {
-    mul: 1.,
-    add: 0.,
-}
-
-
-PRODUCT_INVERSES = {
-    mul: safediv,
-    add: safesub,
-}
+PRODUCT_INVERSES[mul] = safediv
+PRODUCT_INVERSES[add] = safesub
 
 
 ######################
@@ -542,19 +482,19 @@ def unsqueeze(x, dim):
 __all__ = [
     'AddOp',
     'AssociativeOp',
-    'DISTRIBUTIVE_OPS',
+    'DivOp',
     'ExpOp',
     'GetitemOp',
     'LogAddExpOp',
     'LogOp',
+    'MatmulOp',
+    'MulOp',
     'NegOp',
-    'Op',
-    'PRODUCT_INVERSES',
+    'NullOp',
     'ReciprocalOp',
     'SampleOp',
     'SubOp',
     'ReshapeOp',
-    'UNITS',
     'abs',
     'add',
     'all',
@@ -596,7 +536,9 @@ __all__ = [
     'new_arange',
     'new_eye',
     'new_zeros',
+    'nullop',
     'or_',
+    'permute',
     'pow',
     'prod',
     'reciprocal',
