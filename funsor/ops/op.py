@@ -1,15 +1,21 @@
+# Copyright Contributors to the Pyro project.
+# SPDX-License-Identifier: Apache-2.0
+
 from multipledispatch import Dispatcher
 
 
 class Op(Dispatcher):
     def __init__(self, fn, *, name=None):
+        if isinstance(fn, str):
+            fn, name = None, fn
         if name is None:
             name = fn.__name__
         super(Op, self).__init__(name)
-        # register as default operation
-        for nargs in (1, 2):
-            default_signature = (object,) * nargs
-            self.add(default_signature, fn)
+        if fn is not None:
+            # register as default operation
+            for nargs in (1, 2):
+                default_signature = (object,) * nargs
+                self.add(default_signature, fn)
 
     def __copy__(self):
         return self

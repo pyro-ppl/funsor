@@ -12,3 +12,9 @@ Operations
     :undoc-members:
     :show-inheritance:
     :member-order: bysource
+
+.. automodule:: funsor.ops.array
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
