@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numpy as np
-from multipledispatch import Dispatcher
 
 from .builtin import log, max, min, reciprocal, safediv, safesub
 from .op import Op
@@ -17,16 +16,16 @@ all = Op(np.all)
 amax = Op(np.amax)
 amin = Op(np.amin)
 any = Op(np.any)
-astype = Dispatcher("ops.astype")
-cat = Dispatcher("ops.cat")
-clamp = Dispatcher("ops.clamp")
-diagonal = Dispatcher("ops.diagonal")
-einsum = Dispatcher("ops.einsum")
+astype = Op("astype")
+cat = Op("cat")
+clamp = Op("clamp")
+diagonal = Op("diagonal")
+einsum = Op("einsum")
 full_like = Op(np.full_like)
 prod = Op(np.prod)
-stack = Dispatcher("ops.stack")
+stack = Op("stack")
 sum = Op(np.sum)
-transpose = Dispatcher("ops.transpose")
+transpose = Op("transpose")
 
 
 class ReshapeMeta(type):
