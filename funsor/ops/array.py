@@ -1,9 +1,11 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import math
+
 import numpy as np
 
-from .builtin import log, max, min, reciprocal, safediv, safesub
+from .builtin import exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt
 from .op import Op
 
 _builtin_all = all
@@ -26,6 +28,18 @@ prod = Op(np.prod)
 stack = Op("stack")
 sum = Op(np.sum)
 transpose = Op("transpose")
+
+sqrt.register(array)(np.sqrt)
+exp.register(array)(np.exp)
+log1p.register(array)(np.log1p)
+
+
+@log.register(array)
+def _log(x):
+    if x.dtype == 'bool':
+        return np.where(x, 0., -math.inf)
+    with np.errstate(divide='ignore'):  # skip the warning of log(0.)
+        return np.log(x)
 
 
 class ReshapeMeta(type):
