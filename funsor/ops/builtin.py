@@ -1,10 +1,9 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import math
 import operator
 from numbers import Number
-
-import numpy as np  # TODO remove dependency on numpy in this file
 
 from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, Op, TransformOp
 
@@ -121,7 +120,7 @@ def _unary_add(x):
 
 @Op
 def sqrt(x):
-    return np.sqrt(x)
+    return math.sqrt(x)
 
 
 class ExpOp(TransformOp):
@@ -130,7 +129,7 @@ class ExpOp(TransformOp):
 
 @ExpOp
 def exp(x):
-    return np.exp(x)
+    return math.exp(x)
 
 
 @exp.set_log_abs_det_jacobian
@@ -144,10 +143,7 @@ class LogOp(TransformOp):
 
 @LogOp
 def log(x):
-    if isinstance(x, bool) or (isinstance(x, np.ndarray) and x.dtype == 'bool'):
-        return np.where(x, 0., float('-inf'))
-    with np.errstate(divide='ignore'):  # skip the warning of log(0.)
-        return np.log(x)
+    return math.log(x) if x > 0 else -math.inf
 
 
 @log.set_log_abs_det_jacobian
@@ -161,12 +157,12 @@ log.set_inv(exp)
 
 @Op
 def log1p(x):
-    return np.log1p(x)
+    return math.log1p(x)
 
 
 @Op
 def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+    return 1 / (1 + exp(-x))
 
 
 @Op
