@@ -120,7 +120,7 @@ def _dirichlet_infer_param_domain(cls, name, raw_shape):
     return Reals[raw_shape[-1]]
 
 
-Dirichlet._infer_param_domain = _dirichlet_infer_param_domain
+Dirichlet._infer_param_domain = _dirichlet_infer_param_domain  # noqa: F821
 
 
 # TODO fix DirichletMultinomial.arg_constraints["concentration"] to be a
@@ -134,7 +134,7 @@ def _dirichlet_multinomial_infer_param_domain(cls, name, raw_shape):
     return Real
 
 
-DirichletMultinomial._infer_param_domain = _dirichlet_multinomial_infer_param_domain
+DirichletMultinomial._infer_param_domain = _dirichlet_multinomial_infer_param_domain  # noqa: F821
 
 
 ###############################################

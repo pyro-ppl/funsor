@@ -292,7 +292,7 @@ def mvndist_to_funsor(backend_dist, output=None, dim_to_name=None, real_inputs=O
     return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
 
 
-class CoerceToFunsor:
+class CoerceDistributionToFunsor:
     """
     Handler to reinterpret a backend distribution ``D`` as a corresponding
     funsor during ``type(D).__call__()`` in case any constructor args are
@@ -301,7 +301,7 @@ class CoerceToFunsor:
     Example usage::
 
         # in foo/distribution.py
-        coerce_to_funsor = CoerceToFunsor("foo")
+        coerce_to_funsor = CoerceDistributionToFunsor("foo")
 
         class DistributionMeta(type):
             def __call__(cls, *args, **kwargs):
