@@ -6,6 +6,7 @@ import itertools
 import math
 import numbers
 import typing
+import warnings
 from collections import Hashable, OrderedDict
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
@@ -15,7 +16,7 @@ from multipledispatch.variadic import Variadic, isvariadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Domain, bint, find_domain, reals
+from funsor.domains import Bint, Domain, Real, Reals, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, lazy_property, pretty, quote
@@ -182,10 +183,10 @@ class FunsorMeta(type):
         defaults and do type conversion, thereby simplifying logic of
         interpretations.
     2.  Ensure each Funsor class has an attribute ``._ast_fields`` describing
-        its input args and each Funsor instance has an attribute ``._ast_args``
-        with values corresponding to its input args. This allows the instance
-        to be reflectively reconstructed under a different interpretation, and
-        is used by :func:`funsor.interpreter.reinterpret`.
+        its input args and each Funsor instance has an attribute
+        ``._ast_values`` with values corresponding to its input args. This
+        allows the instance to be reflectively reconstructed under a different
+        interpretation, and is used by :func:`funsor.interpreter.reinterpret`.
     3.  Cons-hash construction, so that repeatedly calling the constructor
         with identical args will product the same object. This enables cheap
         syntactic equality testing using the ``is`` operator, which is
@@ -355,8 +356,20 @@ class Funsor(object, metaclass=FunsorMeta):
     def shape(self):
         return self.output.shape
 
+    def __copy__(self):
+        return self
+
+    def __reduce__(self):
+        return type(self).__origin__, self._ast_values
+
     def __hash__(self):
         return id(self)
+
+    @lazy_property
+    def __annotations__(self):
+        type_hints = dict(self.inputs)
+        type_hints["return"] = self.output
+        return type_hints
 
     def __repr__(self):
         return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_values)))
@@ -470,7 +483,7 @@ class Funsor(object, metaclass=FunsorMeta):
         :param rng_key: a PRNG state to be used by JAX backend to generate random samples
         :type rng_key: None or JAX's random.PRNGKey
         """
-        assert self.output == reals()
+        assert self.output == Real
         sampled_vars = _convert_reduced_vars(sampled_vars)
         assert isinstance(sampled_vars, frozenset)
         if sample_inputs is None:
@@ -494,7 +507,7 @@ class Funsor(object, metaclass=FunsorMeta):
         Internal method to draw an unscaled sample.
         This should be overridden by subclasses.
         """
-        assert self.output == reals()
+        assert self.output == Real
         assert isinstance(sampled_vars, frozenset)
         assert isinstance(sample_inputs, OrderedDict)
         if sampled_vars.isdisjoint(self.inputs):
@@ -705,7 +718,7 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def __getitem__(self, other):
         if type(other) is not tuple:
-            other = to_funsor(other, bint(self.output.shape[0]))
+            other = to_funsor(other, Bint[self.output.shape[0]])
             return Binary(ops.getitem, self, other)
 
         # Handle Ellipsis slicing.
@@ -735,7 +748,7 @@ class Funsor(object, metaclass=FunsorMeta):
                     raise NotImplementedError('TODO support nontrivial slicing')
                 offset += 1
             else:
-                part = to_funsor(part, bint(result.output.shape[offset]))
+                part = to_funsor(part, Bint[result.output.shape[offset]])
                 result = Binary(GetitemOp(offset), result, part)
         return result
 
@@ -1064,7 +1077,7 @@ class Number(Funsor, metaclass=NumberMeta):
             assert isinstance(dtype, str) and dtype == "real"
             data = float(data)
         inputs = OrderedDict()
-        output = Domain((), dtype)
+        output = Real if dtype == "real" else Bint[dtype]
         super(Number, self).__init__(inputs, output)
         self.data = data
 
@@ -1161,8 +1174,8 @@ class Slice(Funsor, metaclass=SliceMeta):
         assert isinstance(step, int) and step > 0
         assert isinstance(dtype, int)
         size = max(0, (stop + step - 1 - start) // step)
-        inputs = OrderedDict([(name, bint(size))])
-        output = bint(dtype)
+        inputs = OrderedDict([(name, Bint[size])])
+        output = Bint[dtype]
         fresh = frozenset({name})
         super().__init__(inputs, output, fresh)
         self.name = name
@@ -1260,7 +1273,7 @@ class Stack(Funsor):
         assert not any(name in x.inputs for x in parts)
         assert len(set(x.output for x in parts)) == 1
         output = parts[0].output
-        domain = bint(len(parts))
+        domain = Bint[len(parts)]
         inputs = OrderedDict([(name, domain)])
         for x in parts:
             inputs.update(x.inputs)
@@ -1274,7 +1287,7 @@ class Stack(Funsor):
         index = subs[0][1]
 
         # Try to eagerly select an index.
-        assert index.output == bint(len(self.parts))
+        assert index.output == Bint[len(self.parts)]
 
         if isinstance(index, Number):
             # Select a single part.
@@ -1341,7 +1354,7 @@ class Cat(Funsor, metaclass=CatMeta):
         for x in parts:
             inputs.update(x.inputs)
         del inputs[part_name]
-        inputs[name] = bint(sum(x.inputs[part_name].size for x in parts))
+        inputs[name] = Bint[sum(x.inputs[part_name].size for x in parts)]
         fresh = frozenset({name})
         bound = frozenset({part_name})
         super().__init__(inputs, output, fresh, bound)
@@ -1428,7 +1441,7 @@ class Lambda(Funsor):
         inputs = expr.inputs.copy()
         inputs.pop(var.name, None)
         shape = (var.dtype,) + expr.output.shape
-        output = Domain(shape, expr.dtype)
+        output = Reals[shape] if expr.dtype == "real" else Bint[expr.size]
         fresh = frozenset()
         bound = frozenset({var.name})
         super(Lambda, self).__init__(inputs, output, fresh, bound)
@@ -1456,15 +1469,15 @@ class Independent(Funsor):
     This is equivalent to substitution followed by reduction::
 
         f = ...  # a batched distribution
-        assert f.inputs['x_i'] == reals(4, 5)
-        assert f.inputs['i'] == bint(3)
+        assert f.inputs['x_i'] == Reals[4, 5]
+        assert f.inputs['i'] == Bint[3]
 
         g = Independent(f, 'x', 'i', 'x_i')
-        assert g.inputs['x'] == reals(3, 4, 5)
+        assert g.inputs['x'] == Reals[3, 4, 5]
         assert 'x_i' not in g.inputs
         assert 'i' not in g.inputs
 
-        x = Variable('x', reals(3, 4, 5))
+        x = Variable('x', Reals[3, 4, 5])
         g == f(x_i=x['i']).reduce(ops.logaddexp, 'i')
 
     :param Funsor fn: A funsor.
@@ -1484,7 +1497,7 @@ class Independent(Funsor):
         inputs = fn.inputs.copy()
         shape = (inputs.pop(bint_var).dtype,) + inputs.pop(diag_var).shape
         assert reals_var not in inputs
-        inputs[reals_var] = reals(*shape)
+        inputs[reals_var] = Reals[shape]
         fresh = frozenset({reals_var})
         bound = frozenset({bint_var, diag_var})
         super(Independent, self).__init__(inputs, fn.output, fresh, bound)
@@ -1531,21 +1544,56 @@ def eager_independent_trivial(fn, reals_var, bint_var, diag_var):
     return None
 
 
-def _of_shape(fn, shape):
+def _symbolic(inputs, output, fn):
     args, vargs, kwargs, defaults = getargspec(fn)
     assert not vargs
     assert not kwargs
     names = tuple(args)
-    args = [Variable(name, size) for name, size in zip(names, shape)]
-    return to_funsor(fn(*args)).align(names)
+    if isinstance(inputs, dict):
+        args = tuple(Variable(name, inputs[name])
+                     for name in names if name in inputs)
+    else:
+        args = tuple(Variable(name, domain)
+                     for (name, domain) in zip(names, inputs))
+    assert len(args) == len(inputs)
+    return to_funsor(fn(*args), output).align(names)
 
 
+def symbolic(*signature):
+    r"""
+    Decorator to construct a symbolic :class:`Funsor` with one free
+    :class:`Variable` per function arg. This can be used either with explicit
+    types or with type hints::
+
+        # Using type hints:
+        @symbolic
+        def xpyi(x: Real, y: Reals[3], i: Bint[3]):
+            return x + y[i]
+
+        # Using explicit type annotations:
+        @symbolic(Real, Reals[3], Bint[3])
+        def xpyi(x: Real, y: Reals[3], i: Bint[3]):
+            return x + y[i]
+
+    :param \*signature: A sequence if input domains.
+    """
+    if len(signature) == 1:
+        fn = signature[0]
+        if callable(fn) and not isinstance(fn, Domain):
+            # Usage: @symbolic
+            inputs = typing.get_type_hints(fn)
+            output = inputs.pop("return", None)
+            return _symbolic(inputs, output, fn)
+    # Usage: @symbolic(Real, Reals[3], Bint[3])
+    output = None
+    return functools.partial(_symbolic, inputs, output)
+
+
+# DEPRECATED
 def of_shape(*shape):
-    """
-    Decorator to construct a :class:`Funsor` with one free :class:`Variable`
-    per function arg.
-    """
-    return functools.partial(_of_shape, shape=shape)
+    warnings.warn("@of_shape is deprecated, use @symbolic instead",
+                  DeprecationWarning)
+    return symbolic(*shape)
 
 
 ################################################################################

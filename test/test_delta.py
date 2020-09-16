@@ -5,14 +5,14 @@ import pytest
 
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import reals
+from funsor.domains import Real, Reals
 from funsor.tensor import Tensor, numeric_array
 from funsor.terms import Number, Variable
 from funsor.testing import assert_close, check_funsor, randn
 
 
 def test_eager_subs_variable():
-    v = Variable('v', reals(3))
+    v = Variable('v', Reals[3])
     point = Tensor(randn(3))
     d = Delta('foo', v)
     assert d(v=point) is Delta('foo', point)
@@ -23,13 +23,13 @@ def test_eager_subs_ground(log_density):
     point1 = Tensor(randn(3))
     point2 = Tensor(randn(3))
     d = Delta('foo', point1, log_density)
-    check_funsor(d(foo=point1), {}, reals(), numeric_array(float(log_density)))
-    check_funsor(d(foo=point2), {}, reals(), numeric_array(float('-inf')))
+    check_funsor(d(foo=point1), {}, Real, numeric_array(float(log_density)))
+    check_funsor(d(foo=point2), {}, Real, numeric_array(float('-inf')))
 
 
 def test_add_delta_funsor():
-    x = Variable('x', reals(3))
-    y = Variable('y', reals(3))
+    x = Variable('x', Reals[3])
+    y = Variable('y', Reals[3])
     d = Delta('x', y)
 
     expr = -(1 + x ** 2).log()
@@ -54,7 +54,7 @@ def test_reduce_density(log_density):
 @pytest.mark.parametrize('shape', [(), (4,), (2, 3)], ids=str)
 def test_transform_exp(shape):
     point = Tensor(ops.abs(randn(shape)))
-    x = Variable('x', reals(*shape))
+    x = Variable('x', Reals[shape])
     actual = Delta('y', point)(y=ops.exp(x))
     expected = Delta('x', point.log(), point.log().sum())
     assert_close(actual, expected)
@@ -63,7 +63,7 @@ def test_transform_exp(shape):
 @pytest.mark.parametrize('shape', [(), (4,), (2, 3)], ids=str)
 def test_transform_log(shape):
     point = Tensor(randn(shape))
-    x = Variable('x', reals(*shape))
+    x = Variable('x', Reals[shape])
     actual = Delta('y', point)(y=ops.log(x))
     expected = Delta('x', point.exp(), -point.sum())
     assert_close(actual, expected)

@@ -12,7 +12,7 @@ from functools import singledispatch
 
 import numpy as np
 
-from funsor.domains import Domain
+from funsor.domains import ArrayType
 from funsor.ops import Op, is_numeric_array
 from funsor.registry import KeyedRegistry
 from funsor.util import is_nn_module
@@ -151,7 +151,7 @@ _ground_types = (
     functools.partial,
     types.FunctionType,
     types.BuiltinFunctionType,
-    Domain,
+    ArrayType,
     Op,
     np.generic,
     np.ndarray,
@@ -218,7 +218,7 @@ for t in _ground_types:
 
 
 def is_atom(x):
-    if isinstance(x, (tuple, frozenset)) and not isinstance(x, Domain):
+    if isinstance(x, (tuple, frozenset)):
         return len(x) == 0 or all(is_atom(c) for c in x)
     return isinstance(x, _ground_types) or is_numeric_array(x) or is_nn_module(x)
 

@@ -9,7 +9,7 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.cnf import BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND, BACKEND_TO_MAP_BACKEND
-from funsor.domains import bint
+from funsor.domains import Bint
 from funsor.einsum import naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
@@ -85,8 +85,8 @@ def test_einsum_categorical(equation):
         funsor_operands = [
             Categorical(probs=Tensor(
                 operand,
-                inputs=OrderedDict([(d, bint(sizes[d])) for d in inp[:-1]])
-            ))(value=Variable(inp[-1], bint(sizes[inp[-1]]))).exp()
+                inputs=OrderedDict([(d, Bint[sizes[d]]) for d in inp[:-1]])
+            ))(value=Variable(inp[-1], Bint[sizes[inp[-1]]])).exp()
             for inp, operand in zip(inputs, operands)
         ]
 

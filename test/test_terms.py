@@ -1,7 +1,10 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import copy
+import io
 import itertools
+import pickle
 import typing
 from collections import OrderedDict
 from functools import reduce
@@ -12,7 +15,7 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.domains import Domain, bint, reals
+from funsor.domains import Array, Bint, Real, Reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
@@ -41,6 +44,7 @@ from funsor.testing import assert_close, check_funsor, random_tensor
 assert Binary  # flake8
 assert Subs  # flake8
 assert Contraction  # flake8
+assert Reals  # flake8
 
 np.seterr(all='ignore')
 
@@ -69,15 +73,15 @@ def test_to_data():
 
 def test_to_data_error():
     with pytest.raises(ValueError):
-        to_data(Variable('x', reals()))
+        to_data(Variable('x', Real))
     with pytest.raises(ValueError):
-        to_data(Variable('y', bint(12)))
+        to_data(Variable('y', Bint[12]))
 
 
 def test_cons_hash():
-    assert Variable('x', bint(3)) is Variable('x', bint(3))
-    assert Variable('x', reals()) is Variable('x', reals())
-    assert Variable('x', reals()) is not Variable('x', bint(3))
+    assert Variable('x', Bint[3]) is Variable('x', Bint[3])
+    assert Variable('x', Real) is Variable('x', Real)
+    assert Variable('x', Real) is not Variable('x', Bint[3])
     assert Number(0, 3) is Number(0, 3)
     assert Number(0.) is Number(0.)
     assert Number(0.) is not Number(0, 3)
@@ -97,38 +101,78 @@ def check_quote(x):
 @pytest.mark.parametrize('interp', [reflect, lazy, normalize, eager], ids=lambda i: i.__name__)
 def test_quote(interp):
     with interpretation(interp):
-        x = Variable('x', bint(8))
+        x = Variable('x', Bint[8])
         check_quote(x)
 
-        y = Variable('y', reals(8, 3, 3))
+        y = Variable('y', Reals[8, 3, 3])
         check_quote(y)
         check_quote(y[x])
 
-        z = Stack('i', (Number(0), Variable('z', reals())))
+        z = Stack('i', (Number(0), Variable('z', Real)))
         check_quote(z)
         check_quote(z(i=0))
         check_quote(z(i=Slice('i', 0, 1, 1, 2)))
         check_quote(z.reduce(ops.add, 'i'))
         check_quote(Cat('i', (z, z, z)))
-        check_quote(Lambda(Variable('i', bint(2)), z))
+        check_quote(Lambda(Variable('i', Bint[2]), z))
 
 
-@pytest.mark.parametrize('expr', [
-    "Variable('x', bint(3))",
-    "Variable('x', reals())",
+EXPR_STRINGS = [
+    "Variable('x', Bint[3])",
+    "Variable('x', Real)",
     "Number(0.)",
     "Number(1, dtype=10)",
-    "-Variable('x', reals())",
-    "Variable('x', reals()) + Variable('y', reals())",
-    "Variable('x', reals())(x=Number(0.))",
-])
+    "-Variable('x', Real)",
+    "Variable('x', Reals[3])[Variable('i', Bint[3])]",
+    "Variable('x', Reals[2, 2]).reshape((4,))",
+    "Variable('x', Real) + Variable('y', Real)",
+    "Variable('x', Real)(x=Number(0.))",
+    "Number(1) / Variable('x', Real)",
+    "Stack('i', (Number(0), Variable('z', Real)))",
+    "Cat('i', (Stack('i', (Number(0),)), Stack('i', (Number(1), Number(2)))))",
+    "Stack('t', (Number(1), Variable('x', Real))).reduce(ops.logaddexp, 't')",
+]
+
+
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
+def test_copy_immutable(expr):
+    x = eval(expr)
+    assert copy.copy(x) is x
+
+
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
+def test_deepcopy_immutable(expr):
+    x = eval(expr)
+    assert copy.deepcopy(x) is x
+
+
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
+def test_pickle(expr):
+    x = eval(expr)
+    f = io.BytesIO()
+    pickle.dump(x, f)
+    f.seek(0)
+    y = pickle.load(f)
+    assert y is x
+
+
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
 def test_reinterpret(expr):
     x = eval(expr)
     assert funsor.reinterpret(x) is x
 
 
+@pytest.mark.parametrize('expr', EXPR_STRINGS)
+def test_type_hints(expr):
+    x = eval(expr)
+    inputs = typing.get_type_hints(x)
+    output = inputs.pop("return")
+    assert inputs == dict(x.inputs)
+    assert output == x.output
+
+
 @pytest.mark.parametrize("expr", [
-    "Variable('x', reals())",
+    "Variable('x', Real)",
     "Number(1)",
     "Number(1).log()",
     "Number(1) + Number(2)",
@@ -141,10 +185,10 @@ def test_eager_or_die_ok(expr):
 
 
 @pytest.mark.parametrize("expr", [
-    "Variable('x', reals()).log()",
-    "Number(1) / Variable('x', reals())",
-    "Variable('x', reals()) ** Number(2)",
-    "Stack('t', (Number(1), Variable('x', reals()))).reduce(ops.logaddexp, 't')",
+    "Variable('x', Real).log()",
+    "Number(1) / Variable('x', Real)",
+    "Variable('x', Real) ** Number(2)",
+    "Stack('t', (Number(1), Variable('x', Real))).reduce(ops.logaddexp, 't')",
 ])
 def test_eager_or_die_error(expr):
     with interpretation(eager_or_die):
@@ -152,7 +196,7 @@ def test_eager_or_die_error(expr):
             eval(expr)
 
 
-@pytest.mark.parametrize('domain', [bint(3), reals()])
+@pytest.mark.parametrize('domain', [Bint[3], Real])
 def test_variable(domain):
     x = Variable('x', domain)
     check_funsor(x, {'x': domain}, domain)
@@ -162,7 +206,7 @@ def test_variable(domain):
     assert x('y') is y
     assert x(x='y') is y
     assert x(x=y) is y
-    x4 = Variable('x', bint(4))
+    x4 = Variable('x', Bint[4])
     assert x4 is not x
     assert x4('x') is x4
     assert x(y=x4) is x
@@ -172,9 +216,9 @@ def test_variable(domain):
 
 
 def test_substitute():
-    x = Variable('x', reals())
-    y = Variable('y', reals())
-    z = Variable('z', reals())
+    x = Variable('x', Real)
+    y = Variable('y', Real)
+    z = Variable('z', Real)
 
     f = x * y + x * z
 
@@ -205,7 +249,7 @@ def test_unary(symbol, data):
 
     x = Number(data, dtype)
     actual = unary_eval(symbol, x)
-    check_funsor(actual, {}, Domain((), dtype), expected_data)
+    check_funsor(actual, {}, Array[dtype, ()], expected_data)
 
 
 BINARY_OPS = [
@@ -240,7 +284,7 @@ def test_binary(symbol, data1, data2):
     x1 = Number(data1, dtype)
     x2 = Number(data2, dtype)
     actual = binary_eval(symbol, x1, x2)
-    check_funsor(actual, {}, Domain((), dtype), expected_data)
+    check_funsor(actual, {}, Array[dtype, ()], expected_data)
     with interpretation(normalize):
         actual_reflect = binary_eval(symbol, x1, x2)
     assert actual.output == actual_reflect.output
@@ -249,16 +293,16 @@ def test_binary(symbol, data1, data2):
 @pytest.mark.parametrize('op', SORTED_REDUCE_OP_TO_NUMERIC,
                          ids=[op.__name__ for op in SORTED_REDUCE_OP_TO_NUMERIC])
 def test_reduce_all(op):
-    x = Variable('x', bint(2))
-    y = Variable('y', bint(3))
-    z = Variable('z', bint(4))
+    x = Variable('x', Bint[2])
+    y = Variable('y', Bint[3])
+    z = Variable('z', Bint[4])
     if isinstance(op, ops.LogAddExpOp):
         pytest.skip()  # not defined for integers
 
     with interpretation(sequential):
         f = x * y + z
         dtype = f.dtype
-        check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
+        check_funsor(f, {'x': Bint[2], 'y': Bint[3], 'z': Bint[4]}, Array[dtype, ()])
         actual = f.reduce(op)
 
     with interpretation(sequential):
@@ -280,12 +324,12 @@ def test_reduce_all(op):
                          ids=[op.__name__ for op in SORTED_REDUCE_OP_TO_NUMERIC])
 def test_reduce_subset(op, reduced_vars):
     reduced_vars = frozenset(reduced_vars)
-    x = Variable('x', bint(2))
-    y = Variable('y', bint(3))
-    z = Variable('z', bint(4))
+    x = Variable('x', Bint[2])
+    y = Variable('y', Bint[3])
+    z = Variable('z', Bint[4])
     f = x * y + z
     dtype = f.dtype
-    check_funsor(f, {'x': bint(2), 'y': bint(3), 'z': bint(4)}, Domain((), dtype))
+    check_funsor(f, {'x': Bint[2], 'y': Bint[3], 'z': Bint[4]}, Array[dtype, ()])
     if isinstance(op, ops.LogAddExpOp):
         pytest.skip()  # not defined for integers
 
@@ -310,7 +354,7 @@ def test_reduce_subset(op, reduced_vars):
 
 
 def test_reduce_syntactic_sugar():
-    i = Variable("i", bint(3))
+    i = Variable("i", Bint[3])
     x = Stack("i", (Number(1), Number(2), Number(3)))
     expected = Number(1 + 2 + 3)
     assert x.reduce(ops.add) is expected
@@ -338,9 +382,9 @@ def test_slice():
 
 @pytest.mark.parametrize('base_shape', [(), (4,), (3, 2)], ids=str)
 def test_lambda(base_shape):
-    z = Variable('z', reals(*base_shape))
-    i = Variable('i', bint(5))
-    j = Variable('j', bint(7))
+    z = Variable('z', Reals[base_shape])
+    i = Variable('i', Bint[5])
+    j = Variable('j', Bint[7])
 
     zi = Lambda(i, z)
     assert zi.output.shape == (5,) + base_shape
@@ -359,15 +403,15 @@ def test_lambda(base_shape):
 
 
 def test_independent():
-    f = Variable('x_i', reals(4, 5)) + random_tensor(OrderedDict(i=bint(3)))
-    assert f.inputs['x_i'] == reals(4, 5)
-    assert f.inputs['i'] == bint(3)
+    f = Variable('x_i', Reals[4, 5]) + random_tensor(OrderedDict(i=Bint[3]))
+    assert f.inputs['x_i'] == Reals[4, 5]
+    assert f.inputs['i'] == Bint[3]
 
     actual = Independent(f, 'x', 'i', 'x_i')
-    assert actual.inputs['x'] == reals(3, 4, 5)
+    assert actual.inputs['x'] == Reals[3, 4, 5]
     assert 'i' not in actual.inputs
 
-    x = Variable('x', reals(3, 4, 5))
+    x = Variable('x', Reals[3, 4, 5])
     expected = f(x_i=x['i']).reduce(ops.add, 'i')
     assert actual.inputs == expected.inputs
     assert actual.output == expected.output
@@ -391,7 +435,7 @@ def test_stack_simple():
     z = Number(4.)
 
     xyz = Stack('i', (x, y, z))
-    check_funsor(xyz, {'i': bint(3)}, reals())
+    check_funsor(xyz, {'i': Bint[3]}, Real)
 
     assert xyz(i=Number(0, 3)) is x
     assert xyz(i=Number(1, 3)) is y
@@ -400,14 +444,14 @@ def test_stack_simple():
 
 
 def test_stack_subs():
-    x = Variable('x', reals())
-    y = Variable('y', reals())
-    z = Variable('z', reals())
-    j = Variable('j', bint(3))
+    x = Variable('x', Real)
+    y = Variable('y', Real)
+    z = Variable('z', Real)
+    j = Variable('j', Bint[3])
 
     f = Stack('i', (Number(0), x, y * z))
-    check_funsor(f, {'i': bint(3), 'x': reals(), 'y': reals(), 'z': reals()},
-                 reals())
+    check_funsor(f, {'i': Bint[3], 'x': Real, 'y': Real, 'z': Real},
+                 Real)
 
     assert f(i=Number(0, 3)) is Number(0)
     assert f(i=Number(1, 3)) is x
@@ -443,16 +487,16 @@ def test_cat_simple():
     assert Cat('i', (y,)) is y
 
     xy = Cat('i', (x, y))
-    assert xy.inputs == OrderedDict(i=bint(5))
+    assert xy.inputs == OrderedDict(i=Bint[5])
     assert xy.name == 'i'
     for i in range(5):
         assert xy(i=i) is Number(i)
 
 
 def test_align_simple():
-    x = Variable('x', reals())
-    y = Variable('y', reals())
-    z = Variable('z', reals())
+    x = Variable('x', Real)
+    y = Variable('y', Real)
+    z = Variable('z', Real)
     f = z + y * x
     assert tuple(f.inputs) == ('z', 'y', 'x')
     g = f.align(('x', 'y', 'z'))
@@ -521,7 +565,7 @@ def test_not_parametric_subclass(subcls_expr, cls_expr):
 def test_cat_slice_tensor(start, stop, step):
 
     terms = tuple(
-        random_tensor(OrderedDict([('t', bint(t)), ('a', bint(2))]))
+        random_tensor(OrderedDict([('t', Bint[t]), ('a', Bint[2])]))
         for t in [2, 1, 3, 4, 1, 3])
     dtype = sum(term.inputs['t'].dtype for term in terms)
     sub = Slice('t', start, stop, step, dtype)

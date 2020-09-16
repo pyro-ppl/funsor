@@ -9,8 +9,8 @@ import pytest
 
 from funsor import ops
 from funsor.cnf import Contraction, BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND
-from funsor.domains import bint  # noqa F403
-from funsor.domains import reals
+from funsor.domains import Bint, Bint  # noqa F403
+from funsor.domains import Reals
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Tensor
@@ -70,7 +70,7 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
 
     assert_close(actual, expected, rtol=1e-4)
 
-    actual = eval(quote(expected))  # requires torch, bint
+    actual = eval(quote(expected))  # requires torch, Bint
     assert_close(actual, expected)
 
 
@@ -88,11 +88,11 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
 @pytest.mark.parametrize("red_op,bin_op", [(ops.add, ops.mul), (ops.logaddexp, ops.add)], ids=str)
 def test_eager_contract_tensor_tensor(red_op, bin_op, x_inputs, x_shape, y_inputs, y_shape):
     backend = get_backend()
-    inputs = OrderedDict([("i", bint(4)), ("j", bint(5)), ("k", bint(6))])
+    inputs = OrderedDict([("i", Bint[4]), ("j", Bint[5]), ("k", Bint[6])])
     x_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in x_inputs)
     y_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in y_inputs)
-    x = random_tensor(x_inputs, reals(*x_shape))
-    y = random_tensor(y_inputs, reals(*y_shape))
+    x = random_tensor(x_inputs, Reals[x_shape])
+    y = random_tensor(y_inputs, Reals[y_shape])
 
     xy = bin_op(x, y)
     all_vars = frozenset(x.inputs).union(y.inputs)

@@ -8,7 +8,7 @@ import numpy as np
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
-from funsor.domains import bint
+from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
@@ -251,7 +251,7 @@ def _scatter(src, res, subs):
     src_inputs, src_data = src.inputs.copy(), src.data
     for k, v in res.inputs.items():
         if k not in src.inputs and isinstance(subs[k], Number):
-            src_inputs[k] = bint(1)
+            src_inputs[k] = Bint[1]
             src_data = src_data.unsqueeze(-1 - len(src.output.shape))
     src = Tensor(src_data, src_inputs, src.output.dtype).align(tuple(res.inputs.keys()))
 

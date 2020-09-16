@@ -8,7 +8,7 @@ import opt_einsum
 
 from funsor.interpreter import gensym
 from funsor.tensor import Einsum, Tensor, get_default_prototype
-from funsor.terms import Binary, Funsor, Lambda, Reduce, Unary, Variable, bint
+from funsor.terms import Binary, Funsor, Lambda, Reduce, Unary, Variable, Bint
 
 from . import ops
 
@@ -147,7 +147,7 @@ def extract_affine(fn):
     coeffs = OrderedDict()
     for k, v in inputs.items():
         dim = v.num_elements
-        var = Variable(name, bint(dim))
+        var = Variable(name, Bint[dim])
         subs = zeros.copy()
         subs[k] = Tensor(ops.new_eye(prototype, (dim,)).reshape((dim,) + v.shape))[var]
         coeff = Lambda(var, fn(**subs) - const).reshape(v.shape + const.shape)

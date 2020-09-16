@@ -14,6 +14,8 @@ from funsor.terms import lazy
 
 
 def main(args):
+    funsor.set_backend("torch")
+
     # Declare parameters.
     trans_noise = torch.tensor(0.1, requires_grad=True)
     emit_noise = torch.tensor(0.5, requires_grad=True)
@@ -28,7 +30,7 @@ def main(args):
             x_prev = x_curr
 
             # A delayed sample statement.
-            x_curr = funsor.Variable('x_{}'.format(t), funsor.reals())
+            x_curr = funsor.Variable('x_{}'.format(t), funsor.Real)
             log_prob += dist.Normal(1 + x_prev / 2., trans_noise, value=x_curr)
 
             # Optionally marginalize out the previous state.

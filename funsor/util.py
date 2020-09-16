@@ -24,6 +24,10 @@ class lazy_property(object):
         setattr(obj, self.fn.__name__, value)
         return value
 
+    # This is needed to pacify sphinx.
+    def __call__(self):
+        raise ValueError
+
 
 def getargspec(fn):
     """

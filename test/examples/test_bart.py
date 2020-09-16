@@ -10,7 +10,7 @@ import funsor
 import funsor.torch.distributions as dist
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
@@ -32,9 +32,9 @@ def bounded_exp(x, bound):
 call_count = 0
 
 
-@funsor.function(reals(2 * num_origins * num_destins),
-                 (reals(num_origins, num_destins, 2),
-                 reals(num_origins, num_destins)))
+@funsor.function(Reals[2 * num_origins * num_destins],
+                 (Reals[num_origins, num_destins, 2],
+                 Reals[num_origins, num_destins]))
 def unpack_gate_rate(gate_rate):
     global call_count
     call_count += 1
@@ -66,19 +66,19 @@ def test_bart(analytic_kl):
            (Tensor(
              torch.tensor([[-0.6077086925506592, -1.1546266078948975, -0.7021151781082153, -0.5303535461425781, -0.6365622282028198, -1.2423288822174072, -0.9941254258155823, -0.6287292242050171], [-0.6987162828445435, -1.0875964164733887, -0.7337473630905151, -0.4713417589664459, -0.6674002408981323, -1.2478348016738892, -0.8939017057418823, -0.5238542556762695]], dtype=torch.float32),  # noqa
              (('time_b4',
-               bint(2),),
+               Bint[2],),
               ('_event_1_b2',
-               bint(8),),),
+               Bint[8],),),
              'real'),
             Gaussian(
              torch.tensor([[[-0.3536059558391571], [-0.21779225766658783], [0.2840439975261688], [0.4531521499156952], [-0.1220812276005745], [-0.05519985035061836], [0.10932210087776184], [0.6656699776649475]], [[-0.39107921719551086], [-0.20241987705230713], [0.2170514464378357], [0.4500560462474823], [0.27945515513420105], [-0.0490039587020874], [-0.06399798393249512], [0.846565842628479]]], dtype=torch.float32),  # noqa
              torch.tensor([[[[1.984686255455017]], [[0.6699360013008118]], [[1.6215802431106567]], [[2.372016668319702]], [[1.77385413646698]], [[0.526767373085022]], [[0.8722561597824097]], [[2.1879124641418457]]], [[[1.6996612548828125]], [[0.7535632252693176]], [[1.4946647882461548]], [[2.642792224884033]], [[1.7301604747772217]], [[0.5203893780708313]], [[1.055436372756958]], [[2.8370864391326904]]]], dtype=torch.float32),  # noqa
              (('time_b4',
-               bint(2),),
+               Bint[2],),
               ('_event_1_b2',
-               bint(8),),
+               Bint[8],),
               ('value_b1',
-               reals(),),)),)),
+               Real,),)),)),
           'gate_rate_b3',
           '_event_1_b2',
           'value_b1'),
@@ -98,9 +98,9 @@ def test_bart(analytic_kl):
               torch.tensor([-0.0, -0.0, 0.0, 0.0], dtype=torch.float32),
               torch.tensor([[98.01002502441406, 0.0, -99.0000228881836, -0.0], [0.0, 98.01002502441406, -0.0, -99.0000228881836], [-99.0000228881836, -0.0, 100.0000228881836, 0.0], [-0.0, -99.0000228881836, 0.0, 100.0000228881836]], dtype=torch.float32),  # noqa
               (('state_b7',
-                reals(2,),),
+                Reals[2],),
                ('state(time=1)_b8',
-                reals(2,),),)),
+                Reals[2],),)),
              Subs(
               AffineNormal(
                Tensor(
@@ -110,20 +110,20 @@ def test_bart(analytic_kl):
                Tensor(
                 torch.tensor([[-0.003566693514585495, -0.2848514914512634, 0.037103548645973206, 0.12648648023605347, -0.18501518666744232, -0.20899859070777893, 0.04121830314397812, 0.0054807960987091064], [0.0021788496524095535, -0.18700894713401794, 0.08187370002269745, 0.13554862141609192, -0.10477752983570099, -0.20848378539085388, -0.01393645629286766, 0.011670656502246857]], dtype=torch.float32),  # noqa
                 (('time_b9',
-                  bint(2),),),
+                  Bint[2],),),
                 'real'),
                Tensor(
                 torch.tensor([[0.5974780917167664, 0.864071786403656, 1.0236268043518066, 0.7147538065910339, 0.7423890233039856, 0.9462157487869263, 1.2132389545440674, 1.0596832036972046], [0.5787821412086487, 0.9178534150123596, 0.9074794054031372, 0.6600189208984375, 0.8473222255706787, 0.8426999449729919, 1.194266438484192, 1.0471148490905762]], dtype=torch.float32),  # noqa
                 (('time_b9',
-                  bint(2),),),
+                  Bint[2],),),
                 'real'),
-               Variable('state(time=1)_b8', reals(2,)),
-               Variable('gate_rate_b6', reals(8,))),
+               Variable('state(time=1)_b8', Reals[2]),
+               Variable('gate_rate_b6', Reals[8])),
               (('gate_rate_b6',
                 Binary(ops.GetitemOp(0),
-                 Variable('gate_rate_t', reals(2, 8)),
-                 Variable('time_b9', bint(2))),),)),)),
-           Variable('time_b9', bint(2)),
+                 Variable('gate_rate_t', Reals[2, 8]),
+                 Variable('time_b9', Bint[2])),),)),)),
+           Variable('time_b9', Bint[2]),
            frozenset({('state_b7', 'state(time=1)_b8')}),
            frozenset({('state(time=1)_b8', 'state(time=1)_b11'), ('state_b7', 'state_b10')})),  # noqa
           Subs(
@@ -136,9 +136,9 @@ def test_bart(analytic_kl):
              torch.tensor([[10.0, 0.0], [0.0, 10.0]], dtype=torch.float32),
              (),
              'real'),
-            Variable('value_b5', reals(2,))),
+            Variable('value_b5', Reals[2])),
            (('value_b5',
-             Variable('state_b10', reals(2,)),),)),))
+             Variable('state_b10', Reals[2]),),)),))
         p_likelihood = Contraction(ops.add, ops.nullop,
          frozenset({'time_b17', 'destin_b16', 'origin_b15'}),
          (Contraction(ops.logaddexp, ops.add,
@@ -148,37 +148,37 @@ def test_bart(analytic_kl):
               Binary(ops.GetitemOp(0),
                Subs(
                 Function(unpack_gate_rate_0,
-                 reals(2, 2, 2),
-                 (Variable('gate_rate_b12', reals(8,)),)),
+                 Reals[2, 2, 2],
+                 (Variable('gate_rate_b12', Reals[8]),)),
                 (('gate_rate_b12',
                   Binary(ops.GetitemOp(0),
-                   Variable('gate_rate_t', reals(2, 8)),
-                   Variable('time_b17', bint(2))),),)),
-               Variable('origin_b15', bint(2))),
-              Variable('destin_b16', bint(2))),
-             Variable('gated_b14', bint(2))),
+                   Variable('gate_rate_t', Reals[2, 8]),
+                   Variable('time_b17', Bint[2])),),)),
+               Variable('origin_b15', Bint[2])),
+              Variable('destin_b16', Bint[2])),
+             Variable('gated_b14', Bint[2])),
             Stack('gated_b14',
              (dist.Poisson(
                Binary(ops.GetitemOp(0),
                 Binary(ops.GetitemOp(0),
                  Subs(
                   Function(unpack_gate_rate_1,
-                   reals(2, 2),
-                   (Variable('gate_rate_b13', reals(8,)),)),
+                   Reals[2, 2],
+                   (Variable('gate_rate_b13', Reals[8]),)),
                   (('gate_rate_b13',
                     Binary(ops.GetitemOp(0),
-                     Variable('gate_rate_t', reals(2, 8)),
-                     Variable('time_b17', bint(2))),),)),
-                 Variable('origin_b15', bint(2))),
-                Variable('destin_b16', bint(2))),
+                     Variable('gate_rate_t', Reals[2, 8]),
+                     Variable('time_b17', Bint[2])),),)),
+                 Variable('origin_b15', Bint[2])),
+                Variable('destin_b16', Bint[2])),
                Tensor(
                 torch.tensor([[[1.0, 1.0], [5.0, 0.0]], [[0.0, 6.0], [19.0, 3.0]]], dtype=torch.float32),  # noqa
                 (('time_b17',
-                  bint(2),),
+                  Bint[2],),
                  ('origin_b15',
-                  bint(2),),
+                  Bint[2],),
                  ('destin_b16',
-                  bint(2),),),
+                  Bint[2],),),
                 'real')),
               dist.Delta(
                Tensor(
@@ -192,11 +192,11 @@ def test_bart(analytic_kl):
                Tensor(
                 torch.tensor([[[1.0, 1.0], [5.0, 0.0]], [[0.0, 6.0], [19.0, 3.0]]], dtype=torch.float32),  # noqa
                 (('time_b17',
-                  bint(2),),
+                  Bint[2],),
                  ('origin_b15',
-                  bint(2),),
+                  Bint[2],),
                  ('destin_b16',
-                  bint(2),),),
+                  Bint[2],),),
                 'real')),)),)),))
 
     if analytic_kl:

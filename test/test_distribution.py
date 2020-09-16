@@ -14,9 +14,9 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.domains import bint, reals
-from funsor.interpreter import interpretation, reinterpret
+from funsor.domains import Bint, Real, Reals
 from funsor.integrate import Integrate
+from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array
 from funsor.terms import Independent, Variable, eager, lazy
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_mvn, random_tensor, xfail_param
@@ -36,24 +36,24 @@ if get_backend() == "torch":
 @pytest.mark.parametrize('eager', [False, True])
 def test_beta_density(batch_shape, eager):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def beta(concentration1, concentration0, value):
+    @funsor.function
+    def beta(concentration1: Real, concentration0: Real, value: Real) -> Real:
         return backend_dist.Beta(concentration1, concentration0).log_prob(value)
 
-    check_funsor(beta, {'concentration1': reals(), 'concentration0': reals(), 'value': reals()}, reals())
+    check_funsor(beta, {'concentration1': Real, 'concentration0': Real, 'value': Real}, Real)
 
     concentration1 = Tensor(ops.exp(randn(batch_shape)), inputs)
     concentration0 = Tensor(ops.exp(randn(batch_shape)), inputs)
     value = Tensor(rand(batch_shape), inputs)
     expected = beta(concentration1, concentration0, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
-    d = Variable('value', reals())
+    d = Variable('value', Real)
     actual = dist.Beta(concentration1, concentration0, value) if eager else \
         dist.Beta(concentration1, concentration0, d)(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
@@ -61,27 +61,27 @@ def test_beta_density(batch_shape, eager):
 @pytest.mark.parametrize('syntax', ['eager', 'lazy', 'generic'])
 def test_bernoulli_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals())
-    def bernoulli(probs, value):
+    @funsor.function
+    def bernoulli(probs: Real, value: Real) -> Real:
         return backend_dist.Bernoulli(probs).log_prob(value)
 
-    check_funsor(bernoulli, {'probs': reals(), 'value': reals()}, reals())
+    check_funsor(bernoulli, {'probs': Real, 'value': Real}, Real)
 
     probs = Tensor(rand(batch_shape), inputs)
     value = Tensor(rand(batch_shape).round(), inputs)
     expected = bernoulli(probs, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
-    d = Variable('value', reals())
+    d = Variable('value', Real)
     if syntax == 'eager':
         actual = dist.BernoulliProbs(probs, value)
     elif syntax == 'lazy':
         actual = dist.BernoulliProbs(probs, d)(value=value)
     elif syntax == 'generic':
         actual = dist.Bernoulli(probs=probs)(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
@@ -89,27 +89,27 @@ def test_bernoulli_probs_density(batch_shape, syntax):
 @pytest.mark.parametrize('syntax', ['eager', 'lazy', 'generic'])
 def test_bernoulli_logits_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals())
-    def bernoulli(logits, value):
+    @funsor.function
+    def bernoulli(logits: Real, value: Real) -> Real:
         return backend_dist.Bernoulli(logits=logits).log_prob(value)
 
-    check_funsor(bernoulli, {'logits': reals(), 'value': reals()}, reals())
+    check_funsor(bernoulli, {'logits': Real, 'value': Real}, Real)
 
     logits = Tensor(rand(batch_shape), inputs)
     value = Tensor(ops.astype(rand(batch_shape) >= 0.5, 'float'), inputs)
     expected = bernoulli(logits, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
-    d = Variable('value', reals())
+    d = Variable('value', Real)
     if syntax == 'eager':
         actual = dist.BernoulliLogits(logits, value)
     elif syntax == 'lazy':
         actual = dist.BernoulliLogits(logits, d)(value=value)
     elif syntax == 'generic':
         actual = dist.Bernoulli(logits=logits)(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
@@ -117,33 +117,33 @@ def test_bernoulli_logits_density(batch_shape, syntax):
 @pytest.mark.parametrize('eager', [False, True])
 def test_binomial_density(batch_shape, eager):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def binomial(total_count, probs, value):
+    @funsor.function
+    def binomial(total_count: Real, probs: Real, value: Real) -> Real:
         return backend_dist.Binomial(total_count, probs).log_prob(value)
 
-    check_funsor(binomial, {'total_count': reals(), 'probs': reals(), 'value': reals()}, reals())
+    check_funsor(binomial, {'total_count': Real, 'probs': Real, 'value': Real}, Real)
 
-    value_data = ops.astype(random_tensor(inputs, bint(max_count)).data, 'float')
-    total_count_data = value_data + ops.astype(random_tensor(inputs, bint(max_count)).data, 'float')
+    value_data = ops.astype(random_tensor(inputs, Bint[max_count]).data, 'float')
+    total_count_data = value_data + ops.astype(random_tensor(inputs, Bint[max_count]).data, 'float')
     value = Tensor(value_data, inputs)
     total_count = Tensor(total_count_data, inputs)
     probs = Tensor(rand(batch_shape), inputs)
     expected = binomial(total_count, probs, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
-    m = Variable('value', reals())
+    m = Variable('value', Real)
     actual = dist.Binomial(total_count, probs, value) if eager else \
         dist.Binomial(total_count, probs, m)(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected, rtol=1e-5)
 
 
 def test_categorical_defaults():
-    probs = Variable('probs', reals(3))
-    value = Variable('value', bint(3))
+    probs = Variable('probs', Reals[3])
+    value = Variable('value', Bint[3])
     assert dist.Categorical(probs) is dist.Categorical(probs, value)
 
 
@@ -151,32 +151,32 @@ def test_categorical_defaults():
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_categorical_density(size, batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.of_shape(reals(size), bint(size))
-    def categorical(probs, value):
+    @funsor.symbolic
+    def categorical(probs: Reals[size], value: Bint[size]):
         return probs[value].log()
 
-    check_funsor(categorical, {'probs': reals(size), 'value': bint(size)}, reals())
+    check_funsor(categorical, {'probs': Reals[size], 'value': Bint[size]}, Real)
 
     probs_data = ops.exp(randn(batch_shape + (size,)))
     probs_data /= probs_data.sum(-1)[..., None]
     probs = Tensor(probs_data, inputs)
-    value = random_tensor(inputs, bint(size))
+    value = random_tensor(inputs, Bint[size])
     expected = categorical(probs, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
     actual = dist.Categorical(probs, value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
 def test_delta_defaults():
-    v = Variable('v', reals())
-    log_density = Variable('log_density', reals())
+    v = Variable('v', Real)
+    log_density = Variable('log_density', Real)
     backend_dist_module = BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]
     assert isinstance(dist.Delta(v, log_density), import_module(backend_dist_module).Delta)
-    value = Variable('value', reals())
+    value = Variable('value', Real)
     assert dist.Delta(v, log_density, 'value') is dist.Delta(v, log_density, value)
 
 
@@ -184,32 +184,32 @@ def test_delta_defaults():
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_delta_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(*event_shape), reals(), reals(*event_shape), reals())
-    def delta(v, log_density, value):
+    @funsor.function
+    def delta(v: Reals[event_shape], log_density: Real, value: Reals[event_shape]) -> Real:
         eq = (v == value)
         for _ in range(len(event_shape)):
             eq = ops.all(eq, -1)
         return ops.log(ops.astype(eq, 'float32')) + log_density
 
-    check_funsor(delta, {'v': reals(*event_shape),
-                         'log_density': reals(),
-                         'value': reals(*event_shape)}, reals())
+    check_funsor(delta, {'v': Reals[event_shape],
+                         'log_density': Real,
+                         'value': Reals[event_shape]}, Real)
 
     v = Tensor(randn(batch_shape + event_shape), inputs)
     log_density = Tensor(ops.exp(randn(batch_shape)), inputs)
     for value in [v, Tensor(randn(batch_shape + event_shape), inputs)]:
         expected = delta(v, log_density, value)
-        check_funsor(expected, inputs, reals())
+        check_funsor(expected, inputs, Real)
 
         actual = dist.Delta(v, log_density, value)
-        check_funsor(actual, inputs, reals())
+        check_funsor(actual, inputs, Real)
         assert_close(actual, expected)
 
 
 def test_delta_delta():
-    v = Variable('v', reals(2))
+    v = Variable('v', Reals[2])
     point = Tensor(randn(2))
     log_density = Tensor(numeric_array(0.5))
     d = dist.Delta(point, log_density, v)
@@ -220,22 +220,23 @@ def test_delta_delta():
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
 def test_dirichlet_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(*event_shape), reals(*event_shape), reals())
-    def dirichlet(concentration, value):
+    @funsor.function
+    def dirichlet(concentration: Reals[event_shape],
+                  value: Reals[event_shape]) -> Real:
         return backend_dist.Dirichlet(concentration).log_prob(value)
 
-    check_funsor(dirichlet, {'concentration': reals(*event_shape), 'value': reals(*event_shape)}, reals())
+    check_funsor(dirichlet, {'concentration': Reals[event_shape], 'value': Reals[event_shape]}, Real)
 
     concentration = Tensor(ops.exp(randn(batch_shape + event_shape)), inputs)
     value_data = rand(batch_shape + event_shape)
     value_data = value_data / value_data.sum(-1)[..., None]
     value = Tensor(value_data, inputs)
     expected = dirichlet(concentration, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
     actual = dist.Dirichlet(concentration, value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
@@ -244,17 +245,18 @@ def test_dirichlet_density(batch_shape, event_shape):
 @pytest.mark.xfail(get_backend() != 'torch', reason="DirichletMultinomial is not implemented yet in NumPyro")
 def test_dirichlet_multinomial_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.function(reals(*event_shape), reals(), reals(*event_shape), reals())
-    def dirichlet_multinomial(concentration, total_count, value):
+    @funsor.function
+    def dirichlet_multinomial(concentration: Reals[event_shape], total_count: Real,
+                              value: Reals[event_shape]) -> Real:
         return backend_dist.DirichletMultinomial(concentration, total_count).log_prob(value)
 
-    check_funsor(dirichlet_multinomial, {'concentration': reals(*event_shape),
-                                         'total_count': reals(),
-                                         'value': reals(*event_shape)},
-                 reals())
+    check_funsor(dirichlet_multinomial, {'concentration': Reals[event_shape],
+                                         'total_count': Real,
+                                         'value': Reals[event_shape]},
+                 Real)
 
     concentration = Tensor(ops.exp(randn(batch_shape + event_shape)), inputs)
     value_data = ops.astype(randint(0, max_count, size=batch_shape + event_shape), 'float32')
@@ -262,9 +264,9 @@ def test_dirichlet_multinomial_density(batch_shape, event_shape):
     value = Tensor(value_data, inputs)
     total_count = Tensor(total_count_data, inputs)
     expected = dirichlet_multinomial(concentration, total_count, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
     actual = dist.DirichletMultinomial(concentration, total_count, value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
@@ -274,9 +276,9 @@ def test_dirichlet_multinomial_density(batch_shape, event_shape):
 def test_dirichlet_multinomial_conjugate(batch_shape, event_shape):
     max_count = 10
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
     full_shape = batch_shape + event_shape
-    prior = Variable("prior", reals(*full_shape))[batch_dims]
+    prior = Variable("prior", Reals[full_shape])[batch_dims]
     concentration = Tensor(ops.exp(randn(full_shape)), inputs)
     value_data = ops.astype(randint(0, max_count, size=full_shape), 'float32')
     value = Tensor(value_data, inputs)
@@ -298,22 +300,22 @@ def test_dirichlet_multinomial_conjugate(batch_shape, event_shape):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_lognormal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def log_normal(loc, scale, value):
+    @funsor.function
+    def log_normal(loc: Real, scale: Real, value: Real) -> Real:
         return backend_dist.LogNormal(loc, scale).log_prob(value)
 
-    check_funsor(log_normal, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
+    check_funsor(log_normal, {'loc': Real, 'scale': Real, 'value': Real}, Real)
 
     loc = Tensor(randn(batch_shape), inputs)
     scale = Tensor(ops.exp(randn(batch_shape)), inputs)
     value = Tensor(ops.exp(randn(batch_shape)), inputs)
     expected = log_normal(loc, scale, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
     actual = dist.LogNormal(loc, scale, value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
@@ -321,17 +323,17 @@ def test_lognormal_density(batch_shape):
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
 def test_multinomial_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
     max_count = 10
 
-    @funsor.function(reals(), reals(*event_shape), reals(*event_shape), reals())
-    def multinomial(total_count, probs, value):
+    @funsor.function
+    def multinomial(total_count: Real, probs: Reals[event_shape], value: Reals[event_shape]) -> Real:
         if get_backend() == "torch":
             total_count = total_count.max().item()
         return backend_dist.Multinomial(total_count, probs).log_prob(value)
 
-    check_funsor(multinomial, {'total_count': reals(), 'probs': reals(*event_shape), 'value': reals(*event_shape)},
-                 reals())
+    check_funsor(multinomial, {'total_count': Real, 'probs': Reals[event_shape], 'value': Reals[event_shape]},
+                 Real)
 
     probs_data = rand(batch_shape + event_shape)
     probs_data = probs_data / probs_data.sum(-1)[..., None]
@@ -341,45 +343,45 @@ def test_multinomial_density(batch_shape, event_shape):
     value = Tensor(value_data, inputs)
     total_count = Tensor(total_count_data, inputs)
     expected = multinomial(total_count, probs, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
     actual = dist.Multinomial(total_count, probs, value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
 def test_normal_defaults():
-    loc = Variable('loc', reals())
-    scale = Variable('scale', reals())
-    value = Variable('value', reals())
+    loc = Variable('loc', Real)
+    scale = Variable('scale', Real)
+    value = Variable('value', Real)
     assert dist.Normal(loc, scale) is dist.Normal(loc, scale, value)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_normal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.of_shape(reals(), reals(), reals())
-    def normal(loc, scale, value):
+    @funsor.symbolic
+    def normal(loc: Real, scale: Real, value: Real):
         return -((value - loc) ** 2) / (2 * scale ** 2) - scale.log() - math.log(math.sqrt(2 * math.pi))
 
-    check_funsor(normal, {'loc': reals(), 'scale': reals(), 'value': reals()}, reals())
+    check_funsor(normal, {'loc': Real, 'scale': Real, 'value': Real}, Real)
 
     loc = Tensor(randn(batch_shape), inputs)
     scale = Tensor(ops.exp(randn(batch_shape)), inputs)
     value = Tensor(randn(batch_shape), inputs)
     expected = normal(loc, scale, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
     actual = dist.Normal(loc, scale, value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_normal_gaussian_1(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = Tensor(randn(batch_shape), inputs)
     scale = Tensor(ops.exp(randn(batch_shape)), inputs)
@@ -387,12 +389,12 @@ def test_normal_gaussian_1(batch_shape):
 
     expected = dist.Normal(loc, scale, value)
     assert isinstance(expected, Tensor)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
     g = dist.Normal(loc, scale, 'value')
     assert isinstance(g, Contraction)
     actual = g(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
 
     assert_close(actual, expected, atol=1e-4)
 
@@ -400,7 +402,7 @@ def test_normal_gaussian_1(batch_shape):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_normal_gaussian_2(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = Tensor(randn(batch_shape), inputs)
     scale = Tensor(ops.exp(randn(batch_shape)), inputs)
@@ -408,12 +410,12 @@ def test_normal_gaussian_2(batch_shape):
 
     expected = dist.Normal(loc, scale, value)
     assert isinstance(expected, Tensor)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
-    g = dist.Normal(Variable('value', reals()), scale, loc)
+    g = dist.Normal(Variable('value', Real), scale, loc)
     assert isinstance(g, Contraction)
     actual = g(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
 
     assert_close(actual, expected, atol=1e-4)
 
@@ -421,7 +423,7 @@ def test_normal_gaussian_2(batch_shape):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_normal_gaussian_3(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = Tensor(randn(batch_shape), inputs)
     scale = Tensor(ops.exp(randn(batch_shape)), inputs)
@@ -429,12 +431,12 @@ def test_normal_gaussian_3(batch_shape):
 
     expected = dist.Normal(loc, scale, value)
     assert isinstance(expected, Tensor)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
-    g = dist.Normal(Variable('loc', reals()), scale, 'value')
+    g = dist.Normal(Variable('loc', Real), scale, 'value')
     assert isinstance(g, Contraction)
     actual = g(loc=loc, value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
 
     assert_close(actual, expected, atol=1e-4)
 
@@ -454,8 +456,8 @@ NORMAL_AFFINE_TESTS = [
 def test_normal_affine(expr):
 
     scale = Tensor(numeric_array(0.3), OrderedDict())
-    x = Variable('x', reals())
-    y = Variable('y', reals())
+    x = Variable('x', Real)
+    y = Variable('y', Real)
 
     expected = dist.Normal(x, scale, y)
     actual = eval(expr)
@@ -468,22 +470,22 @@ def test_normal_affine(expr):
 
 
 def test_normal_independent():
-    loc = random_tensor(OrderedDict(), reals(2))
-    scale = ops.exp(random_tensor(OrderedDict(), reals(2)))
+    loc = random_tensor(OrderedDict(), Reals[2])
+    scale = ops.exp(random_tensor(OrderedDict(), Reals[2]))
     fn = dist.Normal(loc['i'], scale['i'], value='z_i')
-    assert fn.inputs['z_i'] == reals()
+    assert fn.inputs['z_i'] == Real
     d = Independent(fn, 'z', 'i', 'z_i')
-    assert d.inputs['z'] == reals(2)
+    assert d.inputs['z'] == Reals[2]
     rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
     sample = d.sample(frozenset(['z']), rng_key=rng_key)
     assert isinstance(sample, Contraction)
-    assert sample.inputs['z'] == reals(2)
+    assert sample.inputs['z'] == Reals[2]
 
 
 def test_mvn_defaults():
-    loc = Variable('loc', reals(3))
-    scale_tril = Variable('scale', reals(3, 3))
-    value = Variable('value', reals(3))
+    loc = Variable('loc', Reals[3])
+    scale_tril = Variable('scale', Reals[3, 3])
+    value = Variable('value', Reals[3])
     assert dist.MultivariateNormal(loc, scale_tril) is dist.MultivariateNormal(loc, scale_tril, value)
 
 
@@ -499,29 +501,29 @@ def _random_scale_tril(shape):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_mvn_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(3), reals(3, 3), reals(3), reals())
-    def mvn(loc, scale_tril, value):
+    @funsor.function
+    def mvn(loc: Reals[3], scale_tril: Reals[3, 3], value: Reals[3]) -> Real:
         return backend_dist.MultivariateNormal(loc, scale_tril=scale_tril).log_prob(value)
 
-    check_funsor(mvn, {'loc': reals(3), 'scale_tril': reals(3, 3), 'value': reals(3)}, reals())
+    check_funsor(mvn, {'loc': Reals[3], 'scale_tril': Reals[3, 3], 'value': Reals[3]}, Real)
 
     loc = Tensor(randn(batch_shape + (3,)), inputs)
     scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
     value = Tensor(randn(batch_shape + (3,)), inputs)
     expected = mvn(loc, scale_tril, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
     actual = dist.MultivariateNormal(loc, scale_tril, value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_mvn_gaussian(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = Tensor(randn(batch_shape + (3,)), inputs)
     scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
@@ -529,12 +531,12 @@ def test_mvn_gaussian(batch_shape):
 
     expected = dist.MultivariateNormal(loc, scale_tril, value)
     assert isinstance(expected, Tensor)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
     g = dist.MultivariateNormal(loc, scale_tril, 'value')
     assert isinstance(g, Contraction)
     actual = g(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
 
     assert_close(actual, expected, atol=1e-3, rtol=1e-4)
 
@@ -551,7 +553,7 @@ def _check_mvn_affine(d1, data):
 
 @pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_one_var():
-    x = Variable('x', reals(2))
+    x = Variable('x', Reals[2])
     data = dict(x=Tensor(randn(2)))
     with interpretation(lazy):
         d = dist_to_funsor(random_mvn((), 2))
@@ -561,8 +563,8 @@ def test_mvn_affine_one_var():
 
 @pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_two_vars():
-    x = Variable('x', reals(2))
-    y = Variable('y', reals(2))
+    x = Variable('x', Reals[2])
+    y = Variable('y', Reals[2])
     data = dict(x=Tensor(randn(2)), y=Tensor(randn(2)))
     with interpretation(lazy):
         d = dist_to_funsor(random_mvn((), 2))
@@ -571,8 +573,8 @@ def test_mvn_affine_two_vars():
 
 
 def test_mvn_affine_matmul():
-    x = Variable('x', reals(2))
-    y = Variable('y', reals(3))
+    x = Variable('x', Reals[2])
+    y = Variable('y', Reals[3])
     m = Tensor(randn(2, 3))
     data = dict(x=Tensor(randn(2)), y=Tensor(randn(3)))
     with interpretation(lazy):
@@ -583,8 +585,8 @@ def test_mvn_affine_matmul():
 
 @pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_matmul_sub():
-    x = Variable('x', reals(2))
-    y = Variable('y', reals(3))
+    x = Variable('x', Reals[2])
+    y = Variable('y', Reals[3])
     m = Tensor(randn(2, 3))
     data = dict(x=Tensor(randn(2)), y=Tensor(randn(3)))
     with interpretation(lazy):
@@ -596,8 +598,8 @@ def test_mvn_affine_matmul_sub():
 @pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_einsum():
     c = Tensor(randn(3, 2, 2))
-    x = Variable('x', reals(2, 2))
-    y = Variable('y', reals())
+    x = Variable('x', Reals[2, 2])
+    y = Variable('y', Real)
     data = dict(x=Tensor(randn(2, 2)), y=Tensor(randn(())))
     with interpretation(lazy):
         d = dist_to_funsor(random_mvn((), 3))
@@ -607,7 +609,7 @@ def test_mvn_affine_einsum():
 
 @pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_getitem():
-    x = Variable('x', reals(2, 2))
+    x = Variable('x', Reals[2, 2])
     data = dict(x=Tensor(randn(2, 2)))
     with interpretation(lazy):
         d = dist_to_funsor(random_mvn((), 2))
@@ -617,8 +619,8 @@ def test_mvn_affine_getitem():
 
 @pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_reshape():
-    x = Variable('x', reals(2, 2))
-    y = Variable('y', reals(4))
+    x = Variable('x', Reals[2, 2])
+    y = Variable('y', Reals[4])
     data = dict(x=Tensor(randn(2, 2)), y=Tensor(randn(4)))
     with interpretation(lazy):
         d = dist_to_funsor(random_mvn((), 4))
@@ -630,25 +632,25 @@ def test_mvn_affine_reshape():
 @pytest.mark.parametrize('syntax', ['eager', 'lazy'])
 def test_poisson_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals())
-    def poisson(rate, value):
+    @funsor.function
+    def poisson(rate: Real, value: Real) -> Real:
         return backend_dist.Poisson(rate).log_prob(value)
 
-    check_funsor(poisson, {'rate': reals(), 'value': reals()}, reals())
+    check_funsor(poisson, {'rate': Real, 'value': Real}, Real)
 
     rate = Tensor(rand(batch_shape), inputs)
     value = Tensor(ops.astype(ops.astype(ops.exp(randn(batch_shape)), 'int32'), 'float32'), inputs)
     expected = poisson(rate, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
-    d = Variable('value', reals())
+    d = Variable('value', Real)
     if syntax == 'eager':
         actual = dist.Poisson(rate, value)
     elif syntax == 'lazy':
         actual = dist.Poisson(rate, d)(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
@@ -656,26 +658,26 @@ def test_poisson_probs_density(batch_shape, syntax):
 @pytest.mark.parametrize('syntax', ['eager', 'lazy'])
 def test_gamma_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def gamma(concentration, rate, value):
+    @funsor.function
+    def gamma(concentration: Real, rate: Real, value: Real) -> Real:
         return backend_dist.Gamma(concentration, rate).log_prob(value)
 
-    check_funsor(gamma, {'concentration': reals(), 'rate': reals(), 'value': reals()}, reals())
+    check_funsor(gamma, {'concentration': Real, 'rate': Real, 'value': Real}, Real)
 
     concentration = Tensor(rand(batch_shape), inputs)
     rate = Tensor(rand(batch_shape), inputs)
     value = Tensor(ops.exp(randn(batch_shape)), inputs)
     expected = gamma(concentration, rate, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
-    d = Variable('value', reals())
+    d = Variable('value', Real)
     if syntax == 'eager':
         actual = dist.Gamma(concentration, rate, value)
     elif syntax == 'lazy':
         actual = dist.Gamma(concentration, rate, d)(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
@@ -684,26 +686,26 @@ def test_gamma_probs_density(batch_shape, syntax):
 @pytest.mark.xfail(get_backend() != 'torch', reason="VonMises is not implemented yet in NumPyro")
 def test_von_mises_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    @funsor.function(reals(), reals(), reals(), reals())
-    def von_mises(loc, concentration, value):
+    @funsor.function
+    def von_mises(loc: Real, concentration: Real, value: Real) -> Real:
         return backend_dist.VonMises(loc, concentration).log_prob(value)
 
-    check_funsor(von_mises, {'concentration': reals(), 'loc': reals(), 'value': reals()}, reals())
+    check_funsor(von_mises, {'concentration': Real, 'loc': Real, 'value': Real}, Real)
 
     concentration = Tensor(rand(batch_shape), inputs)
     loc = Tensor(rand(batch_shape), inputs)
     value = Tensor(ops.abs(randn(batch_shape)), inputs)
     expected = von_mises(loc, concentration, value)
-    check_funsor(expected, inputs, reals())
+    check_funsor(expected, inputs, Real)
 
-    d = Variable('value', reals())
+    d = Variable('value', Real)
     if syntax == 'eager':
         actual = dist.VonMises(loc, concentration, value)
     elif syntax == 'lazy':
         actual = dist.VonMises(loc, concentration, d)(value=value)
-    check_funsor(actual, inputs, reals())
+    check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
 
 
@@ -720,7 +722,7 @@ def _get_stat_diff(funsor_dist_class, sample_inputs, inputs, num_samples, statis
     expected_inputs = OrderedDict(
         tuple(sample_inputs.items()) + tuple(inputs.items()) + (('value', funsor_dist.inputs['value']),)
     )
-    check_funsor(sample_value, expected_inputs, reals())
+    check_funsor(sample_value, expected_inputs, Real)
 
     if sample_inputs:
 
@@ -757,7 +759,7 @@ def _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=1e-2,
                   num_samples=100000, statistic="mean", skip_grad=False, with_lazy=None):
     """utility that compares a Monte Carlo estimate of a distribution mean with the true mean"""
     samples_per_dim = int(num_samples ** (1./max(1, len(sample_inputs))))
-    sample_inputs = OrderedDict((k, bint(samples_per_dim)) for k in sample_inputs)
+    sample_inputs = OrderedDict((k, Bint[samples_per_dim]) for k in sample_inputs)
     _get_stat_diff_fn = functools.partial(
         _get_stat_diff, funsor_dist_class, sample_inputs, inputs, num_samples, statistic, with_lazy)
 
@@ -796,7 +798,7 @@ def _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=1e-2,
 @pytest.mark.parametrize('reparametrized', [True, False])
 def test_gamma_sample(batch_shape, sample_inputs, reparametrized):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     concentration = rand(batch_shape)
     rate = rand(batch_shape)
@@ -813,7 +815,7 @@ def test_gamma_sample(batch_shape, sample_inputs, reparametrized):
 @pytest.mark.parametrize('reparametrized', [True, False])
 def test_normal_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = randn(batch_shape)
     scale = rand(batch_shape)
@@ -830,7 +832,7 @@ def test_normal_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
 def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = randn(batch_shape + event_shape)
     scale_tril = _random_scale_tril(batch_shape + event_shape * 2)
@@ -858,7 +860,7 @@ def _skip_for_numpyro_2_4():
                     reason="Dirichlet samples might take 0/1 values in NumPyro 0.2.4")
 def test_dirichlet_sample(batch_shape, sample_inputs, event_shape, reparametrized):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     concentration = ops.exp(randn(batch_shape + event_shape))
     funsor_dist_class = (dist.Dirichlet if reparametrized else dist.NonreparameterizedDirichlet)
@@ -871,7 +873,7 @@ def test_dirichlet_sample(batch_shape, sample_inputs, event_shape, reparametrize
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_bernoullilogits_sample(batch_shape, sample_inputs):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     logits = rand(batch_shape)
     funsor_dist_class = dist.BernoulliLogits
@@ -884,7 +886,7 @@ def test_bernoullilogits_sample(batch_shape, sample_inputs):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_bernoulliprobs_sample(batch_shape, sample_inputs):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     probs = rand(batch_shape)
     funsor_dist_class = dist.BernoulliProbs
@@ -901,7 +903,7 @@ def test_bernoulliprobs_sample(batch_shape, sample_inputs):
                     reason="Dirichlet samples might take 0/1 values in NumPyro 0.2.4")
 def test_beta_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     concentration1 = ops.exp(randn(batch_shape))
     concentration0 = ops.exp(randn(batch_shape))
@@ -917,10 +919,10 @@ def test_beta_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_binomial_sample(with_lazy, batch_shape, sample_inputs):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     max_count = 10
-    total_count_data = random_tensor(inputs, bint(max_count)).data
+    total_count_data = random_tensor(inputs, Bint[max_count]).data
     if get_backend() == "torch":
         total_count_data = ops.astype(total_count_data, 'float')
     total_count = total_count_data
@@ -935,7 +937,7 @@ def test_binomial_sample(with_lazy, batch_shape, sample_inputs):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_poisson_sample(batch_shape, sample_inputs):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     rate = rand(batch_shape)
     funsor_dist_class = dist.Poisson
@@ -948,7 +950,7 @@ def test_poisson_sample(batch_shape, sample_inputs):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_categoricallogits_enumerate_support(expand, batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     logits = funsor.Tensor(rand(batch_shape + (3,)), inputs, 'real')
     with interpretation(lazy):
@@ -958,7 +960,7 @@ def test_categoricallogits_enumerate_support(expand, batch_shape):
 
     raw_dist = d.dist_class(logits=logits.data)
     raw_value = raw_dist.enumerate_support(expand=expand)
-    expected_inputs = OrderedDict([('value', bint(raw_value.shape[0]))])
+    expected_inputs = OrderedDict([('value', Bint[raw_value.shape[0]])])
     expected_inputs.update(inputs)
     expected_log_prob = funsor.Tensor(raw_dist.log_prob(raw_value), expected_inputs).reduce(ops.logaddexp, 'value')
 
@@ -972,7 +974,7 @@ def test_categoricallogits_enumerate_support(expand, batch_shape):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_categoricalprobs_enumerate_support(expand, batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     probs = funsor.Tensor(rand(batch_shape + (3,)), inputs, 'real')
     with interpretation(lazy):
@@ -982,7 +984,7 @@ def test_categoricalprobs_enumerate_support(expand, batch_shape):
 
     raw_dist = d.dist_class(probs=probs.data)
     raw_value = raw_dist.enumerate_support(expand=expand)
-    expected_inputs = OrderedDict([('value', bint(raw_value.shape[0]))])
+    expected_inputs = OrderedDict([('value', Bint[raw_value.shape[0]])])
     expected_inputs.update(inputs)
     expected_log_prob = funsor.Tensor(raw_dist.log_prob(raw_value), expected_inputs).reduce(ops.logaddexp, 'value')
 
@@ -996,7 +998,7 @@ def test_categoricalprobs_enumerate_support(expand, batch_shape):
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_bernoullilogits_enumerate_support(expand, batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, bint(v)) for k, v in zip(batch_dims, batch_shape))
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     logits = funsor.Tensor(rand(batch_shape), inputs, 'real')
     with interpretation(lazy):
@@ -1006,7 +1008,7 @@ def test_bernoullilogits_enumerate_support(expand, batch_shape):
 
     raw_dist = d.dist_class(logits=logits.data)
     raw_value = raw_dist.enumerate_support(expand=expand)
-    expected_inputs = OrderedDict([('value', bint(raw_value.shape[0]))])
+    expected_inputs = OrderedDict([('value', Bint[raw_value.shape[0]])])
     expected_inputs.update(inputs)
     expected_log_prob = funsor.Tensor(raw_dist.log_prob(raw_value), expected_inputs).reduce(ops.logaddexp, 'value')
 

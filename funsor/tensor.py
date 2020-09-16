@@ -3,6 +3,7 @@
 
 import functools
 import itertools
+import typing
 import warnings
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -17,7 +18,7 @@ from multipledispatch.variadic import Variadic
 import funsor
 import funsor.ops as ops
 from funsor.delta import Delta, solve
-from funsor.domains import Domain, bint, find_domain, reals
+from funsor.domains import Array, ArrayType, Bint, Domain, Real, Reals, find_domain
 from funsor.interpreter import debug_logged
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
@@ -34,7 +35,7 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import getargspec, get_backend, get_tracing_state, is_nn_module, quote
+from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, lazy_property, quote
 
 
 def get_default_prototype():
@@ -102,15 +103,15 @@ class Tensor(Funsor, metaclass=TensorMeta):
     For example::
 
         data = torch.zeros(5,4,3,2)
-        x = Tensor(data, OrderedDict([("i", bint(5)), ("j", bint(4))]))
-        assert x.output == reals(3, 2)
+        x = Tensor(data, OrderedDict([("i", Bint[5]), ("j", Bint[4])]))
+        assert x.output == Reals[3, 2]
 
     Operators like ``matmul`` and ``.sum()`` operate only on the output shape,
     and will not change the named inputs.
 
     :param numeric_array data: A PyTorch tensor or NumPy ndarray.
     :param OrderedDict inputs: An optional mapping from input name (str) to
-        datatype (:class:`~funsor.domains.Domain` ). Defaults to empty.
+        datatype (``funsor.domains.Domain``). Defaults to empty.
     :param dtype: optional output datatype. Defaults to "real".
     :type dtype: int or the string "real".
     """
@@ -122,7 +123,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             for (k, d), size in zip(inputs, data.shape):
                 assert d.dtype == size
         inputs = OrderedDict(inputs)
-        output = Domain(data.shape[len(inputs):], dtype)
+        output = Array[dtype, data.shape[len(inputs):]]
         fresh = frozenset(inputs.keys())
         bound = frozenset()
         super(Tensor, self).__init__(inputs, output, fresh, bound)
@@ -294,7 +295,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
-        assert self.output == reals()
+        assert self.output == Real
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
@@ -402,7 +403,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             raise ValueError
         stop = min(dtype, max(start, stop))
         data = ops.new_arange(self.data, start, stop, step)
-        inputs = OrderedDict([(name, bint(len(data)))])
+        inputs = OrderedDict([(name, Bint[len(data)])])
         return Tensor(data, inputs, dtype=dtype)
 
     def materialize(self, x):
@@ -428,7 +429,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
 @to_funsor.register(np.generic)
 def tensor_to_funsor(x, output=None, dim_to_name=None):
     if not dim_to_name:
-        output = output if output is not None else reals(*x.shape)
+        output = output if output is not None else Reals[x.shape]
         result = Tensor(x, dtype=output.dtype)
         if result.output != output:
             raise ValueError("Invalid shape: expected {}, actual {}"
@@ -442,7 +443,7 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
             # Assume the leftmost dim_to_name key refers to the leftmost dim of x
             # when there is ambiguity about event shape
             batch_ndims = min(-min(dim_to_name.keys()), len(x.shape))
-            output = reals(*x.shape[batch_ndims:])
+            output = Reals[x.shape[batch_ndims:]]
 
         # logic very similar to pyro.ops.packed.pack
         # this should not touch memory, only reshape
@@ -451,7 +452,7 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
         for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
             name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
             if name is not None and size > 1:
-                packed_inputs[name] = bint(size)
+                packed_inputs[name] = Bint[size]
         shape = tuple(d.size for d in packed_inputs.values()) + output.shape
         if x.shape != shape:
             x = x.reshape(shape)
@@ -646,7 +647,7 @@ def eager_getitem_tensor_number(op, lhs, rhs):
 @eager.register(Binary, GetitemOp, Tensor, Variable)
 def eager_getitem_tensor_variable(op, lhs, rhs):
     assert op.offset < len(lhs.output.shape)
-    assert rhs.output == bint(lhs.output.shape[op.offset])
+    assert rhs.output == Bint[lhs.output.shape[op.offset]]
     assert rhs.name not in lhs.inputs
 
     # Convert a positional event dimension to a named batch dimension.
@@ -666,7 +667,7 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
 @eager.register(Binary, GetitemOp, Tensor, Tensor)
 def eager_getitem_tensor_tensor(op, lhs, rhs):
     assert op.offset < len(lhs.output.shape)
-    assert rhs.output == bint(lhs.output.shape[op.offset])
+    assert rhs.output == Bint[lhs.output.shape[op.offset]]
 
     # Compute inputs and outputs.
     if lhs.inputs == rhs.inputs:
@@ -719,7 +720,7 @@ def eager_stack_homogeneous(name, *parts):
     shape = tuple(d.size for d in part_inputs.values()) + output.shape
     data = ops.stack(0, *[ops.expand(align_tensor(part_inputs, part), shape)
                           for part in parts])
-    inputs = OrderedDict([(name, bint(len(parts)))])
+    inputs = OrderedDict([(name, Bint[len(parts)])])
     inputs.update(part_inputs)
     return Tensor(data, inputs, dtype=output.dtype)
 
@@ -743,15 +744,27 @@ def eager_cat_homogeneous(name, part_name, *parts):
 
     dim = 0
     tensor = ops.cat(dim, *tensors)
-    inputs = OrderedDict([(name, bint(tensor.shape[dim]))] + list(inputs.items()))
+    inputs = OrderedDict([(name, Bint[tensor.shape[dim]])] + list(inputs.items()))
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 
+# TODO Promote this to a Funsor subclass.
 class LazyTuple(tuple):
     def __call__(self, *args, **kwargs):
         return LazyTuple(x(*args, **kwargs) for x in self)
 
+    @lazy_property
+    def __annotations__(self):
+        result = {}
+        output = []
+        for part in self:
+            result.update(part.__annotations__)
+            output.append(result.pop("return"))
+        result["return"] = typing.Tuple[tuple(output)]
+        return result
 
+
+# TODO Move this to terms.py; it is no longer Tensor-specific.
 class Function(Funsor):
     r"""
     Funsor wrapped by a native PyTorch or NumPy function.
@@ -762,8 +775,13 @@ class Function(Funsor):
     :class:`Function` s are usually created via the :func:`function` decorator.
 
     :param callable fn: A native PyTorch or NumPy function to wrap.
+<<<<<<< HEAD
     :param funsor.domains.Domain output: An output domain.
     :param tuple args: A tuple of Funsor arguments.
+=======
+    :param type output: An output domain.
+    :param Funsor args: Funsor arguments.
+>>>>>>> master
     """
     def __init__(self, fn, output, args):
         assert callable(fn)
@@ -797,7 +815,7 @@ def _(arg, indent, out):
     out[-1] = i, line + ")"
 
 
-@eager.register(Function, object, Domain, tuple)
+@eager.register(Function, object, ArrayType, tuple)
 def eager_function(fn, output, args):
     if not all(isinstance(arg, (Number, Tensor)) for arg in args):
         return None  # defer to default implementation
@@ -815,11 +833,11 @@ def _select(fn, i, *args):
 
 
 def _nested_function(fn, args, output):
-    if isinstance(output, Domain):
+    if isinstance(output, ArrayType):
         return Function(fn, output, args)
-    elif isinstance(output, tuple):
+    elif output.__origin__ in (tuple, typing.Tuple):
         result = []
-        for i, output_i in enumerate(output):
+        for i, output_i in enumerate(output.__args__):
             fn_i = functools.partial(_select, fn, i)
             fn_i.__name__ = "{}_{}".format(_nameof(fn), i)
             result.append(_nested_function(fn_i, args, output_i))
@@ -845,51 +863,90 @@ class _Memoized(object):
     def __name__(self):
         return _nameof(self.fn)
 
+    @property
+    def __annotations__(self):
+        return self.fn.__annotations__
+
 
 def _function(inputs, output, fn):
     if is_nn_module(fn):
         names = getargspec(fn.forward)[0][1:]
     else:
         names = getargspec(fn)[0]
-    args = tuple(Variable(name, domain) for (name, domain) in zip(names, inputs))
+    if isinstance(inputs, dict):
+        args = tuple(Variable(name, inputs[name])
+                     for name in names if name in inputs)
+    else:
+        args = tuple(Variable(name, domain)
+                     for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
-    if not isinstance(output, Domain):
-        assert isinstance(output, tuple)
+    if not isinstance(output, ArrayType):
+        assert output.__origin__ in (tuple, typing.Tuple)
         # Memoize multiple-output functions so that invocations can be shared among
         # all outputs. This is not foolproof, but does work in simple situations.
         fn = _Memoized(fn)
     return _nested_function(fn, args, output)
 
 
+def _tuple_to_Tuple(tp):
+    if isinstance(tp, tuple):
+        warnings.warn("tuple types like (Real, Reals[2]) are deprecated, "
+                      "use Tuple[Real, Reals[2]] instead",
+                      DeprecationWarning)
+        tp = tuple(map(_tuple_to_Tuple, tp))
+        return typing.Tuple[tp]
+    return tp
+
+
 def function(*signature):
     r"""
-    Decorator to wrap a PyTorch/NumPy function.
+    Decorator to wrap a PyTorch/NumPy function, using either type hints or
+    explicit type annotations.
 
     Example::
 
-        @funsor.torch.function(reals(3,4), reals(4,5), reals(3,5))
+        # Using type hints:
+        @funsor.tensor.function
+        def matmul(x: Reals[3, 4], y: Reals[4, 5]) -> Reals[3, 5]:
+            return torch.matmul(x, y)
+
+        # Using explicit type annotations:
+        @funsor.tensor.function(Reals[3, 4], Reals[4, 5], Reals[3, 5])
         def matmul(x, y):
             return torch.matmul(x, y)
 
-        @funsor.torch.function(reals(10), reals(10, 10), reals())
+        @funsor.tensor.function(Reals[10], Reals[10, 10], Reals[10], Real)
         def mvn_log_prob(loc, scale_tril, x):
             d = torch.distributions.MultivariateNormal(loc, scale_tril)
             return d.log_prob(x)
 
     To support functions that output nested tuples of tensors, specify a nested
-    tuple of output types, for example::
+    :py:class:`~typing.Tuple` of output types, for example::
 
-        @funsor.torch.function(reals(8), (reals(), bint(8)))
-        def max_and_argmax(x):
+        @funsor.tensor.function
+        def max_and_argmax(x: Reals[8]) -> Tuple[Real, Bint[8]]:
             return torch.max(x, dim=-1)
 
     :param \*signature: A sequence of input domains followed by a final output
         domain or nested tuple of output domains.
     """
     assert signature
+    if len(signature) == 1:
+        fn = signature[0]
+        if callable(fn) and not isinstance(fn, ArrayType):
+            # Usage: @function
+            inputs = typing.get_type_hints(fn)
+            output = inputs.pop("return")
+            assert all(isinstance(d, ArrayType) for d in inputs.values())
+            assert (isinstance(output, (ArrayType, tuple)) or
+                    output.__origin__ in (tuple, typing.Tuple))
+            return _function(inputs, output, fn)
+    # Usage @function(input1, ..., inputN, output)
     inputs, output = signature[:-1], signature[-1]
-    assert all(isinstance(d, Domain) for d in inputs)
-    assert isinstance(output, (Domain, tuple))
+    output = _tuple_to_Tuple(output)
+    assert all(isinstance(d, ArrayType) for d in inputs)
+    assert (isinstance(output, (ArrayType, tuple)) or
+            output.__origin__ in (tuple, typing.Tuple))
     return functools.partial(_function, inputs, output)
 
 
@@ -955,7 +1012,7 @@ class Einsum(Funsor):
                 if other_size != size:
                     raise ValueError("Size mismatch at {}: {} vs {}"
                                      .format(name, size, other_size))
-        output = reals(*(size_dict[d] for d in ein_output))
+        output = Reals[tuple(size_dict[d] for d in ein_output)]
         super(Einsum, self).__init__(inputs, output)
         self.equation = equation
         self.operands = operands
@@ -1053,7 +1110,7 @@ def stack(parts, dim=0):
     assert dim < 0
     split = dim + len(shape) + 1
     shape = shape[:split] + (len(parts),) + shape[split:]
-    output = Domain(shape, parts[0].dtype)
+    output = Array[parts[0].dtype, shape]
     fn = functools.partial(ops.stack, dim)
     return Function(fn, output, parts)
 

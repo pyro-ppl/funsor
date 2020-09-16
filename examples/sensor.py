@@ -11,9 +11,10 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 
+import funsor
 import funsor.torch.distributions as f_dist
 import funsor.ops as ops
-from funsor.domains import reals
+from funsor.domains import Reals
 from funsor.pyro.convert import dist_to_funsor, funsor_to_mvn
 from funsor.tensor import Tensor, Variable
 
@@ -91,7 +92,7 @@ class Model(nn.Module):
         trans_noise = self.log_trans_noise.exp()
 
         # bias distribution
-        bias = Variable('bias', reals(obs_dim))
+        bias = Variable('bias', Reals[obs_dim])
         assert not torch.isnan(bias_scale), "bias scales was nan"
         bias_dist = dist_to_funsor(
             dist.MultivariateNormal(
@@ -105,16 +106,16 @@ class Model(nn.Module):
         self.init = dist_to_funsor(init_dist)(value="state")
 
         # hidden states
-        prev = Variable("prev", reals(4))
-        curr = Variable("curr", reals(4))
+        prev = Variable("prev", Reals[4])
+        curr = Variable("curr", Reals[4])
         self.trans_dist = f_dist.MultivariateNormal(
             loc=prev @ NCV_TRANSITION_MATRIX,
             scale_tril=trans_noise * NCV_PROCESS_NOISE.cholesky(),
             value=curr
             )
 
-        state = Variable('state', reals(4))
-        obs = Variable("obs", reals(obs_dim))
+        state = Variable('state', Reals[4])
+        obs = Variable("obs", Reals[obs_dim])
         observation_matrix = Tensor(torch.eye(4, 2).unsqueeze(-1)
                                     .expand(-1, -1, self.num_sensors).reshape(4, -1))
         assert observation_matrix.output.shape == (4, obs_dim), observation_matrix.output.shape
@@ -203,6 +204,7 @@ def track(args):
 
 
 def main(args):
+    funsor.set_backend("torch")
     if args.force or not args.metrics_filename or not os.path.exists(args.metrics_filename):
         results = track(args)
     else:

@@ -11,8 +11,8 @@ Funsor is a tensor-like library for functions and distributions
    :maxdepth: 2
    :caption: Funsor Core:
 
-   domains
    ops
+   domains
    interpretations
    funsors
    optimizer

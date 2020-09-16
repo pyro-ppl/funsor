@@ -12,7 +12,7 @@ from multipledispatch.variadic import Variadic
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
-from funsor.domains import bint
+from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
 from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, align_tensor
@@ -59,7 +59,7 @@ def eager_cat_homogeneous(name, part_name, *parts):
     dim = 0
     info_vec = ops.cat(dim, *info_vecs)
     precision = ops.cat(dim, *precisions)
-    inputs[name] = bint(info_vec.shape[dim])
+    inputs[name] = Bint[info_vec.shape[dim]]
     int_inputs[name] = inputs[name]
     result = Gaussian(info_vec, precision, inputs)
     if any(d is not None for d in discretes):

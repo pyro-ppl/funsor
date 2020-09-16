@@ -8,7 +8,7 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.adjoint import AdjointTape
-from funsor.domains import bint, reals
+from funsor.domains import Bint, Real, Reals
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
@@ -165,17 +165,17 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
 
 @pytest.mark.parametrize('num_steps', list(range(3, 13)))
 @pytest.mark.parametrize('sum_op,prod_op,state_domain', [
-    (ops.add, ops.mul, bint(2)),
-    (ops.add, ops.mul, bint(3)),
-    (ops.logaddexp, ops.add, bint(2)),
-    (ops.logaddexp, ops.add, bint(3)),
-    (ops.logaddexp, ops.add, reals()),
-    (ops.logaddexp, ops.add, reals(2)),
+    (ops.add, ops.mul, Bint[2]),
+    (ops.add, ops.mul, Bint[3]),
+    (ops.logaddexp, ops.add, Bint[2]),
+    (ops.logaddexp, ops.add, Bint[3]),
+    (ops.logaddexp, ops.add, Real),
+    (ops.logaddexp, ops.add, Reals[2]),
 ], ids=str)
 @pytest.mark.parametrize('batch_inputs', [
     OrderedDict(),
-    OrderedDict([("foo", bint(5))]),
-    OrderedDict([("foo", bint(2)), ("bar", bint(4))]),
+    OrderedDict([("foo", Bint[5])]),
+    OrderedDict([("foo", Bint[2]), ("bar", Bint[4])]),
 ], ids=lambda d: ",".join(d.keys()))
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
@@ -186,12 +186,12 @@ def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, sta
     # test mostly copied from test_sum_product.py
     inputs = OrderedDict(batch_inputs)
     inputs.update(prev=state_domain, curr=state_domain)
-    inputs["time"] = bint(num_steps)
+    inputs["time"] = Bint[num_steps]
     if state_domain.dtype == "real":
         trans = random_gaussian(inputs)
     else:
         trans = random_tensor(inputs)
-    time = Variable("time", bint(num_steps))
+    time = Variable("time", Bint[num_steps])
 
     with AdjointTape() as actual_tape:
         actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
