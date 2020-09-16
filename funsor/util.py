@@ -212,3 +212,25 @@ def is_nn_module(x):
 
         return isinstance(x, torch.nn.Module)
     return False
+
+
+def methodof(cls, name=None):
+    """
+    Decorator to set the named method of the given class. Can be stacked.
+
+    Example usage::
+
+       @methodof(MyClass)
+       def __call__(self, x):
+           return x
+    """
+    def decorator(fn):
+        name_ = name
+        if name_ is None:
+            fn_ = fn
+            while not hasattr(fn_, "__name__"):
+                fn_ = fn_.__func__
+            name_ = fn_.__name__
+        setattr(cls, name_, fn)
+        return fn
+    return decorator
