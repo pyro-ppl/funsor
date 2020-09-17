@@ -286,15 +286,16 @@ def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
 
 # @to_funsor.register(TransformedDistribution)
 def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
-    TransformedDistribution = getattr(import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]),
+    TransformedDistribution = getattr(import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist,
                                       "TransformedDistribution")
     base_dist, transforms = backend_dist, []
     while isinstance(base_dist, TransformedDistribution):
         transforms = base_dist.transforms + transforms
         base_dist = base_dist.base_dist
     funsor_base_dist = to_funsor(base_dist, output=output, dim_to_name=dim_to_name)
-    inv_transform = reduce(lambda expr, tfm: to_funsor(tfm, expr.output).op.inv(expr),
-                           transforms, to_funsor("value", output=funsor_base_dist.inputs["value"]))
+    inv_transform = functools.reduce(
+        lambda expr, tfm: to_funsor(tfm, expr.output).op.inv(expr),
+        transforms, to_funsor("value", output=funsor_base_dist.inputs["value"]))
     return (Lebesgue("value", funsor_base_dist.inputs["value"]) + funsor_base_dist)(value=inv_transform)
 
 

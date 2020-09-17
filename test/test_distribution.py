@@ -18,7 +18,7 @@ from funsor.domains import Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array
-from funsor.terms import Independent, Variable, eager, lazy
+from funsor.terms import Independent, Lebesgue, Variable, eager, lazy
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_mvn, random_tensor, xfail_param
 from funsor.util import get_backend
 
@@ -1017,3 +1017,57 @@ def test_bernoullilogits_enumerate_support(expand, batch_shape):
     assert x.output == d.value.output
     assert set(x.inputs) == {'value'} | (set(batch_dims) if expand else set())
     assert_close(expected_log_prob, actual_log_prob)
+
+
+@pytest.mark.skipif(get_backend() != "torch", reason="not yet supported")
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_lognormal_transform_density(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+
+    loc = Tensor(randn(batch_shape), inputs)
+    scale = Tensor(ops.exp(randn(batch_shape)), inputs)
+    value = Tensor(ops.exp(randn(batch_shape)), inputs)
+
+    expected_funsor = dist.LogNormal(loc, scale, value)
+    check_funsor(expected_funsor, inputs, Real)
+
+    expected_direct = Tensor(backend_dist.TransformedDistribution(
+        backend_dist.Normal(loc.data, scale.data),
+        backend_dist.transforms.ExpTransform()
+    ).log_prob(value.data), inputs)
+    check_funsor(expected_direct, inputs, Real)
+
+    actual_base_dist = dist.Normal(loc, scale) + Lebesgue("value", Real)
+    actual_transformed_dist = actual_base_dist(value=ops.log(Variable("value", Real)))
+    actual = actual_transformed_dist(value=value)
+    check_funsor(actual, inputs, Real)
+
+    assert_close(actual, expected_funsor)
+    assert_close(actual, expected_direct)
+
+
+@pytest.mark.skipif(get_backend() != "torch", reason="not yet supported")
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_convert_transformeddist_gamma(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    dim_to_name = {dim: name for dim, name in zip(range(-len(batch_shape), 0), batch_dims)}
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+
+    concentration = Tensor(rand(batch_shape), inputs)
+    rate = Tensor(rand(batch_shape), inputs)
+
+    expected_base_dist = dist.Gamma(concentration, rate)
+    expected_transformed_dist = (Lebesgue("value", Real) + expected_base_dist)(value=ops.exp(Variable("value", Real)))
+
+    raw_base_dist = backend_dist.Gamma(concentration.data, rate.data)
+    raw_transformed_dist = backend_dist.TransformedDistribution(
+        raw_base_dist, [backend_dist.transforms.ExpTransform().inv])
+    actual_transformed_dist = funsor.to_funsor(raw_transformed_dist, output=Real, dim_to_name=dim_to_name)
+
+    raw_value = raw_transformed_dist.rsample()
+    value = Tensor(raw_value, inputs)
+
+    expected = expected_transformed_dist(value=value)
+    actual = actual_transformed_dist(value=value)
+    assert_close(actual, expected)

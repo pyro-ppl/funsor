@@ -35,7 +35,7 @@ from funsor.distribution import (  # noqa: F401
 from funsor.domains import Real, Reals
 import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Binary, Funsor, Unary, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Unary, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
 
 
@@ -174,7 +174,9 @@ def sigmoidtransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=N
 
 @to_funsor.register(torch.distributions.transforms._InverseTransform)
 def inversetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    return to_funsor(tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)
+    expr = to_funsor(tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)
+    assert isinstance(expr, Unary)
+    return expr.op.inv(expr.arg)
 
 
 @to_funsor.register(torch.distributions.transforms.ComposeTransform)
@@ -186,7 +188,7 @@ def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=N
     return expr
 
 
-@to_data.register(Unary[ops.TransformOp, Funsor])
+# @to_data.register(Unary[ops.TransformOp, Variable])
 def transform_to_data(expr, name_to_dim=None):
     raise NotImplementedError(f"{expr.op} is not a currently supported transform")
 

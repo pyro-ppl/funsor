@@ -376,10 +376,10 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     if any(isinstance(t, Lebesgue) for t in terms):
-        dx_terms = set(t for t in terms if isinstance(t, Lebesgue) and t.name not in reduced_vars)
+        dx_terms = tuple(t for t in terms if isinstance(t, Lebesgue) and t.name not in reduced_vars)
         dx_terms = tuple(sorted(dx_terms, key=lambda t: t.name))
         new_terms = dx_terms + tuple(t for t in terms if not isinstance(t, Lebesgue))
-        if new_terms != terms:
+        if not all(new_term is term for new_term, term in zip(new_terms, terms)):
             return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     for i, v in enumerate(terms):

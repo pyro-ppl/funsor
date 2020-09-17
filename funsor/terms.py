@@ -16,8 +16,8 @@ from multipledispatch.variadic import Variadic, isvariadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Bint, Domain, Real, Reals, find_domain
-from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
+from funsor.domains import Bint, Domain, Real, Reals, RealsType, find_domain
+from funsor.interpreter import PatternMissingError, dispatched_interpretation, gensym, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, lazy_property, pretty, quote
 
@@ -831,7 +831,7 @@ class Lebesgue(Funsor):
     """
     def __init__(self, name, domain):
         assert isinstance(name, str)
-        assert isinstance(domain, funsor.domains.RealsType)
+        assert isinstance(domain, RealsType)
         inputs = OrderedDict([(name, domain)])
         output = Real
         fresh = frozenset({name})
@@ -846,9 +846,9 @@ class Lebesgue(Funsor):
             return to_funsor(0.)
 
         from funsor.delta import solve  # TODO refactor
-        var = Variable(self.name, self.inputs[self.name])
+        var = Variable(gensym(self.name), self.inputs[self.name])
         name, point, log_density = solve(value, var)
-        return log_density
+        return log_density(**{var.name: value})
 
 
 class Variable(Funsor):
