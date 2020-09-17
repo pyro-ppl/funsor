@@ -194,7 +194,8 @@ intersphinx_mapping = {
     'numpy': ('http://docs.scipy.org/doc/numpy/', None),
     'torch': ('http://pytorch.org/docs/master/', None),
     'pyro': ('http://docs.pyro.ai/en/stable/', None),
-    'opt_einsum': ('https://optimized-einsum.readthedocs.io/en/stable/', None)
+    'opt_einsum': ('https://optimized-einsum.readthedocs.io/en/stable/', None),
+    'multipledispatch': ('https://multiple-dispatch.readthedocs.io/en/latest/', None),
 }
 
 # @jpchen's hack to get rtd builder to install latest pytorch
