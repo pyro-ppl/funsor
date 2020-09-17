@@ -35,7 +35,7 @@ from funsor.distribution import (  # noqa: F401
 from funsor.domains import Reals
 import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Binary, Funsor, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Unary, Variable, eager, to_funsor
 
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES)
@@ -114,6 +114,57 @@ DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_
 ###############################################
 # Converting PyTorch Distributions to funsors
 ###############################################
+
+@to_funsor.register(torch.distributions.Transform)
+def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    raise NotImplementedError(f"{tfm} is not a currently supported transform")
+
+
+@to_funsor.register(torch.distributions.transforms.ExpTransform)
+def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.exp(Variable(name, output))
+
+
+@to_funsor.register(torch.distributions.transforms.SigmoidTransform)
+def sigmoidtransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.sigmoid(Variable(name, output))
+
+
+@to_funsor.register(torch.distributions.transforms._InverseTransform)
+def inversetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    return to_funsor(tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)
+
+
+@to_funsor.register(torch.distributions.transforms.ComposeTransform)
+def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    expr = Variable(name, output)
+    for part in tfm.parts:  # XXX should this be reversed(parts)?
+        expr = to_funsor(part, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)(**{name: expr})
+    return expr
+
+
+@to_data.register(Unary[ops.TransformOp, Funsor])
+def transform_to_data(expr, name_to_dim=None):
+    raise NotImplementedError(f"{expr.op} is not a currently supported transform")
+
+
+@to_data.register(Unary[ops.ExpOp, Variable])
+def exptransform_to_data(expr, name_to_dim=None):
+    return torch.distributions.transforms.ExpTransform()
+
+
+@to_data.register(Unary[ops.LogOp, Variable])
+def logtransform_to_data(expr, name_to_dim=None):
+    return torch.distributions.transforms.ExpTransform().inv
+
+
+# @to_data.register(Unary[ops.SigmoidOp, Variable])  # TODO create a SigmoidOp class
+def sigmoidtransform_to_data(expr, name_to_dim=None):
+    return torch.distributions.transforms.SigmoidTransform()
+
 
 to_funsor.register(torch.distributions.Distribution)(backenddist_to_funsor)
 to_funsor.register(torch.distributions.Independent)(indepdist_to_funsor)

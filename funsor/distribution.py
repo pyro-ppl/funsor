@@ -277,21 +277,17 @@ def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     return mask * funsor_base_dist
 
 
-@functools.singledispatch
-def transform_to_op(tfm):
-    # backend-specific
-    raise NotImplementedError("Could not convert {} to a Funsor op".format(tfm))
-
-
 # @to_funsor.register(TransformedDistribution)
 def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
+    TransformedDistribution = getattr(import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]),
+                                      "TransformedDistribution")
     base_dist, transforms = backend_dist, []
     while isinstance(base_dist, TransformedDistribution):
         transforms = base_dist.transforms + transforms
         base_dist = base_dist.base_dist
     funsor_base_dist = to_funsor(base_dist, output=output, dim_to_name=dim_to_name)
-    inv_transform = reduce(lambda tfm, expr: tfm_to_op(tfm).inv(expr), transforms,
-                           to_funsor("value", output=funsor_base_dist.inputs["value"]))
+    inv_transform = reduce(lambda expr, tfm: to_funsor(tfm, expr.output).op.inv(expr),
+                           transforms, to_funsor("value", output=funsor_base_dist.inputs["value"]))
     return (Lebesgue("value", funsor_base_dist.inputs["value"]) + funsor_base_dist)(value=inv_transform)
 
 
@@ -319,10 +315,13 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
 
     # TODO get this working for all backends
-    # if not isinstance(funsor_dist.value, Variable):
-    #     inv_value = solve(funsor_dist.value, Variable("value"))
-    #     transforms = to_data(inv_value, name_to_dim=name_to_dim)
-    #     pyro_dist = TransformedDistribution(pyro_dist, transforms)
+    if not isinstance(funsor_dist.value, Variable):
+        assert get_backend() == "torch", \
+            "transformed distributions not yet supported under this backend, try set_backend('torch')"
+        inv_value = solve(funsor_dist.value, Variable("value"))
+        transforms = to_data(inv_value, name_to_dim=name_to_dim)
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        pyro_dist = backend_dist.TransformedDistribution(pyro_dist, transforms)
 
     if pyro_dist.event_shape != funsor_event_shape:
         raise ValueError("Event shapes don't match, something went wrong")
