@@ -32,10 +32,11 @@ from funsor.distribution import (  # noqa: F401
     mvndist_to_funsor,
     transformeddist_to_funsor,
 )
-from funsor.domains import Reals
+from funsor.domains import Real, Reals
 import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
 from funsor.terms import Binary, Funsor, Unary, Variable, eager, to_funsor
+from funsor.util import methodof
 
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES)
@@ -95,20 +96,59 @@ for dist_name, param_names in PYRO_DIST_NAMES:
 
 
 # Delta has to be treated specially because of its weird shape inference semantics
-Delta._infer_value_domain = classmethod(lambda cls, **kwargs: kwargs['v'])  # noqa: F821
+@methodof(Delta)  # noqa: F821
+@staticmethod
+def _infer_value_domain(**kwargs):
+    return kwargs['v']
 
 
 # Multinomial and related dists have dependent Bint dtypes, so we just make them 'real'
 # See issue: https://github.com/pyro-ppl/funsor/issues/322
+@methodof(Binomial)  # noqa: F821
+@methodof(Multinomial)  # noqa: F821
+@methodof(DirichletMultinomial)  # noqa: F821
+@classmethod
 @functools.lru_cache(maxsize=5000)
-def _multinomial_infer_value_domain(cls, **kwargs):
+def _infer_value_domain(cls, **kwargs):
     instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()}, validate_args=False)
     return Reals[instance.event_shape]
 
 
-Binomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)  # noqa: F821
-Multinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)  # noqa: F821
-DirichletMultinomial._infer_value_domain = classmethod(_multinomial_infer_value_domain)  # noqa: F821
+# TODO fix Delta.arg_constraints["v"] to be a
+# constraints.independent[constraints.real]
+@methodof(Delta)  # noqa: F821
+@staticmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(name, raw_shape):
+    if name == "v":
+        return Reals[raw_shape]
+    elif name == "log_density":
+        return Real
+    else:
+        raise ValueError(name)
+
+
+# TODO fix Dirichlet.arg_constraints["concentration"] to be a
+# constraints.independent[constraints.positive]
+@methodof(Dirichlet)  # noqa: F821
+@methodof(NonreparameterizedDirichlet)  # noqa: F821
+@staticmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(name, raw_shape):
+    assert name == "concentration"
+    return Reals[raw_shape[-1]]
+
+
+# TODO fix DirichletMultinomial.arg_constraints["concentration"] to be a
+# constraints.independent[constraints.positive]
+@methodof(DirichletMultinomial)  # noqa: F821
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(cls, name, raw_shape):
+    if name == "concentration":
+        return Reals[raw_shape[-1]]
+    assert name == "total_count"
+    return Real
 
 
 ###############################################

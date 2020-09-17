@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import importlib
 import inspect
 import math
 import typing
+import warnings
 from collections import OrderedDict
 from importlib import import_module
 
@@ -21,7 +23,7 @@ from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_defau
                            ignore_jit_warnings, numeric_array, stack)
 from funsor.terms import Funsor, FunsorMeta, Independent, Lebesgue, Number, Variable, \
     eager, normalize, reflect, to_data, to_funsor
-from funsor.util import broadcast_shape, get_backend
+from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
 
 BACKEND_TO_DISTRIBUTIONS_BACKEND = {
@@ -190,10 +192,15 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             output = Reals[raw_shape[-2:]]
         # resolve the issue: logits's constraints are real (instead of real_vector)
         # for discrete multivariate distributions in Pyro
-        elif support_name == "_Real" and name == "logits" and (
-                "probs" in cls.dist_class.arg_constraints
-                and type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex"):
-            output = Reals[raw_shape[-1]]
+        elif support_name == "_Real":
+            if name == "logits" and (
+                    "probs" in cls.dist_class.arg_constraints
+                    and type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex"):
+                output = Reals[raw_shape[-1]]
+            else:
+                output = Real
+        elif support_name in ("_Interval", "_GreaterThan", "_LessThan"):
+            output = Real
         else:
             output = None
         return output
@@ -301,6 +308,69 @@ def mvndist_to_funsor(backend_dist, output=None, dim_to_name=None, real_inputs=O
     return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
 
 
+class CoerceDistributionToFunsor:
+    """
+    Handler to reinterpret a backend distribution ``D`` as a corresponding
+    funsor during ``type(D).__call__()`` in case any constructor args are
+    funsors rather than backend tensors.
+
+    Example usage::
+
+        # in foo/distribution.py
+        coerce_to_funsor = CoerceDistributionToFunsor("foo")
+
+        class DistributionMeta(type):
+            def __call__(cls, *args, **kwargs):
+                result = coerce_to_funsor(cls, args, kwargs)
+                if result is not None:
+                    return result
+                return super().__call__(*args, **kwargs)
+
+        class Distribution(metaclass=DistributionMeta):
+            ...
+
+    :param str backend: Name of a funsor backend.
+    """
+    def __init__(self, backend):
+        self.backend = backend
+
+    @lazy_property
+    def module(self):
+        funsor.set_backend(self.backend)
+        module_name = BACKEND_TO_DISTRIBUTIONS_BACKEND[self.backend]
+        return importlib.import_module(module_name)
+
+    def __call__(self, cls, args, kwargs):
+        # Check whether distribution class takes any tensor inputs.
+        arg_constraints = getattr(cls, "arg_constraints", None)
+        if not arg_constraints:
+            return
+
+        # Check whether any tensor inputs are actually funsors.
+        try:
+            ast_fields = cls._funsor_ast_fields
+        except AttributeError:
+            ast_fields = cls._funsor_ast_fields = getargspec(cls.__init__)[0][1:]
+        if not any(isinstance(value, (str, Funsor))
+                   for pairs in (zip(ast_fields, args), kwargs.items())
+                   for name, value in pairs
+                   if name in arg_constraints):
+            return
+
+        # Check for a corresponding funsor class.
+        try:
+            funsor_cls = cls._funsor_cls
+        except AttributeError:
+            funsor_cls = cls._funsor_cls = getattr(self.module, cls.__name__, None)
+        if funsor_cls is None:
+            warnings.warn("missing funsor for {}".format(cls.__name__),
+                          RuntimeWarning)
+            return
+
+        # Coerce to funsor.
+        return funsor_cls(*args, **kwargs)
+
+
 ###############################################################
 # Converting distribution funsors to backend distributions
 ###############################################################
@@ -372,8 +442,10 @@ def Bernoulli(probs=None, logits=None, value='value'):
     """
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     if probs is not None:
+        probs = to_funsor(probs, output=Real)
         return backend_dist.BernoulliProbs(probs, value)  # noqa: F821
     if logits is not None:
+        logits = to_funsor(logits, output=Real)
         return backend_dist.BernoulliLogits(logits, value)  # noqa: F821
     raise ValueError('Either probs or logits must be specified')
 

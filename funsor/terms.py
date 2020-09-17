@@ -793,8 +793,10 @@ def to_funsor(x, output=None, dim_to_name=None, **kwargs):
 def funsor_to_funsor(x, output=None, dim_to_name=None):
     if output is not None and x.output != output:
         raise ValueError("Output mismatch: {} vs {}".format(x.output, output))
-    if dim_to_name is not None and list(x.inputs.keys()) != list(dim_to_name.values()):
-        raise ValueError("Inputs mismatch: {} vs {}".format(x.inputs, dim_to_name))
+    if dim_to_name is not None:
+        bint_names = {name for name, domain in x.inputs.items() if domain.dtype != "real"}
+        if not bint_names.issubset(dim_to_name.values()):
+            raise ValueError("Inputs mismatch: {} vs {}".format(x.inputs, dim_to_name))
     return x
 
 

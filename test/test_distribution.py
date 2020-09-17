@@ -32,6 +32,7 @@ if get_backend() == "torch":
     from funsor.pyro.convert import dist_to_funsor
 
 
+@pytest.mark.xfail(get_backend() == "jax", reason="flaky test")
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('eager', [False, True])
 def test_beta_density(batch_shape, eager):
