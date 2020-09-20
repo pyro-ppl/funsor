@@ -166,12 +166,6 @@ def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None)
     return ops.exp(Variable(name, output))
 
 
-@to_funsor.register(torch.distributions.transforms.SigmoidTransform)
-def sigmoidtransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    name = next(real_inputs.keys()) if real_inputs else "value"
-    return ops.sigmoid(Variable(name, output))
-
-
 @to_funsor.register(torch.distributions.transforms._InverseTransform)
 def inversetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
     expr = to_funsor(tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)
@@ -204,14 +198,6 @@ def exptransform_to_data(expr, name_to_dim=None):
 @to_data.register(Unary[ops.LogOp, Union[Unary, Variable]])
 def logtransform_to_data(expr, name_to_dim=None):
     tfm = torch.distributions.transforms.ExpTransform().inv
-    if isinstance(expr.arg, Unary):
-        tfm = torch.distributions.transforms.ComposeTransform([tfm, to_data(expr.arg, name_to_dim=name_to_dim)])
-    return tfm
-
-
-# @to_data.register(Unary[ops.SigmoidOp, Union[Unary, Variable]])  # TODO create a SigmoidOp class
-def sigmoidtransform_to_data(expr, name_to_dim=None):
-    tfm = torch.distributions.transforms.SigmoidTransform()
     if isinstance(expr.arg, Unary):
         tfm = torch.distributions.transforms.ComposeTransform([tfm, to_data(expr.arg, name_to_dim=name_to_dim)])
     return tfm
