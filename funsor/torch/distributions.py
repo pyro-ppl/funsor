@@ -157,7 +157,7 @@ def _infer_param_domain(cls, name, raw_shape):
 
 @to_funsor.register(torch.distributions.Transform)
 def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    raise NotImplementedError(f"{tfm} is not a currently supported transform")
+    raise NotImplementedError("{} is not a currently supported transform".format(tfm))
 
 
 @to_funsor.register(torch.distributions.transforms.ExpTransform)
@@ -190,7 +190,7 @@ def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=N
 
 @to_data.register(Unary[ops.TransformOp, Union[Unary, Variable]])
 def transform_to_data(expr, name_to_dim=None):
-    raise NotImplementedError(f"{expr.op} is not a currently supported transform")
+    raise NotImplementedError("{} is not a currently supported transform".format(expr.op))
 
 
 @to_data.register(Unary[ops.ExpOp, Union[Unary, Variable]])
