@@ -129,6 +129,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(inputs.items())}
         dim_to_name = {dim: name for name, dim in name_to_dim.items()}
 
+        # note this should handle transforms correctly via distribution_to_data
         raw_dist = to_data(self, name_to_dim=name_to_dim)
 
         sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
@@ -389,7 +390,7 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     if not isinstance(funsor_dist.value, Variable):
         assert get_backend() == "torch", \
             "transformed distributions not yet supported under this backend, try set_backend('torch')"
-        inv_value = funsor.delta.solve(funsor_dist.value, Variable("value"))
+        inv_value = funsor.delta.solve(funsor_dist.value, Variable("value"))[1]
         transforms = to_data(inv_value, name_to_dim=name_to_dim)
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
         pyro_dist = backend_dist.TransformedDistribution(pyro_dist, transforms)
