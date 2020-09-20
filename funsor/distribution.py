@@ -22,7 +22,7 @@ from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
                            ignore_jit_warnings, numeric_array, stack)
 from funsor.terms import Funsor, FunsorMeta, Independent, Lebesgue, Number, Variable, \
-    eager, normalize, reflect, to_data, to_funsor
+    eager, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
 
@@ -284,7 +284,7 @@ def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     return mask * funsor_base_dist
 
 
-# @to_funsor.register(TransformedDistribution)
+# converts TransformedDistributions
 def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     TransformedDistribution = getattr(import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist,
                                       "TransformedDistribution")
@@ -389,7 +389,7 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     if not isinstance(funsor_dist.value, Variable):
         assert get_backend() == "torch", \
             "transformed distributions not yet supported under this backend, try set_backend('torch')"
-        inv_value = solve(funsor_dist.value, Variable("value"))
+        inv_value = funsor.delta.solve(funsor_dist.value, Variable("value"))
         transforms = to_data(inv_value, name_to_dim=name_to_dim)
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
         pyro_dist = backend_dist.TransformedDistribution(pyro_dist, transforms)

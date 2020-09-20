@@ -1065,6 +1065,8 @@ def test_convert_transformeddist_gamma(batch_shape):
         raw_base_dist, [backend_dist.transforms.ExpTransform().inv])
     actual_transformed_dist = funsor.to_funsor(raw_transformed_dist, output=Real, dim_to_name=dim_to_name)
 
+    assert actual_transformed_dist is expected_transformed_dist  # cons hashing
+
     raw_value = raw_transformed_dist.rsample()
     value = Tensor(raw_value, inputs)
 

@@ -188,24 +188,33 @@ def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=N
     return expr
 
 
-# @to_data.register(Unary[ops.TransformOp, Variable])
+@to_data.register(Unary[ops.TransformOp, Union[Unary, Variable]])
 def transform_to_data(expr, name_to_dim=None):
     raise NotImplementedError(f"{expr.op} is not a currently supported transform")
 
 
-@to_data.register(Unary[ops.ExpOp, Variable])
+@to_data.register(Unary[ops.ExpOp, Union[Unary, Variable]])
 def exptransform_to_data(expr, name_to_dim=None):
-    return torch.distributions.transforms.ExpTransform()
+    tfm = torch.distributions.transforms.ExpTransform()
+    if isinstance(expr.arg, Unary):
+        tfm = torch.distributions.transforms.ComposeTransform([tfm, to_data(expr.arg, name_to_dim=name_to_dim)])
+    return tfm
 
 
-@to_data.register(Unary[ops.LogOp, Variable])
+@to_data.register(Unary[ops.LogOp, Union[Unary, Variable]])
 def logtransform_to_data(expr, name_to_dim=None):
-    return torch.distributions.transforms.ExpTransform().inv
+    tfm = torch.distributions.transforms.ExpTransform().inv
+    if isinstance(expr.arg, Unary):
+        tfm = torch.distributions.transforms.ComposeTransform([tfm, to_data(expr.arg, name_to_dim=name_to_dim)])
+    return tfm
 
 
-# @to_data.register(Unary[ops.SigmoidOp, Variable])  # TODO create a SigmoidOp class
+# @to_data.register(Unary[ops.SigmoidOp, Union[Unary, Variable]])  # TODO create a SigmoidOp class
 def sigmoidtransform_to_data(expr, name_to_dim=None):
-    return torch.distributions.transforms.SigmoidTransform()
+    tfm = torch.distributions.transforms.SigmoidTransform()
+    if isinstance(expr.arg, Unary):
+        tfm = torch.distributions.transforms.ComposeTransform([tfm, to_data(expr.arg, name_to_dim=name_to_dim)])
+    return tfm
 
 
 to_funsor.register(torch.distributions.Distribution)(backenddist_to_funsor)
