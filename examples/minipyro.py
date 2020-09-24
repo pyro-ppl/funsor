@@ -4,8 +4,8 @@
 import argparse
 
 import torch
-from pyro.generic import distributions as dist
-from pyro.generic import infer, optim, pyro, pyro_backend
+from pyroapi import distributions as dist
+from pyroapi import infer, optim, pyro, pyro_backend
 from torch.distributions import constraints
 
 import funsor

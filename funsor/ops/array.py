@@ -5,8 +5,8 @@ import math
 
 import numpy as np
 
-from .builtin import exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt
-from .op import Op
+from .builtin import AssociativeOp, add, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt
+from .op import DISTRIBUTIVE_OPS, Op
 
 _builtin_all = all
 _builtin_any = any
@@ -34,12 +34,33 @@ exp.register(array)(np.exp)
 log1p.register(array)(np.log1p)
 
 
+class LogAddExpOp(AssociativeOp):
+    pass
+
+
+class SampleOp(LogAddExpOp):
+    pass
+
+
 @log.register(array)
 def _log(x):
     if x.dtype == 'bool':
         return np.where(x, 0., -math.inf)
     with np.errstate(divide='ignore'):  # skip the warning of log(0.)
         return np.log(x)
+
+
+def _logaddexp(x, y):
+    if hasattr(x, "__logaddexp__"):
+        return x.__logaddexp__(y)
+    if hasattr(y, "__rlogaddexp__"):
+        return y.__logaddexp__(x)
+    shift = max(detach(x), detach(y))
+    return log(exp(x - shift) + exp(y - shift)) + shift
+
+
+logaddexp = LogAddExpOp(_logaddexp, name="logaddexp")
+sample = SampleOp(_logaddexp, name="sample")
 
 
 class ReshapeMeta(type):
@@ -252,8 +273,14 @@ def unsqueeze(x, dim):
     return np.expand_dims(x, axis=dim)
 
 
+DISTRIBUTIVE_OPS.add((logaddexp, add))
+DISTRIBUTIVE_OPS.add((sample, add))
+
+
 __all__ = [
+    'LogAddExpOp',
     'ReshapeOp',
+    'SampleOp',
     'all',
     'amax',
     'amin',
@@ -271,12 +298,14 @@ __all__ = [
     'finfo',
     'full_like',
     'is_numeric_array',
+    'logaddexp',
     'logsumexp',
     'new_arange',
     'new_eye',
     'new_zeros',
     'permute',
     'prod',
+    'sample',
     'stack',
     'sum',
     'transpose',
