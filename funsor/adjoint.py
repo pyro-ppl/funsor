@@ -26,6 +26,28 @@ def _alpha_unmangle(expr):
     return expr._alpha_convert(alpha_subs)
 
 
+@functools.singledispatch
+def _remove_adjoint_tapes(interpreter):
+    return interpreter
+
+
+@_remove_adjoint_tapes.register(AdjointTape)
+def _remove_adjoint_tapes_tape(interpreter):
+    return _remove_adjoint_tapes(interpreter._old_interpretation)
+
+
+@_remove_adjoint_tapes.register(InterpreterStack)
+def _remove_adjoint_tapes_stack(interpreter):
+    return InterpreterStack(*map(_remove_adjoint_tapes, interpreter.interpreters))
+
+
+@contextmanager
+def block_adjoint():
+    new = _remove_adjoint_tapes(interpreter._INTERPRETATION)
+    with interpreter.interpretation(new):
+        yield
+
+
 class AdjointTape(object):
 
     def __init__(self):

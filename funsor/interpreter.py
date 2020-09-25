@@ -106,11 +106,27 @@ def set_interpretation(new):
     _INTERPRETATION = new
 
 
+class InterpreterStack:
+
+    def __init__(self, *interpreters):
+        self.interpreters = tuple(interpreters)
+
+    def __call__(self, cls, *args):
+        for interpreter in interpreters:
+            result = interpreter(cls, *args)
+            if result is not None:
+                return result
+
+
 @contextmanager
-def interpretation(new):
+def interpretation(new, fallback=False):
     assert callable(new)
     global _INTERPRETATION
     old = _INTERPRETATION
+
+    if fallback:
+        new = InterpreterStack(new, old)
+
     try:
         _INTERPRETATION = new
         yield
@@ -322,6 +338,48 @@ def dispatched_interpretation(fn):
         fn.register = registry.register
     fn.dispatch = registry.dispatch
     return fn
+
+
+class StatefulInterpretation:
+    """
+    Usage::
+
+        class AdamInterpreter(StatefulInterpretation):
+
+            def __init__(self, lr):
+                self.lr = lr
+
+            def __call__(self, cls, *args):
+                result = self.dispatch(cls, *args)(self, *args)
+                if result is None:
+                    result = eager.dispatch(cls, *args)(*args)
+                if result is None:
+                    result = normalize.dispatch(cls, *args)(*args)
+                if result is None:
+                    result = reflect(cls, *args)
+                return result
+
+
+        @AdamInterpreter.register(...)
+        def adam_min(interpreter_state, cls, *args):
+            ...
+
+    """
+    def __init_subclass__(cls):
+        cls.registry = KeyedRegistry(default=lambda *args: None)
+        cls.dispatch = cls.registry.dispatch
+
+    def __call__(self, cls, *args):
+        raise NotImplementedError("Subclass should implement __call__")
+
+    if _DEBUG:
+        @classmethod
+        def register(cls, *args):
+            return lambda fn: cls.registry.register(*args)(debug_logged(fn))
+    else:
+        @classmethod
+        def register(cls, *args):
+            return cls.registry.register(*args)
 
 
 class PatternMissingError(NotImplementedError):
