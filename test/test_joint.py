@@ -14,7 +14,7 @@ from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
-from funsor.montecarlo import monte_carlo_interpretation
+from funsor.montecarlo import MonteCarlo
 from funsor.tensor import Tensor, numeric_array
 from funsor.terms import Number, Variable, eager, moment_matching
 from funsor.testing import (assert_close, randn, random_gaussian, random_tensor,
@@ -316,7 +316,7 @@ def test_reduce_moment_matching_moments():
         [('i', Bint[2]), ('j', Bint[3]), ('x', Reals[2])]))
     with interpretation(moment_matching):
         approx = gaussian.reduce(ops.logaddexp, 'j')
-    with monte_carlo_interpretation(s=Bint[100000]):
+    with interpretation(MonteCarlo(s=Bint[100000])):
         actual = Integrate(approx, Number(1.), 'x')
         expected = Integrate(gaussian, Number(1.), {'j', 'x'})
         assert_close(actual, expected, atol=1e-3, rtol=1e-3)

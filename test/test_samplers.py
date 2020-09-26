@@ -14,7 +14,8 @@ from funsor.delta import Delta
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.domains import Bint, Real, Reals
 from funsor.integrate import Integrate
-from funsor.montecarlo import monte_carlo_interpretation
+from funsor.interpreter import interpretation
+from funsor.montecarlo import MonteCarlo
 from funsor.tensor import Tensor, align_tensors
 from funsor.terms import Variable
 from funsor.testing import assert_close, id_from_inputs, randn, random_gaussian, random_tensor, xfail_if_not_implemented
@@ -341,7 +342,7 @@ def test_lognormal_distribution(moment):
 
     log_measure = dist.LogNormal(loc, scale)(value='x')
     probe = Variable('x', Real) ** moment
-    with monte_carlo_interpretation(particle=Bint[num_samples]):
+    with interpretation(MonteCarlo(particle=Bint[num_samples])):
         with xfail_if_not_implemented():
             actual = Integrate(log_measure, probe, frozenset(['x']))
 

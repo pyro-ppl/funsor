@@ -14,7 +14,7 @@ from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
-from funsor.montecarlo import monte_carlo
+from funsor.montecarlo import MonteCarlo
 from funsor.pyro.convert import AffineNormal
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Function, Tensor
@@ -201,12 +201,12 @@ def test_bart(analytic_kl):
 
     if analytic_kl:
         exact_part = funsor.Integrate(q, p_prior - q, "gate_rate_t")
-        with interpretation(monte_carlo):
+        with interpretation(MonteCarlo()):
             approx_part = funsor.Integrate(q, p_likelihood, "gate_rate_t")
         elbo = exact_part + approx_part
     else:
         p = p_prior + p_likelihood
-        with interpretation(monte_carlo):
+        with interpretation(MonteCarlo()):
             elbo = Integrate(q, p - q, "gate_rate_t")
 
     assert isinstance(elbo, Tensor), elbo.pretty()

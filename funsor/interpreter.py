@@ -6,7 +6,7 @@ import inspect
 import os
 import re
 import types
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from contextlib import contextmanager
 from functools import singledispatch
 
@@ -111,6 +111,7 @@ def interpretation(new):
     assert callable(new)
     global _INTERPRETATION
     old = _INTERPRETATION
+    new = InterpreterStack(new, old)
     try:
         _INTERPRETATION = new
         yield
@@ -311,6 +312,14 @@ def reinterpret(x):
         return recursion_reinterpret(x)
 
 
+class InterpreterStack(namedtuple("InterpreterStack", ["default", "fallback"])):
+    def __call__(self, cls, *args):
+        for interpreter in self:
+            result = interpreter(cls, *args)
+            if result is not None:
+                return result
+
+
 def dispatched_interpretation(fn):
     """
     Decorator to create a dispatched interpretation function.
@@ -324,6 +333,46 @@ def dispatched_interpretation(fn):
     return fn
 
 
+class StatefulInterpretationMeta(type):
+    def __init__(cls, name, bases, dct):
+        super().__init__(name, bases, dct)
+        cls.registry = KeyedRegistry(default=lambda *args: None)
+        cls.dispatch = cls.registry.dispatch
+
+
+class StatefulInterpretation(metaclass=StatefulInterpretationMeta):
+    """
+    Base class for interpreters with instance-dependent state or parameters.
+
+    Example usage::
+
+        class MyInterpretation(StatefulInterpretation):
+
+            def __init__(self, my_param):
+                self.my_param = my_param
+
+        @MyInterpretation.register(...)
+        def my_impl(interpreter_state, cls, *args):
+            my_param = interpreter_state.my_param
+            ...
+
+        with interpretation(MyInterpretation(my_param=0.1)):
+            ...
+    """
+
+    def __call__(self, cls, *args):
+        return self.dispatch(cls, *args)(self, *args)
+
+    if _DEBUG:
+        @classmethod
+        def register(cls, *args):
+            return lambda fn: cls.registry.register(*args)(debug_logged(fn))
+    else:
+        @classmethod
+        def register(cls, *args):
+            return cls.registry.register(*args)
+
+
 class PatternMissingError(NotImplementedError):
     def __str__(self):
         return "{}\nThis is most likely due to a missing pattern.".format(super().__str__())
@@ -331,6 +380,7 @@ class PatternMissingError(NotImplementedError):
 
 __all__ = [
     'PatternMissingError',
+    'StatefulInterpretation',
     'dispatched_interpretation',
     'interpret',
     'interpretation',

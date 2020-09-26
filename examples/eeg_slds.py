@@ -4,7 +4,7 @@
 """
 We use a switching linear dynamical system [1] to model a EEG time series dataset.
 For inference we use a moment-matching approximation enabled by
-`funsor.interpreter.interpretation(funsor.terms.moment_matching)`.
+`funsor.interpretation(funsor.terms.moment_matching)`.
 
 References
 
@@ -105,7 +105,7 @@ class SLDS(nn.Module):
         return trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist
 
     # compute the marginal log probability of the observed data using a moment-matching approximation
-    @funsor.interpreter.interpretation(funsor.terms.moment_matching)
+    @funsor.interpretation(funsor.terms.moment_matching)
     def log_prob(self, data):
         trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist = self.get_tensors_and_dists()
 
@@ -153,7 +153,7 @@ class SLDS(nn.Module):
     # here we implicitly use a moment matching lag of L = 1. the general logic follows
     # the logic in the log_prob method.
     @torch.no_grad()
-    @funsor.interpreter.interpretation(funsor.terms.moment_matching)
+    @funsor.interpretation(funsor.terms.moment_matching)
     def filter_and_predict(self, data, smoothing=False):
         trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist = self.get_tensors_and_dists()
 
