@@ -53,6 +53,7 @@ def parallel_loss_fn(model, guide, parallel=True):
 
 
 def run_expt(args):
+    funsor.set_backend("torch")
 
     optim = args["optim"]
     lr = args["learnrate"]
