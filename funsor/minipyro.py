@@ -508,7 +508,7 @@ class ELBO(object):
 # This is a wrapper for compatibility with full Pyro.
 class Trace_ELBO(ELBO):
     def __call__(self, model, guide, *args, **kwargs):
-        with funsor.montecarlo.monte_carlo_interpretation():
+        with funsor.interpretation(funsor.montecarlo.MonteCarlo()):
             return elbo(model, guide, *args, **kwargs)
 
 

@@ -9,16 +9,14 @@ from funsor import ops
 from funsor.domains import Bint
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
-from funsor.montecarlo import monte_carlo
+from funsor.montecarlo import MonteCarlo
 from funsor.terms import Variable, eager, lazy, moment_matching, normalize, reflect
 from funsor.testing import assert_close, random_tensor
-from funsor.util import get_backend
 
 
 @pytest.mark.parametrize('interp', [
     reflect, lazy, normalize, eager, moment_matching,
-    pytest.param(monte_carlo, marks=pytest.mark.xfail(
-        get_backend() == "jax", reason="Lacking pattern to pass rng_key"))
+    MonteCarlo(),
 ])
 def test_integrate(interp):
     log_measure = random_tensor(OrderedDict([('i', Bint[2]), ('j', Bint[3])]))
