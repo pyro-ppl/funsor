@@ -357,7 +357,7 @@ class StatefulInterpretation:
         cls.dispatch = cls.registry.dispatch
 
     def __call__(self, cls, *args):
-        return self.dispatch(cls, *args)(*args)
+        return self.dispatch(cls, *args)(self, *args)
 
     if _DEBUG:
         @classmethod
