@@ -11,6 +11,7 @@ import pyro
 import pyro.poutine as poutine
 import torch
 
+import funsor
 import funsor.ops as ops
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
