@@ -333,7 +333,14 @@ def dispatched_interpretation(fn):
     return fn
 
 
-class StatefulInterpretation:
+class StatefulInterpretationMeta(type):
+    def __init__(cls, name, bases, dct):
+        super().__init__(name, bases, dct)
+        cls.registry = KeyedRegistry(default=lambda *args: None)
+        cls.dispatch = cls.registry.dispatch
+
+
+class StatefulInterpretation(metaclass=StatefulInterpretationMeta):
     """
     Base class for interpreters with instance-dependent state or parameters.
 
@@ -352,9 +359,6 @@ class StatefulInterpretation:
         with interpretation(MyInterpretation(my_param=0.1)):
             ...
     """
-    def __init_subclass__(cls):
-        cls.registry = KeyedRegistry(default=lambda *args: None)
-        cls.dispatch = cls.registry.dispatch
 
     def __call__(self, cls, *args):
         return self.dispatch(cls, *args)(self, *args)
