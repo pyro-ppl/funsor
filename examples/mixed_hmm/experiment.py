@@ -11,6 +11,7 @@ import pyro
 import pyro.poutine as poutine
 import torch
 
+import funsor
 import funsor.ops as ops
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
@@ -53,6 +54,7 @@ def parallel_loss_fn(model, guide, parallel=True):
 
 
 def run_expt(args):
+    funsor.set_backend("torch")
 
     optim = args["optim"]
     lr = args["learnrate"]
