@@ -86,7 +86,7 @@ class Contraction(Funsor):
 
         if self.red_op in (ops.logaddexp, nullop):
             if self.bin_op in (ops.nullop, ops.logaddexp):
-                if rng_key is not None:
+                if rng_key is not None and get_backend() == "jax":
                     import jax
                     rng_keys = jax.random.split(rng_key, len(self.terms))
                 else:
@@ -100,7 +100,7 @@ class Contraction(Funsor):
                 return Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
 
             if self.bin_op is ops.add:
-                if rng_key is not None:
+                if rng_key is not None and get_backend() == "jax":
                     import jax
                     rng_keys = jax.random.split(rng_key)
                 else:

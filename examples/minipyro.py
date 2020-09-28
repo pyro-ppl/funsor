@@ -10,7 +10,7 @@ from torch.distributions import constraints
 
 import funsor
 from funsor.interpreter import interpretation
-from funsor.montecarlo import monte_carlo
+from funsor.montecarlo import MonteCarlo
 
 
 def main(args):
@@ -37,7 +37,7 @@ def main(args):
 
     # Because the API in minipyro matches that of Pyro proper,
     # training code works with generic Pyro implementations.
-    with pyro_backend(args.backend), interpretation(monte_carlo):
+    with pyro_backend(args.backend), interpretation(MonteCarlo()):
         # Construct an SVI object so we can do variational inference on our
         # model/guide pair.
         Elbo = infer.JitTrace_ELBO if args.jit else infer.Trace_ELBO

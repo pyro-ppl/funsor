@@ -3,7 +3,7 @@
 
 from funsor.domains import Array, Bint, Domain, Real, Reals, bint, find_domain, reals
 from funsor.integrate import Integrate
-from funsor.interpreter import reinterpret
+from funsor.interpreter import reinterpret, interpretation
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Tensor, function
 from funsor.terms import (
@@ -74,6 +74,7 @@ __all__ = [
     'gaussian',
     'get_backend',
     'integrate',
+    'interpretation',
     'interpreter',
     'joint',
     'memoize',

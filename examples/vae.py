@@ -56,7 +56,7 @@ def main(args):
     encode = funsor.function(Reals[28, 28], (Reals[20], Reals[20]))(encoder)
     decode = funsor.function(Reals[20], Reals[28, 28])(decoder)
 
-    @funsor.interpreter.interpretation(funsor.montecarlo.monte_carlo)
+    @funsor.interpretation(funsor.montecarlo.MonteCarlo())
     def loss_function(data, subsample_scale):
         # Lazily sample from the guide.
         loc, scale = encode(data)
