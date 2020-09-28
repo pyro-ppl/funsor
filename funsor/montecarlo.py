@@ -6,6 +6,7 @@ from collections import OrderedDict
 from funsor.integrate import Integrate
 from funsor.interpreter import StatefulInterpretation
 from funsor.terms import Funsor
+from funsor.util import get_backend
 
 
 class MonteCarlo(StatefulInterpretation):
@@ -22,8 +23,13 @@ class MonteCarlo(StatefulInterpretation):
 
 @MonteCarlo.register(Integrate, Funsor, Funsor, frozenset)
 def monte_carlo_integrate(state, log_measure, integrand, reduced_vars):
-    # FIXME use state.rng_key to here
-    sample = log_measure.sample(reduced_vars, state.sample_inputs)
+    sample_options = {}
+    if state.rng_key is not None and get_backend() == "jax":
+        import jax
+
+        sample_options["rng_key"], state.rng_key = jax.random.split(state.rng_key)
+
+    sample = log_measure.sample(reduced_vars, state.sample_inputs, **sample_options)
     if sample is log_measure:
         return None  # cannot progress
     reduced_vars |= frozenset(state.sample_inputs).intersection(sample.inputs)

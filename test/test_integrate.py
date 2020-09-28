@@ -3,6 +3,7 @@
 
 from collections import OrderedDict
 
+import numpy as np
 import pytest
 
 from funsor import ops
@@ -16,7 +17,7 @@ from funsor.testing import assert_close, random_tensor
 
 @pytest.mark.parametrize('interp', [
     reflect, lazy, normalize, eager, moment_matching,
-    MonteCarlo(),
+    MonteCarlo(rng_key=np.array([0, 0], dtype=np.uint32)),
 ])
 def test_integrate(interp):
     log_measure = random_tensor(OrderedDict([('i', Bint[2]), ('j', Bint[3])]))
