@@ -31,14 +31,6 @@ class MatmulOp(Op):  # Associtive but not commutative.
     pass
 
 
-class LogAddExpOp(AssociativeOp):
-    pass
-
-
-class SampleOp(LogAddExpOp):
-    pass
-
-
 class SubOp(Op):
     pass
 
@@ -188,19 +180,6 @@ def max(x, y):
     return _builtin_max(x, y)
 
 
-def _logaddexp(x, y):
-    if hasattr(x, "__logaddexp__"):
-        return x.__logaddexp__(y)
-    if hasattr(y, "__rlogaddexp__"):
-        return y.__logaddexp__(x)
-    shift = max(x, y)
-    return log(exp(x - shift) + exp(y - shift)) + shift
-
-
-logaddexp = LogAddExpOp(_logaddexp, name="logaddexp")
-sample = SampleOp(_logaddexp, name="sample")
-
-
 @SubOp
 def safesub(x, y):
     if isinstance(y, Number):
@@ -224,13 +203,11 @@ def reciprocal(x):
     raise ValueError("No reciprocal for type {}".format(type(x)))
 
 
-DISTRIBUTIVE_OPS.add((logaddexp, add))
 DISTRIBUTIVE_OPS.add((add, mul))
 DISTRIBUTIVE_OPS.add((max, mul))
 DISTRIBUTIVE_OPS.add((min, mul))
 DISTRIBUTIVE_OPS.add((max, add))
 DISTRIBUTIVE_OPS.add((min, add))
-DISTRIBUTIVE_OPS.add((sample, add))
 
 UNITS[mul] = 1.
 UNITS[add] = 0.
@@ -244,14 +221,12 @@ __all__ = [
     'DivOp',
     'ExpOp',
     'GetitemOp',
-    'LogAddExpOp',
     'LogOp',
     'MatmulOp',
     'MulOp',
     'NegOp',
     'NullOp',
     'ReciprocalOp',
-    'SampleOp',
     'SubOp',
     'abs',
     'add',
@@ -265,7 +240,6 @@ __all__ = [
     'le',
     'log',
     'log1p',
-    'logaddexp',
     'lt',
     'matmul',
     'max',
@@ -279,7 +253,6 @@ __all__ = [
     'reciprocal',
     'safediv',
     'safesub',
-    'sample',
     'sigmoid',
     'sqrt',
     'sub',

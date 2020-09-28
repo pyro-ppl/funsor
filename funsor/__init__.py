@@ -3,7 +3,7 @@
 
 from funsor.domains import Array, Bint, Domain, Real, Reals, bint, find_domain, reals
 from funsor.integrate import Integrate
-from funsor.interpreter import reinterpret
+from funsor.interpreter import reinterpret, interpretation
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Tensor, function
 from funsor.terms import (
@@ -42,10 +42,6 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     testing
 )
 
-# TODO: move to `funsor.util` when the following circular import issue is resolved
-# funsor.domains -> funsor.util -> set_backend -> funsor.torch -> funsor.domains
-set_backend(get_backend())
-
 
 __all__ = [
     'Array',
@@ -78,6 +74,7 @@ __all__ = [
     'gaussian',
     'get_backend',
     'integrate',
+    'interpretation',
     'interpreter',
     'joint',
     'memoize',

@@ -6,7 +6,7 @@ import inspect
 import os
 import re
 import types
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from contextlib import contextmanager
 from functools import singledispatch
 
@@ -106,27 +106,12 @@ def set_interpretation(new):
     _INTERPRETATION = new
 
 
-class InterpreterStack:
-
-    def __init__(self, *interpreters):
-        self.interpreters = tuple(interpreters)
-
-    def __call__(self, cls, *args):
-        for interpreter in interpreters:
-            result = interpreter(cls, *args)
-            if result is not None:
-                return result
-
-
 @contextmanager
-def interpretation(new, fallback=False):
+def interpretation(new):
     assert callable(new)
     global _INTERPRETATION
     old = _INTERPRETATION
-
-    if fallback:
-        new = InterpreterStack(new, old)
-
+    new = InterpreterStack(new, old)
     try:
         _INTERPRETATION = new
         yield
@@ -327,6 +312,14 @@ def reinterpret(x):
         return recursion_reinterpret(x)
 
 
+class InterpreterStack(namedtuple("InterpreterStack", ["default", "fallback"])):
+    def __call__(self, cls, *args):
+        for interpreter in self:
+            result = interpreter(cls, *args)
+            if result is not None:
+                return result
+
+
 def dispatched_interpretation(fn):
     """
     Decorator to create a dispatched interpretation function.
@@ -340,37 +333,35 @@ def dispatched_interpretation(fn):
     return fn
 
 
-class StatefulInterpretation:
-    """
-    Usage::
-
-        class AdamInterpreter(StatefulInterpretation):
-
-            def __init__(self, lr):
-                self.lr = lr
-
-            def __call__(self, cls, *args):
-                result = self.dispatch(cls, *args)(self, *args)
-                if result is None:
-                    result = eager.dispatch(cls, *args)(*args)
-                if result is None:
-                    result = normalize.dispatch(cls, *args)(*args)
-                if result is None:
-                    result = reflect(cls, *args)
-                return result
-
-
-        @AdamInterpreter.register(...)
-        def adam_min(interpreter_state, cls, *args):
-            ...
-
-    """
-    def __init_subclass__(cls):
+class StatefulInterpretationMeta(type):
+    def __init__(cls, name, bases, dct):
+        super().__init__(name, bases, dct)
         cls.registry = KeyedRegistry(default=lambda *args: None)
         cls.dispatch = cls.registry.dispatch
 
+
+class StatefulInterpretation(metaclass=StatefulInterpretationMeta):
+    """
+    Base class for interpreters with instance-dependent state or parameters.
+
+    Example usage::
+
+        class MyInterpretation(StatefulInterpretation):
+
+            def __init__(self, my_param):
+                self.my_param = my_param
+
+        @MyInterpretation.register(...)
+        def my_impl(interpreter_state, cls, *args):
+            my_param = interpreter_state.my_param
+            ...
+
+        with interpretation(MyInterpretation(my_param=0.1)):
+            ...
+    """
+
     def __call__(self, cls, *args):
-        raise NotImplementedError("Subclass should implement __call__")
+        return self.dispatch(cls, *args)(self, *args)
 
     if _DEBUG:
         @classmethod
@@ -389,6 +380,7 @@ class PatternMissingError(NotImplementedError):
 
 __all__ = [
     'PatternMissingError',
+    'StatefulInterpretation',
     'dispatched_interpretation',
     'interpret',
     'interpretation',

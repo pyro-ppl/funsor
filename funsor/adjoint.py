@@ -1,7 +1,9 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import functools
 from collections import OrderedDict, defaultdict
+from contextlib import contextmanager
 
 import numpy as np
 
@@ -10,7 +12,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.interpreter import interpretation
+from funsor.interpreter import InterpreterStack, interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, reflect, substitute, to_funsor
