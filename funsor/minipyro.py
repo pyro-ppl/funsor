@@ -49,7 +49,7 @@ class Distribution(object):
 
     # Draw a sample.
     def __call__(self):
-        with funsor.interpreter.interpretation(funsor.terms.eager):
+        with funsor.interpretation(funsor.terms.eager):
             dist = self.funsor_dist(value='value')
             delta = dist.sample(frozenset(['value']), sample_inputs=self.sample_inputs)
         if isinstance(delta, funsor.cnf.Contraction):
@@ -521,7 +521,7 @@ class TraceEnum_ELBO(ELBO):
     # TODO allow mixing of sampling and exact integration
     def __call__(self, model, guide, *args, **kwargs):
         if self.options.get("optimize", None):
-            with funsor.interpreter.interpretation(funsor.optimizer.optimize):
+            with funsor.interpretation(funsor.optimizer.optimize):
                 elbo_expr = elbo(model, guide, *args, **kwargs)
             return funsor.reinterpret(elbo_expr)
         return elbo(model, guide, *args, **kwargs)
