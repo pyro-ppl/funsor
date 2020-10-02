@@ -73,6 +73,16 @@ class Interpreter:
     def __call__(self):
         return _INTERPRETATION
 
+    def __enter__(self):
+        global _INTERPRETATION
+        self.old = _INTERPRETATION
+        _INTERPRETATION = self
+        return self
+
+    def __exit__(self, *args):
+        global _INTERPRETATION
+        _INTERPRETATION = self.old
+
 
 def debug_interpret(cls, *args):
     global _STACK_SIZE
