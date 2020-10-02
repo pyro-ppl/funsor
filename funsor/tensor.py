@@ -20,6 +20,7 @@ from funsor.delta import Delta
 from funsor.domains import Array, ArrayType, Bint, Real, Reals, find_domain
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
+    Argreduce,
     Binary,
     Funsor,
     FunsorMeta,
@@ -686,6 +687,79 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
         index[i] = ops.new_arange(lhs_data, lhs_data.shape[i]).reshape((-1,) + (1,) * (lhs_data_dim - i - 1))
     data = lhs_data[tuple(index)]
     return Tensor(data, inputs, lhs.dtype)
+
+
+@eager.register(Argreduce, ops.MaxOp, Tensor, frozenset)
+def eager_argmax(op, arg, reduced_vars):
+    import torch
+    if not isinstance(arg.data, torch.Tensor):
+        raise NotImplementedError("TODO")
+
+    assert arg.output == Real
+    reduced_vars = reduced_vars.intersection(arg.inputs)
+    if not reduced_vars:
+        return arg
+
+    # Partition inputs into batch_inputs + event_inputs.
+    batch_inputs = OrderedDict((k, d) for k, d in arg.inputs.items() if k not in reduced_vars)
+    event_inputs = OrderedDict((k, d) for k, d in arg.inputs.items() if k in reduced_vars)
+    be_inputs = batch_inputs.copy()
+    be_inputs.update(event_inputs)
+
+    # Flatten all variables to argreduce in a single op call.
+    data = align_tensor(be_inputs, arg)
+    batch_shape = data.shape[:len(batch_inputs)]
+    flat_data = data.reshape(batch_shape + (-1,))
+    log_density, flat_point = flat_data.argmax(dim=-1)
+    assert log_density.shape == batch_shape
+    assert flat_point.shape[:-1] == batch_shape
+
+    # Unflatten and convert to funsors.
+    log_density = Tensor(log_density, batch_inputs)
+    results = [log_density]
+    mod_point = flat_point
+    for name, domain in reversed(list(event_inputs.items())):
+        size = domain.dtype
+        point = Tensor(mod_point % size, batch_inputs, size)
+        mod_point = mod_point // size
+        results.append(Delta(name, point))
+
+    return reduce(ops.add, results)  # FIXME Should this be lazy?
+
+
+@eager.register(Argreduce, ops.LogAddExpOp, Funsor, frozenset)
+def eager_arglogaddexp(op, arg, reduced_vars):
+    assert arg.output == Real
+    reduced_vars = reduced_vars.intersection(arg.inputs)
+    if not reduced_vars:
+        return arg
+
+    # Partition inputs into batch_inputs + event_inputs.
+    batch_inputs = OrderedDict((k, d) for k, d in arg.inputs.items() if k not in reduced_vars)
+    event_inputs = OrderedDict((k, d) for k, d in arg.inputs.items() if k in reduced_vars)
+    be_inputs = batch_inputs.copy()
+    be_inputs.update(event_inputs)
+
+    # Argreduce to a collection of marginals.
+    total = arg.reduce(op, reduced_vars)
+    results = [total]
+    for name, domain in reversed(list(event_inputs.items())):
+        others = frozenset(event_inputs) - {name}
+        # TODO Declare that marginal is normalized. This should then allow a
+        # zero-cost rule to extract component marginals, similar to the Delta
+        # reduction rule that makes it cheap to extract argmax results.
+        marginal = arg.reduce(op, others) - total
+        results.append(marginal)
+
+    return reduce(ops.add, results)  # FIXME Should this be lazy?
+
+
+@eager.register(Argreduce, ops.SampleOp, Funsor, frozenset)
+def eager_argsample(op, arg, reduced_vars):
+    sample_inputs = op.sample_inputs
+    unscaled_result = arg.unscaled_sample(reduced_vars, sample_inputs, rng_key=op.rng_key)
+    normalizing_factor = "TODO as in Funsor.sample()"
+    return unscaled_result - normalizing_factor
 
 
 @eager.register(Lambda, Variable, Tensor)

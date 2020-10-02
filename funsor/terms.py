@@ -442,6 +442,8 @@ class Funsor(object, metaclass=FunsorMeta):
         :param reduced_vars: An optional input name or set of names to reduce.
             If unspecified, all inputs will be reduced.
         :type reduced_vars: str, Variable, or set or frozenset thereof.
+        :returns: A funsor whose inputs are ``self.inputs`` minus
+            ``reduced_vars``.
         """
         assert isinstance(op, AssociativeOp)
         # Eagerly convert reduced_vars to appropriate things.
@@ -455,6 +457,29 @@ class Funsor(object, metaclass=FunsorMeta):
             return self
         assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
+
+    def argreduce(self, op, reduced_vars):
+        """
+        Adjoint of reduction operation.
+
+        :param callable op: A reduction operation.
+        :param reduced_vars: An optional input name or set of names to reduce.
+            If unspecified, all inputs will be reduced.
+        :type reduced_vars: str, Variable, or set or frozenset thereof.
+        :returns: A funsor with the same inputs as ``self.inputs``.
+        """
+        assert isinstance(op, AssociativeOp)
+        # Eagerly convert reduced_vars to appropriate things.
+        if reduced_vars is None:
+            # Empty reduced_vars means "reduce over everything".
+            reduced_vars = frozenset(self.inputs)
+        else:
+            reduced_vars = _convert_reduced_vars(reduced_vars)
+        assert isinstance(reduced_vars, frozenset), reduced_vars
+        if not reduced_vars:
+            return self
+        assert reduced_vars.issubset(self.inputs)
+        return Argreduce(op, self, reduced_vars)
 
     def sample(self, sampled_vars, sample_inputs=None, rng_key=None):
         """
@@ -543,6 +568,13 @@ class Funsor(object, metaclass=FunsorMeta):
         return None  # defer to default implementation
 
     def eager_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        if not reduced_vars:
+            return self
+
+        return None  # defer to default implementation
+
+    def eager_argreduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
         if not reduced_vars:
             return self
@@ -1050,6 +1082,35 @@ def sequential_reduce(op, arg, reduced_vars):
 @moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
 def moment_matching_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+
+
+class Argreduce(Funsor):
+    """
+    Lazy adjoint reduction over multiple variables.
+
+    :param ~funsor.ops.Op op: A binary operator.
+    :param funsor arg: An argument to be argreduced.
+    :param frozenset reduced_vars: A set of variable names over which to reduce.
+    """
+    def __init__(self, op, arg, reduced_vars):
+        assert callable(op)
+        assert isinstance(arg, Funsor)
+        assert isinstance(reduced_vars, frozenset)
+        inputs = arg.inputs
+        output = arg.output
+        super(Argreduce, self).__init__(inputs, output)
+        self.op = op
+        self.arg = arg
+        self.reduced_vars = reduced_vars
+
+    def __repr__(self):
+        return 'Argreduce({}, {}, {})'.format(
+            self.op.__name__, self.arg, self.reduced_vars)
+
+
+@eager.register(Argreduce, AssociativeOp, Funsor, frozenset)
+def eager_reduce(op, arg, reduced_vars):
+    return interpreter.debug_logged(arg.eager_argreduce)(op, reduced_vars)
 
 
 class NumberMeta(FunsorMeta):

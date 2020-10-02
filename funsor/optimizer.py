@@ -2,14 +2,16 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import collections
+from functools import reduce
 
 from multipledispatch.variadic import Variadic
 from opt_einsum.paths import greedy
 
 import funsor.interpreter as interpreter
+from funsor.adjoint import AdjointTape
 from funsor.cnf import Contraction, nullop
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Funsor, eager, lazy, normalize
+from funsor.terms import Argreduce, Funsor, eager, lazy, normalize
 
 
 @interpreter.dispatched_interpretation
@@ -125,6 +127,22 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
     if final_reduced_vars:
         path_end = path_end.reduce(red_op, final_reduced_vars)
     return path_end
+
+
+@optimize.register(Argreduce, AssociativeOp, Contraction, frozenset)
+def optimize_argreduce_contraction(op, arg, reduced_vars):
+    if (op, arg.bin_op) not in DISTRIBUTIVE_OPS:
+        return None
+
+    with AdjointTape() as tape:
+        root = arg.reduce(op, reduced_vars)
+
+    leaves = arg.terms
+    leaf_results = tape.adjoint(op, arg.bin_op, root, leaves)
+    results = []
+    for leaf in leaf_results.values():
+        results.append(leaf.argreduce(op, reduced_vars))
+    return reduce(arg.bin_op, results)
 
 
 def apply_optimizer(x):
