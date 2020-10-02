@@ -60,7 +60,7 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
-    with AdjointTape() as tape:  # interpretation(reflect):
+    with interpretation(AdjointTape()) as tape:  # interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
@@ -103,7 +103,7 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
-    with AdjointTape() as tape:  # interpretation(reflect):
+    with interpretation(AdjointTape()) as tape:  # interpretation(reflect):
         fwd_expr = einsum_impl(equation, *funsor_operands, plates=plates, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
@@ -141,7 +141,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
-    with AdjointTape() as tape:  # interpretation(reflect):
+    with interpretation(AdjointTape()) as tape:  # interpretation(reflect):
         fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
@@ -193,7 +193,7 @@ def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, sta
         trans = random_tensor(inputs)
     time = Variable("time", Bint[num_steps])
 
-    with AdjointTape() as actual_tape:
+    with interpretation(AdjointTape()) as actual_tape:
         actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
 
     expected_inputs = batch_inputs.copy()
@@ -204,7 +204,7 @@ def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, sta
     operands = tuple(trans(time=t, prev="t_{}".format(t), curr="t_{}".format(t+1))
                      for t in range(num_steps))
     reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
-    with AdjointTape() as expected_tape:
+    with interpretation(AdjointTape()) as expected_tape:
         with interpretation(reflect):
             expected = sum_product(sum_op, prod_op, operands, reduce_vars)
         expected = apply_optimizer(expected)

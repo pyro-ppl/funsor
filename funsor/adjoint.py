@@ -26,30 +26,20 @@ def _alpha_unmangle(expr):
     return expr._alpha_convert(alpha_subs)
 
 
-class AdjointTape(object):
+class AdjointTape(interpreter.StatefulInterpretation):
 
     def __init__(self):
         self.tape = []
-        self._old_interpretation = None
 
     def __call__(self, cls, *args):
+        old_interpretation = interpreter._INTERPRETATION.fallback
         if cls in adjoint_ops:  # atomic op, don't trace internals
-            with interpretation(self._old_interpretation):
+            with interpretation(old_interpretation, stack=False):
                 result = cls(*args)
             self.tape.append((result, cls, args))
         else:
-            result = self._old_interpretation(cls, *args)
+            result = old_interpretation(cls, *args)
         return result
-
-    def __enter__(self):
-        self.tape = []
-        self._old_interpretation = interpreter._INTERPRETATION
-        interpreter.set_interpretation(self)
-        return self
-
-    def __exit__(self, *args):
-        interpreter.set_interpretation(self._old_interpretation)
-        self._old_interpretation = None
 
     def adjoint(self, red_op, bin_op, root, targets):
 
