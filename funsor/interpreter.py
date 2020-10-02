@@ -114,7 +114,7 @@ def interpretation(new):
     new = InterpreterStack(new, old)
     try:
         _INTERPRETATION = new
-        yield
+        yield new.default
     finally:
         _INTERPRETATION = old
 

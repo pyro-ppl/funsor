@@ -8,7 +8,7 @@ import funsor.ops as ops
 from funsor.cnf import BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpreter import interpretation, reinterpret
-from funsor.memoize import memoize
+from funsor.memoize import Memoize
 from funsor.tensor import numeric_array
 from funsor.terms import reflect
 from funsor.testing import make_einsum_example, xfail_param
@@ -56,7 +56,7 @@ def test_einsum_complete_sharing(equation, plates, backend, einsum_impl, same_la
         lazy_expr2 = lazy_expr1 if same_lazy else \
             einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
 
-    with memoize():
+    with interpretation(Memoize()):
         expr1 = reinterpret(lazy_expr1)
         expr2 = reinterpret(lazy_expr2)
     expr3 = reinterpret(lazy_expr1)
@@ -81,11 +81,10 @@ def test_einsum_complete_sharing_reuse_cache(equation, plates, backend, einsum_i
         lazy_expr2 = lazy_expr1 if same_lazy else \
             einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
 
-    cache = {}
-    with memoize(cache) as cache:
+    with interpretation(Memoize(cache={})) as m1:
         expr1 = reinterpret(lazy_expr1)
 
-    with memoize(cache):
+    with interpretation(Memoize(cache=m1.cache)):
         expr2 = reinterpret(lazy_expr2)
 
     expr3 = reinterpret(lazy_expr1)
@@ -106,7 +105,7 @@ def test_memoize_sample(check_sample):
     rng_keys = (None, None, None) if get_backend() == "torch" \
         else np.array([[0, 1], [0, 2], [0, 3]], dtype=np.uint32)
 
-    with memoize():
+    with interpretation(Memoize()):
         m, s = numeric_array(0.), numeric_array(1.)
         j1 = Normal(m, s, 'x')
         j2 = Normal(m, s, 'x')
@@ -133,7 +132,7 @@ def test_nested_einsum_complete_sharing(eqn1, eqn2, einsum_impl1, einsum_impl2, 
     inputs1, outputs1, sizes1, operands1, funsor_operands1 = make_einsum_example(eqn1, sizes=(3,))
     inputs2, outputs2, sizes2, operands2, funsor_operands2 = make_einsum_example(eqn2, sizes=(3,))
 
-    with memoize():
+    with interpretation(Memoize()):
         output1_1 = einsum_impl1(eqn1, *funsor_operands1, backend=backend1)
         output2_1 = einsum_impl2(outputs1[0] + "," + eqn2, *([output1_1] + funsor_operands2), backend=backend2)
 
@@ -158,6 +157,6 @@ def test_nested_complete_sharing_direct():
         c2 = (ab * bc).reduce(ops.add, frozenset({"a", "b"}))
         d2 = (c2 * cd).reduce(ops.add, frozenset({"c"}))
 
-    with memoize():
+    with interpretation(Memoize()):
         assert reinterpret(c1) is reinterpret(c2)
         assert reinterpret(d1) is reinterpret(d2)

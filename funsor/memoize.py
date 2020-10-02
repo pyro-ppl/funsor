@@ -2,26 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import Hashable
-from contextlib import contextmanager
 
 import funsor.interpreter as interpreter
 
 
-@contextmanager
-def memoize(cache=None):
-    """
-    Exploit cons-hashing to do implicit common subexpression elimination
-    """
-    if cache is None:
-        cache = {}
+class Memoize(interpreter.StatefulInterpretation):
 
-    @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
-    def memoize_interpretation(cls, *args):
+    def __init__(self, cache=None):
+        self.cache = cache if cache is not None else {}
+
+    def __call__(self, cls, *args):
         key = (cls,) + tuple(id(arg) if (type(arg).__name__ == "DeviceArray") or not isinstance(arg, Hashable)
                              else arg for arg in args)
-        if key not in cache:
-            cache[key] = cls(*args)
-        return cache[key]
-
-    with interpreter.interpretation(memoize_interpretation):
-        yield cache
+        if key not in self.cache:
+            with interpreter.interpretation(interpreter._INTERPRETATION.fallback):
+                self.cache[key] = cls(*args)
+        return self.cache[key]
