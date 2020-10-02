@@ -15,6 +15,6 @@ class Memoize(interpreter.StatefulInterpretation):
         key = (cls,) + tuple(id(arg) if (type(arg).__name__ == "DeviceArray") or not isinstance(arg, Hashable)
                              else arg for arg in args)
         if key not in self.cache:
-            with interpreter.interpretation(interpreter._INTERPRETATION.fallback):
+            with interpreter.interpretation(interpreter._INTERPRETATION.fallback, stack=False):
                 self.cache[key] = cls(*args)
         return self.cache[key]

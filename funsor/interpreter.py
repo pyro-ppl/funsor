@@ -107,14 +107,14 @@ def set_interpretation(new):
 
 
 @contextmanager
-def interpretation(new):
+def interpretation(new, stack=True):
     assert callable(new)
     global _INTERPRETATION
     old = _INTERPRETATION
-    new = InterpreterStack(new, old)
+    new = InterpreterStack(new, old) if stack else new
     try:
         _INTERPRETATION = new
-        yield new.default
+        yield new.default if stack else new
     finally:
         _INTERPRETATION = old
 
