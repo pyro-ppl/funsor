@@ -20,6 +20,8 @@ from funsor.distribution import (  # noqa: F401
     eager_delta_funsor_variable,
     eager_delta_tensor,
     eager_delta_variable_variable,
+    eager_dirichlet_multinomial,
+    eager_dirichlet_posterior,
     eager_multinomial,
     eager_mvn,
     eager_normal,
@@ -183,6 +185,14 @@ def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
 
 
+JointDirichletMultinomial = Contraction[
+    Union[ops.LogAddExpOp, ops.NullOp],
+    ops.AddOp,
+    frozenset,
+    Tuple[Dirichlet, Multinomial],  # noqa: F821
+]
+
+
 eager.register(Beta, Funsor, Funsor, Funsor)(eager_beta)  # noqa: F821)
 eager.register(Binomial, Funsor, Funsor, Funsor)(eager_binomial)  # noqa: F821
 eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: F821)
@@ -195,35 +205,10 @@ eager.register(Delta, Variable, Funsor, Funsor)(eager_delta_funsor_funsor)  # no
 eager.register(Delta, Variable, Variable, Variable)(eager_delta_variable_variable)  # noqa: F821
 eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
-
-
-@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)  # noqa: F821
-def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
-    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
-    if dirichlet_reduction:
-        return DirichletMultinomial(concentration=x.concentration,  # noqa: F821
-                                    total_count=y.total_count,
-                                    value=y.value)
-    else:
-        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
-
-
-JointDirichletMultinomial = Contraction[
-    Union[ops.LogAddExpOp, ops.NullOp],
-    ops.AddOp,
-    frozenset,
-    Tuple[Dirichlet, Multinomial],  # noqa: F821
-]
-
-
-@eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)  # noqa: F821
-def eager_dirichlet_posterior(op, c, z):
-    if (z.concentration is c.terms[0].concentration) and (c.terms[1].total_count is z.total_count):
-        return Dirichlet(  # noqa: F821
-            concentration=z.concentration + c.terms[1].value,
-            value=c.terms[0].value)
-    else:
-        return None
+eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)(  # noqa: F821
+    eager_dirichlet_multinomial)
+eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
+    eager_dirichlet_posterior)
 
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES if _get_numpyro_dist(x[0]) is not None)

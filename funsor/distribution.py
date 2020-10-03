@@ -15,7 +15,7 @@ import makefun
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
-from funsor.cnf import GaussianMixture
+from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Array, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
@@ -549,3 +549,24 @@ def eager_mvn(loc, scale_tril, value):
     inputs[var] = Reals[scale_diag.shape[0]]
     gaussian = log_prob + Gaussian(info_vec, precision, inputs)
     return gaussian(**{var: value - loc})
+
+
+def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
+    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if dirichlet_reduction:
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        return backend_dist.DirichletMultinomial(concentration=x.concentration,
+                                                 total_count=y.total_count,
+                                                 value=y.value)
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
+def eager_dirichlet_posterior(op, c, z):
+    if (z.concentration is c.terms[0].concentration) and (c.terms[1].total_count is z.total_count):
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        return backend_dist.Dirichlet(
+            concentration=z.concentration + c.terms[1].value,
+            value=c.terms[0].value)
+    else:
+        return None
