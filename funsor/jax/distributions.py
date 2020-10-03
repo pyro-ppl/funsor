@@ -46,10 +46,7 @@ class _NumPyroWrapper_Binomial(dist.BinomialProbs):
 
 
 class _NumPyroWrapper_Categorical(dist.CategoricalProbs):
-    # this fix is not available in NumPyro 0.2.4
-    @property
-    def support(self):
-        return dist.constraints.integer_interval(0, self.probs.shape[-1] - 1)
+    pass
 
 
 class _NumPyroWrapper_Multinomial(dist.MultinomialProbs):

@@ -346,7 +346,16 @@ class CoerceDistributionToFunsor:
         try:
             funsor_cls = cls._funsor_cls
         except AttributeError:
-            funsor_cls = cls._funsor_cls = getattr(self.module, cls.__name__, None)
+            funsor_cls = getattr(self.module, cls.__name__, None)
+            # resolve the issues Binomial/Multinomial are functions in NumPyro, which
+            # fallback to either BinomialProbs or BinomialLogits
+            if funsor_cls is None:
+                funsor_cls = getattr(self.module, cls.__name__[:-5], None)
+            cls._funsor_cls = funsor_cls
+        # XXX: BinomialProbs in NumPyro has `probs` as its first argument
+        if self.backend == "jax" and cls.__name__ in ["BinomialProbs", "MultinomialProbs"]:
+            assert len(args) == 2
+            args = (args[1], args[0])
         if funsor_cls is None:
             warnings.warn("missing funsor for {}".format(cls.__name__),
                           RuntimeWarning)
