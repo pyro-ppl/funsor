@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+from typing import Tuple, Union
 
 import numpyro.distributions as dist
 
+from funsor.cnf import Contraction
 from funsor.distribution import (  # noqa: F401
     Bernoulli,
     FUNSOR_DIST_NAMES,
@@ -28,8 +30,9 @@ from funsor.distribution import (  # noqa: F401
     transformeddist_to_funsor,
 )
 from funsor.domains import Real, Reals
+import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Funsor, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Variable, eager, to_funsor
 from funsor.util import methodof
 
 
@@ -103,6 +106,7 @@ def _infer_value_domain(**kwargs):
 # See issue: https://github.com/pyro-ppl/funsor/issues/322
 @methodof(Binomial)  # noqa: F821
 @methodof(Multinomial)  # noqa: F821
+@methodof(DirichletMultinomial)  # noqa: F821
 @classmethod
 @functools.lru_cache(maxsize=5000)
 def _infer_value_domain(cls, **kwargs):
@@ -133,6 +137,18 @@ def _infer_param_domain(name, raw_shape):
 def _infer_param_domain(name, raw_shape):
     assert name == "concentration"
     return Reals[raw_shape[-1]]
+
+
+# TODO fix DirichletMultinomial.arg_constraints["concentration"] to be a
+# constraints.independent[constraints.positive]
+@methodof(DirichletMultinomial)  # noqa: F821
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(cls, name, raw_shape):
+    if name == "concentration":
+        return Reals[raw_shape[-1]]
+    assert name == "total_count"
+    return Real
 
 
 ###############################################
@@ -182,5 +198,35 @@ eager.register(Delta, Variable, Funsor, Funsor)(eager_delta_funsor_funsor)  # no
 eager.register(Delta, Variable, Variable, Variable)(eager_delta_variable_variable)  # noqa: F821
 eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
+
+
+@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)  # noqa: F821
+def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
+    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if dirichlet_reduction:
+        return DirichletMultinomial(concentration=x.concentration,  # noqa: F821
+                                    total_count=y.total_count,
+                                    value=y.value)
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
+JointDirichletMultinomial = Contraction[
+    Union[ops.LogAddExpOp, ops.NullOp],
+    ops.AddOp,
+    frozenset,
+    Tuple[Dirichlet, Multinomial],  # noqa: F821
+]
+
+
+@eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)  # noqa: F821
+def eager_dirichlet_posterior(op, c, z):
+    if (z.concentration is c.terms[0].concentration) and (c.terms[1].total_count is z.total_count):
+        return Dirichlet(  # noqa: F821
+            concentration=z.concentration + c.terms[1].value,
+            value=c.terms[0].value)
+    else:
+        return None
+
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES if _get_numpyro_dist(x[0]) is not None)

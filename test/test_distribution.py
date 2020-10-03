@@ -243,7 +243,6 @@ def test_dirichlet_density(batch_shape, event_shape):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
-@pytest.mark.xfail(get_backend() != 'torch', reason="DirichletMultinomial is not implemented yet in NumPyro")
 def test_dirichlet_multinomial_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
@@ -273,7 +272,6 @@ def test_dirichlet_multinomial_density(batch_shape, event_shape):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(2,), (4,), (5,)], ids=str)
-@pytest.mark.xfail(get_backend() != 'torch', reason="DirichletMultinmial is not implemented yet in NumPyro")
 def test_dirichlet_multinomial_conjugate(batch_shape, event_shape):
     max_count = 10
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]

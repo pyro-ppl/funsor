@@ -86,7 +86,6 @@ def _get_pyro_dist(dist_name):
 
 
 PYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
-    ('DirichletMultinomial', ('concentration', 'total_count')),
     ('VonMises', ('loc', 'concentration')),
 ]
 

@@ -232,6 +232,7 @@ FUNSOR_DIST_NAMES = [
     ('CategoricalLogits', ('logits',)),
     ('Delta', ('v', 'log_density')),
     ('Dirichlet', ('concentration',)),
+    ('DirichletMultinomial', ('concentration', 'total_count')),
     ('Gamma', ('concentration', 'rate')),
     ('Multinomial', ('total_count', 'probs')),
     ('MultivariateNormal', ('loc', 'scale_tril')),
