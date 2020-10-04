@@ -17,7 +17,7 @@ from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.domains import Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
-from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array
+from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array, stack
 from funsor.terms import Independent, Variable, eager, lazy
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_mvn, random_tensor, xfail_param
 from funsor.util import get_backend
@@ -1015,3 +1015,20 @@ def test_bernoullilogits_enumerate_support(expand, batch_shape):
     assert x.output == d.value.output
     assert set(x.inputs) == {'value'} | (set(batch_dims) if expand else set())
     assert_close(expected_log_prob, actual_log_prob)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_beta_bernoulli_conjugate(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape
+    prior = Variable("prior", Reals[full_shape])[batch_dims]
+    concentration1 = Tensor(ops.exp(randn(full_shape)), inputs)
+    concentration0 = Tensor(ops.exp(randn(full_shape)), inputs)
+    p = dist.Beta(concentration1, concentration0, value=prior)
+    p += dist.Bernoulli(probs=prior)
+    reduced = p.reduce(ops.logaddexp, set(["prior"]))
+    assert isinstance(reduced, dist.DirichletMultinomial)
+    concentration = stack((concentration0, concentration1), dim=-1)
+    assert_close(reduced.concentration, concentration)
+    assert_close(reduced.total_count, Tensor(numeric_array(1.)))
