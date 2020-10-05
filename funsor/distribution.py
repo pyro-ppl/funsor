@@ -351,7 +351,7 @@ class CoerceDistributionToFunsor:
             funsor_cls = getattr(self.module, cls.__name__, None)
             # resolve the issues Binomial/Multinomial are functions in NumPyro, which
             # fallback to either BinomialProbs or BinomialLogits
-            if funsor_cls is None:
+            if funsor_cls is None and cls.__name__.endswith("Probs"):
                 funsor_cls = getattr(self.module, cls.__name__[:-5], None)
             cls._funsor_cls = funsor_cls
         if funsor_cls is None:
