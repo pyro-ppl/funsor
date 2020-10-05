@@ -241,7 +241,8 @@ FUNSOR_DIST_NAMES = [
     ('NonreparameterizedGamma', ('concentration', 'rate')),
     ('NonreparameterizedNormal', ('loc', 'scale')),
     ('Normal', ('loc', 'scale')),
-    ('Poisson', ('rate',))
+    ('Poisson', ('rate',)),
+    ('VonMises', ('loc', 'concentration')),
 ]
 
 
