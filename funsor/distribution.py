@@ -337,9 +337,10 @@ class CoerceDistributionToFunsor:
             ast_fields = cls._funsor_ast_fields
         except AttributeError:
             ast_fields = cls._funsor_ast_fields = getargspec(cls.__init__)[0][1:]
+        kwargs = {name: value for pairs in (zip(ast_fields, args), kwargs.items())
+                  for name, value in pairs}
         if not any(isinstance(value, (str, Funsor))
-                   for pairs in (zip(ast_fields, args), kwargs.items())
-                   for name, value in pairs
+                   for name, value in kwargs.items()
                    if name in arg_constraints):
             return
 
@@ -353,17 +354,13 @@ class CoerceDistributionToFunsor:
             if funsor_cls is None:
                 funsor_cls = getattr(self.module, cls.__name__[:-5], None)
             cls._funsor_cls = funsor_cls
-        # XXX: BinomialProbs in NumPyro has `probs` as its first argument
-        if self.backend == "jax" and cls.__name__ in ["BinomialProbs", "MultinomialProbs"]:
-            assert len(args) == 2
-            args = (args[1], args[0])
         if funsor_cls is None:
             warnings.warn("missing funsor for {}".format(cls.__name__),
                           RuntimeWarning)
             return
 
         # Coerce to funsor.
-        return funsor_cls(*args, **kwargs)
+        return funsor_cls(**kwargs)
 
 
 ###############################################################
