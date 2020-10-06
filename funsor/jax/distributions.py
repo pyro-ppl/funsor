@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+from typing import Tuple, Union
 
 import numpyro.distributions as dist
 
+from funsor.cnf import Contraction
 from funsor.distribution import (  # noqa: F401
     Bernoulli,
     FUNSOR_DIST_NAMES,
@@ -18,6 +20,8 @@ from funsor.distribution import (  # noqa: F401
     eager_delta_funsor_variable,
     eager_delta_tensor,
     eager_delta_variable_variable,
+    eager_dirichlet_multinomial,
+    eager_dirichlet_posterior,
     eager_multinomial,
     eager_mvn,
     eager_normal,
@@ -28,8 +32,9 @@ from funsor.distribution import (  # noqa: F401
     transformeddist_to_funsor,
 )
 from funsor.domains import Real, Reals
+import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Funsor, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Variable, eager, to_funsor
 from funsor.util import methodof
 
 
@@ -43,10 +48,7 @@ class _NumPyroWrapper_Binomial(dist.BinomialProbs):
 
 
 class _NumPyroWrapper_Categorical(dist.CategoricalProbs):
-    # this fix is not available in NumPyro 0.2.4
-    @property
-    def support(self):
-        return dist.constraints.integer_interval(0, self.probs.shape[-1] - 1)
+    pass
 
 
 class _NumPyroWrapper_Multinomial(dist.MultinomialProbs):
@@ -135,6 +137,28 @@ def _infer_param_domain(name, raw_shape):
     return Reals[raw_shape[-1]]
 
 
+# TODO: remove this `if` for NumPyro > 0.4.0
+if hasattr(dist, "DirichletMultinomial"):
+    @methodof(DirichletMultinomial)  # noqa: F821
+    @classmethod
+    @functools.lru_cache(maxsize=5000)
+    def _infer_value_domain(cls, **kwargs):
+        instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()},
+                                  validate_args=False)
+        return Reals[instance.event_shape]
+
+    # TODO fix DirichletMultinomial.arg_constraints["concentration"] to be a
+    # constraints.independent[constraints.positive]
+    @methodof(DirichletMultinomial)  # noqa: F821
+    @classmethod
+    @functools.lru_cache(maxsize=5000)
+    def _infer_param_domain(cls, name, raw_shape):
+        if name == "concentration":
+            return Reals[raw_shape[-1]]
+        assert name == "total_count"
+        return Real
+
+
 ###############################################
 # Converting PyTorch Distributions to funsors
 ###############################################
@@ -170,6 +194,14 @@ def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
 
 
+JointDirichletMultinomial = Contraction[
+    Union[ops.LogAddExpOp, ops.NullOp],
+    ops.AddOp,
+    frozenset,
+    Tuple[Dirichlet, Multinomial],  # noqa: F821
+]
+
+
 eager.register(Beta, Funsor, Funsor, Funsor)(eager_beta)  # noqa: F821)
 eager.register(Binomial, Funsor, Funsor, Funsor)(eager_binomial)  # noqa: F821
 eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: F821)
@@ -182,5 +214,11 @@ eager.register(Delta, Variable, Funsor, Funsor)(eager_delta_funsor_funsor)  # no
 eager.register(Delta, Variable, Variable, Variable)(eager_delta_variable_variable)  # noqa: F821
 eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
+eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)(  # noqa: F821
+    eager_dirichlet_multinomial)
+if hasattr(dist, "DirichletMultinomial"):
+    eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
+        eager_dirichlet_posterior)
+
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES if _get_numpyro_dist(x[0]) is not None)
