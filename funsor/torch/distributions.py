@@ -88,9 +88,7 @@ def _get_pyro_dist(dist_name):
         return getattr(dist, dist_name)
 
 
-PYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
-    ('VonMises', ('loc', 'concentration')),
-]
+PYRO_DIST_NAMES = FUNSOR_DIST_NAMES
 
 
 for dist_name, param_names in PYRO_DIST_NAMES:

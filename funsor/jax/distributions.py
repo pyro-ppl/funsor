@@ -106,7 +106,6 @@ def _infer_value_domain(**kwargs):
 # See issue: https://github.com/pyro-ppl/funsor/issues/322
 @methodof(Binomial)  # noqa: F821
 @methodof(Multinomial)  # noqa: F821
-@methodof(DirichletMultinomial)  # noqa: F821
 @classmethod
 @functools.lru_cache(maxsize=5000)
 def _infer_value_domain(cls, **kwargs):
@@ -139,16 +138,26 @@ def _infer_param_domain(name, raw_shape):
     return Reals[raw_shape[-1]]
 
 
-# TODO fix DirichletMultinomial.arg_constraints["concentration"] to be a
-# constraints.independent[constraints.positive]
-@methodof(DirichletMultinomial)  # noqa: F821
-@classmethod
-@functools.lru_cache(maxsize=5000)
-def _infer_param_domain(cls, name, raw_shape):
-    if name == "concentration":
-        return Reals[raw_shape[-1]]
-    assert name == "total_count"
-    return Real
+# TODO: remove this `if` for NumPyro > 0.4.0
+if hasattr(dist, "DirichletMultinomial"):
+    @methodof(DirichletMultinomial)  # noqa: F821
+    @classmethod
+    @functools.lru_cache(maxsize=5000)
+    def _infer_value_domain(cls, **kwargs):
+        instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()},
+                                  validate_args=False)
+        return Reals[instance.event_shape]
+
+    # TODO fix DirichletMultinomial.arg_constraints["concentration"] to be a
+    # constraints.independent[constraints.positive]
+    @methodof(DirichletMultinomial)  # noqa: F821
+    @classmethod
+    @functools.lru_cache(maxsize=5000)
+    def _infer_param_domain(cls, name, raw_shape):
+        if name == "concentration":
+            return Reals[raw_shape[-1]]
+        assert name == "total_count"
+        return Real
 
 
 ###############################################
@@ -210,8 +219,9 @@ eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Be
     eager_beta_bernoulli)
 eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)(  # noqa: F821
     eager_dirichlet_multinomial)
-eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
-    eager_dirichlet_posterior)
+if hasattr(dist, "DirichletMultinomial"):
+    eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
+        eager_dirichlet_posterior)
 
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES if _get_numpyro_dist(x[0]) is not None)
