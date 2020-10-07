@@ -1027,3 +1027,19 @@ def test_beta_bernoulli_conjugate(batch_shape):
     concentration = stack((concentration0, concentration1), dim=-1)
     assert_close(reduced.concentration, concentration)
     assert_close(reduced.total_count, Tensor(numeric_array(1.)))
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_gamma_poisson_conjugate(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape
+    prior = Variable("prior", Reals[full_shape])[batch_dims]
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    rate = Tensor(ops.exp(randn(full_shape)), inputs)
+    p = dist.Gamma(concentration, rate, value=prior)
+    p += dist.Poisson(rate=prior)
+    reduced = p.reduce(ops.logaddexp, set(["prior"]))
+    assert isinstance(reduced, dist.GammaPoisson)
+    assert_close(reduced.concentration, concentration)
+    assert_close(reduced.rate, rate)

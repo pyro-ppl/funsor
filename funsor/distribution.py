@@ -234,6 +234,7 @@ FUNSOR_DIST_NAMES = [
     ('Dirichlet', ('concentration',)),
     ('DirichletMultinomial', ('concentration', 'total_count')),
     ('Gamma', ('concentration', 'rate')),
+    ('GammaPoisson', ('concentration', 'rate')),
     ('Multinomial', ('total_count', 'probs')),
     ('MultivariateNormal', ('loc', 'scale_tril')),
     ('NonreparameterizedBeta', ('concentration1', 'concentration0')),
@@ -562,6 +563,17 @@ def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
         return backend_dist.DirichletMultinomial(concentration=x.concentration,
                                                  total_count=y.total_count,
                                                  value=y.value)
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
+def eager_gamma_poisson(red_op, bin_op, reduced_vars, x, y):
+    gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if gamma_reduction:
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        return backend_dist.GammaPoisson(concentration=x.concentration,
+                                         rate=x.rate,
+                                         value=y.value)
     else:
         return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
