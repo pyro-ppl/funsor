@@ -549,6 +549,12 @@ def eager_mvn(loc, scale_tril, value):
     return gaussian(**{var: value - loc})
 
 
+def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):
+    backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    return eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x,
+                                       backend_dist.Binomial(total_count=1, probs=y.probs, value=y.value))
+
+
 def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
     dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
     if dirichlet_reduction:
