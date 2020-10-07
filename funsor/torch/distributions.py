@@ -26,6 +26,7 @@ from funsor.distribution import (  # noqa: F401
     eager_dirichlet_multinomial,
     eager_dirichlet_posterior,
     eager_delta_variable_variable,
+    eager_gamma_poisson,
     eager_multinomial,
     eager_mvn,
     eager_normal,
@@ -192,5 +193,7 @@ eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Be
     eager_beta_bernoulli)
 eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)(  # noqa: F821
     eager_dirichlet_multinomial)
+eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Gamma, Poisson)(  # noqa: F821
+    eager_gamma_poisson)
 eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
     eager_dirichlet_posterior)
