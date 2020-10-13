@@ -5,7 +5,7 @@ import functools
 import itertools
 import typing
 import warnings
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from contextlib import contextmanager
 from functools import reduce
 
@@ -187,6 +187,11 @@ class Tensor(Funsor, metaclass=TensorMeta):
         if not subs:
             return self
 
+        # Handle diagonal variable substitution
+        var_counts = Counter(v for v in subs.values() if isinstance(v, Variable))
+        subs = OrderedDict((k, self.materialize(v) if var_counts[v] > 1 else v)
+                           for k, v in subs.items())
+
         # Handle renaming to enable cons hashing, and
         # handle slicing to avoid copying data.
         if any(isinstance(v, (Variable, Slice)) for v in subs.values()):
@@ -196,6 +201,8 @@ class Tensor(Funsor, metaclass=TensorMeta):
                 if k in subs:
                     v = subs[k]
                     if isinstance(v, Variable):
+                        if var_counts[v] > 1:
+                            continue
                         del subs[k]
                         k = v.name
                     elif isinstance(v, Slice):
