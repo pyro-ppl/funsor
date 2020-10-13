@@ -201,8 +201,6 @@ class Tensor(Funsor, metaclass=TensorMeta):
                 if k in subs:
                     v = subs[k]
                     if isinstance(v, Variable):
-                        if var_counts[v] > 1:
-                            continue
                         del subs[k]
                         k = v.name
                     elif isinstance(v, Slice):
