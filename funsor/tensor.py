@@ -759,6 +759,7 @@ def eager_arglogaddexp(op, arg, reduced_vars):
     return reduce(ops.add, results)  # FIXME Should this be lazy?
 
 
+# FIXME should this instead be @montecarlo.register(..., ops.LogAddExpOp, ...)?
 @eager.register(Argreduce, ops.SampleOp, Funsor, frozenset)
 def eager_argsample(op, arg, reduced_vars):
     sample_inputs = op.sample_inputs
