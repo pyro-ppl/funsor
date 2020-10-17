@@ -210,7 +210,7 @@ def _safesub(x, y):
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
 
 
-@ops.stack.register(int, [array])
+@ops.stack.register(int, [array + (int, float)])
 def _stack(dim, *x):
     return np.stack(x, axis=dim)
 

@@ -1047,3 +1047,12 @@ def test_detach():
     assert_close(x, y)
     assert x.data.requires_grad
     assert not y.data.requires_grad
+
+
+def test_diagonal_rename():
+    x = Tensor(randn(2, 2, 3), OrderedDict(a=funsor.Bint[2], b=funsor.Bint[2], c=funsor.Bint[3]), 'real')
+    d = Variable("d", funsor.Bint[2])
+    dt = x.materialize(d)
+    yt = x(a=dt, b=dt)
+    y = x(a=d, b=d)
+    assert_close(y, yt)
