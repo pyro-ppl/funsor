@@ -556,6 +556,18 @@ def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):
                                        backend_dist.Binomial(total_count=1, probs=y.probs, value=y.value))
 
 
+def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
+    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if dirichlet_reduction:
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        identity = Tensor(ops.new_eye(funsor.tensor.get_default_prototype(), x.concentration.shape))
+        return backend_dist.DirichletMultinomial(concentration=x.concentration,
+                                                 total_count=1,
+                                                 value=identity[y.value])
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
 def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
     dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
     if dirichlet_reduction:

@@ -281,34 +281,6 @@ def test_dirichlet_multinomial_density(batch_shape, event_shape):
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('event_shape', [(2,), (4,), (5,)], ids=str)
-@pytest.mark.xfail(_skip_for_numpyro_version("0.4.0"),
-                   reason="DirichletMultinomial is not available in NumPyro 0.4.0")
-def test_dirichlet_multinomial_conjugate(batch_shape, event_shape):
-    max_count = 10
-    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
-    full_shape = batch_shape + event_shape
-    prior = Variable("prior", Reals[full_shape])[batch_dims]
-    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
-    value_data = ops.astype(randint(0, max_count, size=full_shape), 'float32')
-    value = Tensor(value_data, inputs)
-    total_count_data = value_data.sum(-1) + ops.astype(randint(0, max_count, size=batch_shape), 'float32')
-    total_count = Tensor(total_count_data, inputs)
-    p = dist.Dirichlet(concentration, value=prior)
-    p += dist.Multinomial(probs=prior, total_count=total_count)
-    marginalized = p.reduce(ops.logaddexp, set(["value"]))
-    assert isinstance(marginalized, dist.Dirichlet)
-    reduced = p.reduce(ops.logaddexp, set(["prior"]))
-    assert isinstance(reduced, dist.DirichletMultinomial)
-    assert_close(reduced.concentration, concentration)
-    assert_close(reduced.total_count, total_count)
-    result = (p - reduced)(value=value)
-    assert isinstance(result, dist.Dirichlet)
-    assert_close(result.concentration, concentration + value)
-
-
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_lognormal_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
@@ -1012,6 +984,10 @@ def test_bernoullilogits_enumerate_support(expand, batch_shape):
     assert_close(expected_log_prob, actual_log_prob)
 
 
+#########################
+# Conjugacy tests
+#########################
+
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_beta_bernoulli_conjugate(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
@@ -1027,6 +1003,54 @@ def test_beta_bernoulli_conjugate(batch_shape):
     concentration = stack((concentration0, concentration1), dim=-1)
     assert_close(reduced.concentration, concentration)
     assert_close(reduced.total_count, Tensor(numeric_array(1.)))
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('size', [2, 4, 5], ids=str)
+def test_dirichlet_categorical_conjugate(batch_shape, size):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+
+    full_shape = batch_shape + (size,)
+    prior = Variable("prior", Reals[full_shape])[batch_dims]
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    value = random_tensor(inputs, Bint[size])
+    p = dist.Dirichlet(concentration, value=prior)
+    p += dist.Categorical(probs=prior)
+    reduced = p.reduce(ops.logaddexp, set(["prior"]))
+    assert isinstance(reduced, Tensor)
+    actual = reduced(value=value)
+    expected = dist.DirichletMultinomial(concentration=concentration, total_count=1)(
+        value=Tensor(ops.new_eye(concentration.data, (size,)))[value])
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(2,), (4,), (5,)], ids=str)
+@pytest.mark.xfail(_skip_for_numpyro_version("0.4.0"),
+                   reason="DirichletMultinomial is not available in NumPyro 0.4.0")
+def test_dirichlet_multinomial_conjugate(batch_shape, event_shape):
+    max_count = 10
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape + event_shape
+    prior = Variable("prior", Reals[full_shape])[batch_dims]
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    value_data = ops.astype(randint(0, max_count, size=full_shape), 'float32')
+    value = Tensor(value_data, inputs)
+    total_count_data = value_data.sum(-1) + ops.astype(randint(0, max_count, size=batch_shape), 'float32')
+    total_count = Tensor(total_count_data, inputs)
+    p = dist.Dirichlet(concentration, value=prior)
+    p += dist.Multinomial(probs=prior, total_count=total_count)
+    marginalized = p.reduce(ops.logaddexp, set(["value"]))
+    assert isinstance(marginalized, dist.Dirichlet)
+    reduced = p.reduce(ops.logaddexp, set(["prior"]))
+    assert isinstance(reduced, dist.DirichletMultinomial)
+    assert_close(reduced.concentration, concentration)
+    assert_close(reduced.total_count, total_count)
+    result = (p - reduced)(value=value)
+    assert isinstance(result, dist.Dirichlet)
+    assert_close(result.concentration, concentration + value)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)

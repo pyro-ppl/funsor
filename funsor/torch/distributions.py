@@ -23,6 +23,7 @@ from funsor.distribution import (  # noqa: F401
     eager_delta_funsor_funsor,
     eager_delta_funsor_variable,
     eager_delta_tensor,
+    eager_dirichlet_categorical,
     eager_dirichlet_multinomial,
     eager_dirichlet_posterior,
     eager_delta_variable_variable,
@@ -191,6 +192,8 @@ eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
 eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, BernoulliProbs)(  # noqa: F821
     eager_beta_bernoulli)
+eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Categorical)(  # noqa: F821
+    eager_dirichlet_categorical)
 eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)(  # noqa: F821
     eager_dirichlet_multinomial)
 eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Gamma, Poisson)(  # noqa: F821
