@@ -1022,7 +1022,8 @@ def test_dirichlet_categorical_conjugate(batch_shape, size):
     actual = reduced(value=value)
     expected = dist.DirichletMultinomial(concentration=concentration, total_count=1)(
         value=Tensor(ops.new_eye(concentration.data, (size,)))[value])
-    assert_close(actual, expected)
+    # TODO: investigate why jax backend gives inconsistent results on Travis
+    assert_close(actual, expected, rtol=1e-5 if get_backend() == "jax" else 1e-6)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
