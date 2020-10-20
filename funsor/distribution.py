@@ -579,6 +579,21 @@ def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
         return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
 
+def _log_beta(x, y):
+    return ops.lgamma(x) + ops.lgamma(y) - ops.lgamma(x + y)
+
+
+def eager_gamma_gamma(red_op, bin_op, reduced_vars, x, y):
+    gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if gamma_reduction:
+        unnormalized = (y.concentration - 1) * ops.log(y.value) \
+            - (y.concentration + x.concentration) * ops.log(y.value + x.rate)
+        const = -x.concentration * ops.log(x.rate) + _log_beta(y.concentration, x.concentration)
+        return unnormalized - const
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
 def eager_gamma_poisson(red_op, bin_op, reduced_vars, x, y):
     gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
     if gamma_reduction:

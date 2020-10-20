@@ -1078,6 +1078,22 @@ def test_dirichlet_multinomial_conjugate(batch_shape, size):
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_gamma_gamma_conjugate(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape
+    prior = Variable("prior", Real)
+    concentration0 = Tensor(ops.exp(randn(full_shape)), inputs)
+    rate0 = Tensor(ops.exp(randn(full_shape)), inputs)
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    latent = dist.Gamma(concentration0, rate0, value=prior)
+    conditional = dist.Gamma(concentration, rate=prior)
+
+    obs = Tensor(ops.exp(randn(full_shape)), inputs)
+    _assert_conjugate_density_ok(latent, conditional, obs, prec=0.02)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_gamma_poisson_conjugate(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))

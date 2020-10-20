@@ -24,6 +24,7 @@ from funsor.distribution import (  # noqa: F401
     eager_dirichlet_categorical,
     eager_dirichlet_multinomial,
     eager_dirichlet_posterior,
+    eager_gamma_gamma,
     eager_gamma_poisson,
     eager_multinomial,
     eager_mvn,
@@ -223,6 +224,8 @@ eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Ca
     eager_dirichlet_categorical)
 eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)(  # noqa: F821
     eager_dirichlet_multinomial)
+eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Gamma, Gamma)(  # noqa: F821
+    eager_gamma_gamma)
 eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Gamma, Poisson)(  # noqa: F821
     eager_gamma_poisson)
 if hasattr(dist, "DirichletMultinomial"):

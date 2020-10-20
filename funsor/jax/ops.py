@@ -7,7 +7,7 @@ from jax import lax
 from jax.core import Tracer
 from jax.interpreters.xla import DeviceArray
 from jax.scipy.linalg import cho_solve, solve_triangular
-from jax.scipy.special import expit, logsumexp
+from jax.scipy.special import expit, gammaln, logsumexp
 
 import funsor.ops as ops
 
@@ -117,6 +117,11 @@ def _finfo(x):
 @ops.is_numeric_array.register(array)
 def _is_numeric_array(x):
     return True
+
+
+@ops.lgamma.register(array)
+def _lgamma(x):
+    return gammaln(x)
 
 
 @ops.log.register(array)
