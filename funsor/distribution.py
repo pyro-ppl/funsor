@@ -124,7 +124,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         sample_shape = tuple(v.size for v in sample_inputs.values())
 
         raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
-        sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
+        sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         if self.has_rsample:
             raw_sample = raw_dist.rsample(*sample_args)
         else:
