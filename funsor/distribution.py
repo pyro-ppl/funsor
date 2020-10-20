@@ -124,7 +124,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         sample_shape = tuple(v.size for v in sample_inputs.values())
 
         raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
-        sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
+        sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         if self.has_rsample:
             raw_sample = raw_dist.rsample(*sample_args)
         else:
@@ -554,6 +554,18 @@ def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     return eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x,
                                        backend_dist.Binomial(total_count=1, probs=y.probs, value=y.value))
+
+
+def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
+    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if dirichlet_reduction:
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        identity = Tensor(ops.new_eye(funsor.tensor.get_default_prototype(), x.concentration.shape))
+        return backend_dist.DirichletMultinomial(concentration=x.concentration,
+                                                 total_count=1,
+                                                 value=identity[y.value])
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
 
 def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
