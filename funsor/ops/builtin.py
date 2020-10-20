@@ -203,6 +203,11 @@ def reciprocal(x):
     raise ValueError("No reciprocal for type {}".format(type(x)))
 
 
+@Op
+def lgamma(x):
+    return math.lgamma(x)
+
+
 DISTRIBUTIVE_OPS.add((add, mul))
 DISTRIBUTIVE_OPS.add((max, mul))
 DISTRIBUTIVE_OPS.add((min, mul))
@@ -238,6 +243,7 @@ __all__ = [
     'gt',
     'invert',
     'le',
+    'lgamma',
     'log',
     'log1p',
     'lt',

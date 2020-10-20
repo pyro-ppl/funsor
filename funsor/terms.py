@@ -1644,6 +1644,11 @@ def _exp(x):
     return Unary(ops.exp, x)
 
 
+@ops.lgamma.register(Funsor)
+def _lgamma(x):
+    return Unary(ops.lgamma, x)
+
+
 @ops.log.register(Funsor)
 def _log(x):
     return Unary(ops.log, x)
