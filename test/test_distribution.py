@@ -17,8 +17,8 @@ from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.domains import Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
-from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array
-from funsor.terms import Independent, Lebesgue, Variable, eager, lazy
+from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array, stack
+from funsor.terms import Independent, Lebesgue, Variable, eager, lazy, to_funsor
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_mvn, random_tensor, xfail_param
 from funsor.util import get_backend
 
@@ -28,8 +28,15 @@ if get_backend() != "numpy":
     dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     backend_dist = dist.dist
 
-if get_backend() == "torch":
-    from funsor.pyro.convert import dist_to_funsor
+
+def _skip_for_numpyro_version(version="0.2.4"):
+    if get_backend() == "jax":
+        import numpyro
+
+        if numpyro.__version__ <= version:
+            return True
+
+    return False
 
 
 @pytest.mark.xfail(get_backend() == "jax", reason="flaky test")
@@ -243,7 +250,9 @@ def test_dirichlet_density(batch_shape, event_shape):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
-@pytest.mark.xfail(get_backend() != 'torch', reason="DirichletMultinomial is not implemented yet in NumPyro")
+# TODO change xfail to skipif when NumPyro > 0.4.0 is released
+@pytest.mark.xfail(_skip_for_numpyro_version("0.4.0"),
+                   reason="DirichletMultinomial is not available in NumPyro 0.4.0")
 def test_dirichlet_multinomial_density(batch_shape, event_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
@@ -269,33 +278,6 @@ def test_dirichlet_multinomial_density(batch_shape, event_shape):
     actual = dist.DirichletMultinomial(concentration, total_count, value)
     check_funsor(actual, inputs, Real)
     assert_close(actual, expected)
-
-
-@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize('event_shape', [(2,), (4,), (5,)], ids=str)
-@pytest.mark.xfail(get_backend() != 'torch', reason="DirichletMultinmial is not implemented yet in NumPyro")
-def test_dirichlet_multinomial_conjugate(batch_shape, event_shape):
-    max_count = 10
-    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
-    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
-    full_shape = batch_shape + event_shape
-    prior = Variable("prior", Reals[full_shape])[batch_dims]
-    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
-    value_data = ops.astype(randint(0, max_count, size=full_shape), 'float32')
-    value = Tensor(value_data, inputs)
-    total_count_data = value_data.sum(-1) + ops.astype(randint(0, max_count, size=batch_shape), 'float32')
-    total_count = Tensor(total_count_data, inputs)
-    p = dist.Dirichlet(concentration, value=prior)
-    p += dist.Multinomial(probs=prior, total_count=total_count)
-    marginalized = p.reduce(ops.logaddexp, set(["value"]))
-    assert isinstance(marginalized, dist.Dirichlet)
-    reduced = p.reduce(ops.logaddexp, set(["prior"]))
-    assert isinstance(reduced, dist.DirichletMultinomial)
-    assert_close(reduced.concentration, concentration)
-    assert_close(reduced.total_count, total_count)
-    result = (p - reduced)(value=value)
-    assert isinstance(result, dist.Dirichlet)
-    assert_close(result.concentration, concentration + value)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
@@ -552,23 +534,21 @@ def _check_mvn_affine(d1, data):
     assert_close(actual, expected)
 
 
-@pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_one_var():
     x = Variable('x', Reals[2])
     data = dict(x=Tensor(randn(2)))
     with interpretation(lazy):
-        d = dist_to_funsor(random_mvn((), 2))
+        d = to_funsor(random_mvn((), 2), Real)
         d = d(value=2 * x + 1)
     _check_mvn_affine(d, data)
 
 
-@pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_two_vars():
     x = Variable('x', Reals[2])
     y = Variable('y', Reals[2])
     data = dict(x=Tensor(randn(2)), y=Tensor(randn(2)))
     with interpretation(lazy):
-        d = dist_to_funsor(random_mvn((), 2))
+        d = to_funsor(random_mvn((), 2), Real)
         d = d(value=x - y)
     _check_mvn_affine(d, data)
 
@@ -584,47 +564,43 @@ def test_mvn_affine_matmul():
     _check_mvn_affine(d, data)
 
 
-@pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_matmul_sub():
     x = Variable('x', Reals[2])
     y = Variable('y', Reals[3])
     m = Tensor(randn(2, 3))
     data = dict(x=Tensor(randn(2)), y=Tensor(randn(3)))
     with interpretation(lazy):
-        d = dist_to_funsor(random_mvn((), 3))
+        d = to_funsor(random_mvn((), 3), Real)
         d = d(value=x @ m - y)
     _check_mvn_affine(d, data)
 
 
-@pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_einsum():
     c = Tensor(randn(3, 2, 2))
     x = Variable('x', Reals[2, 2])
     y = Variable('y', Real)
     data = dict(x=Tensor(randn(2, 2)), y=Tensor(randn(())))
     with interpretation(lazy):
-        d = dist_to_funsor(random_mvn((), 3))
+        d = to_funsor(random_mvn((), 3), Real)
         d = d(value=Einsum("abc,bc->a", c, x) + y)
     _check_mvn_affine(d, data)
 
 
-@pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_getitem():
     x = Variable('x', Reals[2, 2])
     data = dict(x=Tensor(randn(2, 2)))
     with interpretation(lazy):
-        d = dist_to_funsor(random_mvn((), 2))
+        d = to_funsor(random_mvn((), 2), Real)
         d = d(value=x[0] - x[1])
     _check_mvn_affine(d, data)
 
 
-@pytest.mark.xfail(get_backend() == 'jax', reason='dist_to_funsor for jax backend is not available yet')
 def test_mvn_affine_reshape():
     x = Variable('x', Reals[2, 2])
     y = Variable('y', Reals[4])
     data = dict(x=Tensor(randn(2, 2)), y=Tensor(randn(4)))
     with interpretation(lazy):
-        d = dist_to_funsor(random_mvn((), 4))
+        d = to_funsor(random_mvn((), 4), Real)
         d = d(value=x.reshape((4,)) - y)
     _check_mvn_affine(d, data)
 
@@ -684,7 +660,6 @@ def test_gamma_probs_density(batch_shape, syntax):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('syntax', ['eager', 'lazy'])
-@pytest.mark.xfail(get_backend() != 'torch', reason="VonMises is not implemented yet in NumPyro")
 def test_von_mises_probs_density(batch_shape, syntax):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
@@ -843,21 +818,11 @@ def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
     _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=7e-2, num_samples=200000, with_lazy=with_lazy)
 
 
-def _skip_for_numpyro_2_4():
-    if get_backend() == "jax":
-        import numpyro
-
-        if numpyro.__version__ == "0.2.4":
-            return True
-
-    return False
-
-
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (5,)], ids=str)
 @pytest.mark.parametrize('reparametrized', [True, False])
-@pytest.mark.skipif(_skip_for_numpyro_2_4(),
+@pytest.mark.skipif(_skip_for_numpyro_version("0.2.4"),
                     reason="Dirichlet samples might take 0/1 values in NumPyro 0.2.4")
 def test_dirichlet_sample(batch_shape, sample_inputs, event_shape, reparametrized):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
@@ -900,7 +865,7 @@ def test_bernoulliprobs_sample(batch_shape, sample_inputs):
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('reparametrized', [True, False])
-@pytest.mark.skipif(_skip_for_numpyro_2_4(),
+@pytest.mark.skipif(_skip_for_numpyro_version("0.2.4"),
                     reason="Dirichlet samples might take 0/1 values in NumPyro 0.2.4")
 def test_beta_sample(with_lazy, batch_shape, sample_inputs, reparametrized):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
@@ -1073,3 +1038,131 @@ def test_convert_transformeddist_gamma(batch_shape):
     expected = expected_transformed_dist(value=value)
     actual = actual_transformed_dist(value=value)
     assert_close(actual, expected)
+
+
+#########################
+# Conjugacy tests
+#########################
+
+
+def _assert_conjugate_density_ok(latent, conditional, obs, lazy_latent=None,
+                                 num_samples=10000, prec=1e-2):
+    sample_inputs = OrderedDict(n=Bint[num_samples])
+    lazy_latent = lazy_latent if lazy_latent is not None else latent
+    rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
+    latent_samples = lazy_latent.sample(frozenset(["prior"]), sample_inputs, rng_key=rng_key)
+    expected = Integrate(latent_samples, conditional(value=obs).exp(), frozenset(['prior']))
+    expected = expected.reduce(ops.add, frozenset(sample_inputs))
+    actual = (latent + conditional).reduce(ops.logaddexp, set(["prior"]))(value=obs).exp()
+    assert_close(actual, expected, atol=prec, rtol=None)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_beta_bernoulli_conjugate(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape
+    prior = Variable("prior", Real)
+    concentration1 = Tensor(ops.exp(randn(full_shape)), inputs)
+    concentration0 = Tensor(ops.exp(randn(full_shape)), inputs)
+    latent = dist.Beta(concentration1, concentration0, value=prior)
+    conditional = dist.Bernoulli(probs=prior)
+    reduced = (latent + conditional).reduce(ops.logaddexp, set(["prior"]))
+    assert isinstance(reduced, dist.DirichletMultinomial)
+    concentration = stack((concentration0, concentration1), dim=-1)
+    assert_close(reduced.concentration, concentration)
+    assert_close(reduced.total_count, Tensor(numeric_array(1.)))
+
+    # we need lazy expression for Beta to draw samples from it
+    with interpretation(funsor.terms.lazy):
+        lazy_latent = dist.Beta(concentration1, concentration0, value=prior)
+    obs = Tensor(rand(batch_shape).round(), inputs)
+    _assert_conjugate_density_ok(latent, conditional, obs, lazy_latent=lazy_latent)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('size', [2, 4, 5], ids=str)
+def test_dirichlet_categorical_conjugate(batch_shape, size):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+
+    full_shape = batch_shape + (size,)
+    prior = Variable("prior", Reals[size])
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    value = random_tensor(inputs, Bint[size])
+    latent = dist.Dirichlet(concentration, value=prior)
+    conditional = dist.Categorical(probs=prior)
+    reduced = (latent + conditional).reduce(ops.logaddexp, set(["prior"]))
+    assert isinstance(reduced, Tensor)
+    actual = reduced(value=value)
+    expected = dist.DirichletMultinomial(concentration=concentration, total_count=1)(
+        value=Tensor(ops.new_eye(concentration.data, (size,)))[value])
+    # TODO: investigate why jax backend gives inconsistent results on Travis
+    assert_close(actual, expected, rtol=1e-5 if get_backend() == "jax" else 1e-6)
+
+    obs = random_tensor(inputs, Bint[size])
+    _assert_conjugate_density_ok(latent, conditional, obs)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('size', [2, 4, 5], ids=str)
+def test_dirichlet_multinomial_conjugate(batch_shape, size):
+    max_count = 10
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape + (size,)
+    prior = Variable("prior", Reals[size])
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    value_data = ops.astype(randint(0, max_count, size=full_shape), 'float32')
+    obs = Tensor(value_data, inputs)
+    total_count_data = value_data.sum(-1)
+    total_count = Tensor(total_count_data, inputs)
+    latent = dist.Dirichlet(concentration, value=prior)
+    conditional = dist.Multinomial(probs=prior, total_count=total_count)
+    p = latent + conditional
+    marginalized = p.reduce(ops.logaddexp, set(["value"]))
+    assert isinstance(marginalized, dist.Dirichlet)
+    reduced = p.reduce(ops.logaddexp, set(["prior"]))
+    assert isinstance(reduced, dist.DirichletMultinomial)
+    assert_close(reduced.concentration, concentration)
+    assert_close(reduced.total_count, total_count)
+    result = (p - reduced)(value=obs)
+    assert isinstance(result, dist.Dirichlet)
+    assert_close(result.concentration, concentration + obs)
+
+    _assert_conjugate_density_ok(latent, conditional, obs)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_gamma_gamma_conjugate(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape
+    prior = Variable("prior", Real)
+    concentration0 = Tensor(ops.exp(randn(full_shape)), inputs)
+    rate0 = Tensor(ops.exp(randn(full_shape)), inputs)
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    latent = dist.Gamma(concentration0, rate0, value=prior)
+    conditional = dist.Gamma(concentration, rate=prior)
+
+    obs = Tensor(ops.exp(randn(full_shape)), inputs)
+    _assert_conjugate_density_ok(latent, conditional, obs, prec=0.02)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+def test_gamma_poisson_conjugate(batch_shape):
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape
+    prior = Variable("prior", Real)
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    rate = Tensor(ops.exp(randn(full_shape)), inputs)
+    latent = dist.Gamma(concentration, rate, value=prior)
+    conditional = dist.Poisson(rate=prior)
+    reduced = (latent + conditional).reduce(ops.logaddexp, set(["prior"]))
+    assert isinstance(reduced, dist.GammaPoisson)
+    assert_close(reduced.concentration, concentration)
+    assert_close(reduced.rate, rate)
+
+    obs = Tensor(ops.astype(ops.astype(ops.exp(randn(batch_shape)), 'int32'), 'float32'), inputs)
+    _assert_conjugate_density_ok(latent, conditional, obs)

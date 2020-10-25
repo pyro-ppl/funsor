@@ -104,6 +104,11 @@ def _is_numeric_array(x):
     return True
 
 
+@ops.lgamma.register(torch.Tensor)
+def _lgamma(x):
+    return x.lgamma()
+
+
 @ops.log.register(torch.Tensor)
 def _log(x):
     if x.dtype in (torch.bool, torch.uint8, torch.long):

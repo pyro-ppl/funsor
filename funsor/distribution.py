@@ -15,7 +15,7 @@ import makefun
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
-from funsor.cnf import GaussianMixture
+from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Array, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
@@ -131,10 +131,11 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 
         # note this should handle transforms correctly via distribution_to_data
         raw_dist = to_data(self, name_to_dim=name_to_dim)
-
-        sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
-        raw_value = raw_dist.rsample(*sample_args) if self.has_rsample else \
-            ops.detach(raw_dist.sample(*sample_args))
+        sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
+        if self.has_rsample:
+            raw_sample = raw_dist.rsample(*sample_args)
+        else:
+            raw_sample = ops.detach(raw_dist.sample(*sample_args))
 
         funsor_value = to_funsor(raw_value, output=self.value.output, dim_to_name=dim_to_name)
         result = funsor.delta.Delta(value_name, funsor_value)
@@ -239,7 +240,9 @@ FUNSOR_DIST_NAMES = [
     ('CategoricalLogits', ('logits',)),
     ('Delta', ('v', 'log_density')),
     ('Dirichlet', ('concentration',)),
+    ('DirichletMultinomial', ('concentration', 'total_count')),
     ('Gamma', ('concentration', 'rate')),
+    ('GammaPoisson', ('concentration', 'rate')),
     ('Multinomial', ('total_count', 'probs')),
     ('MultivariateNormal', ('loc', 'scale_tril')),
     ('NonreparameterizedBeta', ('concentration1', 'concentration0')),
@@ -247,7 +250,8 @@ FUNSOR_DIST_NAMES = [
     ('NonreparameterizedGamma', ('concentration', 'rate')),
     ('NonreparameterizedNormal', ('loc', 'scale')),
     ('Normal', ('loc', 'scale')),
-    ('Poisson', ('rate',))
+    ('Poisson', ('rate',)),
+    ('VonMises', ('loc', 'concentration')),
 ]
 
 
@@ -353,9 +357,10 @@ class CoerceDistributionToFunsor:
             ast_fields = cls._funsor_ast_fields
         except AttributeError:
             ast_fields = cls._funsor_ast_fields = getargspec(cls.__init__)[0][1:]
+        kwargs = {name: value for pairs in (zip(ast_fields, args), kwargs.items())
+                  for name, value in pairs}
         if not any(isinstance(value, (str, Funsor))
-                   for pairs in (zip(ast_fields, args), kwargs.items())
-                   for name, value in pairs
+                   for name, value in kwargs.items()
                    if name in arg_constraints):
             return
 
@@ -363,14 +368,19 @@ class CoerceDistributionToFunsor:
         try:
             funsor_cls = cls._funsor_cls
         except AttributeError:
-            funsor_cls = cls._funsor_cls = getattr(self.module, cls.__name__, None)
+            funsor_cls = getattr(self.module, cls.__name__, None)
+            # resolve the issues Binomial/Multinomial are functions in NumPyro, which
+            # fallback to either BinomialProbs or BinomialLogits
+            if funsor_cls is None and cls.__name__.endswith("Probs"):
+                funsor_cls = getattr(self.module, cls.__name__[:-5], None)
+            cls._funsor_cls = funsor_cls
         if funsor_cls is None:
             warnings.warn("missing funsor for {}".format(cls.__name__),
                           RuntimeWarning)
             return
 
         # Coerce to funsor.
-        return funsor_cls(*args, **kwargs)
+        return funsor_cls(**kwargs)
 
 
 ###############################################################
@@ -567,3 +577,68 @@ def eager_mvn(loc, scale_tril, value):
     inputs[var] = Reals[scale_diag.shape[0]]
     gaussian = log_prob + Gaussian(info_vec, precision, inputs)
     return gaussian(**{var: value - loc})
+
+
+def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):
+    backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    return eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x,
+                                       backend_dist.Binomial(total_count=1, probs=y.probs, value=y.value))
+
+
+def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
+    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if dirichlet_reduction:
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        identity = Tensor(ops.new_eye(funsor.tensor.get_default_prototype(), x.concentration.shape))
+        return backend_dist.DirichletMultinomial(concentration=x.concentration,
+                                                 total_count=1,
+                                                 value=identity[y.value])
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
+def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
+    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if dirichlet_reduction:
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        return backend_dist.DirichletMultinomial(concentration=x.concentration,
+                                                 total_count=y.total_count,
+                                                 value=y.value)
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
+def _log_beta(x, y):
+    return ops.lgamma(x) + ops.lgamma(y) - ops.lgamma(x + y)
+
+
+def eager_gamma_gamma(red_op, bin_op, reduced_vars, x, y):
+    gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if gamma_reduction:
+        unnormalized = (y.concentration - 1) * ops.log(y.value) \
+            - (y.concentration + x.concentration) * ops.log(y.value + x.rate)
+        const = -x.concentration * ops.log(x.rate) + _log_beta(y.concentration, x.concentration)
+        return unnormalized - const
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
+def eager_gamma_poisson(red_op, bin_op, reduced_vars, x, y):
+    gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if gamma_reduction:
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        return backend_dist.GammaPoisson(concentration=x.concentration,
+                                         rate=x.rate,
+                                         value=y.value)
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
+def eager_dirichlet_posterior(op, c, z):
+    if (z.concentration is c.terms[0].concentration) and (c.terms[1].total_count is z.total_count):
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        return backend_dist.Dirichlet(
+            concentration=z.concentration + c.terms[1].value,
+            value=c.terms[0].value)
+    else:
+        return None

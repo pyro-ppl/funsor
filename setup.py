@@ -23,7 +23,7 @@ long_description = '\n'.join(line for line in long_description.split('\n')[4:])
 
 setup(
     name='funsor',
-    version='0.2.0',
+    version='0.3.0',
     description='A tensor-like library for functions and distributions',
     packages=find_packages(include=['funsor', 'funsor.*']),
     url='https://github.com/pyro-ppl/funsor',
@@ -32,7 +32,7 @@ setup(
     },
     author='Uber AI Labs',
     author_email='fritzo@uber.com',
-    python_requires=">=3.5",
+    python_requires=">=3.6",
     install_requires=[
         'makefun',
         'multipledispatch',
@@ -41,8 +41,8 @@ setup(
     ],
     extras_require={
         'torch': [
-            'pyro-ppl>=0.5',
-            'torch>=1.3.0',
+            'pyro-ppl>=1.4',
+            'torch>=1.6.0',
         ],
         'jax': [
             'numpyro>=0.2.4',
@@ -72,7 +72,7 @@ setup(
     },
     long_description=long_description,
     long_description_content_type='text/markdown',
-    keywords='probabilistic machine learning bayesian statistics pytorch',
+    keywords='probabilistic machine learning bayesian statistics pytorch jax',
     classifiers=[
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
@@ -80,6 +80,7 @@ setup(
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: POSIX :: Linux',
         'Operating System :: MacOS :: MacOS X',
-        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
     ],
 )
