@@ -133,11 +133,13 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         raw_dist = to_data(self, name_to_dim=name_to_dim)
         sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         if self.has_rsample:
-            raw_sample = raw_dist.rsample(*sample_args)
+            raw_value = raw_dist.rsample(*sample_args)
         else:
-            raw_sample = ops.detach(raw_dist.sample(*sample_args))
+            raw_value = ops.detach(raw_dist.sample(*sample_args))
 
         funsor_value = to_funsor(raw_value, output=self.value.output, dim_to_name=dim_to_name)
+        funsor_value = funsor_value.align(
+            tuple(sample_inputs) + tuple(inp for inp in self.inputs if inp in funsor_value.inputs))
         result = funsor.delta.Delta(value_name, funsor_value)
         if not self.has_rsample:
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
