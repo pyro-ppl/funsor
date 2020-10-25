@@ -896,7 +896,7 @@ def test_binomial_sample(with_lazy, batch_shape, sample_inputs):
     funsor_dist_class = dist.Binomial
     params = (total_count, probs)
 
-    _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=2e-2, skip_grad=True, with_lazy=with_lazy)
+    _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=5e-2, skip_grad=True, with_lazy=with_lazy)
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
