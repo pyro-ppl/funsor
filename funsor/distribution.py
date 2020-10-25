@@ -118,7 +118,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         params = OrderedDict(self.params)
         value = params.pop("value")
         assert all(isinstance(v, (Number, Tensor)) for v in params.values())
-        assert isinstance(value, Variable) and value.name in sampled_vars
+        # assert isinstance(value, Variable) and value.name in sampled_vars
         inputs, tensors = align_tensors(*params.values())
         inputs.update(sample_inputs)
         sample_shape = tuple(v.size for v in sample_inputs.values())
@@ -402,9 +402,9 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     if not isinstance(funsor_dist.value, Variable):
         assert get_backend() == "torch", \
             "transformed distributions not yet supported under this backend, try set_backend('torch')"
-        inv_value = funsor.delta.solve(funsor_dist.value, Variable("value"))[1]
+        inv_value = funsor.delta.solve(funsor_dist.value, Variable("value", funsor_dist.value.output))[1]
         transforms = to_data(inv_value, name_to_dim=name_to_dim)
-        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
         pyro_dist = backend_dist.TransformedDistribution(pyro_dist, transforms)
 
     if pyro_dist.event_shape != funsor_event_shape:

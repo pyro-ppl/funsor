@@ -185,25 +185,34 @@ def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=N
     return expr
 
 
+@functools.singledispatch
+def op_to_torch_transform(op, name_to_dim=None):
+    raise NotImplementedError("cannot convert {} to a Transform".format(op))
+
+
+@op_to_torch_transform.register(ops.TransformOp)
+def transform_to_torch_transform(op, name_to_dim=None):
+    raise NotImplementedError("{} is not a currently supported transform".format(op))
+
+
+@op_to_torch_transform.register(ops.ExpOp)
+def exp_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.ExpTransform()
+
+
+@op_to_torch_transform.register(ops.LogOp)
+def log_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.ExpTransform().inv
+
+
 @to_data.register(Unary[ops.TransformOp, Union[Unary, Variable]])
 def transform_to_data(expr, name_to_dim=None):
-    raise NotImplementedError("{} is not a currently supported transform".format(expr.op))
-
-
-@to_data.register(Unary[ops.ExpOp, Union[Unary, Variable]])
-def exptransform_to_data(expr, name_to_dim=None):
-    tfm = torch.distributions.transforms.ExpTransform()
-    if isinstance(expr.arg, Unary):
-        tfm = torch.distributions.transforms.ComposeTransform([to_data(expr.arg, name_to_dim=name_to_dim), tfm])
-    return tfm
-
-
-@to_data.register(Unary[ops.LogOp, Union[Unary, Variable]])
-def logtransform_to_data(expr, name_to_dim=None):
-    tfm = torch.distributions.transforms.ExpTransform().inv
-    if isinstance(expr.arg, Unary):
-        tfm = torch.distributions.transforms.ComposeTransform([to_data(expr.arg, name_to_dim=name_to_dim), tfm])
-    return tfm
+    if isinstance(expr.op, ops.TransformOp):
+        tfm = op_to_torch_transform(expr.op, name_to_dim=name_to_dim)
+        if isinstance(expr.arg, Unary):
+            tfm = torch.distributions.transforms.ComposeTransform([to_data(expr.arg, name_to_dim=name_to_dim), tfm])
+        return tfm
+    raise NotImplementedError("cannot convert to data: {}".format(expr))
 
 
 to_funsor.register(torch.distributions.Distribution)(backenddist_to_funsor)
