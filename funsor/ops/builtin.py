@@ -182,7 +182,7 @@ def atanh_inv(y):
 
 @atanh.set_log_abs_det_jacobian
 def atanh_log_abs_det_jacobian(x, y):
-    return -2. * (math.log(2.) - x - softplus(-2. * x))
+    return -tanh.log_abs_det_jacobian(y, x)
 
 
 @Op
@@ -190,9 +190,23 @@ def log1p(x):
     return math.log1p(x)
 
 
-@Op
+class SigmoidOp(TransformOp):
+    pass
+
+
+@SigmoidOp
 def sigmoid(x):
     return 1 / (1 + exp(-x))
+
+
+@sigmoid.set_inv
+def sigmoid_inv(y):
+    return log(y) - log1p(-y)
+
+
+@sigmoid.set_log_abs_det_jacobian
+def sigmoid_log_abs_det_jacobian(x, y):
+    return -softplus(-x) - softplus(x)
 
 
 @Op
@@ -276,6 +290,7 @@ __all__ = [
     'NegOp',
     'NullOp',
     'ReciprocalOp',
+    'SigmoidOp',
     'SubOp',
     'TanhOp',
     'abs',
