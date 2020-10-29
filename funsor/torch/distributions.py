@@ -169,6 +169,18 @@ def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None)
     return ops.exp(Variable(name, output))
 
 
+@to_funsor.register(torch.distributions.transforms.TanhTransform)
+def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.tanh(Variable(name, output))
+
+
+@to_funsor.register(torch.distributions.transforms.SigmoidTransform)
+def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.sigmoid(Variable(name, output))
+
+
 @to_funsor.register(torch.distributions.transforms._InverseTransform)
 def inversetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
     expr = to_funsor(tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)
@@ -203,6 +215,21 @@ def exp_to_torch_transform(op, name_to_dim=None):
 @op_to_torch_transform.register(ops.LogOp)
 def log_to_torch_transform(op, name_to_dim=None):
     return torch.distributions.transforms.ExpTransform().inv
+
+
+@op_to_torch_transform.register(ops.SigmoidOp)
+def sigmoid_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.SigmoidTransform()
+
+
+@op_to_torch_transform.register(ops.TanhOp)
+def tanh_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.TanhTransform()
+
+
+@op_to_torch_transform.register(ops.AtanhOp)
+def atanh_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.TanhTransform().inv
 
 
 @to_data.register(Unary[ops.TransformOp, Union[Unary, Variable]])
