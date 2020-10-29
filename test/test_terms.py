@@ -245,6 +245,8 @@ def test_unary(symbol, data):
     if symbol == '~':
         data = bool(data)
         dtype = 2
+    if symbol == 'atanh':
+        data = min(data, 0.99)
     expected_data = unary_eval(symbol, data)
 
     x = Number(data, dtype)
