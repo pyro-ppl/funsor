@@ -147,6 +147,44 @@ exp.set_inv(log)
 log.set_inv(exp)
 
 
+class TanhOp(TransformOp):
+    pass
+
+
+@TanhOp
+def tanh(x):
+    return math.tanh(x)
+
+
+@tanh.set_inv
+def tanh_inv(y):
+    return atanh(y)
+
+
+@tanh.set_log_abs_det_jacobian
+def tanh_log_abs_det_jacobian(x, y):
+    return 2. * (math.log(2.) - x - softplus(-2. * x))
+
+
+class AtanhOp(TransformOp):
+    pass
+
+
+@AtanhOp
+def atanh(x):
+    return math.atanh(x)
+
+
+@atanh.set_inv
+def atanh_inv(y):
+    return tanh(y)
+
+
+@atanh.set_log_abs_det_jacobian
+def atanh_log_abs_det_jacobian(x, y):
+    return -2. * (math.log(2.) - x - softplus(-2. * x))
+
+
 @Op
 def log1p(x):
     return math.log1p(x)
@@ -160,6 +198,11 @@ def sigmoid(x):
 @Op
 def pow(x, y):
     return x ** y
+
+
+@Op
+def softplus(x):
+    return log(1. + exp(x))
 
 
 @AssociativeOp
@@ -223,6 +266,7 @@ PRODUCT_INVERSES[add] = safesub
 __all__ = [
     'AddOp',
     'AssociativeOp',
+    'AtanhOp',
     'DivOp',
     'ExpOp',
     'GetitemOp',
@@ -233,9 +277,11 @@ __all__ = [
     'NullOp',
     'ReciprocalOp',
     'SubOp',
+    'TanhOp',
     'abs',
     'add',
     'and_',
+    'atanh',
     'eq',
     'exp',
     'ge',
@@ -262,6 +308,7 @@ __all__ = [
     'sigmoid',
     'sqrt',
     'sub',
+    'tanh',
     'truediv',
     'xor',
 ]

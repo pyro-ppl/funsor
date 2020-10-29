@@ -305,7 +305,7 @@ def unary_eval(symbol, x):
 
 @pytest.mark.parametrize('dims', [(), ('a',), ('a', 'b')])
 @pytest.mark.parametrize('symbol', [
-    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p', 'sigmoid',
+    '~', '-', 'abs', 'atanh', 'sqrt', 'exp', 'log', 'log1p', 'sigmoid', 'tanh',
 ])
 def test_unary(symbol, dims):
     sizes = {'a': 3, 'b': 4}
@@ -316,7 +316,7 @@ def test_unary(symbol, dims):
     if symbol == '~':
         data = ops.astype(data, 'uint8')
         dtype = 2
-    if get_backend() != "torch" and symbol in ["abs", "sqrt", "exp", "log", "log1p", "sigmoid"]:
+    if get_backend() != "torch" and symbol in ["abs", "atanh", "sqrt", "exp", "log", "log1p", "sigmoid", "tanh"]:
         expected_data = getattr(ops, symbol)(data)
     else:
         expected_data = unary_eval(symbol, data)
