@@ -1,6 +1,9 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+# High-level distribution testing strategy: a fixed sequence of increasingly semantically strong distribution-agnostic tests
+# conversion invertibility -> density type and value -> enumerate_support type and value -> statistic types and values -> samplers -> gradients
+
 import functools
 import math
 from collections import OrderedDict, namedtuple
@@ -88,7 +91,97 @@ def _get_stat(raw_dist, sample_shape, statistic, with_lazy):
     return actual_stat.reduce(ops.add), expected_stat.reduce(ops.add)
 
 
-def _check_sample_grads(raw_dist, sample_shape=(), atol=1e-2, statistic="mean", with_lazy=False):
+##################################################
+# Test cases
+##################################################
+
+DistTestCase = namedtuple("DistTestCase", ["raw_dist", "expected_value_domain"])
+
+TEST_CASES = [
+    DistTestCase(raw_dist=...),
+]
+
+
+###########################
+# Generic tests
+###########################
+
+@pytest.mark.parametrize("case", TEST_CASES)
+def test_generic_distribution_to_funsor(case):
+
+    raw_dist, expected_value_domain = case.raw_dist, case.expected_value_domain
+
+    dim_to_name, name_to_dim = default_dim_to_name(raw_dist.batch_shape)
+    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+    actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
+    
+    assert isinstance(actual_dist, backend_dist.Distribution)
+    assert type(raw_dist) == type(actual_dist)
+    assert funsor_dist.inputs["value"] == expected_value_domain
+    for param_name in funsor_dist.params.keys():
+        if param_name == "value":
+            continue
+        assert hasattr(raw_dist, param_name)
+        assert_close(getattr(actual_dist, param_name), getattr(raw_dist, param_name))
+
+
+@pytest.mark.parametrize("case", TEST_CASES)
+def test_generic_log_prob(case):
+
+    raw_dist, expected_value_domain = case.raw_dist, case.expected_value_domain
+
+    dim_to_name, name_to_dim = default_dim_to_name(raw_dist.batch_shape)
+    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+    expected_inputs = {name: funsor.Bint[raw_dist.batch_shape[dim]] for dim, name in dim_to_name.items()}
+    expected_inputs.update({"value": expected_value_domain})
+
+    check_funsor(funsor_dist, expected_inputs, funsor.Real)
+
+    if get_backend() == "jax":
+        raw_value = raw_dist.sample(rng_key=np.array([0, 0], dtype=np.uint32))
+    else:
+        raw_value = raw_dist.sample()
+    expected_logprob = to_funsor(raw_dist.log_prob(raw_value), output=funsor.Real, dim_to_name=dim_to_name)
+    assert_close(funsor_dist(value=value), expected_logprob)
+
+
+@pytest.mark.parametrize("case", TEST_CASES)
+@pytest.mark.parametrize("expand", [False, True])
+def test_generic_enumerate_support(case, expand):
+
+    raw_dist = case.raw_dist
+
+    dim_to_name, name_to_dim = default_dim_to_name(raw_dist.batch_shape)
+    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+
+    assert getattr(raw_dist, "has_enumerate_support", False) == funsor_dist.has_enumerate_support
+    if funsor_dist.has_enumerate_support:
+        raw_support = raw_dist.enumerate_support(expand=expand)
+        funsor_support = funsor_dist.enumerate_support(expand=expand)
+        assert_equal(to_data(funsor_support, name_to_dim=name_to_dim), raw_support)
+
+
+@pytest.mark.parametrize("case", TEST_CASES)
+@pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
+@pytest.mark.parametrize("with_lazy", [True, False])
+def test_generic_sample(case, statistic, with_lazy):
+
+    raw_dist, sample_shape = case.raw_dist, case.sample_shape
+
+    actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic, with_lazy)
+    check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
+    if sample_shape:
+        assert_close(actual_stat, expected_stat, atol=atol, rtol=None)
+
+
+@pytest.mark.parametrize("case", TEST_CASES)
+@pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
+@pytest.mark.parametrize("with_lazy", [True, False])
+def test_generic_sample_grads(case, statistic, with_lazy):
+
+    raw_dist, sample_shape = case.raw_dist, case.sample_shape
+
+    atol = 1e-2
 
     def _get_stat_diff_fn(raw_dist):
         actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic, with_lazy)
@@ -115,67 +208,3 @@ def _check_sample_grads(raw_dist, sample_shape=(), atol=1e-2, statistic="mean", 
         assert_close(diff, ops.new_zeros(diff, diff.shape), atol=atol, rtol=None)
         for diff_grad in diff_grads:
             assert_close(diff_grad, ops.new_zeros(diff_grad, diff_grad.shape), atol=atol, rtol=None)
-
-
-def _check_sample(raw_dist, sample_shape=(), atol=1e-2, statistic="mean", with_lazy=False):
-
-    actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic, with_lazy)
-    check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
-    if sample_inputs:
-        assert_close(actual_stat, expected_stat, atol=atol, rtol=None)
-
-
-def _check_distribution_to_funsor(raw_dist, expected_value_domain):
-
-    dim_to_name, name_to_dim = default_dim_to_name(raw_dist.batch_shape)
-    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
-    actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
-    
-    assert isinstance(actual_dist, backend_dist.Distribution)
-    assert type(raw_dist) == type(actual_dist)
-    assert funsor_dist.inputs["value"] == expected_value_domain
-    for param_name in funsor_dist.params.keys():
-        if param_name == "value":
-            continue
-        assert hasattr(raw_dist, param_name)
-        assert_close(getattr(actual_dist, param_name), getattr(raw_dist, param_name))
-
-
-def _check_log_prob(raw_dist, expected_value_domain):
-
-    dim_to_name, name_to_dim = default_dim_to_name(raw_dist.batch_shape)
-    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
-    expected_inputs = {name: funsor.Bint[raw_dist.batch_shape[dim]] for dim, name in dim_to_name.items()}
-    expected_inputs.update({"value": expected_value_domain})
-
-    check_funsor(funsor_dist, expected_inputs, funsor.Real)
-
-    if get_backend() == "jax":
-        raw_value = raw_dist.sample(rng_key=np.array([0, 0], dtype=np.uint32))
-    else:
-        raw_value = raw_dist.sample()
-    expected_logprob = to_funsor(raw_dist.log_prob(raw_value), output=funsor.Real, dim_to_name=dim_to_name)
-    assert_close(funsor_dist(value=value), expected_logprob)
-
-
-def _check_enumerate_support(raw_dist, expand=False):
-
-    dim_to_name, name_to_dim = default_dim_to_name(raw_dist.batch_shape)
-    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
-
-    assert getattr(raw_dist, "has_enumerate_support", False) == funsor_dist.has_enumerate_support
-    if funsor_dist.has_enumerate_support:
-        raw_support = raw_dist.enumerate_support(expand=expand)
-        funsor_support = funsor_dist.enumerate_support(expand=expand)
-        assert_equal(to_data(funsor_support, name_to_dim=name_to_dim), raw_support)
-
-
-# High-level distribution testing strategy: a fixed sequence of increasingly semantically strong distribution-agnostic tests
-# conversion invertibility -> density type and value -> enumerate_support type and value -> statistic types and values -> samplers -> gradients
-DistTestCase = namedtuple("DistTestCase", ["raw_dist", "expected_value_domain"])
-
-TEST_CASES = [
-    DistTestCase(raw_dist=...),
-]
-
-
