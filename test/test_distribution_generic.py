@@ -1,7 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict
 from importlib import import_module
 
 import numpy as np
@@ -13,7 +13,7 @@ from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.terms import Variable, eager, lazy, to_data, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn  # noqa: F401
+from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril  # noqa: F401
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
@@ -27,9 +27,21 @@ if get_backend() != "numpy":
 # Test cases
 ##################################################
 
-# TODO separate sample_shape from DistTestCase?
+class DistTestCase:
 
-DistTestCase = namedtuple("DistTestCase", ["raw_dist", "expected_value_domain"])
+    def __init__(self, raw_dist, raw_params, expected_value_domain):
+        self.raw_dist = raw_dist
+        self.raw_params = raw_params
+        self.expected_value_domain = expected_value_domain
+        for name, raw_param in self.raw_params:
+            setattr(self, name, eval(raw_param))
+
+    def __str__(self):
+        return self.raw_dist
+
+    def __hash__(self):
+        return hash((self.raw_dist, self.raw_params, self.expected_value_domain))
+
 
 TEST_CASES = []
 
@@ -37,58 +49,68 @@ for batch_shape in [(), (5,), (2, 3)]:
 
     # Normal
     TEST_CASES += [DistTestCase(
-        f"backend_dist.Normal(randn({batch_shape}), rand({batch_shape}))",
+        "backend_dist.Normal(case.loc, case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
         funsor.Real,
     )]
     # NonreparametrizedNormal
     TEST_CASES += [DistTestCase(
-        f"backend_dist.testing.fakes.NonreparameterizedNormal(rand({batch_shape}), rand({batch_shape}))",
+        "backend_dist.testing.fakes.NonreparameterizedNormal(case.loc, case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
         funsor.Real,
     )]
 
     # Beta
     TEST_CASES += [DistTestCase(
-        f"backend_dist.Beta(ops.exp(randn({batch_shape})), ops.exp(randn({batch_shape})))",
+        "backend_dist.Beta(case.concentration1, case.concentration0)",
+        (("concentration1", f"ops.exp(randn({batch_shape}))"), ("concentration0", f"ops.exp(randn({batch_shape}))")),
         funsor.Real,
     )]
     # NonreparametrizedBeta
     TEST_CASES += [DistTestCase(
-        f"backend_dist.testing.fakes.NonreparameterizedBeta(ops.exp(randn({batch_shape})), ops.exp(randn({batch_shape})))",  # noqa: E501
+        "backend_dist.testing.fakes.NonreparameterizedBeta(case.concentration1, case.concentration0)",
+        (("concentration1", f"ops.exp(randn({batch_shape}))"), ("concentration0", f"ops.exp(randn({batch_shape}))")),
         funsor.Real,
     )]
 
     # Gamma
     TEST_CASES += [DistTestCase(
-        f"backend_dist.Gamma(rand({batch_shape}), rand({batch_shape}))",
+        "backend_dist.Gamma(case.concentration, case.rate)",
+        (("concentration", f"rand({batch_shape})"), ("rate", f"rand({batch_shape})")),
         funsor.Real,
     )]
     # NonreparametrizedGamma
     TEST_CASES += [DistTestCase(
-        f"backend_dist.testing.fakes.NonreparameterizedGamma(rand({batch_shape}), rand({batch_shape}))",
+        "backend_dist.testing.fakes.NonreparameterizedGamma(case.concentration, case.rate)",
+        (("concentration", f"rand({batch_shape})"), ("rate", f"rand({batch_shape})")),
         funsor.Real,
     )]
 
     # Dirichlet
     for event_shape in [(1,), (4,), (5,)]:
         TEST_CASES += [DistTestCase(
-            f"backend_dist.Dirichlet(rand({batch_shape + event_shape}))",
+            "backend_dist.Dirichlet(case.concentration)",
+            (("concentration", f"rand({batch_shape + event_shape})"),),
             funsor.Reals[event_shape],
         )]
         TEST_CASES += [DistTestCase(
-            f"backend_dist.testing.fakes.NonreparameterizedDirichlet(rand({batch_shape + event_shape}))",
+            "backend_dist.testing.fakes.NonreparameterizedDirichlet(case.concentration)",
+            (("concentration", f"rand({batch_shape + event_shape})"),),
             funsor.Reals[event_shape],
         )]
 
     # MultivariateNormal
     for event_shape in [(1,), (3,)]:
         TEST_CASES += [DistTestCase(
-            f"backend_dist.MultivariateNormal(randn({batch_shape + event_shape}), random_scale_tril({batch_shape + event_shape * 2}))",  # noqa: E501
+            "backend_dist.MultivariateNormal(case.loc, case.scale_tril)",
+            (("loc", f"randn({batch_shape + event_shape})"), ("scale_tril", f"random_scale_tril({batch_shape + event_shape * 2})")),  # noqa: E501
             funsor.Reals[event_shape],
         )]
 
     # BernoulliLogits
     TEST_CASES += [DistTestCase(
-        f"backend_dist.Bernoulli(logits=rand({batch_shape}))",
+        "backend_dist.Bernoulli(logits=case.logits)",
+        (("logits", f"rand({batch_shape})"),),
         funsor.Real,
     )]
 
@@ -98,19 +120,6 @@ for batch_shape in [(), (5,), (2, 3)]:
 #   High-level distribution testing strategy: sequence of increasingly semantically strong distribution-agnostic tests
 #   Conversion invertibility -> density type and value -> enumerate_support type and value -> samplers -> gradients
 ###########################
-
-def case_id(case):
-    return str(case.raw_dist)
-
-
-def random_scale_tril(shape):
-    if get_backend() == "torch":
-        data = randn(shape)
-        return backend_dist.transforms.transform_to(backend_dist.constraints.lower_cholesky)(data)
-    else:
-        data = randn(shape[:-2] + (shape[-1] * (shape[-1] + 1) // 2,))
-        return backend_dist.biject_to(backend_dist.constraints.lower_cholesky)(data)
-
 
 def _default_dim_to_name(inputs_shape, event_inputs=None):
     DIM_TO_NAME = tuple(map("_pyro_dim_{}".format, range(-100, 0)))
@@ -158,7 +167,7 @@ def _get_stat(raw_dist, sample_shape, statistic):
     return actual_stat.reduce(ops.add), expected_stat.reduce(ops.add)
 
 
-@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
+@pytest.mark.parametrize("case", TEST_CASES, ids=str)
 @pytest.mark.parametrize("with_lazy", [True, False])
 def test_generic_distribution_to_funsor(case, with_lazy):
 
@@ -179,7 +188,7 @@ def test_generic_distribution_to_funsor(case, with_lazy):
         assert_close(getattr(actual_dist, param_name), getattr(raw_dist, param_name))
 
 
-@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
+@pytest.mark.parametrize("case", TEST_CASES, ids=str)
 def test_generic_log_prob(case):
 
     raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
@@ -200,7 +209,7 @@ def test_generic_log_prob(case):
     assert_close(funsor_dist(value=funsor_value), expected_logprob)
 
 
-@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
+@pytest.mark.parametrize("case", TEST_CASES, ids=str)
 @pytest.mark.parametrize("expand", [False, True])
 def test_generic_enumerate_support(case, expand):
 
@@ -218,7 +227,7 @@ def test_generic_enumerate_support(case, expand):
         assert_close(to_data(funsor_support, name_to_dim=name_to_dim), raw_support)
 
 
-@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
+@pytest.mark.parametrize("case", TEST_CASES, ids=str)
 @pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
 @pytest.mark.parametrize("sample_shape", [(), (200000,), (400, 400)])
 def test_generic_sample(case, statistic, sample_shape):
@@ -233,12 +242,13 @@ def test_generic_sample(case, statistic, sample_shape):
         assert_close(actual_stat, expected_stat, atol=atol, rtol=None)
 
 
-@pytest.mark.skipif(True, reason="not working yet")
-@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
+@pytest.mark.skipif(get_backend() != "torch", reason="not working yet")
+@pytest.mark.parametrize("case", TEST_CASES, ids=str)
 @pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
-def test_generic_sample_grads(case, statistic, with_lazy):
+@pytest.mark.parametrize("sample_shape", [(200000,), (400, 400)])
+def test_generic_sample_grads(case, statistic, sample_shape):
 
-    raw_dist, sample_shape = eval(case.raw_dist), case.sample_shape
+    raw_dist = eval(case.raw_dist)
 
     atol = 1e-2
 
@@ -249,7 +259,7 @@ def test_generic_sample_grads(case, statistic, with_lazy):
     if get_backend() == "torch":
         import torch
 
-        # TODO compute params here
+        params = tuple(getattr(case, param) for param, _ in case.raw_params)
         for param in params:
             param.requires_grad_()
 
