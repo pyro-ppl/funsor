@@ -592,6 +592,9 @@ class Funsor(object, metaclass=FunsorMeta):
     def abs(self):
         return Unary(ops.abs, self)
 
+    def atanh(self):
+        return Unary(ops.atanh, self)
+
     def sqrt(self):
         return Unary(ops.sqrt, self)
 
@@ -606,6 +609,9 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def sigmoid(self):
         return Unary(ops.sigmoid, self)
+
+    def tanh(self):
+        return Unary(ops.tanh, self)
 
     def reshape(self, shape):
         return Unary(ops.ReshapeOp(shape), self)
@@ -1634,6 +1640,11 @@ def _abs(x):
     return Unary(ops.abs, x)
 
 
+@ops.atanh.register(Funsor)
+def _atanh(x):
+    return Unary(ops.atanh, x)
+
+
 @ops.sqrt.register(Funsor)
 def _sqrt(x):
     return Unary(ops.sqrt, x)
@@ -1667,6 +1678,11 @@ def _reciprocal(x):
 @ops.sigmoid.register(Funsor)
 def _sigmoid(x):
     return Unary(ops.sigmoid, x)
+
+
+@ops.tanh.register(Funsor)
+def _tanh(x):
+    return Unary(ops.tanh, x)
 
 
 __all__ = [

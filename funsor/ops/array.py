@@ -5,7 +5,7 @@ import math
 
 import numpy as np
 
-from .builtin import AssociativeOp, add, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt
+from .builtin import AssociativeOp, add, atanh, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt, tanh
 from .op import DISTRIBUTIVE_OPS, Op
 
 _builtin_all = all
@@ -32,6 +32,8 @@ transpose = Op("transpose")
 sqrt.register(array)(np.sqrt)
 exp.register(array)(np.exp)
 log1p.register(array)(np.log1p)
+tanh.register(array)(np.tanh)
+atanh.register(array)(np.arctanh)
 
 
 class LogAddExpOp(AssociativeOp):
