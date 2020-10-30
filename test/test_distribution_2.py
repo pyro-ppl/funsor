@@ -29,11 +29,17 @@ if get_backend() != "numpy":
 
 # TODO how to make this work with multiple pytest workers?
 
-DistTestCase = namedtuple("DistTestCase", ["raw_dist", "expected_value_domain"])
+DistTestCase = namedtuple("DistTestCase", ["raw_dist", "expected_value_domain", "sample_shape"])
 
-TEST_CASES = [
-    DistTestCase(raw_dist=...),
-]
+TEST_CASES = []
+
+for batch_shape in [(), (5,), (2, 3)]:
+    TEST_CASES += [
+        DistTestCase(
+            f"backend_dist.Normal(rand({batch_shape}), rand({batch_shape}))",
+            funsor.Real
+        ),
+    ]
 
 
 ###########################
@@ -90,7 +96,7 @@ def _get_stat(raw_dist, sample_shape, statistic, with_lazy):
 @pytest.mark.parametrize("case", TEST_CASES)
 def test_generic_distribution_to_funsor(case):
 
-    raw_dist, expected_value_domain = case.raw_dist, case.expected_value_domain
+    raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
@@ -109,7 +115,7 @@ def test_generic_distribution_to_funsor(case):
 @pytest.mark.parametrize("case", TEST_CASES)
 def test_generic_log_prob(case):
 
-    raw_dist, expected_value_domain = case.raw_dist, case.expected_value_domain
+    raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
@@ -131,7 +137,7 @@ def test_generic_log_prob(case):
 @pytest.mark.parametrize("expand", [False, True])
 def test_generic_enumerate_support(case, expand):
 
-    raw_dist = case.raw_dist
+    raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
@@ -148,7 +154,7 @@ def test_generic_enumerate_support(case, expand):
 @pytest.mark.parametrize("with_lazy", [True, False])
 def test_generic_sample(case, statistic, with_lazy):
 
-    raw_dist, sample_shape = case.raw_dist, case.sample_shape
+    raw_dist, sample_shape = eval(case.raw_dist), case.sample_shape
 
     atol = 1e-2
 
@@ -164,7 +170,7 @@ def test_generic_sample(case, statistic, with_lazy):
 @pytest.mark.parametrize("with_lazy", [True, False])
 def test_generic_sample_grads(case, statistic, with_lazy):
 
-    raw_dist, sample_shape = case.raw_dist, case.sample_shape
+    raw_dist, sample_shape = eval(case.raw_dist), case.sample_shape
 
     atol = 1e-2
 
