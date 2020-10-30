@@ -3,7 +3,7 @@
 
 import functools
 import math
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from importlib import import_module
 
 import numpy as np
@@ -728,7 +728,7 @@ def _get_stat_diff(funsor_dist_class, sample_inputs, inputs, num_samples, statis
         return diff.sum(), diff
 
 
-def _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=1e-2,
+def _check_sample(raw_dist, sample_shape=(), atol=1e-2,
                   num_samples=100000, statistic="mean", skip_grad=False, with_lazy=None):
     """utility that compares a Monte Carlo estimate of a distribution mean with the true mean"""
     samples_per_dim = int(num_samples ** (1./max(1, len(sample_inputs))))
@@ -764,6 +764,57 @@ def _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=1e-2,
                     assert_close(diff_grad, ops.new_zeros(diff_grad, diff_grad.shape), atol=atol, rtol=None)
         else:
             _get_stat_diff_fn(params)
+
+
+def _check_distribution_to_funsor(raw_dist, expected_value_domain):
+
+    # TODO specify dim_to_name
+    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+    actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
+    
+    assert isinstance(actual_dist, backend_dist.Distribution)
+    assert type(raw_dist) == type(actual_dist)
+    assert funsor_dist.inputs["value"] == expected_value_domain
+    for param_name in funsor_dist.params.keys():
+        if param_name == "value":
+            continue
+        assert hasattr(raw_dist, param_name)
+        assert_close(getattr(actual_dist, param_name), getattr(raw_dist, param_name))
+
+
+def _check_log_prob(raw_dist, expected_value_domain):
+
+    # TODO specify dim_to_name
+    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+    expected_inputs = {name: raw_dist.batch_shape[dim] for dim, name in dim_to_name.items()}
+    expected_inputs.update({"value": expected_value_domain})
+
+    check_funsor(funsor_dist, expected_inputs, funsor.Real)
+
+    # TODO handle JAX rng here
+    expected_logprob = to_funsor(raw_dist.log_prob(raw_dist.sample()), output=funsor.Real, dim_to_name=dim_to_name)
+    assert_close(funsor_dist(value=value), expected_logprob)
+
+
+def _check_enumerate_support(raw_dist, expand=False):
+
+    # TODO specify dim_to_name
+    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+
+    assert getattr(raw_dist, "has_enumerate_support", False) == funsor_dist.has_enumerate_support
+    if funsor_dist.has_enumerate_support:
+        raw_support = raw_dist.enumerate_support(expand=expand)
+        funsor_support = funsor_dist.enumerate_support(expand=expand)
+        assert_equal(to_data(funsor_support, name_to_dim=name_to_dim), raw_support)
+
+
+# High-level distribution testing strategy: a fixed sequence of increasingly semantically strong distribution-agnostic tests
+# conversion invertibility -> density type and value -> enumerate_support type and value -> statistic types and values -> samplers -> gradients
+DistTestCase = namedtuple("DistTestCase", ["raw_dist", "expected_value_domain"])
+
+TEST_CASES = [
+    DistTestCase(raw_dist=...),
+]
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
