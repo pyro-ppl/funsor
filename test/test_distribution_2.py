@@ -27,7 +27,7 @@ if get_backend() != "numpy":
 # Test cases
 ##################################################
 
-# TODO how to make this work with multiple pytest workers?
+# TODO separate sample_shape from DistTestCase?
 
 DistTestCase = namedtuple("DistTestCase", ["raw_dist", "expected_value_domain", "sample_shape"])
 
