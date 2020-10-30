@@ -28,6 +28,7 @@ prod = Op(np.prod)
 stack = Op("stack")
 sum = Op(np.sum)
 transpose = Op("transpose")
+argmax = Op("argmax")
 
 sqrt.register(array)(np.sqrt)
 exp.register(array)(np.exp)

@@ -233,3 +233,17 @@ def _sum(x, dim):
 @ops.triangular_solve.register(torch.Tensor, torch.Tensor)
 def _triangular_solve(x, y, upper=False, transpose=False):
     return x.triangular_solve(y, upper, transpose).solution
+
+
+@ops.argmax.register(torch.Tensor, int)
+def _(x, dim):
+    return x.max(dim)  # returns max, argmax
+
+
+@ops.argmax.register(torch.Tensor, list)
+def _(x, dims):
+    if len(dims) == 1:
+        value, index = ops.argmax(x, dims[0])
+        return value, [index]
+    # TODO implement ops.argmax following pyro.ops.einsum.torch_map
+    raise NotImplementedError  # returns max, [argmax, ..., argmax]

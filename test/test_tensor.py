@@ -17,7 +17,17 @@ from funsor.domains import Array, Bint, Real, Reals, find_domain
 from funsor.interpreter import interpretation
 from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, numeric_array, stack, tensordot
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
-from funsor.testing import assert_close, assert_equiv, check_funsor, empty, rand, randn, random_tensor, zeros
+from funsor.testing import (
+    assert_close,
+    assert_equiv,
+    check_funsor,
+    empty,
+    rand,
+    randn,
+    random_tensor,
+    xfail_if_not_implemented,
+    zeros
+)
 from funsor.util import get_backend
 
 
@@ -644,6 +654,47 @@ def test_reduce_event(op, event_shape, dims):
     op_name = numeric_op.__name__[1:] if op in [ops.min, ops.max] else numeric_op.__name__
     actual = getattr(x, op_name)()
     check_funsor(actual, inputs, Array[dtype, ()], expected_data)
+
+
+@pytest.mark.parametrize('dims,reduced_vars', [
+    (dims, reduced_vars)
+    for dims in [('a',), ('a', 'b'), ('b', 'a', 'c')]
+    for num_reduced in range(len(dims) + 2)
+    for reduced_vars in itertools.combinations(dims, num_reduced)
+])
+def test_argreduce_max_subset(dims, reduced_vars):
+    reduced_vars = frozenset(reduced_vars)
+    sizes = {'a': 3, 'b': 4, 'c': 5}
+    shape = tuple(sizes[d] for d in dims)
+    inputs = OrderedDict((d, Bint[sizes[d]]) for d in dims)
+    data = rand(shape) + 0.5
+    dtype = 'real'
+    x = Tensor(data, inputs, dtype)
+    actual = x.argreduce(ops.max, reduced_vars)
+    expected_inputs = inputs
+    check_funsor(actual, expected_inputs, Array[dtype, ()])
+
+    reduced_vars &= frozenset(dims)
+    if not reduced_vars:
+        assert actual is x
+        return
+
+    # Check when marginalizing over deltas.
+    assert_close(actual.reduce(ops.logsumexp, reduced_vars),
+                 x.reduce(ops.max, reduced_vars))
+
+    with xfail_if_not_implemented():
+        reduced_data, argreduced_data = ops.argmax(
+            data, list(map(dims.index, reduced_vars)))
+    reduced_inputs = OrderedDict(
+        (k, v) for k, v in inputs.items() if k not in reduced_vars
+    )
+    expected = Tensor(reduced_data, reduced_inputs)
+    for name, datum in zip(reduced_vars, argreduced_data):
+        expected += funsor.Delta(name, Tensor(datum, reduced_inputs))
+    # TODO implement a helper to extract data from the deltas in actual.
+    # assert_close(actual, Tensor(data, expected_inputs, dtype),
+    #              atol=1e-5, rtol=1e-5)
 
 
 @pytest.mark.parametrize('shape', [(), (4,), (2, 3)])
