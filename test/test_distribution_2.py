@@ -13,7 +13,7 @@ from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.terms import Variable, eager, lazy, to_data, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn
+from funsor.testing import assert_close, check_funsor, rand, randint, randn  # noqa: F401
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
@@ -29,17 +29,68 @@ if get_backend() != "numpy":
 
 # TODO separate sample_shape from DistTestCase?
 
-DistTestCase = namedtuple("DistTestCase", ["raw_dist", "expected_value_domain", "sample_shape"])
+DistTestCase = namedtuple("DistTestCase", ["raw_dist", "expected_value_domain"])
 
 TEST_CASES = []
 
 for batch_shape in [(), (5,), (2, 3)]:
-    TEST_CASES += [
-        DistTestCase(
-            f"backend_dist.Normal(rand({batch_shape}), rand({batch_shape}))",
-            funsor.Real
-        ),
-    ]
+
+    # Normal
+    TEST_CASES += [DistTestCase(
+        f"backend_dist.Normal(randn({batch_shape}), rand({batch_shape}))",
+        funsor.Real,
+    )]
+    # NonreparametrizedNormal
+    TEST_CASES += [DistTestCase(
+        f"backend_dist.testing.fakes.NonreparameterizedNormal(rand({batch_shape}), rand({batch_shape}))",
+        funsor.Real,
+    )]
+
+    # Beta
+    TEST_CASES += [DistTestCase(
+        f"backend_dist.Beta(ops.exp(randn({batch_shape})), ops.exp(randn({batch_shape})))",
+        funsor.Real,
+    )]
+    # NonreparametrizedBeta
+    TEST_CASES += [DistTestCase(
+        f"backend_dist.testing.fakes.NonreparameterizedBeta(ops.exp(randn({batch_shape})), ops.exp(randn({batch_shape})))",  # noqa: E501
+        funsor.Real,
+    )]
+
+    # Gamma
+    TEST_CASES += [DistTestCase(
+        f"backend_dist.Gamma(rand({batch_shape}), rand({batch_shape}))",
+        funsor.Real,
+    )]
+    # NonreparametrizedGamma
+    TEST_CASES += [DistTestCase(
+        f"backend_dist.testing.fakes.NonreparameterizedGamma(rand({batch_shape}), rand({batch_shape}))",
+        funsor.Real,
+    )]
+
+    # Dirichlet
+    for event_shape in [(1,), (4,), (5,)]:
+        TEST_CASES += [DistTestCase(
+            f"backend_dist.Dirichlet(rand({batch_shape + event_shape}))",
+            funsor.Reals[event_shape],
+        )]
+        TEST_CASES += [DistTestCase(
+            f"backend_dist.testing.fakes.NonreparameterizedDirichlet(rand({batch_shape + event_shape}))",
+            funsor.Reals[event_shape],
+        )]
+
+    # MultivariateNormal
+    for event_shape in [(1,), (3,)]:
+        TEST_CASES += [DistTestCase(
+            f"backend_dist.MultivariateNormal(randn({batch_shape + event_shape}), random_scale_tril({batch_shape + event_shape * 2}))",  # noqa: E501
+            funsor.Reals[event_shape],
+        )]
+
+    # BernoulliLogits
+    TEST_CASES += [DistTestCase(
+        f"backend_dist.Bernoulli(logits=rand({batch_shape}))",
+        funsor.Real,
+    )]
 
 
 ###########################
@@ -48,6 +99,19 @@ for batch_shape in [(), (5,), (2, 3)]:
 #   Conversion invertibility -> density type and value -> enumerate_support type and value -> samplers -> gradients
 ###########################
 
+def case_id(case):
+    return str(case.raw_dist)
+
+
+def random_scale_tril(shape):
+    if get_backend() == "torch":
+        data = randn(shape)
+        return backend_dist.transforms.transform_to(backend_dist.constraints.lower_cholesky)(data)
+    else:
+        data = randn(shape[:-2] + (shape[-1] * (shape[-1] + 1) // 2,))
+        return backend_dist.biject_to(backend_dist.constraints.lower_cholesky)(data)
+
+
 def _default_dim_to_name(inputs_shape, event_inputs=None):
     DIM_TO_NAME = tuple(map("_pyro_dim_{}".format, range(-100, 0)))
     dim_to_name_list = DIM_TO_NAME + event_inputs if event_inputs else DIM_TO_NAME
@@ -55,15 +119,16 @@ def _default_dim_to_name(inputs_shape, event_inputs=None):
         range(-len(inputs_shape), 0),
         dim_to_name_list[len(dim_to_name_list) - len(inputs_shape):]))
     name_to_dim = OrderedDict((name, dim) for dim, name in dim_to_name.items())
-    return name_to_dim
+    return dim_to_name, name_to_dim
 
 
-def _get_stat(raw_dist, sample_shape, statistic, with_lazy):
+def _get_stat(raw_dist, sample_shape, statistic):
     dim_to_name, name_to_dim = _default_dim_to_name(sample_shape + raw_dist.batch_shape)
-    with interpretation(lazy if with_lazy else eager):
+    with interpretation(lazy):
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
-    sample_inputs = ...  # TODO compute sample_inputs from dim_to_name
+    sample_inputs = OrderedDict((dim_to_name[dim - len(raw_dist.batch_shape)], funsor.Bint[sample_shape[dim]])
+                                for dim in range(-len(sample_shape), 0))
     rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
     sample_value = funsor_dist.sample(frozenset(['value']), sample_inputs, rng_key=rng_key)
     expected_inputs = OrderedDict(tuple(sample_inputs.items()) + tuple(funsor_dist.inputs.items()))
@@ -93,13 +158,15 @@ def _get_stat(raw_dist, sample_shape, statistic, with_lazy):
     return actual_stat.reduce(ops.add), expected_stat.reduce(ops.add)
 
 
-@pytest.mark.parametrize("case", TEST_CASES)
-def test_generic_distribution_to_funsor(case):
+@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
+@pytest.mark.parametrize("with_lazy", [True, False])
+def test_generic_distribution_to_funsor(case, with_lazy):
 
     raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+    with interpretation(lazy if with_lazy else eager):
+        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
     actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
 
     assert isinstance(actual_dist, backend_dist.Distribution)
@@ -112,7 +179,7 @@ def test_generic_distribution_to_funsor(case):
         assert_close(getattr(actual_dist, param_name), getattr(raw_dist, param_name))
 
 
-@pytest.mark.parametrize("case", TEST_CASES)
+@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
 def test_generic_log_prob(case):
 
     raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
@@ -133,41 +200,42 @@ def test_generic_log_prob(case):
     assert_close(funsor_dist(value=funsor_value), expected_logprob)
 
 
-@pytest.mark.parametrize("case", TEST_CASES)
+@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
 @pytest.mark.parametrize("expand", [False, True])
 def test_generic_enumerate_support(case, expand):
 
     raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+    with interpretation(lazy):
+        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
-    assert getattr(raw_dist, "has_enumerate_support", False) == funsor_dist.has_enumerate_support
-    if funsor_dist.has_enumerate_support:
+    assert getattr(raw_dist, "has_enumerate_support", False) == getattr(funsor_dist, "has_enumerate_support", False)
+    if getattr(funsor_dist, "has_enumerate_support", False):
+        name_to_dim["value"] = -1 if not name_to_dim else min(name_to_dim.values()) - 1
         raw_support = raw_dist.enumerate_support(expand=expand)
         funsor_support = funsor_dist.enumerate_support(expand=expand)
         assert_close(to_data(funsor_support, name_to_dim=name_to_dim), raw_support)
 
 
-@pytest.mark.parametrize("case", TEST_CASES)
+@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
 @pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
-@pytest.mark.parametrize("with_lazy", [True, False])
-def test_generic_sample(case, statistic, with_lazy):
+@pytest.mark.parametrize("sample_shape", [(), (200000,), (400, 400)])
+def test_generic_sample(case, statistic, sample_shape):
 
-    raw_dist, sample_shape = eval(case.raw_dist), case.sample_shape
+    raw_dist = eval(case.raw_dist)
 
     atol = 1e-2
 
-    actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic, with_lazy)
+    actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
     check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
     if sample_shape:
         assert_close(actual_stat, expected_stat, atol=atol, rtol=None)
 
 
-@pytest.mark.skipif(True, reason="broken")
-@pytest.mark.parametrize("case", TEST_CASES)
+@pytest.mark.skipif(True, reason="not working yet")
+@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
 @pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
-@pytest.mark.parametrize("with_lazy", [True, False])
 def test_generic_sample_grads(case, statistic, with_lazy):
 
     raw_dist, sample_shape = eval(case.raw_dist), case.sample_shape
@@ -175,7 +243,7 @@ def test_generic_sample_grads(case, statistic, with_lazy):
     atol = 1e-2
 
     def _get_stat_diff_fn(raw_dist):
-        actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic, with_lazy)
+        actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
         return to_data((actual_stat - expected_stat).sum())
 
     if get_backend() == "torch":
