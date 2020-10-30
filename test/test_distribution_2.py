@@ -1,9 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-# High-level distribution testing strategy: sequence of increasingly semantically strong distribution-agnostic tests
-# conversion invertibility -> density type and value -> enumerate_support type and value -> samplers -> gradients
-
 from collections import OrderedDict, namedtuple
 from importlib import import_module
 
@@ -40,7 +37,9 @@ TEST_CASES = [
 
 
 ###########################
-# Generic tests
+# Generic tests:
+#   High-level distribution testing strategy: sequence of increasingly semantically strong distribution-agnostic tests
+#   Conversion invertibility -> density type and value -> enumerate_support type and value -> samplers -> gradients
 ###########################
 
 def _default_dim_to_name(inputs_shape, event_inputs=None):
