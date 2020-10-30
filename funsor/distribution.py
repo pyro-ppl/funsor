@@ -124,7 +124,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         sample_shape = tuple(v.size for v in sample_inputs.values())
 
         raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
-        sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
+        sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         if self.has_rsample:
             raw_sample = raw_dist.rsample(*sample_args)
         else:
@@ -556,6 +556,18 @@ def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):
                                        backend_dist.Binomial(total_count=1, probs=y.probs, value=y.value))
 
 
+def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
+    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if dirichlet_reduction:
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+        identity = Tensor(ops.new_eye(funsor.tensor.get_default_prototype(), x.concentration.shape))
+        return backend_dist.DirichletMultinomial(concentration=x.concentration,
+                                                 total_count=1,
+                                                 value=identity[y.value])
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
 def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
     dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
     if dirichlet_reduction:
@@ -563,6 +575,21 @@ def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
         return backend_dist.DirichletMultinomial(concentration=x.concentration,
                                                  total_count=y.total_count,
                                                  value=y.value)
+    else:
+        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+
+
+def _log_beta(x, y):
+    return ops.lgamma(x) + ops.lgamma(y) - ops.lgamma(x + y)
+
+
+def eager_gamma_gamma(red_op, bin_op, reduced_vars, x, y):
+    gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    if gamma_reduction:
+        unnormalized = (y.concentration - 1) * ops.log(y.value) \
+            - (y.concentration + x.concentration) * ops.log(y.value + x.rate)
+        const = -x.concentration * ops.log(x.rate) + _log_beta(y.concentration, x.concentration)
+        return unnormalized - const
     else:
         return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
 

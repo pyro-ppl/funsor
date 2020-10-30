@@ -11,12 +11,15 @@ import funsor.ops as ops
 ################################################################################
 
 ops.abs.register(torch.Tensor)(torch.abs)
+ops.atanh.register(torch.Tensor)(torch.atanh)
 ops.cholesky_solve.register(torch.Tensor, torch.Tensor)(torch.cholesky_solve)
 ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
 ops.exp.register(torch.Tensor)(torch.exp)
 ops.full_like.register(torch.Tensor, object)(torch.full_like)
 ops.log1p.register(torch.Tensor)(torch.log1p)
+ops.sigmoid.register(torch.Tensor)(torch.sigmoid)
 ops.sqrt.register(torch.Tensor)(torch.sqrt)
+ops.tanh.register(torch.Tensor)(torch.tanh)
 ops.transpose.register(torch.Tensor, int, int)(torch.transpose)
 ops.unsqueeze.register(torch.Tensor, int)(torch.unsqueeze)
 
@@ -102,6 +105,11 @@ def _finfo(x):
 @ops.is_numeric_array.register(torch.Tensor)
 def _is_numeric_array(x):
     return True
+
+
+@ops.lgamma.register(torch.Tensor)
+def _lgamma(x):
+    return x.lgamma()
 
 
 @ops.log.register(torch.Tensor)

@@ -238,13 +238,15 @@ def unary_eval(symbol, x):
 
 @pytest.mark.parametrize('data', [0, 0.5, 1])
 @pytest.mark.parametrize('symbol', [
-    '~', '-', 'abs', 'sqrt', 'exp', 'log', 'log1p', 'sigmoid',
+    '~', '-', 'atanh', 'abs', 'sqrt', 'exp', 'log', 'log1p', 'sigmoid', 'tanh',
 ])
 def test_unary(symbol, data):
     dtype = 'real'
     if symbol == '~':
         data = bool(data)
         dtype = 2
+    if symbol == 'atanh':
+        data = min(data, 0.99)
     expected_data = unary_eval(symbol, data)
 
     x = Number(data, dtype)
