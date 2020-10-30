@@ -164,7 +164,7 @@ def _get_stat(raw_dist, sample_shape, statistic):
     else:
         raise ValueError("invalid test statistic: {}".format(statistic))
 
-    return actual_stat.reduce(ops.add), expected_stat.reduce(ops.add)
+    return actual_stat, expected_stat
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
@@ -229,8 +229,27 @@ def test_generic_enumerate_support(case, expand):
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
 @pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
-@pytest.mark.parametrize("sample_shape", [(), (200000,), (400, 400)])
+@pytest.mark.parametrize("sample_shape", [(), (2,), (4, 3)], ids=str)
 def test_generic_sample(case, statistic, sample_shape):
+
+    raw_dist = eval(case.raw_dist)
+
+    dim_to_name, name_to_dim = _default_dim_to_name(sample_shape + raw_dist.batch_shape)
+    with interpretation(lazy):
+        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+
+    sample_inputs = OrderedDict((dim_to_name[dim - len(raw_dist.batch_shape)], funsor.Bint[sample_shape[dim]])
+                                for dim in range(-len(sample_shape), 0))
+    rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
+    sample_value = funsor_dist.sample(frozenset(['value']), sample_inputs, rng_key=rng_key)
+    expected_inputs = OrderedDict(tuple(sample_inputs.items()) + tuple(funsor_dist.inputs.items()))
+    check_funsor(sample_value, expected_inputs, funsor.Real)
+
+
+@pytest.mark.parametrize("case", TEST_CASES, ids=str)
+@pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
+@pytest.mark.parametrize("sample_shape", [(), (200000,), (400, 400)], ids=str)
+def test_generic_stats(case, statistic, sample_shape):
 
     raw_dist = eval(case.raw_dist)
 
@@ -238,15 +257,14 @@ def test_generic_sample(case, statistic, sample_shape):
 
     actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
     check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
-    if sample_shape:
-        assert_close(actual_stat, expected_stat, atol=atol, rtol=None)
+    assert_close(actual_stat.reduce(ops.add), expected_stat.reduce(ops.add), atol=atol, rtol=None)
 
 
 @pytest.mark.skipif(get_backend() != "torch", reason="not working yet")
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
 @pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
-@pytest.mark.parametrize("sample_shape", [(200000,), (400, 400)])
-def test_generic_sample_grads(case, statistic, sample_shape):
+@pytest.mark.parametrize("sample_shape", [(200000,), (400, 400)], ids=str)
+def test_generic_grads(case, statistic, sample_shape):
 
     raw_dist = eval(case.raw_dist)
 
