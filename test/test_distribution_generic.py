@@ -168,13 +168,12 @@ def _get_stat(raw_dist, sample_shape, statistic):
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
-@pytest.mark.parametrize("with_lazy", [True, False])
-def test_generic_distribution_to_funsor(case, with_lazy):
+def test_generic_distribution_to_funsor(case):
 
     raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(lazy if with_lazy else eager):
+    with interpretation(lazy):
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
     actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
 
