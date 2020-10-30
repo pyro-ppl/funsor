@@ -17,7 +17,7 @@ from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.domains import Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
-from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array, stack
+from funsor.tensor import Einsum, Tensor, numeric_array, stack
 from funsor.terms import Independent, Variable, eager, lazy, to_funsor
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_mvn, random_tensor, xfail_param
 from funsor.util import get_backend
@@ -701,29 +701,26 @@ def _get_stat_diff(funsor_dist_class, sample_inputs, inputs, num_samples, statis
     check_funsor(sample_value, expected_inputs, Real)
 
     if sample_inputs:
-
-        actual_mean = Integrate(
-            sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
-        ).reduce(ops.add, frozenset(sample_inputs))
-
-        inputs, tensors = align_tensors(*list(funsor_dist.params.values())[:-1])
-        raw_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], tensors)))
-        expected_mean = Tensor(raw_dist.mean, inputs)
-
         if statistic == "mean":
-            actual_stat, expected_stat = actual_mean, expected_mean
+            actual_stat = Integrate(
+                sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
+            ).reduce(ops.add, frozenset(sample_inputs))
+            expected_stat = funsor_dist.mean()
         elif statistic == "variance":
+            actual_mean = Integrate(
+                sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
+            ).reduce(ops.add, frozenset(sample_inputs))
             actual_stat = Integrate(
                 sample_value,
                 (Variable('value', funsor_dist.inputs['value']) - actual_mean) ** 2,
                 frozenset(['value'])
             ).reduce(ops.add, frozenset(sample_inputs))
-            expected_stat = Tensor(raw_dist.variance, inputs)
+            expected_stat = funsor_dist.variance()
         elif statistic == "entropy":
             actual_stat = -Integrate(
                 sample_value, funsor_dist, frozenset(['value'])
             ).reduce(ops.add, frozenset(sample_inputs))
-            expected_stat = Tensor(raw_dist.entropy(), inputs)
+            expected_stat = funsor_dist.entropy()
         else:
             raise ValueError("invalid test statistic")
 
