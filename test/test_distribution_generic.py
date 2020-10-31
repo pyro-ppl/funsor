@@ -123,6 +123,14 @@ for batch_shape in [(), (5,), (2, 3)]:
             funsor.Reals[event_shape],
         )]
 
+    # DirichletMultinomial
+    for event_shape in [(1,), (4,)]:
+        TEST_CASES += [DistTestCase(
+            "backend_dist.DirichletMultinomial(case.concentration, case.total_count)",
+            (("concentration", f"rand({batch_shape + event_shape})"), ("total_count", "10")),
+            funsor.Reals[event_shape],
+        )]
+
     # Gamma
     TEST_CASES += [DistTestCase(
         "backend_dist.Gamma(case.concentration, case.rate)",
