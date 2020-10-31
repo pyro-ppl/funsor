@@ -397,12 +397,13 @@ def test_generic_grads(case, statistic, sample_shape):
             actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
         if expected_stat.data.isnan().all():
             pytest.xfail(reason="base stat returns nan")
-        return to_data((actual_stat - expected_stat).sum())
+        return to_data((actual_stat - expected_stat).reduce(ops.add).sum())
 
     if get_backend() == "torch":
         import torch
 
         params = tuple(getattr(case, param) for param, _ in case.raw_params)
+        params = tuple(param for param in params if isinstance(param, torch.Tensor))
         for param in params:
             param.requires_grad_()
 
