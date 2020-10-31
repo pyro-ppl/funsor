@@ -12,7 +12,7 @@ import funsor.ops as ops
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
-from funsor.terms import Variable, eager, lazy, to_data, to_funsor
+from funsor.terms import Variable, lazy, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril  # noqa: F401
 from funsor.util import get_backend
 
@@ -21,6 +21,16 @@ pytestmark = pytest.mark.skipif(get_backend() == "numpy",
 if get_backend() != "numpy":
     dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     backend_dist = dist.dist
+
+    class _fakes:
+        def __getattribute__(self, attr):
+            if get_backend() == "torch":
+                return getattr(backend_dist.testing.fakes, attr)
+            elif get_backend() == "jax":
+                return getattr(dist, "_NumPyroWrapper_" + attr)
+            raise ValueError(attr)
+
+    FAKES = _fakes()
 
 
 ##################################################
@@ -34,6 +44,7 @@ class DistTestCase:
         self.raw_params = raw_params
         self.expected_value_domain = expected_value_domain
         for name, raw_param in self.raw_params:
+            # we need direct access to these tensors for gradient tests
             setattr(self, name, eval(raw_param))
 
     def __str__(self):
@@ -53,9 +64,9 @@ for batch_shape in [(), (5,), (2, 3)]:
         (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
         funsor.Real,
     )]
-    # NonreparametrizedNormal
+    # NonreparameterizedNormal
     TEST_CASES += [DistTestCase(
-        "backend_dist.testing.fakes.NonreparameterizedNormal(case.loc, case.scale)",
+        "FAKES.NonreparameterizedNormal(case.loc, case.scale)",
         (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
         funsor.Real,
     )]
@@ -66,9 +77,9 @@ for batch_shape in [(), (5,), (2, 3)]:
         (("concentration1", f"ops.exp(randn({batch_shape}))"), ("concentration0", f"ops.exp(randn({batch_shape}))")),
         funsor.Real,
     )]
-    # NonreparametrizedBeta
+    # NonreparameterizedBeta
     TEST_CASES += [DistTestCase(
-        "backend_dist.testing.fakes.NonreparameterizedBeta(case.concentration1, case.concentration0)",
+        "FAKES.NonreparameterizedBeta(case.concentration1, case.concentration0)",
         (("concentration1", f"ops.exp(randn({batch_shape}))"), ("concentration0", f"ops.exp(randn({batch_shape}))")),
         funsor.Real,
     )]
@@ -81,7 +92,7 @@ for batch_shape in [(), (5,), (2, 3)]:
     )]
     # NonreparametrizedGamma
     TEST_CASES += [DistTestCase(
-        "backend_dist.testing.fakes.NonreparameterizedGamma(case.concentration, case.rate)",
+        "FAKES.NonreparameterizedGamma(case.concentration, case.rate)",
         (("concentration", f"rand({batch_shape})"), ("rate", f"rand({batch_shape})")),
         funsor.Real,
     )]
@@ -93,8 +104,9 @@ for batch_shape in [(), (5,), (2, 3)]:
             (("concentration", f"rand({batch_shape + event_shape})"),),
             funsor.Reals[event_shape],
         )]
+        # NonreparameterizedDirichlet
         TEST_CASES += [DistTestCase(
-            "backend_dist.testing.fakes.NonreparameterizedDirichlet(case.concentration)",
+            "FAKES.NonreparameterizedDirichlet(case.concentration)",
             (("concentration", f"rand({batch_shape + event_shape})"),),
             funsor.Reals[event_shape],
         )]
@@ -200,7 +212,7 @@ def test_generic_log_prob(case):
     check_funsor(funsor_dist, expected_inputs, funsor.Real)
 
     if get_backend() == "jax":
-        raw_value = raw_dist.sample(rng_key=np.array([0, 0], dtype=np.uint32))
+        raw_value = raw_dist.sample(key=np.array([0, 0], dtype=np.uint32))
     else:
         raw_value = raw_dist.sample()
     expected_logprob = to_funsor(raw_dist.log_prob(raw_value), output=funsor.Real, dim_to_name=dim_to_name)
