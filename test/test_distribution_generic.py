@@ -13,7 +13,7 @@ from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
 from funsor.terms import Variable, lazy, to_data, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril  # noqa: F401
+from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril, xfail_if_not_implemented  # noqa: F401,E501
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
@@ -63,6 +63,13 @@ for batch_shape in [(), (5,), (2, 3)]:
     TEST_CASES += [DistTestCase(
         "backend_dist.Bernoulli(logits=case.logits)",
         (("logits", f"rand({batch_shape})"),),
+        funsor.Real,
+    )]
+
+    # BernoulliProbs
+    TEST_CASES += [DistTestCase(
+        "backend_dist.Bernoulli(probs=case.probs)",
+        (("probs", f"rand({batch_shape})"),),
         funsor.Real,
     )]
 
@@ -124,6 +131,13 @@ for batch_shape in [(), (5,), (2, 3)]:
     TEST_CASES += [DistTestCase(
         "FAKES.NonreparameterizedNormal(case.loc, case.scale)",
         (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real,
+    )]
+
+    # Poisson
+    TEST_CASES += [DistTestCase(
+        "backend_dist.Poisson(rate=case.rate)",
+        (("rate", f"rand({batch_shape})"),),
         funsor.Real,
     )]
 
@@ -240,9 +254,8 @@ def test_generic_enumerate_support(case, expand):
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
-@pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
 @pytest.mark.parametrize("sample_shape", [(), (2,), (4, 3)], ids=str)
-def test_generic_sample(case, statistic, sample_shape):
+def test_generic_sample(case, sample_shape):
 
     raw_dist = eval(case.raw_dist)
 
@@ -259,23 +272,59 @@ def test_generic_sample(case, statistic, sample_shape):
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
-@pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
+@pytest.mark.parametrize("statistic", [
+    "mean",
+    "variance",
+    pytest.param("entropy", marks=[pytest.mark.skipif(get_backend() == "jax", reason="entropy not implemented")])
+])
+def test_generic_stats_smoke(case, statistic):
+
+    raw_dist = eval(case.raw_dist)
+
+    dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
+    with interpretation(lazy):
+        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+
+    with xfail_if_not_implemented(msg="entropy not implemented for some distributions"):
+        actual_stat = getattr(funsor_dist, statistic)()
+
+    expected_stat_raw = getattr(raw_dist, statistic)
+    if statistic == "entropy":
+        expected_stat = to_funsor(expected_stat_raw(), output=funsor.Real, dim_to_name=dim_to_name)
+    else:
+        expected_stat = to_funsor(expected_stat_raw, output=case.expected_value_domain, dim_to_name=dim_to_name)
+
+    check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
+    assert_close(to_data(actual_stat, name_to_dim), to_data(expected_stat, name_to_dim))
+
+
+@pytest.mark.parametrize("case", TEST_CASES, ids=str)
 @pytest.mark.parametrize("sample_shape", [(), (200000,), (400, 400)], ids=str)
-def test_generic_stats(case, statistic, sample_shape):
+@pytest.mark.parametrize("statistic", [
+    "mean",
+    "variance",
+    pytest.param("entropy", marks=[pytest.mark.skipif(get_backend() == "jax", reason="entropy not implemented")])
+])
+def test_generic_stats_sample(case, statistic, sample_shape):
 
     raw_dist = eval(case.raw_dist)
 
     atol = 1e-2
+    with xfail_if_not_implemented(msg="entropy not implemented for some distributions"):
+        actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
 
-    actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
     check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
     assert_close(actual_stat.reduce(ops.add), expected_stat.reduce(ops.add), atol=atol, rtol=None)
 
 
 @pytest.mark.skipif(get_backend() != "torch", reason="not working yet")
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
-@pytest.mark.parametrize("statistic", ["mean", "variance", "entropy"])
 @pytest.mark.parametrize("sample_shape", [(200000,), (400, 400)], ids=str)
+@pytest.mark.parametrize("statistic", [
+    "mean",
+    "variance",
+    pytest.param("entropy", marks=[pytest.mark.skipif(get_backend() == "jax", reason="entropy not implemented")])
+])
 def test_generic_grads(case, statistic, sample_shape):
 
     raw_dist = eval(case.raw_dist)
@@ -283,7 +332,8 @@ def test_generic_grads(case, statistic, sample_shape):
     atol = 1e-2
 
     def _get_stat_diff_fn(raw_dist):
-        actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
+        with xfail_if_not_implemented(msg="entropy not implemented for some distributions"):
+            actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
         return to_data((actual_stat - expected_stat).sum())
 
     if get_backend() == "torch":
