@@ -23,6 +23,7 @@ if get_backend() != "numpy":
     backend_dist = dist.dist
 
     class _fakes:
+        """alias for accessing nonreparameterized distributions"""
         def __getattribute__(self, attr):
             if get_backend() == "torch":
                 return getattr(backend_dist.testing.fakes, attr)
@@ -48,7 +49,7 @@ class DistTestCase:
             setattr(self, name, eval(raw_param))
 
     def __str__(self):
-        return self.raw_dist
+        return self.raw_dist + " " + str(self.raw_params)
 
     def __hash__(self):
         return hash((self.raw_dist, self.raw_params, self.expected_value_domain))
@@ -58,16 +59,10 @@ TEST_CASES = []
 
 for batch_shape in [(), (5,), (2, 3)]:
 
-    # Normal
+    # BernoulliLogits
     TEST_CASES += [DistTestCase(
-        "backend_dist.Normal(case.loc, case.scale)",
-        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
-        funsor.Real,
-    )]
-    # NonreparameterizedNormal
-    TEST_CASES += [DistTestCase(
-        "FAKES.NonreparameterizedNormal(case.loc, case.scale)",
-        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        "backend_dist.Bernoulli(logits=case.logits)",
+        (("logits", f"rand({batch_shape})"),),
         funsor.Real,
     )]
 
@@ -84,6 +79,20 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )]
 
+    # Dirichlet
+    for event_shape in [(1,), (4,)]:
+        TEST_CASES += [DistTestCase(
+            "backend_dist.Dirichlet(case.concentration)",
+            (("concentration", f"rand({batch_shape + event_shape})"),),
+            funsor.Reals[event_shape],
+        )]
+        # NonreparameterizedDirichlet
+        TEST_CASES += [DistTestCase(
+            "FAKES.NonreparameterizedDirichlet(case.concentration)",
+            (("concentration", f"rand({batch_shape + event_shape})"),),
+            funsor.Reals[event_shape],
+        )]
+
     # Gamma
     TEST_CASES += [DistTestCase(
         "backend_dist.Gamma(case.concentration, case.rate)",
@@ -97,32 +106,24 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )]
 
-    # Dirichlet
-    for event_shape in [(1,), (4,), (5,)]:
-        TEST_CASES += [DistTestCase(
-            "backend_dist.Dirichlet(case.concentration)",
-            (("concentration", f"rand({batch_shape + event_shape})"),),
-            funsor.Reals[event_shape],
-        )]
-        # NonreparameterizedDirichlet
-        TEST_CASES += [DistTestCase(
-            "FAKES.NonreparameterizedDirichlet(case.concentration)",
-            (("concentration", f"rand({batch_shape + event_shape})"),),
-            funsor.Reals[event_shape],
-        )]
-
     # MultivariateNormal
     for event_shape in [(1,), (3,)]:
         TEST_CASES += [DistTestCase(
-            "backend_dist.MultivariateNormal(case.loc, case.scale_tril)",
+            "backend_dist.MultivariateNormal(loc=case.loc, scale_tril=case.scale_tril)",
             (("loc", f"randn({batch_shape + event_shape})"), ("scale_tril", f"random_scale_tril({batch_shape + event_shape * 2})")),  # noqa: E501
             funsor.Reals[event_shape],
         )]
 
-    # BernoulliLogits
+    # Normal
     TEST_CASES += [DistTestCase(
-        "backend_dist.Bernoulli(logits=case.logits)",
-        (("logits", f"rand({batch_shape})"),),
+        "backend_dist.Normal(case.loc, case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real,
+    )]
+    # NonreparameterizedNormal
+    TEST_CASES += [DistTestCase(
+        "FAKES.NonreparameterizedNormal(case.loc, case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
         funsor.Real,
     )]
 
@@ -190,7 +191,7 @@ def test_generic_distribution_to_funsor(case):
     actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
 
     assert isinstance(actual_dist, backend_dist.Distribution)
-    assert type(raw_dist) == type(actual_dist)
+    assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
     assert funsor_dist.inputs["value"] == expected_value_domain
     for param_name in funsor_dist.params.keys():
         if param_name == "value":
