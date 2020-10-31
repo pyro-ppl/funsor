@@ -93,6 +93,22 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )]
 
+    # CategoricalProbs
+    for size in [2, 4]:
+        TEST_CASES += [DistTestCase(
+            "backend_dist.Categorical(probs=case.probs)",
+            (("probs", f"rand({batch_shape + (size,)})"),),
+            funsor.Bint[size],
+        )]
+
+    # Delta
+    for event_shape in [(), (4,), (3, 2)]:
+        TEST_CASES += [DistTestCase(
+            "backend_dist.Delta(case.v, case.log_density)",
+            (("v", f"rand({batch_shape + event_shape})"), ("log_density", f"rand({batch_shape})")),
+            funsor.Reals[event_shape],
+        )]
+
     # Dirichlet
     for event_shape in [(1,), (4,)]:
         TEST_CASES += [DistTestCase(
@@ -120,6 +136,14 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )]
 
+    # Multinomial
+    for event_shape in [(1,), (4,)]:
+        TEST_CASES += [DistTestCase(
+            "backend_dist.Multinomial(case.total_count, probs=case.probs)",
+            (("total_count", "5"), ("probs", f"rand({batch_shape + event_shape})")),
+            funsor.Reals[event_shape],
+        )]
+
     # MultivariateNormal
     for event_shape in [(1,), (3,)]:
         TEST_CASES += [DistTestCase(
@@ -145,6 +169,13 @@ for batch_shape in [(), (5,), (2, 3)]:
     TEST_CASES += [DistTestCase(
         "backend_dist.Poisson(rate=case.rate)",
         (("rate", f"rand({batch_shape})"),),
+        funsor.Real,
+    )]
+
+    # VonMises
+    TEST_CASES += [DistTestCase(
+        "backend_dist.VonMises(case.loc, case.concentration)",
+        (("loc", f"rand({batch_shape})"), ("concentration", f"rand({batch_shape})")),
         funsor.Real,
     )]
 
