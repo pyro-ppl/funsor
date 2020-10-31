@@ -106,6 +106,22 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         data = cls.dist_class(**params).log_prob(value)
         return Tensor(data, inputs)
 
+    def _get_raw_dist(self):
+        """
+        Internal method for working with underlying distribution attributes
+        """
+        if isinstance(self.value, Variable):
+            value_name = self.value.name
+        else:
+            raise NotImplementedError("cannot get raw dist for {}".format(self))
+        # arbitrary name-dim mapping, since we're converting back to a funsor anyway
+        name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(self.inputs.items())
+                       if isinstance(domain.dtype, int) and name != value_name}
+        raw_dist = to_data(self, name_to_dim=name_to_dim)
+        dim_to_name = {dim: name for name, dim in name_to_dim.items()}
+        # also return value output, dim_to_name for converting results back to funsor
+        return raw_dist, self.value.output, dim_to_name
+
     @property
     def has_rsample(self):
         return getattr(self.dist_class, "has_rsample", False)
@@ -150,16 +166,26 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return result
 
     def enumerate_support(self, expand=False):
-        if not self.has_enumerate_support or not isinstance(self.value, Variable):
-            raise ValueError("cannot enumerate support of {}".format(repr(self)))
-        # arbitrary name-dim mapping, since we're converting back to a funsor anyway
-        name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(self.inputs.items())
-                       if isinstance(domain.dtype, int) and name != self.value.name}
-        raw_dist = to_data(self, name_to_dim=name_to_dim)
+        assert self.has_enumerate_support and isinstance(self.value, Variable)
+        raw_dist, value_output, dim_to_name = self._get_raw_dist()
         raw_value = raw_dist.enumerate_support(expand=expand)
-        dim_to_name = {dim: name for name, dim in name_to_dim.items()}
         dim_to_name[min(dim_to_name.keys(), default=0)-1] = self.value.name
-        return to_funsor(raw_value, output=self.value.output, dim_to_name=dim_to_name)
+        return to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
+
+    def entropy(self):
+        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_value = raw_dist.entropy()
+        return to_funsor(raw_value, output=self.output, dim_to_name=dim_to_name)
+
+    def mean(self):
+        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_value = raw_dist.mean
+        return to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
+
+    def variance(self):
+        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_value = raw_dist.variance
+        return to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
 
     def __getattribute__(self, attr):
         if attr in type(self)._ast_fields and attr != 'name':
