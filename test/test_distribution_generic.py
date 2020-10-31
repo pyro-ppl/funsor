@@ -104,7 +104,7 @@ for batch_shape in [(), (5,), (2, 3)]:
     # CategoricalProbs
     for size in [2, 4]:
         TEST_CASES += [DistTestCase(
-            "backend_dist.Categorical(probs=case.probs)",
+            "backend_dist.Categorical(probs=case.probs / case.probs.sum(-1, True))",
             (("probs", f"rand({batch_shape + (size,)})"),),
             funsor.Bint[size],
         )]

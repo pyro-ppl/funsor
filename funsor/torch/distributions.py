@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import numbers
 from typing import Tuple, Union
 
 import pyro.distributions as dist
@@ -41,7 +42,7 @@ from funsor.distribution import (  # noqa: F401
 from funsor.domains import Real, Reals
 import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Binary, Funsor, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
 
 
@@ -152,6 +153,19 @@ def _infer_param_domain(cls, name, raw_shape):
         return Reals[raw_shape[-1]]
     assert name == "total_count"
     return Real
+
+
+###########################################################
+# Converting distribution funsors to PyTorch distributions
+###########################################################
+
+@to_data.register(Multinomial)
+def multinomial_to_data(funsor_dist, name_to_dim=None):
+    probs = to_data(funsor_dist.probs, name_to_dim)
+    total_count = to_data(funsor_dist.total_count, name_to_dim)
+    if isinstance(total_count, numbers.Number) or len(total_count.shape) == 0:
+        return dist.Multinomial(int(total_count), probs=probs)
+    raise NotImplementedError("inhomogeneous total_count not supported")
 
 
 ###############################################
