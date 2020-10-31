@@ -93,6 +93,14 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )]
 
+    # CategoricalLogits
+    for size in [2, 4]:
+        TEST_CASES += [DistTestCase(
+            "backend_dist.Categorical(logits=case.logits)",
+            (("logits", f"rand({batch_shape + (size,)})"),),
+            funsor.Bint[size],
+        )]
+
     # CategoricalProbs
     for size in [2, 4]:
         TEST_CASES += [DistTestCase(
