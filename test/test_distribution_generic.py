@@ -86,6 +86,13 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )]
 
+    # Binomial
+    TEST_CASES += [DistTestCase(
+        "backend_dist.Binomial(total_count=case.total_count, probs=case.probs)",
+        (("total_count", f"ops.astype(randint(0, 10, {batch_shape}), 'float')"), ("probs", f"rand({batch_shape})")),
+        funsor.Real,
+    )]
+
     # Dirichlet
     for event_shape in [(1,), (4,)]:
         TEST_CASES += [DistTestCase(
@@ -248,9 +255,10 @@ def test_generic_enumerate_support(case, expand):
     assert getattr(raw_dist, "has_enumerate_support", False) == getattr(funsor_dist, "has_enumerate_support", False)
     if getattr(funsor_dist, "has_enumerate_support", False):
         name_to_dim["value"] = -1 if not name_to_dim else min(name_to_dim.values()) - 1
-        raw_support = raw_dist.enumerate_support(expand=expand)
-        funsor_support = funsor_dist.enumerate_support(expand=expand)
-        assert_close(to_data(funsor_support, name_to_dim=name_to_dim), raw_support)
+        with xfail_if_not_implemented("enumerate support not implemented"):
+            raw_support = raw_dist.enumerate_support(expand=expand)
+            funsor_support = funsor_dist.enumerate_support(expand=expand)
+            assert_close(to_data(funsor_support, name_to_dim=name_to_dim), raw_support)
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
