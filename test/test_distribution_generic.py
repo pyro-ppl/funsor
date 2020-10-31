@@ -104,7 +104,7 @@ for batch_shape in [(), (5,), (2, 3)]:
     # CategoricalProbs
     for size in [2, 4]:
         TEST_CASES += [DistTestCase(
-            "backend_dist.Categorical(probs=case.probs / case.probs.sum(-1, True))",
+            "backend_dist.Categorical(probs=case.probs)",
             (("probs", f"rand({batch_shape + (size,)})"),),
             funsor.Bint[size],
         )]
@@ -286,7 +286,7 @@ def test_generic_log_prob(case):
         raw_value = raw_dist.sample()
     expected_logprob = to_funsor(raw_dist.log_prob(raw_value), output=funsor.Real, dim_to_name=dim_to_name)
     funsor_value = to_funsor(raw_value, output=expected_value_domain, dim_to_name=dim_to_name)
-    assert_close(funsor_dist(value=funsor_value), expected_logprob)
+    assert_close(funsor_dist(value=funsor_value), expected_logprob, rtol=1e-4)
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
@@ -350,7 +350,10 @@ def test_generic_stats_smoke(case, statistic):
         expected_stat = to_funsor(expected_stat_raw, output=case.expected_value_domain, dim_to_name=dim_to_name)
 
     check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
-    assert_close(to_data(actual_stat, name_to_dim), to_data(expected_stat, name_to_dim))
+    if expected_stat.data.isnan().all():
+        pytest.xfail(reason="base stat returns nan")
+    else:
+        assert_close(to_data(actual_stat, name_to_dim), to_data(expected_stat, name_to_dim), rtol=1e-4)
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
@@ -369,7 +372,10 @@ def test_generic_stats_sample(case, statistic, sample_shape):
         actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
 
     check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
-    assert_close(actual_stat.reduce(ops.add), expected_stat.reduce(ops.add), atol=atol, rtol=None)
+    if expected_stat.data.isnan().all():
+        pytest.xfail(reason="base stat returns nan")
+    else:
+        assert_close(actual_stat.reduce(ops.add), expected_stat.reduce(ops.add), atol=atol, rtol=None)
 
 
 @pytest.mark.skipif(get_backend() != "torch", reason="not working yet")
@@ -389,6 +395,8 @@ def test_generic_grads(case, statistic, sample_shape):
     def _get_stat_diff_fn(raw_dist):
         with xfail_if_not_implemented(msg="entropy not implemented for some distributions"):
             actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
+        if expected_stat.data.isnan().all():
+            pytest.xfail(reason="base stat returns nan")
         return to_data((actual_stat - expected_stat).sum())
 
     if get_backend() == "torch":

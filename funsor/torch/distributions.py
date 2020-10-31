@@ -159,7 +159,7 @@ def _infer_param_domain(cls, name, raw_shape):
 # Converting distribution funsors to PyTorch distributions
 ###########################################################
 
-@to_data.register(Multinomial)
+@to_data.register(Multinomial)  # noqa: F821
 def multinomial_to_data(funsor_dist, name_to_dim=None):
     probs = to_data(funsor_dist.probs, name_to_dim)
     total_count = to_data(funsor_dist.total_count, name_to_dim)
