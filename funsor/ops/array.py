@@ -24,6 +24,7 @@ clamp = Op("clamp")
 diagonal = Op("diagonal")
 einsum = Op("einsum")
 full_like = Op(np.full_like)
+isnan = Op(np.isnan)
 prod = Op(np.prod)
 stack = Op("stack")
 sum = Op(np.sum)
@@ -300,6 +301,7 @@ __all__ = [
     'finfo',
     'full_like',
     'is_numeric_array',
+    'isnan',
     'logaddexp',
     'logsumexp',
     'new_arange',

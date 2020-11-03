@@ -89,7 +89,7 @@ for batch_shape in [(), (5,), (2, 3)]:
     # Binomial
     TEST_CASES += [DistTestCase(
         "backend_dist.Binomial(total_count=case.total_count, probs=case.probs)",
-        (("total_count", f"10"), ("probs", f"rand({batch_shape})")),
+        (("total_count", "10"), ("probs", f"rand({batch_shape})")),
         funsor.Real,
     )]
 
@@ -351,7 +351,7 @@ def test_generic_stats_smoke(case, statistic):
         expected_stat = to_funsor(expected_stat_raw, output=case.expected_value_domain, dim_to_name=dim_to_name)
 
     check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
-    if expected_stat.data.isnan().all():
+    if ops.isnan(expected_stat.data).all():
         pytest.xfail(reason="base stat returns nan")
     else:
         assert_close(to_data(actual_stat, name_to_dim), to_data(expected_stat, name_to_dim), rtol=1e-4)
@@ -373,7 +373,7 @@ def test_generic_stats_sample(case, statistic, sample_shape):
         actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
 
     check_funsor(actual_stat, expected_stat.inputs, expected_stat.output)
-    if expected_stat.data.isnan().all():
+    if ops.isnan(expected_stat.data).all():
         pytest.xfail(reason="base stat returns nan")
     else:
         assert_close(actual_stat.reduce(ops.add), expected_stat.reduce(ops.add), atol=atol, rtol=None)
@@ -396,7 +396,7 @@ def test_generic_grads_sample(case, statistic, sample_shape):
     def _get_stat_diff_fn(raw_dist):
         with xfail_if_not_implemented(msg="entropy not implemented for some distributions"):
             actual_stat, expected_stat = _get_stat(raw_dist, sample_shape, statistic)
-        if expected_stat.data.isnan().all():
+        if ops.isnan(expected_stat.data).all():
             pytest.xfail(reason="base stat returns nan")
         return to_data((actual_stat - expected_stat).reduce(ops.add).sum())
 

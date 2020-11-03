@@ -194,7 +194,7 @@ def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
 @to_funsor.register(dist.MultinomialProbs)
 @to_funsor.register(dist.MultinomialLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
-    new_pyro_dist = _NumPyroWrapper_Multinomial(probs=numpyro_dist.probs)
+    new_pyro_dist = _NumPyroWrapper_Multinomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
     return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
 
 
