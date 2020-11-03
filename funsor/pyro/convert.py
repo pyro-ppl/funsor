@@ -140,7 +140,13 @@ def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
     assert isinstance(event_inputs, tuple)
     assert isinstance(real_inputs, OrderedDict)
     dim_to_name = default_dim_to_name(pyro_dist.batch_shape, event_inputs)
-    return to_funsor(pyro_dist, Real, dim_to_name, real_inputs=real_inputs)
+    funsor_dist = to_funsor(pyro_dist, Real, dim_to_name)
+    if len(real_inputs) == 0:
+        return funsor_dist
+    discrete, gaussian = funsor_dist(value="value").terms
+    inputs = OrderedDict((k, v) for k, v in gaussian.inputs.items() if v.dtype != 'real')
+    inputs.update(real_inputs)
+    return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
 
 
 def funsor_to_mvn(gaussian, ndims, event_inputs=()):
