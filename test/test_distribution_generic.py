@@ -387,7 +387,7 @@ def test_generic_stats_sample(case, statistic, sample_shape):
     "variance",
     pytest.param("entropy", marks=[pytest.mark.skipif(get_backend() == "jax", reason="entropy not implemented")])
 ])
-def test_generic_grads(case, statistic, sample_shape):
+def test_generic_grads_sample(case, statistic, sample_shape):
 
     raw_dist = eval(case.raw_dist)
 
