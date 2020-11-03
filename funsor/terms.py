@@ -190,7 +190,7 @@ class FunsorMeta(type):
     3.  Cons-hash construction, so that repeatedly calling the constructor
         with identical args will produce the same object. This enables cheap
         syntactic equality testing using the ``is`` operator, which is
-        is important both for hashing (e.g. for memoizing funsor functions)
+        important both for hashing (e.g. for memoizing funsor functions)
         and for unit testing, since ``.__eq__()`` is overloaded with
         elementwise semantics. Cons hashing differs from memoization in that
         it incurs no memory overhead beyond the cons hash dict.
