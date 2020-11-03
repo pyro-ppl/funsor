@@ -89,7 +89,7 @@ for batch_shape in [(), (5,), (2, 3)]:
     # Binomial
     TEST_CASES += [DistTestCase(
         "backend_dist.Binomial(total_count=case.total_count, probs=case.probs)",
-        (("total_count", "10"), ("probs", f"rand({batch_shape})")),
+        (("total_count", "randint(10, 12, ())" if get_backend() == "jax" else "5"), ("probs", f"rand({batch_shape})")),
         funsor.Real,
     )]
 
@@ -136,7 +136,7 @@ for batch_shape in [(), (5,), (2, 3)]:
     for event_shape in [(1,), (4,)]:
         TEST_CASES += [DistTestCase(
             "backend_dist.DirichletMultinomial(case.concentration, case.total_count)",
-            (("concentration", f"rand({batch_shape + event_shape})"), ("total_count", "10")),
+            (("concentration", f"rand({batch_shape + event_shape})"), ("total_count", "randint(10, 12, ())")),
             funsor.Reals[event_shape],
         )]
 
@@ -157,7 +157,8 @@ for batch_shape in [(), (5,), (2, 3)]:
     for event_shape in [(1,), (4,)]:
         TEST_CASES += [DistTestCase(
             "backend_dist.Multinomial(case.total_count, probs=case.probs)",
-            (("total_count", "5"), ("probs", f"rand({batch_shape + event_shape})")),
+            (("total_count", "randint(5, 7, ())" if get_backend() == "jax" else "5"),
+             ("probs", f"rand({batch_shape + event_shape})")),
             funsor.Reals[event_shape],
         )]
 
