@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 from collections import OrderedDict
 from importlib import import_module
 
@@ -15,6 +16,9 @@ from funsor.interpreter import interpretation
 from funsor.terms import Variable, lazy, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril, xfail_if_not_implemented  # noqa: F401,E501
 from funsor.util import get_backend
+
+
+_ENABLE_MC_DIST_TESTS = int(os.environ.get("FUNSOR_ENABLE_MC_DIST_TESTS", 0))
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
                                 reason="numpy does not have distributions backend")
@@ -45,8 +49,9 @@ class DistTestCase:
         self.raw_params = raw_params
         self.expected_value_domain = expected_value_domain
         for name, raw_param in self.raw_params:
-            # we need direct access to these tensors for gradient tests
-            setattr(self, name, eval(raw_param))
+            if get_backend() != "numpy":
+                # we need direct access to these tensors for gradient tests
+                setattr(self, name, eval(raw_param))
 
     def __str__(self):
         return self.raw_dist + " " + str(self.raw_params)
@@ -325,6 +330,7 @@ def test_generic_sample(case, sample_shape):
     rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
     sample_value = funsor_dist.sample(frozenset(['value']), sample_inputs, rng_key=rng_key)
     expected_inputs = OrderedDict(tuple(sample_inputs.items()) + tuple(funsor_dist.inputs.items()))
+    # TODO compare sample values on jax backend
     check_funsor(sample_value, expected_inputs, funsor.Real)
 
 
@@ -334,7 +340,7 @@ def test_generic_sample(case, sample_shape):
     "variance",
     pytest.param("entropy", marks=[pytest.mark.skipif(get_backend() == "jax", reason="entropy not implemented")])
 ])
-def test_generic_stats_smoke(case, statistic):
+def test_generic_stats(case, statistic):
 
     raw_dist = eval(case.raw_dist)
 
@@ -358,8 +364,9 @@ def test_generic_stats_smoke(case, statistic):
         assert_close(to_data(actual_stat, name_to_dim), to_data(expected_stat, name_to_dim), rtol=1e-4)
 
 
+@pytest.mark.skipif(not _ENABLE_MC_DIST_TESTS, reason="slow and finicky Monte Carlo tests disabled by default")
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
-@pytest.mark.parametrize("sample_shape", [(), (200000,), (400, 400)], ids=str)
+@pytest.mark.parametrize("sample_shape", [(200000,), (400, 400)], ids=str)
 @pytest.mark.parametrize("statistic", [
     "mean",
     "variance",
@@ -380,7 +387,8 @@ def test_generic_stats_sample(case, statistic, sample_shape):
         assert_close(actual_stat.reduce(ops.add), expected_stat.reduce(ops.add), atol=atol, rtol=None)
 
 
-@pytest.mark.skipif(get_backend() != "torch", reason="not working yet")
+@pytest.mark.skipif(not _ENABLE_MC_DIST_TESTS, reason="slow and finicky Monte Carlo tests disabled by default")
+@pytest.mark.skipif(get_backend() != "torch", reason="not working yet on jax")
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
 @pytest.mark.parametrize("sample_shape", [(200000,), (400, 400)], ids=str)
 @pytest.mark.parametrize("statistic", [
