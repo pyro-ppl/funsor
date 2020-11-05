@@ -42,6 +42,9 @@ if get_backend() != "numpy":
 # Test cases
 ##################################################
 
+TEST_CASES = []
+
+
 class DistTestCase:
 
     def __init__(self, raw_dist, raw_params, expected_value_domain):
@@ -52,6 +55,7 @@ class DistTestCase:
             if get_backend() != "numpy":
                 # we need direct access to these tensors for gradient tests
                 setattr(self, name, eval(raw_param))
+        TEST_CASES.append(self)
 
     def __str__(self):
         return self.raw_dist + " " + str(self.raw_params)
@@ -60,59 +64,57 @@ class DistTestCase:
         return hash((self.raw_dist, self.raw_params, self.expected_value_domain))
 
 
-TEST_CASES = []
-
 for batch_shape in [(), (5,), (2, 3)]:
 
     # BernoulliLogits
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "backend_dist.Bernoulli(logits=case.logits)",
         (("logits", f"rand({batch_shape})"),),
         funsor.Real,
-    )]
+    )
 
     # BernoulliProbs
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "backend_dist.Bernoulli(probs=case.probs)",
         (("probs", f"rand({batch_shape})"),),
         funsor.Real,
-    )]
+    )
 
     # Beta
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "backend_dist.Beta(case.concentration1, case.concentration0)",
         (("concentration1", f"ops.exp(randn({batch_shape}))"), ("concentration0", f"ops.exp(randn({batch_shape}))")),
         funsor.Real,
-    )]
+    )
     # NonreparameterizedBeta
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "FAKES.NonreparameterizedBeta(case.concentration1, case.concentration0)",
         (("concentration1", f"ops.exp(randn({batch_shape}))"), ("concentration0", f"ops.exp(randn({batch_shape}))")),
         funsor.Real,
-    )]
+    )
 
     # Binomial
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "backend_dist.Binomial(total_count=case.total_count, probs=case.probs)",
         (("total_count", "randint(10, 12, ())" if get_backend() == "jax" else "5"), ("probs", f"rand({batch_shape})")),
         funsor.Real,
-    )]
+    )
 
     # CategoricalLogits
     for size in [2, 4]:
-        TEST_CASES += [DistTestCase(
+        DistTestCase(
             "backend_dist.Categorical(logits=case.logits)",
             (("logits", f"rand({batch_shape + (size,)})"),),
             funsor.Bint[size],
-        )]
+        )
 
     # CategoricalProbs
     for size in [2, 4]:
-        TEST_CASES += [DistTestCase(
+        DistTestCase(
             "backend_dist.Categorical(probs=case.probs)",
             (("probs", f"rand({batch_shape + (size,)})"),),
             funsor.Bint[size],
-        )]
+        )
 
     # TODO figure out what this should be...
     # # Delta
@@ -125,82 +127,82 @@ for batch_shape in [(), (5,), (2, 3)]:
 
     # Dirichlet
     for event_shape in [(1,), (4,)]:
-        TEST_CASES += [DistTestCase(
+        DistTestCase(
             "backend_dist.Dirichlet(case.concentration)",
             (("concentration", f"rand({batch_shape + event_shape})"),),
             funsor.Reals[event_shape],
-        )]
+        )
         # NonreparameterizedDirichlet
-        TEST_CASES += [DistTestCase(
+        DistTestCase(
             "FAKES.NonreparameterizedDirichlet(case.concentration)",
             (("concentration", f"rand({batch_shape + event_shape})"),),
             funsor.Reals[event_shape],
-        )]
+        )
 
     # DirichletMultinomial
     for event_shape in [(1,), (4,)]:
-        TEST_CASES += [DistTestCase(
+        DistTestCase(
             "backend_dist.DirichletMultinomial(case.concentration, case.total_count)",
             (("concentration", f"rand({batch_shape + event_shape})"), ("total_count", "randint(10, 12, ())")),
             funsor.Reals[event_shape],
-        )]
+        )
 
     # Gamma
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "backend_dist.Gamma(case.concentration, case.rate)",
         (("concentration", f"rand({batch_shape})"), ("rate", f"rand({batch_shape})")),
         funsor.Real,
-    )]
+    )
     # NonreparametrizedGamma
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "FAKES.NonreparameterizedGamma(case.concentration, case.rate)",
         (("concentration", f"rand({batch_shape})"), ("rate", f"rand({batch_shape})")),
         funsor.Real,
-    )]
+    )
 
     # Multinomial
     for event_shape in [(1,), (4,)]:
-        TEST_CASES += [DistTestCase(
+        DistTestCase(
             "backend_dist.Multinomial(case.total_count, probs=case.probs)",
             (("total_count", "randint(5, 7, ())" if get_backend() == "jax" else "5"),
              ("probs", f"rand({batch_shape + event_shape})")),
             funsor.Reals[event_shape],
-        )]
+        )
 
     # MultivariateNormal
     for event_shape in [(1,), (3,)]:
-        TEST_CASES += [DistTestCase(
+        DistTestCase(
             "backend_dist.MultivariateNormal(loc=case.loc, scale_tril=case.scale_tril)",
             (("loc", f"randn({batch_shape + event_shape})"), ("scale_tril", f"random_scale_tril({batch_shape + event_shape * 2})")),  # noqa: E501
             funsor.Reals[event_shape],
-        )]
+        )
 
     # Normal
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "backend_dist.Normal(case.loc, case.scale)",
         (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
         funsor.Real,
-    )]
+    )
     # NonreparameterizedNormal
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "FAKES.NonreparameterizedNormal(case.loc, case.scale)",
         (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
         funsor.Real,
-    )]
+    )
 
     # Poisson
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "backend_dist.Poisson(rate=case.rate)",
         (("rate", f"rand({batch_shape})"),),
         funsor.Real,
-    )]
+    )
 
     # VonMises
-    TEST_CASES += [DistTestCase(
+    DistTestCase(
         "backend_dist.VonMises(case.loc, case.concentration)",
         (("loc", f"rand({batch_shape})"), ("concentration", f"rand({batch_shape})")),
         funsor.Real,
-    )]
+    )
 
 
 ###########################
