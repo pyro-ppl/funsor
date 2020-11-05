@@ -101,7 +101,7 @@ class Model(nn.Module):
             )
         )(value=bias)
 
-        init_dist = torch.distributions.MultivariateNormal(
+        init_dist = dist.MultivariateNormal(
             torch.zeros(4), scale_tril=100. * torch.eye(4))
         self.init = dist_to_funsor(init_dist)(value="state")
 

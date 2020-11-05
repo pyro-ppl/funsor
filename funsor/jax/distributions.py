@@ -32,7 +32,6 @@ from funsor.distribution import (  # noqa: F401
     indepdist_to_funsor,
     make_dist,
     maskeddist_to_funsor,
-    mvndist_to_funsor,
     transformeddist_to_funsor,
 )
 from funsor.domains import Real, Reals
@@ -167,32 +166,30 @@ if hasattr(dist, "DirichletMultinomial"):
 # Converting PyTorch Distributions to funsors
 ###############################################
 
-to_funsor.register(dist.Distribution)(backenddist_to_funsor)
 to_funsor.register(dist.Independent)(indepdist_to_funsor)
 if hasattr(dist, "MaskedDistribution"):
     to_funsor.register(dist.MaskedDistribution)(maskeddist_to_funsor)
 to_funsor.register(dist.TransformedDistribution)(transformeddist_to_funsor)
-to_funsor.register(dist.MultivariateNormal)(mvndist_to_funsor)
 
 
 @to_funsor.register(dist.BinomialProbs)
 @to_funsor.register(dist.BinomialLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Binomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
-    return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
+    return backenddist_to_funsor(Binomial, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
 @to_funsor.register(dist.CategoricalProbs)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Categorical(probs=numpyro_dist.probs)
-    return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
+    return backenddist_to_funsor(Categorical, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
 @to_funsor.register(dist.MultinomialProbs)
 @to_funsor.register(dist.MultinomialLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Multinomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
-    return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
+    return backenddist_to_funsor(Multinomial, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
 JointDirichletMultinomial = Contraction[

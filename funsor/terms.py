@@ -188,9 +188,9 @@ class FunsorMeta(type):
         allows the instance to be reflectively reconstructed under a different
         interpretation, and is used by :func:`funsor.interpreter.reinterpret`.
     3.  Cons-hash construction, so that repeatedly calling the constructor
-        with identical args will product the same object. This enables cheap
+        with identical args will produce the same object. This enables cheap
         syntactic equality testing using the ``is`` operator, which is
-        is important both for hashing (e.g. for memoizing funsor functions)
+        important both for hashing (e.g. for memoizing funsor functions)
         and for unit testing, since ``.__eq__()`` is overloaded with
         elementwise semantics. Cons hashing differs from memoization in that
         it incurs no memory overhead beyond the cons hash dict.
