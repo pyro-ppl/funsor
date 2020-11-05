@@ -20,9 +20,7 @@ format: FORCE
 
 test: lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)
-	pytest -v -n auto test/ --ignore=test/test_distribution.py --ignore=test/test_distribution_generic.py
-	pytest -v -n auto test/test_distribution.py
-	pytest -v -n auto test/test_distribution_generic.py
+	pytest -v -n auto test/
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
