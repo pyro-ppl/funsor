@@ -29,6 +29,7 @@ from funsor.distribution import (  # noqa: F401
     eager_multinomial,
     eager_mvn,
     eager_normal,
+    eager_plate_multinomial,
     indepdist_to_funsor,
     make_dist,
     maskeddist_to_funsor,
@@ -36,8 +37,8 @@ from funsor.distribution import (  # noqa: F401
 )
 from funsor.domains import Real, Reals
 import funsor.ops as ops
-from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Binary, Funsor, Variable, eager, to_funsor
+from funsor.tensor import Function, Tensor, dummy_numeric_array
+from funsor.terms import Binary, Funsor, Reduce, Variable, eager, to_funsor
 from funsor.util import methodof
 
 
@@ -228,6 +229,7 @@ eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Gamma, Poisso
 if hasattr(dist, "DirichletMultinomial"):
     eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
         eager_dirichlet_posterior)
-
+eager.register(Reduce, ops.AddOp, Multinomial[Tensor, Function, Funsor], frozenset)(  # noqa: F821
+    eager_plate_multinomial)
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES if _get_numpyro_dist(x[0]) is not None)
