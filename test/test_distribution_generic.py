@@ -11,9 +11,8 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.integrate import Integrate
 from funsor.interpreter import interpretation
-from funsor.terms import Variable, lazy, to_data, to_funsor
+from funsor.terms import lazy, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril, xfail_if_not_implemented  # noqa: F401,E501
 from funsor.util import get_backend
 
