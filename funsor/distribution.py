@@ -134,23 +134,28 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         value = params.pop("value")
         assert all(isinstance(v, (Number, Tensor)) for v in params.values())
         assert isinstance(value, Variable) and value.name in sampled_vars
-        inputs_, tensors = align_tensors(*params.values())
-        inputs = OrderedDict(sample_inputs.items())
-        inputs.update(inputs_)
-        sample_shape = tuple(v.size for v in sample_inputs.values())
 
-        raw_dist = self.dist_class(**dict(zip(self._ast_fields[:-1], tensors)))
+        value_name = value.name
+        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        for d, name in zip(range(len(sample_inputs), 0, -1), sample_inputs.keys()):
+            dim_to_name[-d - len(raw_dist.batch_shape)] = name
+
+        sample_shape = tuple(v.size for v in sample_inputs.values())
         sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         if self.has_rsample:
-            raw_sample = raw_dist.rsample(*sample_args)
+            raw_value = raw_dist.rsample(*sample_args)
         else:
-            raw_sample = ops.detach(raw_dist.sample(*sample_args))
+            raw_value = ops.detach(raw_dist.sample(*sample_args))
 
-        result = funsor.delta.Delta(value.name, Tensor(raw_sample, inputs, value.output.dtype))
+        funsor_value = to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
+        funsor_value = funsor_value.align(
+            tuple(sample_inputs) + tuple(inp for inp in self.inputs if inp in funsor_value.inputs))
+        result = funsor.delta.Delta(value_name, funsor_value)
         if not self.has_rsample:
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
-            raw_log_prob = raw_dist.log_prob(raw_sample)
-            dice_factor = Tensor(raw_log_prob - ops.detach(raw_log_prob), inputs)
+            raw_log_prob = raw_dist.log_prob(raw_value)
+            dice_factor = to_funsor(raw_log_prob - ops.detach(raw_log_prob),
+                                    output=self.output, dim_to_name=dim_to_name)
             result = result + dice_factor
         return result
 
