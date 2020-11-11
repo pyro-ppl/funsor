@@ -110,17 +110,16 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         """
         Internal method for working with underlying distribution attributes
         """
-        if isinstance(self.value, Variable):
-            value_name = self.value.name
-        else:
-            raise NotImplementedError("cannot get raw dist for {}".format(self))
+        value_name = [name for name, domain in self.value.inputs.items()  # TODO is this right?
+                      if domain == self.value.output][0]
         # arbitrary name-dim mapping, since we're converting back to a funsor anyway
         name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(self.inputs.items())
                        if isinstance(domain.dtype, int) and name != value_name}
         raw_dist = to_data(self, name_to_dim=name_to_dim)
         dim_to_name = {dim: name for name, dim in name_to_dim.items()}
         # also return value output, dim_to_name for converting results back to funsor
-        return raw_dist, self.value.output, dim_to_name
+        value_output = self.inputs[value_name]
+        return raw_dist, value_name, value_output, dim_to_name
 
     @property
     def has_rsample(self):
@@ -131,18 +130,14 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return getattr(self.dist_class, "has_enumerate_support", False)
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
-        params = OrderedDict(self.params)
-        value = params.pop("value")
-        assert all(isinstance(v, (Number, Tensor)) for v in params.values())
-        value_name = [name for name, domain in value.inputs.items()  # TODO is this right?
-                      if domain == value.output][0]
-        if value_name not in sampled_vars:
-            return self
 
         # note this should handle transforms correctly via distribution_to_data
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         for d, name in zip(range(len(sample_inputs), 0, -1), sample_inputs.keys()):
             dim_to_name[-d - len(raw_dist.batch_shape)] = name
+
+        if value_name not in sampled_vars:
+            return self
 
         sample_shape = tuple(v.size for v in sample_inputs.values())
         sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
@@ -165,23 +160,23 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 
     def enumerate_support(self, expand=False):
         assert self.has_enumerate_support and isinstance(self.value, Variable)
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         raw_value = raw_dist.enumerate_support(expand=expand)
-        dim_to_name[min(dim_to_name.keys(), default=0)-1] = self.value.name
+        dim_to_name[min(dim_to_name.keys(), default=0)-1] = value_name
         return to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
 
     def entropy(self):
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         raw_value = raw_dist.entropy()
         return to_funsor(raw_value, output=self.output, dim_to_name=dim_to_name)
 
     def mean(self):
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         raw_value = raw_dist.mean
         return to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
 
     def variance(self):
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         raw_value = raw_dist.variance
         return to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
 
