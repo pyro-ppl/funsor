@@ -333,6 +333,7 @@ def test_gaussian_mixture_distribution(batch_inputs, event_inputs):
     assert_close(q_marginal, p_marginal, atol=0.15, rtol=None)
 
 
+@pytest.mark.xfail(reason="numerically unstable")
 @pytest.mark.parametrize('moment', [0, 1, 2, 3])
 def test_lognormal_distribution(moment):
     num_samples = 100000
