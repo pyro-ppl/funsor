@@ -236,11 +236,18 @@ def test_generic_distribution_to_funsor(case):
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(lazy):
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+    assert funsor_dist.inputs["value"] == expected_value_domain
+
     actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
 
     assert isinstance(actual_dist, backend_dist.Distribution)
     assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
-    assert funsor_dist.inputs["value"] == expected_value_domain
+    while isinstance(raw_dist, (backend_dist.Independent, backend_dist.TransformedDistribution)):
+        raw_dist = raw_dist.base_dist
+        actual_dist = actual_dist.base_dist
+        assert isinstance(actual_dist, backend_dist.Distribution)
+        assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
+
     for param_name, _ in case.raw_params:
         assert hasattr(raw_dist, param_name)
         assert_close(getattr(actual_dist, param_name), getattr(raw_dist, param_name))
