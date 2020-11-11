@@ -91,11 +91,33 @@ def _get_pyro_dist(dist_name):
         return getattr(dist, dist_name)
 
 
-PYRO_DIST_NAMES = FUNSOR_DIST_NAMES
+PYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
+    ("Cauchy", ()),
+    ("Chi2", ()),
+    ("ContinuousBernoulli", ("logits",)),
+    ("Exponential", ()),
+    ("FisherSnedecor", ()),
+    ("Geometric", ("probs",)),
+    ("Gumbel", ()),
+    ("HalfCauchy", ()),
+    ("HalfNormal", ()),
+    ("Laplace", ()),
+    # ("LogisticNormal", ()),  # TODO handle as transformed dist
+    ("LowRankMultivariateNormal", ()),
+    ("NegativeBinomial", ("total_count", "probs")),
+    ("OneHotCategorical", ("probs",)),
+    ("Pareto", ()),
+    ("Poisson", ()),
+    ("RelaxedBernoulli", ("temperature", "logits")),
+    ("StudentT", ()),
+    ("Uniform", ()),
+    ("VonMises", ()),
+    ("Weibull", ()),
+]
 
 
 for dist_name, param_names in PYRO_DIST_NAMES:
-    locals()[dist_name] = make_dist(_get_pyro_dist(dist_name), param_names)
+    locals()[dist_name] = make_dist(_get_pyro_dist(dist_name), param_names=param_names)
 
 
 # Delta has to be treated specially because of its weird shape inference semantics
@@ -151,6 +173,30 @@ def _infer_param_domain(cls, name, raw_shape):
     if name == "concentration":
         return Reals[raw_shape[-1]]
     assert name == "total_count"
+    return Real
+
+
+# TODO fix LowRankMultivariateNormal.arg_constraints upstream
+@methodof(LowRankMultivariateNormal)  # noqa: F821
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(cls, name, raw_shape):
+    if name == "loc":
+        return Reals[raw_shape[-1]]
+    elif name == "cov_factor":
+        return Reals[raw_shape[-2:]]
+    elif name == "cov_diag":
+        return Reals[raw_shape[-1]]
+    raise ValueError(f"{name} invalid param for {cls}")
+
+
+# TODO add temperature to RelaxedBernoulli.arg_constraints upstream
+@methodof(RelaxedBernoulli)  # noqa: F821
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(cls, name, raw_shape):
+    if name == "temperature":
+        return Real
     return Real
 
 

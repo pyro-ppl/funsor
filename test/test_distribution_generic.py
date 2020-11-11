@@ -115,6 +115,27 @@ for batch_shape in [(), (5,), (2, 3)]:
             funsor.Bint[size],
         )
 
+    # Cauchy
+    DistTestCase(
+        "backend_dist.Cauchy(loc=case.loc, scale=case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
+    # Chi2
+    DistTestCase(
+        "backend_dist.Chi2(df=case.df)",
+        (("df", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # ContinuousBernoulli
+    DistTestCase(
+        "backend_dist.ContinuousBernoulli(logits=case.logits)",
+        (("logits", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
     # TODO figure out what this should be...
     # # Delta
     # for event_shape in [(),]:  # (4,), (3, 2)]:
@@ -146,6 +167,20 @@ for batch_shape in [(), (5,), (2, 3)]:
             funsor.Reals[event_shape],
         )
 
+    # Exponential
+    DistTestCase(
+        "backend_dist.Exponential(rate=case.rate)",
+        (("rate", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # FisherSnedecor
+    DistTestCase(
+        "backend_dist.FisherSnedecor(df1=case.df1, df2=case.df2)",
+        (("df1", f"rand({batch_shape})"), ("df2", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
     # Gamma
     DistTestCase(
         "backend_dist.Gamma(case.concentration, case.rate)",
@@ -158,6 +193,51 @@ for batch_shape in [(), (5,), (2, 3)]:
         (("concentration", f"rand({batch_shape})"), ("rate", f"rand({batch_shape})")),
         funsor.Real,
     )
+
+    # Geometric
+    DistTestCase(
+        "backend_dist.Geometric(probs=case.probs)",
+        (("probs", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # Gumbel
+    DistTestCase(
+        "backend_dist.Gumbel(loc=case.loc, scale=case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
+    # HalfCauchy
+    DistTestCase(
+        "backend_dist.HalfCauchy(scale=case.scale)",
+        (("scale", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # HalfNormal
+    DistTestCase(
+        "backend_dist.HalfNormal(scale=case.scale)",
+        (("scale", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # Laplace
+    DistTestCase(
+        "backend_dist.Laplace(loc=case.loc, scale=case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
+    # LowRankMultivariateNormal
+    for event_shape in [(3,), (4,)]:
+        DistTestCase(
+            "backend_dist.LowRankMultivariateNormal(loc=case.loc, cov_factor=case.cov_factor, cov_diag=case.cov_diag)",
+            (("loc", f"randn({batch_shape + event_shape})"),
+             ("cov_factor", f"randn({batch_shape + event_shape + (2,)})"),
+             ("cov_diag", f"rand({batch_shape + event_shape})")),
+            funsor.Reals[event_shape],
+        )
 
     # Multinomial
     for event_shape in [(1,), (4,)]:
@@ -176,6 +256,13 @@ for batch_shape in [(), (5,), (2, 3)]:
             funsor.Reals[event_shape],
         )
 
+    # NegativeBinomial
+    DistTestCase(
+        "backend_dist.NegativeBinomial(total_count=case.total_count, probs=case.probs)",
+        (("total_count", "randint(10, 12, ())" if get_backend() == "jax" else "5"), ("probs", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
     # Normal
     DistTestCase(
         "backend_dist.Normal(case.loc, case.scale)",
@@ -189,6 +276,21 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )
 
+    # OneHotCategorical
+    for size in [2, 4]:
+        DistTestCase(
+            "backend_dist.OneHotCategorical(probs=case.probs)",
+            (("probs", f"rand({batch_shape + (size,)})"),),
+            funsor.Reals[size],  # funsor.Bint[size],
+        )
+
+    # Pareto
+    DistTestCase(
+        "backend_dist.Pareto(scale=case.scale, alpha=case.alpha)",
+        (("scale", f"rand({batch_shape})"), ("alpha", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
     # Poisson
     DistTestCase(
         "backend_dist.Poisson(rate=case.rate)",
@@ -196,11 +298,40 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )
 
+    # TODO implement RelaxedBernoulli._infer_param_domain for temperature
+    # RelaxedBernoulli
+    DistTestCase(
+        "backend_dist.RelaxedBernoulli(temperature=case.temperature, logits=case.logits)",
+        (("temperature", f"rand({batch_shape})"), ("logits", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
+    # StudentT
+    DistTestCase(
+        "backend_dist.StudentT(df=case.df, loc=case.loc, scale=case.scale)",
+        (("df", f"rand({batch_shape})"), ("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real
+    )
+
+    # Uniform
+    DistTestCase(
+        "backend_dist.Uniform(low=case.low, high=case.high)",
+        (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
+        funsor.Real
+    )
+
     # VonMises
     DistTestCase(
         "backend_dist.VonMises(case.loc, case.concentration)",
         (("loc", f"rand({batch_shape})"), ("concentration", f"rand({batch_shape})")),
         funsor.Real,
+    )
+
+    # Weibull
+    DistTestCase(
+        "backend_dist.Weibull(scale=case.scale, concentration=case.concentration)",
+        (("scale", f"rand({batch_shape})"), ("concentration", f"rand({batch_shape})")),
+        funsor.Real
     )
 
 
