@@ -81,7 +81,24 @@ def _get_numpyro_dist(dist_name):
         return getattr(dist, dist_name, None)
 
 
-NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES
+NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
+    ("Cauchy", ()),
+    ("Chi2", ()),
+    ("ContinuousBernoulli", ("logits",)),
+    ("Exponential", ()),
+    ("FisherSnedecor", ()),
+    # ("Geometric", ("probs",)),  # TODO resolve probs/logits
+    ("Gumbel", ()),
+    ("HalfCauchy", ()),
+    ("HalfNormal", ()),
+    ("Laplace", ()),
+    ("LowRankMultivariateNormal", ()),
+    ("Pareto", ()),
+    ("Poisson", ()),
+    ("StudentT", ()),
+    ("Uniform", ()),
+    ("VonMises", ()),
+]
 _HAS_RSAMPLE_DISTS = ['Beta', 'Dirichlet', 'Gamma', 'Normal', 'MultivariateNormal']
 
 
@@ -160,6 +177,20 @@ if hasattr(dist, "DirichletMultinomial"):
             return Reals[raw_shape[-1]]
         assert name == "total_count"
         return Real
+
+
+# TODO fix LowRankMultivariateNormal.arg_constraints upstream
+@methodof(LowRankMultivariateNormal)  # noqa: F821
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(cls, name, raw_shape):
+    if name == "loc":
+        return Reals[raw_shape[-1]]
+    elif name == "cov_factor":
+        return Reals[raw_shape[-2:]]
+    elif name == "cov_diag":
+        return Reals[raw_shape[-1]]
+    raise ValueError(f"{name} invalid param for {cls}")
 
 
 ###############################################

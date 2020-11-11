@@ -13,7 +13,7 @@ import funsor.ops as ops
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.interpreter import interpretation
 from funsor.terms import lazy, to_data, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril, xfail_if_not_implemented  # noqa: F401,E501
+from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril, xfail_if_not_found, xfail_if_not_implemented  # noqa: F401,E501
 from funsor.util import get_backend
 
 
@@ -354,7 +354,8 @@ def _default_dim_to_name(inputs_shape, event_inputs=None):
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
 def test_generic_distribution_to_funsor(case):
 
-    raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
+    with xfail_if_not_found():
+        raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(lazy):
@@ -374,7 +375,8 @@ def test_generic_distribution_to_funsor(case):
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
 def test_generic_log_prob(case):
 
-    raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
+    with xfail_if_not_found():
+        raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
@@ -396,7 +398,8 @@ def test_generic_log_prob(case):
 @pytest.mark.parametrize("expand", [False, True])
 def test_generic_enumerate_support(case, expand):
 
-    raw_dist = eval(case.raw_dist)
+    with xfail_if_not_found():
+        raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(lazy):
@@ -415,7 +418,8 @@ def test_generic_enumerate_support(case, expand):
 @pytest.mark.parametrize("sample_shape", [(), (2,), (4, 3)], ids=str)
 def test_generic_sample(case, sample_shape):
 
-    raw_dist = eval(case.raw_dist)
+    with xfail_if_not_found():
+        raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(sample_shape + raw_dist.batch_shape)
     with interpretation(lazy):
@@ -438,7 +442,8 @@ def test_generic_sample(case, sample_shape):
 ])
 def test_generic_stats(case, statistic):
 
-    raw_dist = eval(case.raw_dist)
+    with xfail_if_not_found():
+        raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(lazy):

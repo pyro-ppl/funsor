@@ -33,6 +33,15 @@ def xfail_if_not_implemented(msg="Not implemented"):
         pytest.xfail(reason='{}:\n{}'.format(msg, e))
 
 
+@contextlib.contextmanager
+def xfail_if_not_found(msg="Not implemented"):
+    try:
+        yield
+    except AttributeError as e:
+        import pytest
+        pytest.xfail(reason='{}:\n{}'.format(msg, e))
+
+
 class ActualExpected(namedtuple('LazyComparison', ['actual', 'expected'])):
     """
     Lazy string formatter for test assertions.
