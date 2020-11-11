@@ -406,7 +406,18 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
 
 @to_data.register(Independent[typing.Union[Independent, Distribution], str, str, str])
 def indep_to_data(funsor_dist, name_to_dim=None):
-    raise NotImplementedError("TODO implement conversion of Independent")
+    name_to_dim = OrderedDict((name, dim - 1) for name, dim in name_to_dim.items())
+    name_to_dim.update({funsor_dist.bint_var: -1})
+    backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
+    result = to_data(funsor_dist.fn, name_to_dim=name_to_dim)
+
+    # collapse nested Independents into a single Independent for conversion
+    reinterpreted_batch_ndims = 1
+    while isinstance(result, backend_dist.Independent):
+        result = result.base_dist
+        reinterpreted_batch_ndims += 1
+
+    return backend_dist.Independent(result, reinterpreted_batch_ndims)
 
 
 @to_data.register(Gaussian)
