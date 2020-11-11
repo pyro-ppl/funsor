@@ -35,7 +35,6 @@ from funsor.distribution import (  # noqa: F401
     indepdist_to_funsor,
     make_dist,
     maskeddist_to_funsor,
-    mvndist_to_funsor,
     transformeddist_to_funsor,
 )
 from funsor.domains import Real, Reals
@@ -246,13 +245,12 @@ to_funsor.register(torch.distributions.Distribution)(backenddist_to_funsor)
 to_funsor.register(torch.distributions.Independent)(indepdist_to_funsor)
 to_funsor.register(MaskedDistribution)(maskeddist_to_funsor)
 to_funsor.register(torch.distributions.TransformedDistribution)(transformeddist_to_funsor)
-to_funsor.register(torch.distributions.MultivariateNormal)(mvndist_to_funsor)
 
 
 @to_funsor.register(torch.distributions.Bernoulli)
 def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _PyroWrapper_BernoulliLogits(logits=pyro_dist.logits)
-    return backenddist_to_funsor(new_pyro_dist, output, dim_to_name)
+    return backenddist_to_funsor(BernoulliLogits, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
 JointDirichletMultinomial = Contraction[

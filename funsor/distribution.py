@@ -240,7 +240,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 # Distribution Wrappers
 ################################################################################
 
-def make_dist(backend_dist_class, param_names=()):
+def make_dist(backend_dist_class, param_names=(), generate_eager=True, generate_to_funsor=True):
     if not param_names:
         param_names = tuple(name for name in inspect.getfullargspec(backend_dist_class.__init__)[0][1:]
                             if name in backend_dist_class.arg_constraints)
@@ -254,7 +254,11 @@ def make_dist(backend_dist_class, param_names=()):
         '__init__': dist_init,
     })
 
-    eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
+    if generate_eager:
+        eager.register(dist_class, *((Tensor,) * (len(param_names) + 1)))(dist_class.eager_log_prob)
+
+    if generate_to_funsor:
+        to_funsor.register(backend_dist_class)(functools.partial(backenddist_to_funsor, dist_class))
 
     return dist_class
 
@@ -287,9 +291,7 @@ FUNSOR_DIST_NAMES = [
 # Converting backend Distributions to funsors
 ###############################################
 
-def backenddist_to_funsor(backend_dist, output=None, dim_to_name=None):
-    funsor_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
-    funsor_dist_class = getattr(funsor_dist, type(backend_dist).__name__.split("Wrapper_")[-1])
+def backenddist_to_funsor(funsor_dist_class, backend_dist, output=None, dim_to_name=None):
     params = [to_funsor(
             getattr(backend_dist, param_name),
             output=funsor_dist_class._infer_param_domain(
@@ -330,16 +332,6 @@ def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
         lambda expr, tfm: to_funsor(tfm, expr.output).op.inv(expr),
         transforms, to_funsor("value", output=funsor_base_dist.inputs["value"]))
     return (Lebesgue("value", funsor_base_dist.inputs["value"]) + funsor_base_dist)(value=inv_transform)
-
-
-def mvndist_to_funsor(backend_dist, output=None, dim_to_name=None, real_inputs=OrderedDict()):
-    funsor_dist = backenddist_to_funsor(backend_dist, output=output, dim_to_name=dim_to_name)
-    if len(real_inputs) == 0:
-        return funsor_dist
-    discrete, gaussian = funsor_dist(value="value").terms
-    inputs = OrderedDict((k, v) for k, v in gaussian.inputs.items() if v.dtype != 'real')
-    inputs.update(real_inputs)
-    return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
 
 
 class CoerceDistributionToFunsor:
