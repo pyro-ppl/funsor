@@ -406,6 +406,8 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
 
 @to_data.register(Independent[typing.Union[Independent, Distribution], str, str, str])
 def indep_to_data(funsor_dist, name_to_dim=None):
+    if not isinstance(funsor_dist.fn, (Independent, Distribution, Gaussian)):
+        raise NotImplementedError(f"cannot convert {funsor_dist} to data")
     name_to_dim = OrderedDict((name, dim - 1) for name, dim in name_to_dim.items())
     name_to_dim.update({funsor_dist.bint_var: -1})
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
