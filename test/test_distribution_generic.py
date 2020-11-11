@@ -203,6 +203,14 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )
 
+    # Normal.to_event
+    for event_shape in [(2,), (3,), (2, 3)]:
+        DistTestCase(
+            f"backend_dist.Normal(case.loc, case.scale).to_event({len(event_shape)})",
+            (("loc", f"randn({batch_shape + event_shape})"), ("scale", f"rand({batch_shape + event_shape})")),
+            funsor.Reals[event_shape],
+        )
+
 
 ###########################
 # Generic tests:
@@ -233,9 +241,7 @@ def test_generic_distribution_to_funsor(case):
     assert isinstance(actual_dist, backend_dist.Distribution)
     assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
     assert funsor_dist.inputs["value"] == expected_value_domain
-    for param_name in funsor_dist.params.keys():
-        if param_name == "value":
-            continue
+    for param_name, _ in case.raw_params:
         assert hasattr(raw_dist, param_name)
         assert_close(getattr(actual_dist, param_name), getattr(raw_dist, param_name))
 
