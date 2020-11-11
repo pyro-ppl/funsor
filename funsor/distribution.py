@@ -418,8 +418,9 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
 
     # TODO get this working for all backends
     if not isinstance(funsor_dist.value, Variable):
-        assert get_backend() == "torch", \
-            "transformed distributions not yet supported under this backend, try set_backend('torch')"
+        if get_backend() != "torch":
+            raise NotImplementedError("transformed distributions not yet supported under this backend,"
+                                      "try set_backend('torch')")
         inv_value = funsor.delta.solve(funsor_dist.value, Variable("value", funsor_dist.value.output))[1]
         transforms = to_data(inv_value, name_to_dim=name_to_dim)
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
