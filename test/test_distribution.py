@@ -19,7 +19,8 @@ from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Einsum, Tensor, numeric_array, stack
 from funsor.terms import Independent, Lebesgue, Variable, eager, lazy, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_mvn, random_tensor, xfail_param
+from funsor.testing import assert_close, check_funsor, rand, randint, randn, \
+    random_mvn, random_scale_tril, random_tensor, xfail_param
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
@@ -472,15 +473,6 @@ def test_mvn_defaults():
     assert dist.MultivariateNormal(loc, scale_tril) is dist.MultivariateNormal(loc, scale_tril, value)
 
 
-def _random_scale_tril(shape):
-    if get_backend() == "torch":
-        data = randn(shape)
-        return backend_dist.transforms.transform_to(backend_dist.constraints.lower_cholesky)(data)
-    else:
-        data = randn(shape[:-2] + (shape[-1] * (shape[-1] + 1) // 2,))
-        return backend_dist.biject_to(backend_dist.constraints.lower_cholesky)(data)
-
-
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_mvn_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
@@ -493,7 +485,7 @@ def test_mvn_density(batch_shape):
     check_funsor(mvn, {'loc': Reals[3], 'scale_tril': Reals[3, 3], 'value': Reals[3]}, Real)
 
     loc = Tensor(randn(batch_shape + (3,)), inputs)
-    scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
+    scale_tril = Tensor(random_scale_tril(batch_shape + (3, 3)), inputs)
     value = Tensor(randn(batch_shape + (3,)), inputs)
     expected = mvn(loc, scale_tril, value)
     check_funsor(expected, inputs, Real)
@@ -509,7 +501,7 @@ def test_mvn_gaussian(batch_shape):
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = Tensor(randn(batch_shape + (3,)), inputs)
-    scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
+    scale_tril = Tensor(random_scale_tril(batch_shape + (3, 3)), inputs)
     value = Tensor(randn(batch_shape + (3,)), inputs)
 
     expected = dist.MultivariateNormal(loc, scale_tril, value)
@@ -808,7 +800,7 @@ def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = randn(batch_shape + event_shape)
-    scale_tril = _random_scale_tril(batch_shape + event_shape * 2)
+    scale_tril = random_scale_tril(batch_shape + event_shape * 2)
     funsor_dist_class = dist.MultivariateNormal
     params = (loc, scale_tril)
 

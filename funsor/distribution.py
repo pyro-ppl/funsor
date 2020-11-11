@@ -134,26 +134,24 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         params = OrderedDict(self.params)
         value = params.pop("value")
         assert all(isinstance(v, (Number, Tensor)) for v in params.values())
-        # assert isinstance(value, Variable) and value.name in sampled_vars
-        inputs, tensors = align_tensors(*params.values())
-        inputs.update(sample_inputs)
-        sample_shape = tuple(v.size for v in sample_inputs.values())
         value_name = [name for name, domain in value.inputs.items()  # TODO is this right?
                       if domain == value.output][0]
-
-        # arbitrary name-dim mapping, since we're converting back to a funsor anyway
-        name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(inputs.items())}
-        dim_to_name = {dim: name for name, dim in name_to_dim.items()}
+        if value_name not in sampled_vars:
+            return self
 
         # note this should handle transforms correctly via distribution_to_data
-        raw_dist = to_data(self, name_to_dim=name_to_dim)
+        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        for d, name in zip(range(len(sample_inputs), 0, -1), sample_inputs.keys()):
+            dim_to_name[-d - len(raw_dist.batch_shape)] = name
+
+        sample_shape = tuple(v.size for v in sample_inputs.values())
         sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         if self.has_rsample:
             raw_value = raw_dist.rsample(*sample_args)
         else:
             raw_value = ops.detach(raw_dist.sample(*sample_args))
 
-        funsor_value = to_funsor(raw_value, output=self.value.output, dim_to_name=dim_to_name)
+        funsor_value = to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
         funsor_value = funsor_value.align(
             tuple(sample_inputs) + tuple(inp for inp in self.inputs if inp in funsor_value.inputs))
         result = funsor.delta.Delta(value_name, funsor_value)

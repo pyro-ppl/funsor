@@ -107,6 +107,11 @@ def _is_numeric_array(x):
     return True
 
 
+@ops.isnan.register(torch.Tensor)
+def _isnan(x):
+    return torch.isnan(x)
+
+
 @ops.lgamma.register(torch.Tensor)
 def _lgamma(x):
     return x.lgamma()

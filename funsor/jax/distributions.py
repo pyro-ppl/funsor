@@ -175,14 +175,11 @@ to_funsor.register(dist.TransformedDistribution)(transformeddist_to_funsor)
 @to_funsor.register(dist.BinomialProbs)
 @to_funsor.register(dist.BinomialLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
-    new_pyro_dist = _NumPyroWrapper_Binomial(probs=numpyro_dist.probs)
+    new_pyro_dist = _NumPyroWrapper_Binomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
     return backenddist_to_funsor(Binomial, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
 @to_funsor.register(dist.CategoricalProbs)
-# XXX: in Pyro backend, we always convert pyro.distributions.Categorical
-# to funsor.torch.distributions.Categorical
-@to_funsor.register(dist.CategoricalLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Categorical(probs=numpyro_dist.probs)
     return backenddist_to_funsor(Categorical, new_pyro_dist, output, dim_to_name)  # noqa: F821
@@ -191,7 +188,7 @@ def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
 @to_funsor.register(dist.MultinomialProbs)
 @to_funsor.register(dist.MultinomialLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
-    new_pyro_dist = _NumPyroWrapper_Multinomial(probs=numpyro_dist.probs)
+    new_pyro_dist = _NumPyroWrapper_Multinomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
     return backenddist_to_funsor(Multinomial, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
