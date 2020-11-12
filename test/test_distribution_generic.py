@@ -137,13 +137,13 @@ for batch_shape in [(), (5,), (2, 3)]:
     )
 
     # TODO figure out what this should be...
-    # # Delta
-    # for event_shape in [(),]:  # (4,), (3, 2)]:
-    #     TEST_CASES += [DistTestCase(
-    #         "backend_dist.Delta(case.v, case.log_density)",
-    #         (("v", f"rand({batch_shape + event_shape})"), ("log_density", f"rand({batch_shape})")),
-    #         funsor.Real,  # s[event_shape],
-    #     )]
+    # Delta
+    for event_shape in [(), (4,), (3, 2)]:
+        DistTestCase(
+            f"backend_dist.Delta(v=case.v, log_density=case.log_density, event_dim={len(event_shape)})",
+            (("v", f"rand({batch_shape + event_shape})"), ("log_density", f"rand({batch_shape})")),
+            funsor.Reals[event_shape],
+        )
 
     # Dirichlet
     for event_shape in [(1,), (4,)]:

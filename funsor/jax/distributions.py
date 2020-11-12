@@ -37,7 +37,7 @@ from funsor.distribution import (  # noqa: F401
 from funsor.domains import Real, Reals
 import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Binary, Funsor, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
 
 
@@ -193,6 +193,18 @@ def _infer_param_domain(cls, name, raw_shape):
     raise ValueError(f"{name} invalid param for {cls}")
 
 
+###########################################################
+# Converting distribution funsors to PyTorch distributions
+###########################################################
+
+# Convert Delta **distribution** to raw data
+@to_data.register(Delta)  # noqa: F821
+def deltadist_to_data(funsor_dist, name_to_dim=None):
+    v = to_data(funsor_dist.v, name_to_dim=name_to_dim)
+    log_density = to_data(funsor_dist.log_density, name_to_dim=name_to_dim)
+    return dist.Delta(v, log_density, event_dim=len(funsor_dist.v.output.shape))
+
+
 ###############################################
 # Converting PyTorch Distributions to funsors
 ###############################################
@@ -221,6 +233,13 @@ def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Multinomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
     return backenddist_to_funsor(Multinomial, new_pyro_dist, output, dim_to_name)  # noqa: F821
+
+
+@to_funsor.register(dist.Delta)  # Delta **distribution**
+def deltadist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    v = to_funsor(pyro_dist.v, output=Reals[pyro_dist.event_shape], dim_to_name=dim_to_name)
+    log_density = to_funsor(pyro_dist.log_density, output=Real, dim_to_name=dim_to_name)
+    return Delta(v, log_density)  # noqa: F821
 
 
 JointDirichletMultinomial = Contraction[
