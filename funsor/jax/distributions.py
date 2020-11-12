@@ -287,9 +287,7 @@ eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Gamma, Poisso
 if hasattr(dist, "DirichletMultinomial"):
     eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
         eager_dirichlet_posterior)
-# FIXME: to enable `Multinomial[Tensor, Funsor, Funsor]`, it seems that we need some mechanism
-# to lazily reduce 'plate' for a Variable `value`
-eager.register(Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Tensor], frozenset)(  # noqa: F821
+eager.register(Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset)(  # noqa: F821
     eager_plate_multinomial)
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES if _get_numpyro_dist(x[0]) is not None)
