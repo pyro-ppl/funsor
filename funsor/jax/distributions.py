@@ -38,7 +38,7 @@ from funsor.distribution import (  # noqa: F401
 from funsor.domains import Real, Reals
 import funsor.ops as ops
 from funsor.tensor import Function, Tensor, dummy_numeric_array
-from funsor.terms import Binary, Funsor, Reduce, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
 
 
@@ -52,6 +52,10 @@ class _NumPyroWrapper_Binomial(dist.BinomialProbs):
 
 
 class _NumPyroWrapper_Categorical(dist.CategoricalProbs):
+    pass
+
+
+class _NumPyroWrapper_Geometric(dist.GeometricProbs):
     pass
 
 
@@ -76,13 +80,31 @@ class _NumPyroWrapper_NonreparameterizedNormal(dist.Normal):
 
 
 def _get_numpyro_dist(dist_name):
-    if dist_name in ['Binomial', 'Categorical', 'Multinomial'] or dist_name.startswith('Nonreparameterized'):
+    if dist_name in ['Binomial', 'Categorical', 'Geometric', 'Multinomial'] or \
+            dist_name.startswith('Nonreparameterized'):
         return globals().get('_NumPyroWrapper_' + dist_name)
     else:
         return getattr(dist, dist_name, None)
 
 
-NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES
+NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
+    ("Cauchy", ()),
+    ("Chi2", ()),
+    ("ContinuousBernoulli", ("logits",)),
+    ("Exponential", ()),
+    ("FisherSnedecor", ()),
+    ("Geometric", ("probs",)),
+    ("Gumbel", ()),
+    ("HalfCauchy", ()),
+    ("HalfNormal", ()),
+    ("Laplace", ()),
+    ("LowRankMultivariateNormal", ()),
+    ("Pareto", ()),
+    ("Poisson", ()),
+    ("StudentT", ()),
+    ("Uniform", ()),
+    ("VonMises", ()),
+]
 _HAS_RSAMPLE_DISTS = ['Beta', 'Dirichlet', 'Gamma', 'Normal', 'MultivariateNormal']
 
 
@@ -163,6 +185,32 @@ if hasattr(dist, "DirichletMultinomial"):
         return Real
 
 
+# TODO fix LowRankMultivariateNormal.arg_constraints upstream
+@methodof(LowRankMultivariateNormal)  # noqa: F821
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(cls, name, raw_shape):
+    if name == "loc":
+        return Reals[raw_shape[-1]]
+    elif name == "cov_factor":
+        return Reals[raw_shape[-2:]]
+    elif name == "cov_diag":
+        return Reals[raw_shape[-1]]
+    raise ValueError(f"{name} invalid param for {cls}")
+
+
+###########################################################
+# Converting distribution funsors to PyTorch distributions
+###########################################################
+
+# Convert Delta **distribution** to raw data
+@to_data.register(Delta)  # noqa: F821
+def deltadist_to_data(funsor_dist, name_to_dim=None):
+    v = to_data(funsor_dist.v, name_to_dim=name_to_dim)
+    log_density = to_data(funsor_dist.log_density, name_to_dim=name_to_dim)
+    return dist.Delta(v, log_density, event_dim=len(funsor_dist.v.output.shape))
+
+
 ###############################################
 # Converting PyTorch Distributions to funsors
 ###############################################
@@ -176,24 +224,34 @@ to_funsor.register(dist.TransformedDistribution)(transformeddist_to_funsor)
 @to_funsor.register(dist.BinomialProbs)
 @to_funsor.register(dist.BinomialLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
-    new_pyro_dist = _NumPyroWrapper_Binomial(probs=numpyro_dist.probs)
+    new_pyro_dist = _NumPyroWrapper_Binomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
     return backenddist_to_funsor(Binomial, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
 @to_funsor.register(dist.CategoricalProbs)
-# XXX: in Pyro backend, we always convert pyro.distributions.Categorical
-# to funsor.torch.distributions.Categorical
-@to_funsor.register(dist.CategoricalLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Categorical(probs=numpyro_dist.probs)
     return backenddist_to_funsor(Categorical, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
+@to_funsor.register(dist.GeometricProbs)
+def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
+    new_pyro_dist = _NumPyroWrapper_Geometric(probs=numpyro_dist.probs)
+    return backenddist_to_funsor(Geometric, new_pyro_dist, output, dim_to_name)  # noqa: F821
+
+
 @to_funsor.register(dist.MultinomialProbs)
 @to_funsor.register(dist.MultinomialLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
-    new_pyro_dist = _NumPyroWrapper_Multinomial(probs=numpyro_dist.probs)
+    new_pyro_dist = _NumPyroWrapper_Multinomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
     return backenddist_to_funsor(Multinomial, new_pyro_dist, output, dim_to_name)  # noqa: F821
+
+
+@to_funsor.register(dist.Delta)  # Delta **distribution**
+def deltadist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    v = to_funsor(pyro_dist.v, output=Reals[pyro_dist.event_shape], dim_to_name=dim_to_name)
+    log_density = to_funsor(pyro_dist.log_density, output=Real, dim_to_name=dim_to_name)
+    return Delta(v, log_density)  # noqa: F821
 
 
 JointDirichletMultinomial = Contraction[

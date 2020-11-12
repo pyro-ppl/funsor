@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import numbers
 from typing import Tuple, Union
 
 import pyro.distributions as dist
@@ -40,7 +41,7 @@ from funsor.distribution import (  # noqa: F401
 from funsor.domains import Real, Reals
 import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Binary, Funsor, Variable, eager, to_funsor
+from funsor.terms import Binary, Funsor, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
 
 
@@ -90,11 +91,33 @@ def _get_pyro_dist(dist_name):
         return getattr(dist, dist_name)
 
 
-PYRO_DIST_NAMES = FUNSOR_DIST_NAMES
+PYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
+    ("Cauchy", ()),
+    ("Chi2", ()),
+    ("ContinuousBernoulli", ("logits",)),
+    ("Exponential", ()),
+    ("FisherSnedecor", ()),
+    ("Geometric", ("probs",)),
+    ("Gumbel", ()),
+    ("HalfCauchy", ()),
+    ("HalfNormal", ()),
+    ("Laplace", ()),
+    # ("LogisticNormal", ()),  # TODO handle as transformed dist
+    ("LowRankMultivariateNormal", ()),
+    ("NegativeBinomial", ("total_count", "probs")),
+    ("OneHotCategorical", ("probs",)),
+    ("Pareto", ()),
+    ("Poisson", ()),
+    ("RelaxedBernoulli", ("temperature", "logits")),
+    ("StudentT", ()),
+    ("Uniform", ()),
+    ("VonMises", ()),
+    ("Weibull", ()),
+]
 
 
 for dist_name, param_names in PYRO_DIST_NAMES:
-    locals()[dist_name] = make_dist(_get_pyro_dist(dist_name), param_names)
+    locals()[dist_name] = make_dist(_get_pyro_dist(dist_name), param_names=param_names)
 
 
 # Delta has to be treated specially because of its weird shape inference semantics
@@ -153,6 +176,51 @@ def _infer_param_domain(cls, name, raw_shape):
     return Real
 
 
+# TODO fix LowRankMultivariateNormal.arg_constraints upstream
+@methodof(LowRankMultivariateNormal)  # noqa: F821
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(cls, name, raw_shape):
+    if name == "loc":
+        return Reals[raw_shape[-1]]
+    elif name == "cov_factor":
+        return Reals[raw_shape[-2:]]
+    elif name == "cov_diag":
+        return Reals[raw_shape[-1]]
+    raise ValueError(f"{name} invalid param for {cls}")
+
+
+# TODO add temperature to RelaxedBernoulli.arg_constraints upstream
+@methodof(RelaxedBernoulli)  # noqa: F821
+@classmethod
+@functools.lru_cache(maxsize=5000)
+def _infer_param_domain(cls, name, raw_shape):
+    if name == "temperature":
+        return Real
+    return Real
+
+
+###########################################################
+# Converting distribution funsors to PyTorch distributions
+###########################################################
+
+@to_data.register(Multinomial)  # noqa: F821
+def multinomial_to_data(funsor_dist, name_to_dim=None):
+    probs = to_data(funsor_dist.probs, name_to_dim)
+    total_count = to_data(funsor_dist.total_count, name_to_dim)
+    if isinstance(total_count, numbers.Number) or len(total_count.shape) == 0:
+        return dist.Multinomial(int(total_count), probs=probs)
+    raise NotImplementedError("inhomogeneous total_count not supported")
+
+
+# Convert Delta **distribution** to raw data
+@to_data.register(Delta)  # noqa: F821
+def deltadist_to_data(funsor_dist, name_to_dim=None):
+    v = to_data(funsor_dist.v, name_to_dim=name_to_dim)
+    log_density = to_data(funsor_dist.log_density, name_to_dim=name_to_dim)
+    return dist.Delta(v, log_density, event_dim=len(funsor_dist.v.output.shape))
+
+
 ###############################################
 # Converting PyTorch Distributions to funsors
 ###############################################
@@ -166,6 +234,13 @@ to_funsor.register(torch.distributions.TransformedDistribution)(transformeddist_
 def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _PyroWrapper_BernoulliLogits(logits=pyro_dist.logits)
     return backenddist_to_funsor(BernoulliLogits, new_pyro_dist, output, dim_to_name)  # noqa: F821
+
+
+@to_funsor.register(dist.Delta)  # Delta **distribution**
+def deltadist_to_funsor(pyro_dist, output=None, dim_to_name=None):
+    v = to_funsor(pyro_dist.v, output=Reals[pyro_dist.event_shape], dim_to_name=dim_to_name)
+    log_density = to_funsor(pyro_dist.log_density, output=Real, dim_to_name=dim_to_name)
+    return Delta(v, log_density)  # noqa: F821
 
 
 JointDirichletMultinomial = Contraction[

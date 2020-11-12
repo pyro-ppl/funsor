@@ -121,6 +121,11 @@ def _is_numeric_array(x):
     return True
 
 
+@ops.isnan.register(array)
+def _isnan(x):
+    return np.isnan(x)
+
+
 @ops.lgamma.register(array)
 def _lgamma(x):
     return gammaln(x)
