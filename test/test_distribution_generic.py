@@ -12,8 +12,8 @@ import funsor
 import funsor.ops as ops
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.interpreter import interpretation
-from funsor.terms import lazy, to_data, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril, xfail_if_not_implemented  # noqa: F401,E501
+from funsor.terms import eager, lazy, to_data, to_funsor
+from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril, xfail_if_not_found, xfail_if_not_implemented  # noqa: F401,E501
 from funsor.util import get_backend
 
 
@@ -115,14 +115,34 @@ for batch_shape in [(), (5,), (2, 3)]:
             funsor.Bint[size],
         )
 
-    # TODO figure out what this should be...
-    # # Delta
-    # for event_shape in [(),]:  # (4,), (3, 2)]:
-    #     TEST_CASES += [DistTestCase(
-    #         "backend_dist.Delta(case.v, case.log_density)",
-    #         (("v", f"rand({batch_shape + event_shape})"), ("log_density", f"rand({batch_shape})")),
-    #         funsor.Real,  # s[event_shape],
-    #     )]
+    # Cauchy
+    DistTestCase(
+        "backend_dist.Cauchy(loc=case.loc, scale=case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
+    # Chi2
+    DistTestCase(
+        "backend_dist.Chi2(df=case.df)",
+        (("df", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # ContinuousBernoulli
+    DistTestCase(
+        "backend_dist.ContinuousBernoulli(logits=case.logits)",
+        (("logits", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # Delta
+    for event_shape in [(), (4,), (3, 2)]:
+        DistTestCase(
+            f"backend_dist.Delta(v=case.v, log_density=case.log_density, event_dim={len(event_shape)})",
+            (("v", f"rand({batch_shape + event_shape})"), ("log_density", f"rand({batch_shape})")),
+            funsor.Reals[event_shape],
+        )
 
     # Dirichlet
     for event_shape in [(1,), (4,)]:
@@ -146,6 +166,20 @@ for batch_shape in [(), (5,), (2, 3)]:
             funsor.Reals[event_shape],
         )
 
+    # Exponential
+    DistTestCase(
+        "backend_dist.Exponential(rate=case.rate)",
+        (("rate", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # FisherSnedecor
+    DistTestCase(
+        "backend_dist.FisherSnedecor(df1=case.df1, df2=case.df2)",
+        (("df1", f"rand({batch_shape})"), ("df2", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
     # Gamma
     DistTestCase(
         "backend_dist.Gamma(case.concentration, case.rate)",
@@ -158,6 +192,51 @@ for batch_shape in [(), (5,), (2, 3)]:
         (("concentration", f"rand({batch_shape})"), ("rate", f"rand({batch_shape})")),
         funsor.Real,
     )
+
+    # Geometric
+    DistTestCase(
+        "backend_dist.Geometric(probs=case.probs)",
+        (("probs", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # Gumbel
+    DistTestCase(
+        "backend_dist.Gumbel(loc=case.loc, scale=case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
+    # HalfCauchy
+    DistTestCase(
+        "backend_dist.HalfCauchy(scale=case.scale)",
+        (("scale", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # HalfNormal
+    DistTestCase(
+        "backend_dist.HalfNormal(scale=case.scale)",
+        (("scale", f"rand({batch_shape})"),),
+        funsor.Real,
+    )
+
+    # Laplace
+    DistTestCase(
+        "backend_dist.Laplace(loc=case.loc, scale=case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
+    # LowRankMultivariateNormal
+    for event_shape in [(3,), (4,)]:
+        DistTestCase(
+            "backend_dist.LowRankMultivariateNormal(loc=case.loc, cov_factor=case.cov_factor, cov_diag=case.cov_diag)",
+            (("loc", f"randn({batch_shape + event_shape})"),
+             ("cov_factor", f"randn({batch_shape + event_shape + (2,)})"),
+             ("cov_diag", f"rand({batch_shape + event_shape})")),
+            funsor.Reals[event_shape],
+        )
 
     # Multinomial
     for event_shape in [(1,), (4,)]:
@@ -176,6 +255,13 @@ for batch_shape in [(), (5,), (2, 3)]:
             funsor.Reals[event_shape],
         )
 
+    # NegativeBinomial
+    DistTestCase(
+        "backend_dist.NegativeBinomial(total_count=case.total_count, probs=case.probs)",
+        (("total_count", "randint(10, 12, ())" if get_backend() == "jax" else "5"), ("probs", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
     # Normal
     DistTestCase(
         "backend_dist.Normal(case.loc, case.scale)",
@@ -189,6 +275,21 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )
 
+    # OneHotCategorical
+    for size in [2, 4]:
+        DistTestCase(
+            "backend_dist.OneHotCategorical(probs=case.probs)",
+            (("probs", f"rand({batch_shape + (size,)})"),),
+            funsor.Reals[size],  # funsor.Bint[size],
+        )
+
+    # Pareto
+    DistTestCase(
+        "backend_dist.Pareto(scale=case.scale, alpha=case.alpha)",
+        (("scale", f"rand({batch_shape})"), ("alpha", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
     # Poisson
     DistTestCase(
         "backend_dist.Poisson(rate=case.rate)",
@@ -196,11 +297,39 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )
 
+    # RelaxedBernoulli
+    DistTestCase(
+        "backend_dist.RelaxedBernoulli(temperature=case.temperature, logits=case.logits)",
+        (("temperature", f"rand({batch_shape})"), ("logits", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
+    # StudentT
+    DistTestCase(
+        "backend_dist.StudentT(df=case.df, loc=case.loc, scale=case.scale)",
+        (("df", f"rand({batch_shape})"), ("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real
+    )
+
+    # Uniform
+    DistTestCase(
+        "backend_dist.Uniform(low=case.low, high=case.high)",
+        (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
+        funsor.Real
+    )
+
     # VonMises
     DistTestCase(
         "backend_dist.VonMises(case.loc, case.concentration)",
         (("loc", f"rand({batch_shape})"), ("concentration", f"rand({batch_shape})")),
         funsor.Real,
+    )
+
+    # Weibull
+    DistTestCase(
+        "backend_dist.Weibull(scale=case.scale, concentration=case.concentration)",
+        (("scale", f"ops.exp(randn({batch_shape}))"), ("concentration", f"ops.exp(rand({batch_shape}))")),
+        funsor.Real
     )
 
     # Independent
@@ -240,7 +369,8 @@ def _default_dim_to_name(inputs_shape, event_inputs=None):
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
 def test_generic_distribution_to_funsor(case):
 
-    raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
+    with xfail_if_not_found():
+        raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(lazy):
@@ -263,12 +393,16 @@ def test_generic_distribution_to_funsor(case):
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
-def test_generic_log_prob(case):
+@pytest.mark.parametrize("use_lazy", [True, False])
+def test_generic_log_prob(case, use_lazy):
 
-    raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
+    with xfail_if_not_found():
+        raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+    with interpretation(lazy if use_lazy else eager):
+        # some distributions have nontrivial eager patterns
+        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
     expected_inputs = {name: funsor.Bint[raw_dist.batch_shape[dim]] for dim, name in dim_to_name.items()}
     expected_inputs.update({"value": expected_value_domain})
 
@@ -280,14 +414,15 @@ def test_generic_log_prob(case):
         raw_value = raw_dist.sample()
     expected_logprob = to_funsor(raw_dist.log_prob(raw_value), output=funsor.Real, dim_to_name=dim_to_name)
     funsor_value = to_funsor(raw_value, output=expected_value_domain, dim_to_name=dim_to_name)
-    assert_close(funsor_dist(value=funsor_value), expected_logprob, rtol=5e-4)
+    assert_close(funsor_dist(value=funsor_value), expected_logprob, rtol=1e-4 if use_lazy else 1e-3)
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
 @pytest.mark.parametrize("expand", [False, True])
 def test_generic_enumerate_support(case, expand):
 
-    raw_dist = eval(case.raw_dist)
+    with xfail_if_not_found():
+        raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(lazy):
@@ -306,7 +441,8 @@ def test_generic_enumerate_support(case, expand):
 @pytest.mark.parametrize("sample_shape", [(), (2,), (4, 3)], ids=str)
 def test_generic_sample(case, sample_shape):
 
-    raw_dist = eval(case.raw_dist)
+    with xfail_if_not_found():
+        raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(sample_shape + raw_dist.batch_shape)
     with interpretation(lazy):
@@ -329,7 +465,8 @@ def test_generic_sample(case, sample_shape):
 ])
 def test_generic_stats(case, statistic):
 
-    raw_dist = eval(case.raw_dist)
+    with xfail_if_not_found():
+        raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(lazy):
