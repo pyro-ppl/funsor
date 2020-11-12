@@ -136,7 +136,6 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )
 
-    # TODO figure out what this should be...
     # Delta
     for event_shape in [(), (4,), (3, 2)]:
         DistTestCase(
@@ -298,7 +297,6 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )
 
-    # TODO implement RelaxedBernoulli._infer_param_domain for temperature
     # RelaxedBernoulli
     DistTestCase(
         "backend_dist.RelaxedBernoulli(temperature=case.temperature, logits=case.logits)",
@@ -361,6 +359,23 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real
     )
 
+    # Independent
+    for indep_shape in [(3,), (2, 3)]:
+        # Beta.to_event
+        DistTestCase(
+            f"backend_dist.Beta(case.concentration1, case.concentration0).to_event({len(indep_shape)})",
+            (("concentration1", f"ops.exp(randn({batch_shape + indep_shape}))"),
+             ("concentration0", f"ops.exp(randn({batch_shape + indep_shape}))")),
+            funsor.Reals[indep_shape],
+        )
+        # Dirichlet.to_event
+        for event_shape in [(2,), (4,)]:
+            DistTestCase(
+                f"backend_dist.Dirichlet(case.concentration).to_event({len(indep_shape)})",
+                (("concentration", f"rand({batch_shape + indep_shape + event_shape})"),),
+                funsor.Reals[indep_shape + event_shape],
+            )
+
 
 ###########################
 # Generic tests:
@@ -387,14 +402,19 @@ def test_generic_distribution_to_funsor(case):
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(lazy):
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+    assert funsor_dist.inputs["value"] == expected_value_domain
+
     actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
 
     assert isinstance(actual_dist, backend_dist.Distribution)
     assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
-    assert funsor_dist.inputs["value"] == expected_value_domain
-    for param_name in funsor_dist.params.keys():
-        if param_name == "value":
-            continue
+    while isinstance(raw_dist, backend_dist.Independent):
+        raw_dist = raw_dist.base_dist
+        actual_dist = actual_dist.base_dist
+        assert isinstance(actual_dist, backend_dist.Distribution)
+        assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
+
+    for param_name, _ in case.raw_params:
         assert hasattr(raw_dist, param_name)
         assert_close(getattr(actual_dist, param_name), getattr(raw_dist, param_name))
 

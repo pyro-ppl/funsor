@@ -1571,6 +1571,15 @@ class Independent(Funsor):
         result = result.reduce(ops.add, self.bint_var)
         return result
 
+    def mean(self):
+        raise NotImplementedError("mean() not yet implemented for Independent")
+
+    def variance(self):
+        raise NotImplementedError("variance() not yet implemented for Independent")
+
+    def entropy(self):
+        raise NotImplementedError("entropy() not yet implemented for Independent")
+
 
 @eager.register(Independent, Funsor, str, str, str)
 def eager_independent_trivial(fn, reals_var, bint_var, diag_var):
