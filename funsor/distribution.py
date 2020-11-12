@@ -589,7 +589,6 @@ def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
-    print("aaaaaaaaaaaaaaa")
     dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
     if dirichlet_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
