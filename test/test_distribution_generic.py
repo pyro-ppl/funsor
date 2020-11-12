@@ -334,6 +334,33 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real
     )
 
+    # TransformedDistribution
+    DistTestCase(
+        "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.ExpTransform(),])",  # noqa: E501
+        (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
+        funsor.Real
+    )
+    DistTestCase(
+        "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.ExpTransform().inv,])",  # noqa: E501
+        (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
+        funsor.Real
+    )
+    DistTestCase(
+        "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.TanhTransform(),])",  # noqa: E501
+        (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
+        funsor.Real
+    )
+    DistTestCase(
+        "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.TanhTransform(), backend_dist.transforms.ExpTransform()])",  # noqa: E501
+        (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
+        funsor.Real
+    )
+    DistTestCase(
+        "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), backend_dist.transforms.ComposeTransform([backend_dist.transforms.TanhTransform(), backend_dist.transforms.ExpTransform()]))",  # noqa: E501
+        (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
+        funsor.Real
+    )
+
 
 ###########################
 # Generic tests:
