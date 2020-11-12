@@ -598,7 +598,6 @@ def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_plate_multinomial(op, x, reduced_vars):
-    import pdb; pdb.set_trace()
     assert reduced_vars.isdisjoint(x.probs.inputs)
     plates = frozenset(Variable(v, x.inputs[v]) for v in reduced_vars)
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
