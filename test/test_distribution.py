@@ -1055,8 +1055,6 @@ def test_dirichlet_multinomial_conjugate_plate(batch_shape, size):
     latent = dist.Dirichlet(concentration, value=prior)
     conditional = dist.Multinomial(probs=prior, total_count=total_count, value=obs)
     p = latent + conditional.reduce(ops.add, 'plate')
-    # marginalized = p.reduce(ops.logaddexp, set(["value"]))
-    # assert isinstance(marginalized, dist.Dirichlet)
     reduced = p.reduce(ops.logaddexp, set(["prior"]))
     assert isinstance(reduced, Tensor)
     # assert_close(reduced.concentration, concentration)
