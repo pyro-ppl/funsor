@@ -54,6 +54,10 @@ class _NumPyroWrapper_Categorical(dist.CategoricalProbs):
     pass
 
 
+class _NumPyroWrapper_Geometric(dist.GeometricProbs):
+    pass
+
+
 class _NumPyroWrapper_Multinomial(dist.MultinomialProbs):
     pass
 
@@ -75,7 +79,8 @@ class _NumPyroWrapper_NonreparameterizedNormal(dist.Normal):
 
 
 def _get_numpyro_dist(dist_name):
-    if dist_name in ['Binomial', 'Categorical', 'Multinomial'] or dist_name.startswith('Nonreparameterized'):
+    if dist_name in ['Binomial', 'Categorical', 'Geometric', 'Multinomial'] or \
+            dist_name.startswith('Nonreparameterized'):
         return globals().get('_NumPyroWrapper_' + dist_name)
     else:
         return getattr(dist, dist_name, None)
@@ -87,7 +92,7 @@ NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
     ("ContinuousBernoulli", ("logits",)),
     ("Exponential", ()),
     ("FisherSnedecor", ()),
-    # ("Geometric", ("probs",)),  # TODO resolve probs/logits
+    ("Geometric", ("probs",)),
     ("Gumbel", ()),
     ("HalfCauchy", ()),
     ("HalfNormal", ()),
@@ -226,6 +231,12 @@ def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Categorical(probs=numpyro_dist.probs)
     return backenddist_to_funsor(Categorical, new_pyro_dist, output, dim_to_name)  # noqa: F821
+
+
+@to_funsor.register(dist.GeometricProbs)
+def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
+    new_pyro_dist = _NumPyroWrapper_Geometric(probs=numpyro_dist.probs)
+    return backenddist_to_funsor(Geometric, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
 @to_funsor.register(dist.MultinomialProbs)
