@@ -381,7 +381,7 @@ def test_generic_distribution_to_funsor(case):
 
     assert isinstance(actual_dist, backend_dist.Distribution)
     assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
-    while isinstance(raw_dist, (backend_dist.Independent, backend_dist.TransformedDistribution)):
+    while isinstance(raw_dist, backend_dist.Independent):
         raw_dist = raw_dist.base_dist
         actual_dist = actual_dist.base_dist
         assert isinstance(actual_dist, backend_dist.Distribution)
