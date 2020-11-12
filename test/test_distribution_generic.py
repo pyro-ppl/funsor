@@ -203,13 +203,22 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )
 
-    # Normal.to_event
-    for event_shape in [(2,), (3,), (2, 3)]:
+    # Independent
+    for indep_shape in [(3,), (2, 3)]:
+        # Beta.to_event
         DistTestCase(
-            f"backend_dist.Normal(case.loc, case.scale).to_event({len(event_shape)})",
-            (("loc", f"randn({batch_shape + event_shape})"), ("scale", f"rand({batch_shape + event_shape})")),
-            funsor.Reals[event_shape],
+            f"backend_dist.Beta(case.concentration1, case.concentration0).to_event({len(indep_shape)})",
+            (("concentration1", f"ops.exp(randn({batch_shape + indep_shape}))"),
+             ("concentration0", f"ops.exp(randn({batch_shape + indep_shape}))")),
+            funsor.Reals[indep_shape],
         )
+        # Dirichlet.to_event
+        for event_shape in [(2,), (4,)]:
+            DistTestCase(
+                f"backend_dist.Dirichlet(case.concentration).to_event({len(indep_shape)})",
+                (("concentration", f"rand({batch_shape + indep_shape + event_shape})"),),
+                funsor.Reals[indep_shape + event_shape],
+            )
 
 
 ###########################
