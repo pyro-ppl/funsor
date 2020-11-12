@@ -277,8 +277,6 @@ FUNSOR_DIST_NAMES = [
     ('NonreparameterizedGamma', ('concentration', 'rate')),
     ('NonreparameterizedNormal', ('loc', 'scale')),
     ('Normal', ('loc', 'scale')),
-    ('Poisson', ('rate',)),
-    ('VonMises', ('loc', 'concentration')),
 ]
 
 
@@ -393,10 +391,9 @@ class CoerceDistributionToFunsor:
 
 @to_data.register(Distribution)
 def distribution_to_data(funsor_dist, name_to_dim=None):
-    pyro_dist_class = funsor_dist.dist_class
     params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
               for param_name in funsor_dist._ast_fields if param_name != 'value']
-    pyro_dist = pyro_dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
+    pyro_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     funsor_event_shape = funsor_dist.value.output.shape
     pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
     if pyro_dist.event_shape != funsor_event_shape:
