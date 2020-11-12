@@ -221,49 +221,6 @@ def deltadist_to_data(funsor_dist, name_to_dim=None):
     return dist.Delta(v, log_density, event_dim=len(funsor_dist.v.output.shape))
 
 
-###############################################
-# Converting PyTorch Distributions to funsors
-###############################################
-
-@to_funsor.register(torch.distributions.Transform)
-def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    raise NotImplementedError("{} is not a currently supported transform".format(tfm))
-
-
-@to_funsor.register(torch.distributions.transforms.ExpTransform)
-def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    name = next(real_inputs.keys()) if real_inputs else "value"
-    return ops.exp(Variable(name, output))
-
-
-@to_funsor.register(torch.distributions.transforms.TanhTransform)
-def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    name = next(real_inputs.keys()) if real_inputs else "value"
-    return ops.tanh(Variable(name, output))
-
-
-@to_funsor.register(torch.distributions.transforms.SigmoidTransform)
-def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    name = next(real_inputs.keys()) if real_inputs else "value"
-    return ops.sigmoid(Variable(name, output))
-
-
-@to_funsor.register(torch.distributions.transforms._InverseTransform)
-def inversetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    expr = to_funsor(tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)
-    assert isinstance(expr, Unary)
-    return expr.op.inv(expr.arg)
-
-
-@to_funsor.register(torch.distributions.transforms.ComposeTransform)
-def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    name = next(real_inputs.keys()) if real_inputs else "value"
-    expr = Variable(name, output)
-    for part in tfm.parts:
-        expr = to_funsor(part, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)(**{name: expr})
-    return expr
-
-
 @functools.singledispatch
 def op_to_torch_transform(op, name_to_dim=None):
     raise NotImplementedError("cannot convert {} to a Transform".format(op))
@@ -307,6 +264,49 @@ def transform_to_data(expr, name_to_dim=None):
             tfm = torch.distributions.transforms.ComposeTransform([to_data(expr.arg, name_to_dim=name_to_dim), tfm])
         return tfm
     raise NotImplementedError("cannot convert to data: {}".format(expr))
+
+
+###############################################
+# Converting PyTorch Distributions to funsors
+###############################################
+
+@to_funsor.register(torch.distributions.Transform)
+def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    raise NotImplementedError("{} is not a currently supported transform".format(tfm))
+
+
+@to_funsor.register(torch.distributions.transforms.ExpTransform)
+def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.exp(Variable(name, output))
+
+
+@to_funsor.register(torch.distributions.transforms.TanhTransform)
+def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.tanh(Variable(name, output))
+
+
+@to_funsor.register(torch.distributions.transforms.SigmoidTransform)
+def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.sigmoid(Variable(name, output))
+
+
+@to_funsor.register(torch.distributions.transforms._InverseTransform)
+def inversetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    expr = to_funsor(tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)
+    assert isinstance(expr, Unary)
+    return expr.op.inv(expr.arg)
+
+
+@to_funsor.register(torch.distributions.transforms.ComposeTransform)
+def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    expr = Variable(name, output)
+    for part in tfm.parts:
+        expr = to_funsor(part, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)(**{name: expr})
+    return expr
 
 
 to_funsor.register(torch.distributions.Distribution)(backenddist_to_funsor)
