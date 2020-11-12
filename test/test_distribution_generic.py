@@ -280,7 +280,7 @@ def test_generic_log_prob(case):
         raw_value = raw_dist.sample()
     expected_logprob = to_funsor(raw_dist.log_prob(raw_value), output=funsor.Real, dim_to_name=dim_to_name)
     funsor_value = to_funsor(raw_value, output=expected_value_domain, dim_to_name=dim_to_name)
-    assert_close(funsor_dist(value=funsor_value), expected_logprob, rtol=1e-4)
+    assert_close(funsor_dist(value=funsor_value), expected_logprob, rtol=5e-4)
 
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
