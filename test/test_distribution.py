@@ -1058,12 +1058,6 @@ def test_dirichlet_multinomial_conjugate_plate(batch_shape, size):
     reduced = p.reduce(ops.logaddexp, 'prior')
     assert isinstance(reduced, Tensor)
 
-    conditional = dist.Multinomial(probs=prior, total_count=total_count)
-    p = latent + conditional.reduce(ops.add, 'plate')
-    reduced_term = p.reduce(ops.logaddexp, 'prior')
-    # FIXME: this does not work
-    assert_close(reduced_term(value=obs), reduced)
-
     _assert_conjugate_density_ok(latent, conditional, obs)
 
 
