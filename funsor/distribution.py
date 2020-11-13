@@ -601,6 +601,11 @@ def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
 
 def eager_plate_multinomial(op, x, reduced_vars):
     assert reduced_vars.isdisjoint(x.probs.inputs)
+    # FIXME: it seems that funsor only allows x.value.reduce(ops.add, reduced_vars)
+    # when the following condition holds
+    if not reduced_vars.issubset(x.value.inputs):
+        return None
+    # FIXME: is it necessary to create plates here?: we can use `reduced_vars` in `x.value.reduce`
     plates = frozenset(Variable(v, x.inputs[v]) for v in reduced_vars)
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     total_count = x.total_count
