@@ -78,7 +78,14 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
+            nonmarkov_vars = frozenset(v for v in group_vars if not v.endswith("curr"))
+            markov_vars = {v.replace("curr", "prev"): v for v in group_vars if v.endswith("curr")}
+            f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
+            if markov_vars:
+                time = Variable("time", f.inputs["time"])
+                f = sequential_sum_product(sum_op, prod_op, f, time, markov_vars)
+                f = f.reduce(sum_op, frozenset(markov_vars.values()))
+                f = f.reduce(sum_op, frozenset(markov_vars.keys()))
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate))
