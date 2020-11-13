@@ -50,7 +50,7 @@ class Contraction(Funsor):
         assert isinstance(bin_op, AssociativeOp)
         assert all(isinstance(v, Funsor) for v in terms)
         assert isinstance(reduced_vars, frozenset)
-        assert all(isinstance(v, str) for v in reduced_vars)
+        assert all(isinstance(v, Variable) for v in reduced_vars)
         assert isinstance(terms, tuple) and len(terms) > 0
 
         assert not (isinstance(red_op, NullOp) and isinstance(bin_op, NullOp))
@@ -62,17 +62,17 @@ class Contraction(Funsor):
             assert reduced_vars and len(terms) > 1
             assert (red_op, bin_op) in DISTRIBUTIVE_OPS
 
+        fresh = frozenset()
+        bound = {v.name: v.output for v in reduced_vars}
         inputs = OrderedDict()
         for v in terms:
-            inputs.update((k, d) for k, d in v.inputs.items() if k not in reduced_vars)
+            inputs.update((k, d) for k, d in v.inputs.items() if k not in bound)
 
         if bin_op is nullop:
             output = terms[0].output
         else:
             output = reduce(lambda lhs, rhs: find_domain(bin_op, lhs, rhs),
                             [v.output for v in reversed(terms)])
-        fresh = frozenset()
-        bound = reduced_vars
         super(Contraction, self).__init__(inputs, output, fresh, bound)
         self.red_op = red_op
         self.bin_op = bin_op
@@ -144,11 +144,9 @@ class Contraction(Funsor):
         return result
 
     def _alpha_convert(self, alpha_subs):
-        reduced_vars = frozenset(alpha_subs.get(k, k) for k in self.reduced_vars)
-        bound_types = {}
-        for term in self.terms:
-            bound_types.update({k: term.inputs[k] for k in self.bound.intersection(term.inputs)})
-        alpha_subs = {k: to_funsor(v, bound_types[k]) for k, v in alpha_subs.items()}
+        reduced_vars = frozenset(to_funsor(alpha_subs.get(var.name, var), var.output)
+                                 for var in self.reduced_vars)
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
         red_op, bin_op, _, terms = super()._alpha_convert(alpha_subs)
         return red_op, bin_op, reduced_vars, terms
 
@@ -185,8 +183,9 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     # push down leaf reductions
     terms, reduced_vars, leaf_reduced = list(terms), frozenset(reduced_vars), False
     for i, v in enumerate(terms):
-        unique_vars = reduced_vars.intersection(v.inputs) - \
-            frozenset().union(*(reduced_vars.intersection(vv.inputs) for vv in terms if vv is not v))
+        unique_vars = reduced_vars.intersection(v.input_vars) - \
+            frozenset().union(*(reduced_vars.intersection(vv.input_vars)
+                                for vv in terms if vv is not v))
         if unique_vars:
             result = v.reduce(red_op, unique_vars)
             if result is not normalize(Contraction, red_op, nullop, unique_vars, (v,)):
@@ -203,8 +202,8 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     for i, lhs in enumerate(terms[0:-1]):
         for j_, rhs in enumerate(terms[i+1:]):
             j = i + j_ + 1
-            unique_vars = reduced_vars.intersection(lhs.inputs, rhs.inputs) - \
-                frozenset().union(*(reduced_vars.intersection(vv.inputs)
+            unique_vars = reduced_vars.intersection(lhs.input_vars, rhs.input_vars) - \
+                frozenset().union(*(reduced_vars.intersection(vv.input_vars)
                                     for vv in terms[:i] + terms[i+1:j] + terms[j+1:]))
             result = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
             if result is not normalize(Contraction, red_op, bin_op, unique_vars, (lhs, rhs)):  # did we make progress?
@@ -225,7 +224,7 @@ def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 
-    if reduced_vars - (reduced_vars.intersection(lhs.inputs, rhs.inputs)):
+    if reduced_vars - (reduced_vars.intersection(lhs.input_vars, rhs.input_vars)):
         args = red_op, bin_op, reduced_vars, (lhs, rhs)
         result = eager.dispatch(Contraction, *args)(*args)
         if result is not None:
@@ -277,8 +276,8 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
         data = data.reshape(batch_shape + event_shape)
         operands.append(data)
 
-    for k in reduced_vars:
-        del inputs[k]
+    for var in reduced_vars:
+        inputs.pop(var.name, None)
     batch_shape = tuple(v.size for v in inputs.values())
     event_shape = broadcast_shape(*(term.shape for term in terms))
     einsum_output = ("".join(symbols[k] for k in inputs) +

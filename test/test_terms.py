@@ -368,6 +368,12 @@ def test_reduce_syntactic_sugar():
     assert x.reduce(ops.add, frozenset([i])) is expected
 
 
+def test_reduce_constant():
+    x = Number(1)
+    i = Variable("i", Bint[4])
+    assert x.reduce(ops.add, i) == Number(4)
+
+
 def test_slice():
     t_slice = Slice("t", 10)
 
