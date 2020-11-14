@@ -554,15 +554,23 @@ class Funsor(object, metaclass=FunsorMeta):
             multiplicity = reduce(ops.mul, [v.output.size for v in factor_vars])
             for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
                 if add_op is op:
-                    return mul_op(self, multiplicity).reduce(op, reduced_vars)
+                    return mul_op(self, multiplicity).eager_reduce(op, reduced_vars)
             raise NotImplementedError
-
         if not reduced_vars:
             return self
 
         return None  # defer to default implementation
 
     def sequential_reduce(self, op, reduced_vars):
+        factor_vars = reduced_vars - self.input_vars
+        if factor_vars:
+            reduced_vars = reduced_vars & self.input_vars
+            # FIXME this will fail when reducing over real values.
+            multiplicity = reduce(ops.mul, [v.output.size for v in factor_vars])
+            for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
+                if add_op is op:
+                    return mul_op(self, multiplicity).sequential_reduce(op, reduced_vars)
+            raise NotImplementedError
         if not reduced_vars:
             return self
 
@@ -570,15 +578,15 @@ class Funsor(object, metaclass=FunsorMeta):
         # since reduction is more efficiently implemented by Tensor.
         eager_vars = []
         lazy_vars = []
-        for k in reduced_vars:
-            if isinstance(self.inputs[k].dtype, int) and not self.inputs[k].shape:
-                eager_vars.append(k)
+        for var in reduced_vars:
+            if isinstance(var.dtype, int) and not var.shape:
+                eager_vars.append(var)
             else:
-                lazy_vars.append(k)
+                lazy_vars.append(var)
         if eager_vars:
             result = None
-            for values in itertools.product(*(self.inputs[k] for k in eager_vars)):
-                subs = dict(zip(eager_vars, values))
+            for values in itertools.product(*(var.output for var in eager_vars)):
+                subs = {var.name: value for var, value in zip(eager_vars, values)}
                 result = self(**subs) if result is None else op(result, self(**subs))
             if lazy_vars:
                 result = Reduce(op, result, frozenset(lazy_vars))
@@ -1325,8 +1333,9 @@ class Stack(Funsor):
 
     def eager_reduce(self, op, reduced_vars):
         parts = self.parts
-        if self.name in reduced_vars:
-            reduced_vars -= frozenset([self.name])
+        var = Variable(self.name, self.inputs[self.name])
+        if var in reduced_vars:
+            reduced_vars -= frozenset([var])
             if reduced_vars:
                 parts = tuple(x.reduce(op, reduced_vars) for x in parts)
             return reduce(op, parts)

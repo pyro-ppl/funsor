@@ -275,7 +275,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         output = Real
         fresh = frozenset(inputs.keys())
-        bound = frozenset()
+        bound = {}
         super(Gaussian, self).__init__(inputs, output, fresh, bound)
         self.info_vec = info_vec
         self.precision = precision

@@ -385,7 +385,8 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
                              if k != time.name)
         output = trans.output
         fresh = frozenset(step_names.values())
-        bound = frozenset(step_names.keys()) | {time.name}
+        bound = {k: self.inputs[k] for k in step_names}
+        bound[time.name] = time.output
         super().__init__(inputs, output, fresh, bound)
         self.sum_op = sum_op
         self.prod_op = prod_op

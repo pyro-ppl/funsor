@@ -98,7 +98,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
 
         output = Real
         fresh = frozenset(name for name, term in terms)
-        bound = frozenset()
+        bound = {}
         super(Delta, self).__init__(inputs, output, fresh, bound)
         self.terms = terms
 
