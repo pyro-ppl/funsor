@@ -100,6 +100,66 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
     return results
 
 
+def modified_partial_sum_product(
+        sum_op, prod_op, factors, eliminate=frozenset(),
+        plates=frozenset(), time=str(), step=None):
+    """
+    Modified partial sum-product that supports contraction of markov sites.
+
+    :return: a list of partially contracted Funsors.
+    :rtype: list
+    """
+    assert callable(sum_op)
+    assert callable(prod_op)
+    assert isinstance(factors, (tuple, list))
+    assert all(isinstance(f, Funsor) for f in factors)
+    assert isinstance(eliminate, frozenset)
+    assert isinstance(plates, frozenset)
+    sum_vars = eliminate - plates
+    plates |= frozenset(time)
+
+    var_to_ordinal = {}
+    ordinal_to_factors = defaultdict(list)
+    for f in factors:
+        ordinal = plates.intersection(f.inputs)
+        ordinal_to_factors[ordinal].append(f)
+        for var in sum_vars.intersection(f.inputs):
+            var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+
+    ordinal_to_vars = defaultdict(set)
+    for var, ordinal in var_to_ordinal.items():
+        ordinal_to_vars[ordinal].add(var)
+
+    results = []
+    while ordinal_to_factors:
+        leaf = max(ordinal_to_factors, key=len)
+        leaf_factors = ordinal_to_factors.pop(leaf)
+        leaf_reduce_vars = ordinal_to_vars[leaf]
+        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
+            if plates.intersection(group_vars):
+                group_vars = group_vars - plates
+                for k, v in step.items():
+                    group_vars -= frozenset(k) | frozenset(v)
+                f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
+                f = modified_sequential_sum_product(sum_op, prod_op, f, Variable(time, f.inputs[time]), step)
+                f = f.reduce(sum_op, frozenset(step.values()))
+                f = f.reduce(sum_op, frozenset(step.keys()))
+            else:
+                f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
+            remaining_sum_vars = sum_vars.intersection(f.inputs)
+            if not remaining_sum_vars:
+                results.append(f.reduce(prod_op, leaf & eliminate - frozenset(time)))
+            else:
+                new_plates = frozenset().union(
+                    *(var_to_ordinal[v] for v in remaining_sum_vars))
+                if new_plates == leaf:
+                    raise ValueError("intractable!")
+                f = f.reduce(prod_op, leaf - new_plates - frozenset(time))
+                ordinal_to_factors[new_plates].append(f)
+
+    return results
+
+
 def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
     """
     Performs sum-product contraction of a collection of factors.
@@ -187,6 +247,89 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
             contracted = Cat(time, (contracted, extra))
         trans = contracted
         duration = (duration + 1) // 2
+    return trans(**{time: 0})
+
+
+def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1):
+    """
+    For a funsor ``trans`` with dimensions ``time``, ``prev`` and ``curr``,
+    computes a recursion equivalent to::
+
+        tail_time = 1 + arange("time", trans.inputs["time"].size - 1)
+        tail = sequential_sum_product(sum_op, prod_op,
+                                      trans(time=tail_time),
+                                      time, {"prev": "curr"})
+        return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
+           .reduce(sum_op, "drop")
+
+    but does so efficiently in parallel in O(log(time)).
+
+    :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
+    :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
+    :param ~funsor.terms.Funsor trans: A transition funsor.
+    :param Variable time: The time input dimension.
+    :param dict step: A dict mapping previous variables to current variables.
+        This can contain multiple pairs of prev->curr variable names.
+    """
+    assert isinstance(sum_op, AssociativeOp)
+    assert isinstance(prod_op, AssociativeOp)
+    assert isinstance(trans, Funsor)
+    assert isinstance(time, Variable)
+    if isinstance(step, dict):
+        step = tuple(step.items())
+    assert isinstance(window, int)
+    # assert all(isinstance(k, str) for k in step.keys())
+    # assert all(isinstance(v, str) for v in step.values())
+    if time.name in trans.inputs:
+        assert time.output == trans.inputs[time.name]
+
+    time, duration = time.name, time.output.size
+
+    if duration % window:
+        raise NotImplementedError("TODO handle partial windows")
+
+    if window > 1:
+        new_duration = duration // window
+        new_trans = Number(0., 'real') 
+        for w in range(window):
+            old_to_new = {}
+            for values in step:
+                for i, v in enumerate(values):
+                    old_to_new[v] = ''.join(values[max(0,i+w+1-window):i+w+1])
+            new_trans = new_trans + trans(**{time: Slice(time, w, duration, window)}, **old_to_new)
+        new_step = []
+        for s in step:
+            new_step.append(tuple(''.join(s[max(0,i+1-window):i+1]) for i in range(window*2)))
+        new_to_old = {}
+        for (new, old) in zip(new_step, step):
+            new_to_old.update(zip(new,old))
+        duration = new_duration
+        trans = new_trans
+        step = new_step
+
+    drop = tuple("_drop_{}_window_{}".format(i, w) for w in range(window) for i in range(len(step)))
+    prev = tuple(s[w] for w in range(window) for s in step)
+    curr = tuple(s[window+w] for w in range(window) for s in step)
+    prev_to_drop = dict(zip(prev, drop))
+    curr_to_drop = dict(zip(curr, drop))
+    drop = frozenset(prev_to_drop.values())
+
+
+    while duration > 1:
+        even_duration = duration // 2 * 2
+        x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
+        y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
+        contracted = Contraction(sum_op, prod_op, drop, x, y)
+
+        if duration > even_duration:
+            extra = trans(**{time: Slice(time, duration - 1, duration)})
+            contracted = Cat(time, (contracted, extra))
+        trans = contracted
+        duration = (duration + 1) // 2
+    curr_to_drop = frozenset(key for (key,value) in curr_to_drop.items() if not value.endswith('_window_{}'.format(window-1)))
+    trans = trans.reduce(sum_op, curr_to_drop)
+    if window > 1:
+        trans = trans(**new_to_old)
     return trans(**{time: 0})
 
 
