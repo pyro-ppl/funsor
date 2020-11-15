@@ -282,7 +282,7 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1
 
     if window > 1:
         new_duration = duration // window
-        new_trans = Number(0., 'real') 
+        new_trans = Number(0., 'real')
         for w in range(window):
             old_to_new = {}
             for values in step:
