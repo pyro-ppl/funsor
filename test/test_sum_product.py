@@ -404,7 +404,7 @@ def _check_modified_sequential(trans, expected_inputs, global_vars, step, window
     duration = trans.inputs["time"].dtype
     time_var = Variable("time", Bint[duration])
 
-    actual = modified_sequential_sum_product(sum_op, prod_op, trans, time_var, step, window)
+    actual = modified_sequential_sum_product(sum_op, prod_op, trans, "time", step, window)
 
     expected = naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars)
     assert dict(expected.inputs) == expected_inputs
@@ -446,7 +446,7 @@ def test_sarkka_bilmes_example_1(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = (('Pa', 'a'), ('Pb', 'b'))
+    step = frozenset({('Pa', 'a'), ('Pb', 'b')})
     _check_modified_sequential(trans, expected_inputs, frozenset(), step, 1)
 
 
@@ -473,7 +473,7 @@ def test_sarkka_bilmes_example_2(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = (('PPa', 'Pa', 'a'), ('PPb', 'Pb', 'b'), ('PPc', 'Pc', 'c'))
+    step = frozenset({('PPa', 'Pa', 'a'), ('PPb', 'Pb', 'b'), ('PPc', 'Pc', 'c')})
     _check_modified_sequential(trans, expected_inputs, frozenset(), step, 2)
 
 
@@ -496,7 +496,7 @@ def test_sarkka_bilmes_example_3(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = (('PPa', 'Pa', 'a'), ('PPc', 'Pc', 'c'))
+    step = frozenset({('PPa', 'Pa', 'a'), ('PPc', 'Pc', 'c')})
     _check_modified_sequential(trans, expected_inputs, frozenset(), step, 2)
 
 
@@ -519,7 +519,7 @@ def test_sarkka_bilmes_example_4(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = (('PPPa', 'PPa', 'Pa', 'a'),)
+    step = frozenset({('PPPa', 'PPa', 'Pa', 'a')})
     _check_modified_sequential(trans, expected_inputs, frozenset(), step, 3)
 
 
@@ -543,7 +543,7 @@ def test_sarkka_bilmes_example_5(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
 
-    step = (('Pa', 'a'),)
+    step = frozenset({('Pa', 'a')})
     _check_modified_sequential(trans, expected_inputs, global_vars, step, 1)
 
 
@@ -570,7 +570,7 @@ def test_sarkka_bilmes_example_6(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
 
-    step = (('PPPa', 'PPa', 'Pa', 'a'),)
+    step = frozenset({('PPPa', 'PPa', 'Pa', 'a')})
     _check_modified_sequential(trans, expected_inputs, global_vars, step, 3)
 
 

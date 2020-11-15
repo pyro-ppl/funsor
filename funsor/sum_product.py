@@ -134,7 +134,7 @@ def modified_partial_sum_product(
                 for k, v in step.items():
                     group_vars -= frozenset(k) | frozenset(v)
                 f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
-                f = modified_sequential_sum_product(sum_op, prod_op, f, Variable(time, f.inputs[time]), step)
+                f = modified_sequential_sum_product(sum_op, prod_op, f, time, step)
                 f = f.reduce(sum_op, frozenset(step.values()))
                 f = f.reduce(sum_op, frozenset(step.keys()))
             else:
@@ -243,19 +243,29 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     return trans(**{time: 0})
 
 
-def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1):
+def modified_sequential_sum_product(sum_op, prod_op, trans, time, step=frozenset(), window=1):
     """
-    For a funsor ``trans`` with dimensions ``time``, ``prev`` and ``curr``,
-    computes a recursion equivalent to::
+    Parallel-scan algorithm. For :math:`\bigotimes` consists of
+    positional renaming of variables and contraction operations.
+    
+    .. math::
 
-        tail_time = 1 + arange("time", trans.inputs["time"].size - 1)
-        tail = sequential_sum_product(sum_op, prod_op,
-                                      trans(time=tail_time),
-                                      time, {"prev": "curr"})
-        return prod_op(trans(time=0)(curr="drop"), tail(prev="drop")) \
-           .reduce(sum_op, "drop")
+       a_{i} = f^{x_{wi-w+1} \dots x_{wi}}_{x_{wi-2w+1} \dots x_{wi-w}}
 
-    but does so efficiently in parallel in O(log(time)).
+       a_{i} \bigotimes a_{j} = f^{x_{wj-w+1} \dots x_{wj}}_{x_{wi-2w+1} \dots x_{wi-w}}
+
+       a_{t} \bigotimes a_{t+1} = f^{x_{wt+1} \dots x_{wt+w}}_{x_{wt-2w+1} \dots x_{wt-w}}
+
+    For `window == 1`:
+
+    .. math::
+
+       a_{i} = f^{x_{i}}_{x_{i-1}}
+
+       a_{i} \bigotimes a_{j} = f^{(x_{i},x_{j-1})}_{x_{i-1}} f^{x_{j}}_{(x_{i},x_{j-1})} = f^{x_{j}}_{x_{i-1}}
+
+       a_{t} \bigotimes a_{t+1} = f^{x_{t}}_{x_{t-1}} f^{x_{t+1}}_{x_{t}} = f^{x_{t+1}}_{x_{t-1}}
+    
 
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
@@ -267,38 +277,44 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
-    assert isinstance(time, Variable)
+    # for compatibility with sequential_sum_product interface
+    if isinstance(time, Variable):
+        time, duration = time.name, time.output.size
+        if time in trans.inputs:
+            assert duration == trans.inputs[time].size
+    else:
+        duration = trans.inputs[time].size
     if isinstance(step, dict):
-        step = tuple(step.items())
+        step = frozenset(step.items())
+    assert isinstance(time, str)
+    assert isinstance(step, frozenset)
     assert isinstance(window, int)
     assert all(len(s) == window + 1 for s in step)
-    if time.name in trans.inputs:
-        assert time.output == trans.inputs[time.name]
-
-    time, duration = time.name, time.output.size
 
     if duration % window:
         raise NotImplementedError("TODO handle partial windows")
 
+    # create a new funsor of the length duration // window
     if window > 1:
         new_duration = duration // window
         new_trans = Number(0., 'real')
+        new_step = frozenset()
+        new_to_old = {}
+        for seq in step:
+            new_seq = tuple(''.join(seq[max(0, i+1-window):i+1]) for i in range(window*2))
+            new_step |= frozenset({new_seq})
+            new_to_old.update(zip(new_seq, seq))
         for w in range(window):
             old_to_new = {}
             for values in step:
                 for i, v in enumerate(values):
                     old_to_new[v] = ''.join(values[max(0, i+w+1-window):i+w+1])
             new_trans = new_trans + trans(**{time: Slice(time, w, duration, window)}, **old_to_new)
-        new_step = []
-        for s in step:
-            new_step.append(tuple(''.join(s[max(0, i+1-window):i+1]) for i in range(window*2)))
-        new_to_old = {}
-        for (new, old) in zip(new_step, step):
-            new_to_old.update(zip(new, old))
         duration = new_duration
         trans = new_trans
         step = new_step
 
+    # variable renaming
     drop = tuple("_drop_{}_window_{}".format(i, w) for w in range(window) for i in range(len(step)))
     prev = tuple(s[w] for w in range(window) for s in step)
     curr = tuple(s[window+w] for w in range(window) for s in step)
@@ -306,6 +322,7 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1
     curr_to_drop = dict(zip(curr, drop))
     drop = frozenset(prev_to_drop.values())
 
+    # parallel-scan contraction
     while duration > 1:
         even_duration = duration // 2 * 2
         x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
