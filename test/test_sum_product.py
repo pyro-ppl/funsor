@@ -325,6 +325,9 @@ def test_sarkka_bilmes_example_0(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
+    step = frozenset({('a')})
+    _check_modified_sequential(trans, expected_inputs, frozenset(), step, 0)
+
 
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
 def test_sarkka_bilmes_example_1(duration):

@@ -231,7 +231,7 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step=frozenset
     assert isinstance(window, int)
     assert all(len(s) == window + 1 for s in step)
 
-    if duration % window:
+    if window > 1 and duration % window:
         raise NotImplementedError("TODO handle partial windows")
 
     # create a new funsor of the length duration // window
@@ -252,7 +252,7 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step=frozenset
             new_trans = new_trans + trans(**{time: Slice(time, w, duration, window)}, **old_to_new)
         duration, trans, step = new_duration, new_trans, new_step
 
-    # variable renaming
+    # positional variable renaming
     # TODO optimize the code
     drop = tuple("_drop_{}_window_{}".format(i, w) for w in range(window) for i in range(len(step)))
     prev = tuple(s[w] for w in range(window) for s in step)
