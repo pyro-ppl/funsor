@@ -13,7 +13,10 @@ import funsor.ops as ops
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.interpreter import interpretation
 from funsor.terms import eager, lazy, normalize, reflect, to_data, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril, xfail_if_not_found, xfail_if_not_implemented  # noqa: F401,E501
+from funsor.testing import (  # noqa: F401
+    assert_close, check_funsor, rand, randint, randn, random_scale_tril,
+    xfail_if_not_found, xfail_if_not_implemented, xfail_param
+)
 from funsor.util import get_backend
 
 
@@ -55,7 +58,7 @@ TEST_CASES = []
 
 class DistTestCase:
 
-    def __init__(self, raw_dist, raw_params, expected_value_domain):
+    def __init__(self, raw_dist, raw_params, expected_value_domain, xfail=False):
         self.raw_dist = raw_dist
         self.raw_params = raw_params
         self.expected_value_domain = expected_value_domain
@@ -63,7 +66,7 @@ class DistTestCase:
             if get_backend() != "numpy":
                 # we need direct access to these tensors for gradient tests
                 setattr(self, name, eval(raw_param))
-        TEST_CASES.append(self)
+        TEST_CASES.append(self if not xfail else xfail_param(self, reason="test case not yet supported"))
 
     def __str__(self):
         return self.raw_dist + " " + str(self.raw_params)
@@ -384,6 +387,13 @@ for batch_shape in [(), (5,), (2, 3)]:
                 (("concentration", f"rand({batch_shape + indep_shape + event_shape})"),),
                 funsor.Reals[indep_shape + event_shape],
             )
+        # TransformedDistribution.to_event
+        DistTestCase(
+            f"backend_dist.Independent(backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), backend_dist.transforms.ComposeTransform([backend_dist.transforms.TanhTransform(), backend_dist.transforms.ExpTransform()])), {len(indep_shape)})",  # noqa: E501
+            (("low", f"rand({batch_shape + indep_shape})"), ("high", f"2. + rand({batch_shape + indep_shape})")),
+            funsor.Reals[indep_shape],
+            xfail=True
+        )
 
 
 ###########################
