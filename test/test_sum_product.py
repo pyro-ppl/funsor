@@ -165,7 +165,7 @@ def test_markov_partial_sum_product(sum_op, prod_op, inputs, plates, time, step,
 ])
 def test_markov_partial_sum_product_multi(sum_op, prod_op, inputs, plates, time, step, vars1, vars2):
     inputs = inputs.split(',')
-    factors = [random_tensor(OrderedDict((d, Bint[2]) if d != 't' else (d, Bint[10]) for d in ds)) for ds in inputs]
+    factors = [random_tensor(OrderedDict((d, Bint[2]) if d != 't' else (d, Bint[5]) for d in ds)) for ds in inputs]
     plates = frozenset(plates)
     vars1 = frozenset(vars1)
     vars2 = frozenset(vars2)
