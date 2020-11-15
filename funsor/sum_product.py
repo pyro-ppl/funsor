@@ -184,10 +184,10 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
 
 
 def modified_sequential_sum_product(sum_op, prod_op, trans, time, step=frozenset(), window=1):
-    """
+    r"""
     Parallel-scan algorithm. For :math:`\bigotimes` consisting of
     positional renaming of variables and contraction operations.
-    
+
     .. math::
 
        a_{i} = f^{x_{wi-w+1} \dots x_{wi}}_{x_{wi-2w+1} \dots x_{wi-w}}
