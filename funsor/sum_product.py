@@ -290,19 +290,19 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1
 
     if window > 1:
         new_duration = duration // window
-        new_trans = Number(0., 'real') 
+        new_trans = Number(0., 'real')
         for w in range(window):
             old_to_new = {}
             for values in step:
                 for i, v in enumerate(values):
-                    old_to_new[v] = ''.join(values[max(0,i+w+1-window):i+w+1])
+                    old_to_new[v] = ''.join(values[max(0, i+w+1-window):i+w+1])
             new_trans = new_trans + trans(**{time: Slice(time, w, duration, window)}, **old_to_new)
         new_step = []
         for s in step:
-            new_step.append(tuple(''.join(s[max(0,i+1-window):i+1]) for i in range(window*2)))
+            new_step.append(tuple(''.join(s[max(0, i+1-window):i+1]) for i in range(window*2)))
         new_to_old = {}
         for (new, old) in zip(new_step, step):
-            new_to_old.update(zip(new,old))
+            new_to_old.update(zip(new, old))
         duration = new_duration
         trans = new_trans
         step = new_step
@@ -313,7 +313,6 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1
     prev_to_drop = dict(zip(prev, drop))
     curr_to_drop = dict(zip(curr, drop))
     drop = frozenset(prev_to_drop.values())
-
 
     while duration > 1:
         even_duration = duration // 2 * 2
@@ -326,7 +325,9 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1
             contracted = Cat(time, (contracted, extra))
         trans = contracted
         duration = (duration + 1) // 2
-    curr_to_drop = frozenset(key for (key,value) in curr_to_drop.items() if not value.endswith('_window_{}'.format(window-1)))
+    curr_to_drop = frozenset(
+            key for (key, value) in curr_to_drop.items()
+            if not value.endswith('_window_{}'.format(window-1)))
     trans = trans.reduce(sum_op, curr_to_drop)
     if window > 1:
         trans = trans(**new_to_old)

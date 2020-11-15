@@ -118,7 +118,7 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
 ])
 def test_markov_partial_sum_product(sum_op, prod_op, inputs, plates, time, step, vars1, vars2):
     inputs = inputs.split(',')
-    factors = [random_tensor(OrderedDict((d, Bint[2]) if d!='t' else (d, Bint[10]) for d in ds)) for ds in inputs]
+    factors = [random_tensor(OrderedDict((d, Bint[2]) if d != 't' else (d, Bint[10]) for d in ds)) for ds in inputs]
     plates = frozenset(plates)
     vars1 = frozenset(vars1)
     vars2 = frozenset(vars2)
@@ -166,7 +166,7 @@ def test_markov_partial_sum_product(sum_op, prod_op, inputs, plates, time, step,
 ])
 def test_markov_partial_sum_product_multi(sum_op, prod_op, inputs, plates, time, step, vars1, vars2):
     inputs = inputs.split(',')
-    factors = [random_tensor(OrderedDict((d, Bint[2]) if d!='t' else (d, Bint[10]) for d in ds)) for ds in inputs]
+    factors = [random_tensor(OrderedDict((d, Bint[2]) if d != 't' else (d, Bint[10]) for d in ds)) for ds in inputs]
     plates = frozenset(plates)
     vars1 = frozenset(vars1)
     vars2 = frozenset(vars2)
@@ -202,6 +202,7 @@ def test_markov_partial_sum_product_multi(sum_op, prod_op, inputs, plates, time,
     expected = sum_product(sum_op, prod_op, unrolled_factors, unrolled_vars, unrolled_plates)
 
     assert_close(actual, expected)
+
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 13)))
 @pytest.mark.parametrize('sum_op,prod_op,state_domain', [
@@ -445,7 +446,7 @@ def test_sarkka_bilmes_example_1(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = (('Pa','a'),('Pb','b'))
+    step = (('Pa', 'a'), ('Pb', 'b'))
     _check_modified_sequential(trans, expected_inputs, frozenset(), step, 1)
 
 
@@ -472,7 +473,7 @@ def test_sarkka_bilmes_example_2(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = (('PPa','Pa','a'),('PPb','Pb','b'),('PPc','Pc','c'))
+    step = (('PPa', 'Pa', 'a'), ('PPb', 'Pb', 'b'), ('PPc', 'Pc', 'c'))
     _check_modified_sequential(trans, expected_inputs, frozenset(), step, 2)
 
 
@@ -495,7 +496,7 @@ def test_sarkka_bilmes_example_3(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = (('PPa','Pa','a'),('PPc','Pc','c'))
+    step = (('PPa', 'Pa', 'a'), ('PPc', 'Pc', 'c'))
     _check_modified_sequential(trans, expected_inputs, frozenset(), step, 2)
 
 
@@ -518,7 +519,7 @@ def test_sarkka_bilmes_example_4(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = (('PPPa','PPa','Pa','a'),)
+    step = (('PPPa', 'PPa', 'Pa', 'a'),)
     _check_modified_sequential(trans, expected_inputs, frozenset(), step, 3)
 
 
@@ -542,8 +543,9 @@ def test_sarkka_bilmes_example_5(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
 
-    step = (('Pa','a'),)
+    step = (('Pa', 'a'),)
     _check_modified_sequential(trans, expected_inputs, global_vars, step, 1)
+
 
 @pytest.mark.parametrize("duration", [3, 6, 9])
 def test_sarkka_bilmes_example_6(duration):
@@ -568,7 +570,7 @@ def test_sarkka_bilmes_example_6(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
 
-    step = (('PPPa','PPa','Pa','a'),)
+    step = (('PPPa', 'PPa', 'Pa', 'a'),)
     _check_modified_sequential(trans, expected_inputs, global_vars, step, 3)
 
 
