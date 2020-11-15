@@ -19,7 +19,6 @@ from funsor.sum_product import (
     naive_sarkka_bilmes_product,
     naive_sequential_sum_product,
     partial_sum_product,
-    modified_partial_sum_product,
     sarkka_bilmes_product,
     sequential_sum_product,
     modified_sequential_sum_product,
@@ -88,119 +87,18 @@ def test_partition(inputs, dims, expected_num_components):
     ('bcij', 'a'),
     ('abcij', ''),
 ])
-@pytest.mark.parametrize('impl', [
-    partial_sum_product,
-    modified_partial_sum_product,
-])
-def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2):
+def test_partial_sum_product(sum_op, prod_op, inputs, plates, vars1, vars2):
     inputs = inputs.split(',')
     factors = [random_tensor(OrderedDict((d, Bint[2]) for d in ds)) for ds in inputs]
     plates = frozenset(plates)
     vars1 = frozenset(vars1)
     vars2 = frozenset(vars2)
 
-    factors1 = impl(sum_op, prod_op, factors, vars1, plates)
-    factors2 = impl(sum_op, prod_op, factors1, vars2, plates)
+    factors1 = partial_sum_product(sum_op, prod_op, factors, vars1, plates)
+    factors2 = partial_sum_product(sum_op, prod_op, factors1, vars2, plates)
     actual = reduce(prod_op, factors2)
 
     expected = sum_product(sum_op, prod_op, factors, vars1 | vars2, plates)
-    assert_close(actual, expected)
-
-
-@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
-@pytest.mark.parametrize('inputs,plates,time,step', [('xn,xpcnt,cynti,cyzntij', 'nij', 't', {'p': 'c'})])
-@pytest.mark.parametrize('vars1,vars2', [
-    ('', 'xpcyzntij'),
-    ('zj', 'xpcynti'),
-    ('yzij', 'xpcnt'),
-    ('pcyztij', 'xn'),
-    ('xpcyztij', 'n'),
-])
-def test_markov_partial_sum_product(sum_op, prod_op, inputs, plates, time, step, vars1, vars2):
-    inputs = inputs.split(',')
-    factors = [random_tensor(OrderedDict((d, Bint[2]) if d != 't' else (d, Bint[10]) for d in ds)) for ds in inputs]
-    plates = frozenset(plates)
-    vars1 = frozenset(vars1)
-    vars2 = frozenset(vars2)
-
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
-    actual = reduce(prod_op, factors2)
-
-    unrolled_factors = []
-    unrolled_plates = frozenset({'n'})
-    for f in factors:
-        if time in f.inputs:
-            for t in range(f.inputs[time].size):
-                arg_to_time = {}
-                for arg in f.inputs:
-                    if arg == time:
-                        arg_to_time[arg] = t
-                    elif arg in ['x', 'n']:
-                        pass
-                    elif arg in step.keys():
-                        arg_to_time[arg] = '{}_{}'.format(step[arg], t-1)
-                    else:
-                        arg_to_time[arg] = '{}_{}'.format(arg, t)
-                        if arg in plates:
-                            unrolled_plates |= frozenset({arg_to_time[arg]})
-                unrolled_factors.append(f(**arg_to_time))
-        else:
-            unrolled_factors.append(f)
-    unrolled_vars = frozenset()
-    for f in unrolled_factors:
-        unrolled_vars |= frozenset(f.inputs)
-    expected = sum_product(sum_op, prod_op, unrolled_factors, unrolled_vars, unrolled_plates)
-
-    assert_close(actual, expected)
-
-
-@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
-@pytest.mark.parametrize('inputs,plates,time,step', [('x,xpct,crst,csyti,cyztij', 'ij', 't', {'p': 'c', 'r': 's'})])
-@pytest.mark.parametrize('vars1,vars2', [
-    ('', 'xpcrsyztij'),
-    ('zj', 'xpcrsyti'),
-    ('yzij', 'xpcrst'),
-    ('pcrsyztij', 'x'),
-    ('xpcrsyztij', ''),
-])
-def test_markov_partial_sum_product_multi(sum_op, prod_op, inputs, plates, time, step, vars1, vars2):
-    inputs = inputs.split(',')
-    factors = [random_tensor(OrderedDict((d, Bint[2]) if d != 't' else (d, Bint[10]) for d in ds)) for ds in inputs]
-    plates = frozenset(plates)
-    vars1 = frozenset(vars1)
-    vars2 = frozenset(vars2)
-
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
-    actual = reduce(prod_op, factors2)
-
-    unrolled_factors = []
-    unrolled_plates = frozenset()
-    for f in factors:
-        if time in f.inputs:
-            for t in range(f.inputs[time].size):
-                arg_to_time = {}
-                for arg in f.inputs:
-                    if arg == time:
-                        arg_to_time[arg] = t
-                    elif arg == 'x':
-                        pass
-                    elif arg in step.keys():
-                        arg_to_time[arg] = '{}_{}'.format(step[arg], t-1)
-                    else:
-                        arg_to_time[arg] = '{}_{}'.format(arg, t)
-                        if arg in plates:
-                            unrolled_plates |= frozenset({arg_to_time[arg]})
-                unrolled_factors.append(f(**arg_to_time))
-        else:
-            unrolled_factors.append(f)
-
-    unrolled_vars = frozenset()
-    for f in unrolled_factors:
-        unrolled_vars |= frozenset(f.inputs)
-    expected = sum_product(sum_op, prod_op, unrolled_factors, unrolled_vars, unrolled_plates)
-
     assert_close(actual, expected)
 
 

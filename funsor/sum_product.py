@@ -93,66 +93,6 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
     return results
 
 
-def modified_partial_sum_product(
-        sum_op, prod_op, factors, eliminate=frozenset(),
-        plates=frozenset(), time=str(), step=None):
-    """
-    Modified partial sum-product that supports contraction of markov sites.
-
-    :return: a list of partially contracted Funsors.
-    :rtype: list
-    """
-    assert callable(sum_op)
-    assert callable(prod_op)
-    assert isinstance(factors, (tuple, list))
-    assert all(isinstance(f, Funsor) for f in factors)
-    assert isinstance(eliminate, frozenset)
-    assert isinstance(plates, frozenset)
-    sum_vars = eliminate - plates
-    plates |= frozenset(time)
-
-    var_to_ordinal = {}
-    ordinal_to_factors = defaultdict(list)
-    for f in factors:
-        ordinal = plates.intersection(f.inputs)
-        ordinal_to_factors[ordinal].append(f)
-        for var in sum_vars.intersection(f.inputs):
-            var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
-
-    ordinal_to_vars = defaultdict(set)
-    for var, ordinal in var_to_ordinal.items():
-        ordinal_to_vars[ordinal].add(var)
-
-    results = []
-    while ordinal_to_factors:
-        leaf = max(ordinal_to_factors, key=len)
-        leaf_factors = ordinal_to_factors.pop(leaf)
-        leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            if plates.intersection(group_vars):
-                group_vars = group_vars - plates
-                for k, v in step.items():
-                    group_vars -= frozenset(k) | frozenset(v)
-                f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
-                f = modified_sequential_sum_product(sum_op, prod_op, f, time, step)
-                f = f.reduce(sum_op, frozenset(step.values()))
-                f = f.reduce(sum_op, frozenset(step.keys()))
-            else:
-                f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
-            remaining_sum_vars = sum_vars.intersection(f.inputs)
-            if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf & eliminate - frozenset(time)))
-            else:
-                new_plates = frozenset().union(
-                    *(var_to_ordinal[v] for v in remaining_sum_vars))
-                if new_plates == leaf:
-                    raise ValueError("intractable!")
-                f = f.reduce(prod_op, leaf - new_plates - frozenset(time))
-                ordinal_to_factors[new_plates].append(f)
-
-    return results
-
-
 def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
     """
     Performs sum-product contraction of a collection of factors.
