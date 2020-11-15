@@ -404,11 +404,17 @@ def test_generic_distribution_to_funsor(case):
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
     assert funsor_dist.inputs["value"] == expected_value_domain
 
+    while isinstance(funsor_dist, (funsor.terms.Binary, funsor.cnf.Contraction)):
+        funsor_dist_terms = (funsor_dist.lhs, funsor_dist.rhs) if isinstance(funsor_dist, funsor.terms.Binary) \
+            else funsor_dist.terms
+        funsor_dist = [term for term in funsor_dist_terms
+                       if isinstance(term, (funsor.distribution.Distribution, funsor.terms.Independent))][0]
+
     actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
 
     assert isinstance(actual_dist, backend_dist.Distribution)
     assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
-    while isinstance(raw_dist, backend_dist.Independent):
+    while isinstance(raw_dist, backend_dist.Independent) or type(raw_dist) == backend_dist.TransformedDistribution:
         raw_dist = raw_dist.base_dist
         actual_dist = actual_dist.base_dist
         assert isinstance(actual_dist, backend_dist.Distribution)

@@ -21,7 +21,7 @@ from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
                            ignore_jit_warnings, numeric_array, stack)
-from funsor.terms import Funsor, FunsorMeta, Independent, Lebesgue, Number, Variable, \
+from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, \
     eager, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
@@ -312,17 +312,17 @@ def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
 
 # converts TransformedDistributions
 def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
-    TransformedDistribution = getattr(import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist,
-                                      "TransformedDistribution")
+    dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
     base_dist, transforms = backend_dist, []
-    while isinstance(base_dist, TransformedDistribution):
+    while isinstance(base_dist, dist_module.TransformedDistribution):
         transforms = base_dist.transforms + transforms
         base_dist = base_dist.base_dist
     funsor_base_dist = to_funsor(base_dist, output=output, dim_to_name=dim_to_name)
-    inv_transform = functools.reduce(
-        lambda expr, tfm: to_funsor(tfm, expr.output).op.inv(expr),
-        transforms, to_funsor("value", output=funsor_base_dist.inputs["value"]))
-    return (Lebesgue("value", funsor_base_dist.inputs["value"]) + funsor_base_dist)(value=inv_transform)
+    # TODO make this work with transforms that change the output type
+    transform = to_funsor(dist_module.transforms.ComposeTransform(transforms),
+                          funsor_base_dist.inputs["value"], dim_to_name)
+    _, inv_transform, ldj = funsor.delta.solve(transform, to_funsor("value", funsor_base_dist.inputs["value"]))
+    return -ldj + funsor_base_dist(value=inv_transform)
 
 
 class CoerceDistributionToFunsor:

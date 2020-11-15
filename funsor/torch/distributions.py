@@ -309,7 +309,6 @@ def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=N
     return expr
 
 
-to_funsor.register(torch.distributions.Distribution)(backenddist_to_funsor)
 to_funsor.register(torch.distributions.Independent)(indepdist_to_funsor)
 to_funsor.register(MaskedDistribution)(maskeddist_to_funsor)
 to_funsor.register(torch.distributions.TransformedDistribution)(transformeddist_to_funsor)
