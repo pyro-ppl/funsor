@@ -185,7 +185,7 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
 
 def modified_sequential_sum_product(sum_op, prod_op, trans, time, step=frozenset(), window=1):
     """
-    Parallel-scan algorithm. For :math:`\bigotimes` consists of
+    Parallel-scan algorithm. For :math:`\bigotimes` consisting of
     positional renaming of variables and contraction operations.
     
     .. math::
@@ -205,14 +205,14 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step=frozenset
        a_{i} \bigotimes a_{j} = f^{(x_{i},x_{j-1})}_{x_{i-1}} f^{x_{j}}_{(x_{i},x_{j-1})} = f^{x_{j}}_{x_{i-1}}
 
        a_{t} \bigotimes a_{t+1} = f^{x_{t}}_{x_{t-1}} f^{x_{t+1}}_{x_{t}} = f^{x_{t+1}}_{x_{t-1}}
-    
+
+    Has an interface compatible with `sequential_sum_product`.
 
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
     :param ~funsor.terms.Funsor trans: A transition funsor.
-    :param Variable time: The time input dimension.
-    :param dict step: A dict mapping previous variables to current variables.
-        This can contain multiple pairs of prev->curr variable names.
+    :param str or Variable time: The time input dimension.
+    :param frozenset or dict step: Names in a sequential order for markov variables.
     """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
@@ -250,11 +250,10 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step=frozenset
                 for i, v in enumerate(values):
                     old_to_new[v] = ''.join(values[max(0, i+w+1-window):i+w+1])
             new_trans = new_trans + trans(**{time: Slice(time, w, duration, window)}, **old_to_new)
-        duration = new_duration
-        trans = new_trans
-        step = new_step
+        duration, trans, step = new_duration, new_trans, new_step
 
     # variable renaming
+    # TODO optimize the code
     drop = tuple("_drop_{}_window_{}".format(i, w) for w in range(window) for i in range(len(step)))
     prev = tuple(s[w] for w in range(window) for s in step)
     curr = tuple(s[window+w] for w in range(window) for s in step)
@@ -274,6 +273,9 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step=frozenset
             contracted = Cat(time, (contracted, extra))
         trans = contracted
         duration = (duration + 1) // 2
+
+    # convert contracted new_trans to old trans
+    # TODO optimize the code
     curr_to_drop = frozenset(
             key for (key, value) in curr_to_drop.items()
             if not value.endswith('_window_{}'.format(window-1)))
