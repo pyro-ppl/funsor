@@ -12,7 +12,7 @@ import funsor
 import funsor.ops as ops
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.interpreter import interpretation
-from funsor.terms import eager, lazy, to_data, to_funsor
+from funsor.terms import eager, lazy, normalize, reflect, to_data, to_funsor
 from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_scale_tril, xfail_if_not_found, xfail_if_not_implemented  # noqa: F401,E501
 from funsor.util import get_backend
 
@@ -35,6 +35,15 @@ if get_backend() != "numpy":
             raise ValueError(attr)
 
     FAKES = _fakes()
+
+
+def normalize_with_subs(cls, *args):
+    result = normalize.dispatch(cls, *args)(*args)
+    if result is None:
+        result = lazy.dispatch(cls, *args)(*args)
+    if result is None:
+        result = reflect(cls, *args)
+    return result
 
 
 ##################################################
@@ -400,14 +409,12 @@ def test_generic_distribution_to_funsor(case):
         raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(lazy):
+    with interpretation(normalize_with_subs):
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
     assert funsor_dist.inputs["value"] == expected_value_domain
 
-    while isinstance(funsor_dist, (funsor.terms.Binary, funsor.cnf.Contraction)):
-        funsor_dist_terms = (funsor_dist.lhs, funsor_dist.rhs) if isinstance(funsor_dist, funsor.terms.Binary) \
-            else funsor_dist.terms
-        funsor_dist = [term for term in funsor_dist_terms
+    while isinstance(funsor_dist, funsor.cnf.Contraction):
+        funsor_dist = [term for term in funsor_dist.terms
                        if isinstance(term, (funsor.distribution.Distribution, funsor.terms.Independent))][0]
 
     actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
@@ -433,7 +440,7 @@ def test_generic_log_prob(case, use_lazy):
         raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(lazy if use_lazy else eager):
+    with interpretation(normalize_with_subs if use_lazy else eager):
         # some distributions have nontrivial eager patterns
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
     expected_inputs = {name: funsor.Bint[raw_dist.batch_shape[dim]] for dim, name in dim_to_name.items()}
@@ -458,7 +465,7 @@ def test_generic_enumerate_support(case, expand):
         raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(lazy):
+    with interpretation(normalize_with_subs):
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
     assert getattr(raw_dist, "has_enumerate_support", False) == getattr(funsor_dist, "has_enumerate_support", False)
@@ -478,7 +485,7 @@ def test_generic_sample(case, sample_shape):
         raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(sample_shape + raw_dist.batch_shape)
-    with interpretation(lazy):
+    with interpretation(normalize_with_subs):
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
     sample_inputs = OrderedDict((dim_to_name[dim - len(raw_dist.batch_shape)], funsor.Bint[sample_shape[dim]])
@@ -502,10 +509,11 @@ def test_generic_stats(case, statistic):
         raw_dist = eval(case.raw_dist)
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(lazy):
+    with interpretation(normalize_with_subs):
         funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
-    with xfail_if_not_implemented(msg="entropy not implemented for some distributions"):
+    with xfail_if_not_implemented(msg="entropy not implemented for some distributions"), \
+            xfail_if_not_found(msg="stats not implemented yet for TransformedDist"):
         actual_stat = getattr(funsor_dist, statistic)()
 
     expected_stat_raw = getattr(raw_dist, statistic)
