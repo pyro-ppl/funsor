@@ -22,7 +22,6 @@ from funsor.sum_product import (
     modified_partial_sum_product,
     sarkka_bilmes_product,
     sequential_sum_product,
-    modified_sequential_sum_product,
     sum_product
 )
 from funsor.tensor import Tensor, get_default_prototype
@@ -221,7 +220,6 @@ def test_markov_partial_sum_product_multi(sum_op, prod_op, inputs, plates, time,
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
     naive_sequential_sum_product,
-    modified_sequential_sum_product,
     MarkovProduct,
     partial(mixed_sequential_sum_product, num_segments=2),
     partial(mixed_sequential_sum_product, num_segments=3),
@@ -270,7 +268,6 @@ def test_sequential_sum_product(impl, sum_op, prod_op, batch_inputs, state_domai
 @pytest.mark.parametrize('impl', [
     sequential_sum_product,
     naive_sequential_sum_product,
-    modified_sequential_sum_product,
     MarkovProduct,
     partial(mixed_sequential_sum_product, num_segments=2),
     partial(mixed_sequential_sum_product, num_segments=3),
@@ -314,11 +311,7 @@ def test_sequential_sum_product_multi(impl, x_domain, y_domain, batch_inputs, nu
 
 @pytest.mark.parametrize("num_steps", [1, 2, 3, 10])
 @pytest.mark.parametrize("dim", [1, 2, 3])
-@pytest.mark.parametrize('impl', [
-    sequential_sum_product,
-    modified_sequential_sum_product,
-])
-def test_sequential_sum_product_bias_1(impl, num_steps, dim):
+def test_sequential_sum_product_bias_1(num_steps, dim):
     time = Variable("time", Bint[num_steps])
     bias_dist = random_gaussian(OrderedDict([
         ("bias", Reals[dim]),
@@ -336,7 +329,7 @@ def test_sequential_sum_product_bias_1(impl, num_steps, dim):
     factor = trans + obs + bias_dist
     assert set(factor.inputs) == {"time", "bias", "x_prev", "x_curr"}
 
-    result = impl(ops.logaddexp, ops.add, factor, time, {"x_prev": "x_curr"})
+    result = sequential_sum_product(ops.logaddexp, ops.add, factor, time, {"x_prev": "x_curr"})
     assert set(result.inputs) == {"bias", "x_prev", "x_curr"}
 
 
@@ -344,11 +337,7 @@ def test_sequential_sum_product_bias_1(impl, num_steps, dim):
 @pytest.mark.parametrize("num_steps", [1, 2, 3, 10])
 @pytest.mark.parametrize("num_sensors", [2])
 @pytest.mark.parametrize("dim", [1, 2, 3])
-@pytest.mark.parametrize('impl', [
-    sequential_sum_product,
-    modified_sequential_sum_product,
-])
-def test_sequential_sum_product_bias_2(impl, num_steps, num_sensors, dim):
+def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
     time = Variable("time", Bint[num_steps])
     bias = Variable("bias", Reals[num_sensors, dim])
     bias_dist = random_gaussian(OrderedDict([
@@ -373,7 +362,7 @@ def test_sequential_sum_product_bias_2(impl, num_steps, num_sensors, dim):
         factor = trans + obs(bias=bias[sensor_id]) + bias_dist
     assert set(factor.inputs) == {"time", "bias", "x_prev", "x_curr"}
 
-    result = impl(ops.logaddexp, ops.add, factor, time, {"x_prev": "x_curr"})
+    result = sequential_sum_product(ops.logaddexp, ops.add, factor, time, {"x_prev": "x_curr"})
     assert set(result.inputs) == {"bias", "x_prev", "x_curr"}
 
 
@@ -391,23 +380,6 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
     actual = sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars,
                                    num_periods=num_periods)
     assert dict(actual.inputs) == expected_inputs
-
-    actual = actual.align(tuple(expected.inputs.keys()))
-    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
-
-
-def _check_modified_sequential(trans, expected_inputs, global_vars, step, window):
-
-    sum_op, prod_op = ops.logaddexp, ops.add
-
-    assert "time" in trans.inputs
-    duration = trans.inputs["time"].dtype
-    time_var = Variable("time", Bint[duration])
-
-    actual = modified_sequential_sum_product(sum_op, prod_op, trans, "time", step, window)
-
-    expected = naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars)
-    assert dict(expected.inputs) == expected_inputs
 
     actual = actual.align(tuple(expected.inputs.keys()))
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -446,9 +418,6 @@ def test_sarkka_bilmes_example_1(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = frozenset({('Pa', 'a'), ('Pb', 'b')})
-    _check_modified_sequential(trans, expected_inputs, frozenset(), step, 1)
-
 
 @pytest.mark.parametrize("duration", [2, 4, 6, 8])
 def test_sarkka_bilmes_example_2(duration):
@@ -473,9 +442,6 @@ def test_sarkka_bilmes_example_2(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = frozenset({('PPa', 'Pa', 'a'), ('PPb', 'Pb', 'b'), ('PPc', 'Pc', 'c')})
-    _check_modified_sequential(trans, expected_inputs, frozenset(), step, 2)
-
 
 @pytest.mark.parametrize("duration", [2, 4, 6, 8])
 def test_sarkka_bilmes_example_3(duration):
@@ -495,9 +461,6 @@ def test_sarkka_bilmes_example_3(duration):
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
-
-    step = frozenset({('PPa', 'Pa', 'a'), ('PPc', 'Pc', 'c')})
-    _check_modified_sequential(trans, expected_inputs, frozenset(), step, 2)
 
 
 @pytest.mark.parametrize("duration", [3, 6, 9])
@@ -519,9 +482,6 @@ def test_sarkka_bilmes_example_4(duration):
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
-    step = frozenset({('PPPa', 'PPa', 'Pa', 'a')})
-    _check_modified_sequential(trans, expected_inputs, frozenset(), step, 3)
-
 
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
 def test_sarkka_bilmes_example_5(duration):
@@ -542,9 +502,6 @@ def test_sarkka_bilmes_example_5(duration):
     global_vars = frozenset(["x"])
 
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
-
-    step = frozenset({('Pa', 'a')})
-    _check_modified_sequential(trans, expected_inputs, global_vars, step, 1)
 
 
 @pytest.mark.parametrize("duration", [3, 6, 9])
@@ -569,9 +526,6 @@ def test_sarkka_bilmes_example_6(duration):
     global_vars = frozenset(["x"])
 
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
-
-    step = frozenset({('PPPa', 'PPa', 'Pa', 'a')})
-    _check_modified_sequential(trans, expected_inputs, global_vars, step, 3)
 
 
 @pytest.mark.parametrize("time_input", [("time", Bint[t]) for t in range(2, 10)])
