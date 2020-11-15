@@ -195,7 +195,7 @@ def test_markov_partial_sum_product_multi(sum_op, prod_op, inputs, plates, time,
                 unrolled_factors.append(f(**arg_to_time))
         else:
             unrolled_factors.append(f)
-            # unrolled_plates |= I
+
     unrolled_vars = frozenset()
     for f in unrolled_factors:
         unrolled_vars |= frozenset(f.inputs)

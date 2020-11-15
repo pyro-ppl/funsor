@@ -78,14 +78,7 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            nonmarkov_vars = frozenset(v for v in group_vars if not v.endswith("curr"))
-            markov_vars = {v.replace("curr", "prev"): v for v in group_vars if v.endswith("curr")}
-            f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
-            if markov_vars:
-                time = Variable("time", f.inputs["time"])
-                f = sequential_sum_product(sum_op, prod_op, f, time, markov_vars)
-                f = f.reduce(sum_op, frozenset(markov_vars.values()))
-                f = f.reduce(sum_op, frozenset(markov_vars.keys()))
+            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate))
@@ -278,8 +271,7 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1
     if isinstance(step, dict):
         step = tuple(step.items())
     assert isinstance(window, int)
-    # assert all(isinstance(k, str) for k in step.keys())
-    # assert all(isinstance(v, str) for v in step.values())
+    assert all(len(s) == window + 1 for s in step)
     if time.name in trans.inputs:
         assert time.output == trans.inputs[time.name]
 
@@ -290,7 +282,7 @@ def modified_sequential_sum_product(sum_op, prod_op, trans, time, step, window=1
 
     if window > 1:
         new_duration = duration // window
-        new_trans = Number(0., 'real')
+        new_trans = Number(0., 'real') 
         for w in range(window):
             old_to_new = {}
             for values in step:
