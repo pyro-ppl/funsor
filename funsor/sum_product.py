@@ -110,6 +110,10 @@ def modified_partial_sum_product(
     assert isinstance(plates, frozenset)
     sum_vars = eliminate - plates
     plates |= frozenset({time})
+    markov_vars = frozenset()
+    if step is not None:
+        for k, v in step.items():
+            markov_vars |= frozenset({k}) | frozenset({v})
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
@@ -129,10 +133,9 @@ def modified_partial_sum_product(
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
+            group_vars -= markov_vars
             if plates.intersection(group_vars):
                 group_vars = group_vars - plates
-                for k, v in step.items():
-                    group_vars -= frozenset({k}) | frozenset({v})
                 f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
                 f = sequential_sum_product(sum_op, prod_op, f, Variable(time, f.inputs[time]), step)
                 f = f.reduce(sum_op, frozenset(step.values()))
@@ -140,7 +143,7 @@ def modified_partial_sum_product(
             else:
                 f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
             # bug
-            remaining_sum_vars = sum_vars.intersection(f.inputs)
+            remaining_sum_vars = sum_vars.intersection(f.inputs) - markov_vars
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate - frozenset({time})))
             else:
