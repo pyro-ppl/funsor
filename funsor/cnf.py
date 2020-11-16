@@ -23,7 +23,6 @@ from funsor.terms import (
     Align,
     Binary,
     Funsor,
-    Lebesgue,
     Number,
     Reduce,
     Subs,
@@ -111,12 +110,10 @@ class Contraction(Funsor):
                 # Sample variables greedily in order of the terms in which they appear.
                 for term in self.terms:
                     greedy_vars = sampled_vars.intersection(term.inputs)
-                    if greedy_vars and not isinstance(term, Lebesgue):
+                    if greedy_vars:
                         break
                 greedy_terms, terms = [], []
                 for term in self.terms:
-                    if isinstance(term, Lebesgue) and term.name in sampled_vars:
-                        continue
                     (terms if greedy_vars.isdisjoint(term.inputs) else greedy_terms).append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
@@ -383,13 +380,6 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
         if not new_terms:  # everything was a unit
             new_terms = (terms[0],)
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
-
-    if any(isinstance(t, Lebesgue) for t in terms):
-        dx_terms = tuple(t for t in terms if isinstance(t, Lebesgue) and t.name not in reduced_vars)
-        dx_terms = tuple(sorted(dx_terms, key=lambda t: t.name))
-        new_terms = dx_terms + tuple(t for t in terms if not isinstance(t, Lebesgue))
-        if len(new_terms) != len(terms) or not all(new_term is term for new_term, term in zip(new_terms, terms)):
-            return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     for i, v in enumerate(terms):
 
