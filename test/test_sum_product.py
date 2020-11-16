@@ -106,21 +106,34 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     assert_close(actual, expected)
 
 
-def _expected_hmm_example(
-        sum_op, prod_op, factors, time, step, plates,
-        global_plates, local_plates, local_vars, markov_vars):
+def _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+                          time, duration, step):
 
-    local_factors = [f for f in factors if "time" in f.inputs]
-    global_factors = [f for f in factors if "time" not in f.inputs]
-    markov_factors = partial_sum_product(sum_op, prod_op, local_factors, local_vars | local_plates, plates)
-    trans = reduce(prod_op, markov_factors)
-    result = sequential_sum_product(sum_op, prod_op, trans, Variable(time, trans.inputs[time]), step)
-    result = result.reduce(sum_op, markov_vars)
-    result = result.reduce(prod_op, global_plates)
-    global_factors.append(result)
-    result = reduce(prod_op, global_factors)
+    step = OrderedDict(sorted(step.items()))
+    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
+    prev_to_drop = dict(zip(step.keys(), drop))
+    curr_to_drop = dict(zip(step.values(), drop))
+    drop = frozenset(drop)
 
-    return result
+    unrolled_factors = []
+    reduce_vars = global_vars | plates
+    reduce_vars |= frozenset(('{}_{}'.format(var, t+1) for var in local_vars for t in range(5)))
+    reduce_vars |= frozenset(('{}_{}'.format(curr_to_drop[var], t+1) for var in curr_to_drop.keys() for t in range(5)))
+    reduce_vars |= frozenset(('{}_{}'.format(prev_to_drop[var], t) for var in prev_to_drop.keys() for t in range(5)))
+    for factor in factors:
+        if time in factor.inputs:
+            slice_factors = [factor(
+                time=t,
+                **{var: '{}_{}'.format(var, t+1) for var in local_vars},
+                **{var: '{}_{}'.format(curr_to_drop[var], t+1) for var in curr_to_drop.keys()},
+                **{var: '{}_{}'.format(prev_to_drop[var], t) for var in prev_to_drop.keys()}
+                ) for t in range(factor.inputs[time].size)]
+            unrolled_factors.extend(slice_factors)
+        else:
+            unrolled_factors.append(factor)
+    expected = sum_product(sum_op, prod_op, unrolled_factors, reduce_vars, plates)
+
+    return expected
 
 
 @pytest.mark.parametrize('vars1,vars2', [
@@ -158,72 +171,16 @@ def test_partial_sum_product_hmm_example_1(sum_op, prod_op, vars1, vars2):
     factors = [probs_x, probs_y, x, y]
     time = "time"
     step = {"x_prev": "x_curr"}
-    global_plates = frozenset({"sequences"})
-    local_plates = frozenset({"tones"})
-    plates = global_plates | local_plates
+    plates = frozenset({"sequences", "tones"})
+    global_vars = frozenset()
     local_vars = frozenset({"y_curr"})
-    markov_vars = frozenset(step.keys()) | frozenset(step.values())
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
     actual = reduce(prod_op, factors2)
 
-    expected = _expected_hmm_example(
-            sum_op, prod_op, factors, time, step, plates,
-            global_plates, local_plates, local_vars, markov_vars)
-
-    assert_close(actual, expected)
-
-
-@pytest.mark.parametrize('vars1,vars2', [
-    (frozenset(),
-        frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"})),
-    (frozenset({"tones"}),
-        frozenset({"sequences", "time", "x_prev", "x_curr", "y_prev", "y_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
-        frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
-        frozenset()),
-])
-@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
-def test_partial_sum_product_hmm_example_2(sum_op, prod_op, vars1, vars2):
-    duration, x_dim, y_dim = 5, 2, 3
-
-    probs_x = random_tensor(OrderedDict({}))
-    probs_y = random_tensor(OrderedDict({}))
-
-    x = random_tensor(OrderedDict({
-        "sequences": Bint[2],
-        "time": Bint[duration],
-        "x_prev": Bint[x_dim],
-        "x_curr": Bint[x_dim],
-    }))
-
-    y = random_tensor(OrderedDict({
-        "sequences": Bint[2],
-        "time": Bint[duration],
-        "tones": Bint[4],
-        "x_curr": Bint[x_dim],
-        "y_prev": Bint[y_dim],
-        "y_curr": Bint[y_dim],
-    }))
-
-    factors = [probs_x, probs_y, x, y]
-    time = "time"
-    step = {"x_prev": "x_curr", "y_prev": "y_curr"}
-    global_plates = frozenset({"sequences"})
-    local_plates = frozenset({"tones"})
-    plates = global_plates | local_plates
-    local_vars = frozenset()
-    markov_vars = frozenset(step.keys()) | frozenset(step.values())
-
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
-    actual = reduce(prod_op, factors2)
-
-    expected = _expected_hmm_example(
-            sum_op, prod_op, factors, time, step, plates,
-            global_plates, local_plates, local_vars, markov_vars)
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+                                     time, duration, step)
 
     assert_close(actual, expected)
 
@@ -272,19 +229,16 @@ def test_partial_sum_product_hmm_example_3(sum_op, prod_op, vars1, vars2):
     factors = [probs_w, probs_x, probs_y, w, x, y]
     time = "time"
     step = {"x_prev": "x_curr", "w_prev": "w_curr"}
-    global_plates = frozenset({"sequences"})
-    local_plates = frozenset({"tones"})
-    plates = global_plates | local_plates
+    plates = frozenset({"sequences", "tones"})
+    global_vars = frozenset()
     local_vars = frozenset({"y_curr"})
-    markov_vars = frozenset(step.keys()) | frozenset(step.values())
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
     actual = reduce(prod_op, factors2)
 
-    expected = _expected_hmm_example(
-            sum_op, prod_op, factors, time, step, plates,
-            global_plates, local_plates, local_vars, markov_vars)
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+                                     time, duration, step)
 
     assert_close(actual, expected)
 
@@ -334,116 +288,16 @@ def test_partial_sum_product_hmm_example_4(sum_op, prod_op, vars1, vars2):
     factors = [probs_w, probs_x, probs_y, w, x, y]
     time = "time"
     step = {"x_prev": "x_curr", "w_prev": "w_curr"}
-    global_plates = frozenset({"sequences"})
-    local_plates = frozenset({"tones"})
-    plates = global_plates | local_plates
+    plates = frozenset({"sequences", "tones"})
+    global_vars = frozenset()
     local_vars = frozenset({"y_curr"})
-    markov_vars = frozenset(step.keys()) | frozenset(step.values())
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
     actual = reduce(prod_op, factors2)
 
-    expected = _expected_hmm_example(
-            sum_op, prod_op, factors, time, step, plates,
-            global_plates, local_plates, local_vars, markov_vars)
-
-    assert_close(actual, expected)
-
-
-@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
-@pytest.mark.parametrize('inputs,plates,time,step', [('xn,xpcnt,cynti,cyzntij', 'nij', 't', {'p': 'c'})])
-@pytest.mark.parametrize('vars1,vars2', [
-    ('', 'xpcyzntij'),
-    ('zj', 'xpcynti'),
-    ('yzij', 'xpcnt'),
-    ('pcyztij', 'xn'),
-    ('xpcyztij', 'n'),
-])
-def test_markov_partial_sum_product(sum_op, prod_op, inputs, plates, time, step, vars1, vars2):
-    inputs = inputs.split(',')
-    factors = [random_tensor(OrderedDict((d, Bint[2]) if d != 't' else (d, Bint[10]) for d in ds)) for ds in inputs]
-    plates = frozenset(plates)
-    vars1 = frozenset(vars1)
-    vars2 = frozenset(vars2)
-
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
-    actual = reduce(prod_op, factors2)
-
-    unrolled_factors = []
-    unrolled_plates = frozenset({'n'})
-    for f in factors:
-        if time in f.inputs:
-            for t in range(f.inputs[time].size):
-                arg_to_time = {}
-                for arg in f.inputs:
-                    if arg == time:
-                        arg_to_time[arg] = t
-                    elif arg in ['x', 'n']:
-                        pass
-                    elif arg in step.keys():
-                        arg_to_time[arg] = '{}_{}'.format(step[arg], t-1)
-                    else:
-                        arg_to_time[arg] = '{}_{}'.format(arg, t)
-                        if arg in plates:
-                            unrolled_plates |= frozenset({arg_to_time[arg]})
-                unrolled_factors.append(f(**arg_to_time))
-        else:
-            unrolled_factors.append(f)
-    unrolled_vars = frozenset()
-    for f in unrolled_factors:
-        unrolled_vars |= frozenset(f.inputs)
-    expected = sum_product(sum_op, prod_op, unrolled_factors, unrolled_vars, unrolled_plates)
-
-    assert_close(actual, expected)
-
-
-@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
-@pytest.mark.parametrize('inputs,plates,time,step', [('x,xpct,crst,csyti,cyztij', 'ij', 't', {'p': 'c', 'r': 's'})])
-@pytest.mark.parametrize('vars1,vars2', [
-    ('', 'xpcrsyztij'),
-    ('zj', 'xpcrsyti'),
-    ('yzij', 'xpcrst'),
-    ('pcrsyztij', 'x'),
-    ('xpcrsyztij', ''),
-])
-def test_markov_partial_sum_product_multi(sum_op, prod_op, inputs, plates, time, step, vars1, vars2):
-    inputs = inputs.split(',')
-    factors = [random_tensor(OrderedDict((d, Bint[2]) if d != 't' else (d, Bint[5]) for d in ds)) for ds in inputs]
-    plates = frozenset(plates)
-    vars1 = frozenset(vars1)
-    vars2 = frozenset(vars2)
-
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
-    actual = reduce(prod_op, factors2)
-
-    unrolled_factors = []
-    unrolled_plates = frozenset()
-    for f in factors:
-        if time in f.inputs:
-            for t in range(f.inputs[time].size):
-                arg_to_time = {}
-                for arg in f.inputs:
-                    if arg == time:
-                        arg_to_time[arg] = t
-                    elif arg == 'x':
-                        pass
-                    elif arg in step.keys():
-                        arg_to_time[arg] = '{}_{}'.format(step[arg], t-1)
-                    else:
-                        arg_to_time[arg] = '{}_{}'.format(arg, t)
-                        if arg in plates:
-                            unrolled_plates |= frozenset({arg_to_time[arg]})
-                unrolled_factors.append(f(**arg_to_time))
-        else:
-            unrolled_factors.append(f)
-
-    unrolled_vars = frozenset()
-    for f in unrolled_factors:
-        unrolled_vars |= frozenset(f.inputs)
-    expected = sum_product(sum_op, prod_op, unrolled_factors, unrolled_vars, unrolled_plates)
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+                                     time, duration, step)
 
     assert_close(actual, expected)
 

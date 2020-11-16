@@ -78,6 +78,7 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
+            # breakpoint()
             f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
@@ -108,12 +109,12 @@ def modified_partial_sum_product(
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
-    sum_vars = eliminate - plates
     plates |= frozenset({time})
-    markov_vars = frozenset()
+    sum_vars = eliminate - plates
+    all_markov_vars = frozenset()
     if step is not None:
         for k, v in step.items():
-            markov_vars |= frozenset({k}) | frozenset({v})
+            all_markov_vars |= frozenset({k}) | frozenset({v})
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
@@ -133,17 +134,16 @@ def modified_partial_sum_product(
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            group_vars -= markov_vars
-            if plates.intersection(group_vars):
-                group_vars = group_vars - plates
-                f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
-                f = sequential_sum_product(sum_op, prod_op, f, Variable(time, f.inputs[time]), step)
-                f = f.reduce(sum_op, frozenset(step.values()))
-                f = f.reduce(sum_op, frozenset(step.keys()))
-            else:
-                f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
+            #breakpoint()
+            nonmarkov_vars = group_vars - all_markov_vars
+            markov_vars = group_vars.intersection(all_markov_vars)
+            f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
+            if markov_vars:
+                local_step = {k: v for (k, v) in step.items() if k in markov_vars}
+                f = sequential_sum_product(sum_op, prod_op, f, Variable(time, f.inputs[time]), local_step)
+                f = f.reduce(sum_op, markov_vars)
             # bug
-            remaining_sum_vars = sum_vars.intersection(f.inputs) - markov_vars
+            remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate - frozenset({time})))
             else:
@@ -151,11 +151,10 @@ def modified_partial_sum_product(
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
-                f = f.reduce(prod_op, leaf - new_plates - frozenset({time}))
+                f = f.reduce(prod_op, leaf - new_plates)
                 ordinal_to_factors[new_plates].append(f)
 
     return results
-
 
 def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
     """
