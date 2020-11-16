@@ -107,6 +107,57 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
 
 
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_partial_sum_product_hmm_example_1(sum_op, prod_op):
+    duration, x_dim, y_dim = 5, 2, 3
+
+    probs_x = random_tensor(OrderedDict({}))
+    probs_y = random_tensor(OrderedDict({}))
+
+    x = random_tensor(OrderedDict({
+        "sequences": Bint[2],
+        "time": Bint[duration],
+        "x_prev": Bint[x_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    y = random_tensor(OrderedDict({
+        "sequences": Bint[2],
+        "time": Bint[duration],
+        "tones": Bint[4],
+        "x_curr": Bint[x_dim],
+    }))
+
+    factors = [probs_x, probs_y, x, y]
+    time = "time"
+    step = {"x_prev": "x_curr"}
+    global_plates = frozenset({"sequences"})
+    local_plates = frozenset({"tones"})
+    plates = global_plates | local_plates
+    global_vars = frozenset()
+    local_vars = frozenset()
+    markov_vars = frozenset(step.keys()) | frozenset(step.values())
+
+    vars1 = frozenset(x.inputs) | frozenset(y.inputs)
+    vars2 = frozenset()
+
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
+    actual = reduce(prod_op, factors2)
+
+    local_factors = [f for f in factors if "time" in f.inputs]
+    global_factors = [f for f in factors if "time" not in f.inputs]
+    markov_factors = partial_sum_product(sum_op, prod_op, local_factors, local_vars | local_plates, plates)
+    trans = reduce(prod_op, markov_factors)
+    result = sequential_sum_product(sum_op, prod_op, trans, Variable(time, trans.inputs[time]), step)
+    result = result.reduce(sum_op, markov_vars)
+    result = result.reduce(prod_op, global_plates)
+    global_factors.append(result)
+    expected = reduce(prod_op, global_factors)
+
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 @pytest.mark.parametrize('inputs,plates,time,step', [('xn,xpcnt,cynti,cyzntij', 'nij', 't', {'p': 'c'})])
 @pytest.mark.parametrize('vars1,vars2', [
     ('', 'xpcyzntij'),

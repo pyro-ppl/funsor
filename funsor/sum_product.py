@@ -109,7 +109,7 @@ def modified_partial_sum_product(
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
     sum_vars = eliminate - plates
-    plates |= frozenset(time)
+    plates |= frozenset({time})
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
@@ -132,22 +132,23 @@ def modified_partial_sum_product(
             if plates.intersection(group_vars):
                 group_vars = group_vars - plates
                 for k, v in step.items():
-                    group_vars -= frozenset(k) | frozenset(v)
+                    group_vars -= frozenset({k}) | frozenset({v})
                 f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
                 f = sequential_sum_product(sum_op, prod_op, f, Variable(time, f.inputs[time]), step)
                 f = f.reduce(sum_op, frozenset(step.values()))
                 f = f.reduce(sum_op, frozenset(step.keys()))
             else:
                 f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
+            # bug
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf & eliminate - frozenset(time)))
+                results.append(f.reduce(prod_op, leaf & eliminate - frozenset({time})))
             else:
                 new_plates = frozenset().union(
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
-                f = f.reduce(prod_op, leaf - new_plates - frozenset(time))
+                f = f.reduce(prod_op, leaf - new_plates - frozenset({time}))
                 ordinal_to_factors[new_plates].append(f)
 
     return results
