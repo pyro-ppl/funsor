@@ -341,34 +341,60 @@ for batch_shape in [(), (5,), (2, 3)]:
     DistTestCase(
         "backend_dist.Weibull(scale=case.scale, concentration=case.concentration)",
         (("scale", f"ops.exp(randn({batch_shape}))"), ("concentration", f"ops.exp(rand({batch_shape}))")),
-        funsor.Real
+        funsor.Real,
+        xfail=get_backend() != "torch",
     )
 
-    # TransformedDistribution
+    # TransformedDistributions
+    # ExpTransform
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.ExpTransform(),])",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
-        funsor.Real
+        funsor.Real,
+        xfail=get_backend() != "torch",
     )
+    # InverseTransform (log)
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.ExpTransform().inv,])",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
-        funsor.Real
+        funsor.Real,
+        xfail=get_backend() != "torch",
     )
+    # TanhTransform
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.TanhTransform(),])",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
-        funsor.Real
+        funsor.Real,
+        xfail=get_backend() != "torch",
     )
+    # AtanhTransform
+    DistTestCase(
+        "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.TanhTransform().inv,])",  # noqa: E501
+        (("low", f"0.5*rand({batch_shape})"), ("high", f"0.5 + 0.5*rand({batch_shape})")),
+        funsor.Real,
+        xfail=get_backend() != "torch",
+    )
+    # multiple transforms
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.TanhTransform(), backend_dist.transforms.ExpTransform()])",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
-        funsor.Real
+        funsor.Real,
+        xfail=get_backend() != "torch",
     )
+    # ComposeTransform
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), backend_dist.transforms.ComposeTransform([backend_dist.transforms.TanhTransform(), backend_dist.transforms.ExpTransform()]))",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
-        funsor.Real
+        funsor.Real,
+        xfail=get_backend() != "torch",
+    )
+
+    # SigmoidTransform (inversion not working)
+    DistTestCase(
+        "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.SigmoidTransform(),])",  # noqa: E501
+        (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
+        funsor.Real,
+        xfail=True,  # XXX failure to re-invert ops.sigmoid.inv, which is not atomic
     )
 
     # Independent
@@ -392,7 +418,7 @@ for batch_shape in [(), (5,), (2, 3)]:
             f"backend_dist.Independent(backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), backend_dist.transforms.ComposeTransform([backend_dist.transforms.TanhTransform(), backend_dist.transforms.ExpTransform()])), {len(indep_shape)})",  # noqa: E501
             (("low", f"rand({batch_shape + indep_shape})"), ("high", f"2. + rand({batch_shape + indep_shape})")),
             funsor.Reals[indep_shape],
-            xfail=True
+            xfail=True  # XXX to_funsor/to_data conversion is not yet reversible
         )
 
 
