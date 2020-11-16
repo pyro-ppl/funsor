@@ -187,6 +187,54 @@ def test_partial_sum_product_hmm_example_1(sum_op, prod_op, vars1, vars2):
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
+        frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
+        frozenset({"sequences"})),
+    (frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
+        frozenset()),
+])
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_partial_sum_product_hmm_example_2(sum_op, prod_op, vars1, vars2):
+    duration, x_dim, y_dim = 5, 2, 3
+
+    probs_x = random_tensor(OrderedDict({}))
+    probs_y = random_tensor(OrderedDict({}))
+
+    x = random_tensor(OrderedDict({
+        "sequences": Bint[2],
+        "time": Bint[duration],
+        "x_prev": Bint[x_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    y = random_tensor(OrderedDict({
+        "sequences": Bint[2],
+        "time": Bint[duration],
+        "tones": Bint[4],
+        "x_curr": Bint[x_dim],
+        "y_prev": Bint[y_dim],
+        "y_curr": Bint[y_dim],
+    }))
+
+    factors = [probs_x, probs_y, x, y]
+    time = "time"
+    step = {"x_prev": "x_curr", "y_prev": "y_curr"}
+    plates = frozenset({"sequences", "tones"})
+    global_vars = frozenset()
+    local_vars = frozenset()
+
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
+    actual = reduce(prod_op, factors2)
+
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+                                     time, duration, step)
+
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('vars1,vars2', [
+    (frozenset(),
         frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
     (frozenset({"tones", "y_curr"}),
         frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr"})),
@@ -421,6 +469,67 @@ def test_partial_sum_product_hmm_example_9(sum_op, prod_op, vars1, vars2):
     plates = frozenset({"sequences", "tones"})
     global_vars = frozenset({"a", "b"})
     local_vars = frozenset({"y_curr"})
+
+    # breakpoint()
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
+    actual = reduce(prod_op, factors2)
+
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+                                     time, duration, step)
+
+    assert_close(actual, expected)
+
+
+@pytest.mark.parametrize('vars1,vars2', [
+    (frozenset(),
+        frozenset({"sequences", "time", "w_curr", "tones", "x_prev", "x_curr", "y_prev", "y_curr"})),
+    (frozenset({"time", "w_curr", "tones", "x_prev", "x_curr", "y_prev", "y_curr"}),
+        frozenset({"sequences"})),
+    (frozenset({"sequences", "time", "w_curr", "tones", "x_prev", "x_curr", "y_prev", "y_curr"}),
+        frozenset()),
+])
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_partial_sum_product_hmm_example_10(sum_op, prod_op, vars1, vars2):
+    duration, x_dim, y_dim, w_dim = 5, 2, 3, 4
+
+    probs_x = random_tensor(OrderedDict({}))
+    probs_y = random_tensor(OrderedDict({}))
+    probs_w = random_tensor(OrderedDict({}))
+
+    w = random_tensor(OrderedDict({
+        "sequences": Bint[2],
+        "time": Bint[duration],
+        "w_curr": Bint[w_dim],
+    }))
+
+    x = random_tensor(OrderedDict({
+        "sequences": Bint[2],
+        "time": Bint[duration],
+        "tones": Bint[4],
+        "w_curr": Bint[w_dim],
+        "x_prev": Bint[x_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    y = random_tensor(OrderedDict({
+        "sequences": Bint[2],
+        "time": Bint[duration],
+        "tones": Bint[4],
+        "w_curr": Bint[w_dim],
+        "x_curr": Bint[x_dim],
+        "y_prev": Bint[y_dim],
+        "y_curr": Bint[y_dim],
+    }))
+
+    factors = [probs_w, probs_x, probs_y, w, x, y]
+    time = "time"
+    # step = {"x_prev": "x_curr"}
+    step = {"x_prev": "x_curr", "y_prev": "y_curr"}
+    plates = frozenset({"sequences", "tones"})
+    global_vars = frozenset()
+    local_vars = frozenset({"w_curr"})
+    # local_vars = frozenset({"w_curr", "y_curr"})
 
     # breakpoint()
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
