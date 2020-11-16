@@ -16,8 +16,8 @@ from multipledispatch.variadic import Variadic, isvariadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Bint, Domain, Real, Reals, RealsType, find_domain
-from funsor.interpreter import PatternMissingError, dispatched_interpretation, gensym, interpret
+from funsor.domains import Bint, Domain, Real, Reals, find_domain
+from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, lazy_property, pretty, quote
 
