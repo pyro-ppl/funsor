@@ -134,13 +134,13 @@ def modified_partial_sum_product(
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            #breakpoint()
+            # breakpoint()
             nonmarkov_vars = group_vars - all_markov_vars
             markov_vars = group_vars.intersection(all_markov_vars)
             f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
             if markov_vars:
-                local_step = {k: v for (k, v) in step.items() if k in markov_vars}
-                f = sequential_sum_product(sum_op, prod_op, f, Variable(time, f.inputs[time]), local_step)
+                # local_step = {k: v for (k, v) in step.items() if k in markov_vars}
+                f = sequential_sum_product(sum_op, prod_op, f, Variable(time, f.inputs[time]), step)
                 f = f.reduce(sum_op, markov_vars)
             # bug
             remaining_sum_vars = sum_vars.intersection(f.inputs)
@@ -151,7 +151,7 @@ def modified_partial_sum_product(
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
-                f = f.reduce(prod_op, leaf - new_plates)
+                f = f.reduce(prod_op, leaf - new_plates - frozenset({time}))
                 ordinal_to_factors[new_plates].append(f)
 
     return results
