@@ -99,9 +99,6 @@ def modified_partial_sum_product(
     """
     Modified partial sum-product that supports contraction of markov sites.
 
-    :return: a single contracted Funsor.
-    :rtype: :class:`~funsor.terms.Funsor`
-
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
     :param factors: A collection of funsors.
