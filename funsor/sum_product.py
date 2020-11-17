@@ -118,6 +118,8 @@ def modified_partial_sum_product(
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
+    assert isinstance(time, str)
+    assert isinstance(step, dict)
     sum_vars = eliminate - plates
     time_plate = frozenset({time})
     plates |= time_plate

@@ -599,7 +599,7 @@ def test_partial_sum_product_hmm_example_9(sum_op, prod_op, vars1, vars2):
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_partial_sum_product_hmm_example_10(sum_op, prod_op, vars1, vars2):
     x_dim, y_dim, w_dim = 2, 2, 3
-    sequences, duration, tones = 2, 5, 3
+    sequences, duration, tones = 2, 4, 2
 
     probs_x = random_tensor(OrderedDict({}))
     probs_y = random_tensor(OrderedDict({}))
