@@ -95,10 +95,23 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
 
 def modified_partial_sum_product(
         sum_op, prod_op, factors, eliminate=frozenset(),
-        plates=frozenset(), time=str(), step=None):
+        plates=frozenset(), time=str(), step=dict()):
     """
     Modified partial sum-product that supports contraction of markov sites.
 
+    :return: a single contracted Funsor.
+    :rtype: :class:`~funsor.terms.Funsor`
+
+    :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
+    :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
+    :param factors: A collection of funsors.
+    :type factors: tuple or list
+    :param frozenset eliminate: A set of free variables to eliminate,
+        including both sum variables and product (time) variable.
+    :param frozenset plates: A set of plates.
+    :param str time: Name of a time variable.
+    :param dict step: A dict mapping previous variables to current variables.
+        This can contain multiple pairs of prev->curr variable names.
     :return: a list of partially contracted Funsors.
     :rtype: list
     """
@@ -108,14 +121,10 @@ def modified_partial_sum_product(
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
-    time_plate = frozenset({time})
     sum_vars = eliminate - plates
+    time_plate = frozenset({time})
     plates |= time_plate
-    all_markov_vars = frozenset()
-    if step is not None:
-        for k, v in step.items():
-            all_markov_vars |= frozenset({k}) | frozenset({v})
-        all_markov_vars |= time_plate
+    all_markov_vars = time_plate | frozenset(step.keys()) | frozenset(step.values())
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
@@ -139,8 +148,8 @@ def modified_partial_sum_product(
             markov_vars = group_vars.intersection(all_markov_vars)
             # contract non markov vars
             f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
-            # contract markov vars
             if markov_vars and var_to_ordinal[time] == leaf:
+                # contract markov vars
                 time_var = Variable(time, f.inputs[time])
                 f = sequential_sum_product(sum_op, prod_op, f, time_var, step)
                 f = f.reduce(sum_op, markov_vars - time_plate)
@@ -156,10 +165,13 @@ def modified_partial_sum_product(
                     raise ValueError("intractable!")
 
                 if not markov_vars or var_to_ordinal[time] == leaf:
+                    # if no markov vars left then eliminate plates
                     f = f.reduce(prod_op, leaf - new_plates - time_plate)
                     ordinal_to_factors[new_plates].append(f)
 
                 else:
+                    # if markov vars in local plates (not contracted)
+                    # then unroll local plates
                     factors = [f]
                     for plate in (leaf - new_plates - time_plate):
                         unrolled_factors = []
@@ -169,6 +181,7 @@ def modified_partial_sum_product(
                                 **{var: '{}_{}_{}'.format(var, plate, i) for var in markov_vars},
                             ) for i in range(factor.inputs[plate].size)]
                             unrolled_factors.extend(slice_factors)
+
                         unrolled_step = {}
                         for k, v in step.items():
                             if k in markov_vars:
@@ -178,6 +191,7 @@ def modified_partial_sum_product(
                                 )
                             else:
                                 unrolled_step[k] = v
+
                         unrolled_markov_vars = frozenset(
                             ('{}_{}_{}'.format(var, plate, i) for
                              var in markov_vars for i in range(f.inputs[plate].size))

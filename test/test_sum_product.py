@@ -131,7 +131,7 @@ def _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_v
     for factor in factors:
         if time in factor.inputs:
             slice_factors = [factor(
-                time=t,
+                **{time: t},
                 **{var: '{}_{}'.format(var, t+1) for var in local_vars},
                 **{var: '{}_{}'.format(curr_to_drop[var], t+1) for var in curr_to_drop.keys()},
                 **{var: '{}_{}'.format(prev_to_drop[var], t) for var in prev_to_drop.keys()}
