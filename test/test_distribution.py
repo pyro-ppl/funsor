@@ -1039,6 +1039,30 @@ def test_dirichlet_categorical_conjugate(batch_shape, size):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('size', [2, 4, 5], ids=str)
+def test_dirichlet_multinomial_conjugate_plate(batch_shape, size):
+    max_count = 10
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape + (size,)
+    prior = Variable("prior", Reals[size])
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    value_data = ops.astype(randint(0, max_count, size=batch_shape + (7, size)), 'float32')
+    obs_inputs = inputs.copy()
+    obs_inputs['plate'] = Bint[7]
+    obs = Tensor(value_data, obs_inputs)
+    total_count_data = value_data.sum(-1)
+    total_count = Tensor(total_count_data, obs_inputs)
+    latent = dist.Dirichlet(concentration, value=prior)
+    conditional = dist.Multinomial(probs=prior, total_count=total_count, value=obs)
+    p = latent + conditional.reduce(ops.add, 'plate')
+    reduced = p.reduce(ops.logaddexp, 'prior')
+    assert isinstance(reduced, Tensor)
+
+    _assert_conjugate_density_ok(latent, conditional, obs)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('size', [2, 4, 5], ids=str)
 def test_dirichlet_multinomial_conjugate(batch_shape, size):
     max_count = 10
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]

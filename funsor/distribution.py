@@ -612,6 +612,24 @@ def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
         return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
 
+def eager_plate_multinomial(op, x, reduced_vars):
+    if not reduced_vars.isdisjoint(x.probs.inputs):
+        return None
+    if not reduced_vars.issubset(x.value.inputs):
+        return None
+
+    backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
+    total_count = x.total_count
+    for v in reduced_vars:
+        if v in total_count.inputs:
+            total_count = total_count.reduce(ops.add, v)
+        else:
+            total_count = total_count * x.inputs[v].size
+    return backend_dist.Multinomial(total_count=total_count,
+                                    probs=x.probs,
+                                    value=x.value.reduce(ops.add, reduced_vars))
+
+
 def _log_beta(x, y):
     return ops.lgamma(x) + ops.lgamma(y) - ops.lgamma(x + y)
 
