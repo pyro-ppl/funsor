@@ -153,17 +153,17 @@ def modified_partial_sum_product(
                 f = sequential_sum_product(sum_op, prod_op, f, time_var, step)
                 f = f.reduce(sum_op, markov_vars - time_plate)
 
-            remaining_sum_vars = sum_vars.intersection(f.inputs) - markov_vars
+            remaining_sum_vars = sum_vars.intersection(f.inputs)
 
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate - time_plate))
             else:
                 new_plates = frozenset().union(
-                    *(var_to_ordinal[v] for v in remaining_sum_vars))
+                    *(var_to_ordinal[v] for v in remaining_sum_vars - markov_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
 
-                if not markov_vars or var_to_ordinal[time] == leaf:
+                if not markov_vars.intersection(remaining_sum_vars):
                     # if no markov vars left then eliminate plates
                     f = f.reduce(prod_op, leaf - new_plates - time_plate)
                     ordinal_to_factors[new_plates].append(f)
