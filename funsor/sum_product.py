@@ -159,20 +159,19 @@ def modified_partial_sum_product(
                 results.append(f.reduce(prod_op, leaf & eliminate - time_plate))
             else:
                 new_plates = frozenset().union(
-                    *(var_to_ordinal[v] for v in remaining_sum_vars - markov_vars))
-                if new_plates == leaf:
-                    raise ValueError("intractable!")
-
-                if not markov_vars.intersection(remaining_sum_vars):
-                    # if no markov vars left then eliminate plates
+                    *(var_to_ordinal[v] for v in remaining_sum_vars))
+                if new_plates != leaf:
                     f = f.reduce(prod_op, leaf - new_plates - time_plate)
                     ordinal_to_factors[new_plates].append(f)
-
                 else:
-                    # if markov vars in local plates (not contracted)
-                    # then unroll local plates
+                    if markov_vars.isdisjoint(remaining_sum_vars):
+                        raise ValueError("intractable!")
+
+                    # unroll local plates
+                    local_plates = frozenset().union(
+                        *(var_to_ordinal[v] for v in remaining_sum_vars - markov_vars))
                     factors = [f]
-                    for plate in (leaf - new_plates - time_plate):
+                    for plate in (leaf - local_plates - time_plate):
                         unrolled_factors = []
                         for factor in factors:
                             slice_factors = [factor(
@@ -198,8 +197,8 @@ def modified_partial_sum_product(
                         all_markov_vars = (all_markov_vars - markov_vars) | unrolled_markov_vars
                         factors = unrolled_factors
                         step = unrolled_step
-                    ordinal_to_factors[new_plates].extend(factors)
-                    ordinal_to_vars[new_plates] |= unrolled_markov_vars
+                    ordinal_to_factors[local_plates].extend(factors)
+                    ordinal_to_vars[local_plates] |= unrolled_markov_vars
 
     return results
 

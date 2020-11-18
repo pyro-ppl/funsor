@@ -460,6 +460,56 @@ def test_partial_sum_product_hmm_example_5(sum_op, prod_op, vars1, vars2):
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
+        frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_curr"})),
+    (frozenset({"y_curr", "tones"}),
+        frozenset({"sequences", "time", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "tones", "y_curr"}),
+        frozenset({"sequences"})),
+    (frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_curr"}),
+        frozenset()),
+])
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_partial_sum_product_hmm_example_6(sum_op, prod_op, vars1, vars2):
+    x_dim, y_dim = 2, 3
+    sequences, duration, tones = 2, 5, 4
+
+    probs_x = random_tensor(OrderedDict({}))
+    probs_y = random_tensor(OrderedDict({}))
+
+    x = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "time": Bint[duration],
+        "x_prev": Bint[x_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    y = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "time": Bint[duration],
+        "tones": Bint[tones],
+        "x_prev": Bint[x_dim],
+        "y_curr": Bint[y_dim],
+    }))
+
+    factors = [probs_x, probs_y, x, y]
+    time = "time"
+    step = {"x_prev": "x_curr"}
+    plates = frozenset({"sequences", "tones"})
+    global_vars = frozenset()
+    local_vars = frozenset({"y_curr"})
+
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
+    actual = reduce(prod_op, factors2)
+
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+                                     time, duration, step)
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.parametrize('vars1,vars2', [
+    (frozenset(),
         frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
     (frozenset({"tones", "y_curr"}),
         frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr"})),
