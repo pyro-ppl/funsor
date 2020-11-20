@@ -41,6 +41,12 @@ if get_backend() != "numpy":
 
 
 def normalize_with_subs(cls, *args):
+    """
+    This interpretation is like normalize, except it also evaluates Subs eagerly.
+    This is necessary because we want to convert distribution expressions to normal form in some tests,
+    but do not want to trigger eager patterns that rewrite some distributions (e.g. Normal to Gaussian)
+    since these tests are specifically intended to exercise funsor.distribution.Distribution.
+    """
     result = normalize.dispatch(cls, *args)(*args)
     if result is None:
         result = lazy.dispatch(cls, *args)(*args)
@@ -58,7 +64,7 @@ TEST_CASES = []
 
 class DistTestCase:
 
-    def __init__(self, raw_dist, raw_params, expected_value_domain, xfail=False):
+    def __init__(self, raw_dist, raw_params, expected_value_domain, xfail_reason=""):
         self.raw_dist = raw_dist
         self.raw_params = raw_params
         self.expected_value_domain = expected_value_domain
@@ -66,7 +72,7 @@ class DistTestCase:
             if get_backend() != "numpy":
                 # we need direct access to these tensors for gradient tests
                 setattr(self, name, eval(raw_param))
-        TEST_CASES.append(self if not xfail else xfail_param(self, reason="test case not yet supported"))
+        TEST_CASES.append(self if not xfail_reason else xfail_param(self, reason=xfail_reason))
 
     def __str__(self):
         return self.raw_dist + " " + str(self.raw_params)
@@ -342,7 +348,7 @@ for batch_shape in [(), (5,), (2, 3)]:
         "backend_dist.Weibull(scale=case.scale, concentration=case.concentration)",
         (("scale", f"ops.exp(randn({batch_shape}))"), ("concentration", f"ops.exp(rand({batch_shape}))")),
         funsor.Real,
-        xfail=get_backend() != "torch",
+        xfail_reason="backend not supported" if get_backend() != "torch" else "",
     )
 
     # TransformedDistributions
@@ -351,42 +357,42 @@ for batch_shape in [(), (5,), (2, 3)]:
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.ExpTransform(),])",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
         funsor.Real,
-        xfail=get_backend() != "torch",
+        xfail_reason="backend not supported" if get_backend() != "torch" else "",
     )
     # InverseTransform (log)
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.ExpTransform().inv,])",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
         funsor.Real,
-        xfail=get_backend() != "torch",
+        xfail_reason="backend not supported" if get_backend() != "torch" else "",
     )
     # TanhTransform
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.TanhTransform(),])",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
         funsor.Real,
-        xfail=get_backend() != "torch",
+        xfail_reason="backend not supported" if get_backend() != "torch" else "",
     )
     # AtanhTransform
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.TanhTransform().inv,])",  # noqa: E501
         (("low", f"0.5*rand({batch_shape})"), ("high", f"0.5 + 0.5*rand({batch_shape})")),
         funsor.Real,
-        xfail=get_backend() != "torch",
+        xfail_reason="backend not supported" if get_backend() != "torch" else "",
     )
     # multiple transforms
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.TanhTransform(), backend_dist.transforms.ExpTransform()])",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
         funsor.Real,
-        xfail=get_backend() != "torch",
+        xfail_reason="backend not supported" if get_backend() != "torch" else "",
     )
     # ComposeTransform
     DistTestCase(
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), backend_dist.transforms.ComposeTransform([backend_dist.transforms.TanhTransform(), backend_dist.transforms.ExpTransform()]))",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
         funsor.Real,
-        xfail=get_backend() != "torch",
+        xfail_reason="backend not supported" if get_backend() != "torch" else "",
     )
 
     # SigmoidTransform (inversion not working)
@@ -394,7 +400,7 @@ for batch_shape in [(), (5,), (2, 3)]:
         "backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), [backend_dist.transforms.SigmoidTransform(),])",  # noqa: E501
         (("low", f"rand({batch_shape})"), ("high", f"2. + rand({batch_shape})")),
         funsor.Real,
-        xfail=True,  # XXX failure to re-invert ops.sigmoid.inv, which is not atomic
+        xfail_reason="failure to re-invert ops.sigmoid.inv, which is not atomic",
     )
 
     # Independent
@@ -418,7 +424,7 @@ for batch_shape in [(), (5,), (2, 3)]:
             f"backend_dist.Independent(backend_dist.TransformedDistribution(backend_dist.Uniform(low=case.low, high=case.high), backend_dist.transforms.ComposeTransform([backend_dist.transforms.TanhTransform(), backend_dist.transforms.ExpTransform()])), {len(indep_shape)})",  # noqa: E501
             (("low", f"rand({batch_shape + indep_shape})"), ("high", f"2. + rand({batch_shape + indep_shape})")),
             funsor.Reals[indep_shape],
-            xfail=True  # XXX to_funsor/to_data conversion is not yet reversible
+            xfail_reason="to_funsor/to_data conversion is not yet reversible",
         )
 
 
