@@ -21,7 +21,8 @@ from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
                            ignore_jit_warnings, numeric_array, stack)
-from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, eager, to_data, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, \
+    eager, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
 
@@ -109,17 +110,16 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         """
         Internal method for working with underlying distribution attributes
         """
-        if isinstance(self.value, Variable):
-            value_name = self.value.name
-        else:
-            raise NotImplementedError("cannot get raw dist for {}".format(self))
+        value_name = [name for name, domain in self.value.inputs.items()  # TODO is this right?
+                      if domain == self.value.output][0]
         # arbitrary name-dim mapping, since we're converting back to a funsor anyway
         name_to_dim = {name: -dim-1 for dim, (name, domain) in enumerate(self.inputs.items())
                        if isinstance(domain.dtype, int) and name != value_name}
         raw_dist = to_data(self, name_to_dim=name_to_dim)
         dim_to_name = {dim: name for name, dim in name_to_dim.items()}
         # also return value output, dim_to_name for converting results back to funsor
-        return raw_dist, self.value.output, dim_to_name
+        value_output = self.inputs[value_name]
+        return raw_dist, value_name, value_output, dim_to_name
 
     @property
     def has_rsample(self):
@@ -130,15 +130,14 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return getattr(self.dist_class, "has_enumerate_support", False)
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
-        params = OrderedDict(self.params)
-        value = params.pop("value")
-        assert all(isinstance(v, (Number, Tensor)) for v in params.values())
-        assert isinstance(value, Variable) and value.name in sampled_vars
 
-        value_name = value.name
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        # note this should handle transforms correctly via distribution_to_data
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         for d, name in zip(range(len(sample_inputs), 0, -1), sample_inputs.keys()):
             dim_to_name[-d - len(raw_dist.batch_shape)] = name
+
+        if value_name not in sampled_vars:
+            return self
 
         sample_shape = tuple(v.size for v in sample_inputs.values())
         sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
@@ -161,23 +160,23 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 
     def enumerate_support(self, expand=False):
         assert self.has_enumerate_support and isinstance(self.value, Variable)
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         raw_value = raw_dist.enumerate_support(expand=expand)
-        dim_to_name[min(dim_to_name.keys(), default=0)-1] = self.value.name
+        dim_to_name[min(dim_to_name.keys(), default=0)-1] = value_name
         return to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
 
     def entropy(self):
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         raw_value = raw_dist.entropy()
         return to_funsor(raw_value, output=self.output, dim_to_name=dim_to_name)
 
     def mean(self):
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         raw_value = raw_dist.mean
         return to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
 
     def variance(self):
-        raw_dist, value_output, dim_to_name = self._get_raw_dist()
+        raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         raw_value = raw_dist.variance
         return to_funsor(raw_value, output=value_output, dim_to_name=dim_to_name)
 
@@ -233,7 +232,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 ################################################################################
 # Distribution Wrappers
 ################################################################################
-
 
 def make_dist(backend_dist_class, param_names=(), generate_eager=True, generate_to_funsor=True):
     if not param_names:
@@ -312,8 +310,19 @@ def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     return mask * funsor_base_dist
 
 
+# converts TransformedDistributions
 def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
-    raise NotImplementedError("TODO implement conversion of TransformedDistribution")
+    dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
+    base_dist, transforms = backend_dist, []
+    while isinstance(base_dist, dist_module.TransformedDistribution):
+        transforms = base_dist.transforms + transforms
+        base_dist = base_dist.base_dist
+    funsor_base_dist = to_funsor(base_dist, output=output, dim_to_name=dim_to_name)
+    # TODO make this work with transforms that change the output type
+    transform = to_funsor(dist_module.transforms.ComposeTransform(transforms),
+                          funsor_base_dist.inputs["value"], dim_to_name)
+    _, inv_transform, ldj = funsor.delta.solve(transform, to_funsor("value", funsor_base_dist.inputs["value"]))
+    return -ldj + funsor_base_dist(value=inv_transform)
 
 
 class CoerceDistributionToFunsor:
@@ -396,6 +405,17 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     pyro_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     funsor_event_shape = funsor_dist.value.output.shape
     pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
+
+    # TODO get this working for all backends
+    if not isinstance(funsor_dist.value, Variable):
+        if get_backend() != "torch":
+            raise NotImplementedError("transformed distributions not yet supported under this backend,"
+                                      "try set_backend('torch')")
+        inv_value = funsor.delta.solve(funsor_dist.value, Variable("value", funsor_dist.value.output))[1]
+        transforms = to_data(inv_value, name_to_dim=name_to_dim)
+        backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
+        pyro_dist = backend_dist.TransformedDistribution(pyro_dist, transforms)
+
     if pyro_dist.event_shape != funsor_event_shape:
         raise ValueError("Event shapes don't match, something went wrong")
     return pyro_dist
