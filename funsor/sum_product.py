@@ -120,10 +120,10 @@ def modified_partial_sum_product(
     assert isinstance(plates, frozenset)
     assert isinstance(time, str)
     assert isinstance(step, dict)
-    sum_vars = eliminate - plates
     time_plate = frozenset({time})
     plates |= time_plate
-    all_markov_vars = time_plate | frozenset(step.keys()) | frozenset(step.values())
+    sum_vars = eliminate - plates
+    all_markov_vars = frozenset(step.keys()) | frozenset(step.values())
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
@@ -143,14 +143,18 @@ def modified_partial_sum_product(
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
+            #breakpoint()
             nonmarkov_vars = group_vars - all_markov_vars
             markov_vars = group_vars.intersection(all_markov_vars)
             # contract non markov vars
             f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
-            if markov_vars and var_to_ordinal[time] == leaf:
-                # contract markov vars
+            if markov_vars:
+            # contract markov vars
+                if all_markov_vars.intersection(f.inputs) != markov_vars:
+                    raise ValueError("intractable!")
+                group_step = {k: v for (k, v) in step.items() if v in markov_vars}
                 time_var = Variable(time, f.inputs[time])
-                f = sequential_sum_product(sum_op, prod_op, f, time_var, step)
+                f = sequential_sum_product(sum_op, prod_op, f, time_var, group_step)
                 f = f.reduce(sum_op, markov_vars - time_plate)
 
             remaining_sum_vars = sum_vars.intersection(f.inputs)
@@ -160,45 +164,10 @@ def modified_partial_sum_product(
             else:
                 new_plates = frozenset().union(
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
-                if new_plates != leaf:
-                    f = f.reduce(prod_op, leaf - new_plates - time_plate)
-                    ordinal_to_factors[new_plates].append(f)
-                else:
-                    if markov_vars.isdisjoint(remaining_sum_vars):
-                        raise ValueError("intractable!")
-
-                    # unroll local plates
-                    local_plates = frozenset().union(
-                        *(var_to_ordinal[v] for v in remaining_sum_vars - markov_vars))
-                    factors = [f]
-                    for plate in (leaf - local_plates - time_plate):
-                        unrolled_factors = []
-                        for factor in factors:
-                            slice_factors = [factor(
-                                **{plate: i},
-                                **{var: '{}_{}_{}'.format(var, plate, i) for var in markov_vars},
-                            ) for i in range(factor.inputs[plate].size)]
-                            unrolled_factors.extend(slice_factors)
-
-                        unrolled_step = {}
-                        for k, v in step.items():
-                            if k in markov_vars:
-                                unrolled_step.update(
-                                    {'{}_{}_{}'.format(k, plate, i): '{}_{}_{}'.format(v, plate, i)
-                                     for i in range(f.inputs[plate].size)}
-                                )
-                            else:
-                                unrolled_step[k] = v
-
-                        unrolled_markov_vars = frozenset(
-                            ('{}_{}_{}'.format(var, plate, i) for
-                             var in markov_vars for i in range(f.inputs[plate].size))
-                        )
-                        all_markov_vars = (all_markov_vars - markov_vars) | unrolled_markov_vars
-                        factors = unrolled_factors
-                        step = unrolled_step
-                    ordinal_to_factors[local_plates].extend(factors)
-                    ordinal_to_vars[local_plates] |= unrolled_markov_vars
+                if new_plates == leaf:
+                    raise ValueError("intractable!")
+                f = f.reduce(prod_op, leaf - new_plates - time_plate)
+                ordinal_to_factors[new_plates].append(f)
 
     return results
 

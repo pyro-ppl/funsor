@@ -145,11 +145,54 @@ def _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_v
 
 
 @pytest.mark.parametrize('vars1,vars2', [
+    (frozenset({"time", "x_prev", "x_curr", "y_curr"}),
+     frozenset()),
+])
+@pytest.mark.parametrize('step,local_vars', [
+    ({"x_prev": "x_curr"}, frozenset({"y_curr"})),
+    ({"x_prev": "x_curr", "y_prev": "y_curr"}, frozenset()),
+])
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_partial_sum_product_hmm_example(sum_op, prod_op, vars1, vars2, step, local_vars):
+    x_dim, y_dim = 2, 3
+    sequences, duration, tones = 2, 3, 4
+
+    probs_x = random_tensor(OrderedDict({}))
+    probs_y = random_tensor(OrderedDict({}))
+
+    x = random_tensor(OrderedDict({
+        "time": Bint[duration],
+        "x_prev": Bint[x_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    y = random_tensor(OrderedDict({
+        "time": Bint[duration],
+        "x_curr": Bint[x_dim],
+        "y_curr": Bint[y_dim],
+    }))
+
+    factors = [probs_x, probs_y, x, y]
+    time = "time"
+    plates = frozenset()
+    global_vars = frozenset()
+
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
+    actual = reduce(prod_op, factors2)
+
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+                                     time, duration, step)
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
      frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"})),
     (frozenset({"time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "x_prev", "x_curr", "y_prev", "y_curr"}),
+    (frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
@@ -227,9 +270,11 @@ def test_partial_sum_product_hmm_example_1(sum_op, prod_op, vars1, vars2):
 
     factors = [probs_x, probs_y, x, y]
     time = "time"
+    # step = {"x_prev": "x_curr", "y_prev": "y_curr"}
     step = {"x_prev": "x_curr"}
     plates = frozenset({"sequences", "tones"})
     global_vars = frozenset()
+    # local_vars = frozenset()
     local_vars = frozenset({"y_curr"})
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
@@ -281,14 +326,15 @@ def test_partial_sum_product_hmm_example_2(sum_op, prod_op, vars1, vars2):
     global_vars = frozenset()
     local_vars = frozenset()
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
-    actual = reduce(prod_op, factors2)
+    with pytest.raises(ValueError, match="intractable!"):
+        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
+        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
+        actual = reduce(prod_op, factors2)
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
-                                     time, duration, step)
+    # expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+    #                                  time, duration, step)
 
-    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+    # assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize('vars1,vars2', [
@@ -687,14 +733,15 @@ def test_partial_sum_product_hmm_example_10(sum_op, prod_op, vars1, vars2):
     global_vars = frozenset()
     local_vars = frozenset({"w_curr"})
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
-    actual = reduce(prod_op, factors2)
+    with pytest.raises(ValueError, match="intractable!"):
+        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plates, time, step)
+        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plates, time, step)
+        actual = reduce(prod_op, factors2)
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
-                                     time, duration, step)
+    # expected = _expected_hmm_example(sum_op, prod_op, factors, plates, global_vars, local_vars,
+    #                                  time, duration, step)
 
-    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+    # assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 13)))
@@ -875,6 +922,7 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
                                    num_periods=num_periods)
     assert dict(actual.inputs) == expected_inputs
 
+    breakpoint()
     actual = actual.align(tuple(expected.inputs.keys()))
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
