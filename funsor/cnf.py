@@ -129,11 +129,11 @@ class Contraction(Funsor):
                     terms.append(term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0]))
                     result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
                 elif any(isinstance(term, funsor.distribution.Distribution)
-                         and greedy_vars.intersection(term.value.inputs) for term in greedy_terms):
+                         and not greedy_vars.isdisjoint(term.value.inputs) for term in greedy_terms):
                     sampled_terms = [
                         term.unscaled_sample(greedy_vars.intersection(term.value.inputs), sample_inputs)
                         for term in greedy_terms if isinstance(term, funsor.distribution.Distribution)
-                        and greedy_vars.intersection(term.value.inputs)
+                        and not greedy_vars.isdisjoint(term.value.inputs)
                     ]
                     result = Contraction(self.red_op, self.bin_op, self.reduced_vars, *(terms + sampled_terms))
                 else:
