@@ -1,7 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-from collections import Hashable
+from collections.abc import Hashable
 from contextlib import contextmanager
 
 import funsor.interpreter as interpreter
