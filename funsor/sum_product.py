@@ -92,10 +92,16 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
 
     return results
 
+def _markov_products(sum_op, prod_op, f, plates, steps):
+    for plate in sorted(plates, key=lambda p: len(steps[p]), reverse=True):
+        plate_var = Variable(plate, f.inputs[plate])
+        f = sequential_sum_product(sum_op, prod_op, f, plate_var, steps[plate])
+        f = f.reduce(sum_op, frozenset(steps[plate].keys()) | frozenset(steps[plate].values()))
+    return f
 
 def modified_partial_sum_product(
         sum_op, prod_op, factors, eliminate=frozenset(),
-        plates=frozenset(), time=str(), step=dict()):
+        plate_dict=dict()):
     """
     Modified partial sum-product that supports contraction of markov sites.
 
@@ -117,13 +123,14 @@ def modified_partial_sum_product(
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
-    assert isinstance(plates, frozenset)
-    assert isinstance(time, str)
-    assert isinstance(step, dict)
-    time_plate = frozenset({time})
-    plates |= time_plate
+    assert isinstance(plate_dict, dict)
+    plates = frozenset(plate_dict.keys())
     sum_vars = eliminate - plates
-    all_markov_vars = frozenset(step.keys()) | frozenset(step.values())
+    all_markov_vars = frozenset()
+    for step in plate_dict.values():
+        all_markov_vars |= frozenset(step.keys()) | frozenset(step.values())
+    all_markov_vars &= sum_vars
+    time_vars = frozenset(k for k, v in plate_dict.items() if v and k in eliminate)
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
@@ -132,6 +139,18 @@ def modified_partial_sum_product(
         ordinal_to_factors[ordinal].append(f)
         for var in sum_vars.intersection(f.inputs):
             var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+    for f in factors:
+        # check that if f has any markov vars, then no other sum vars couple them,
+        # i.e. all other sum vars of f must be at least as local as the markov var.
+        f_markov_vars = all_markov_vars.intersection(f.inputs)
+        if not f_markov_vars:
+            continue
+        required_ordinal = min(var_to_ordinal[v]
+                               for v in sum_vars.intersection(f.inputs)
+                               if not time_vars.isdisjoint(var_to_ordinal[v]))
+        for v in f_markov_vars:
+            if not var_to_ordinal[v] <= required_ordinal:
+                raise ValueError("intractable!")
 
     ordinal_to_vars = defaultdict(set)
     for var, ordinal in var_to_ordinal.items():
@@ -143,30 +162,25 @@ def modified_partial_sum_product(
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            #breakpoint()
             nonmarkov_vars = group_vars - all_markov_vars
             markov_vars = group_vars.intersection(all_markov_vars)
             # contract non markov vars
             f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
-            if markov_vars:
-            # contract markov vars
-                if all_markov_vars.intersection(f.inputs) != markov_vars:
-                    raise ValueError("intractable!")
-                group_step = {k: v for (k, v) in step.items() if v in markov_vars}
-                time_var = Variable(time, f.inputs[time])
-                f = sequential_sum_product(sum_op, prod_op, f, time_var, group_step)
-                f = f.reduce(sum_op, markov_vars - time_plate)
 
-            remaining_sum_vars = sum_vars.intersection(f.inputs)
+            remaining_sum_vars = sum_vars.intersection(f.inputs) - markov_vars
 
             if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf & eliminate - time_plate))
+                group_plate_dict = {}
+                for plate, step in plate_dict.items():
+                    group_plate_dict[plate] = {k: v for (k, v) in step.items() if v in markov_vars}
+                f = _markov_products(sum_op, prod_op, f, leaf & eliminate, group_plate_dict)
+                results.append(f)
             else:
                 new_plates = frozenset().union(
                     *(var_to_ordinal[v] for v in remaining_sum_vars))
                 if new_plates == leaf:
                     raise ValueError("intractable!")
-                f = f.reduce(prod_op, leaf - new_plates - time_plate)
+                f = _markov_products(sum_op, prod_op, f, leaf - new_plates, plate_dict)
                 ordinal_to_factors[new_plates].append(f)
 
     return results
