@@ -94,7 +94,6 @@ def test_partition(inputs, dims, expected_num_components):
 def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2):
     inputs = inputs.split(',')
     factors = [random_tensor(OrderedDict((d, Bint[2]) for d in ds)) for ds in inputs]
-    # plates = frozenset(plates)
     vars1 = frozenset(vars1)
     vars2 = frozenset(vars2)
 
@@ -158,26 +157,24 @@ def _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
 
 
 @pytest.mark.parametrize('vars1,vars2', [
-    (frozenset({"time", "x_prev", "x_curr", "y_curr"}),
-     frozenset()),
-    (frozenset({"y_curr"}),
-     frozenset({"time", "x_prev", "x_curr"})),
     (frozenset(),
      frozenset({"time", "x_prev", "x_curr", "y_curr"})),
+    (frozenset({"y_curr"}),
+     frozenset({"time", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "y_curr"}),
+     frozenset()),
 ])
-@pytest.mark.parametrize('x_dim,time_duration', [
+@pytest.mark.parametrize('x_dim,time', [
     (3, 1), (1, 5), (3, 5),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2,
-                                        x_dim, time_duration):
-    x_dim = 2
-    time_duration = 5
+                                        x_dim, time):
 
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({
-        "time": Bint[time_duration],
+        "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
@@ -338,7 +335,7 @@ def test_modified_partial_sum_product_3(sum_op, prod_op, vars1, vars2,
     (frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
      frozenset()),
 ])
-@pytest.mark.parametrize('x_dim,y_dim,sequences, time, tones', [
+@pytest.mark.parametrize('x_dim,y_dim,sequences,time,tones', [
     (2, 3, 2, 5, 4), (1, 3, 2, 5, 4), (2, 1, 2, 5, 4), (2, 3, 2, 1, 4),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
@@ -536,7 +533,7 @@ def test_modified_partial_sum_product_7(sum_op, prod_op, vars1, vars2,
     with pytest.raises(ValueError, match="intractable!"):
         factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
         factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
-        actual = reduce(prod_op, factors2)
+        reduce(prod_op, factors2)
 
 
 @pytest.mark.parametrize('vars1,vars2', [
@@ -679,7 +676,7 @@ def test_modified_partial_sum_product_9(sum_op, prod_op, vars1, vars2,
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
-                                        w_dim, x_dim, y_dim, sequences, time, tones):
+                                         w_dim, x_dim, y_dim, sequences, time, tones):
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -744,7 +741,7 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
-                                        a_dim, b_dim, w_dim, x_dim, y_dim, sequences, time, tones):
+                                         a_dim, b_dim, w_dim, x_dim, y_dim, sequences, time, tones):
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -816,7 +813,7 @@ def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
-                                        w_dim, x_dim, y_dim, sequences, time, tones):
+                                         w_dim, x_dim, y_dim, sequences, time, tones):
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -855,7 +852,7 @@ def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
     with pytest.raises(ValueError, match="intractable!"):
         factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
         factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
-        actual = reduce(prod_op, factors2)
+        reduce(prod_op, factors2)
 
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 13)))
