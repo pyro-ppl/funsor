@@ -110,18 +110,18 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     assert_close(actual, expected)
 
 
-def _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+def _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                           global_vars, local_var_dict):
 
-    markov_plate_dict = {k: v for (k, v) in plate_dict.items() if v}
-    plates = frozenset({k for (k, v) in plate_dict.items() if not v})
+    markov_plate_to_step = {k: v for (k, v) in plate_to_step.items() if v}
+    plates = frozenset({k for (k, v) in plate_to_step.items() if not v})
     reduce_vars = global_vars | plates
 
     # unroll markov plates
     unrolled_factors = []
     for factor in factors:
-        if frozenset(factor.inputs).intersection(markov_plate_dict.keys()):
-            for markov_plate, step in markov_plate_dict.items():
+        if frozenset(factor.inputs).intersection(markov_plate_to_step.keys()):
+            for markov_plate, step in markov_plate_to_step.items():
                 if markov_plate in factor.inputs:
                     local_vars = local_var_dict[markov_plate]
                     step = OrderedDict(sorted(step.items()))
@@ -180,16 +180,16 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2]
-    plate_dict = dict({"time": {"x_prev": "x_curr"}})
+    plate_to_step = dict({"time": {"x_prev": "x_curr"}})
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset()}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -225,16 +225,16 @@ def test_modified_partial_sum_product_1(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3]
-    plate_dict = dict({"time": {"x_prev": "x_curr"}})
+    plate_to_step = dict({"time": {"x_prev": "x_curr"}})
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -268,16 +268,16 @@ def test_modified_partial_sum_product_2(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3]
-    plate_dict = dict({"time": {"x_prev": "x_curr", "y_prev": "y_curr"}})
+    plate_to_step = dict({"time": {"x_prev": "x_curr", "y_prev": "y_curr"}})
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset()}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -312,16 +312,16 @@ def test_modified_partial_sum_product_3(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3]
-    plate_dict = dict({"time": {"x_prev": "x_curr", "y_prev": "y_curr"}})
+    plate_to_step = dict({"time": {"x_prev": "x_curr", "y_prev": "y_curr"}})
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset()}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -360,20 +360,20 @@ def test_modified_partial_sum_product_4(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3]
-    plate_dict = dict({
+    plate_to_step = dict({
         "sequences": {},
         "time": {"x_prev": "x_curr", "y_prev": "y_curr"},
         "tones": {}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset()}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -416,21 +416,21 @@ def test_modified_partial_sum_product_5(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3]
-    plate_dict = dict({
+    plate_to_step = dict({
         "sequences": {},
         "tones": {},
         "days": {"x_prev": "x_curr"},
         "weeks": {"y_prev": "y_curr"}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"days": frozenset(), "weeks": frozenset()}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -471,20 +471,20 @@ def test_modified_partial_sum_product_6(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3]
-    plate_dict = dict({
+    plate_to_step = dict({
         "sequences": {},
         "time": {"x_prev": "x_curr"},
         "tones": {}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -524,15 +524,15 @@ def test_modified_partial_sum_product_7(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3]
-    plate_dict = dict({
+    plate_to_step = dict({
         "sequences": {},
         "time": {"x_prev": "x_curr", "y_prev": "y_curr"},
         "tones": {}
     })
 
     with pytest.raises(ValueError, match="intractable!"):
-        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
         reduce(prod_op, factors2)
 
 
@@ -579,20 +579,20 @@ def test_modified_partial_sum_product_8(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3, f4]
-    plate_dict = dict({
+    plate_to_step = dict({
         "sequences": {},
         "time": {"x_prev": "x_curr", "w_prev": "w_curr"},
         "tones": {}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -642,20 +642,20 @@ def test_modified_partial_sum_product_9(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3, f4]
-    plate_dict = dict({
+    plate_to_step = dict({
         "sequences": {},
         "time": {"x_prev": "x_curr", "w_prev": "w_curr"},
         "tones": {}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -704,20 +704,20 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3, f4]
-    plate_dict = dict({
+    plate_to_step = dict({
         "sequences": {},
         "time": {"x_prev": "x_curr"},
         "tones": {}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"w_curr", "y_curr"})}
     global_vars = frozenset()
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -781,20 +781,20 @@ def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3, f4, f5, f6]
-    plate_dict = dict({
+    plate_to_step = dict({
         "sequences": {},
         "time": {"x_prev": "x_curr", "w_prev": "w_curr"},
         "tones": {}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
     global_vars = frozenset({"a", "b"})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_dict,
+    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
                                      global_vars, local_var_dict)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -843,15 +843,15 @@ def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
     }))
 
     factors = [f1, f2, f3, f4]
-    plate_dict = dict({
+    plate_to_step = dict({
         "sequences": {},
         "time": {"x_prev": "x_curr", "y_prev": "y_curr"},
         "tones": {}
     })
 
     with pytest.raises(ValueError, match="intractable!"):
-        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_dict)
-        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_dict)
+        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
         reduce(prod_op, factors2)
 
 
