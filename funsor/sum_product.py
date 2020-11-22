@@ -151,6 +151,8 @@ def modified_partial_sum_product(
             markov_vars = group_vars.intersection(markov_sum_vars)
             if markov_vars:
                 time = markov_prod_vars.intersection(f.inputs)
+                if not len(time) == 1:
+                    raise ValueError("intractable!")
                 for v in sum_vars.intersection(f.inputs):
                     if time.issubset(var_to_ordinal[v]) and var_to_ordinal[v] < leaf:
                         raise ValueError("intractable!")
