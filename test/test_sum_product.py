@@ -110,58 +110,87 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     assert_close(actual, expected)
 
 
-def _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                          global_vars, local_var_dict):
+def _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step):
 
-    markov_plate_to_step = {k: v for (k, v) in plate_to_step.items() if v}
     plates = frozenset({k for (k, v) in plate_to_step.items() if not v})
     reduce_vars = global_vars | plates
 
-    # unroll markov plates
-    unrolled_factors = []
-    for factor in factors:
-        if frozenset(factor.inputs).intersection(markov_plate_to_step.keys()):
-            for markov_plate, step in markov_plate_to_step.items():
-                if markov_plate in factor.inputs:
-                    local_vars = local_var_dict[markov_plate]
-                    step = OrderedDict(sorted(step.items()))
-                    drop = tuple("_{}_drop_{}".format(markov_plate, i) for i in range(len(step)))
-                    prev_to_drop = dict(zip(step.keys(), drop))
-                    curr_to_drop = dict(zip(step.values(), drop))
+    # unroll markov dims
+    for markov_plate, step in markov_to_step.items():
+        duration = max([f.inputs[markov_plate].size for f in factors if markov_plate in f.inputs])
+        unrolled_factors = []
+        local_vars = local_var_dict[markov_plate]
+        local_markov_vars = local_markov_var_dict[markov_plate]
+        drop = tuple("{}_{}".format(s, markov_plate) for s in step)
+        prev = tuple("{}_prev".format(s) for s in step)
+        curr = tuple("{}_curr".format(s) for s in step)
+        prev_to_drop = dict(zip(prev, drop))
+        curr_to_drop = dict(zip(curr, drop))
 
-                    reduce_vars |= frozenset(
-                        ('{}_{}'.format(var, i+1) for
-                         var in local_vars for i in range(factor.inputs[markov_plate].size))
+        for var in local_markov_vars:
+            for k, v in markov_to_step.items():
+                if var in v:
+                    markov_to_step[k] -= frozenset({var})
+                    markov_to_step[k] |= frozenset(
+                        ('{}_{}_{}'.format(var, markov_plate, i+1)
+                         for i in range(duration))
                     )
-                    reduce_vars |= frozenset(
-                        ('{}_{}'.format(curr_to_drop[var], i+1) for
-                         var in curr_to_drop.keys() for i in range(factor.inputs[markov_plate].size))
-                    )
-                    reduce_vars |= frozenset(
-                        ('{}_{}'.format(prev_to_drop[var], i) for
-                         var in prev_to_drop.keys() for i in range(factor.inputs[markov_plate].size))
-                    )
-                    slice_factors = [factor(
-                        **{markov_plate: i},
-                        **{var: '{}_{}'.format(var, i+1) for var in local_vars},
-                        **{var: '{}_{}'.format(curr_to_drop[var], i+1) for var in curr_to_drop.keys()},
-                        **{var: '{}_{}'.format(prev_to_drop[var], i) for var in prev_to_drop.keys()}
-                        ) for i in range(factor.inputs[markov_plate].size)]
-                    unrolled_factors.extend(slice_factors)
-        else:
-            unrolled_factors.append(factor)
+        reduce_vars -= frozenset(
+            (var for var in prev_to_drop.keys())
+        )
+        reduce_vars -= frozenset(
+            (var for var in curr_to_drop.keys())
+        )
+        for i in range(duration):
+            reduce_vars |= frozenset(
+                ('{}_{}_{}'.format(var, markov_plate, i+1) for
+                 var in local_vars)
+            )
+            reduce_vars |= frozenset(
+                ('{}_{}_{}_curr'.format(var, markov_plate, i+1) for
+                 var in local_markov_vars)
+            )
+            reduce_vars |= frozenset(
+                ('{}_{}_{}_prev'.format(var, markov_plate, i+1) for
+                 var in local_markov_vars)
+            )
+            reduce_vars |= frozenset(
+                ('{}_{}'.format(curr_to_drop[var], i+1) for
+                 var in curr_to_drop.keys())
+            )
+            reduce_vars |= frozenset(
+                ('{}_{}'.format(prev_to_drop[var], i) for
+                 var in prev_to_drop.keys())
+            )
+        for factor in factors:
+            if markov_plate in factor.inputs:
+                slice_factors = [factor(
+                    **{markov_plate: i},
+                    **{var: '{}_{}_{}'.format(var, markov_plate, i+1)
+                       for var in local_vars},
+                    **{'{}_curr'.format(var): '{}_{}_{}_curr'.format(var, markov_plate, i+1)
+                       for var in local_markov_vars},
+                    **{'{}_prev'.format(var): '{}_{}_{}_prev'.format(var, markov_plate, i+1)
+                       for var in local_markov_vars},
+                    **{var: '{}_{}'.format(curr_to_drop[var], i+1) for var in curr_to_drop.keys()},
+                    **{var: '{}_{}'.format(prev_to_drop[var], i) for var in prev_to_drop.keys()}
+                    ) for i in range(duration)]
+                unrolled_factors.extend(slice_factors)
+            else:
+                unrolled_factors.append(factor)
+        factors = unrolled_factors
 
-    expected = sum_product(sum_op, prod_op, unrolled_factors, reduce_vars, plates)
+    expected = sum_product(sum_op, prod_op, factors, reduce_vars, plates)
 
     return expected
 
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"time", "x_prev", "x_curr", "y_curr"})),
-    (frozenset({"y_curr"}),
      frozenset({"time", "x_prev", "x_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "y_curr"}),
+    (frozenset({"time", "x_prev", "x_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,time', [
@@ -187,21 +216,24 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2,
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset()}
+    local_markov_var_dict = {"time": frozenset()}
     global_vars = frozenset()
+    markov_to_step = dict({"time": {"x"}})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize('vars1,vars2', [
-    (frozenset({"time", "x_prev", "x_curr", "y_curr"}),
-     frozenset()),
-    (frozenset({"y_curr"}),
-     frozenset({"time", "x_prev", "x_curr"})),
     (frozenset(),
      frozenset({"time", "x_prev", "x_curr", "y_curr"})),
+    (frozenset({"y_curr"}),
+     frozenset({"time", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "y_curr"}),
+     frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,time', [
     (2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),
@@ -232,19 +264,22 @@ def test_modified_partial_sum_product_1(sum_op, prod_op, vars1, vars2,
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
+    local_markov_var_dict = {"time": frozenset()}
     global_vars = frozenset()
+    markov_to_step = dict({"time": {"x"}})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize('vars1,vars2', [
-    (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
-     frozenset()),
     (frozenset(),
      frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
+     frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,time_duration', [
     (2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),
@@ -275,19 +310,22 @@ def test_modified_partial_sum_product_2(sum_op, prod_op, vars1, vars2,
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset()}
+    local_markov_var_dict = {"time": frozenset()}
     global_vars = frozenset()
+    markov_to_step = dict({"time": {"x", "y"}})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize('vars1,vars2', [
-    (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
-     frozenset()),
     (frozenset(),
      frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
+     frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,time_duration', [
     (2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),
@@ -319,10 +357,13 @@ def test_modified_partial_sum_product_3(sum_op, prod_op, vars1, vars2,
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset()}
+    local_markov_var_dict = {"time": frozenset()}
     global_vars = frozenset()
+    markov_to_step = dict({"time": {"x", "y"}})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -371,10 +412,13 @@ def test_modified_partial_sum_product_4(sum_op, prod_op, vars1, vars2,
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset()}
+    local_markov_var_dict = {"time": frozenset()}
     global_vars = frozenset()
+    markov_to_step = dict({"time": {"x", "y"}})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -391,8 +435,11 @@ def test_modified_partial_sum_product_4(sum_op, prod_op, vars1, vars2,
     (frozenset({"sequences", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"}),
      frozenset()),
 ])
-@pytest.mark.parametrize('x_dim, y_dim, sequences, days, weeks, tones', [
-    (2, 3, 2, 5, 4, 3), (1, 3, 2, 5, 4, 3), (2, 1, 2, 5, 4, 3), (2, 3, 2, 1, 4, 3),
+@pytest.mark.parametrize('x_dim,y_dim,sequences,days,weeks,tones', [
+    (2, 3, 2, 5, 4, 3),
+    (1, 3, 2, 5, 4, 3),
+    (2, 1, 2, 5, 4, 3),
+    (2, 3, 2, 1, 4, 3),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_5(sum_op, prod_op, vars1, vars2,
@@ -428,10 +475,13 @@ def test_modified_partial_sum_product_5(sum_op, prod_op, vars1, vars2,
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"days": frozenset(), "weeks": frozenset()}
+    local_markov_var_dict = {"days": frozenset(), "weeks": frozenset()}
     global_vars = frozenset()
+    markov_to_step = dict({"days": {"x"}, "weeks": {"y"}})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -482,10 +532,13 @@ def test_modified_partial_sum_product_6(sum_op, prod_op, vars1, vars2,
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
+    local_markov_var_dict = {"time": frozenset()}
     global_vars = frozenset()
+    markov_to_step = dict({"time": {"x"}})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -547,7 +600,10 @@ def test_modified_partial_sum_product_7(sum_op, prod_op, vars1, vars2,
      frozenset()),
 ])
 @pytest.mark.parametrize('w_dim,x_dim,y_dim,sequences,time,tones', [
-    (3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4),
+    (3, 2, 3, 2, 5, 4),
+    (3, 1, 3, 2, 5, 4),
+    (3, 2, 1, 2, 5, 4),
+    (3, 2, 3, 2, 1, 4),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_8(sum_op, prod_op, vars1, vars2,
@@ -590,10 +646,13 @@ def test_modified_partial_sum_product_8(sum_op, prod_op, vars1, vars2,
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
+    local_markov_var_dict = {"time": frozenset()}
     global_vars = frozenset()
+    markov_to_step = dict({"time": {"x", "w"}})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -652,11 +711,20 @@ def test_modified_partial_sum_product_9(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset({"y_curr"})}
+    local_var_dict = {
+        "time": frozenset({"y_curr"})
+    }
+    local_markov_var_dict = {
+        "time": frozenset(),
+    }
     global_vars = frozenset()
+    markov_to_step = dict({
+        "time": {"x", "w"},
+    })
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -672,7 +740,10 @@ def test_modified_partial_sum_product_9(sum_op, prod_op, vars1, vars2,
      frozenset()),
 ])
 @pytest.mark.parametrize('w_dim,x_dim,y_dim,sequences,time,tones', [
-    (3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4),
+    (3, 2, 3, 2, 5, 4),
+    (3, 1, 3, 2, 5, 4),
+    (3, 2, 1, 2, 5, 4),
+    (3, 2, 3, 2, 1, 4),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
@@ -714,11 +785,20 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset({"w_curr", "y_curr"})}
+    local_var_dict = {
+        "time": frozenset({"w_curr", "y_curr"})
+    }
+    local_markov_var_dict = {
+        "time": frozenset(),
+    }
     global_vars = frozenset()
+    markov_to_step = dict({
+        "time": {"x"},
+    })
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -734,7 +814,7 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
      frozenset()),
 ])
 @pytest.mark.parametrize('a_dim,b_dim,w_dim,x_dim,y_dim,sequences,time,tones', [
-    (2, 3, 3, 2, 3, 2, 5, 4),
+    (2, 3, 3, 2, 3, 2, 3, 4),
     (2, 3, 3, 1, 3, 2, 5, 4),
     (2, 3, 3, 2, 1, 2, 5, 4),
     (2, 3, 3, 2, 3, 2, 1, 4),
@@ -743,18 +823,18 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
 def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
                                          a_dim, b_dim, w_dim, x_dim, y_dim, sequences, time, tones):
 
-    f1 = random_tensor(OrderedDict({}))
+    f = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(OrderedDict({
+    g = random_tensor(OrderedDict({
         "a": Bint[a_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    h = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "b": Bint[b_dim],
     }))
 
-    f4 = random_tensor(OrderedDict({
+    i = random_tensor(OrderedDict({
         "a": Bint[a_dim],
         "sequences": Bint[sequences],
         "time": Bint[time],
@@ -762,7 +842,7 @@ def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
         "w_curr": Bint[w_dim],
     }))
 
-    f5 = random_tensor(OrderedDict({
+    j = random_tensor(OrderedDict({
         "b": Bint[b_dim],
         "sequences": Bint[sequences],
         "time": Bint[time],
@@ -771,7 +851,7 @@ def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
         "x_curr": Bint[x_dim],
     }))
 
-    f6 = random_tensor(OrderedDict({
+    k = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -780,7 +860,7 @@ def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3, f4, f5, f6]
+    factors = [f, g, h, i, j, k]
     plate_to_step = dict({
         "sequences": {},
         "time": {"x_prev": "x_curr", "w_prev": "w_curr"},
@@ -792,10 +872,13 @@ def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
     actual = reduce(prod_op, factors2)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
+    local_markov_var_dict = {"time": frozenset()}
     global_vars = frozenset({"a", "b"})
+    markov_to_step = dict({"time": {"x", "w"}})
 
-    expected = _expected_hmm_example(sum_op, prod_op, factors, plate_to_step,
-                                     global_vars, local_var_dict)
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -809,7 +892,10 @@ def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
      frozenset()),
 ])
 @pytest.mark.parametrize('w_dim,x_dim,y_dim,sequences,time,tones', [
-    (3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4),
+    (3, 2, 3, 2, 5, 4),
+    (3, 1, 3, 2, 5, 4),
+    (3, 2, 1, 2, 5, 4),
+    (3, 2, 3, 2, 1, 4),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
@@ -853,6 +939,152 @@ def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
         factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
         factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
         reduce(prod_op, factors2)
+
+
+@pytest.mark.parametrize('vars1,vars2', [
+    (frozenset(),
+     frozenset({"sequences", "w", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"})),
+    (frozenset({"weeks", "y_prev", "y_curr"}),
+     frozenset({"sequences", "w", "days", "tones", "x_prev", "x_curr"})),
+    (frozenset({"days", "tones", "x_prev", "x_curr"}),
+     frozenset({"sequences", "w", "weeks", "y_prev", "y_curr"})),
+    (frozenset({"days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"}),
+     frozenset({"sequences", "w"})),
+    (frozenset({"sequences", "w", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"}),
+     frozenset()),
+    (frozenset({"w", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"}),
+     frozenset({"sequences"})),
+])
+@pytest.mark.parametrize('w_dim,x_dim, y_dim, sequences, days, weeks, tones', [
+    (3, 2, 3, 2, 5, 4, 3),
+    (3, 1, 3, 2, 5, 4, 3),
+    (3, 2, 1, 2, 5, 4, 3),
+    (3, 2, 3, 2, 1, 4, 3),
+])
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_modified_partial_sum_product_13(sum_op, prod_op, vars1, vars2,
+                                         w_dim, x_dim, y_dim, sequences, days, weeks, tones):
+
+    f1 = random_tensor(OrderedDict({}))
+
+    f2 = random_tensor(OrderedDict({
+        "w": Bint[w_dim],
+        "sequences": Bint[sequences],
+        "days": Bint[days],
+        "tones": Bint[tones],
+        "x_prev": Bint[x_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "w": Bint[w_dim],
+        "sequences": Bint[sequences],
+        "weeks": Bint[weeks],
+        "y_prev": Bint[y_dim],
+        "y_curr": Bint[y_dim],
+    }))
+
+    factors = [f1, f2, f3]
+    plate_to_step = dict({
+        "sequences": {},
+        "tones": {},
+        "days": {"x_prev": "x_curr"},
+        "weeks": {"y_prev": "y_curr"}
+    })
+
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
+    actual = reduce(prod_op, factors2)
+
+    local_var_dict = {
+        "days": frozenset(),
+        "weeks": frozenset()
+    }
+    local_markov_var_dict = {
+        "days": frozenset(),
+        "weeks": frozenset()
+    }
+    global_vars = frozenset({"w"})
+    markov_to_step = dict({
+        "days": {"x"},
+        "weeks": {"y"},
+    })
+
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.parametrize('vars1,vars2', [
+    (frozenset(),
+     frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"})),
+    (frozenset({"tones", "y_prev", "y_curr"}),
+     frozenset({"sequences", "time", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
+     frozenset({"sequences"})),
+    (frozenset({"sequences", "time", "tones", "x_prev", "x_curr", "y_prev", "y_curr"}),
+     frozenset()),
+])
+@pytest.mark.parametrize('x_dim,y_dim,sequences,time,tones', [
+    (2, 3, 2, 3, 2),
+    (1, 3, 2, 3, 2),
+    (2, 1, 2, 3, 2),
+    (2, 3, 2, 1, 2),
+])
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_modified_partial_sum_product_14(sum_op, prod_op, vars1, vars2,
+                                         x_dim, y_dim, sequences, time, tones):
+
+    f = random_tensor(OrderedDict({}))
+
+    g = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "time": Bint[time],
+        "x_prev": Bint[x_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    h = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "time": Bint[time],
+        "tones": Bint[tones],
+        "x_curr": Bint[x_dim],
+        "y_prev": Bint[y_dim],
+        "y_curr": Bint[y_dim],
+    }))
+
+    factors = [f, g, h]
+    plate_to_step = dict({
+        "sequences": {},
+        "time": {"x_prev": "x_curr"},
+        "tones": {"y_prev": "y_curr"}
+    })
+
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
+    actual = reduce(prod_op, factors2)
+
+    local_var_dict = {
+        "time": frozenset(),
+        "tones": frozenset()
+    }
+    local_markov_var_dict = {
+        "time": frozenset({"y"}),
+        "tones": frozenset()
+    }
+    global_vars = frozenset()
+    markov_to_step = dict({
+        "time": {"x"},
+        "tones": {"y"},
+    })
+
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 13)))
