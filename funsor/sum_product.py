@@ -127,7 +127,7 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
         markov_sum_vars |= frozenset(step.keys()) | frozenset(step.values())
     markov_sum_vars &= sum_vars
     markov_prod_vars = frozenset(k for k, v in plate_to_step.items() if v and k in eliminate)
-    markov_sum_to_prod = defaultdict(set) 
+    markov_sum_to_prod = defaultdict(set)
     for markov_prod in markov_prod_vars:
         for k, v in plate_to_step[markov_prod].items():
             markov_sum_to_prod[k].add(markov_prod)
