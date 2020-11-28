@@ -281,23 +281,23 @@ def test_modified_partial_sum_product_1(sum_op, prod_op, vars1, vars2,
     (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
      frozenset()),
 ])
-@pytest.mark.parametrize('x_dim,y_dim,time_duration', [
+@pytest.mark.parametrize('x_dim,y_dim,time', [
     (2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_2(sum_op, prod_op, vars1, vars2,
-                                        x_dim, y_dim, time_duration):
+                                        x_dim, y_dim, time):
 
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({
-        "time": Bint[time_duration],
+        "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
     f3 = random_tensor(OrderedDict({
-        "time": Bint[time_duration],
+        "time": Bint[time],
         "y_prev": Bint[y_dim],
         "y_curr": Bint[y_dim],
     }))
@@ -327,23 +327,23 @@ def test_modified_partial_sum_product_2(sum_op, prod_op, vars1, vars2,
     (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
      frozenset()),
 ])
-@pytest.mark.parametrize('x_dim,y_dim,time_duration', [
+@pytest.mark.parametrize('x_dim,y_dim,time', [
     (2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
 def test_modified_partial_sum_product_3(sum_op, prod_op, vars1, vars2,
-                                        x_dim, y_dim, time_duration):
+                                        x_dim, y_dim, time):
 
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({
-        "time": Bint[time_duration],
+        "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
     f3 = random_tensor(OrderedDict({
-        "time": Bint[time_duration],
+        "time": Bint[time],
         "x_curr": Bint[x_dim],
         "y_prev": Bint[y_dim],
         "y_curr": Bint[y_dim],
@@ -1085,6 +1085,55 @@ def test_modified_partial_sum_product_14(sum_op, prod_op, vars1, vars2,
         local_var_dict, local_markov_var_dict, markov_to_step)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.parametrize('vars1,vars2', [
+    (frozenset(),
+     frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
+     frozenset({"sequences"})),
+    (frozenset({"sequences", "time", "tones", "x_prev", "x_curr", "y_prev", "y_curr"}),
+     frozenset()),
+])
+@pytest.mark.parametrize('x_dim,y_dim,sequences,time,tones', [
+    (2, 3, 2, 3, 2),
+    (1, 3, 2, 3, 2),
+    (2, 1, 2, 3, 2),
+    (2, 3, 2, 1, 2),
+])
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_modified_partial_sum_product_15(sum_op, prod_op, vars1, vars2,
+                                         x_dim, y_dim, sequences, time, tones):
+
+    f = random_tensor(OrderedDict({}))
+
+    g = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "time": Bint[time],
+        "x_prev": Bint[x_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    h = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "time": Bint[time],
+        "tones": Bint[tones],
+        "x_curr": Bint[x_dim],
+        "y_prev": Bint[y_dim],
+        "y_curr": Bint[y_dim],
+    }))
+
+    factors = [f, g, h]
+    plate_to_step = dict({
+        "sequences": {},
+        "time": {"x_prev": "x_curr", "y_prev": "y_curr"},
+        "tones": {"y_prev": "y_curr"}
+    })
+
+    with pytest.raises(ValueError, match="intractable!"):
+        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
+        reduce(prod_op, factors2)
 
 
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 13)))

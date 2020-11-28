@@ -127,11 +127,11 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
         markov_sum_vars |= frozenset(step.keys()) | frozenset(step.values())
     markov_sum_vars &= sum_vars
     markov_prod_vars = frozenset(k for k, v in plate_to_step.items() if v and k in eliminate)
-    markov_sum_to_prod = {}
+    markov_sum_to_prod = defaultdict(set) 
     for markov_prod in markov_prod_vars:
         for k, v in plate_to_step[markov_prod].items():
-            markov_sum_to_prod[k] = markov_prod
-            markov_sum_to_prod[v] = markov_prod
+            markov_sum_to_prod[k].add(markov_prod)
+            markov_sum_to_prod[v].add(markov_prod)
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
@@ -159,9 +159,10 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
             if markov_vars:
                 markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
                 assert all(p == markov_prod_var[0] for p in markov_prod_var)
-                time = markov_prod_var[0]
-                # if not len(markov_prod_vars.intersection(f.inputs)) == 1:
-                #     raise ValueError("intractable!")
+                if len(markov_prod_var[0]) != 1:
+                     raise ValueError("intractable!")
+                else:
+                    time = next(iter(markov_prod_var[0]))
                 for v in sum_vars.intersection(f.inputs):
                     if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
                         raise ValueError("intractable!")
