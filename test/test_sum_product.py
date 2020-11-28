@@ -1136,6 +1136,52 @@ def test_modified_partial_sum_product_15(sum_op, prod_op, vars1, vars2,
         reduce(prod_op, factors2)
 
 
+@pytest.mark.parametrize('vars1,vars2', [
+    (frozenset(),
+     frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
+     frozenset()),
+])
+@pytest.mark.parametrize('x_dim,y_dim,time', [
+    (2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),
+])
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_modified_partial_sum_product_16(sum_op, prod_op, vars1, vars2,
+                                         x_dim, y_dim, time):
+
+    f1 = random_tensor(OrderedDict({}))
+
+    f2 = random_tensor(OrderedDict({
+        "time": Bint[time],
+        "y_prev": Bint[y_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "time": Bint[time],
+        "x_prev": Bint[x_dim],
+        "y_curr": Bint[y_dim],
+    }))
+
+    factors = [f1, f2, f3]
+    plate_to_step = dict({"time": {"x_prev": "x_curr", "y_prev": "y_curr"}})
+
+    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
+    actual = reduce(prod_op, factors2)
+
+    local_var_dict = {"time": frozenset()}
+    local_markov_var_dict = {"time": frozenset()}
+    global_vars = frozenset()
+    markov_to_step = dict({"time": {"x", "y"}})
+
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
 @pytest.mark.parametrize('num_steps', [None] + list(range(1, 13)))
 @pytest.mark.parametrize('sum_op,prod_op,state_domain', [
     (ops.add, ops.mul, Bint[2]),

@@ -150,9 +150,9 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
         leaf = max(ordinal_to_factors, key=len)
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
+        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars | markov_prod_vars):
             # eliminate non markov vars
-            nonmarkov_vars = group_vars - markov_sum_vars
+            nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
             f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
             # eliminate markov vars
             markov_vars = group_vars.intersection(markov_sum_vars)
@@ -160,9 +160,8 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
                 markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
                 assert all(p == markov_prod_var[0] for p in markov_prod_var)
                 if len(markov_prod_var[0]) != 1:
-                     raise ValueError("intractable!")
-                else:
-                    time = next(iter(markov_prod_var[0]))
+                    raise ValueError("intractable!")
+                time = next(iter(markov_prod_var[0]))
                 for v in sum_vars.intersection(f.inputs):
                     if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
                         raise ValueError("intractable!")
