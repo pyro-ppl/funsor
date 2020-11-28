@@ -33,6 +33,7 @@ from funsor.distribution import (  # noqa: F401
     eager_multinomial,
     eager_mvn,
     eager_normal,
+    eager_plate_multinomial,
     indepdist_to_funsor,
     make_dist,
     maskeddist_to_funsor,
@@ -41,7 +42,7 @@ from funsor.distribution import (  # noqa: F401
 from funsor.domains import Real, Reals
 import funsor.ops as ops
 from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Binary, Funsor, Variable, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Unary, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
 
 
@@ -221,9 +222,93 @@ def deltadist_to_data(funsor_dist, name_to_dim=None):
     return dist.Delta(v, log_density, event_dim=len(funsor_dist.v.output.shape))
 
 
+@functools.singledispatch
+def op_to_torch_transform(op, name_to_dim=None):
+    raise NotImplementedError("cannot convert {} to a Transform".format(op))
+
+
+@op_to_torch_transform.register(ops.TransformOp)
+def transform_to_torch_transform(op, name_to_dim=None):
+    raise NotImplementedError("{} is not a currently supported transform".format(op))
+
+
+@op_to_torch_transform.register(ops.ExpOp)
+def exp_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.ExpTransform()
+
+
+@op_to_torch_transform.register(ops.LogOp)
+def log_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.ExpTransform().inv
+
+
+@op_to_torch_transform.register(ops.SigmoidOp)
+def sigmoid_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.SigmoidTransform()
+
+
+@op_to_torch_transform.register(ops.TanhOp)
+def tanh_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.TanhTransform()
+
+
+@op_to_torch_transform.register(ops.AtanhOp)
+def atanh_to_torch_transform(op, name_to_dim=None):
+    return torch.distributions.transforms.TanhTransform().inv
+
+
+@to_data.register(Unary[ops.TransformOp, Union[Unary, Variable]])
+def transform_to_data(expr, name_to_dim=None):
+    if isinstance(expr.op, ops.TransformOp):
+        tfm = op_to_torch_transform(expr.op, name_to_dim=name_to_dim)
+        if isinstance(expr.arg, Unary):
+            tfm = torch.distributions.transforms.ComposeTransform([to_data(expr.arg, name_to_dim=name_to_dim), tfm])
+        return tfm
+    raise NotImplementedError("cannot convert to data: {}".format(expr))
+
+
 ###############################################
 # Converting PyTorch Distributions to funsors
 ###############################################
+
+@to_funsor.register(torch.distributions.Transform)
+def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    raise NotImplementedError("{} is not a currently supported transform".format(tfm))
+
+
+@to_funsor.register(torch.distributions.transforms.ExpTransform)
+def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.exp(Variable(name, output))
+
+
+@to_funsor.register(torch.distributions.transforms.TanhTransform)
+def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.tanh(Variable(name, output))
+
+
+@to_funsor.register(torch.distributions.transforms.SigmoidTransform)
+def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return ops.sigmoid(Variable(name, output))
+
+
+@to_funsor.register(torch.distributions.transforms._InverseTransform)
+def inversetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    expr = to_funsor(tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)
+    assert isinstance(expr, Unary)
+    return expr.op.inv(expr.arg)
+
+
+@to_funsor.register(torch.distributions.transforms.ComposeTransform)
+def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    expr = Variable(name, output)
+    for part in tfm.parts:
+        expr = to_funsor(part, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)(**{name: expr})
+    return expr
+
 
 to_funsor.register(torch.distributions.Independent)(indepdist_to_funsor)
 to_funsor.register(MaskedDistribution)(maskeddist_to_funsor)
@@ -275,3 +360,5 @@ eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Gamma, Poisso
     eager_gamma_poisson)
 eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
     eager_dirichlet_posterior)
+eager.register(Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset)(  # noqa: F821
+    eager_plate_multinomial)

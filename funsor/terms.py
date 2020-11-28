@@ -7,7 +7,8 @@ import math
 import numbers
 import typing
 import warnings
-from collections import Hashable, OrderedDict
+from collections import OrderedDict
+from collections.abc import Hashable
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
