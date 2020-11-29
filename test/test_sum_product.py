@@ -25,7 +25,7 @@ from funsor.sum_product import (
     sum_product
 )
 from funsor.tensor import Tensor, get_default_prototype
-from funsor.terms import Variable, eager_or_die, moment_matching, reflect
+from funsor.terms import Variable, eager, eager_or_die, lazy, moment_matching, reflect
 from funsor.testing import assert_close, random_gaussian, random_tensor
 from funsor.util import get_backend
 
@@ -182,9 +182,10 @@ def _expected_modified_partial_sum_product(
                 unrolled_factors.append(factor)
         factors = unrolled_factors
 
-    expected = sum_product(sum_op, prod_op, factors, reduce_vars, plates)
+    with interpretation(lazy):
+        expected = sum_product(sum_op, prod_op, factors, reduce_vars, plates)
 
-    return expected
+    return apply_optimizer(expected)
 
 
 @pytest.mark.parametrize('vars1,vars2', [
@@ -657,6 +658,7 @@ def test_modified_partial_sum_product_8(sum_op, prod_op, vars1, vars2,
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
+@pytest.mark.parametrize("use_lazy", [False, True])
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
      frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
@@ -671,7 +673,7 @@ def test_modified_partial_sum_product_8(sum_op, prod_op, vars1, vars2,
     (3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
-def test_modified_partial_sum_product_9(sum_op, prod_op, vars1, vars2,
+def test_modified_partial_sum_product_9(use_lazy, sum_op, prod_op, vars1, vars2,
                                         w_dim, x_dim, y_dim, sequences, time, tones):
 
     f1 = random_tensor(OrderedDict({}))
@@ -707,9 +709,11 @@ def test_modified_partial_sum_product_9(sum_op, prod_op, vars1, vars2,
         "tones": {}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
-    actual = reduce(prod_op, factors2)
+    with interpretation(lazy if use_lazy else eager):
+        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
+        actual = reduce(prod_op, factors2)
+    actual = apply_optimizer(actual)
 
     local_var_dict = {
         "time": frozenset({"y_curr"})
@@ -803,6 +807,7 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
+@pytest.mark.parametrize('use_lazy', [False, True])
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
      frozenset({"a", "b", "sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
@@ -820,7 +825,7 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
     (2, 3, 3, 2, 3, 2, 1, 4),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
-def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
+def test_modified_partial_sum_product_11(use_lazy, sum_op, prod_op, vars1, vars2,
                                          a_dim, b_dim, w_dim, x_dim, y_dim, sequences, time, tones):
 
     f = random_tensor(OrderedDict({}))
@@ -867,9 +872,11 @@ def test_modified_partial_sum_product_11(sum_op, prod_op, vars1, vars2,
         "tones": {}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
-    actual = reduce(prod_op, factors2)
+    with interpretation(lazy if use_lazy else eager):
+        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
+        actual = reduce(prod_op, factors2)
+    actual = apply_optimizer(actual)
 
     local_var_dict = {"time": frozenset({"y_curr"})}
     local_markov_var_dict = {"time": frozenset()}
@@ -941,6 +948,7 @@ def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
         reduce(prod_op, factors2)
 
 
+@pytest.mark.parametrize('use_lazy', [False, True])
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
      frozenset({"sequences", "w", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"})),
@@ -962,7 +970,7 @@ def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
     (3, 2, 3, 2, 1, 4, 3),
 ])
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
-def test_modified_partial_sum_product_13(sum_op, prod_op, vars1, vars2,
+def test_modified_partial_sum_product_13(use_lazy, sum_op, prod_op, vars1, vars2,
                                          w_dim, x_dim, y_dim, sequences, days, weeks, tones):
 
     f1 = random_tensor(OrderedDict({}))
@@ -992,9 +1000,11 @@ def test_modified_partial_sum_product_13(sum_op, prod_op, vars1, vars2,
         "weeks": {"y_prev": "y_curr"}
     })
 
-    factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
-    factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
-    actual = reduce(prod_op, factors2)
+    with interpretation(lazy if use_lazy else eager):
+        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
+        actual = reduce(prod_op, factors2)
+    actual = apply_optimizer(actual)
 
     local_var_dict = {
         "days": frozenset(),
@@ -1174,6 +1184,74 @@ def test_modified_partial_sum_product_16(sum_op, prod_op, vars1, vars2,
     local_markov_var_dict = {"time": frozenset()}
     global_vars = frozenset()
     markov_to_step = dict({"time": {"x", "y"}})
+
+    expected = _expected_modified_partial_sum_product(
+        sum_op, prod_op, factors, plate_to_step, global_vars,
+        local_var_dict, local_markov_var_dict, markov_to_step)
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.parametrize('use_lazy', [True, False])
+@pytest.mark.parametrize('vars1,vars2', [
+    (frozenset(),
+     frozenset({"time", "x_prev", "x_curr", "y_curr", "z0", "z1", "z2"})),
+    (frozenset({"y_curr", "z0", "z1", "z2"}),
+     frozenset({"time", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_prev", "x_curr", "y_curr", "z0", "z1", "z2"}),
+     frozenset()),
+])
+@pytest.mark.parametrize('x_dim,y_dim,z_dim,time', [
+    (2, 3, 2, 5), (1, 3, 2, 5), (2, 1, 2, 5), (2, 3, 2, 1),
+])
+@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
+def test_modified_partial_sum_product_17(use_lazy, sum_op, prod_op, vars1, vars2,
+                                         x_dim, y_dim, z_dim, time):
+
+    f1 = random_tensor(OrderedDict({}))
+
+    f2 = random_tensor(OrderedDict({
+        "time": Bint[time],
+        "x_prev": Bint[x_dim],
+        "x_curr": Bint[x_dim],
+    }))
+
+    f3_1 = random_tensor(OrderedDict({
+        "time": Bint[time],
+        "x_curr": Bint[x_dim],
+        "y_curr": Bint[y_dim],
+        "z0": Bint[z_dim],
+        "z1": Bint[z_dim],
+    }))
+
+    f3_2 = random_tensor(OrderedDict({
+        "time": Bint[time],
+        "x_curr": Bint[x_dim],
+        "y_curr": Bint[y_dim],
+        "z1": Bint[z_dim],
+        "z2": Bint[z_dim],
+    }))
+
+    f3_3 = random_tensor(OrderedDict({
+        "time": Bint[time],
+        "x_curr": Bint[x_dim],
+        "y_curr": Bint[y_dim],
+        "z2": Bint[z_dim],
+    }))
+
+    factors = [f1, f2, f3_1, f3_2, f3_3]
+    plate_to_step = dict({"time": {"x_prev": "x_curr"}})
+
+    with interpretation(lazy if use_lazy else eager):
+        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
+        actual = reduce(prod_op, factors2)
+    actual = apply_optimizer(actual)
+
+    local_var_dict = {"time": frozenset({"y_curr", "z0", "z1", "z2"})}
+    local_markov_var_dict = {"time": frozenset()}
+    global_vars = frozenset()
+    markov_to_step = dict({"time": {"x"}})
 
     expected = _expected_modified_partial_sum_product(
         sum_op, prod_op, factors, plate_to_step, global_vars,
