@@ -167,7 +167,7 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
                         raise ValueError("intractable!")
                 time_var = Variable(time, f.inputs[time])
                 group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
-                f = sequential_sum_product(sum_op, prod_op, f, time_var, group_step)
+                f = MarkovProduct(sum_op, prod_op, f, time_var, group_step)
                 f = f.reduce(sum_op, frozenset(group_step.keys()) | frozenset(group_step.values()))
 
             remaining_sum_vars = sum_vars.intersection(f.inputs)
