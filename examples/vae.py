@@ -50,6 +50,10 @@ class Decoder(nn.Module):
 def main(args):
     funsor.set_backend("torch")
 
+    # XXX Temporary fix after https://github.com/pyro-ppl/pyro/pull/2701
+    import pyro
+    pyro.enable_validation(False)
+
     encoder = Encoder()
     decoder = Decoder()
 
