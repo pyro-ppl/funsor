@@ -22,7 +22,7 @@ from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
                            ignore_jit_warnings, numeric_array, stack)
 from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, \
-    eager, to_data, to_funsor
+    eager, reflect, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
 
@@ -120,14 +120,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             return Number(0.)  # distributions are normalized
         return super(Distribution, self).eager_reduce(op, reduced_vars)
 
-    @classmethod
-    def eager_log_prob(cls, *params):
-        inputs, tensors = align_tensors(*params)
-        params = dict(zip(cls._ast_fields, tensors))
-        value = params.pop('value')
-        data = cls.dist_class(**params).log_prob(value)
-        return Tensor(data, inputs)
-
     def _get_raw_dist(self):
         """
         Internal method for working with underlying distribution attributes
@@ -150,6 +142,19 @@ class Distribution(Funsor, metaclass=DistributionMeta):
     @property
     def has_enumerate_support(self):
         return getattr(self.dist_class, "has_enumerate_support", False)
+
+    @classmethod
+    def eager_log_prob(cls, *params):
+        params, value = params[:-1], params[-1]
+        params = params + (Variable("value", value.output),)
+        raw_dist, value_name, value_output, dim_to_name = reflect(cls, *params)._get_raw_dist()
+        assert value.output == value_output
+        name_to_dim = {v: k for k, v in dim_to_name.items()}
+        dim_to_name.update({-1 - d -len(raw_dist.batch_shape): name
+                            for d, name in enumerate(value.inputs) if name not in name_to_dim})
+        name_to_dim.update({v: k for k, v in dim_to_name.items() if v not in name_to_dim})
+        raw_log_prob = raw_dist.log_prob(to_data(value, name_to_dim=name_to_dim))
+        return to_funsor(raw_log_prob, Real, dim_to_name=dim_to_name)
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
 
@@ -428,11 +433,17 @@ class CoerceDistributionToFunsor:
 
 @to_data.register(Distribution)
 def distribution_to_data(funsor_dist, name_to_dim=None):
-    params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
-              for param_name in funsor_dist._ast_fields if param_name != 'value']
-    pyro_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     funsor_event_shape = funsor_dist.value.output.shape
+    params = []
+    for param_name, funsor_param in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1]):
+        import pdb; pdb.set_trace()
+        param = to_data(funsor_param, name_to_dim=name_to_dim)
+        for i in range(max(0, len(funsor_event_shape) - len(funsor_param.output.shape))):
+            param = param.unsqueeze(-1 - len(funsor_param.output.shape))
+        params.append(param)
+    pyro_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
+    import pdb; pdb.set_trace()
 
     # TODO get this working for all backends
     if not isinstance(funsor_dist.value, Variable):
