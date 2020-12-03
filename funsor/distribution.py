@@ -453,9 +453,11 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     for param_name, funsor_param in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1]):
         param = to_data(funsor_param, name_to_dim=name_to_dim)
 
+        # infer the independent dimensions of each parameter separately, since we chose to keep them unbroadcasted
         param_event_shape = getattr(funsor_dist._infer_param_domain(param_name, funsor_param.output.shape), "shape", ())
         param_indep_shape = funsor_param.output.shape[:len(funsor_param.output.shape) - len(param_event_shape)]
         for i in range(max(0, len(indep_shape) - len(param_indep_shape))):
+            # add singleton event dimensions, leave broadcasting/expanding to backend
             param = ops.unsqueeze(param, -1 - len(funsor_param.output.shape))
 
         params.append(param)
