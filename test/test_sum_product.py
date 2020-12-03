@@ -81,9 +81,9 @@ def test_partition(inputs, dims, expected_num_components):
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.add, ops.mul), (ops.logaddexp, ops.add)])
 @pytest.mark.parametrize('inputs,plates', [('a,abi,bcij', 'ij')])
 @pytest.mark.parametrize('vars1,vars2', [
-    ('cj', 'abi'),
     ('', 'abcij'),
     ('c', 'abij'),
+    ('cj', 'abi'),
     ('bcj', 'ai'),
     ('bcij', 'a'),
     ('abcij', ''),
