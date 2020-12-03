@@ -436,14 +436,12 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     funsor_event_shape = funsor_dist.value.output.shape
     params = []
     for param_name, funsor_param in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1]):
-        import pdb; pdb.set_trace()
         param = to_data(funsor_param, name_to_dim=name_to_dim)
         for i in range(max(0, len(funsor_event_shape) - len(funsor_param.output.shape))):
             param = param.unsqueeze(-1 - len(funsor_param.output.shape))
         params.append(param)
     pyro_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
-    import pdb; pdb.set_trace()
 
     # TODO get this working for all backends
     if not isinstance(funsor_dist.value, Variable):

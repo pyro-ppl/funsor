@@ -1151,3 +1151,31 @@ def test_normal_event_dim_conversion(batch_shape, event_shape):
         funsor.to_data(data, name_to_dim=name_to_dim))
     assert actual_log_prob.shape == expected_log_prob.shape
     assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(4,), (4, 7), (1, 4), (4, 1), (4, 1, 7)], ids=str)
+def test_mvnormal_event_dim_conversion(batch_shape, event_shape):
+
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+
+    value = Variable("value", Reals[event_shape])
+    loc = Tensor(randn(batch_shape + event_shape), inputs)
+    scale_tril = Tensor(random_scale_tril(batch_shape + event_shape + event_shape[-1:]), inputs)
+
+    with interpretation(lazy):
+        actual = dist.MultivariateNormal(loc=loc, scale_tril=scale_tril, value=value)
+
+    expected_inputs = inputs.copy()
+    expected_inputs.update({"value": Reals[event_shape]})
+    check_funsor(actual, expected_inputs, Real)
+
+    name_to_dim = {batch_dim: -1-i for i, batch_dim in enumerate(batch_dims)}
+    data = actual.sample(frozenset(["value"])).terms[0][1][0]
+
+    actual_log_prob = funsor.to_data(actual(value=data), name_to_dim=name_to_dim)
+    expected_log_prob = funsor.to_data(actual, name_to_dim=name_to_dim).log_prob(
+        funsor.to_data(data, name_to_dim=name_to_dim))
+    assert actual_log_prob.shape == expected_log_prob.shape
+    assert_close(actual_log_prob, expected_log_prob)
