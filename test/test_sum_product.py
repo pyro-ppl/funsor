@@ -111,9 +111,9 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     assert_close(actual, expected)
 
     unrolled_factors1, unrolled_vars1, remaining_plates = \
-            partial_unroll(factors, vars1, frozenset(plates))
+        partial_unroll(factors, vars1, frozenset(plates))
     unrolled_factors2, unrolled_vars2, _ = \
-            partial_unroll(unrolled_factors1, vars2 | unrolled_vars1, remaining_plates)
+        partial_unroll(unrolled_factors1, vars2 | unrolled_vars1, remaining_plates)
     unrolled_expected = reduce(prod_op, unrolled_factors2).reduce(sum_op, unrolled_vars2)
     assert_close(actual, unrolled_expected)
 
