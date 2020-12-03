@@ -81,9 +81,9 @@ def test_partition(inputs, dims, expected_num_components):
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.add, ops.mul), (ops.logaddexp, ops.add)])
 @pytest.mark.parametrize('inputs,plates', [('a,abi,bcij', 'ij')])
 @pytest.mark.parametrize('vars1,vars2', [
+    ('cj', 'abi'),
     ('', 'abcij'),
     ('c', 'abij'),
-    ('cj', 'abi'),
     ('bcj', 'ai'),
     ('bcij', 'a'),
     ('abcij', ''),
@@ -110,9 +110,11 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     expected = sum_product(sum_op, prod_op, factors, vars1 | vars2, frozenset(plates))
     assert_close(actual, expected)
 
-    unrolled_factors1, _ = partial_unroll(factors, vars1 & frozenset(plates))
-    unrolled_factors2, reduce_vars = partial_unroll(unrolled_factors1, vars2 & frozenset(plates))
-    unrolled_expected = reduce(prod_op, unrolled_factors2).reduce(sum_op, reduce_vars)
+    unrolled_factors1, unrolled_vars1, remaining_plates = \
+            partial_unroll(factors, vars1, frozenset(plates))
+    unrolled_factors2, unrolled_vars2, _ = \
+            partial_unroll(unrolled_factors1, vars2 | unrolled_vars1, remaining_plates)
+    unrolled_expected = reduce(prod_op, unrolled_factors2).reduce(sum_op, unrolled_vars2)
     assert_close(actual, unrolled_expected)
 
 

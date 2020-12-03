@@ -72,32 +72,39 @@ def _unroll_plate(factors, plate, size, var_to_ordinal):
     return unrolled_factors, var_to_ordinal
 
 
-def partial_unroll(factors, plates=frozenset()):
+def partial_unroll(factors, eliminate=frozenset(), plates=frozenset()):
     """
     Performs partial unrolling of plated factor graphs to standard factor graphs.
 
-    :return: a list of partially unrolled Funsors
-        and a frozenset of partially unrolled variables.
+    :return: a list of partially unrolled Funsors,
+        a frozenset of partially unrolled variable names,
+        and a frozenset of remaining plates.
     """
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
+    assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
+    sum_vars = eliminate - plates
+    unrolled_plates = eliminate & plates
 
     var_to_ordinal = {}
     plate_to_size = {}
     for f in factors:
         ordinal = plates.intersection(f.inputs)
-        for var in frozenset(f.inputs) - plates:
+        for var in sum_vars.intersection(f.inputs):
             var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
         for plate in ordinal:
             plate_to_size[plate] = f.inputs[plate].size
 
     # unroll one plate at a time
-    for plate in plates:
+    for plate in unrolled_plates:
         size = plate_to_size[plate]
         factors, var_to_ordinal = _unroll_plate(factors, plate, size, var_to_ordinal)
 
-    return factors, frozenset(var_to_ordinal.keys())
+    unrolled_vars = frozenset(var_to_ordinal.keys())
+    remaining_plates = plates - unrolled_plates
+
+    return factors, unrolled_vars, remaining_plates
 
 
 def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
