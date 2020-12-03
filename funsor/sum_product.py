@@ -119,6 +119,18 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plate_to_step, dict)
+    # process plate_to_step
+    plate_to_step = plate_to_step.copy()
+    prev_to_init = {}
+    for key, step in plate_to_step.items():
+        # map prev to init; works for any history > 0
+        for s in step:
+            init = s[:len(s)//2]
+            prev = s[len(s)//2:-1]
+            prev_to_init.update(zip(prev, init))
+        # make a dict step e.g. {"x_prev": "x_curr"}; specific to history = 1
+        plate_to_step[key] = {s[1]: s[2] for s in step}
+
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
     prod_vars = eliminate.intersection(plates)
@@ -168,7 +180,8 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
                 time_var = Variable(time, f.inputs[time])
                 group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
                 f = MarkovProduct(sum_op, prod_op, f, time_var, group_step)
-                f = f.reduce(sum_op, frozenset(group_step.keys()) | frozenset(group_step.values()))
+                f = f.reduce(sum_op, frozenset(group_step.values()))
+                f = f(**prev_to_init)
 
             remaining_sum_vars = sum_vars.intersection(f.inputs)
 
