@@ -137,7 +137,7 @@ def _infer_value_domain(**kwargs):
 @functools.lru_cache(maxsize=5000)
 def _infer_value_domain(cls, **kwargs):
     instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()}, validate_args=False)
-    return Reals[instance.event_shape]
+    return Reals[instance.batch_shape + instance.event_shape]
 
 
 # TODO fix Delta.arg_constraints["v"] to be a

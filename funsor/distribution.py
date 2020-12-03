@@ -438,12 +438,30 @@ class CoerceDistributionToFunsor:
 @to_data.register(Distribution)
 def distribution_to_data(funsor_dist, name_to_dim=None):
     funsor_event_shape = funsor_dist.value.output.shape
+
+    # # attempt to generically infer the independent output dimensions
+    # # TODO we still need to combine this somehow with param shape information...
+    # instance = funsor_dist.dist_class(**{k: dummy_numeric_array(domain)
+    #                                      for k, domain in zip(funsor_dist._ast_fields,
+    #                                                           (v.output for v in funsor_dist._ast_values))
+    #                                      if k != "value"},
+    #                                   validate_args=False)
+    # event_shape = broadcast_shape(instance.event_shape, funsor_dist.value.output.shape)
+    # # XXX is this final broadcast_shape necessary? should just be event_shape[...]?
+    # indep_shape = broadcast_shape(instance.batch_shape, event_shape[:len(event_shape) - len(instance.event_shape)])
+
     params = []
     for param_name, funsor_param in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1]):
         param = to_data(funsor_param, name_to_dim=name_to_dim)
+
+        # FIXME: this loop is invalid for distributions like DirichletMultinomial
+        # which have some parameters (e.g. total_count) whose output shapes
+        # are smaller than the distribution's event_shape.
         for i in range(max(0, len(funsor_event_shape) - len(funsor_param.output.shape))):
-            param = param.unsqueeze(-1 - len(funsor_param.output.shape))
+            param = ops.unsqueeze(param, -1 - len(funsor_param.output.shape))
+
         params.append(param)
+
     pyro_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
 
