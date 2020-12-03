@@ -45,7 +45,7 @@ def _partition(terms, sum_vars):
     return components
 
 
-def _unroll_plate(factors, plate, size, var_to_ordinal):
+def _unroll_plate(factors, plate, var_to_ordinal):
     # replicated variables
     plate_vars = set()
     for var, ordinal in var_to_ordinal.items():
@@ -56,9 +56,11 @@ def _unroll_plate(factors, plate, size, var_to_ordinal):
     unrolled_factors = []
     for factor in factors:
         if plate in factor.inputs:
+            size = factor.inputs[plate].size
+            f_vars = plate_vars.intersection(factor.inputs)
             unrolled_factors.extend([factor(
                     **{plate: i},
-                    **{var: "{}_{}{}".format(var, plate, i) for var in plate_vars}
+                    **{var: "{}_{}{}".format(var, plate, i) for var in f_vars}
                 ) for i in range(size)])
         else:
             unrolled_factors.append(factor)
@@ -66,7 +68,8 @@ def _unroll_plate(factors, plate, size, var_to_ordinal):
     # unroll variables
     for var in plate_vars:
         ordinal = var_to_ordinal.pop(var)
-        var_to_ordinal.update({"{}_{}{}".format(var, plate, i): ordinal.difference(plate)
+        new_ordinal = ordinal.difference(plate)
+        var_to_ordinal.update({"{}_{}{}".format(var, plate, i): new_ordinal
                                for i in range(size)})
 
     return unrolled_factors, var_to_ordinal
@@ -88,18 +91,14 @@ def partial_unroll(factors, eliminate=frozenset(), plates=frozenset()):
     unrolled_plates = eliminate & plates
 
     var_to_ordinal = {}
-    plate_to_size = {}
     for f in factors:
         ordinal = plates.intersection(f.inputs)
         for var in sum_vars.intersection(f.inputs):
             var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
-        for plate in ordinal:
-            plate_to_size[plate] = f.inputs[plate].size
 
     # unroll one plate at a time
     for plate in unrolled_plates:
-        size = plate_to_size[plate]
-        factors, var_to_ordinal = _unroll_plate(factors, plate, size, var_to_ordinal)
+        factors, var_to_ordinal = _unroll_plate(factors, plate, var_to_ordinal)
 
     unrolled_vars = frozenset(var_to_ordinal.keys())
     remaining_plates = plates - unrolled_plates
