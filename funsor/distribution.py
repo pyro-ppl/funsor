@@ -16,7 +16,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.cnf import Contraction, GaussianMixture
-from funsor.domains import Array, Real, Reals, RealsType
+from funsor.domains import Array, BintType, Real, Reals, RealsType
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
@@ -147,14 +147,18 @@ class Distribution(Funsor, metaclass=DistributionMeta):
     def eager_log_prob(cls, *params):
         params, value = params[:-1], params[-1]
         params = params + (Variable("value", value.output),)
-        raw_dist, value_name, value_output, dim_to_name = reflect(cls, *params)._get_raw_dist()
+        instance = reflect(cls, *params)
+        raw_dist, value_name, value_output, dim_to_name = instance._get_raw_dist()
         assert value.output == value_output
         name_to_dim = {v: k for k, v in dim_to_name.items()}
-        dim_to_name.update({-1 - d -len(raw_dist.batch_shape): name
+        dim_to_name.update({-1 - d - len(raw_dist.batch_shape): name
                             for d, name in enumerate(value.inputs) if name not in name_to_dim})
         name_to_dim.update({v: k for k, v in dim_to_name.items() if v not in name_to_dim})
         raw_log_prob = raw_dist.log_prob(to_data(value, name_to_dim=name_to_dim))
-        return to_funsor(raw_log_prob, Real, dim_to_name=dim_to_name)
+        log_prob = to_funsor(raw_log_prob, Real, dim_to_name=dim_to_name)
+        inputs = value.inputs.copy()
+        inputs.update(instance.inputs)
+        return log_prob.align(tuple(k for k, v in inputs.items() if k in log_prob.inputs and isinstance(v, BintType)))
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
 

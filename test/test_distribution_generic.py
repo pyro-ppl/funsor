@@ -459,7 +459,6 @@ def test_generic_distribution_to_funsor(case):
         funsor_dist = [term for term in funsor_dist.terms
                        if isinstance(term, (funsor.distribution.Distribution, funsor.terms.Independent))][0]
 
-    import pdb; pdb.set_trace()
     actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
 
     assert isinstance(actual_dist, backend_dist.Distribution)
@@ -497,7 +496,7 @@ def test_generic_log_prob(case, use_lazy):
         raw_value = raw_dist.sample()
     expected_logprob = to_funsor(raw_dist.log_prob(raw_value), output=funsor.Real, dim_to_name=dim_to_name)
     funsor_value = to_funsor(raw_value, output=expected_value_domain, dim_to_name=dim_to_name)
-    actual_logprob = funsor_dist(value=funsor_value).align(tuple(expected_logprob.inputs))
+    actual_logprob = funsor_dist(value=funsor_value)
     assert_close(actual_logprob, expected_logprob, rtol=1e-4 if use_lazy else 1e-3)
 
 
