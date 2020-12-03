@@ -439,25 +439,23 @@ class CoerceDistributionToFunsor:
 def distribution_to_data(funsor_dist, name_to_dim=None):
     funsor_event_shape = funsor_dist.value.output.shape
 
-    # # attempt to generically infer the independent output dimensions
-    # # TODO we still need to combine this somehow with param shape information...
-    # instance = funsor_dist.dist_class(**{k: dummy_numeric_array(domain)
-    #                                      for k, domain in zip(funsor_dist._ast_fields,
-    #                                                           (v.output for v in funsor_dist._ast_values))
-    #                                      if k != "value"},
-    #                                   validate_args=False)
-    # event_shape = broadcast_shape(instance.event_shape, funsor_dist.value.output.shape)
-    # # XXX is this final broadcast_shape necessary? should just be event_shape[...]?
-    # indep_shape = broadcast_shape(instance.batch_shape, event_shape[:len(event_shape) - len(instance.event_shape)])
+    # attempt to generically infer the independent output dimensions
+    instance = funsor_dist.dist_class(**{
+        k: dummy_numeric_array(domain)
+        for k, domain in zip(funsor_dist._ast_fields, (v.output for v in funsor_dist._ast_values))
+        if k != "value"
+    }, validate_args=False)
+    event_shape = broadcast_shape(instance.event_shape, funsor_dist.value.output.shape)
+    # XXX is this final broadcast_shape necessary? should just be event_shape[...]?
+    indep_shape = broadcast_shape(instance.batch_shape, event_shape[:len(event_shape) - len(instance.event_shape)])
 
     params = []
     for param_name, funsor_param in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1]):
         param = to_data(funsor_param, name_to_dim=name_to_dim)
 
-        # FIXME: this loop is invalid for distributions like DirichletMultinomial
-        # which have some parameters (e.g. total_count) whose output shapes
-        # are smaller than the distribution's event_shape.
-        for i in range(max(0, len(funsor_event_shape) - len(funsor_param.output.shape))):
+        param_event_shape = getattr(funsor_dist._infer_param_domain(param_name, funsor_param.output.shape), "shape", ())
+        param_indep_shape = funsor_param.output.shape[:len(funsor_param.output.shape) - len(param_event_shape)]
+        for i in range(max(0, len(indep_shape) - len(param_indep_shape))):
             param = ops.unsqueeze(param, -1 - len(funsor_param.output.shape))
 
         params.append(param)
