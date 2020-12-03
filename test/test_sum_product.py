@@ -15,6 +15,7 @@ from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
     _partition,
+    partial_unroll,
     mixed_sequential_sum_product,
     naive_sarkka_bilmes_product,
     naive_sequential_sum_product,
@@ -108,6 +109,11 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
 
     expected = sum_product(sum_op, prod_op, factors, vars1 | vars2, frozenset(plates))
     assert_close(actual, expected)
+
+    unrolled_factors1, _ = partial_unroll(factors, vars1 & frozenset(plates))
+    unrolled_factors2, reduce_vars = partial_unroll(unrolled_factors1, vars2 & frozenset(plates))
+    unrolled_expected = reduce(prod_op, unrolled_factors2).reduce(sum_op, reduce_vars)
+    assert_close(actual, unrolled_expected)
 
 
 def _expected_modified_partial_sum_product(

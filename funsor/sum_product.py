@@ -45,6 +45,61 @@ def _partition(terms, sum_vars):
     return components
 
 
+def _unroll_plate(factors, plate, size, var_to_ordinal):
+    # replicated variables
+    plate_vars = set()
+    for var, ordinal in var_to_ordinal.items():
+        if plate in ordinal:
+            plate_vars.add(var)
+
+    # unroll factors
+    unrolled_factors = []
+    for factor in factors:
+        if plate in factor.inputs:
+            unrolled_factors.extend([factor(
+                    **{plate: i},
+                    **{var: "{}_{}{}".format(var, plate, i) for var in plate_vars}
+                ) for i in range(size)])
+        else:
+            unrolled_factors.append(factor)
+
+    # unroll variables
+    for var in plate_vars:
+        ordinal = var_to_ordinal.pop(var)
+        var_to_ordinal.update({"{}_{}{}".format(var, plate, i): ordinal.difference(plate)
+                               for i in range(size)})
+
+    return unrolled_factors, var_to_ordinal
+
+
+def partial_unroll(factors, plates=frozenset()):
+    """
+    Performs partial unrolling of plated factor graphs to standard factor graphs.
+
+    :return: a list of partially unrolled Funsors
+        and a frozenset of partially unrolled variables.
+    """
+    assert isinstance(factors, (tuple, list))
+    assert all(isinstance(f, Funsor) for f in factors)
+    assert isinstance(plates, frozenset)
+
+    var_to_ordinal = {}
+    plate_to_size = {}
+    for f in factors:
+        ordinal = plates.intersection(f.inputs)
+        for var in frozenset(f.inputs) - plates:
+            var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+        for plate in ordinal:
+            plate_to_size[plate] = f.inputs[plate].size
+
+    # unroll one plate at a time
+    for plate in plates:
+        size = plate_to_size[plate]
+        factors, var_to_ordinal = _unroll_plate(factors, plate, size, var_to_ordinal)
+
+    return factors, frozenset(var_to_ordinal.keys())
+
+
 def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
     """
     Performs partial sum-product contraction of a collection of factors.
