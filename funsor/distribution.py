@@ -74,6 +74,8 @@ class DistributionMeta(FunsorMeta):
             # this avoids .expand-ing underlying parameter tensors
             if isinstance(v, Funsor) and isinstance(v.output, RealsType):
                 domains[k] = Reals[broadcast_shape(v.shape, domains[k].shape)]
+            elif ops.is_numeric_array(v):
+                domains[k] = Reals[broadcast_shape(v.shape, domains[k].shape)]
 
         # now use the broadcasted parameter shapes to infer the event_shape
         domains["value"] = cls._infer_value_domain(**domains)

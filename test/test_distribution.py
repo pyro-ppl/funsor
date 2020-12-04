@@ -1127,7 +1127,8 @@ def test_gamma_poisson_conjugate(batch_shape):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('event_shape', [(4,), (4, 7), (1, 4), (4, 1), (4, 1, 7)], ids=str)
-def test_normal_event_dim_conversion(batch_shape, event_shape):
+@pytest.mark.parametrize('use_raw_scale', [False, True])
+def test_normal_event_dim_conversion(batch_shape, event_shape, use_raw_scale):
 
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
@@ -1135,6 +1136,10 @@ def test_normal_event_dim_conversion(batch_shape, event_shape):
     value = Variable("value", Reals[event_shape])
     loc = Tensor(randn(batch_shape + event_shape), inputs)
     scale = Tensor(ops.exp(randn(batch_shape)), inputs)
+    if use_raw_scale:
+        if batch_shape:
+            pytest.xfail(reason="raw scale is underspecified for nonempty batch_shape")
+        scale = scale.data
 
     with interpretation(lazy):
         actual = dist.Normal(loc=loc, scale=scale, value=value)
