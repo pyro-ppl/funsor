@@ -158,9 +158,9 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         name_to_dim.update({v: k for k, v in dim_to_name.items() if v not in name_to_dim})
         raw_log_prob = raw_dist.log_prob(to_data(value, name_to_dim=name_to_dim))
         log_prob = to_funsor(raw_log_prob, Real, dim_to_name=dim_to_name)
-        inputs = value.inputs.copy()
-        inputs.update(instance.inputs)
-        return log_prob.align(tuple(k for k, v in inputs.items() if k in log_prob.inputs and isinstance(v, BintType)))
+        # final align() ensures that the inputs have the canonical order
+        # implied by align_tensors, which is assumed pervasively in tests
+        return log_prob.align(tuple(align_tensors(*(params[:-1] + (value,)))[0]))
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
 
