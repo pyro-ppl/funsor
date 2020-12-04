@@ -175,8 +175,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         sample_shape = tuple(v.size for v in sample_inputs.values())
         sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         if self.has_rsample:
-            # TODO fix this hack by adding rsample and has_rsample to Independent upstream in NumPyro
-            raw_value = getattr(raw_dist, "rsample", raw_dist.sample)(*sample_args)
+            raw_value = raw_dist.rsample(*sample_args)
         else:
             raw_value = ops.detach(raw_dist.sample(*sample_args))
 
