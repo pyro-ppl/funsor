@@ -16,7 +16,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.cnf import Contraction, GaussianMixture
-from funsor.domains import Array, BintType, Real, Reals, RealsType
+from funsor.domains import Array, Real, Reals, RealsType
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
