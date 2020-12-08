@@ -246,7 +246,7 @@ def test_dirichlet_density(batch_shape, event_shape):
     check_funsor(expected, inputs, Real)
     actual = dist.Dirichlet(concentration, value)
     check_funsor(actual, inputs, Real)
-    assert_close(actual, expected)
+    assert_close(actual, expected, atol=1e-4)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
