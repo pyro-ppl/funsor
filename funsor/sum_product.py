@@ -45,9 +45,11 @@ def _partition(terms, sum_vars):
     return components
 
 
-def _unroll_plate(factors, var_to_ordinal, sum_vars, plate):
+def _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step):
     # size of the plate
     size = next(iter(f.inputs[plate].size for f in factors if plate in f.inputs))
+    # history of the plate
+    history = 1 if step else 0
 
     # replicated variables
     plate_vars = set()
@@ -61,21 +63,34 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate):
     # unroll variables
     for var in plate_vars:
         sum_vars -= frozenset({var})
-        sum_vars |= frozenset({"{}_{}{}".format(var, plate, i)
-                               for i in range(size)})
+        if var in step.keys():
+            new_var = frozenset({"{}_{}".format(var.split("_")[0], i)
+                                 for i in range(size)})
+        elif var in step.values():
+            new_var = frozenset({"{}_{}".format(var.split("_")[0], i+history)
+                                 for i in range(size)})
+        else:
+            new_var = frozenset({"{}_{}".format(var, i+history)
+                                 for i in range(size)})
+        sum_vars |= new_var
         ordinal = var_to_ordinal.pop(var)
-        new_ordinal = ordinal.difference(plate)
-        var_to_ordinal.update({"{}_{}{}".format(var, plate, i): new_ordinal
-                               for i in range(size)})
+        new_ordinal = ordinal.difference({plate})
+        var_to_ordinal.update({v: new_ordinal for v in new_var})
 
     # unroll factors
     unrolled_factors = []
     for factor in factors:
         if plate in factor.inputs:
             f_vars = plate_vars.intersection(factor.inputs)
+            prev_to_var = {key: key.split("_")[0] for key in step.keys()}
+            curr_to_var = {value: value.split("_")[0] for value in step.values()}
+            assert set(prev_to_var.values()) == set(curr_to_var.values())
+            nonmarkov_vars = f_vars - set(step.keys()) - set(step.values())
             unrolled_factors.extend([factor(
                     **{plate: i},
-                    **{var: "{}_{}{}".format(var, plate, i) for var in f_vars}
+                    **{var: "{}_{}".format(var, i+history) for var in nonmarkov_vars},
+                    **{curr: "{}_{}".format(var, i+history) for curr, var in curr_to_var.items()},
+                    **{prev: "{}_{}".format(var, i) for prev, var in prev_to_var.items()},
                 ) for i in range(size)])
         else:
             unrolled_factors.append(factor)
@@ -83,9 +98,13 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate):
     return unrolled_factors, var_to_ordinal, sum_vars
 
 
-def partial_unroll(factors, eliminate=frozenset(), plates=frozenset()):
+def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     """
     Performs partial unrolling of plated factor graphs to standard factor graphs.
+
+    Currently only plates with history={0, 1} are supported.
+    Markov vars are assumed to have names that follow ``var_suffix`` formatting
+    (e.g., ``("x_0", "x_prev", "x_curr")``).
 
     :return: a list of partially unrolled Funsors,
         a frozenset of partially unrolled variable names,
@@ -94,9 +113,11 @@ def partial_unroll(factors, eliminate=frozenset(), plates=frozenset()):
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
-    assert isinstance(plates, frozenset)
+    assert isinstance(plate_to_step, dict)
+    plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
-    unrolled_plates = eliminate & plates
+    unrolled_plates = {k: v for (k, v) in plate_to_step.items() if k in eliminate}
+    remaining_plates = {k: v for (k, v) in plate_to_step.items() if k not in eliminate}
 
     var_to_ordinal = {}
     for f in factors:
@@ -104,12 +125,20 @@ def partial_unroll(factors, eliminate=frozenset(), plates=frozenset()):
         for var in set(f.inputs) - plates:
             var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
 
-    # unroll one plate at a time
-    for plate in unrolled_plates:
-        factors, var_to_ordinal, sum_vars = \
-                _unroll_plate(factors, var_to_ordinal, sum_vars, plate)
+    # first unroll plates with history=1 and highest ordinal
+    # then unroll plates with history=0
+    plate_to_order = {}
+    for plate, step in unrolled_plates.items():
+        if step:
+            plate_to_order[plate] = len(var_to_ordinal[next(iter(step))])
+        else:
+            plate_to_order[plate] = 0
 
-    remaining_plates = plates - unrolled_plates
+    # unroll one plate at a time
+    for plate in sorted(unrolled_plates.keys(), key=lambda p: plate_to_order[p], reverse=True):
+        step = unrolled_plates[plate]
+        factors, var_to_ordinal, sum_vars = \
+            _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step)
 
     return factors, sum_vars, remaining_plates
 
