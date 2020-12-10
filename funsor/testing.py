@@ -76,7 +76,9 @@ def allclose(a, b, rtol=1e-05, atol=1e-08):
 
 
 def is_array(x):
-    return isinstance(x, (np.ndarray, np.generic)) or type(x).__name__ == "DeviceArray"
+    # XXX: in some JAX version, name of device array is DeviceArray,
+    # while in some version, it is _DeviceArray
+    return isinstance(x, (np.ndarray, np.generic)) or "DeviceArray" in type(x).__name__
 
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
