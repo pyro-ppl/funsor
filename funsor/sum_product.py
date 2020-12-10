@@ -45,6 +45,75 @@ def _partition(terms, sum_vars):
     return components
 
 
+def _unroll_plate(factors, var_to_ordinal, sum_vars, plate):
+    # size of the plate
+    size = next(iter(f.inputs[plate].size for f in factors if plate in f.inputs))
+
+    # replicated variables
+    plate_vars = set()
+    for var, ordinal in var_to_ordinal.items():
+        if plate in ordinal:
+            plate_vars.add(var)
+
+    # make sure that all vars in the plate are being unrolled
+    assert plate_vars.issubset(sum_vars)
+
+    # unroll variables
+    for var in plate_vars:
+        sum_vars -= frozenset({var})
+        sum_vars |= frozenset({"{}_{}{}".format(var, plate, i)
+                               for i in range(size)})
+        ordinal = var_to_ordinal.pop(var)
+        new_ordinal = ordinal.difference(plate)
+        var_to_ordinal.update({"{}_{}{}".format(var, plate, i): new_ordinal
+                               for i in range(size)})
+
+    # unroll factors
+    unrolled_factors = []
+    for factor in factors:
+        if plate in factor.inputs:
+            f_vars = plate_vars.intersection(factor.inputs)
+            unrolled_factors.extend([factor(
+                    **{plate: i},
+                    **{var: "{}_{}{}".format(var, plate, i) for var in f_vars}
+                ) for i in range(size)])
+        else:
+            unrolled_factors.append(factor)
+
+    return unrolled_factors, var_to_ordinal, sum_vars
+
+
+def partial_unroll(factors, eliminate=frozenset(), plates=frozenset()):
+    """
+    Performs partial unrolling of plated factor graphs to standard factor graphs.
+
+    :return: a list of partially unrolled Funsors,
+        a frozenset of partially unrolled variable names,
+        and a frozenset of remaining plates.
+    """
+    assert isinstance(factors, (tuple, list))
+    assert all(isinstance(f, Funsor) for f in factors)
+    assert isinstance(eliminate, frozenset)
+    assert isinstance(plates, frozenset)
+    sum_vars = eliminate - plates
+    unrolled_plates = eliminate & plates
+
+    var_to_ordinal = {}
+    for f in factors:
+        ordinal = plates.intersection(f.inputs)
+        for var in set(f.inputs) - plates:
+            var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+
+    # unroll one plate at a time
+    for plate in unrolled_plates:
+        factors, var_to_ordinal, sum_vars = \
+                _unroll_plate(factors, var_to_ordinal, sum_vars, plate)
+
+    remaining_plates = plates - unrolled_plates
+
+    return factors, sum_vars, remaining_plates
+
+
 def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
     """
     Performs partial sum-product contraction of a collection of factors.
