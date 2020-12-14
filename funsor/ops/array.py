@@ -153,7 +153,6 @@ def expand(x, shape):
     shape = shape[:prepend_dim] + tuple(dx if size == -1 else size
                                         for dx, size in zip(np.shape(x), shape[prepend_dim:]))
     return np.broadcast_to(x, shape)
-    return np.broadcast_to(x, shape)
 
 
 @Op

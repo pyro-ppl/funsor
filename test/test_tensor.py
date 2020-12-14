@@ -1058,3 +1058,7 @@ def test_diagonal_rename():
     yt = x(a=dt, b=dt)
     y = x(a=d, b=d)
     assert_close(y, yt)
+
+
+def test_empty_tensor_possible():
+    funsor.to_funsor(randn(3, 0), dim_to_name=OrderedDict([(-1, "a"), (-2, "b")]))
