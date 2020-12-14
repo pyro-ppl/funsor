@@ -84,7 +84,6 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step):
             f_vars = plate_vars.intersection(factor.inputs)
             prev_to_var = {key: key.split("_")[0] for key in step.keys()}
             curr_to_var = {value: value.split("_")[0] for value in step.values()}
-            assert set(prev_to_var.values()) == set(curr_to_var.values())
             nonmarkov_vars = f_vars - set(step.keys()) - set(step.values())
             unrolled_factors.extend([factor(
                     **{plate: i},
@@ -114,6 +113,9 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plate_to_step, dict)
+    assert all(prev.split("_")[0] == curr.split("_")[0]
+               for step in plate_to_step.values() if step
+               for prev, curr in step.items())
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
     unrolled_plates = {k: v for (k, v) in plate_to_step.items() if k in eliminate}
