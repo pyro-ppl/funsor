@@ -98,6 +98,7 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     vars1 = frozenset(vars1)
     vars2 = frozenset(vars2)
 
+    plate_to_step = {k: {} for k in plates}
     if impl is partial_sum_product:
         plates = frozenset(plates)
     else:
@@ -110,90 +111,12 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     expected = sum_product(sum_op, prod_op, factors, vars1 | vars2, frozenset(plates))
     assert_close(actual, expected)
 
-    unrolled_factors1, unrolled_vars1, remaining_plates = \
-        partial_unroll(factors, vars1, frozenset(plates))
-    unrolled_factors2, unrolled_vars2, _ = \
-        partial_unroll(unrolled_factors1, vars2 | unrolled_vars1, remaining_plates)
-    unrolled_expected = reduce(prod_op, unrolled_factors2).reduce(sum_op, unrolled_vars2)
-    assert_close(actual, unrolled_expected)
-
-
-def _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step):
-
-    plates = frozenset({k for (k, v) in plate_to_step.items() if not v})
-    reduce_vars = global_vars | plates
-
-    # unroll markov dims
-    for markov_plate, step in markov_to_step.items():
-        duration = max([f.inputs[markov_plate].size for f in factors if markov_plate in f.inputs])
-        unrolled_factors = []
-        local_vars = local_var_dict[markov_plate]
-        local_markov_vars = local_markov_var_dict[markov_plate]
-        drop = tuple("{}_{}".format(s, markov_plate) for s in step)
-        prev = tuple("{}_prev".format(s) for s in step)
-        curr = tuple("{}_curr".format(s) for s in step)
-        prev_to_drop = dict(zip(prev, drop))
-        curr_to_drop = dict(zip(curr, drop))
-
-        for var in local_markov_vars:
-            for k, v in markov_to_step.items():
-                if var in v:
-                    markov_to_step[k] -= frozenset({var})
-                    markov_to_step[k] |= frozenset(
-                        ('{}_{}_{}'.format(var, markov_plate, i+1)
-                         for i in range(duration))
-                    )
-        reduce_vars -= frozenset(
-            (var for var in prev_to_drop.keys())
-        )
-        reduce_vars -= frozenset(
-            (var for var in curr_to_drop.keys())
-        )
-        for i in range(duration):
-            reduce_vars |= frozenset(
-                ('{}_{}_{}'.format(var, markov_plate, i+1) for
-                 var in local_vars)
-            )
-            reduce_vars |= frozenset(
-                ('{}_{}_{}_curr'.format(var, markov_plate, i+1) for
-                 var in local_markov_vars)
-            )
-            reduce_vars |= frozenset(
-                ('{}_{}_{}_prev'.format(var, markov_plate, i+1) for
-                 var in local_markov_vars)
-            )
-            reduce_vars |= frozenset(
-                ('{}_{}'.format(curr_to_drop[var], i+1) for
-                 var in curr_to_drop.keys())
-            )
-            reduce_vars |= frozenset(
-                ('{}_{}'.format(prev_to_drop[var], i) for
-                 var in prev_to_drop.keys())
-            )
-        for factor in factors:
-            if markov_plate in factor.inputs:
-                slice_factors = [factor(
-                    **{markov_plate: i},
-                    **{var: '{}_{}_{}'.format(var, markov_plate, i+1)
-                       for var in local_vars},
-                    **{'{}_curr'.format(var): '{}_{}_{}_curr'.format(var, markov_plate, i+1)
-                       for var in local_markov_vars},
-                    **{'{}_prev'.format(var): '{}_{}_{}_prev'.format(var, markov_plate, i+1)
-                       for var in local_markov_vars},
-                    **{var: '{}_{}'.format(curr_to_drop[var], i+1) for var in curr_to_drop.keys()},
-                    **{var: '{}_{}'.format(prev_to_drop[var], i) for var in prev_to_drop.keys()}
-                    ) for i in range(duration)]
-                unrolled_factors.extend(slice_factors)
-            else:
-                unrolled_factors.append(factor)
-        factors = unrolled_factors
-
     with interpretation(lazy):
-        expected = sum_product(sum_op, prod_op, factors, reduce_vars, plates)
-
-    return apply_optimizer(expected)
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        unrolled_expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    unrolled_expected = apply_optimizer(unrolled_expected)
+    assert_close(actual, unrolled_expected)
 
 
 @pytest.mark.parametrize('vars1,vars2', [
@@ -224,14 +147,11 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset()}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"time": {"x"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -272,14 +192,11 @@ def test_modified_partial_sum_product_1(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset({"y_curr"})}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"time": {"x"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -318,14 +235,11 @@ def test_modified_partial_sum_product_2(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset()}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"time": {"x", "y"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -365,14 +279,11 @@ def test_modified_partial_sum_product_3(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset()}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"time": {"x", "y"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -420,14 +331,11 @@ def test_modified_partial_sum_product_4(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset()}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"time": {"x", "y"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -483,14 +391,11 @@ def test_modified_partial_sum_product_5(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"days": frozenset(), "weeks": frozenset()}
-    local_markov_var_dict = {"days": frozenset(), "weeks": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"days": {"x"}, "weeks": {"y"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -540,14 +445,11 @@ def test_modified_partial_sum_product_6(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset({"y_curr"})}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"time": {"x"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -654,14 +556,11 @@ def test_modified_partial_sum_product_8(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset({"y_curr"})}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"time": {"x", "w"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -723,32 +622,23 @@ def test_modified_partial_sum_product_9(use_lazy, sum_op, prod_op, vars1, vars2,
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
-    local_var_dict = {
-        "time": frozenset({"y_curr"})
-    }
-    local_markov_var_dict = {
-        "time": frozenset(),
-    }
-    global_vars = frozenset()
-    markov_to_step = {
-        "time": {"x", "w"},
-    }
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
+     frozenset({"sequences", "time", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
     (frozenset({"tones", "y_curr"}),
-     frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr"})),
-    (frozenset({"time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+     frozenset({"sequences", "time", "w_curr", "x_prev", "x_curr"})),
+    (frozenset({"time", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+    (frozenset({"sequences", "time", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('w_dim,x_dim,y_dim,sequences,time,tones', [
@@ -797,20 +687,11 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {
-        "time": frozenset({"w_curr", "y_curr"})
-    }
-    local_markov_var_dict = {
-        "time": frozenset(),
-    }
-    global_vars = frozenset()
-    markov_to_step = {
-        "time": {"x"},
-    }
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -886,14 +767,11 @@ def test_modified_partial_sum_product_11(use_lazy, sum_op, prod_op, vars1, vars2
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
-    local_var_dict = {"time": frozenset({"y_curr"})}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset({"a", "b"})
-    markov_to_step = {"time": {"x", "w"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -1014,23 +892,11 @@ def test_modified_partial_sum_product_13(use_lazy, sum_op, prod_op, vars1, vars2
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
-    local_var_dict = {
-        "days": frozenset(),
-        "weeks": frozenset()
-    }
-    local_markov_var_dict = {
-        "days": frozenset(),
-        "weeks": frozenset()
-    }
-    global_vars = frozenset({"w"})
-    markov_to_step = {
-        "days": {"x"},
-        "weeks": {"y"},
-    }
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -1084,23 +950,11 @@ def test_modified_partial_sum_product_14(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {
-        "time": frozenset(),
-        "tones": frozenset()
-    }
-    local_markov_var_dict = {
-        "time": frozenset({"y"}),
-        "tones": frozenset()
-    }
-    global_vars = frozenset()
-    markov_to_step = {
-        "time": {"x"},
-        "tones": {"y"},
-    }
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -1188,14 +1042,11 @@ def test_modified_partial_sum_product_16(sum_op, prod_op, vars1, vars2,
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
-    local_var_dict = {"time": frozenset()}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"time": {"x", "y"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
@@ -1256,14 +1107,11 @@ def test_modified_partial_sum_product_17(use_lazy, sum_op, prod_op, vars1, vars2
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
-    local_var_dict = {"time": frozenset({"y_curr", "z0", "z1", "z2"})}
-    local_markov_var_dict = {"time": frozenset()}
-    global_vars = frozenset()
-    markov_to_step = {"time": {"x"}}
-
-    expected = _expected_modified_partial_sum_product(
-        sum_op, prod_op, factors, plate_to_step, global_vars,
-        local_var_dict, local_markov_var_dict, markov_to_step)
+    with interpretation(lazy):
+        unrolled_factors, unrolled_vars, remaining_plates = \
+            partial_unroll(factors, vars1 | vars2, plate_to_step)
+        expected = reduce(prod_op, unrolled_factors).reduce(sum_op, unrolled_vars)
+    expected = apply_optimizer(expected)
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
