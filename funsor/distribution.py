@@ -158,9 +158,12 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         name_to_dim.update({v: k for k, v in dim_to_name.items() if v not in name_to_dim})
         raw_log_prob = raw_dist.log_prob(to_data(value, name_to_dim=name_to_dim))
         log_prob = to_funsor(raw_log_prob, Real, dim_to_name=dim_to_name)
-        # final align() ensures that the inputs have the canonical order
+        # this logic ensures that the inputs have the canonical order
         # implied by align_tensors, which is assumed pervasively in tests
-        return log_prob.align(tuple(align_tensors(*(params[:-1] + (value,)))[0]))
+        inputs = OrderedDict()
+        for x in params[:-1] + (value,):
+            inputs.update(x.inputs)
+        return log_prob.align(inputs)
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
 
@@ -443,13 +446,13 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
 
     # attempt to generically infer the independent output dimensions
     instance = funsor_dist.dist_class(**{
-        k: dummy_numeric_array(domain)
-        for k, domain in zip(funsor_dist._ast_fields, (v.output for v in funsor_dist._ast_values))
-        if k != "value"
+        k: dummy_numeric_array(v.output)
+        for k, v in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1])
     }, validate_args=False)
     event_shape = broadcast_shape(instance.event_shape, funsor_dist.value.output.shape)
-    # XXX is this final broadcast_shape necessary? should just be event_shape[...]?
-    indep_shape = broadcast_shape(instance.batch_shape, event_shape[:len(event_shape) - len(instance.event_shape)])
+    reinterpreted_batch_ndims = len(event_shape) - len(instance.event_shape)
+    assert reinterpreted_batch_ndims > 0  # XXX is this ever nonzero?
+    indep_shape = broadcast_shape(instance.batch_shape, event_shape[:reinterpreted_batch_ndims])
 
     params = []
     for param_name, funsor_param in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1]):

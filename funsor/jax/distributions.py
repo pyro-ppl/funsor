@@ -200,7 +200,7 @@ def _infer_param_domain(cls, name, raw_shape):
 
 
 ###########################################################
-# Converting distribution funsors to PyTorch distributions
+# Converting distribution funsors to NumPyro distributions
 ###########################################################
 
 # Convert Delta **distribution** to raw data
@@ -212,9 +212,10 @@ def deltadist_to_data(funsor_dist, name_to_dim=None):
 
 
 ###############################################
-# Converting PyTorch Distributions to funsors
+# Converting NumPyro Distributions to funsors
 ###############################################
 
+# TODO move these properties upstream to numpyro.distributions
 dist.Independent.has_rsample = property(lambda self: self.base_dist.has_rsample)
 dist.Independent.rsample = dist.Independent.sample
 dist.MaskedDistribution.has_rsample = property(lambda self: self.base_dist.has_rsample)
