@@ -376,7 +376,7 @@ def test_modified_partial_sum_product_4(sum_op, prod_op, vars1, vars2,
             ("x_0", "x_prev", "x_curr"),
             ("y_0", "y_prev", "y_curr")}),
         "tones": {}
-        }
+    }
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
@@ -450,7 +450,7 @@ def test_modified_partial_sum_product_5(sum_op, prod_op, vars1, vars2,
         "tones": {},
         "days": frozenset({("x_0", "x_prev", "x_curr")}),
         "weeks": frozenset({("y_0", "y_prev", "y_curr")}),
-        }
+    }
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
@@ -516,7 +516,7 @@ def test_modified_partial_sum_product_6(sum_op, prod_op, vars1, vars2,
         "sequences": {},
         "time": frozenset({("x_0", "x_prev", "x_curr")}),
         "tones": {}
-        }
+    }
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
@@ -584,7 +584,7 @@ def test_modified_partial_sum_product_7(sum_op, prod_op, vars1, vars2,
             ("y_0", "y_prev", "y_curr"),
             }),
         "tones": {}
-        }
+    }
 
     with pytest.raises(ValueError, match="intractable!"):
         factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)

@@ -226,12 +226,11 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     prev_to_init = {}
     for key, step in plate_to_step.items():
         # map prev to init; works for any history > 0
-        for s in step:
-            init = s[:len(s)//2]
-            prev = s[len(s)//2:-1]
+        for chain in step:
+            init, prev = chain[:len(chain)//2], chain[len(chain)//2:-1]
             prev_to_init.update(zip(prev, init))
-        # make a dict step e.g. {"x_prev": "x_curr"}; specific to history = 1
-        plate_to_step[key] = {s[1]: s[2] for s in step}
+        # convert step to dict type required for MarkovProduct
+        plate_to_step[key] = {chain[1]: chain[2] for chain in step}
 
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
