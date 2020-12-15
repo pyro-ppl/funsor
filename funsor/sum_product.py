@@ -63,11 +63,11 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step):
     # unroll variables
     for var in plate_vars:
         sum_vars -= frozenset({var})
-        if var in step.keys():
-            new_var = frozenset({"{}_{}".format(var.split("_")[0], i)
-                                 for i in range(size)})
-        elif var in step.values():
-            new_var = frozenset({"{}_{}".format(var.split("_")[0], i+history)
+        past_idx = {chain[::-1].index(var) for chain in step if var in chain}
+        if past_idx:
+            assert len(past_idx) == 1
+            past_idx = next(iter(past_idx))
+            new_var = frozenset({"{}_{}".format(var.split("_")[0], i+history-past_idx)
                                  for i in range(size)})
         else:
             new_var = frozenset({"{}_{}".format(var, i+history)
@@ -82,14 +82,15 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step):
     for factor in factors:
         if plate in factor.inputs:
             f_vars = plate_vars.intersection(factor.inputs)
-            prev_to_var = {key: key.split("_")[0] for key in step.keys()}
-            curr_to_var = {value: value.split("_")[0] for value in step.values()}
-            nonmarkov_vars = f_vars - set(step.keys()) - set(step.values())
+            if step:
+                nonmarkov_vars = f_vars - set.union(*[set(chain[history:]) for chain in step])
+            else:
+                nonmarkov_vars = f_vars
             unrolled_factors.extend([factor(
                     **{plate: i},
                     **{var: "{}_{}".format(var, i+history) for var in nonmarkov_vars},
-                    **{curr: "{}_{}".format(var, i+history) for curr, var in curr_to_var.items()},
-                    **{prev: "{}_{}".format(var, i) for prev, var in prev_to_var.items()},
+                    **{var: "{}_{}".format(var.split("_")[0], i+history-past_idx)
+                       for chain in step for past_idx, var in enumerate(chain[:history-1:-1])}
                 ) for i in range(size)])
         else:
             unrolled_factors.append(factor)
@@ -116,11 +117,6 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     assert all(len(set(var.split("_")[0] for var in chain)) == 1
                for step in plate_to_step.values() if step
                for chain in step)
-    # process plate_to_step
-    plate_to_step = plate_to_step.copy()
-    for key, step in plate_to_step.items():
-        # make a dict step e.g. {"x_prev": "x_curr"}; specific to history = 1
-        plate_to_step[key] = {s[1]: s[2] for s in step}
 
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
@@ -138,7 +134,7 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     plate_to_order = {}
     for plate, step in unrolled_plates.items():
         if step:
-            plate_to_order[plate] = max(len(var_to_ordinal[s]) for s in step)
+            plate_to_order[plate] = max(len(var_to_ordinal[var]) for chain in step for var in chain)
         else:
             plate_to_order[plate] = 0
 
