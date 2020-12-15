@@ -163,7 +163,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         inputs = OrderedDict()
         for x in params[:-1] + (value,):
             inputs.update(x.inputs)
-        return log_prob.align(inputs)
+        return log_prob.align(tuple(inputs))
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
 
@@ -451,7 +451,7 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
     }, validate_args=False)
     event_shape = broadcast_shape(instance.event_shape, funsor_dist.value.output.shape)
     reinterpreted_batch_ndims = len(event_shape) - len(instance.event_shape)
-    assert reinterpreted_batch_ndims > 0  # XXX is this ever nonzero?
+    assert reinterpreted_batch_ndims >= 0  # XXX is this ever nonzero?
     indep_shape = broadcast_shape(instance.batch_shape, event_shape[:reinterpreted_batch_ndims])
 
     params = []
