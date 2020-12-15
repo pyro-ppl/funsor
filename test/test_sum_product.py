@@ -121,8 +121,8 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"x_0", "time", "x_prev", "x_curr"})),
-    (frozenset({"x_0", "time", "x_prev", "x_curr"}),
+     frozenset({"time", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,time', [

@@ -63,11 +63,11 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step):
     # unroll variables
     for var in plate_vars:
         sum_vars -= frozenset({var})
-        past_idx = {chain[::-1].index(var) for chain in step if var in chain}
-        if past_idx:
-            assert len(past_idx) == 1
-            past_idx = next(iter(past_idx))
-            new_var = frozenset({"{}_{}".format(var.split("_")[0], i+history-past_idx)
+        prev_idx = {chain[::-1].index(var) for chain in step if var in chain}
+        if prev_idx:
+            assert len(prev_idx) == 1
+            prev_idx = next(iter(prev_idx))
+            new_var = frozenset({"{}_{}".format(var.split("_")[0], i+history-prev_idx)
                                  for i in range(size)})
         else:
             new_var = frozenset({"{}_{}".format(var, i+history)
@@ -89,8 +89,8 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step):
             unrolled_factors.extend([factor(
                     **{plate: i},
                     **{var: "{}_{}".format(var, i+history) for var in nonmarkov_vars},
-                    **{var: "{}_{}".format(var.split("_")[0], i+history-past_idx)
-                       for chain in step for past_idx, var in enumerate(chain[:history-1:-1])}
+                    **{var: "{}_{}".format(var.split("_")[0], i+history-prev_idx)
+                       for chain in step for prev_idx, var in enumerate(chain[:history-1:-1])}
                 ) for i in range(size)])
         else:
             unrolled_factors.append(factor)
