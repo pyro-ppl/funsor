@@ -118,13 +118,7 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
                for chain in step)
     # process plate_to_step
     plate_to_step = plate_to_step.copy()
-    prev_to_init = {}
     for key, step in plate_to_step.items():
-        # map prev to init; works for any history > 0
-        for s in step:
-            init = s[:len(s)//2]
-            prev = s[len(s)//2:-1]
-            prev_to_init.update(zip(prev, init))
         # make a dict step e.g. {"x_prev": "x_curr"}; specific to history = 1
         plate_to_step[key] = {s[1]: s[2] for s in step}
 
@@ -144,7 +138,7 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     plate_to_order = {}
     for plate, step in unrolled_plates.items():
         if step:
-            plate_to_order[plate] = len(var_to_ordinal[next(iter(step))])
+            plate_to_order[plate] = max(len(var_to_ordinal[s]) for s in step)
         else:
             plate_to_order[plate] = 0
 
