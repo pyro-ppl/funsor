@@ -113,9 +113,21 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plate_to_step, dict)
-    assert all(prev.split("_")[0] == curr.split("_")[0]
+    assert all(len(set(var.split("_")[0] for var in chain)) == 1
                for step in plate_to_step.values() if step
-               for prev, curr in step.items())
+               for chain in step)
+    # process plate_to_step
+    plate_to_step = plate_to_step.copy()
+    prev_to_init = {}
+    for key, step in plate_to_step.items():
+        # map prev to init; works for any history > 0
+        for s in step:
+            init = s[:len(s)//2]
+            prev = s[len(s)//2:-1]
+            prev_to_init.update(zip(prev, init))
+        # make a dict step e.g. {"x_prev": "x_curr"}; specific to history = 1
+        plate_to_step[key] = {s[1]: s[2] for s in step}
+
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
     unrolled_plates = {k: v for (k, v) in plate_to_step.items() if k in eliminate}
