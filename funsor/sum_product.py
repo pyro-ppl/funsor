@@ -102,10 +102,22 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     """
     Performs partial unrolling of plated factor graphs to standard factor graphs.
 
-    Currently only plates with history={0, 1} are supported.
+    For plates (history=0) unrolling operation appends ``_{i}`` suffix
+    to variable names for index ``i`` in the plate. For markov dimensions (history>0)
+    unrolling operation removes the suffix for the j-th Markov variable name counted
+    from the end for the tuple of names in the ``step`` (e.g., j=0 for "x_curr"
+    and j=1 for "x_prev") and then appends ``_{i+history-j}`` to the name for index ``i``.
     Markov vars are assumed to have names that follow ``var_suffix`` formatting
-    (e.g., ``("x_0", "x_prev", "x_curr")``).
+    (e.g., ``("x_0", "x_prev", "x_curr")`` for history=1).
 
+    :param factors: A collection of funsors.
+    :type factors: tuple or list
+    :param frozenset eliminate: A set of free variables to unroll,
+        including both sum variables and product variable.
+    :param dict plate_to_step: A dict mapping markov dimensions to
+        ``step`` collections that contain ordered sequences of Markov variable names
+        (e.g., ``{"time": frozenset({("x_0", "x_prev", "x_curr")})}``).
+        Plates are passed with an empty ``step``.
     :return: a list of partially unrolled Funsors,
         a frozenset of partially unrolled variable names,
         and a frozenset of remaining plates.
@@ -200,8 +212,10 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     """
     Generalization of the tensor variable elimination algorithm of
     :func:`funsor.sum_product.partial_sum_product` to handle markov dimensions
-    in addition to plate dimensions. Markov dimensions are eliminated efficiently
-    using the parallel-scan algorithm in :func:`funsor.sum_product.sequential_sum_product`.
+    in addition to plate dimensions. Markov dimensions in transition factors
+    are eliminated efficiently using the parallel-scan algorithm in
+    :func:`funsor.sum_product.sequential_sum_product`. The resulting factors are then
+    combined with the initial factors and final states are eliminated.
 
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
@@ -210,7 +224,8 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     :param frozenset eliminate: A set of free variables to eliminate,
         including both sum variables and product variable.
     :param dict plate_to_step: A dict mapping markov dimensions to
-        ``step`` dicts that map previous to current variable name.
+        ``step`` collections that contain ordered sequences of Markov variable names
+        (e.g., ``{"time": frozenset({("x_0", "x_prev", "x_curr")})}``).
         Plates are passed with an empty ``step``.
     :return: a list of partially contracted Funsors.
     :rtype: list
