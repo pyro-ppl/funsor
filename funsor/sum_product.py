@@ -106,7 +106,8 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     to variable names for index ``i`` in the plate. For markov dimensions (history>0)
     unrolling operation removes the suffix for the j-th Markov variable name counted
     from the end for the tuple of names in the ``step`` (e.g., j=0 for "x_curr"
-    and j=1 for "x_prev") and then appends ``_{i+history-j}`` to the name for index ``i``.
+    and j=1 for "x_prev") and then appends ``_{i+history-j}`` to the name for index ``i``
+    (e.g., "x_prev"->"x_0" and "x_curr"->"x_1" for i=0).
     Markov vars are assumed to have names that follow ``var_suffix`` formatting
     (e.g., ``("x_0", "x_prev", "x_curr")`` for history=1).
 
@@ -215,7 +216,9 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     in addition to plate dimensions. Markov dimensions in transition factors
     are eliminated efficiently using the parallel-scan algorithm in
     :func:`funsor.sum_product.sequential_sum_product`. The resulting factors are then
-    combined with the initial factors and final states are eliminated.
+    combined with the initial factors and final states are eliminated. Therefore,
+    when Markov dimension is eliminated ``factors`` has to contain a pairs of
+    initial factors and transition factors.
 
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
