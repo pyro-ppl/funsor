@@ -100,11 +100,25 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step):
 def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     """
     Performs partial unrolling of plated factor graphs to standard factor graphs.
+    Only plates with history={0, 1} are supported.
 
-    Currently only plates with history={0, 1} are supported.
+    For plates (history=0) unrolling operation appends ``_{i}`` suffix
+    to variable names for index ``i`` in the plate (e.g., "x"->"x_0" for i=0).
+    For markov dimensions (history=1) unrolling operation renames the suffixes
+    ``var_prev`` to ``var_{i}`` and ``var_curr`` to ``var_{i+1}`` for index ``i``
+    (e.g., "x_prev"->"x_0" and "x_curr"->"x_1" for i=0).
     Markov vars are assumed to have names that follow ``var_suffix`` formatting
-    (e.g., ``("x_0", "x_prev", "x_curr")``).
+    and specifically ``var_0`` for the initial factor (e.g.,
+    ``("x_0", "x_prev", "x_curr")`` for history=1).
 
+    :param factors: A collection of funsors.
+    :type factors: tuple or list
+    :param frozenset eliminate: A set of free variables to unroll,
+        including both sum variables and product variable.
+    :param dict plate_to_step: A dict mapping markov dimensions to
+        ``step`` collections that contain ordered sequences of Markov variable names
+        (e.g., ``{"time": frozenset({("x_0", "x_prev", "x_curr")})}``).
+        Plates are passed with an empty ``step``.
     :return: a list of partially unrolled Funsors,
         a frozenset of partially unrolled variable names,
         and a frozenset of remaining plates.
@@ -113,9 +127,16 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plate_to_step, dict)
-    assert all(prev.split("_")[0] == curr.split("_")[0]
+    assert all(len(set(var.split("_")[0] for var in chain)) == 1
+               and chain[0].endswith("_0")
                for step in plate_to_step.values() if step
-               for prev, curr in step.items())
+               for chain in step)
+    # process plate_to_step
+    plate_to_step = plate_to_step.copy()
+    for key, step in plate_to_step.items():
+        # make a dict step e.g. {"x_prev": "x_curr"}; specific to history = 1
+        plate_to_step[key] = {s[1]: s[2] for s in step}
+
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
     unrolled_plates = {k: v for (k, v) in plate_to_step.items() if k in eliminate}
@@ -132,7 +153,7 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
     plate_to_order = {}
     for plate, step in unrolled_plates.items():
         if step:
-            plate_to_order[plate] = len(var_to_ordinal[next(iter(step))])
+            plate_to_order[plate] = max(len(var_to_ordinal[s]) for s in step)
         else:
             plate_to_order[plate] = 0
 
@@ -198,8 +219,12 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     """
     Generalization of the tensor variable elimination algorithm of
     :func:`funsor.sum_product.partial_sum_product` to handle markov dimensions
-    in addition to plate dimensions. Markov dimensions are eliminated efficiently
-    using the parallel-scan algorithm in :func:`funsor.sum_product.sequential_sum_product`.
+    in addition to plate dimensions. Markov dimensions in transition factors
+    are eliminated efficiently using the parallel-scan algorithm in
+    :func:`funsor.sum_product.sequential_sum_product`. The resulting factors are then
+    combined with the initial factors and final states are eliminated. Therefore,
+    when Markov dimension is eliminated ``factors`` has to contain a pairs of
+    initial factors and transition factors.
 
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
@@ -208,7 +233,8 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     :param frozenset eliminate: A set of free variables to eliminate,
         including both sum variables and product variable.
     :param dict plate_to_step: A dict mapping markov dimensions to
-        ``step`` dicts that map previous to current variable name.
+        ``step`` collections that contain ordered sequences of Markov variable names
+        (e.g., ``{"time": frozenset({("x_0", "x_prev", "x_curr")})}``).
         Plates are passed with an empty ``step``.
     :return: a list of partially contracted Funsors.
     :rtype: list
@@ -219,6 +245,17 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plate_to_step, dict)
+    # process plate_to_step
+    plate_to_step = plate_to_step.copy()
+    prev_to_init = {}
+    for key, step in plate_to_step.items():
+        # map prev to init; works for any history > 0
+        for chain in step:
+            init, prev = chain[:len(chain)//2], chain[len(chain)//2:-1]
+            prev_to_init.update(zip(prev, init))
+        # convert step to dict type required for MarkovProduct
+        plate_to_step[key] = {chain[1]: chain[2] for chain in step}
+
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
     prod_vars = eliminate.intersection(plates)
@@ -268,7 +305,8 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
                 time_var = Variable(time, f.inputs[time])
                 group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
                 f = MarkovProduct(sum_op, prod_op, f, time_var, group_step)
-                f = f.reduce(sum_op, frozenset(group_step.keys()) | frozenset(group_step.values()))
+                f = f.reduce(sum_op, frozenset(group_step.values()))
+                f = f(**prev_to_init)
 
             remaining_sum_vars = sum_vars.intersection(f.inputs)
 

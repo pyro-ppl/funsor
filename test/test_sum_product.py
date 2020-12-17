@@ -121,8 +121,8 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"time", "x_prev", "x_curr"})),
-    (frozenset({"time", "x_prev", "x_curr"}),
+     frozenset({"time", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,time', [
@@ -135,13 +135,17 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2,
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    factors = [f1, f2]
-    plate_to_step = {"time": {"x_prev": "x_curr"}}
+    factors = [f1, f2, f3]
+    plate_to_step = {"time": frozenset({("x_0", "x_prev", "x_curr")})}
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
@@ -158,10 +162,10 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"time", "x_prev", "x_curr", "y_curr"})),
-    (frozenset({"y_curr"}),
-     frozenset({"time", "x_prev", "x_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "y_curr"}),
+     frozenset({"time", "x_0", "x_prev", "x_curr", "y_0", "y_curr"})),
+    (frozenset({"y_0", "y_curr"}),
+     frozenset({"time", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr", "y_0", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,time', [
@@ -174,19 +178,28 @@ def test_modified_partial_sum_product_1(sum_op, prod_op, vars1, vars2,
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_curr": Bint[x_dim],
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3]
-    plate_to_step = {"time": {"x_prev": "x_curr"}}
+    factors = [f1, f2, f3, f4, f5]
+    plate_to_step = {"time": frozenset({("x_0", "x_prev", "x_curr")})}
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
@@ -203,8 +216,8 @@ def test_modified_partial_sum_product_1(sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
+     frozenset({"time", "x_0", "x_prev", "x_curr", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr", "y_0", "y_prev", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,time', [
@@ -217,19 +230,31 @@ def test_modified_partial_sum_product_2(sum_op, prod_op, vars1, vars2,
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "y_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "time": Bint[time],
         "y_prev": Bint[y_dim],
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3]
-    plate_to_step = {"time": {"x_prev": "x_curr", "y_prev": "y_curr"}}
+    factors = [f1, f2, f3, f4, f5]
+    plate_to_step = {
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr"),
+            ("y_0", "y_prev", "y_curr")})
+        }
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
@@ -246,8 +271,8 @@ def test_modified_partial_sum_product_2(sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
+     frozenset({"time", "x_0", "x_prev", "x_curr", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr", "y_0", "y_prev", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,time', [
@@ -260,20 +285,33 @@ def test_modified_partial_sum_product_3(sum_op, prod_op, vars1, vars2,
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_curr": Bint[x_dim],
         "y_prev": Bint[y_dim],
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3]
-    plate_to_step = {"time": {"x_prev": "x_curr", "y_prev": "y_curr"}}
+    factors = [f1, f2, f3, f4, f5]
+    plate_to_step = {
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr"),
+            ("y_0", "y_prev", "y_curr")})
+        }
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
@@ -290,10 +328,10 @@ def test_modified_partial_sum_product_3(sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
+     frozenset({"sequences", "time", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_prev", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
+    (frozenset({"sequences", "time", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_prev", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,sequences,time,tones', [
@@ -307,12 +345,23 @@ def test_modified_partial_sum_product_4(sum_op, prod_op, vars1, vars2,
 
     f2 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "y_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -320,10 +369,12 @@ def test_modified_partial_sum_product_4(sum_op, prod_op, vars1, vars2,
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3]
+    factors = [f1, f2, f3, f4, f5]
     plate_to_step = {
         "sequences": {},
-        "time": {"x_prev": "x_curr", "y_prev": "y_curr"},
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr"),
+            ("y_0", "y_prev", "y_curr")}),
         "tones": {}
     }
 
@@ -342,14 +393,17 @@ def test_modified_partial_sum_product_4(sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"})),
-    (frozenset({"weeks", "y_prev", "y_curr"}),
-     frozenset({"sequences", "days", "tones", "x_prev", "x_curr"})),
-    (frozenset({"days", "tones", "x_prev", "x_curr"}),
-     frozenset({"sequences", "weeks", "y_prev", "y_curr"})),
-    (frozenset({"days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"}),
+     frozenset({"sequences", "days", "tones", "x_0", "x_prev", "x_curr",
+                "weeks", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"weeks", "y_0", "y_prev", "y_curr"}),
+     frozenset({"sequences", "days", "tones", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"days", "tones", "x_0", "x_prev", "x_curr"}),
+     frozenset({"sequences", "weeks", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"days", "tones", "x_0", "x_prev", "x_curr",
+                "weeks", "y_0", "y_prev", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"}),
+    (frozenset({"sequences", "days", "tones", "x_0", "x_prev", "x_curr",
+                "weeks", "y_0", "y_prev", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,sequences,days,weeks,tones', [
@@ -366,25 +420,36 @@ def test_modified_partial_sum_product_5(sum_op, prod_op, vars1, vars2,
 
     f2 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
         "days": Bint[days],
         "tones": Bint[tones],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "y_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "weeks": Bint[weeks],
         "y_prev": Bint[y_dim],
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3]
+    factors = [f1, f2, f3, f4, f5]
     plate_to_step = {
         "sequences": {},
         "tones": {},
-        "days": {"x_prev": "x_curr"},
-        "weeks": {"y_prev": "y_curr"}
+        "days": frozenset({("x_0", "x_prev", "x_curr")}),
+        "weeks": frozenset({("y_0", "y_prev", "y_curr")}),
     }
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
@@ -402,12 +467,12 @@ def test_modified_partial_sum_product_5(sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_curr"})),
-    (frozenset({"y_curr", "tones"}),
-     frozenset({"sequences", "time", "x_prev", "x_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "tones", "y_curr"}),
+     frozenset({"sequences", "time", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"})),
+    (frozenset({"tones", "y_0", "y_curr"}),
+     frozenset({"sequences", "time", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "tones", "x_prev", "x_curr", "y_curr"}),
+    (frozenset({"sequences", "time", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,sequences,time,tones', [
@@ -421,12 +486,24 @@ def test_modified_partial_sum_product_6(sum_op, prod_op, vars1, vars2,
 
     f2 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -434,10 +511,10 @@ def test_modified_partial_sum_product_6(sum_op, prod_op, vars1, vars2,
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3]
+    factors = [f1, f2, f3, f4, f5]
     plate_to_step = {
         "sequences": {},
-        "time": {"x_prev": "x_curr"},
+        "time": frozenset({("x_0", "x_prev", "x_curr")}),
         "tones": {}
     }
 
@@ -456,10 +533,10 @@ def test_modified_partial_sum_product_6(sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
+     frozenset({"sequences", "time", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_prev", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
+    (frozenset({"sequences", "time", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_prev", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,sequences,time,tones', [
@@ -473,12 +550,24 @@ def test_modified_partial_sum_product_7(sum_op, prod_op, vars1, vars2,
 
     f2 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -487,10 +576,13 @@ def test_modified_partial_sum_product_7(sum_op, prod_op, vars1, vars2,
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3]
+    factors = [f1, f2, f3, f4, f5]
     plate_to_step = {
         "sequences": {},
-        "time": {"x_prev": "x_curr", "y_prev": "y_curr"},
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr"),
+            ("y_0", "y_prev", "y_curr"),
+            }),
         "tones": {}
     }
 
@@ -502,12 +594,15 @@ def test_modified_partial_sum_product_7(sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
-    (frozenset({"tones", "y_curr"}),
-     frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr"})),
-    (frozenset({"time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+     frozenset({"sequences", "time", "w_0", "w_prev", "w_curr",
+                "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"})),
+    (frozenset({"tones", "y_0", "y_curr"}),
+     frozenset({"sequences", "time", "w_0", "w_prev", "w_curr", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "w_0", "w_prev", "w_curr",
+                "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+    (frozenset({"sequences", "time", "w_0", "w_prev", "w_curr",
+                "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('w_dim,x_dim,y_dim,sequences,time,tones', [
@@ -524,19 +619,37 @@ def test_modified_partial_sum_product_8(sum_op, prod_op, vars1, vars2,
 
     f2 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
+        "w_0": Bint[w_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
         "time": Bint[time],
         "w_prev": Bint[w_dim],
         "w_curr": Bint[w_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "x_0": Bint[x_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f4 = random_tensor(OrderedDict({
+    f6 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "w_0": Bint[w_dim],
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+    }))
+
+    f7 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -545,10 +658,13 @@ def test_modified_partial_sum_product_8(sum_op, prod_op, vars1, vars2,
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3, f4]
+    factors = [f1, f2, f3, f4, f5, f6, f7]
     plate_to_step = {
         "sequences": {},
-        "time": {"x_prev": "x_curr", "w_prev": "w_curr"},
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr"),
+            ("w_0", "w_prev", "w_curr"),
+            }),
         "tones": {}
     }
 
@@ -568,12 +684,15 @@ def test_modified_partial_sum_product_8(sum_op, prod_op, vars1, vars2,
 @pytest.mark.parametrize("use_lazy", [False, True], ids=["eager", "lazy"])
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
-    (frozenset({"tones", "y_curr"}),
-     frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr"})),
-    (frozenset({"time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+     frozenset({"sequences", "time", "w_0", "w_prev", "w_curr",
+                "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"})),
+    (frozenset({"tones", "y_0", "y_curr"}),
+     frozenset({"sequences", "time", "w_0", "w_prev", "w_curr", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "w_0", "w_prev", "w_curr",
+                "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+    (frozenset({"sequences", "time", "w_0", "w_prev", "w_curr",
+                "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('w_dim,x_dim,y_dim,sequences,time,tones', [
@@ -587,12 +706,23 @@ def test_modified_partial_sum_product_9(use_lazy, sum_op, prod_op, vars1, vars2,
 
     f2 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
+        "w_0": Bint[w_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
         "time": Bint[time],
         "w_prev": Bint[w_dim],
         "w_curr": Bint[w_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "w_0": Bint[w_dim],
+        "x_0": Bint[x_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "w_curr": Bint[w_dim],
@@ -600,7 +730,15 @@ def test_modified_partial_sum_product_9(use_lazy, sum_op, prod_op, vars1, vars2,
         "x_curr": Bint[x_dim],
     }))
 
-    f4 = random_tensor(OrderedDict({
+    f6 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "w_0": Bint[w_dim],
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+    }))
+
+    f7 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -609,10 +747,13 @@ def test_modified_partial_sum_product_9(use_lazy, sum_op, prod_op, vars1, vars2,
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3, f4]
+    factors = [f1, f2, f3, f4, f5, f6, f7]
     plate_to_step = {
         "sequences": {},
-        "time": {"x_prev": "x_curr", "w_prev": "w_curr"},
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr"),
+            ("w_0", "w_prev", "w_curr"),
+            }),
         "tones": {}
     }
 
@@ -633,12 +774,12 @@ def test_modified_partial_sum_product_9(use_lazy, sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
-    (frozenset({"tones", "y_curr"}),
-     frozenset({"sequences", "time", "w_curr", "x_prev", "x_curr"})),
-    (frozenset({"time", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+     frozenset({"sequences", "time", "w_0", "w_curr", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"})),
+    (frozenset({"tones", "y_0", "y_curr"}),
+     frozenset({"sequences", "time", "w_0", "w_curr", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "w_0", "w_curr", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+    (frozenset({"sequences", "time", "w_0", "w_curr", "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('w_dim,x_dim,y_dim,sequences,time,tones', [
@@ -655,11 +796,22 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
 
     f2 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
+        "w_0": Bint[w_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
         "time": Bint[time],
         "w_curr": Bint[w_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "w_0": Bint[w_dim],
+        "x_0": Bint[x_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "w_curr": Bint[w_dim],
@@ -667,7 +819,15 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
         "x_curr": Bint[x_dim],
     }))
 
-    f4 = random_tensor(OrderedDict({
+    f6 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "w_0": Bint[w_dim],
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+    }))
+
+    f7 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -676,10 +836,10 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3, f4]
+    factors = [f1, f2, f3, f4, f5, f6, f7]
     plate_to_step = {
         "sequences": {},
-        "time": {"x_prev": "x_curr"},
+        "time": frozenset({("x_0", "x_prev", "x_curr")}),
         "tones": {}
     }
 
@@ -699,12 +859,15 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
 @pytest.mark.parametrize('use_lazy', [False, True], ids=["eager", "lazy"])
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"a", "b", "sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"})),
-    (frozenset({"tones", "y_curr"}),
-     frozenset({"a", "b", "sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr"})),
-    (frozenset({"time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+     frozenset({"a", "b", "sequences", "time", "w_0", "w_prev", "w_curr",
+                "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"})),
+    (frozenset({"tones", "y_0", "y_curr"}),
+     frozenset({"a", "b", "sequences", "time", "w_0", "w_prev", "w_curr", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "w_0", "w_prev", "w_curr",
+                "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset({"a", "b", "sequences"})),
-    (frozenset({"a", "b", "sequences", "time", "w_prev", "w_curr", "x_prev", "x_curr", "tones", "y_curr"}),
+    (frozenset({"a", "b", "sequences", "time", "w_0", "w_prev", "w_curr",
+                "x_0", "x_prev", "x_curr", "tones", "y_0", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('a_dim,b_dim,w_dim,x_dim,y_dim,sequences,time,tones', [
@@ -717,18 +880,24 @@ def test_modified_partial_sum_product_10(sum_op, prod_op, vars1, vars2,
 def test_modified_partial_sum_product_11(use_lazy, sum_op, prod_op, vars1, vars2,
                                          a_dim, b_dim, w_dim, x_dim, y_dim, sequences, time, tones):
 
-    f = random_tensor(OrderedDict({}))
+    f1 = random_tensor(OrderedDict({}))
 
-    g = random_tensor(OrderedDict({
+    f2 = random_tensor(OrderedDict({
         "a": Bint[a_dim],
     }))
 
-    h = random_tensor(OrderedDict({
+    f3 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "b": Bint[b_dim],
     }))
 
-    i = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "a": Bint[a_dim],
+        "sequences": Bint[sequences],
+        "w_0": Bint[w_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "a": Bint[a_dim],
         "sequences": Bint[sequences],
         "time": Bint[time],
@@ -736,7 +905,14 @@ def test_modified_partial_sum_product_11(use_lazy, sum_op, prod_op, vars1, vars2
         "w_curr": Bint[w_dim],
     }))
 
-    j = random_tensor(OrderedDict({
+    f6 = random_tensor(OrderedDict({
+        "b": Bint[b_dim],
+        "sequences": Bint[sequences],
+        "w_0": Bint[w_dim],
+        "x_0": Bint[x_dim],
+    }))
+
+    f7 = random_tensor(OrderedDict({
         "b": Bint[b_dim],
         "sequences": Bint[sequences],
         "time": Bint[time],
@@ -745,7 +921,15 @@ def test_modified_partial_sum_product_11(use_lazy, sum_op, prod_op, vars1, vars2
         "x_curr": Bint[x_dim],
     }))
 
-    k = random_tensor(OrderedDict({
+    f8 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "w_0": Bint[w_dim],
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+    }))
+
+    f9 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -754,10 +938,13 @@ def test_modified_partial_sum_product_11(use_lazy, sum_op, prod_op, vars1, vars2
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f, g, h, i, j, k]
+    factors = [f1, f2, f3, f4, f5, f6, f7, f8, f9]
     plate_to_step = {
         "sequences": {},
-        "time": {"x_prev": "x_curr", "w_prev": "w_curr"},
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr"),
+            ("w_0", "w_prev", "w_curr")
+            }),
         "tones": {}
     }
 
@@ -778,10 +965,13 @@ def test_modified_partial_sum_product_11(use_lazy, sum_op, prod_op, vars1, vars2
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "w_curr", "tones", "x_prev", "x_curr", "y_prev", "y_curr"})),
-    (frozenset({"time", "w_curr", "tones", "x_prev", "x_curr", "y_prev", "y_curr"}),
+     frozenset({"sequences", "time", "w_0", "w_curr",
+                "tones", "x_0", "x_prev", "x_curr", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"time", "w_0", "w_curr",
+                "tones", "x_0", "x_prev", "x_curr", "y_0", "y_prev", "y_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "w_curr", "tones", "x_prev", "x_curr", "y_prev", "y_curr"}),
+    (frozenset({"sequences", "time", "w_0", "w_curr",
+                "tones", "x_0", "x_prev", "x_curr", "y_0", "y_prev", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('w_dim,x_dim,y_dim,sequences,time,tones', [
@@ -798,11 +988,23 @@ def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
 
     f2 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
+        "w_0": Bint[w_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
         "time": Bint[time],
         "w_curr": Bint[w_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "w_0": Bint[w_dim],
+        "x_0": Bint[x_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -811,7 +1013,15 @@ def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
         "x_curr": Bint[x_dim],
     }))
 
-    f4 = random_tensor(OrderedDict({
+    f6 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "w_0": Bint[w_dim],
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+    }))
+
+    f7 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
@@ -821,10 +1031,13 @@ def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3, f4]
+    factors = [f1, f2, f3, f4, f5, f6, f7]
     plate_to_step = {
         "sequences": {},
-        "time": {"x_prev": "x_curr", "y_prev": "y_curr"},
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr"),
+            ("y_0", "y_prev", "y_curr")
+            }),
         "tones": {}
     }
 
@@ -837,17 +1050,20 @@ def test_modified_partial_sum_product_12(sum_op, prod_op, vars1, vars2,
 @pytest.mark.parametrize('use_lazy', [False, True], ids=["eager", "lazy"])
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "w", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"})),
-    (frozenset({"weeks", "y_prev", "y_curr"}),
-     frozenset({"sequences", "w", "days", "tones", "x_prev", "x_curr"})),
-    (frozenset({"days", "tones", "x_prev", "x_curr"}),
-     frozenset({"sequences", "w", "weeks", "y_prev", "y_curr"})),
-    (frozenset({"days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"}),
+     frozenset({"sequences", "w", "days", "tones", "x_0", "x_prev", "x_curr",
+                "weeks", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"weeks", "y_0", "y_prev", "y_curr"}),
+     frozenset({"sequences", "w", "days", "tones", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"days", "tones", "x_0", "x_prev", "x_curr"}),
+     frozenset({"sequences", "w", "weeks", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"days", "tones", "x_0", "x_prev", "x_curr", "weeks", "y_0", "y_prev", "y_curr"}),
      frozenset({"sequences", "w"})),
-    (frozenset({"sequences", "w", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"}),
-     frozenset()),
-    (frozenset({"w", "days", "tones", "x_prev", "x_curr", "weeks", "y_prev", "y_curr"}),
+    (frozenset({"w", "days", "tones", "x_0", "x_prev", "x_curr",
+                "weeks", "y_0", "y_prev", "y_curr"}),
      frozenset({"sequences"})),
+    (frozenset({"sequences", "w", "days", "tones", "x_0", "x_prev", "x_curr",
+                "weeks", "y_0", "y_prev", "y_curr"}),
+     frozenset()),
 ])
 @pytest.mark.parametrize('w_dim,x_dim, y_dim, sequences, days, weeks, tones', [
     (3, 2, 3, 2, 5, 4, 3),
@@ -864,13 +1080,26 @@ def test_modified_partial_sum_product_13(use_lazy, sum_op, prod_op, vars1, vars2
     f2 = random_tensor(OrderedDict({
         "w": Bint[w_dim],
         "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
+        "w": Bint[w_dim],
+        "sequences": Bint[sequences],
         "days": Bint[days],
         "tones": Bint[tones],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "w": Bint[w_dim],
+        "sequences": Bint[sequences],
+        "y_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "w": Bint[w_dim],
         "sequences": Bint[sequences],
         "weeks": Bint[weeks],
@@ -878,12 +1107,12 @@ def test_modified_partial_sum_product_13(use_lazy, sum_op, prod_op, vars1, vars2
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3]
+    factors = [f1, f2, f3, f4, f5]
     plate_to_step = {
         "sequences": {},
         "tones": {},
-        "days": {"x_prev": "x_curr"},
-        "weeks": {"y_prev": "y_curr"}
+        "days": frozenset({("x_0", "x_prev", "x_curr")}),
+        "weeks": frozenset({("y_0", "y_prev", "y_curr")}),
     }
 
     with interpretation(lazy if use_lazy else eager):
@@ -903,12 +1132,15 @@ def test_modified_partial_sum_product_13(use_lazy, sum_op, prod_op, vars1, vars2
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"})),
-    (frozenset({"tones", "y_prev", "y_curr"}),
-     frozenset({"sequences", "time", "x_prev", "x_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
+     frozenset({"sequences", "time", "x_0", "x_prev", "x_curr",
+                "tones", "y0_0", "y0_prev", "y0_curr", "ycurr_0", "ycurr_prev", "ycurr_curr"})),
+    (frozenset({"tones", "y0_0", "y0_prev", "y0_curr", "ycurr_0", "ycurr_prev", "ycurr_curr"}),
+     frozenset({"sequences", "time", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr",
+                "tones", "y0_0", "y0_prev", "y0_curr", "ycurr_0", "ycurr_prev", "ycurr_curr"}),
      frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "tones", "x_prev", "x_curr", "y_prev", "y_curr"}),
+    (frozenset({"sequences", "time", "x_0", "x_prev", "x_curr",
+                "tones", "y0_0", "y0_prev", "y0_curr", "ycurr_0", "ycurr_prev", "ycurr_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,sequences,time,tones', [
@@ -921,29 +1153,58 @@ def test_modified_partial_sum_product_13(use_lazy, sum_op, prod_op, vars1, vars2
 def test_modified_partial_sum_product_14(sum_op, prod_op, vars1, vars2,
                                          x_dim, y_dim, sequences, time, tones):
 
-    f = random_tensor(OrderedDict({}))
+    f1 = random_tensor(OrderedDict({}))
 
-    g = random_tensor(OrderedDict({
+    f2 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    h = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "x_0": Bint[x_dim],
+        "y0_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "tones": Bint[tones],
+        "x_0": Bint[x_dim],
+        "y0_prev": Bint[y_dim],
+        "y0_curr": Bint[y_dim],
+    }))
+
+    f6 = random_tensor(OrderedDict({
+        "sequences": Bint[sequences],
+        "time": Bint[time],
+        "x_curr": Bint[x_dim],
+        "ycurr_0": Bint[y_dim],
+    }))
+
+    f7 = random_tensor(OrderedDict({
         "sequences": Bint[sequences],
         "time": Bint[time],
         "tones": Bint[tones],
         "x_curr": Bint[x_dim],
-        "y_prev": Bint[y_dim],
-        "y_curr": Bint[y_dim],
+        "ycurr_prev": Bint[y_dim],
+        "ycurr_curr": Bint[y_dim],
     }))
 
-    factors = [f, g, h]
+    factors = [f1, f2, f3, f4, f5, f6, f7]
     plate_to_step = {
         "sequences": {},
-        "time": {"x_prev": "x_curr"},
-        "tones": {"y_prev": "y_curr"}
+        "time": frozenset({("x_0", "x_prev", "x_curr")}),
+        "tones": frozenset({
+            ("y0_0", "y0_prev", "y0_curr"),
+            ("ycurr_0", "ycurr_prev", "ycurr_curr"),
+        })
     }
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
@@ -961,57 +1222,8 @@ def test_modified_partial_sum_product_14(sum_op, prod_op, vars1, vars2,
 
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"sequences", "time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "tones", "y_prev", "y_curr"}),
-     frozenset({"sequences"})),
-    (frozenset({"sequences", "time", "tones", "x_prev", "x_curr", "y_prev", "y_curr"}),
-     frozenset()),
-])
-@pytest.mark.parametrize('x_dim,y_dim,sequences,time,tones', [
-    (2, 3, 2, 3, 2),
-    (1, 3, 2, 3, 2),
-    (2, 1, 2, 3, 2),
-    (2, 3, 2, 1, 2),
-])
-@pytest.mark.parametrize('sum_op,prod_op', [(ops.logaddexp, ops.add), (ops.add, ops.mul)])
-def test_modified_partial_sum_product_15(sum_op, prod_op, vars1, vars2,
-                                         x_dim, y_dim, sequences, time, tones):
-
-    f = random_tensor(OrderedDict({}))
-
-    g = random_tensor(OrderedDict({
-        "sequences": Bint[sequences],
-        "time": Bint[time],
-        "x_prev": Bint[x_dim],
-        "x_curr": Bint[x_dim],
-    }))
-
-    h = random_tensor(OrderedDict({
-        "sequences": Bint[sequences],
-        "time": Bint[time],
-        "tones": Bint[tones],
-        "x_curr": Bint[x_dim],
-        "y_prev": Bint[y_dim],
-        "y_curr": Bint[y_dim],
-    }))
-
-    factors = [f, g, h]
-    plate_to_step = {
-        "sequences": {},
-        "time": {"x_prev": "x_curr", "y_prev": "y_curr"},
-        "tones": {"y_prev": "y_curr"}
-    }
-
-    with pytest.raises(ValueError, match="intractable!"):
-        factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
-        factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
-        reduce(prod_op, factors2)
-
-
-@pytest.mark.parametrize('vars1,vars2', [
-    (frozenset(),
-     frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "y_prev", "y_curr"}),
+     frozenset({"time", "x_0", "x_prev", "x_curr", "y_0", "y_prev", "y_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr", "y_0", "y_prev", "y_curr"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,time', [
@@ -1024,19 +1236,32 @@ def test_modified_partial_sum_product_16(sum_op, prod_op, vars1, vars2,
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
         "time": Bint[time],
         "y_prev": Bint[y_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "y_0": Bint[y_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "y_curr": Bint[y_dim],
     }))
 
-    factors = [f1, f2, f3]
-    plate_to_step = {"time": {"x_prev": "x_curr", "y_prev": "y_curr"}}
+    factors = [f1, f2, f3, f4, f5]
+    plate_to_step = {
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr"),
+            ("y_0", "y_prev", "y_curr"),
+            }),
+        }
 
     factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
     factors2 = modified_partial_sum_product(sum_op, prod_op, factors1, vars2, plate_to_step)
@@ -1054,10 +1279,12 @@ def test_modified_partial_sum_product_16(sum_op, prod_op, vars1, vars2,
 @pytest.mark.parametrize('use_lazy', [False, True], ids=["eager", "lazy"])
 @pytest.mark.parametrize('vars1,vars2', [
     (frozenset(),
-     frozenset({"time", "x_prev", "x_curr", "y_curr", "z0", "z1", "z2"})),
-    (frozenset({"y_curr", "z0", "z1", "z2"}),
-     frozenset({"time", "x_prev", "x_curr"})),
-    (frozenset({"time", "x_prev", "x_curr", "y_curr", "z0", "z1", "z2"}),
+     frozenset({"time", "x_0", "x_prev", "x_curr",
+                "y_0", "y_curr", "z0_0", "z0", "z1_0", "z1", "z2_0", "z2"})),
+    (frozenset({"y_0", "y_curr", "z0_0", "z0", "z1_0", "z1", "z2_0", "z2"}),
+     frozenset({"time", "x_0", "x_prev", "x_curr"})),
+    (frozenset({"time", "x_0", "x_prev", "x_curr",
+                "y_0", "y_curr", "z0_0", "z0", "z1_0", "z1", "z2_0", "z2"}),
      frozenset()),
 ])
 @pytest.mark.parametrize('x_dim,y_dim,z_dim,time', [
@@ -1070,12 +1297,23 @@ def test_modified_partial_sum_product_17(use_lazy, sum_op, prod_op, vars1, vars2
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+    }))
+
+    f3 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_prev": Bint[x_dim],
         "x_curr": Bint[x_dim],
     }))
 
-    f3_1 = random_tensor(OrderedDict({
+    f4 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+        "z0_0": Bint[z_dim],
+        "z1_0": Bint[z_dim],
+    }))
+
+    f5 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_curr": Bint[x_dim],
         "y_curr": Bint[y_dim],
@@ -1083,7 +1321,14 @@ def test_modified_partial_sum_product_17(use_lazy, sum_op, prod_op, vars1, vars2
         "z1": Bint[z_dim],
     }))
 
-    f3_2 = random_tensor(OrderedDict({
+    f6 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+        "z1_0": Bint[z_dim],
+        "z2_0": Bint[z_dim],
+    }))
+
+    f7 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_curr": Bint[x_dim],
         "y_curr": Bint[y_dim],
@@ -1091,15 +1336,25 @@ def test_modified_partial_sum_product_17(use_lazy, sum_op, prod_op, vars1, vars2
         "z2": Bint[z_dim],
     }))
 
-    f3_3 = random_tensor(OrderedDict({
+    f8 = random_tensor(OrderedDict({
+        "x_0": Bint[x_dim],
+        "y_0": Bint[y_dim],
+        "z2_0": Bint[z_dim],
+    }))
+
+    f9 = random_tensor(OrderedDict({
         "time": Bint[time],
         "x_curr": Bint[x_dim],
         "y_curr": Bint[y_dim],
         "z2": Bint[z_dim],
     }))
 
-    factors = [f1, f2, f3_1, f3_2, f3_3]
-    plate_to_step = {"time": {"x_prev": "x_curr"}}
+    factors = [f1, f2, f3, f4, f5, f6, f7, f8, f9]
+    plate_to_step = {
+        "time": frozenset({
+            ("x_0", "x_prev", "x_curr")
+            }),
+        }
 
     with interpretation(lazy if use_lazy else eager):
         factors1 = modified_partial_sum_product(sum_op, prod_op, factors, vars1, plate_to_step)
