@@ -16,13 +16,13 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.cnf import Contraction, GaussianMixture
-from funsor.domains import Array, Real, Reals
+from funsor.domains import Array, Real, Reals, RealsType
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
                            ignore_jit_warnings, numeric_array, stack)
 from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, \
-    eager, to_data, to_funsor
+    eager, reflect, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
 
@@ -57,12 +57,36 @@ class DistributionMeta(FunsorMeta):
     """
     def __call__(cls, *args, **kwargs):
         kwargs.update(zip(cls._ast_fields, args))
-        value = kwargs.pop('value', 'value')
-        kwargs = OrderedDict(
-            (k, to_funsor(kwargs[k], output=cls._infer_param_domain(k, getattr(kwargs[k], "shape", ()))))
-            for k in cls._ast_fields if k != 'value')
-        value = to_funsor(value, output=cls._infer_value_domain(**{k: v.output for k, v in kwargs.items()}))
-        args = numbers_to_tensors(*(tuple(kwargs.values()) + (value,)))
+        kwargs["value"] = kwargs.get("value", "value")
+        kwargs = OrderedDict((k, kwargs[k]) for k in cls._ast_fields)  # make sure args are sorted
+
+        domains = OrderedDict()
+        for k, v in kwargs.items():
+            if k == "value":
+                continue
+
+            # compute unbroadcasted param domains
+            domain = cls._infer_param_domain(k, getattr(kwargs[k], "shape", ()))
+            # use to_funsor to infer output dimensions of e.g. tensors
+            domains[k] = domain if domain is not None else to_funsor(v).output
+
+            # broadcast individual param domains with Funsor inputs
+            # this avoids .expand-ing underlying parameter tensors
+            if isinstance(v, Funsor) and isinstance(v.output, RealsType):
+                domains[k] = Reals[broadcast_shape(v.shape, domains[k].shape)]
+            elif ops.is_numeric_array(v):
+                domains[k] = Reals[broadcast_shape(v.shape, domains[k].shape)]
+
+        # now use the broadcasted parameter shapes to infer the event_shape
+        domains["value"] = cls._infer_value_domain(**domains)
+        if isinstance(kwargs["value"], Funsor) and isinstance(kwargs["value"].output, RealsType):
+            # try to broadcast the event shape with the value, in case they disagree
+            domains["value"] = Reals[broadcast_shape(domains["value"].shape, kwargs["value"].output.shape)]
+
+        # finally, perform conversions to funsors
+        kwargs = OrderedDict((k, to_funsor(v, output=domains[k])) for k, v in kwargs.items())
+        args = numbers_to_tensors(*kwargs.values())
+
         return super(DistributionMeta, cls).__call__(*args)
 
 
@@ -98,14 +122,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             return Number(0.)  # distributions are normalized
         return super(Distribution, self).eager_reduce(op, reduced_vars)
 
-    @classmethod
-    def eager_log_prob(cls, *params):
-        inputs, tensors = align_tensors(*params)
-        params = dict(zip(cls._ast_fields, tensors))
-        value = params.pop('value')
-        data = cls.dist_class(**params).log_prob(value)
-        return Tensor(data, inputs)
-
     def _get_raw_dist(self):
         """
         Internal method for working with underlying distribution attributes
@@ -128,6 +144,26 @@ class Distribution(Funsor, metaclass=DistributionMeta):
     @property
     def has_enumerate_support(self):
         return getattr(self.dist_class, "has_enumerate_support", False)
+
+    @classmethod
+    def eager_log_prob(cls, *params):
+        params, value = params[:-1], params[-1]
+        params = params + (Variable("value", value.output),)
+        instance = reflect(cls, *params)
+        raw_dist, value_name, value_output, dim_to_name = instance._get_raw_dist()
+        assert value.output == value_output
+        name_to_dim = {v: k for k, v in dim_to_name.items()}
+        dim_to_name.update({-1 - d - len(raw_dist.batch_shape): name
+                            for d, name in enumerate(value.inputs) if name not in name_to_dim})
+        name_to_dim.update({v: k for k, v in dim_to_name.items() if v not in name_to_dim})
+        raw_log_prob = raw_dist.log_prob(to_data(value, name_to_dim=name_to_dim))
+        log_prob = to_funsor(raw_log_prob, Real, dim_to_name=dim_to_name)
+        # this logic ensures that the inputs have the canonical order
+        # implied by align_tensors, which is assumed pervasively in tests
+        inputs = OrderedDict()
+        for x in params[:-1] + (value,):
+            inputs.update(x.inputs)
+        return log_prob.align(tuple(inputs))
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
 
@@ -191,7 +227,13 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         # rely on the underlying distribution's logic to infer the event_shape given param domains
         instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()},
                                   validate_args=False)
-        out_shape = instance.event_shape
+
+        # Note inclusion of batch_shape here to handle independent event dimensions.
+        # The arguments to _infer_value_domain are the .output shapes of parameters,
+        # so any extra batch dimensions that aren't part of the instance event_shape
+        # must be broadcasted output dimensions by construction.
+        out_shape = instance.batch_shape + instance.event_shape
+
         if type(instance.support).__name__ == "_IntegerInterval":
             out_dtype = int(instance.support.upper_bound + 1)
         else:
@@ -400,10 +442,32 @@ class CoerceDistributionToFunsor:
 
 @to_data.register(Distribution)
 def distribution_to_data(funsor_dist, name_to_dim=None):
-    params = [to_data(getattr(funsor_dist, param_name), name_to_dim=name_to_dim)
-              for param_name in funsor_dist._ast_fields if param_name != 'value']
-    pyro_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     funsor_event_shape = funsor_dist.value.output.shape
+
+    # attempt to generically infer the independent output dimensions
+    instance = funsor_dist.dist_class(**{
+        k: dummy_numeric_array(v.output)
+        for k, v in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1])
+    }, validate_args=False)
+    event_shape = broadcast_shape(instance.event_shape, funsor_dist.value.output.shape)
+    reinterpreted_batch_ndims = len(event_shape) - len(instance.event_shape)
+    assert reinterpreted_batch_ndims >= 0  # XXX is this ever nonzero?
+    indep_shape = broadcast_shape(instance.batch_shape, event_shape[:reinterpreted_batch_ndims])
+
+    params = []
+    for param_name, funsor_param in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1]):
+        param = to_data(funsor_param, name_to_dim=name_to_dim)
+
+        # infer the independent dimensions of each parameter separately, since we chose to keep them unbroadcasted
+        param_event_shape = getattr(funsor_dist._infer_param_domain(param_name, funsor_param.output.shape), "shape", ())
+        param_indep_shape = funsor_param.output.shape[:len(funsor_param.output.shape) - len(param_event_shape)]
+        for i in range(max(0, len(indep_shape) - len(param_indep_shape))):
+            # add singleton event dimensions, leave broadcasting/expanding to backend
+            param = ops.unsqueeze(param, -1 - len(funsor_param.output.shape))
+
+        params.append(param)
+
+    pyro_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], params)))
     pyro_dist = pyro_dist.to_event(max(len(funsor_event_shape) - len(pyro_dist.event_shape), 0))
 
     # TODO get this working for all backends
