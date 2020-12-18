@@ -93,26 +93,12 @@ def _get_pyro_dist(dist_name):
 
 
 PYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
-    ("Cauchy", ()),
-    ("Chi2", ()),
     ("ContinuousBernoulli", ("logits",)),
-    ("Exponential", ()),
     ("FisherSnedecor", ()),
-    ("Geometric", ("probs",)),
-    ("Gumbel", ()),
-    ("HalfCauchy", ()),
-    ("HalfNormal", ()),
-    ("Laplace", ()),
     # ("LogisticNormal", ()),  # TODO handle as transformed dist
-    ("LowRankMultivariateNormal", ()),
     ("NegativeBinomial", ("total_count", "probs")),
     ("OneHotCategorical", ("probs",)),
-    ("Pareto", ()),
-    ("Poisson", ()),
     ("RelaxedBernoulli", ("temperature", "logits")),
-    ("StudentT", ()),
-    ("Uniform", ()),
-    ("VonMises", ()),
     ("Weibull", ()),
 ]
 
