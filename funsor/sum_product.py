@@ -496,7 +496,6 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
     if not lags:
         return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, {})
 
-    period = int(reduce(lambda a, b: a * b // gcd(a, b), list(lags)))
     original_names = frozenset(name for name in trans.inputs
                                if name != time and name not in global_vars
                                and not name.startswith("P"))
