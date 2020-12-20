@@ -480,7 +480,9 @@ def _get_shift(name):
 
 def _shift_name(name, t):
     """helper function used internally in sarkka_bilmes_product"""
-    return t * "P" + name
+    if t >= 0:
+        return t * "P" + name
+    return name.replace("P" * -t, "", 1)
 
 
 def _shift_funsor(f, t, global_vars):
@@ -513,7 +515,7 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
         sum_vars = frozenset(_shift_name(name, duration - t - 1) for name in original_names)
         result = result.reduce(sum_op, sum_vars)
 
-    result = result(**{name: name.replace("P" * duration, "P") for name in result.inputs})
+    result = result(**{name: _shift_name(name, -duration + 1) for name in result.inputs})
     return result
 
 
@@ -556,7 +558,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
             sum_vars = frozenset(_shift_name(name, remaining_duration - t) for name in original_names)
             result = result.reduce(sum_op, sum_vars)
 
-        result = result(**{name: name.replace("P" * remaining_duration, "", 1) for name in result.inputs})
+        result = result(**{name: _shift_name(name, -remaining_duration) for name in result.inputs})
         return result
 
     for t in range(period):
@@ -575,7 +577,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     final_sum_vars = frozenset(
         _shift_name(name, t) for name in original_names for t in range(1, period))
     result = final_chunk.reduce(sum_op, final_sum_vars)
-    result = result(**{name: name.replace("P" * period, "P") for name in result.inputs})
+    result = result(**{name: _shift_name(name, -period + 1) for name in result.inputs})
     return result
 
 
