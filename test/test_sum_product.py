@@ -1587,7 +1587,7 @@ def test_sarkka_bilmes_example_1(duration):
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
 
-@pytest.mark.parametrize("duration", [2, 4, 6, 8])
+@pytest.mark.parametrize("duration", [2, 3, 4, 5, 6, 7, 8])
 def test_sarkka_bilmes_example_2(duration):
 
     trans = random_tensor(OrderedDict({
@@ -1611,7 +1611,7 @@ def test_sarkka_bilmes_example_2(duration):
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
 
-@pytest.mark.parametrize("duration", [2, 4, 6, 8])
+@pytest.mark.parametrize("duration", [2, 3, 4, 5, 6, 7, 8])
 def test_sarkka_bilmes_example_3(duration):
 
     trans = random_tensor(OrderedDict({
@@ -1631,7 +1631,7 @@ def test_sarkka_bilmes_example_3(duration):
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
 
 
-@pytest.mark.parametrize("duration", [3, 6, 9])
+@pytest.mark.parametrize("duration", [3, 4, 5, 6, 7, 9])
 def test_sarkka_bilmes_example_4(duration):
 
     trans = random_tensor(OrderedDict({
@@ -1672,7 +1672,7 @@ def test_sarkka_bilmes_example_5(duration):
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
 
 
-@pytest.mark.parametrize("duration", [3, 6, 9])
+@pytest.mark.parametrize("duration", [3, 4, 5, 6, 7, 8, 9])
 def test_sarkka_bilmes_example_6(duration):
 
     trans = random_tensor(OrderedDict({

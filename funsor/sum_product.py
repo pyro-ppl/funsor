@@ -497,16 +497,14 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
         return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, {})
 
     period = int(reduce(lambda a, b: a * b // gcd(a, b), list(lags)))
-
-    duration = trans.inputs[time].size
-    if duration % period:
-        raise NotImplementedError("TODO handle partial windows")
-
-    result = trans(**{time: duration - 1})
     original_names = frozenset(name for name in trans.inputs
                                if name != time and name not in global_vars
                                and not name.startswith("P"))
-    for t in range(trans.inputs[time].size - 2, -1, -1):
+
+    duration = trans.inputs[time].size
+
+    result = trans(**{time: duration - 1})
+    for t in range(duration - 2, -1, -1):
         result = prod_op(shift_funsor(trans(**{time: t}), duration - t - 1), result)
         sum_vars = frozenset(shift_name(name, duration - t - 1) for name in original_names)
         result = result.reduce(sum_op, sum_vars)
@@ -525,6 +523,8 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
         return len(re.search("^P*", name).group(0))
 
     def shift_name(name, t):
+        if t < 0:
+            return name.replace("P" * -t, "", 1)
         return t * "P" + name
 
     def shift_funsor(f, t):
@@ -544,8 +544,23 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
                                and not name.startswith("P"))
     renamed_factors = []
     duration = trans.inputs[time].size
-    if duration % period:
-        raise NotImplementedError("TODO handle partial windows")
+    if duration % period != 0:
+        remaining_duration = duration % period
+        truncated_duration = duration - remaining_duration
+        truncated_time_var = Variable(time, Bint[truncated_duration])
+        truncated_trans = trans(**{time: Slice(time, remaining_duration, duration, 1, duration)})
+
+        # recursively call sarkka_bilmes_product on left-truncated factor
+        result = sarkka_bilmes_product(sum_op, prod_op, truncated_trans, truncated_time_var, global_vars, num_periods)
+
+        # sequentially combine remaining pieces with result
+        for t in reversed(range(remaining_duration)):
+            result = prod_op(shift_funsor(trans(**{time: t}), 1), result)
+            sum_vars = frozenset(shift_name(name, 1) for name in original_names)
+            result = result.reduce(sum_op, sum_vars)
+
+        result = result(**{name: shift_name(name, -remaining_duration) for name in result.inputs})
+        return result
 
     for t in range(period):
         slice_t = Slice(time, t, duration - period + t + 1, period, duration)
