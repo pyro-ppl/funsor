@@ -548,15 +548,16 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
         remaining_duration = duration % period
         truncated_duration = duration - remaining_duration
         truncated_time_var = Variable(time, Bint[truncated_duration])
+        # chop off the rightmost set of complete chunks
         truncated_trans = trans(**{time: Slice(time, remaining_duration, duration, 1, duration)})
 
-        # recursively call sarkka_bilmes_product on left-truncated factor
+        # recursively call sarkka_bilmes_product on truncated factor
         result = sarkka_bilmes_product(sum_op, prod_op, truncated_trans, truncated_time_var, global_vars, num_periods)
 
         # sequentially combine remaining pieces with result
         for t in reversed(range(remaining_duration)):
-            result = prod_op(shift_funsor(trans(**{time: t}), 1), result)
-            sum_vars = frozenset(shift_name(name, 1) for name in original_names)
+            result = prod_op(shift_funsor(trans(**{time: t}), remaining_duration - t), result)
+            sum_vars = frozenset(shift_name(name, remaining_duration - t) for name in original_names)
             result = result.reduce(sum_op, sum_vars)
 
         result = result(**{name: shift_name(name, -remaining_duration) for name in result.inputs})
