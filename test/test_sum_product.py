@@ -1696,7 +1696,7 @@ def test_sarkka_bilmes_example_6(duration):
     _check_sarkka_bilmes(trans, expected_inputs, global_vars)
 
 
-@pytest.mark.parametrize("time_input", [("time", Bint[t]) for t in range(2, 10)])
+@pytest.mark.parametrize("time_input", [("time", Bint[t]) for t in range(6, 11)])
 @pytest.mark.parametrize("global_inputs", [
     (),
     (("x", Bint[2]),),
@@ -1744,16 +1744,7 @@ def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_peri
     else:
         trans = random_tensor(trans_inputs)
 
-    try:
-        _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods)
-    except NotImplementedError as e:
-        partial_reasons = (
-            'TODO handle partial windows',
-        )
-        if any(reason in e.args[0] for reason in partial_reasons):
-            pytest.xfail(reason=e.args[0])
-        else:
-            raise
+    _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods)
 
 
 @pytest.mark.parametrize("duration,num_segments", [(12, 1), (12, 2), (12, 3), (12, 4), (12, 6)])
