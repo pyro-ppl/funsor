@@ -473,45 +473,49 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step, num_segment
     return second_stage_result
 
 
+def _get_shift(name):
+    """helper function used internally in sarkka_bilmes_product"""
+    return len(re.search("^P*", name).group(0))
+
+
+def _shift_name(name, t):
+    """helper function used internally in sarkka_bilmes_product"""
+    if t >= 0:
+        return t * "P" + name
+    return name.replace("P" * -t, "", 1)
+
+
+def _shift_funsor(f, t, global_vars):
+    """helper function used internally in sarkka_bilmes_product"""
+    if t == 0:
+        return f
+    return f(**{name: _shift_name(name, t) for name in f.inputs if name not in global_vars})
+
+
 def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozenset()):
 
     assert isinstance(global_vars, frozenset)
 
     time = time_var.name
+    global_vars |= {time}
 
-    def get_shift(name):
-        return len(re.search("^P*", name).group(0))
-
-    def shift_name(name, t):
-        return t * "P" + name
-
-    def shift_funsor(f, t):
-        if t == 0:
-            return f
-        return f(**{name: shift_name(name, t) for name in f.inputs
-                    if name != time and name not in global_vars})
-
-    lags = {get_shift(name) for name in trans.inputs if name != time}
+    lags = {_get_shift(name) for name in trans.inputs if name != time}
     lags.discard(0)
     if not lags:
         return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, {})
 
-    period = int(reduce(lambda a, b: a * b // gcd(a, b), list(lags)))
+    original_names = frozenset(name for name in trans.inputs
+                               if name not in global_vars and not name.startswith("P"))
 
     duration = trans.inputs[time].size
-    if duration % period:
-        raise NotImplementedError("TODO handle partial windows")
 
     result = trans(**{time: duration - 1})
-    original_names = frozenset(name for name in trans.inputs
-                               if name != time and name not in global_vars
-                               and not name.startswith("P"))
-    for t in range(trans.inputs[time].size - 2, -1, -1):
-        result = prod_op(shift_funsor(trans(**{time: t}), duration - t - 1), result)
-        sum_vars = frozenset(shift_name(name, duration - t - 1) for name in original_names)
+    for t in range(duration - 2, -1, -1):
+        result = prod_op(_shift_funsor(trans(**{time: t}), duration - t - 1, global_vars), result)
+        sum_vars = frozenset(_shift_name(name, duration - t - 1) for name in original_names)
         result = result.reduce(sum_op, sum_vars)
 
-    result = result(**{name: name.replace("P" * duration, "P") for name in result.inputs})
+    result = result(**{name: _shift_name(name, -duration + 1) for name in result.inputs})
     return result
 
 
@@ -520,50 +524,60 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
     assert isinstance(global_vars, frozenset)
 
     time = time_var.name
+    global_vars |= {time}
 
-    def get_shift(name):
-        return len(re.search("^P*", name).group(0))
-
-    def shift_name(name, t):
-        return t * "P" + name
-
-    def shift_funsor(f, t):
-        if t == 0:
-            return f
-        return f(**{name: shift_name(name, t) for name in f.inputs
-                    if name != time and name not in global_vars})
-
-    lags = {get_shift(name) for name in trans.inputs if name != time}
+    lags = {_get_shift(name) for name in trans.inputs if name != time}
     lags.discard(0)
     if not lags:
         return sequential_sum_product(sum_op, prod_op, trans, time_var, {})
 
     period = int(reduce(lambda a, b: a * b // gcd(a, b), list(lags)))
     original_names = frozenset(name for name in trans.inputs
-                               if name != time and name not in global_vars
-                               and not name.startswith("P"))
+                               if name not in global_vars and not name.startswith("P"))
     renamed_factors = []
     duration = trans.inputs[time].size
-    if duration % period:
-        raise NotImplementedError("TODO handle partial windows")
+    if duration % period != 0:
+        remaining_duration = duration % period
+        truncated_duration = duration - remaining_duration
+        if truncated_duration == 0:
+            result = trans(**{time: remaining_duration - 1})
+            remaining_duration -= 1
+        else:
+            # chop off the rightmost set of complete chunks from trans,
+            # then recursively call sarkka_bilmes_product on truncated factor
+            result = sarkka_bilmes_product(
+                sum_op, prod_op,
+                trans(**{time: Slice(time, remaining_duration, duration, 1, duration)}),
+                Variable(time, Bint[truncated_duration]),
+                global_vars - {time}, num_periods
+            )
+
+        # sequentially combine remaining pieces with result
+        for t in reversed(range(remaining_duration)):
+            result = prod_op(_shift_funsor(trans(**{time: t}), remaining_duration - t, global_vars), result)
+            sum_vars = frozenset(_shift_name(name, remaining_duration - t) for name in original_names)
+            result = result.reduce(sum_op, sum_vars)
+
+        result = result(**{name: _shift_name(name, -remaining_duration) for name in result.inputs})
+        return result
 
     for t in range(period):
         slice_t = Slice(time, t, duration - period + t + 1, period, duration)
-        factor = shift_funsor(trans, period - t - 1)
+        factor = _shift_funsor(trans, period - t - 1, global_vars)
         factor = factor(**{time: slice_t})
         renamed_factors.append(factor)
 
     block_trans = reduce(prod_op, renamed_factors)
-    block_step = {shift_name(name, period): name for name in block_trans.inputs
-                  if name != time and name not in global_vars and get_shift(name) < period}
+    block_step = {_shift_name(name, period): name for name in block_trans.inputs
+                  if name not in global_vars and _get_shift(name) < period}
     block_time_var = Variable(time_var.name, Bint[duration // period])
     final_chunk = mixed_sequential_sum_product(
         sum_op, prod_op, block_trans, block_time_var, block_step,
         num_segments=max(1, duration // (period * num_periods)))
     final_sum_vars = frozenset(
-        shift_name(name, t) for name in original_names for t in range(1, period))
+        _shift_name(name, t) for name in original_names for t in range(1, period))
     result = final_chunk.reduce(sum_op, final_sum_vars)
-    result = result(**{name: name.replace("P" * period, "P") for name in result.inputs})
+    result = result(**{name: _shift_name(name, -period + 1) for name in result.inputs})
     return result
 
 
