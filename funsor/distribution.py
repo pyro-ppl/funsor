@@ -138,10 +138,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return raw_dist, value_name, value_output, dim_to_name
 
     @property
-    def has_rsample(self):
-        return getattr(self.dist_class, "has_rsample", False)
-
-    @property
     def has_enumerate_support(self):
         return getattr(self.dist_class, "has_enumerate_support", False)
 
@@ -177,7 +173,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
 
         sample_shape = tuple(v.size for v in sample_inputs.values())
         sample_args = (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
-        if self.has_rsample:
+        if raw_dist.has_rsample:
             raw_value = raw_dist.rsample(*sample_args)
         else:
             raw_value = ops.detach(raw_dist.sample(*sample_args))
@@ -186,7 +182,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         funsor_value = funsor_value.align(
             tuple(sample_inputs) + tuple(inp for inp in self.inputs if inp in funsor_value.inputs))
         result = funsor.delta.Delta(value_name, funsor_value)
-        if not self.has_rsample:
+        if not raw_dist.has_rsample:
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
             raw_log_prob = raw_dist.log_prob(raw_value)
             dice_factor = to_funsor(raw_log_prob - ops.detach(raw_log_prob),
