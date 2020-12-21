@@ -300,6 +300,8 @@ def make_dist(backend_dist_class, param_names=(), generate_eager=True, generate_
 
 FUNSOR_DIST_NAMES = [
     ('Beta', ('concentration1', 'concentration0')),
+    ("Cauchy", ()),
+    ("Chi2", ()),
     ('BernoulliProbs', ('probs',)),
     ('BernoulliLogits', ('logits',)),
     ('Binomial', ('total_count', 'probs')),
@@ -308,8 +310,15 @@ FUNSOR_DIST_NAMES = [
     ('Delta', ('v', 'log_density')),
     ('Dirichlet', ('concentration',)),
     ('DirichletMultinomial', ('concentration', 'total_count')),
+    ("Exponential", ()),
     ('Gamma', ('concentration', 'rate')),
     ('GammaPoisson', ('concentration', 'rate')),
+    ("Geometric", ("probs",)),
+    ("Gumbel", ()),
+    ("HalfCauchy", ()),
+    ("HalfNormal", ()),
+    ("Laplace", ()),
+    ("LowRankMultivariateNormal", ()),
     ('Multinomial', ('total_count', 'probs')),
     ('MultivariateNormal', ('loc', 'scale_tril')),
     ('NonreparameterizedBeta', ('concentration1', 'concentration0')),
@@ -317,6 +326,11 @@ FUNSOR_DIST_NAMES = [
     ('NonreparameterizedGamma', ('concentration', 'rate')),
     ('NonreparameterizedNormal', ('loc', 'scale')),
     ('Normal', ('loc', 'scale')),
+    ("Pareto", ()),
+    ("Poisson", ()),
+    ("StudentT", ()),
+    ("Uniform", ()),
+    ("VonMises", ()),
 ]
 
 
