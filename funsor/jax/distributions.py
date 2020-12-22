@@ -87,36 +87,21 @@ def _get_numpyro_dist(dist_name):
         return getattr(dist, dist_name, None)
 
 
-NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
-    ("Cauchy", ()),
-    ("Chi2", ()),
-    ("ContinuousBernoulli", ("logits",)),
-    ("Exponential", ()),
-    ("FisherSnedecor", ()),
-    ("Geometric", ("probs",)),
-    ("Gumbel", ()),
-    ("HalfCauchy", ()),
-    ("HalfNormal", ()),
-    ("Laplace", ()),
-    ("LowRankMultivariateNormal", ()),
-    ("Pareto", ()),
-    ("Poisson", ()),
-    ("StudentT", ()),
-    ("Uniform", ()),
-    ("VonMises", ()),
-]
-_HAS_RSAMPLE_DISTS = ['Beta', 'Dirichlet', 'Gamma', 'Normal', 'MultivariateNormal']
+NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES
+# TODO: remove this after the next NumPyro release
+_HAS_RSAMPLE_DISTS = ['Beta', 'Cauchy', 'Chi2', 'Delta', 'Dirichlet', 'Exponential', 'Gamma',
+                      'MultivariateNormal', 'Normal', 'Pareto', 'StudentT', 'Uniform']
 
 
 for dist_name, param_names in NUMPYRO_DIST_NAMES:
     numpyro_dist = _get_numpyro_dist(dist_name)
     if numpyro_dist is not None:
-        # resolve numpyro distributions do not have `has_rsample` attributes
-        has_rsample = getattr(numpyro_dist, 'has_rsample',
-                              not getattr(numpyro_dist, "is_discrete", dist_name not in _HAS_RSAMPLE_DISTS))
-        if has_rsample:
-            numpyro_dist.has_rsample = True
-            numpyro_dist.rsample = numpyro_dist.sample
+        # TODO: remove this after the next NumPyro release
+        if not hasattr(numpyro_dist, "has_rsample"):
+            has_rsample = dist_name in _HAS_RSAMPLE_DISTS
+            numpyro_dist.has_rsample = has_rsample
+            if has_rsample:
+                numpyro_dist.rsample = numpyro_dist.sample
         locals()[dist_name] = make_dist(numpyro_dist, param_names)
 
 
@@ -200,7 +185,7 @@ def _infer_param_domain(cls, name, raw_shape):
 
 
 ###########################################################
-# Converting distribution funsors to PyTorch distributions
+# Converting distribution funsors to NumPyro distributions
 ###########################################################
 
 # Convert Delta **distribution** to raw data
@@ -212,8 +197,19 @@ def deltadist_to_data(funsor_dist, name_to_dim=None):
 
 
 ###############################################
-# Converting PyTorch Distributions to funsors
+# Converting NumPyro Distributions to funsors
 ###############################################
+
+# TODO move these properties upstream to numpyro.distributions
+if not hasattr(dist.Independent, "has_rsample"):
+    dist.Independent.has_rsample = property(lambda self: self.base_dist.has_rsample)
+    dist.Independent.rsample = dist.Independent.sample
+if not hasattr(dist.MaskedDistribution, "has_rsample"):
+    dist.MaskedDistribution.has_rsample = property(lambda self: self.base_dist.has_rsample)
+    dist.MaskedDistribution.rsample = dist.MaskedDistribution.sample
+if not hasattr(dist.TransformedDistribution, "has_rsample"):
+    dist.TransformedDistribution.has_rsample = property(lambda self: self.base_dist.has_rsample)
+    dist.TransformedDistribution.rsample = dist.TransformedDistribution.sample
 
 to_funsor.register(dist.Independent)(indepdist_to_funsor)
 if hasattr(dist, "MaskedDistribution"):

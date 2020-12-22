@@ -93,26 +93,12 @@ def _get_pyro_dist(dist_name):
 
 
 PYRO_DIST_NAMES = FUNSOR_DIST_NAMES + [
-    ("Cauchy", ()),
-    ("Chi2", ()),
     ("ContinuousBernoulli", ("logits",)),
-    ("Exponential", ()),
     ("FisherSnedecor", ()),
-    ("Geometric", ("probs",)),
-    ("Gumbel", ()),
-    ("HalfCauchy", ()),
-    ("HalfNormal", ()),
-    ("Laplace", ()),
     # ("LogisticNormal", ()),  # TODO handle as transformed dist
-    ("LowRankMultivariateNormal", ()),
     ("NegativeBinomial", ("total_count", "probs")),
     ("OneHotCategorical", ("probs",)),
-    ("Pareto", ()),
-    ("Poisson", ()),
     ("RelaxedBernoulli", ("temperature", "logits")),
-    ("StudentT", ()),
-    ("Uniform", ()),
-    ("VonMises", ()),
     ("Weibull", ()),
 ]
 
@@ -137,7 +123,7 @@ def _infer_value_domain(**kwargs):
 @functools.lru_cache(maxsize=5000)
 def _infer_value_domain(cls, **kwargs):
     instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()}, validate_args=False)
-    return Reals[instance.event_shape]
+    return Reals[instance.batch_shape + instance.event_shape]
 
 
 # TODO fix Delta.arg_constraints["v"] to be a

@@ -454,7 +454,7 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
         packed_inputs = OrderedDict()
         for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
             name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
-            if name is not None and size > 1:
+            if name is not None and size != 1:
                 packed_inputs[name] = Bint[size]
         shape = tuple(d.size for d in packed_inputs.values()) + output.shape
         if x.shape != shape:
