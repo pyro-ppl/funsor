@@ -11,7 +11,6 @@ from funsor.cnf import Contraction
 from funsor.domains import Bint
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Stack, Subs, Variable, eager, substitute, to_funsor
-from funsor.tensor import Tensor
 from funsor.util import quote
 
 
@@ -327,27 +326,7 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
 def sequential_integral(sum_op, prod_op, factors, integrand,
                         eliminate=frozenset(), plate_to_step=dict()):
     """
-    Generalization of the tensor variable elimination algorithm of
-    :func:`funsor.sum_product.partial_sum_product` to handle markov dimensions
-    in addition to plate dimensions. Markov dimensions in transition factors
-    are eliminated efficiently using the parallel-scan algorithm in
-    :func:`funsor.sum_product.sequential_sum_product`. The resulting factors are then
-    combined with the initial factors and final states are eliminated. Therefore,
-    when Markov dimension is eliminated ``factors`` has to contain a pairs of
-    initial factors and transition factors.
-
-    :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
-    :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
-    :param factors: A collection of funsors.
-    :type factors: tuple or list
-    :param frozenset eliminate: A set of free variables to eliminate,
-        including both sum variables and product variable.
-    :param dict plate_to_step: A dict mapping markov dimensions to
-        ``step`` collections that contain ordered sequences of Markov variable names
-        (e.g., ``{"time": frozenset({("x_0", "x_prev", "x_curr")})}``).
-        Plates are passed with an empty ``step``.
-    :return: a list of partially contracted Funsors.
-    :rtype: list
+    Integrate ``integrand`` w.r.t. ``factors``
     """
     assert callable(sum_op)
     assert callable(prod_op)
@@ -421,7 +400,7 @@ def sequential_integral(sum_op, prod_op, factors, integrand,
                     betas = naive_suffix_sum(sum_op, prod_op, f, time_var, group_step)
                     alphas = naive_prefix_sum(sum_op, prod_op, f, time_var, group_step)
                     integrand = reduce(prod_op, [integrand, f])
-                    integrand = _helper(sum_op, prod_op, integrand, alphas, betas, time_var, group_step)
+                    integrand = _integrate_helper(sum_op, prod_op, integrand, alphas, betas, time_var, group_step)
                     integrand = integrand.reduce(sum_op, frozenset(group_step.values()))
                     integrand = integrand(**prev_to_init)
             else:
@@ -497,7 +476,10 @@ def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
         factors.append(xy)
     return factors[0]
 
-def _helper(sum_op, prod_op, integrand, alphas, betas, time, step):
+def _integrate_helper(sum_op, prod_op, integrand, alphas, betas, time, step):
+    """
+    integrate integrand w.r.t. to forward terms (alphas) and backward terms (betas)
+    """
 
     step = OrderedDict(sorted(step.items()))
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
