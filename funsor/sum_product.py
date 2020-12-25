@@ -186,7 +186,8 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
     for f in factors:
         ordinal = plates.intersection(f.inputs)
         ordinal_to_factors[ordinal].append(f)
-        for var in sum_vars.intersection(f.inputs):
+        # for var in sum_vars.intersection(f.inputs):
+        for var in frozenset(f.inputs) - plates:
             var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
 
     ordinal_to_vars = defaultdict(set)
@@ -199,7 +200,9 @@ def partial_sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
+            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars & sum_vars)
+            if (group_vars - sum_vars) and (sum_vars & frozenset(f.inputs)):
+                raise ValueError("intractable!")
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate))
@@ -275,12 +278,17 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     for f in factors:
         ordinal = plates.intersection(f.inputs)
         ordinal_to_factors[ordinal].append(f)
-        for var in sum_vars.intersection(f.inputs):
+        # for var in sum_vars.intersection(f.inputs):
+        for var in frozenset(f.inputs) - plates:
             var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
 
     ordinal_to_vars = defaultdict(set)
+    ordinal_to_not_summed = defaultdict(set)
     for var, ordinal in var_to_ordinal.items():
-        ordinal_to_vars[ordinal].add(var)
+        if var in sum_vars:
+            ordinal_to_vars[ordinal].add(var)
+        else:
+            ordinal_to_not_summed[ordinal].add(var)
 
     results = []
     while ordinal_to_factors:
@@ -288,11 +296,14 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars | markov_prod_vars):
-            # eliminate non markov vars
             nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
             f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
+            not_summed_vars = frozenset(f.inputs) & ordinal_to_not_summed[leaf]
+            if not_summed_vars and (sum_vars & frozenset(f.inputs)):
+                raise ValueError("intractable!")
             # eliminate markov vars
             markov_vars = group_vars.intersection(markov_sum_vars)
+            #  cond_vars |= frozenset(f.inputs) - plates
             if markov_vars:
                 markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
                 assert all(p == markov_prod_var[0] for p in markov_prod_var)
