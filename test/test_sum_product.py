@@ -81,8 +81,6 @@ def test_partition(inputs, dims, expected_num_components):
 @pytest.mark.parametrize('sum_op,prod_op', [(ops.add, ops.mul), (ops.logaddexp, ops.add)])
 @pytest.mark.parametrize('inputs,plates', [('a,abi,bcij', 'ij')])
 @pytest.mark.parametrize('vars1,vars2', [
-    #  ('acj', 'bi'),
-    #  ('a', 'bcij'),
     ('', 'abcij'),
     ('c', 'abij'),
     ('cj', 'abi'),
@@ -163,8 +161,6 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2,
 
 
 @pytest.mark.parametrize('vars1,vars2', [
-    (frozenset({"time", "x_0", "x_prev", "x_curr"}),
-     frozenset({"y_0", "y_curr"})),
     (frozenset(),
      frozenset({"time", "x_0", "x_prev", "x_curr", "y_0", "y_curr"})),
     (frozenset({"y_0", "y_curr"}),
