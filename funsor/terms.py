@@ -403,7 +403,8 @@ class Funsor(object, metaclass=FunsorMeta):
         # Substitute all funsor values.
         # Subclasses must handle string conversion.
         assert self.bound.issuperset(alpha_subs)
-        return tuple(substitute(v, alpha_subs) if not isinstance(v, Funsor) or self.bound.intersection(v.inputs) else v
+        return tuple(v if isinstance(v, Funsor) and not self.bound.intersection(v.inputs)
+                     else substitute(v, alpha_subs)
                      for v in self._ast_values)
 
     def __call__(self, *args, **kwargs):
