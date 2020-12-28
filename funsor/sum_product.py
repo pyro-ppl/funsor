@@ -340,42 +340,19 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     return results
 
 
-def expected_terms(sum_op, prod_op, factors, integrand,
-                   eliminate=frozenset(), plate_to_step=dict()):
+def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step=dict()):
     """
     Compute the expected cost term E_q[logp] or E_q[-logq] w.r.t. q
     """
-    assert callable(sum_op)
-    assert callable(prod_op)
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(integrand, Funsor)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plate_to_step, dict)
-    # process plate_to_step
-    plate_to_step = plate_to_step.copy()
-    prev_to_init = {}
-    for key, step in plate_to_step.items():
-        # map prev to init; works for any history > 0
-        for chain in step:
-            init, prev = chain[:len(chain)//2], chain[len(chain)//2:-1]
-            prev_to_init.update(zip(prev, init))
-        # convert step to dict type required for MarkovProduct
-        plate_to_step[key] = {chain[1]: chain[2] for chain in step}
 
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
     prod_vars = eliminate.intersection(plates)
-    markov_sum_vars = frozenset()
-    for step in plate_to_step.values():
-        markov_sum_vars |= frozenset(step.keys()) | frozenset(step.values())
-    markov_sum_vars &= sum_vars
-    markov_prod_vars = frozenset(k for k, v in plate_to_step.items() if v and k in eliminate)
-    markov_sum_to_prod = defaultdict(set)
-    for markov_prod in markov_prod_vars:
-        for k, v in plate_to_step[markov_prod].items():
-            markov_sum_to_prod[k].add(markov_prod)
-            markov_sum_to_prod[v].add(markov_prod)
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
@@ -394,66 +371,25 @@ def expected_terms(sum_op, prod_op, factors, integrand,
         leaf = max(ordinal_to_factors, key=len)
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars | markov_prod_vars):
+        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
             if group_vars.intersection(integrand.inputs):
-                # eliminate non markov vars
-                nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
-                nonmarkov_factors = [f for f in group_factors if nonmarkov_vars.intersection(f.inputs)]
-                # eliminate markov vars
-                markov_vars = group_vars.intersection(markov_sum_vars)
-                markov_factors = [f for f in group_factors if not nonmarkov_vars.intersection(f.inputs)]
-                # integrate out group_vars
-                log_measure = reduce(prod_op, nonmarkov_factors)
-                integrand = Contraction(ops.add, ops.mul, nonmarkov_vars, log_measure.exp(), integrand)
-                if markov_vars:
-                    markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
-                    assert all(p == markov_prod_var[0] for p in markov_prod_var)
-                    if len(markov_prod_var[0]) != 1:
-                        raise ValueError("intractable!")
-                    time = next(iter(markov_prod_var[0]))
-                    for v in sum_vars.intersection(f.inputs):
-                        if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
-                            raise ValueError("intractable!")
-                    time_var = Variable(time, f.inputs[time])
-                    group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
-                    f = reduce(prod_op, markov_factors)
-                    betas = naive_suffix_sum(sum_op, prod_op, f, time_var, group_step)
-                    alphas = naive_prefix_sum(sum_op, prod_op, f, time_var, group_step)
-                    integrand = reduce(prod_op, [integrand, f])
-                    integrand = _integrate_helper(sum_op, prod_op, integrand, alphas, betas, time_var, group_step)
-                    integrand = integrand.reduce(sum_op, frozenset(group_step.values()))
-                    integrand = integrand(**prev_to_init)
+                # compute the expected cost term E_q[logp] or E_q[-logq] using the marginal logq for q
+                log_measure = reduce(ops.add, group_factors)
+                integrand = Contraction(ops.add, ops.mul, group_vars, log_measure.exp(), integrand)
             else:
-                # eliminate non markov vars
-                nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
-                f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
-                # eliminate markov vars
-                markov_vars = group_vars.intersection(markov_sum_vars)
-                if markov_vars:
-                    markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
-                    assert all(p == markov_prod_var[0] for p in markov_prod_var)
-                    if len(markov_prod_var[0]) != 1:
-                        raise ValueError("intractable!")
-                    time = next(iter(markov_prod_var[0]))
-                    for v in sum_vars.intersection(f.inputs):
-                        if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
-                            raise ValueError("intractable!")
-                    time_var = Variable(time, f.inputs[time])
-                    group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
-                    f = MarkovProduct(sum_op, prod_op, f, time_var, group_step)
-                    f = f.reduce(sum_op, frozenset(group_step.values()))
-                    f = f(**prev_to_init)
+                # compute the marginal logq in the guide corresponding to this cost term
+                f = reduce(ops.add, group_factors).reduce(ops.logaddexp, group_vars)
 
                 remaining_sum_vars = sum_vars.intersection(f.inputs)
 
                 if not remaining_sum_vars:
-                    results.append(f.reduce(prod_op, leaf & prod_vars - markov_prod_vars))
+                    results.append(f.reduce(ops.add, leaf & prod_vars))
                 else:
                     new_plates = frozenset().union(
                         *(var_to_ordinal[v] for v in remaining_sum_vars))
                     if new_plates == leaf:
                         raise ValueError("intractable!")
-                    f = f.reduce(prod_op, leaf - new_plates - markov_prod_vars)
+                    f = f.reduce(ops.add, leaf - new_plates)
                     ordinal_to_factors[new_plates].append(f)
 
     return integrand
@@ -495,91 +431,6 @@ def naive_sequential_sum_product(sum_op, prod_op, trans, time, step):
         xy = prod_op(x, y).reduce(sum_op, drop)
         factors.append(xy)
     return factors[0]
-
-def _integrate_helper(sum_op, prod_op, integrand, alphas, betas, time, step):
-    """
-    integrate integrand w.r.t. to forward terms (alphas) and backward terms (betas)
-    """
-
-    step = OrderedDict(sorted(step.items()))
-    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
-    prev_to_drop = dict(zip(step.keys(), drop))
-    curr_to_drop = dict(zip(step.values(), drop))
-    drop = frozenset(drop)
-
-    time, duration = time.name, time.output.size
-    first = integrand(**{time: Slice(time, 0, 1, 1, duration)})
-    integrand = integrand(**{time: Slice(time, 1, duration, 1, duration)}, **prev_to_drop)
-    alphas = alphas(**curr_to_drop)
-    integrand = Contraction(sum_op, prod_op, drop, alphas, integrand)
-    integrand = Cat(time, (first, integrand))
-    last = integrand(**{time: Slice(time, duration-1, duration, 1, duration)})
-    integrand = integrand(**{time: Slice(time, 0, duration-1, 1, duration)}, **curr_to_drop)
-    betas = betas(**prev_to_drop)
-    integrand = Contraction(sum_op, prod_op, drop, betas, integrand)
-    integrand = Cat(time, (integrand, last))
-    return integrand
-
-def naive_suffix_sum(sum_op, prod_op, trans, time, step):
-    assert isinstance(sum_op, AssociativeOp)
-    assert isinstance(prod_op, AssociativeOp)
-    assert isinstance(trans, Funsor)
-    assert isinstance(time, Variable)
-    assert isinstance(step, dict)
-    assert all(isinstance(k, str) for k in step.keys())
-    assert all(isinstance(v, str) for v in step.values())
-    if time.name in trans.inputs:
-        assert time.output == trans.inputs[time.name]
-
-    step = OrderedDict(sorted(step.items()))
-    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
-    prev_to_drop = dict(zip(step.keys(), drop))
-    curr_to_drop = dict(zip(step.values(), drop))
-    drop = frozenset(drop)
-
-    time, duration = time.name, time.output.size
-    factors = [trans(**{time: t}) for t in range(duration)]
-    betas = [factors[-1]]
-    while len(factors) > 1:
-        y = factors.pop()(**prev_to_drop)
-        x = factors.pop()(**curr_to_drop)
-        xy = prod_op(x, y).reduce(sum_op, drop)
-        factors.append(xy)
-        betas.append(xy)
-    betas.reverse()
-    beta_terms = Stack(time, tuple(betas[1:]))
-    return beta_terms
-
-
-def naive_prefix_sum(sum_op, prod_op, trans, time, step):
-    assert isinstance(sum_op, AssociativeOp)
-    assert isinstance(prod_op, AssociativeOp)
-    assert isinstance(trans, Funsor)
-    assert isinstance(time, Variable)
-    assert isinstance(step, dict)
-    assert all(isinstance(k, str) for k in step.keys())
-    assert all(isinstance(v, str) for v in step.values())
-    if time.name in trans.inputs:
-        assert time.output == trans.inputs[time.name]
-
-    step = OrderedDict(sorted(step.items()))
-    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
-    prev_to_drop = dict(zip(step.keys(), drop))
-    curr_to_drop = dict(zip(step.values(), drop))
-    drop = frozenset(drop)
-
-    time, duration = time.name, time.output.size
-    factors = [trans(**{time: t}) for t in range(duration)]
-    factors.reverse()
-    alphas = [factors[-1]]
-    while len(factors) > 1:
-        x = factors.pop()(**curr_to_drop)
-        y = factors.pop()(**prev_to_drop)
-        xy = prod_op(x, y).reduce(sum_op, drop)
-        factors.append(xy)
-        alphas.append(xy)
-    alpha_terms = Stack(time, tuple(alphas[:-1]))
-    return alpha_terms
 
 
 def sequential_sum_product(sum_op, prod_op, trans, time, step):
