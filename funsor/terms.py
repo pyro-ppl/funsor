@@ -49,8 +49,8 @@ def _alpha_mangle(expr, identifier):
     # how we know which variables to mangle: we assume variable names include
     # constant-size information about the original binding context,
     # in the form of a cons-hash key of the binding context.
-    return {name: name.split("__BOUND")[0] + "__BOUND_" + identifier
-            for name in expr.bound if identifier not in name}
+    return {name: name + "__BOUND_" + identifier
+            for name in expr.bound if not name.endswith(identifier)}
 
 
 def reflect(cls, *args, **kwargs):
@@ -87,10 +87,15 @@ def reflect(cls, *args, **kwargs):
         alpha_mangled_args = result._alpha_convert(alpha_subs)
         result = super(FunsorMeta, cls_specific).__call__(*alpha_mangled_args)
         result._ast_values = alpha_mangled_args
+
+        # we also make the old cons cache_key point to the new mangled value.
+        # XXX this matches the previous behavior of reflect, but may be a hack
+        # necessitated by ambiguous behavior of cons-hashing for funsor.Tensor
+        cls._cons_cache[cache_key] = result
+
         cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
                           else arg for arg in alpha_mangled_args)
 
-    result._cache_key = cache_key
     cls._cons_cache[cache_key] = result
     return result
 
