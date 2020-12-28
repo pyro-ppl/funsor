@@ -41,16 +41,12 @@ def substitute(expr, subs):
         return interpreter.reinterpret(expr)
 
 
-def _alpha_mangle(expr, identifier):
+def _alpha_mangle(expr):
     """
     Rename bound variables in expr to avoid conflict with any free variables.
     Returns substitution dictionary with mangled names for consumption by Funsor._alpha_convert.
     """
-    # how we know which variables to mangle: we assume variable names include
-    # constant-size information about the original binding context,
-    # in the form of a cons-hash key of the binding context.
-    return {name: name + "__BOUND_" + identifier
-            for name in expr.bound if not name.endswith(identifier)}
+    return {name: interpreter.gensym(name.split("__BOUND_")[0] + "__BOUND_") for name in expr.bound}
 
 
 def reflect(cls, *args, **kwargs):
@@ -81,16 +77,17 @@ def reflect(cls, *args, **kwargs):
     # alpha-convert eagerly upon binding any variable.
     # the identifier we use to reconcile alpha-conversion and cons-hashing
     # is the string literal of hash() of the type and cons-hashing key:
-    alpha_subs = _alpha_mangle(result, str(hash((cls_specific,) + cache_key)))
-    if alpha_subs:
-        # TODO eliminate code duplication here...
+    if result.bound:
+        alpha_subs = _alpha_mangle(result)
         alpha_mangled_args = result._alpha_convert(alpha_subs)
+
+        # TODO eliminate code duplication below
+        # this is currently necessary because .bound is computed in __init__().
         result = super(FunsorMeta, cls_specific).__call__(*alpha_mangled_args)
         result._ast_values = alpha_mangled_args
 
         # we also make the old cons cache_key point to the new mangled value.
-        # XXX this matches the previous behavior of reflect, but may be a hack
-        # necessitated by ambiguous behavior of cons-hashing for funsor.Tensor
+        # this guarantees that alpha-conversion only runs once for this expression.
         cls._cons_cache[cache_key] = result
 
         cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
