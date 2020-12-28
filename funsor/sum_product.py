@@ -340,15 +340,16 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     return results
 
 
-def sequential_integral(sum_op, prod_op, factors, integrand,
-                        eliminate=frozenset(), plate_to_step=dict()):
+def expected_terms(sum_op, prod_op, factors, integrand,
+                   eliminate=frozenset(), plate_to_step=dict()):
     """
-    Integrate ``integrand`` w.r.t. ``factors``
+    Compute the expected cost term E_q[logp] or E_q[-logq] w.r.t. q
     """
     assert callable(sum_op)
     assert callable(prod_op)
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
+    assert isinstance(integrand, Funsor)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plate_to_step, dict)
     # process plate_to_step
@@ -397,11 +398,13 @@ def sequential_integral(sum_op, prod_op, factors, integrand,
             if group_vars.intersection(integrand.inputs):
                 # eliminate non markov vars
                 nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
+                nonmarkov_factors = [f for f in group_factors if nonmarkov_vars.intersection(f.inputs)]
                 # eliminate markov vars
                 markov_vars = group_vars.intersection(markov_sum_vars)
-                nonmarkov_factors = [f for f in group_factors if nonmarkov_vars.intersection(f.inputs)]
                 markov_factors = [f for f in group_factors if not nonmarkov_vars.intersection(f.inputs)]
-                integrand = reduce(prod_op, nonmarkov_factors + [integrand]).reduce(sum_op, nonmarkov_vars)
+                # integrate out group_vars
+                log_measure = reduce(prod_op, nonmarkov_factors)
+                integrand = Contraction(ops.add, ops.mul, nonmarkov_vars, log_measure.exp(), integrand)
                 if markov_vars:
                     markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
                     assert all(p == markov_prod_var[0] for p in markov_prod_var)
