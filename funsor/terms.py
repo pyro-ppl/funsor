@@ -44,16 +44,13 @@ def substitute(expr, subs):
 def _alpha_mangle(expr, identifier):
     """
     Rename bound variables in expr to avoid conflict with any free variables.
-    Returns expr._ast_values with mangled names.
+    Returns substitution dictionary with mangled names for consumption by Funsor._alpha_convert.
     """
     # how we know which variables to mangle: we assume variable names include
     # constant-size information about the original binding context,
     # in the form of a cons-hash key of the binding context.
-    alpha_subs = {name: name.split("__BOUND")[0] + "__BOUND_" + identifier
-                  for name in expr.bound if identifier not in name}
-    if not alpha_subs:
-        return expr._ast_values
-    return expr._alpha_convert(alpha_subs)  # return mangled _ast_values
+    return {name: name.split("__BOUND")[0] + "__BOUND_" + identifier
+            for name in expr.bound if identifier not in name}
 
 
 def reflect(cls, *args, **kwargs):
@@ -84,13 +81,16 @@ def reflect(cls, *args, **kwargs):
     # alpha-convert eagerly upon binding any variable.
     # the identifier we use to reconcile alpha-conversion and cons-hashing
     # is the string literal of hash() of the type and cons-hashing key:
-    alpha_mangled_args = _alpha_mangle(result, str(hash((cls_specific,) + cache_key)))
-    # TODO eliminate code duplication here...
-    result = super(FunsorMeta, cls_specific).__call__(*alpha_mangled_args)
-    result._ast_values = alpha_mangled_args
-    cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
-                      else arg for arg in alpha_mangled_args)
+    alpha_subs = _alpha_mangle(result, str(hash((cls_specific,) + cache_key)))
+    if alpha_subs:
+        # TODO eliminate code duplication here...
+        alpha_mangled_args = result._alpha_convert(alpha_subs)
+        result = super(FunsorMeta, cls_specific).__call__(*alpha_mangled_args)
+        result._ast_values = alpha_mangled_args
+        cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
+                          else arg for arg in alpha_mangled_args)
 
+    result._cache_key = cache_key
     cls._cons_cache[cache_key] = result
     return result
 
