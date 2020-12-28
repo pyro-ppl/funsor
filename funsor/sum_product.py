@@ -325,7 +325,19 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
 
 def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step=dict()):
     """
-    Compute the expected cost term E_q[logp] or E_q[-logq] w.r.t. q
+    Compute expectation of integrand w.r.t. log factors.
+
+    :param factors: List of log density funsors treated as measures.
+    :type factors: tuple or list
+    :param Funsor integrand: An integrand funsor.
+    :param frozenset eliminate: A set of free variables to eliminate,
+        including both sum variables and product variable.
+    :param dict plate_to_step: A dict mapping markov dimensions to
+        ``step`` collections that contain ordered sequences of Markov variable names
+        (e.g., ``{"time": frozenset({("x_0", "x_prev", "x_curr")})}``).
+        Plates are passed with an empty ``step``.
+    :return: Expected value of integrand wrt log density factors.
+    :rtype: Funsor
     """
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
