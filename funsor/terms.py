@@ -41,12 +41,12 @@ def substitute(expr, subs):
         return interpreter.reinterpret(expr)
 
 
-def _alpha_mangle(expr):
+def _alpha_mangle(bound_vars):
     """
     Rename bound variables in expr to avoid conflict with any free variables.
     Returns substitution dictionary with mangled names for consumption by Funsor._alpha_convert.
     """
-    return {name: interpreter.gensym(name.split("__BOUND_")[0] + "__BOUND_") for name in expr.bound}
+    return {name: interpreter.gensym(name.split("__BOUND_")[0] + "__BOUND_") for name in bound_vars}
 
 
 def reflect(cls, *args, **kwargs):
@@ -78,7 +78,7 @@ def reflect(cls, *args, **kwargs):
     # the identifier we use to reconcile alpha-conversion and cons-hashing
     # is the string literal of hash() of the type and cons-hashing key:
     if result.bound:
-        alpha_subs = _alpha_mangle(result)
+        alpha_subs = _alpha_mangle(result.bound)
         alpha_mangled_args = result._alpha_convert(alpha_subs)
 
         # TODO eliminate code duplication below
