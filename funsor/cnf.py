@@ -31,6 +31,7 @@ from funsor.terms import (
     eager,
     normalize,
     reflect,
+    substitute,
     to_funsor
 )
 from funsor.util import broadcast_shape, get_backend, quote
@@ -158,8 +159,10 @@ class Contraction(Funsor):
         for term in self.terms:
             bound_types.update({k: term.inputs[k] for k in self.bound.intersection(term.inputs)})
         alpha_subs = {k: to_funsor(v, bound_types[k]) for k, v in alpha_subs.items()}
-        red_op, bin_op, _, terms = super()._alpha_convert(alpha_subs)
-        return red_op, bin_op, reduced_vars, terms
+        terms = tuple(term if isinstance(term, Funsor) and not self.bound.intersection(term.inputs)
+                      else substitute(term, alpha_subs)
+                      for term in self.terms)
+        return self.red_op, self.bin_op, reduced_vars, terms
 
 
 GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
