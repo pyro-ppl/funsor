@@ -280,7 +280,7 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
 
     ordinal_to_vars = defaultdict(set)
     for var, ordinal in var_to_ordinal.items():
-            ordinal_to_vars[ordinal].add(var)
+        ordinal_to_vars[ordinal].add(var)
 
     results = []
     while ordinal_to_factors:
@@ -288,11 +288,11 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars | markov_prod_vars):
-            # eliminate markov vars
+            # eliminate non markov vars
             nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
             f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
+            # eliminate markov vars
             markov_vars = group_vars.intersection(markov_sum_vars)
-            #  cond_vars |= frozenset(f.inputs) - plates
             if markov_vars:
                 markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
                 assert all(p == markov_prod_var[0] for p in markov_prod_var)
