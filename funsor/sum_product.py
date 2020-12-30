@@ -12,7 +12,9 @@ from funsor.cnf import Contraction
 from funsor.domains import Bint
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Stack, Subs, Variable, eager, substitute, to_funsor
+from funsor.tensor import Tensor
 from funsor.util import quote
+from funsor.adjoint import _scatter
 
 
 def _partition(terms, sum_vars):
@@ -394,7 +396,7 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
         leaf = max(ordinal_to_factors, key=len)
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
+        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars | markov_prod_vars):
             if not group_vars.isdisjoint(integrand.inputs):
                 # compute the expected cost term E_q[logp] or E_q[-logq] using the marginal logq for q
                 # eliminate non markov vars
@@ -415,13 +417,16 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     for v in sum_vars.intersection(f.inputs):
                         if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
                             raise ValueError("intractable!")
-                    # calculate forward (alpha) and backward (beta) terms
+                    f = reduce(ops.add, markov_factors)
                     time_var = Variable(time, f.inputs[time])
                     group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
-                    f = reduce(ops.add, markov_factors)
+                    # calculate forward (alpha) and backward (beta) terms
                     # TODO: implement parallel version of suffix_sum and prefix_sum
                     betas = naive_suffix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
-                    alphas = naive_prefix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
+                    betas = _right_pad(betas, time, group_step)
+                    # alphas = naive_prefix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
+                    alphas = prefix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
+                    alphas = _left_pad(alphas, time, group_step)
                     # compute expectation of integrand wrt markov vars
                     history_var = Variable("history", Bint[3])
                     integrand = reduce(ops.mul, [integrand, f.exp()])
@@ -467,6 +472,57 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
     return integrand
 
 
+def prefix_sum(sum_op, prod_op, trans, time, step):
+    assert isinstance(sum_op, AssociativeOp)
+    assert isinstance(prod_op, AssociativeOp)
+    assert isinstance(trans, Funsor)
+    assert isinstance(time, Variable)
+    assert isinstance(step, dict)
+    assert all(isinstance(k, str) for k in step.keys())
+    assert all(isinstance(v, str) for v in step.values())
+    if time.name in trans.inputs:
+        assert time.output == trans.inputs[time.name]
+
+    step = OrderedDict(sorted(step.items()))
+    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
+    prev_to_drop = dict(zip(step.keys(), drop))
+    curr_to_drop = dict(zip(step.values(), drop))
+    drop = frozenset(drop)
+    sums = [trans]
+
+    time, duration = time.name, time.output.size
+    while duration > 1:
+        even_duration = duration // 2 * 2
+        x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
+        y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
+        contracted = Contraction(sum_op, prod_op, drop, x, y)
+
+        if duration > even_duration:
+            extra = trans(**{time: Slice(time, duration - 1, duration)})
+            contracted = Cat(time, (contracted, extra))
+        trans = contracted
+        duration = (duration + 1) // 2
+        sums.append(trans)
+
+    # handle root case
+    sum_term = sums.pop()
+    left_term = _contraction_identity(sum_term, step)
+    while sums:
+        duration = duration * 2
+        sum_term = sums.pop()
+        left_sum = sum_term(**{time: Slice(time, 0, duration, 2, duration)}, **prev_to_drop)
+        term = Contraction(sum_op, prod_op, drop, left_sum, left_term(**curr_to_drop))
+        new_term = _contraction_identity(sum_term, step)
+        slices = ((time, Slice(time, 0, duration, 2, duration)),)
+        new_term = _scatter(left_term, new_term, slices)
+        slices = ((time, Slice(time, 1, duration, 2, duration)),)
+        new_term = _scatter(term, new_term, slices)
+        left_term = new_term
+    else:
+        result = Contraction(sum_op, prod_op, drop, left_term(**curr_to_drop), sum_term(**prev_to_drop))
+    return result
+
+
 def _contraction_identity(factor, step):
     inputs = factor.inputs.copy()
     result = Number(0.0)
@@ -477,14 +533,31 @@ def _contraction_identity(factor, step):
         step_inputs[curr] = inputs.pop(curr)
         step_data = funsor.ops.new_eye(
                 funsor.tensor.get_default_prototype(), (step_inputs[prev].size,))
-        result += funsor.Tensor(step_data.log(), step_inputs, factor.dtype)
+        result += Tensor(step_data.log(), step_inputs, factor.dtype)
 
     data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
                                 tuple(v.size for v in inputs.values()))
-    result += funsor.Tensor(data, inputs, factor.dtype)
+    result += Tensor(data, inputs, factor.dtype)
     result = result.align(tuple(factor.inputs.keys()))
 
     return result
+
+
+def _left_pad(trans, time, step):
+    duration = trans.inputs[time].size
+    pad = _contraction_identity(trans(**{time: Slice(time, 0, 1, 1, duration)}), step)
+    trans_cropped_right = trans(**{time: Slice(time, 0, duration-1, 1, duration)})
+    result = Cat(time, (pad, trans_cropped_right))
+    return result
+
+
+def _right_pad(trans, time, step):
+    duration = trans.inputs[time].size
+    pad = _contraction_identity(trans(**{time: Slice(time, 0, 1, 1, duration)}), step)
+    trans_cropped_left = trans(**{time: Slice(time, 1, duration, 1, duration)})
+    result = Cat(time, (trans_cropped_left, pad))
+    return result
+    
 
 
 def naive_suffix_sum(sum_op, prod_op, trans, time, step):
@@ -506,10 +579,8 @@ def naive_suffix_sum(sum_op, prod_op, trans, time, step):
 
     time, duration = time.name, time.output.size
 
-    x = _contraction_identity(trans(**{time: 0}), step)
-
     factors = [trans(**{time: t}) for t in range(duration)]
-    betas = [x, factors[-1]]
+    betas = [factors[-1]]
     while len(factors) > 1:
         y = factors.pop()(**prev_to_drop)
         x = factors.pop()(**curr_to_drop)
@@ -517,7 +588,7 @@ def naive_suffix_sum(sum_op, prod_op, trans, time, step):
         factors.append(xy)
         betas.append(xy)
     betas.reverse()
-    beta_terms = Stack(time, tuple(betas[1:]))
+    beta_terms = Stack(time, tuple(betas))
     return beta_terms
 
 
@@ -540,18 +611,16 @@ def naive_prefix_sum(sum_op, prod_op, trans, time, step):
 
     time, duration = time.name, time.output.size
 
-    x = _contraction_identity(trans(**{time: 0}), step)
-
     factors = [trans(**{time: t}) for t in range(duration)]
     factors.reverse()
-    alphas = [x, factors[-1]]
+    alphas = [factors[-1]]
     while len(factors) > 1:
         x = factors.pop()(**curr_to_drop)
         y = factors.pop()(**prev_to_drop)
         xy = prod_op(x, y).reduce(sum_op, drop)
         factors.append(xy)
         alphas.append(xy)
-    alpha_terms = Stack(time, tuple(alphas[:-1]))
+    alpha_terms = Stack(time, tuple(alphas))
     return alpha_terms
 
 
