@@ -6,6 +6,7 @@ from collections import OrderedDict, defaultdict
 from functools import reduce
 from math import gcd
 
+import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import Bint
@@ -419,8 +420,12 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     f = reduce(ops.add, markov_factors)
                     betas = naive_suffix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
                     alphas = naive_prefix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
+
+                    history_var = Variable("history", Bint[3])
                     integrand = reduce(ops.mul, [integrand, f.exp()])
-                    integrand = _integrate_helper(ops.add, ops.mul, integrand, alphas.exp(), betas.exp(), time_var, group_step)
+                    integrand = Stack("history", (alphas.exp(), integrand, betas.exp()))
+                    integrand = MarkovProduct(
+                            ops.add, ops.mul, integrand, history_var, group_step)
                     integrand = integrand.reduce(ops.add, frozenset(group_step.values()))
                     integrand = integrand(**prev_to_init)
             else:
@@ -461,31 +466,6 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
     return integrand
 
 
-def _integrate_helper(sum_op, prod_op, integrand, alphas, betas, time, step):
-    """
-    integrate integrand w.r.t. to forward terms (alphas) and backward terms (betas)
-    """
-
-    step = OrderedDict(sorted(step.items()))
-    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
-    prev_to_drop = dict(zip(step.keys(), drop))
-    curr_to_drop = dict(zip(step.values(), drop))
-    drop = frozenset(drop)
-
-    time, duration = time.name, time.output.size
-    first = integrand(**{time: Slice(time, 0, 1, 1, duration)})
-    integrand = integrand(**{time: Slice(time, 1, duration, 1, duration)}, **prev_to_drop)
-    alphas = alphas(**curr_to_drop)
-    integrand = Contraction(sum_op, prod_op, drop, alphas, integrand)
-    integrand = Cat(time, (first, integrand))
-    last = integrand(**{time: Slice(time, duration-1, duration, 1, duration)})
-    integrand = integrand(**{time: Slice(time, 0, duration-1, 1, duration)}, **curr_to_drop)
-    betas = betas(**prev_to_drop)
-    integrand = Contraction(sum_op, prod_op, drop, betas, integrand)
-    integrand = Cat(time, (integrand, last))
-    return integrand
-
-
 def naive_suffix_sum(sum_op, prod_op, trans, time, step):
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
@@ -504,8 +484,22 @@ def naive_suffix_sum(sum_op, prod_op, trans, time, step):
     drop = frozenset(drop)
 
     time, duration = time.name, time.output.size
+
+    x_inputs = trans(**{time: 0}).inputs.copy()
+    x = Number(0.0)
+    for k, v in step.items():
+        y_inputs = OrderedDict()
+        y_inputs[k] = x_inputs.pop(k)
+        y_inputs[v] = x_inputs.pop(v)
+        y_data = funsor.ops.new_eye(funsor.tensor.get_default_prototype(), (y_inputs[k].size,))
+        x += funsor.Tensor(y_data.log(), y_inputs, trans.dtype)
+    x_data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
+                                tuple(v.size for v in x_inputs.values()))
+    x += funsor.Tensor(x_data, x_inputs, trans.dtype)
+    x = x.align(tuple(trans(**{time: 0}).inputs.keys()))
+
     factors = [trans(**{time: t}) for t in range(duration)]
-    betas = [factors[-1]]
+    betas = [x, factors[-1]]
     while len(factors) > 1:
         y = factors.pop()(**prev_to_drop)
         x = factors.pop()(**curr_to_drop)
@@ -535,9 +529,23 @@ def naive_prefix_sum(sum_op, prod_op, trans, time, step):
     drop = frozenset(drop)
 
     time, duration = time.name, time.output.size
+
+    x_inputs = trans(**{time: 0}).inputs.copy()
+    x = Number(0.0)
+    for k, v in step.items():
+        y_inputs = OrderedDict()
+        y_inputs[k] = x_inputs.pop(k)
+        y_inputs[v] = x_inputs.pop(v)
+        y_data = funsor.ops.new_eye(funsor.tensor.get_default_prototype(), (y_inputs[k].size,))
+        x += funsor.Tensor(y_data.log(), y_inputs, trans.dtype)
+    x_data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
+                                tuple(v.size for v in x_inputs.values()))
+    x += funsor.Tensor(x_data, x_inputs, trans.dtype)
+    x = x.align(tuple(trans(**{time: 0}).inputs.keys()))
+
     factors = [trans(**{time: t}) for t in range(duration)]
     factors.reverse()
-    alphas = [factors[-1]]
+    alphas = [x, factors[-1]]
     while len(factors) > 1:
         x = factors.pop()(**curr_to_drop)
         y = factors.pop()(**prev_to_drop)
