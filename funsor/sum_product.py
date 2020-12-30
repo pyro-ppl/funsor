@@ -467,6 +467,26 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
     return integrand
 
 
+def _contraction_identity(factor, step):
+    inputs = factor.inputs.copy()
+    result = Number(0.0)
+
+    for prev, curr in step.items():
+        step_inputs = OrderedDict()
+        step_inputs[prev] = inputs.pop(prev)
+        step_inputs[curr] = inputs.pop(curr)
+        step_data = funsor.ops.new_eye(
+                funsor.tensor.get_default_prototype(), (step_inputs[prev].size,))
+        result += funsor.Tensor(step_data.log(), step_inputs, factor.dtype)
+
+    data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
+                                tuple(v.size for v in inputs.values()))
+    result += funsor.Tensor(data, inputs, factor.dtype)
+    result = result.align(tuple(factor.inputs.keys()))
+
+    return result
+
+
 def naive_suffix_sum(sum_op, prod_op, trans, time, step):
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
@@ -486,18 +506,7 @@ def naive_suffix_sum(sum_op, prod_op, trans, time, step):
 
     time, duration = time.name, time.output.size
 
-    x_inputs = trans(**{time: 0}).inputs.copy()
-    x = Number(0.0)
-    for k, v in step.items():
-        y_inputs = OrderedDict()
-        y_inputs[k] = x_inputs.pop(k)
-        y_inputs[v] = x_inputs.pop(v)
-        y_data = funsor.ops.new_eye(funsor.tensor.get_default_prototype(), (y_inputs[k].size,))
-        x += funsor.Tensor(y_data.log(), y_inputs, trans.dtype)
-    x_data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
-                                tuple(v.size for v in x_inputs.values()))
-    x += funsor.Tensor(x_data, x_inputs, trans.dtype)
-    x = x.align(tuple(trans(**{time: 0}).inputs.keys()))
+    x = _contraction_identity(trans(**{time: 0}), step)
 
     factors = [trans(**{time: t}) for t in range(duration)]
     betas = [x, factors[-1]]
@@ -531,18 +540,7 @@ def naive_prefix_sum(sum_op, prod_op, trans, time, step):
 
     time, duration = time.name, time.output.size
 
-    x_inputs = trans(**{time: 0}).inputs.copy()
-    x = Number(0.0)
-    for k, v in step.items():
-        y_inputs = OrderedDict()
-        y_inputs[k] = x_inputs.pop(k)
-        y_inputs[v] = x_inputs.pop(v)
-        y_data = funsor.ops.new_eye(funsor.tensor.get_default_prototype(), (y_inputs[k].size,))
-        x += funsor.Tensor(y_data.log(), y_inputs, trans.dtype)
-    x_data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
-                                tuple(v.size for v in x_inputs.values()))
-    x += funsor.Tensor(x_data, x_inputs, trans.dtype)
-    x = x.align(tuple(trans(**{time: 0}).inputs.keys()))
+    x = _contraction_identity(trans(**{time: 0}), step)
 
     factors = [trans(**{time: t}) for t in range(duration)]
     factors.reverse()
