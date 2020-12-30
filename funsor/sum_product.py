@@ -427,12 +427,13 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars | markov_prod_vars):
             if not group_vars.isdisjoint(integrand.inputs):
-                # compute the expected cost term E_q[logp] or E_q[-logq] using the marginal logq for q
+                # compute the expectation of integrand wrt group_vars
                 # eliminate non markov vars
                 nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
                 nonmarkov_factors = [f for f in group_factors if not nonmarkov_vars.isdisjoint(f.inputs)]
                 markov_factors = [f for f in group_factors if not nonmarkov_vars.intersection(f.inputs)]
                 if nonmarkov_factors:
+                    # compute expectation of integrand wrt nonmarkov vars
                     log_measure = reduce(ops.add, nonmarkov_factors)
                     integrand = Contraction(ops.add, ops.mul, nonmarkov_vars, log_measure.exp(), integrand)
                 # eliminate markov vars
@@ -450,7 +451,6 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     time_var = Variable(time, f.inputs[time])
                     group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
                     # calculate forward (alpha) and backward (beta) terms
-                    # TODO: implement parallel version of suffix_sum and prefix_sum
                     alphas, betas = forward_backward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
                     betas = _right_pad_left_crop(betas, time, group_step)
                     alphas = _left_pad_right_crop(alphas, time, group_step)
@@ -462,7 +462,7 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     integrand = integrand.reduce(ops.add, frozenset(group_step.values()))
                     integrand = integrand(**prev_to_init)
             else:
-                # compute the marginal logq in the guide corresponding to this cost term
+                # marginalize out group_vars
                 # eliminate non markov vars
                 nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
                 # eliminate markov vars
