@@ -415,17 +415,18 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     for v in sum_vars.intersection(f.inputs):
                         if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
                             raise ValueError("intractable!")
+                    # calculate forward (alpha) and backward (beta) terms
                     time_var = Variable(time, f.inputs[time])
                     group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
                     f = reduce(ops.add, markov_factors)
+                    # TODO: implement parallel version of suffix_sum and prefix_sum
                     betas = naive_suffix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
                     alphas = naive_prefix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
-
+                    # compute expectation of integrand wrt markov vars
                     history_var = Variable("history", Bint[3])
                     integrand = reduce(ops.mul, [integrand, f.exp()])
                     integrand = Stack("history", (alphas.exp(), integrand, betas.exp()))
-                    integrand = MarkovProduct(
-                            ops.add, ops.mul, integrand, history_var, group_step)
+                    integrand = MarkovProduct(ops.add, ops.mul, integrand, history_var, group_step)
                     integrand = integrand.reduce(ops.add, frozenset(group_step.values()))
                     integrand = integrand(**prev_to_init)
             else:
