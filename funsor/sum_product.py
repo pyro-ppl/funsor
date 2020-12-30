@@ -17,6 +17,42 @@ from funsor.util import quote
 from funsor.adjoint import _scatter
 
 
+def _contraction_identity(factor, step):
+    inputs = factor.inputs.copy()
+    result = Number(0.0)
+
+    for prev, curr in step.items():
+        step_inputs = OrderedDict()
+        step_inputs[prev] = inputs.pop(prev)
+        step_inputs[curr] = inputs.pop(curr)
+        step_data = funsor.ops.new_eye(
+                funsor.tensor.get_default_prototype(), (step_inputs[prev].size,))
+        result += Tensor(step_data.log(), step_inputs, factor.dtype)
+
+    data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
+                                tuple(v.size for v in inputs.values()))
+    result += Tensor(data, inputs, factor.dtype)
+    result = result.align(tuple(factor.inputs.keys()))
+
+    return result
+
+
+def _left_pad_right_crop(trans, time, step):
+    duration = trans.inputs[time].size
+    pad = _contraction_identity(trans(**{time: Slice(time, 0, 1, 1, duration)}), step)
+    trans_cropped_right = trans(**{time: Slice(time, 0, duration-1, 1, duration)})
+    result = Cat(time, (pad, trans_cropped_right))
+    return result
+
+
+def _right_pad_left_crop(trans, time, step):
+    duration = trans.inputs[time].size
+    pad = _contraction_identity(trans(**{time: Slice(time, 0, 1, 1, duration)}), step)
+    trans_cropped_left = trans(**{time: Slice(time, 1, duration, 1, duration)})
+    result = Cat(time, (trans_cropped_left, pad))
+    return result
+
+
 def _partition(terms, sum_vars):
     # Construct a bipartite graph between terms and the vars
     neighbors = OrderedDict([(t, []) for t in terms])
@@ -294,13 +330,6 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
             # eliminate non markov vars
             nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
             f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
-            #  if nonmarkov_vars:
-            #      nonmarkov_factors = [f for f in group_factors if not nonmarkov_vars.isdisjoint(f.inputs)]
-            #      markov_factors = [f for f in group_factors if not nonmarkov_vars.intersection(f.inputs)]
-            #      f = reduce(prod_op, nonmarkov_factors).reduce(sum_op, nonmarkov_vars)
-            #      f = reduce(prod_op, markov_factors + [f])
-            #  else:
-            #      f = reduce(prod_op, group_factors)
             # eliminate markov vars
             markov_vars = group_vars.intersection(markov_sum_vars)
             if markov_vars:
@@ -422,11 +451,9 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
                     # calculate forward (alpha) and backward (beta) terms
                     # TODO: implement parallel version of suffix_sum and prefix_sum
-                    betas = naive_suffix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
-                    betas = _right_pad(betas, time, group_step)
-                    # alphas = naive_prefix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
-                    alphas = prefix_sum(ops.logaddexp, ops.add, f, time_var, group_step)
-                    alphas = _left_pad(alphas, time, group_step)
+                    alphas, betas = forward_backward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
+                    betas = _right_pad_left_crop(betas, time, group_step)
+                    alphas = _left_pad_right_crop(alphas, time, group_step)
                     # compute expectation of integrand wrt markov vars
                     history_var = Variable("history", Bint[3])
                     integrand = reduce(ops.mul, [integrand, f.exp()])
@@ -436,12 +463,17 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     integrand = integrand(**prev_to_init)
             else:
                 # compute the marginal logq in the guide corresponding to this cost term
-                f = reduce(ops.add, group_factors)
                 # eliminate non markov vars
                 nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
-                f = f.reduce(ops.logaddexp, nonmarkov_vars)
                 # eliminate markov vars
                 markov_vars = group_vars.intersection(markov_sum_vars)
+                if nonmarkov_vars:
+                    nonmarkov_factors = [f for f in group_factors if not nonmarkov_vars.isdisjoint(f.inputs)]
+                    markov_factors = [f for f in group_factors if not nonmarkov_vars.intersection(f.inputs)]
+                    f = reduce(ops.add, nonmarkov_factors).reduce(ops.logaddexp, nonmarkov_vars)
+                    f = reduce(ops.add, markov_factors + [f])
+                else:
+                    f = reduce(ops.add, group_factors)
                 if markov_vars:
                     markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
                     assert all(p == markov_prod_var[0] for p in markov_prod_var)
@@ -472,7 +504,7 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
     return integrand
 
 
-def prefix_sum(sum_op, prod_op, trans, time, step):
+def forward_backward_terms(sum_op, prod_op, trans, time, step):
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
@@ -488,8 +520,9 @@ def prefix_sum(sum_op, prod_op, trans, time, step):
     prev_to_drop = dict(zip(step.keys(), drop))
     curr_to_drop = dict(zip(step.values(), drop))
     drop = frozenset(drop)
-    sums = [trans]
+    sum_terms = []
 
+    # up sweep
     time, duration = time.name, time.output.size
     while duration > 1:
         even_duration = duration // 2 * 2
@@ -500,67 +533,65 @@ def prefix_sum(sum_op, prod_op, trans, time, step):
         if duration > even_duration:
             extra = trans(**{time: Slice(time, duration - 1, duration)})
             contracted = Cat(time, (contracted, extra))
+        sum_terms.append(trans)
         trans = contracted
         duration = (duration + 1) // 2
-        sums.append(trans)
+    else:
+        sum_terms.append(trans)
 
     # handle root case
-    sum_term = sums.pop()
+    sum_term = sum_terms.pop()
     left_term = _contraction_identity(sum_term, step)
-    while sums:
-        duration = duration * 2
-        sum_term = sums.pop()
-        left_sum = sum_term(**{time: Slice(time, 0, duration, 2, duration)}, **prev_to_drop)
-        term = Contraction(sum_op, prod_op, drop, left_sum, left_term(**curr_to_drop))
-        new_term = _contraction_identity(sum_term, step)
-        slices = ((time, Slice(time, 0, duration, 2, duration)),)
-        new_term = _scatter(left_term, new_term, slices)
-        slices = ((time, Slice(time, 1, duration, 2, duration)),)
-        new_term = _scatter(term, new_term, slices)
-        left_term = new_term
+    right_term = _contraction_identity(sum_term, step)
+    # down sweep
+    while sum_terms:
+        sum_term = sum_terms.pop()
+        new_left_term = _contraction_identity(sum_term, step)
+        new_right_term = _contraction_identity(sum_term, step)
+        duration = sum_term.inputs[time].size
+        even_duration = duration // 2 * 2
+
+        if duration > even_duration:
+            slices = ((time, Slice(time, duration-1, duration)),)
+            # left terms
+            extra_left_term = left_term(
+                    **{time: Slice(time, even_duration // 2, even_duration // 2 + 1, 1, (duration + 1) // 2)})
+            left_term = left_term(**{time: Slice(time, 0, even_duration // 2, 1, (duration + 1) // 2)})
+            new_left_term = _scatter(extra_left_term, new_left_term, slices)
+            # right terms
+            extra_right_term = right_term(
+                    **{time: Slice(time, even_duration // 2, even_duration // 2 + 1, 1, (duration + 1) // 2)})
+            right_term = right_term(**{time: Slice(time, 0, even_duration // 2, 1, (duration + 1) // 2)})
+            new_right_term = _scatter(extra_right_term, new_right_term, slices)
+
+        # left terms
+        left_sum = sum_term(**{time: Slice(time, 0, even_duration, 2, duration)}, **prev_to_drop)
+        left_sum_and_term = Contraction(sum_op, prod_op, drop, left_sum, left_term(**curr_to_drop))
+
+        slices = ((time, Slice(time, 0, even_duration, 2, duration)),)
+        new_left_term = _scatter(left_term, new_left_term, slices)
+        slices = ((time, Slice(time, 1, even_duration, 2, duration)),)
+        new_left_term = _scatter(left_sum_and_term, new_left_term, slices)
+
+        left_term = new_left_term
+
+        # right terms
+        right_sum = sum_term(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
+        right_sum_and_term = Contraction(sum_op, prod_op, drop, right_sum, right_term(**curr_to_drop))
+
+        slices = ((time, Slice(time, 1, even_duration, 2, duration)),)
+        new_right_term = _scatter(right_term, new_right_term, slices)
+        slices = ((time, Slice(time, 0, even_duration, 2, duration)),)
+        new_right_term = _scatter(right_sum_and_term, new_right_term, slices)
+
+        right_term = new_right_term
     else:
-        result = Contraction(sum_op, prod_op, drop, left_term(**curr_to_drop), sum_term(**prev_to_drop))
-    return result
+        alphas = Contraction(sum_op, prod_op, drop, left_term(**curr_to_drop), sum_term(**prev_to_drop))
+        betas = Contraction(sum_op, prod_op, drop, right_term(**curr_to_drop), sum_term(**prev_to_drop))
+    return alphas, betas
 
 
-def _contraction_identity(factor, step):
-    inputs = factor.inputs.copy()
-    result = Number(0.0)
-
-    for prev, curr in step.items():
-        step_inputs = OrderedDict()
-        step_inputs[prev] = inputs.pop(prev)
-        step_inputs[curr] = inputs.pop(curr)
-        step_data = funsor.ops.new_eye(
-                funsor.tensor.get_default_prototype(), (step_inputs[prev].size,))
-        result += Tensor(step_data.log(), step_inputs, factor.dtype)
-
-    data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
-                                tuple(v.size for v in inputs.values()))
-    result += Tensor(data, inputs, factor.dtype)
-    result = result.align(tuple(factor.inputs.keys()))
-
-    return result
-
-
-def _left_pad(trans, time, step):
-    duration = trans.inputs[time].size
-    pad = _contraction_identity(trans(**{time: Slice(time, 0, 1, 1, duration)}), step)
-    trans_cropped_right = trans(**{time: Slice(time, 0, duration-1, 1, duration)})
-    result = Cat(time, (pad, trans_cropped_right))
-    return result
-
-
-def _right_pad(trans, time, step):
-    duration = trans.inputs[time].size
-    pad = _contraction_identity(trans(**{time: Slice(time, 0, 1, 1, duration)}), step)
-    trans_cropped_left = trans(**{time: Slice(time, 1, duration, 1, duration)})
-    result = Cat(time, (trans_cropped_left, pad))
-    return result
-    
-
-
-def naive_suffix_sum(sum_op, prod_op, trans, time, step):
+def naive_forward_terms(sum_op, prod_op, trans, time, step):
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
@@ -592,7 +623,7 @@ def naive_suffix_sum(sum_op, prod_op, trans, time, step):
     return beta_terms
 
 
-def naive_prefix_sum(sum_op, prod_op, trans, time, step):
+def naive_backward_terms(sum_op, prod_op, trans, time, step):
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
