@@ -8,16 +8,23 @@ from math import gcd
 
 import funsor
 import funsor.ops as ops
+from funsor.adjoint import _scatter
 from funsor.cnf import Contraction
 from funsor.domains import Bint
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import Cat, Funsor, FunsorMeta, Number, Slice, Stack, Subs, Variable, eager, substitute, to_funsor
 from funsor.tensor import Tensor
 from funsor.util import quote
-from funsor.adjoint import _scatter
 
 
 def _contraction_identity(factor, step):
+    """
+    Helper function to create a Funsor with the same shape as ``factor``
+    and log identity matrices corresponding to each pair of variables in ``step``.
+    Contraction of the factor and _contraction_identity returns unchanged factor.
+    """
+    assert isinstance(factor, Funsor)
+    assert isinstance(step, dict)
     inputs = factor.inputs.copy()
     result = Number(0.0)
 
@@ -32,12 +39,18 @@ def _contraction_identity(factor, step):
     data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
                                 tuple(v.size for v in inputs.values()))
     result += Tensor(data, inputs, factor.dtype)
-    result = result.align(tuple(factor.inputs.keys()))
 
     return result
 
 
 def _left_pad_right_crop(trans, time, step):
+    """
+    Helper function to pad ``trans`` factor with ``_contraction_identity`` of length 1
+    from the left and crop the last time point from the right.
+    """
+    assert isinstance(trans, Funsor)
+    assert isinstance(time, str)
+    assert isinstance(step, dict)
     duration = trans.inputs[time].size
     pad = _contraction_identity(trans(**{time: Slice(time, 0, 1, 1, duration)}), step)
     trans_cropped_right = trans(**{time: Slice(time, 0, duration-1, 1, duration)})
@@ -46,6 +59,13 @@ def _left_pad_right_crop(trans, time, step):
 
 
 def _right_pad_left_crop(trans, time, step):
+    """
+    Helper function to pad ``trans`` factor with ``_contraction_identity`` of length 1
+    from the right and crop the first time point from the left.
+    """
+    assert isinstance(trans, Funsor)
+    assert isinstance(time, str)
+    assert isinstance(step, dict)
     duration = trans.inputs[time].size
     pad = _contraction_identity(trans(**{time: Slice(time, 0, 1, 1, duration)}), step)
     trans_cropped_left = trans(**{time: Slice(time, 1, duration, 1, duration)})
@@ -451,17 +471,26 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     time_var = Variable(time, f.inputs[time])
                     group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
                     # calculate forward (alpha) and backward (beta) terms
+                    # TODO: how to use funsor.adjoint instead?
+                    # NOTE: parallel computations in forward_backward_terms works only
+                    # with eager interpretation because it uses funsor.adjoint._scatter function
                     alphas, betas = forward_backward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
-                    betas = _right_pad_left_crop(betas, time, group_step)
+                    # NOTE: naive implementations work both with eager and lazy mode
+                    # alphas = naive_forward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
+                    # betas = naive_backward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
                     alphas = _left_pad_right_crop(alphas, time, group_step)
+                    betas = _right_pad_left_crop(betas, time, group_step)
                     # compute expectation of integrand wrt markov vars
                     history_var = Variable("history", Bint[3])
                     integrand = reduce(ops.mul, [integrand, f.exp()])
+                    # NOTE: leaving out backward terms works too. Not completely sure why.
+                    # integrand = Stack("history", (alphas.exp(), integrand))
                     integrand = Stack("history", (alphas.exp(), integrand, betas.exp()))
                     integrand = MarkovProduct(ops.add, ops.mul, integrand, history_var, group_step)
                     integrand = integrand.reduce(ops.add, frozenset(group_step.values()))
                     integrand = integrand(**prev_to_init)
             else:
+                # NOTE: this part is the same as in modified_partial_sum_product
                 # marginalize out group_vars
                 # eliminate non markov vars
                 nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
@@ -505,6 +534,10 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
 
 
 def forward_backward_terms(sum_op, prod_op, trans, time, step):
+    """
+    Similar to sequential_sum_product but also saves all
+    forward and backward terms
+    """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
@@ -591,7 +624,11 @@ def forward_backward_terms(sum_op, prod_op, trans, time, step):
     return alphas, betas
 
 
-def naive_forward_terms(sum_op, prod_op, trans, time, step):
+def naive_backward_terms(sum_op, prod_op, trans, time, step):
+    """
+    Similar to naive_sequential_sum_product but also saves all
+    forward terms
+    """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
@@ -623,7 +660,11 @@ def naive_forward_terms(sum_op, prod_op, trans, time, step):
     return beta_terms
 
 
-def naive_backward_terms(sum_op, prod_op, trans, time, step):
+def naive_forward_terms(sum_op, prod_op, trans, time, step):
+    """
+    Similar to naive_sequential_sum_product but also saves all
+    forward terms
+    """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
     assert isinstance(trans, Funsor)
