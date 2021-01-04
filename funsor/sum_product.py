@@ -58,21 +58,6 @@ def _left_pad_right_crop(trans, time, step):
     return result
 
 
-def _right_pad_left_crop(trans, time, step):
-    """
-    Helper function to pad ``trans`` factor with ``_contraction_identity`` of length 1
-    from the right and crop the first time point from the left.
-    """
-    assert isinstance(trans, Funsor)
-    assert isinstance(time, str)
-    assert isinstance(step, dict)
-    duration = trans.inputs[time].size
-    pad = _contraction_identity(trans(**{time: Slice(time, 0, 1, 1, duration)}), step)
-    trans_cropped_left = trans(**{time: Slice(time, 1, duration, 1, duration)})
-    result = Cat(time, (trans_cropped_left, pad))
-    return result
-
-
 def _partition(terms, sum_vars):
     # Construct a bipartite graph between terms and the vars
     neighbors = OrderedDict([(t, []) for t in terms])
@@ -416,7 +401,6 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
 
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
-    prod_vars = eliminate.intersection(plates)
     markov_sum_vars = frozenset()
     for step in plate_to_step.values():
         markov_sum_vars |= frozenset(step.keys()) | frozenset(step.values())
@@ -440,7 +424,6 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
     for var, ordinal in var_to_ordinal.items():
         ordinal_to_vars[ordinal].add(var)
 
-    results = []
     while ordinal_to_factors:
         leaf = max(ordinal_to_factors, key=len)
         leaf_factors = ordinal_to_factors.pop(leaf)
@@ -455,7 +438,7 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                 if nonmarkov_factors:
                     # compute expectation of integrand wrt nonmarkov vars
                     log_measure = reduce(ops.add, nonmarkov_factors)
-                    integrand = Contraction(ops.add, ops.mul, nonmarkov_vars, log_measure.exp(), integrand)
+                    integrand = funsor.Integrate(log_measure, integrand, nonmarkov_vars)
                 # eliminate markov vars
                 markov_vars = group_vars.intersection(markov_sum_vars)
                 if markov_vars:
@@ -470,70 +453,26 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     f = reduce(ops.add, markov_factors)
                     time_var = Variable(time, f.inputs[time])
                     group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
-                    # calculate forward (alpha) and backward (beta) terms
+                    # calculate forward (alpha) terms
                     # TODO: how to use funsor.adjoint instead?
                     # NOTE: parallel computations in forward_backward_terms works only
                     # with eager interpretation because it uses funsor.adjoint._scatter function
-                    alphas, betas = forward_backward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
+                    alphas = forward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
                     # NOTE: naive implementations work both with eager and lazy mode
                     # alphas = naive_forward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
-                    # betas = naive_backward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
                     alphas = _left_pad_right_crop(alphas, time, group_step)
-                    betas = _right_pad_left_crop(betas, time, group_step)
                     # compute expectation of integrand wrt markov vars
-                    history_var = Variable("history", Bint[3])
+                    history_var = Variable("history", Bint[2])
                     integrand = reduce(ops.mul, [integrand, f.exp()])
-                    # NOTE: leaving out backward terms works too. Not completely sure why.
-                    # integrand = Stack("history", (alphas.exp(), integrand))
-                    integrand = Stack("history", (alphas.exp(), integrand, betas.exp()))
+                    integrand = Stack("history", (alphas.exp(), integrand))
                     integrand = MarkovProduct(ops.add, ops.mul, integrand, history_var, group_step)
                     integrand = integrand.reduce(ops.add, frozenset(group_step.values()))
                     integrand = integrand(**prev_to_init)
-            else:
-                # NOTE: this part is the same as in modified_partial_sum_product
-                # marginalize out group_vars
-                # eliminate non markov vars
-                nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
-                # eliminate markov vars
-                markov_vars = group_vars.intersection(markov_sum_vars)
-                if nonmarkov_vars:
-                    nonmarkov_factors = [f for f in group_factors if not nonmarkov_vars.isdisjoint(f.inputs)]
-                    markov_factors = [f for f in group_factors if not nonmarkov_vars.intersection(f.inputs)]
-                    f = reduce(ops.add, nonmarkov_factors).reduce(ops.logaddexp, nonmarkov_vars)
-                    f = reduce(ops.add, markov_factors + [f])
-                else:
-                    f = reduce(ops.add, group_factors)
-                if markov_vars:
-                    markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
-                    assert all(p == markov_prod_var[0] for p in markov_prod_var)
-                    if len(markov_prod_var[0]) != 1:
-                        raise ValueError("intractable!")
-                    time = next(iter(markov_prod_var[0]))
-                    for v in sum_vars.intersection(f.inputs):
-                        if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
-                            raise ValueError("intractable!")
-                    time_var = Variable(time, f.inputs[time])
-                    group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
-                    f = MarkovProduct(ops.logaddexp, ops.add, f, time_var, group_step)
-                    f = f.reduce(ops.logaddexp, frozenset(group_step.values()))
-                    f = f(**prev_to_init)
-
-                remaining_sum_vars = sum_vars.intersection(f.inputs)
-
-                if not remaining_sum_vars:
-                    results.append(f.reduce(ops.add, leaf & prod_vars - markov_prod_vars))
-                else:
-                    new_plates = frozenset().union(
-                        *(var_to_ordinal[v] for v in remaining_sum_vars))
-                    if new_plates == leaf:
-                        raise ValueError("intractable!")
-                    f = f.reduce(ops.add, leaf - new_plates - markov_prod_vars)
-                    ordinal_to_factors[new_plates].append(f)
 
     return integrand
 
 
-def forward_backward_terms(sum_op, prod_op, trans, time, step):
+def forward_terms(sum_op, prod_op, trans, time, step):
     """
     Similar to sequential_sum_product but also saves all
     forward and backward terms
@@ -575,12 +514,10 @@ def forward_backward_terms(sum_op, prod_op, trans, time, step):
     # handle root case
     sum_term = sum_terms.pop()
     left_term = _contraction_identity(sum_term, step)
-    right_term = _contraction_identity(sum_term, step)
     # down sweep
     while sum_terms:
         sum_term = sum_terms.pop()
         new_left_term = _contraction_identity(sum_term, step)
-        new_right_term = _contraction_identity(sum_term, step)
         duration = sum_term.inputs[time].size
         even_duration = duration // 2 * 2
 
@@ -591,11 +528,6 @@ def forward_backward_terms(sum_op, prod_op, trans, time, step):
                     **{time: Slice(time, even_duration // 2, even_duration // 2 + 1, 1, (duration + 1) // 2)})
             left_term = left_term(**{time: Slice(time, 0, even_duration // 2, 1, (duration + 1) // 2)})
             new_left_term = _scatter(extra_left_term, new_left_term, slices)
-            # right terms
-            extra_right_term = right_term(
-                    **{time: Slice(time, even_duration // 2, even_duration // 2 + 1, 1, (duration + 1) // 2)})
-            right_term = right_term(**{time: Slice(time, 0, even_duration // 2, 1, (duration + 1) // 2)})
-            new_right_term = _scatter(extra_right_term, new_right_term, slices)
 
         # left terms
         left_sum = sum_term(**{time: Slice(time, 0, even_duration, 2, duration)}, **prev_to_drop)
@@ -607,57 +539,9 @@ def forward_backward_terms(sum_op, prod_op, trans, time, step):
         new_left_term = _scatter(left_sum_and_term, new_left_term, slices)
 
         left_term = new_left_term
-
-        # right terms
-        right_sum = sum_term(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
-        right_sum_and_term = Contraction(sum_op, prod_op, drop, right_sum, right_term(**curr_to_drop))
-
-        slices = ((time, Slice(time, 1, even_duration, 2, duration)),)
-        new_right_term = _scatter(right_term, new_right_term, slices)
-        slices = ((time, Slice(time, 0, even_duration, 2, duration)),)
-        new_right_term = _scatter(right_sum_and_term, new_right_term, slices)
-
-        right_term = new_right_term
     else:
         alphas = Contraction(sum_op, prod_op, drop, left_term(**curr_to_drop), sum_term(**prev_to_drop))
-        betas = Contraction(sum_op, prod_op, drop, right_term(**curr_to_drop), sum_term(**prev_to_drop))
-    return alphas, betas
-
-
-def naive_backward_terms(sum_op, prod_op, trans, time, step):
-    """
-    Similar to naive_sequential_sum_product but also saves all
-    forward terms
-    """
-    assert isinstance(sum_op, AssociativeOp)
-    assert isinstance(prod_op, AssociativeOp)
-    assert isinstance(trans, Funsor)
-    assert isinstance(time, Variable)
-    assert isinstance(step, dict)
-    assert all(isinstance(k, str) for k in step.keys())
-    assert all(isinstance(v, str) for v in step.values())
-    if time.name in trans.inputs:
-        assert time.output == trans.inputs[time.name]
-
-    step = OrderedDict(sorted(step.items()))
-    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
-    prev_to_drop = dict(zip(step.keys(), drop))
-    curr_to_drop = dict(zip(step.values(), drop))
-    drop = frozenset(drop)
-
-    time, duration = time.name, time.output.size
-
-    factors = [trans(**{time: t}) for t in range(duration)]
-    betas = [factors[-1]]
-    while len(factors) > 1:
-        y = factors.pop()(**prev_to_drop)
-        x = factors.pop()(**curr_to_drop)
-        xy = prod_op(x, y).reduce(sum_op, drop)
-        factors.append(xy)
-        betas.append(xy)
-    betas.reverse()
-    beta_terms = Stack(time, tuple(betas))
-    return beta_terms
+    return alphas
 
 
 def naive_forward_terms(sum_op, prod_op, trans, time, step):
