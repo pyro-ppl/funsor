@@ -25,3 +25,22 @@ def memoize(cache=None):
 
     with interpreter.interpretation(memoize_interpretation):
         yield cache
+
+
+class MemoizeInterpretation(Interpretation):
+
+    def __init__(self, base_interpretation, cache=None):
+        self.base_interpretation = base_interpretation
+        self.cache = {} if cache is None else cache
+
+    @property
+    def is_total(self):
+        return self.base_interpretation.is_total
+
+    def __call__(self, cls, *args):
+        # FIXME recycled ids can cause incorrect cache hits
+        key = (cls,) + tuple(id(arg) if (type(arg).__name__ == "DeviceArray") or not isinstance(arg, Hashable)
+                             else arg for arg in args)
+        if key not in self.cache:
+            self.cache[key] = self.base_interpretation(cls, *args)
+        return self.cache[key]

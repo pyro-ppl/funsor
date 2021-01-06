@@ -312,6 +312,59 @@ def reinterpret(x):
         return recursion_reinterpret(x)
 
 
+class Interpretation:
+
+    is_total = False
+
+    def __enter__(self):
+        global _INTERPRETATION  # TODO get rid of this when _INTERPRETATION is list
+        new = self
+        if not self.is_total:
+            new = PrioritizedInterpretation(new, _INTERPRETATION)
+        self.old = _INTERPRETATION  # TODO store in global list instead of self
+        _INTERPRETATION = new  # TODO make a list: _INTERPRETATION.append(new)
+        return new
+
+    def __exit__(self, *args):
+        global _INTERPRETATION  # TODO get rid of this when _INTERPRETATION is list
+        _INTERPRETATION = self.old  # TODO make a list: _INTERPRETATION.pop()
+
+    def __call__(self, cls, *args):
+        raise NotImplementedError
+
+
+class DispatchedInterpretation(Interpretation):
+
+    def __init__(self, default=lambda *args: None):
+        self.registry = KeyedRegistry(default=default)
+        if _DEBUG:
+            self.register = lambda *args: lambda self: registry.register(*args)(debug_logged(self))
+        else:
+            self.register = registry.register
+        self.dispatch = registry.dispatch
+
+    def __call__(self, cls, *args):
+        return self.dispatch(cls, *args)(*args)
+
+
+class PrioritizedInterpretation(Interpretation):
+
+    @property
+    def is_total(self):
+        return any(s.is_total for s in self.subinterpreters)
+
+    def __init__(self, *subinterpreters):
+        self.subinterpreters = tuple(subinterpreters)
+        if isinstance(self.subinterpreters[0], DispatchedInterpretation):
+            self.register = self.subinterpreters[0].register
+
+    def __call__(self, cls, *args):
+        for subinterpreter in self.subinterpreters:
+            result = subinterpreter(cls, *args)
+            if result is not None:
+                return result
+
+
 class InterpreterStack(namedtuple("InterpreterStack", ["default", "fallback"])):
     def __call__(self, cls, *args):
         for interpreter in self:
@@ -340,7 +393,7 @@ class StatefulInterpretationMeta(type):
         cls.dispatch = cls.registry.dispatch
 
 
-class StatefulInterpretation(metaclass=StatefulInterpretationMeta):
+class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMeta):
     """
     Base class for interpreters with instance-dependent state or parameters.
 

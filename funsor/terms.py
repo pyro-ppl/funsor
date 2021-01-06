@@ -23,21 +23,26 @@ from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, lazy_property, pretty, quote
 
 
-def substitute(expr, subs):
-    if isinstance(subs, (dict, OrderedDict)):
-        subs = tuple(subs.items())
-    assert isinstance(subs, tuple)
-    assert all(isinstance(v, Funsor) for k, v in subs)
+class SubstituteInterpretation(Interpretation):
 
-    @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
-    def subs_interpreter(cls, *args):
-        expr = cls(*args)
-        fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
+    def __init__(self, subs, base_interpretation):
+        if isinstance(subs, (dict, OrderedDict)):
+            subs = tuple(subs.items())
+        self.subs = subs
+        self.base_interpretation = base_interpretation
+        assert isinstance(subs, tuple)
+        assert all(isinstance(v, Funsor) for k, v in subs)
+
+    def __call__(self, cls, *args):
+        expr = base_interpretation(cls, *args)
+        fresh_subs = tuple((k, v) for k, v in self.subs if k in expr.fresh)
         if fresh_subs:
             expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
         return expr
 
-    with interpreter.interpretation(subs_interpreter):
+
+def substitute(expr, subs):
+    with SubstituteInterpretation(subs, interpreter._INTERPRETATION):
         return interpreter.reinterpret(expr)
 
 
@@ -56,36 +61,43 @@ def _alpha_mangle(expr):
     return reflect(type(expr), *ast_values)
 
 
-def reflect(cls, *args, **kwargs):
+class ReflectInterpretation(Interpretation):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
     This is the only interpretation allowed to construct funsors.
     """
-    if len(args) > len(cls._ast_fields):
-        # handle varargs
-        new_args = tuple(args[:len(cls._ast_fields) - 1]) + (args[len(cls._ast_fields) - 1 - len(args):],)
-        assert len(new_args) == len(cls._ast_fields)
-        _, args = args, new_args
 
-    # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
-    cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
-                      else arg for arg in args)
-    if cache_key in cls._cons_cache:
-        return cls._cons_cache[cache_key]
+    is_total = True
 
-    arg_types = tuple(typing.Tuple[tuple(map(type, arg))]
-                      if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
-                      else typing.Tuple if (type(arg) is tuple and not arg)
-                      else type(arg) for arg in args)
-    cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
-    result = super(FunsorMeta, cls_specific).__call__(*args)
-    result._ast_values = args
+    def __call__(self, cls, *args, **kwargs):
+        if len(args) > len(cls._ast_fields):
+            # handle varargs
+            new_args = tuple(args[:len(cls._ast_fields) - 1]) + (args[len(cls._ast_fields) - 1 - len(args):],)
+            assert len(new_args) == len(cls._ast_fields)
+            _, args = args, new_args
 
-    # alpha-convert eagerly upon binding any variable
-    result = _alpha_mangle(result)
+        # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
+        cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
+                          else arg for arg in args)
+        if cache_key in cls._cons_cache:
+            return cls._cons_cache[cache_key]
 
-    cls._cons_cache[cache_key] = result
-    return result
+        arg_types = tuple(typing.Tuple[tuple(map(type, arg))]
+                          if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
+                          else typing.Tuple if (type(arg) is tuple and not arg)
+                          else type(arg) for arg in args)
+        cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
+        result = super(FunsorMeta, cls_specific).__call__(*args)
+        result._ast_values = args
+
+        # alpha-convert eagerly upon binding any variable
+        result = _alpha_mangle(result)
+
+        cls._cons_cache[cache_key] = result
+        return result
+
+
+reflect = ReflectInterpretation()
 
 
 @dispatched_interpretation
@@ -96,6 +108,10 @@ def normalize(cls, *args):
         result = reflect(cls, *args)
 
     return result
+
+
+normalize_base = DispatchedInterpretation()
+normalize = PrioritizedInterpretation(normalize_base, reflect)
 
 
 @dispatched_interpretation
@@ -109,6 +125,10 @@ def lazy(cls, *args):
     return result
 
 
+lazy_base = DispatchedInterpretation()
+lazy = PrioritizedInterpretation(lazy_base, reflect)
+
+
 @dispatched_interpretation
 def eager(cls, *args):
     """
@@ -120,6 +140,10 @@ def eager(cls, *args):
     if result is None:
         result = reflect(cls, *args)
     return result
+
+
+eager_base = DispatchedInterpretation()
+eager = PrioritizedInterpretation(eager_base, normalize_base, reflect)
 
 
 @dispatched_interpretation
@@ -138,6 +162,15 @@ def eager_or_die(cls, *args):
                 cls.__name__, ", ".join(map(str, args))))
         result = reflect(cls, *args)
     return result
+
+
+die_base = DispatchedInterpretation()  # TODO add more rules
+eager_or_die = PrioritizedInterpretation(eager_base, die_base, reflect)
+
+
+@die_base.register(Subs, Funsor, tuple)
+def die_base_subs(arg, subs):
+    raise NotImplementedError("Missing pattern for Subs({})".format(", ".join(map(str, args))))
 
 
 @dispatched_interpretation

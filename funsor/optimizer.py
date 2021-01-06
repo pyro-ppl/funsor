@@ -136,6 +136,9 @@ def apply_optimizer(x):
             result = cls(*args)
         return result
 
+    nested_optimize_interpreter = PrioritizedInterpretation(
+        optimize, interpreter._INTERPRETATION)
+
     with interpreter.interpretation(unfold):
         expr = interpreter.reinterpret(x)
 
