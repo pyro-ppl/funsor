@@ -278,7 +278,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         if op in REDUCE_OP_TO_NUMERIC:
             numeric_op = REDUCE_OP_TO_NUMERIC[op]
             assert isinstance(reduced_vars, frozenset)
-            self_vars = frozenset(self.inputs)
+            self_vars = frozenset(self.input_vars)
             reduced_vars = reduced_vars & self_vars
             if reduced_vars == self_vars and not self.output.shape:
                 return Tensor(numeric_op(self.data, None), dtype=self.dtype)
@@ -287,13 +287,14 @@ class Tensor(Funsor, metaclass=TensorMeta):
             data = self.data
             offset = 0
             for k, domain in self.inputs.items():
-                if k in reduced_vars:
+                var = Variable(k, domain)
+                if var in reduced_vars:
                     assert not domain.shape
                     data = numeric_op(data, offset)
                 else:
                     offset += 1
             inputs = OrderedDict((k, v) for k, v in self.inputs.items()
-                                 if k not in reduced_vars)
+                                 if Variable(k, v) not in reduced_vars)
             return Tensor(data, inputs, self.dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 

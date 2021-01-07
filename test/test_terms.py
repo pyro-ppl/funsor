@@ -377,7 +377,7 @@ def test_reduce_constant():
 def test_reduce_variable():
     x = Variable("x", Real)
     i = Variable("i", Bint[4])
-    assert x.reduce(ops.add, i) == x * 4
+    assert x.reduce(ops.add, i) is x * 4
 
 
 def test_slice():

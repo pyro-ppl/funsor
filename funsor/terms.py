@@ -551,8 +551,11 @@ class Funsor(object, metaclass=FunsorMeta):
         factor_vars = reduced_vars - self.input_vars
         if factor_vars:
             reduced_vars = reduced_vars & self.input_vars
-            # FIXME this will fail when reducing over real values.
-            multiplicity = reduce(ops.mul, [v.output.size for v in factor_vars])
+            multiplicity = reduce(ops.mul, [
+                v.output.size ** v.output.num_elements
+                for v in factor_vars
+                if v.dtype != "real"
+            ])
             for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
                 if add_op is op:
                     return mul_op(self, multiplicity).eager_reduce(op, reduced_vars)

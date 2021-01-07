@@ -521,14 +521,15 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     def eager_reduce(self, op, reduced_vars):
         if op is ops.logaddexp:
             # Marginalize out real variables, but keep mixtures lazy.
-            assert all(v in self.inputs for v in reduced_vars)
-            real_vars = frozenset(k for k, d in self.inputs.items() if d.dtype == "real")
+            assert reduced_vars.issubset(self.input_vars)
+            real_vars = frozenset(v for v in self.input_vars if v.dtype == "real")
             reduced_reals = reduced_vars & real_vars
             reduced_ints = reduced_vars - real_vars
             if not reduced_reals:
                 return None  # defer to default implementation
 
-            inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in reduced_reals)
+            reduced_names = frozenset(v.name for v in reduced_vars)
+            inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in reduced_names)
             if reduced_reals == real_vars:
                 result = self.log_normalizer
             else:
@@ -539,7 +540,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 for key, domain in self.inputs.items():
                     if domain.dtype == 'real':
                         block = ops.new_arange(self.info_vec, offsets[key], offsets[key] + domain.num_elements, 1)
-                        (b if key in reduced_vars else a).append(block)
+                        (b if key in reduced_names else a).append(block)
                 a = ops.cat(-1, *a)
                 b = ops.cat(-1, *b)
                 prec_aa = self.precision[..., a[..., None], a]
@@ -564,13 +565,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         elif op is ops.add:
             for v in reduced_vars:
-                if self.inputs[v].dtype == 'real':
+                if v.dtype == "real":
                     raise ValueError("Cannot sum along a real dimension: {}".format(repr(v)))
 
             # Fuse Gaussians along a plate. Compare to eager_add_gaussian_gaussian().
+            reduced_names = frozenset(v.name for v in reduced_vars)
             old_ints = OrderedDict((k, v) for k, v in self.inputs.items() if v.dtype != 'real')
-            new_ints = OrderedDict((k, v) for k, v in old_ints.items() if k not in reduced_vars)
-            inputs = OrderedDict((k, v) for k, v in self.inputs.items() if k not in reduced_vars)
+            new_ints = OrderedDict((k, v) for k, v in old_ints.items() if k not in reduced_names)
+            inputs = OrderedDict((k, v) for k, v in self.inputs.items() if k not in reduced_names)
 
             info_vec = Tensor(self.info_vec, old_ints).reduce(ops.add, reduced_vars)
             precision = Tensor(self.precision, old_ints).reduce(ops.add, reduced_vars)
