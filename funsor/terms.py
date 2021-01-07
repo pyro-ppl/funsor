@@ -17,7 +17,7 @@ from multipledispatch.variadic import Variadic, isvariadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Bint, Domain, Real, Reals, find_domain
+from funsor.domains import Array, Bint, Domain, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, lazy_property, pretty, quote
@@ -1119,7 +1119,7 @@ class Number(Funsor, metaclass=NumberMeta):
             assert isinstance(dtype, str) and dtype == "real"
             data = float(data)
         inputs = OrderedDict()
-        output = Real if dtype == "real" else Bint[dtype]
+        output = Array[dtype, ()]
         super(Number, self).__init__(inputs, output)
         self.data = data
 
@@ -1483,7 +1483,7 @@ class Lambda(Funsor):
         inputs = expr.inputs.copy()
         inputs.pop(var.name, None)
         shape = (var.dtype,) + expr.output.shape
-        output = Reals[shape] if expr.dtype == "real" else Bint[expr.size]
+        output = Array[expr.dtype, shape]
         fresh = frozenset()
         bound = frozenset({var.name})
         super(Lambda, self).__init__(inputs, output, fresh, bound)
@@ -1535,11 +1535,11 @@ class Independent(Funsor):
         assert isinstance(fn.inputs[bint_var].dtype, int)
         assert isinstance(diag_var, str)
         assert diag_var in fn.inputs
-        assert fn.inputs[diag_var].dtype == 'real'
         inputs = fn.inputs.copy()
-        shape = (inputs.pop(bint_var).dtype,) + inputs.pop(diag_var).shape
+        diag_input = inputs.pop(diag_var)
+        shape = (inputs.pop(bint_var).dtype,) + diag_input.shape
         assert reals_var not in inputs
-        inputs[reals_var] = Reals[shape]
+        inputs[reals_var] = Array[diag_input.dtype, shape]
         fresh = frozenset({reals_var})
         bound = frozenset({bint_var, diag_var})
         super(Independent, self).__init__(inputs, fn.output, fresh, bound)
