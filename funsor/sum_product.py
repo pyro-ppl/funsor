@@ -475,14 +475,14 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step, num_segment
 
 def _get_shift(name):
     """helper function used internally in sarkka_bilmes_product"""
-    return len(re.search("^P*", name).group(0))
+    return len(re.search(r"^(_PREV_)*", name).group(0)) // 6
 
 
 def _shift_name(name, t):
     """helper function used internally in sarkka_bilmes_product"""
     if t >= 0:
-        return t * "P" + name
-    return name.replace("P" * -t, "", 1)
+        return t * "_PREV_" + name
+    return name.replace("_PREV_" * -t, "", 1)
 
 
 def _shift_funsor(f, t, global_vars):
@@ -505,7 +505,7 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
         return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, {})
 
     original_names = frozenset(name for name in trans.inputs
-                               if name not in global_vars and not name.startswith("P"))
+                               if name not in global_vars and not name.startswith("_PREV_"))
 
     duration = trans.inputs[time].size
 
@@ -533,7 +533,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
 
     period = int(reduce(lambda a, b: a * b // gcd(a, b), list(lags)))
     original_names = frozenset(name for name in trans.inputs
-                               if name not in global_vars and not name.startswith("P"))
+                               if name not in global_vars and not name.startswith("_PREV_"))
     renamed_factors = []
     duration = trans.inputs[time].size
     if duration % period != 0:

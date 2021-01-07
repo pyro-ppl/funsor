@@ -197,13 +197,13 @@ def find_domain(op, *domains):
             shape = op.shape
         elif isinstance(op, ops.AssociativeOp):
             shape = ()
-        return Reals[shape] if dtype == "real" else Bint[dtype]
+        return Array[dtype, shape]
 
     lhs, rhs = domains
     if isinstance(op, ops.GetitemOp):
         dtype = lhs.dtype
         shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
-        return Reals[shape] if dtype == "real" else Bint[dtype]
+        return Array[dtype, shape]
     elif op == ops.matmul:
         assert lhs.shape and rhs.shape
         if len(rhs.shape) == 1:
@@ -232,7 +232,7 @@ def find_domain(op, *domains):
         shape = lhs.shape
     else:
         shape = broadcast_shape(lhs.shape, rhs.shape)
-    return Reals[shape] if dtype == "real" else Bint[dtype]
+    return Array[dtype, shape]
 
 
 __all__ = [
