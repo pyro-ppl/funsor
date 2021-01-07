@@ -16,7 +16,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.cnf import Contraction, GaussianMixture
-from funsor.domains import Array, Real, Reals, RealsType
+from funsor.domains import Array, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
@@ -72,16 +72,18 @@ class DistributionMeta(FunsorMeta):
 
             # broadcast individual param domains with Funsor inputs
             # this avoids .expand-ing underlying parameter tensors
-            if isinstance(v, Funsor) and isinstance(v.output, RealsType):
-                domains[k] = Reals[broadcast_shape(v.shape, domains[k].shape)]
+            dtype = domains[k].dtype
+            if isinstance(v, Funsor):
+                domains[k] = Array[dtype, broadcast_shape(v.shape, domains[k].shape)]
             elif ops.is_numeric_array(v):
-                domains[k] = Reals[broadcast_shape(v.shape, domains[k].shape)]
+                domains[k] = Array[dtype, broadcast_shape(v.shape, domains[k].shape)]
 
         # now use the broadcasted parameter shapes to infer the event_shape
         domains["value"] = cls._infer_value_domain(**domains)
-        if isinstance(kwargs["value"], Funsor) and isinstance(kwargs["value"].output, RealsType):
+        if isinstance(kwargs["value"], Funsor):
             # try to broadcast the event shape with the value, in case they disagree
-            domains["value"] = Reals[broadcast_shape(domains["value"].shape, kwargs["value"].output.shape)]
+            dtype = domains["value"].dtype
+            domains["value"] = Array[dtype, broadcast_shape(domains["value"].shape, kwargs["value"].output.shape)]
 
         # finally, perform conversions to funsors
         kwargs = OrderedDict((k, to_funsor(v, output=domains[k])) for k, v in kwargs.items())

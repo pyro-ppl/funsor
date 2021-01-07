@@ -14,7 +14,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.domains import Bint, Real, Reals
+from funsor.domains import Array, Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Einsum, Tensor, numeric_array, stack
@@ -1180,6 +1180,35 @@ def test_mvnormal_event_dim_conversion(batch_shape, event_shape):
     name_to_dim = {batch_dim: -1-i for i, batch_dim in enumerate(batch_dims)}
     rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
     data = actual.sample(frozenset(["value"]), rng_key=rng_key).terms[0][1][0]
+
+    actual_log_prob = funsor.to_data(actual(value=data), name_to_dim=name_to_dim)
+    expected_log_prob = funsor.to_data(actual, name_to_dim=name_to_dim).log_prob(
+        funsor.to_data(data, name_to_dim=name_to_dim))
+    assert actual_log_prob.shape == expected_log_prob.shape
+    assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(), (4,), (4, 7), (1, 4), (4, 1), (4, 1, 7)], ids=str)
+def test_categorical_event_dim_conversion(batch_shape, event_shape):
+
+    dtype = 6
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+
+    value = Variable("value", Array[dtype, event_shape])
+    probs = Tensor(rand(batch_shape + event_shape + (6,)), inputs)
+
+    with interpretation(lazy):
+        actual = dist.Categorical(probs=probs, value=value)
+
+    expected_inputs = inputs.copy()
+    expected_inputs.update({"value": Array[dtype, event_shape]})
+    check_funsor(actual, expected_inputs, Real)
+
+    name_to_dim = {batch_dim: -1-i for i, batch_dim in enumerate(batch_dims)}
+    rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
+    data = actual.sample(frozenset(["value"]), rng_key=rng_key).terms[0].terms[0][1][0]
 
     actual_log_prob = funsor.to_data(actual(value=data), name_to_dim=name_to_dim)
     expected_log_prob = funsor.to_data(actual, name_to_dim=name_to_dim).log_prob(
