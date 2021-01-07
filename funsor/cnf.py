@@ -3,7 +3,7 @@
 
 import functools
 import itertools
-from collections import OrderedDict, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from functools import reduce
 from typing import Tuple, Union
 
@@ -189,31 +189,34 @@ def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
+    # Count the number of terms in which each variable is reduced.
+    counts = Counter()
+    for term in terms:
+        counts.update(reduced_vars & term.input_vars)
+
     # push down leaf reductions
-    terms, reduced_vars, leaf_reduced = list(terms), frozenset(reduced_vars), False
-    for i, v in enumerate(terms):
-        unique_vars = reduced_vars.intersection(v.input_vars) - \
-            frozenset().union(*(reduced_vars.intersection(vv.input_vars)
-                                for vv in terms if vv is not v))
+    terms = list(terms)
+    leaf_reduced = False
+    reduced_once = frozenset(v for v, count in counts.items() if count == 1)
+    for i, term in enumerate(terms):
+        unique_vars = reduced_once & term.input_vars
         if unique_vars:
-            result = v.reduce(red_op, unique_vars)
-            if result is not normalize(Contraction, red_op, nullop, unique_vars, (v,)):
+            result = term.reduce(red_op, unique_vars)
+            if result is not normalize(Contraction, red_op, nullop, unique_vars, (term,)):
                 terms[i] = result
                 reduced_vars -= unique_vars
                 leaf_reduced = True
-
     if leaf_reduced:
         return Contraction(red_op, bin_op, reduced_vars, *terms)
 
     # exploit associativity to recursively evaluate this contraction
     # a bit expensive, but handles interpreter-imposed directionality constraints
     terms = tuple(terms)
+    reduced_twice = frozenset(v for v, count in counts.items() if count == 2)
     for i, lhs in enumerate(terms[0:-1]):
         for j_, rhs in enumerate(terms[i+1:]):
             j = i + j_ + 1
-            unique_vars = reduced_vars.intersection(lhs.input_vars, rhs.input_vars) - \
-                frozenset().union(*(reduced_vars.intersection(vv.input_vars)
-                                    for vv in terms[:i] + terms[i+1:j] + terms[j+1:]))
+            unique_vars = reduced_twice.intersection(lhs.input_vars, rhs.input_vars)
             result = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
             if result is not normalize(Contraction, red_op, bin_op, unique_vars, (lhs, rhs)):  # did we make progress?
                 # pick the first evaluable pair
