@@ -404,16 +404,17 @@ def test_lambda(base_shape):
     check_funsor(zij[:, i], zj.inputs, zj.output)
 
 
-def test_independent():
-    f = Variable('x_i', Reals[4, 5]) + random_tensor(OrderedDict(i=Bint[3]))
-    assert f.inputs['x_i'] == Reals[4, 5]
+@pytest.mark.parametrize("dtype", ["real", 2, 3])
+def test_independent(dtype):
+    f = Variable('x_i', Array[dtype, (4, 5)]) + random_tensor(OrderedDict(i=Bint[3]), output=Array[dtype, ()])
+    assert f.inputs['x_i'] == Array[dtype, (4, 5)]
     assert f.inputs['i'] == Bint[3]
 
     actual = Independent(f, 'x', 'i', 'x_i')
-    assert actual.inputs['x'] == Reals[3, 4, 5]
+    assert actual.inputs['x'] == Array[dtype, (3, 4, 5)]
     assert 'i' not in actual.inputs
 
-    x = Variable('x', Reals[3, 4, 5])
+    x = Variable('x', Array[dtype, (3, 4, 5)])
     expected = f(x_i=x['i']).reduce(ops.add, 'i')
     assert actual.inputs == expected.inputs
     assert actual.output == expected.output
@@ -581,3 +582,20 @@ def test_cat_slice_tensor(start, stop, step):
     actual = reinterpret(actual)
 
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", ["real", 2, 3])
+def test_stack_lambda(dtype):
+
+    x1 = Number(0, dtype)
+    x2 = Number(1, dtype)
+
+    y = Stack("i", (x1, x2))
+
+    z = Lambda(Variable("i", Bint[2]), y)
+
+    assert y.shape == ()
+    assert z.output == Array[dtype, (2,)]
+
+    assert z[0] is x1
+    assert z[1] is x2
