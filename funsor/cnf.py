@@ -236,7 +236,7 @@ def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
 
-    if reduced_vars - (reduced_vars.intersection(lhs.input_vars, rhs.input_vars)):
+    if not reduced_vars.issubset(lhs.input_vars & rhs.input_vars):
         args = red_op, bin_op, reduced_vars, (lhs, rhs)
         result = eager.dispatch(Contraction, *args)(*args)
         if result is not None:

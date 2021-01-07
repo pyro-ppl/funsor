@@ -397,7 +397,7 @@ class Funsor(object, metaclass=FunsorMeta):
         """
         # Substitute all funsor values.
         # Subclasses must handle string conversion.
-        assert set(self.bound).issuperset(alpha_subs)
+        assert set(alpha_subs).issubset(self.bound)
         return tuple(substitute(v, alpha_subs) for v in self._ast_values)
 
     def __call__(self, *args, **kwargs):
@@ -906,7 +906,7 @@ class Subs(Funsor, metaclass=SubsMeta):
         return 'Subs({}, {})'.format(self.arg, self.subs)
 
     def _alpha_convert(self, alpha_subs):
-        assert set(self.bound).issuperset(alpha_subs)
+        assert set(alpha_subs).issubset(self.bound)
         alpha_subs = {k: to_funsor(v, self.subs[k].output)
                       for k, v in alpha_subs.items()}
         arg, subs = self._ast_values
@@ -1050,7 +1050,7 @@ class Reduce(Funsor):
         return op, arg, reduced_vars
 
 
-def constant_reduce(op, arg, reduced_vars):
+def _reduce_unrelated_vars(op, arg, reduced_vars):
     factor_vars = reduced_vars - arg.input_vars
     if factor_vars:
         reduced_vars = reduced_vars & arg.input_vars
@@ -1069,7 +1069,7 @@ def constant_reduce(op, arg, reduced_vars):
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
-    arg, reduced_vars = constant_reduce(op, arg, reduced_vars)
+    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
     if reduced_vars is None:
         return arg
     return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
@@ -1077,7 +1077,7 @@ def eager_reduce(op, arg, reduced_vars):
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
-    arg, reduced_vars = constant_reduce(op, arg, reduced_vars)
+    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
     if reduced_vars is None:
         return arg
     return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
@@ -1085,7 +1085,7 @@ def sequential_reduce(op, arg, reduced_vars):
 
 @moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
 def moment_matching_reduce(op, arg, reduced_vars):
-    arg, reduced_vars = constant_reduce(op, arg, reduced_vars)
+    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
     if reduced_vars is None:
         return arg
     return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
