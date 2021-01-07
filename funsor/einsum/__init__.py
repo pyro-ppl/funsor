@@ -8,7 +8,7 @@ from funsor.cnf import Contraction
 from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import sum_product
-from funsor.terms import Funsor, lazy
+from funsor.terms import Funsor, Variable, lazy
 
 # TODO: add numpy einsum here
 BACKEND_OPS = {
@@ -50,7 +50,8 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     input_dims = frozenset(d for inp in inputs for d in inp)
     output_dims = frozenset(d for d in output)
     all_inputs = {k: v for term in terms for k, v in term.inputs.items()}
-    reduced_vars = {k: all_inputs[k] for k in input_dims - output_dims}
+    reduced_vars = frozenset(Variable(k, all_inputs[k])
+                             for k in input_dims - output_dims)
     return Contraction(sum_op, prod_op, reduced_vars, *terms)
 
 

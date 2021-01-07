@@ -83,8 +83,9 @@ def moment_matching_contract_default(*args):
 @moment_matching.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
 def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
 
-    approx_vars = frozenset(k for k in reduced_vars if k in gaussian.inputs
-                            and gaussian.inputs[k].dtype != 'real')
+    approx_vars = frozenset(v for v in reduced_vars
+                            if v.name in gaussian.inputs
+                            if v.dtype != 'real')
     exact_vars = reduced_vars - approx_vars
 
     if exact_vars and approx_vars:
@@ -92,10 +93,10 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
 
     if approx_vars and not exact_vars:
         discrete += gaussian.log_normalizer
-        new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
-        new_discrete = discrete.reduce(ops.logaddexp, approx_vars.intersection(discrete.inputs))
-        num_elements = reduce(ops.mul, [
-            gaussian.inputs[k].num_elements for k in approx_vars.difference(discrete.inputs)], 1)
+        new_discrete = discrete.reduce(ops.logaddexp, approx_vars & discrete.input_vars)
+        new_discrete = discrete.reduce(ops.logaddexp, approx_vars & discrete.input_vars)
+        num_elements = reduce(ops.mul, [gaussian.inputs[v.name].num_elements
+                                        for v in approx_vars - discrete.input_vars], 1)
         if num_elements != 1:
             new_discrete -= math.log(num_elements)
 
