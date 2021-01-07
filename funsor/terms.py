@@ -1028,7 +1028,9 @@ class Reduce(Funsor):
         assert isinstance(arg, Funsor)
         assert isinstance(reduced_vars, frozenset)
         assert all(isinstance(v, Variable) for v in reduced_vars)
-        inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if k not in reduced_vars)
+        reduced_names = frozenset(v.name for v in reduced_vars)
+        inputs = OrderedDict((k, v) for k, v in arg.inputs.items()
+                             if k not in reduced_names)
         output = arg.output
         fresh = frozenset()
         bound = {var.name: var.output for var in reduced_vars}
