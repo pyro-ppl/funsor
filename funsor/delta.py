@@ -137,26 +137,21 @@ class Delta(Funsor, metaclass=DeltaMeta):
         return Delta(tuple(new_terms.items())) + log_density if new_terms else log_density
 
     def eager_reduce(self, op, reduced_vars):
-        reduced_names = frozenset(v.name for v in reduced_vars)
-        assert reduced_names.issubset(self.inputs)
+        assert reduced_vars.issubset(self.inputs)
         if op is ops.logaddexp:
-            if reduced_names - self.fresh and self.fresh - reduced_names:
-                result = self
-                if reduced_names & self.fresh:
-                    result = result.eager_reduce(op, reduced_names & self.fresh)
-                    if result is not self:
-                        if reduced_names - self.fresh:
-                            result = result.eager_reduce(op, reduced_names - self.fresh)
-                            if result is not self:
-                                return result
+            if reduced_vars - self.fresh and self.fresh - reduced_vars:
+                result = self.eager_reduce(op, reduced_vars & self.fresh) if reduced_vars & self.fresh else self
+                if result is not self:
+                    result = result.eager_reduce(op, reduced_vars - self.fresh) if reduced_vars - self.fresh else self
+                    return result if result is not self else None
                 return None
 
             result_terms = [(name, (point, log_density)) for name, (point, log_density) in self.terms
-                            if name not in reduced_names]
+                            if name not in reduced_vars]
 
             result_terms, scale = [], Number(0)
             for name, (point, log_density) in self.terms:
-                if name in reduced_names:
+                if name in reduced_vars:
                     # XXX obscenely wasteful - need a lazy Zero term
                     if point.inputs:
                         scale += (point == point).all().log()
@@ -166,7 +161,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
                     result_terms.append((name, (point, log_density)))
 
             result = Delta(tuple(result_terms)) + scale if result_terms else scale
-            return result.reduce(op, reduced_names - self.fresh)
+            return result.reduce(op, reduced_vars - self.fresh)
 
         if op is ops.add:
             raise NotImplementedError("TODO Implement ops.add to simulate .to_event().")

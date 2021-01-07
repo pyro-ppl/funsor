@@ -548,33 +548,14 @@ class Funsor(object, metaclass=FunsorMeta):
         return None  # defer to default implementation
 
     def eager_reduce(self, op, reduced_vars):
-        factor_vars = reduced_vars - self.input_vars
-        if factor_vars:
-            reduced_vars = reduced_vars & self.input_vars
-            multiplicity = reduce(ops.mul, [
-                v.output.size ** v.output.num_elements
-                for v in factor_vars
-                if v.dtype != "real"
-            ])
-            for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
-                if add_op is op:
-                    return mul_op(self, multiplicity).eager_reduce(op, reduced_vars)
-            raise NotImplementedError
+        assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
 
         return None  # defer to default implementation
 
     def sequential_reduce(self, op, reduced_vars):
-        factor_vars = reduced_vars - self.input_vars
-        if factor_vars:
-            reduced_vars = reduced_vars & self.input_vars
-            # FIXME this will fail when reducing over real values.
-            multiplicity = reduce(ops.mul, [v.output.size for v in factor_vars])
-            for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
-                if add_op is op:
-                    return mul_op(self, multiplicity).sequential_reduce(op, reduced_vars)
-            raise NotImplementedError
+        assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
 
@@ -582,15 +563,15 @@ class Funsor(object, metaclass=FunsorMeta):
         # since reduction is more efficiently implemented by Tensor.
         eager_vars = []
         lazy_vars = []
-        for var in reduced_vars:
-            if isinstance(var.dtype, int) and not var.shape:
-                eager_vars.append(var)
+        for k in reduced_vars:
+            if isinstance(self.inputs[k].dtype, int) and not self.inputs[k].shape:
+                eager_vars.append(k)
             else:
-                lazy_vars.append(var)
+                lazy_vars.append(k)
         if eager_vars:
             result = None
-            for values in itertools.product(*(var.output for var in eager_vars)):
-                subs = {var.name: value for var, value in zip(eager_vars, values)}
+            for values in itertools.product(*(self.inputs[k] for k in eager_vars)):
+                subs = dict(zip(eager_vars, values))
                 result = self(**subs) if result is None else op(result, self(**subs))
             if lazy_vars:
                 result = Reduce(op, result, frozenset(lazy_vars))
@@ -599,6 +580,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return None  # defer to default implementation
 
     def moment_matching_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
 
@@ -1068,18 +1050,44 @@ class Reduce(Funsor):
         return op, arg, reduced_vars
 
 
+def constant_reduce(op, arg, reduced_vars):
+    factor_vars = reduced_vars - arg.input_vars
+    if factor_vars:
+        reduced_vars = reduced_vars & arg.input_vars
+        multiplicity = reduce(ops.mul, [
+            v.output.size ** v.output.num_elements
+            for v in factor_vars
+            if v.dtype != "real"
+        ])
+        for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
+            if add_op is op:
+                arg = mul_op(arg, multiplicity).reduce(op, reduced_vars)
+                return arg, None
+        raise NotImplementedError(f"Cannot reduce {op}")
+    return arg, frozenset(v.name for v in reduced_vars)
+
+
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
+    arg, reduced_vars = constant_reduce(op, arg, reduced_vars)
+    if reduced_vars is None:
+        return arg
     return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
 
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
+    arg, reduced_vars = constant_reduce(op, arg, reduced_vars)
+    if reduced_vars is None:
+        return arg
     return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
 
 
 @moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
 def moment_matching_reduce(op, arg, reduced_vars):
+    arg, reduced_vars = constant_reduce(op, arg, reduced_vars)
+    if reduced_vars is None:
+        return arg
     return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
 
 
@@ -1337,9 +1345,8 @@ class Stack(Funsor):
 
     def eager_reduce(self, op, reduced_vars):
         parts = self.parts
-        var = Variable(self.name, self.inputs[self.name])
-        if var in reduced_vars:
-            reduced_vars -= frozenset([var])
+        if self.name in reduced_vars:
+            reduced_vars -= frozenset([self.name])
             if reduced_vars:
                 parts = tuple(x.reduce(op, reduced_vars) for x in parts)
             return reduce(op, parts)
