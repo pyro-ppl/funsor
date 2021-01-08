@@ -120,6 +120,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
                                ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def eager_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
             return Number(0.)  # distributions are normalized
         return super(Distribution, self).eager_reduce(op, reduced_vars)
@@ -686,7 +687,7 @@ def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
-    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    dirichlet_reduction = x.input_vars & reduced_vars
     if dirichlet_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
         identity = Tensor(ops.new_eye(funsor.tensor.get_default_prototype(), x.concentration.shape))
@@ -698,7 +699,7 @@ def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
-    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    dirichlet_reduction = x.input_vars & reduced_vars
     if dirichlet_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
         return backend_dist.DirichletMultinomial(concentration=x.concentration,
@@ -709,18 +710,18 @@ def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_plate_multinomial(op, x, reduced_vars):
-    if not reduced_vars.isdisjoint(x.probs.inputs):
+    if not reduced_vars.isdisjoint(x.probs.input_vars):
         return None
-    if not reduced_vars.issubset(x.value.inputs):
+    if not reduced_vars.issubset(x.value.input_vars):
         return None
 
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     total_count = x.total_count
     for v in reduced_vars:
-        if v in total_count.inputs:
+        if v.name in total_count.inputs:
             total_count = total_count.reduce(ops.add, v)
         else:
-            total_count = total_count * x.inputs[v].size
+            total_count = total_count * v.output.size
     return backend_dist.Multinomial(total_count=total_count,
                                     probs=x.probs,
                                     value=x.value.reduce(ops.add, reduced_vars))
@@ -731,7 +732,7 @@ def _log_beta(x, y):
 
 
 def eager_gamma_gamma(red_op, bin_op, reduced_vars, x, y):
-    gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    gamma_reduction = x.input_vars & reduced_vars
     if gamma_reduction:
         unnormalized = (y.concentration - 1) * ops.log(y.value) \
             - (y.concentration + x.concentration) * ops.log(y.value + x.rate)
@@ -742,7 +743,7 @@ def eager_gamma_gamma(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_gamma_poisson(red_op, bin_op, reduced_vars, x, y):
-    gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    gamma_reduction = x.input_vars & reduced_vars
     if gamma_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
         return backend_dist.GammaPoisson(concentration=x.concentration,

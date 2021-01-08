@@ -95,7 +95,7 @@ def test_eager_contract_tensor_tensor(red_op, bin_op, x_inputs, x_shape, y_input
     y = random_tensor(y_inputs, Reals[y_shape])
 
     xy = bin_op(x, y)
-    all_vars = frozenset(x.inputs).union(y.inputs)
+    all_vars = x.input_vars | y.input_vars
     for n in range(len(all_vars)):
         for reduced_vars in map(frozenset, itertools.combinations(all_vars, n)):
             print("reduced_vars = {}".format(reduced_vars))

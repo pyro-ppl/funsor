@@ -105,11 +105,8 @@ def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
 def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
     assert (adj_redop, op) in ops.DISTRIBUTIVE_OPS
 
-    lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
-    lhs_adj = op(out_adj, rhs).reduce(adj_redop, lhs_reduced_vars)
-
-    rhs_reduced_vars = frozenset(lhs.inputs) - frozenset(rhs.inputs)
-    rhs_adj = op(out_adj, lhs).reduce(adj_redop, rhs_reduced_vars)
+    lhs_adj = op(out_adj, rhs).reduce(adj_redop, rhs.input_vars - lhs.input_vars)
+    rhs_adj = op(out_adj, lhs).reduce(adj_redop, lhs.input_vars - rhs.input_vars)
 
     return {lhs: lhs_adj, rhs: rhs_adj}
 
@@ -144,11 +141,10 @@ def adjoint_contract_generic(adj_redop, adj_binop, out_adj, sum_op, prod_op, red
 def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs):
     assert sum_op is nullop or (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
 
-    lhs_reduced_vars = frozenset(rhs.inputs) - frozenset(lhs.inputs)
-    lhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop, prod_op, lhs_reduced_vars, out_adj, rhs)
-
-    rhs_reduced_vars = frozenset(lhs.inputs) - frozenset(rhs.inputs)
-    rhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop, prod_op, rhs_reduced_vars, out_adj, lhs)
+    lhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop,
+                          prod_op, rhs.input_vars - lhs.input_vars, out_adj, rhs)
+    rhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop,
+                          prod_op, lhs.input_vars - rhs.input_vars, out_adj, lhs)
 
     return {lhs: lhs_adj, rhs: rhs_adj}
 

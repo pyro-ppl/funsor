@@ -98,7 +98,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
 
         output = Real
         fresh = frozenset(name for name, term in terms)
-        bound = frozenset()
+        bound = {}
         super(Delta, self).__init__(inputs, output, fresh, bound)
         self.terms = terms
 
@@ -137,12 +137,17 @@ class Delta(Funsor, metaclass=DeltaMeta):
         return Delta(tuple(new_terms.items())) + log_density if new_terms else log_density
 
     def eager_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)
         if op is ops.logaddexp:
             if reduced_vars - self.fresh and self.fresh - reduced_vars:
-                result = self.eager_reduce(op, reduced_vars & self.fresh) if reduced_vars & self.fresh else self
-                if result is not self:
-                    result = result.eager_reduce(op, reduced_vars - self.fresh) if reduced_vars - self.fresh else self
-                    return result if result is not self else None
+                result = self
+                if not reduced_vars.isdisjoint(self.fresh):
+                    result = result.eager_reduce(op, reduced_vars & self.fresh)
+                    if result is not self:
+                        if not reduced_vars.issubset(self.fresh):
+                            result = result.eager_reduce(op, reduced_vars - self.fresh)
+                            if result is not self:
+                                return result
                 return None
 
             result_terms = [(name, (point, log_density)) for name, (point, log_density) in self.terms

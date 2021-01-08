@@ -396,7 +396,8 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
     prev_to_drop = dict(zip(step.keys(), drop))
     curr_to_drop = dict(zip(step.values(), drop))
-    drop = frozenset(drop)
+    drop = frozenset(Variable(v, trans.inputs[k])
+                     for k, v in curr_to_drop.items())
 
     time, duration = time.name, time.output.size
     while duration > 1:
@@ -629,7 +630,8 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
                              if k != time.name)
         output = trans.output
         fresh = frozenset(step_names.values())
-        bound = frozenset(step_names.keys()) | {time.name}
+        bound = {k: trans.inputs[k] for k in step_names}
+        bound[time.name] = time.output
         super().__init__(inputs, output, fresh, bound)
         self.sum_op = sum_op
         self.prod_op = prod_op
@@ -639,7 +641,7 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
         self.step_names = step_names
 
     def _alpha_convert(self, alpha_subs):
-        assert self.bound.issuperset(alpha_subs)
+        assert set(alpha_subs).issubset(self.bound)
         time = Variable(alpha_subs.get(self.time.name, self.time.name),
                         self.time.output)
         step = frozenset((alpha_subs.get(k, k), alpha_subs.get(v, v))
