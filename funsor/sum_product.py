@@ -454,11 +454,8 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
                     time_var = Variable(time, f.inputs[time])
                     group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
                     # calculate forward (alpha) terms
-                    # TODO: how to use funsor.adjoint instead?
-                    # NOTE: parallel computations in forward_backward_terms works only
-                    # with eager interpretation because it uses funsor.adjoint._scatter function
+                    # FIXME: implement lazy funsor.adjoint._scatter function
                     alphas = forward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
-                    # NOTE: naive implementations work both with eager and lazy mode
                     # alphas = naive_forward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
                     alphas = _left_pad_right_crop(alphas, time, group_step)
                     # compute expectation of integrand wrt markov vars
@@ -475,7 +472,7 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
 def forward_terms(sum_op, prod_op, trans, time, step):
     """
     Similar to sequential_sum_product but also saves all
-    forward and backward terms
+    forward terms
     """
     assert isinstance(sum_op, AssociativeOp)
     assert isinstance(prod_op, AssociativeOp)
@@ -511,7 +508,7 @@ def forward_terms(sum_op, prod_op, trans, time, step):
     else:
         sum_terms.append(trans)
 
-    # handle root case
+    # handle the root case
     sum_term = sum_terms.pop()
     left_term = _contraction_identity(sum_term, step)
     # down sweep
