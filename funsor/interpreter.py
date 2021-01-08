@@ -109,14 +109,21 @@ def set_interpretation(new):
 @contextmanager
 def interpretation(new):
     assert callable(new)
-    global _INTERPRETATION
-    old = _INTERPRETATION
-    new = InterpreterStack(new, old)
-    try:
-        _INTERPRETATION = new
-        yield
-    finally:
-        _INTERPRETATION = old
+    if isinstance(new, Interpretation):
+        try:
+            new.__enter__()
+            yield
+        finally:
+            new.__exit__()
+    else:  # temporary backwards compatibility
+        global _INTERPRETATION
+        old = _INTERPRETATION
+        new = InterpreterStack(new, old)
+        try:
+            _INTERPRETATION = new
+            yield
+        finally:
+            _INTERPRETATION = old
 
 
 @singledispatch
@@ -338,10 +345,10 @@ class DispatchedInterpretation(Interpretation):
     def __init__(self, default=lambda *args: None):
         self.registry = KeyedRegistry(default=default)
         if _DEBUG:
-            self.register = lambda *args: lambda self: registry.register(*args)(debug_logged(self))
+            self.register = lambda *args: lambda self: self.registry.register(*args)(debug_logged(self))
         else:
-            self.register = registry.register
-        self.dispatch = registry.dispatch
+            self.register = self.registry.register
+        self.dispatch = self.registry.dispatch
 
     def __call__(self, cls, *args):
         return self.dispatch(cls, *args)(*args)
@@ -350,13 +357,19 @@ class DispatchedInterpretation(Interpretation):
 class PrioritizedInterpretation(Interpretation):
 
     @property
+    def base(self):
+        return self.subinterpreters[0]
+
+    @property
     def is_total(self):
         return any(s.is_total for s in self.subinterpreters)
 
     def __init__(self, *subinterpreters):
+        assert len(subinterpreters) >= 1
         self.subinterpreters = tuple(subinterpreters)
         if isinstance(self.subinterpreters[0], DispatchedInterpretation):
             self.register = self.subinterpreters[0].register
+            self.dispatch = self.subinterpreters[0].dispatch
 
     def __call__(self, cls, *args):
         for subinterpreter in self.subinterpreters:
@@ -384,6 +397,20 @@ def dispatched_interpretation(fn):
         fn.register = registry.register
     fn.dispatch = registry.dispatch
     return fn
+
+
+def _dispatched_interpretation(fn):
+    """
+    New version of dispatched_interpretation decorator using Interpretation classes.
+
+    Syntax::
+
+        @prioritized_interpretation(normalize.base, reflect)
+        @dispatched_interpretation
+        def eager(cls, *args):
+            return None
+    """
+    return DispatchedInterpretation(fn)
 
 
 class StatefulInterpretationMeta(type):

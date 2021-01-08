@@ -27,7 +27,7 @@ def memoize(cache=None):
         yield cache
 
 
-class MemoizeInterpretation(Interpretation):
+class MemoizeInterpretation(interpreter.Interpretation):
 
     def __init__(self, base_interpretation, cache=None):
         self.base_interpretation = base_interpretation

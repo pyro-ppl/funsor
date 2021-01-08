@@ -18,12 +18,17 @@ from multipledispatch.variadic import Variadic, isvariadic
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Real, find_domain
-from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
+from funsor.interpreter import Interpretation, DispatchedInterpretation, PrioritizedInterpretation, \
+    PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, lazy_property, pretty, quote
 
 
 class SubstituteInterpretation(Interpretation):
+
+    @property
+    def is_total(self):
+        return self.base_interpretation.is_total
 
     def __init__(self, subs, base_interpretation):
         if isinstance(subs, (dict, OrderedDict)):
@@ -34,7 +39,7 @@ class SubstituteInterpretation(Interpretation):
         assert all(isinstance(v, Funsor) for k, v in subs)
 
     def __call__(self, cls, *args):
-        expr = base_interpretation(cls, *args)
+        expr = self.base_interpretation(cls, *args)
         fresh_subs = tuple((k, v) for k, v in self.subs if k in expr.fresh)
         if fresh_subs:
             expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
@@ -100,109 +105,37 @@ class ReflectInterpretation(Interpretation):
 reflect = ReflectInterpretation()
 
 
-@dispatched_interpretation
-def normalize(cls, *args):
-
-    result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-
-    return result
-
-
 normalize_base = DispatchedInterpretation()
 normalize = PrioritizedInterpretation(normalize_base, reflect)
-
-
-@dispatched_interpretation
-def lazy(cls, *args):
-    """
-    Substitute eagerly but perform ops lazily.
-    """
-    result = lazy.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
 
 
 lazy_base = DispatchedInterpretation()
 lazy = PrioritizedInterpretation(lazy_base, reflect)
 
 
-@dispatched_interpretation
-def eager(cls, *args):
-    """
-    Eagerly execute ops with known implementations.
-    """
-    result = eager.dispatch(cls, *args)(*args)
-    if result is None:
-        result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
-
-
 eager_base = DispatchedInterpretation()
 eager = PrioritizedInterpretation(eager_base, normalize_base, reflect)
 
 
-@dispatched_interpretation
-def eager_or_die(cls, *args):
-    """
-    Eagerly execute ops with known implementations.
-    Disallows lazy :class:`Subs` , :class:`Unary` , :class:`Binary` , and
-    :class:`Reduce` .
-
-    :raises: :py:class:`NotImplementedError` no pattern is found.
-    """
-    result = eager.dispatch(cls, *args)(*args)
-    if result is None:
-        if cls in (Subs, Unary, Binary, Reduce):
-            raise NotImplementedError("Missing pattern for {}({})".format(
-                cls.__name__, ", ".join(map(str, args))))
-        result = reflect(cls, *args)
-    return result
-
-
-die_base = DispatchedInterpretation()  # TODO add more rules
+die_base = DispatchedInterpretation()
 eager_or_die = PrioritizedInterpretation(eager_base, die_base, reflect)
 
 
-@die_base.register(Subs, Funsor, tuple)
-def die_base_subs(arg, subs):
-    raise NotImplementedError("Missing pattern for Subs({})".format(", ".join(map(str, args))))
+sequential_base = DispatchedInterpretation()
+# XXX does this work with sphinx/help()?
+"""
+Eagerly execute ops with known implementations; additonally execute
+vectorized ops sequentially if no known vectorized implementation exists.
+"""
+sequential = PrioritizedInterpretation(sequential_base, eager_base, normalize_base, reflect)
 
 
-@dispatched_interpretation
-def sequential(cls, *args):
-    """
-    Eagerly execute ops with known implementations; additonally execute
-    vectorized ops sequentially if no known vectorized implementation exists.
-    """
-    result = sequential.dispatch(cls, *args)(*args)
-    if result is None:
-        result = eager.dispatch(cls, *args)(*args)
-    if result is None:
-        result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
-
-
-@dispatched_interpretation
-def moment_matching(cls, *args):
-    """
-    A moment matching interpretation of :class:`Reduce` expressions. This falls
-    back to :class:`eager` in other cases.
-    """
-    result = moment_matching.dispatch(cls, *args)(*args)
-    if result is None:
-        result = eager.dispatch(cls, *args)(*args)
-    if result is None:
-        result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
+"""
+A moment matching interpretation of :class:`Reduce` expressions. This falls
+back to :class:`eager` in other cases.
+"""
+moment_matching_base = DispatchedInterpretation()
+moment_matching = PrioritizedInterpretation(moment_matching_base, eager_base, normalize_base, reflect)
 
 
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
@@ -970,6 +903,12 @@ def eager_subs(arg, subs):
     return substitute(arg, subs)
 
 
+@die_base.register(Subs, Funsor, tuple)
+def die_base_subs(arg, subs):
+    expr = reflect(Subs, arg, subs)
+    raise NotImplementedError(f"Missing pattern for {repr(expr)}")
+
+
 _PREFIX = {
     ops.neg: '-',
     ops.invert: '~',
@@ -1009,6 +948,12 @@ def eager_unary(op, arg):
     return interpreter.debug_logged(arg.eager_unary)(op)
 
 
+@die_base.register(Unary, Op, Funsor)
+def die_base_unary(op, arg):
+    expr = reflect(Unary, op, arg)
+    raise NotImplementedError(f"Missing pattern for {repr(expr)}")
+
+
 _INFIX = {
     ops.add: '+',
     ops.sub: '-',
@@ -1042,6 +987,12 @@ class Binary(Funsor):
         if self.op in _INFIX:
             return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
         return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
+
+
+@die_base.register(Binary, Op, Funsor, Funsor)
+def die_base_binary(op, lhs, rhs):
+    expr = reflect(Binary, op, lhs, rhs)
+    raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
 class Reduce(Funsor):
@@ -1090,6 +1041,12 @@ def sequential_reduce(op, arg, reduced_vars):
 @moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
 def moment_matching_reduce(op, arg, reduced_vars):
     return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+
+
+@die_base.register(Reduce, Op, Funsor, frozenset)
+def die_base_reduce(op, arg, reduced_vars):
+    expr = reflect(Reduce, op, arg, reduced_vars)
+    raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
 class NumberMeta(FunsorMeta):

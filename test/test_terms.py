@@ -98,7 +98,7 @@ def check_quote(x):
     assert x is y
 
 
-@pytest.mark.parametrize('interp', [reflect, lazy, normalize, eager], ids=lambda i: i.__name__)
+@pytest.mark.parametrize('interp', [reflect, lazy, normalize, eager])  # , ids=lambda i: i.__name__)
 def test_quote(interp):
     with interpretation(interp):
         x = Variable('x', Bint[8])

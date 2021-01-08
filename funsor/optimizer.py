@@ -8,18 +8,13 @@ from opt_einsum.paths import greedy
 
 import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, nullop
+from funsor.interpreter import DispatchedInterpretation, PrioritizedInterpretation
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Funsor, eager, lazy, normalize
+from funsor.terms import Funsor, eager, lazy, normalize_base
 
 
-@interpreter.dispatched_interpretation
-def unfold(cls, *args):
-    result = unfold.dispatch(cls, *args)(*args)
-    if result is None:
-        result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = lazy(cls, *args)
-    return result
+unfold_base = DispatchedInterpretation()
+unfold = PrioritizedInterpretation(unfold_base, normalize_base, lazy)
 
 
 @unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
@@ -60,6 +55,10 @@ def optimize(cls, *args):
     if result is None:
         result = eager(cls, *args)
     return result
+
+
+optimize_base = DispatchedInterpretation()
+optimize = PrioritizedInterpretation(optimize_base, eager)
 
 
 # TODO set a better value for this
