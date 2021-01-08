@@ -198,14 +198,15 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     terms = list(terms)
     leaf_reduced = False
     reduced_once = frozenset(v for v, count in counts.items() if count == 1)
-    for i, term in enumerate(terms):
-        unique_vars = reduced_once & term.input_vars
-        if unique_vars:
-            result = term.reduce(red_op, unique_vars)
-            if result is not normalize(Contraction, red_op, nullop, unique_vars, (term,)):
-                terms[i] = result
-                reduced_vars -= unique_vars
-                leaf_reduced = True
+    if reduced_once:
+        for i, term in enumerate(terms):
+            unique_vars = reduced_once & term.input_vars
+            if unique_vars:
+                result = term.reduce(red_op, unique_vars)
+                if result is not normalize(Contraction, red_op, nullop, unique_vars, (term,)):
+                    terms[i] = result
+                    reduced_vars -= unique_vars
+                    leaf_reduced = True
     if leaf_reduced:
         return Contraction(red_op, bin_op, reduced_vars, *terms)
 

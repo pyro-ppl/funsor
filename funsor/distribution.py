@@ -120,7 +120,8 @@ class Distribution(Funsor, metaclass=DistributionMeta):
                                ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def eager_reduce(self, op, reduced_vars):
-        if op is ops.logaddexp and isinstance(self.value, Variable) and self.value in reduced_vars:
+        assert reduced_vars.issubset(self.inputs)
+        if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
             return Number(0.)  # distributions are normalized
         return super(Distribution, self).eager_reduce(op, reduced_vars)
 
