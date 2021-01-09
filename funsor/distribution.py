@@ -359,6 +359,25 @@ def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
     return result
 
 
+def expandeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
+
+    funsor_base_dist = to_funsor(backend_dist.base_dist, output=output, dim_to_name=dim_to_name)
+    if not dim_to_name:
+        assert not backend_dist.batch_shape
+        return funsor_base_dist
+
+    name_to_dim = {name: dim for dim, name in dim_to_name.items()}
+    raw_expanded_params = {}
+    for name, funsor_param in funsor_base_dist.params.items():
+        if name == "value":
+            continue
+        raw_param = to_data(funsor_param, name_to_dim=name_to_dim)
+        raw_expanded_params[name] = raw_param.expand(backend_dist.batch_shape + funsor_param.shape)
+
+    raw_expanded_dist = type(backend_dist.base_dist)(**raw_expanded_params)
+    return to_funsor(raw_expanded_dist, output, dim_to_name)
+
+
 def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     mask = to_funsor(ops.astype(backend_dist._mask, 'float32'), output=output, dim_to_name=dim_to_name)
     funsor_base_dist = to_funsor(backend_dist.base_dist, output=output, dim_to_name=dim_to_name)

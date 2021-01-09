@@ -7,7 +7,7 @@ from typing import Tuple, Union
 
 import pyro.distributions as dist
 import pyro.distributions.testing.fakes as fakes
-from pyro.distributions.torch_distribution import MaskedDistribution
+from pyro.distributions.torch_distribution import ExpandedDistribution, MaskedDistribution
 import torch
 
 from funsor.cnf import Contraction
@@ -34,6 +34,7 @@ from funsor.distribution import (  # noqa: F401
     eager_mvn,
     eager_normal,
     eager_plate_multinomial,
+    expandeddist_to_funsor,
     indepdist_to_funsor,
     make_dist,
     maskeddist_to_funsor,
@@ -296,6 +297,7 @@ def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=N
     return expr
 
 
+to_funsor.register(ExpandedDistribution)(expandeddist_to_funsor)
 to_funsor.register(torch.distributions.Independent)(indepdist_to_funsor)
 to_funsor.register(MaskedDistribution)(maskeddist_to_funsor)
 to_funsor.register(torch.distributions.TransformedDistribution)(transformeddist_to_funsor)
