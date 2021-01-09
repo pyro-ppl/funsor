@@ -40,6 +40,12 @@ if get_backend() != "numpy":
     FAKES = _fakes()
 
 
+if get_backend() == "jax":
+    _expanded_dist_path = "backend_dist.ExpandedDistribution"
+elif get_backend() == "torch":
+    _expanded_dist_path = "backend_dist.torch_distribution.ExpandedDistribution"
+
+
 def normalize_with_subs(cls, *args):
     """
     This interpretation is like normalize, except it also evaluates Subs eagerly.
@@ -431,10 +437,9 @@ for batch_shape in [(), (5,), (2, 3)]:
     for extra_shape in [(), (3,), (2, 3)]:
         # Poisson
         DistTestCase(
-            f"backend_dist.torch_distribution.ExpandedDistribution(backend_dist.Poisson(rate=case.rate), {extra_shape + batch_shape})",  # noqa: E501
+            _expanded_dist_path + f"(backend_dist.Poisson(rate=case.rate), {extra_shape + batch_shape})",  # noqa: E501
             (("rate", f"rand({batch_shape})"),),
             funsor.Real,
-            xfail_reason="ExpandedDistribution only exists in torch backend" if get_backend() != "torch" else "",
         )
 
 
@@ -460,7 +465,8 @@ def test_generic_distribution_to_funsor(case):
     HIGHER_ORDER_DISTS = [
         backend_dist.Independent,
         backend_dist.TransformedDistribution,
-    ] + ([backend_dist.torch_distribution.ExpandedDistribution] if get_backend() == "torch" else [])
+    ] + ([backend_dist.torch_distribution.ExpandedDistribution] if get_backend() == "torch"
+         else [backend_dist.ExpandedDistribution])
 
     with xfail_if_not_found():
         raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
@@ -484,7 +490,7 @@ def test_generic_distribution_to_funsor(case):
         assert isinstance(actual_dist, backend_dist.Distribution)
     assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
 
-    if get_backend() == "torch" and "ExpandedDistribution" in case.raw_dist:
+    if "ExpandedDistribution" in case.raw_dist:
         assert orig_raw_dist.batch_shape == actual_dist.batch_shape
         return
 
