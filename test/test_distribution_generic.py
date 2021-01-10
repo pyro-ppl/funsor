@@ -44,6 +44,8 @@ if get_backend() == "jax":
     _expanded_dist_path = "backend_dist.ExpandedDistribution"
 elif get_backend() == "torch":
     _expanded_dist_path = "backend_dist.torch_distribution.ExpandedDistribution"
+else:
+    _expanded_dist_path = ""
 
 
 def normalize_with_subs(cls, *args):
