@@ -372,7 +372,7 @@ def expandeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
         if name == "value":
             continue
         raw_param = to_data(funsor_param, name_to_dim=name_to_dim)
-        raw_expanded_params[name] = raw_param.expand(backend_dist.batch_shape + funsor_param.shape)
+        raw_expanded_params[name] = ops.expand(raw_param, backend_dist.batch_shape + funsor_param.shape)
 
     raw_expanded_dist = type(backend_dist.base_dist)(**raw_expanded_params)
     return to_funsor(raw_expanded_dist, output, dim_to_name)
