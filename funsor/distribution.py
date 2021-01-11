@@ -80,10 +80,6 @@ class DistributionMeta(FunsorMeta):
 
         # now use the broadcasted parameter shapes to infer the event_shape
         domains["value"] = cls._infer_value_domain(**domains)
-        if isinstance(kwargs["value"], Funsor):
-            # try to broadcast the event shape with the value, in case they disagree
-            dtype = domains["value"].dtype
-            domains["value"] = Array[dtype, broadcast_shape(domains["value"].shape, kwargs["value"].output.shape)]
 
         # finally, perform conversions to funsors
         kwargs = OrderedDict((k, to_funsor(v, output=domains[k])) for k, v in kwargs.items())
@@ -221,23 +217,28 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return super().__getattribute__(attr)
 
     @classmethod
+    def _infer_value_dtype(cls, domains):
+        try:
+            support = cls.dist_class.support
+        except NotImplementedError:
+            raise NotImplementedError(f"Failed to infer dtype of {cls.dist_class.__name__}")
+        while type(support).__name__ == "IndependentConstraint":
+            support = support.base_constraint
+        if type(support).__name__ == "_IntegerInterval":
+            return int(support.upper_bound + 1)
+        return "real"
+
+    @classmethod
     @functools.lru_cache(maxsize=5000)
-    def _infer_value_domain(cls, **kwargs):
-        # rely on the underlying distribution's logic to infer the event_shape given param domains
-        instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()},
-                                  validate_args=False)
-
-        # Note inclusion of batch_shape here to handle independent event dimensions.
-        # The arguments to _infer_value_domain are the .output shapes of parameters,
-        # so any extra batch dimensions that aren't part of the instance event_shape
-        # must be broadcasted output dimensions by construction.
-        out_shape = instance.batch_shape + instance.event_shape
-
-        if type(instance.support).__name__ == "_IntegerInterval":
-            out_dtype = int(instance.support.upper_bound + 1)
-        else:
-            out_dtype = 'real'
-        return Array[out_dtype, out_shape]
+    def _infer_value_domain(cls, **domains):
+        dtype = cls._infer_value_dtype(domains)
+        # TODO implement .infer_shapes() methods on each distribution
+        # TODO fix distribution constraints by wrapping in _Independent
+        batch_shape, event_shape = infer_shapes(cls.dist_class, domains)
+        shape = batch_shape + event_shape
+        if "value" in domains:
+            shape = broadcast_shape(shape, domains["value"].shape)
+        return Array[dtype, shape]
 
     @classmethod
     @functools.lru_cache(maxsize=5000)
@@ -268,6 +269,23 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         else:
             output = None
         return output
+
+
+def infer_shapes(dist_class, domains):
+    arg_shapes = {k: domain.shape for k, domain in domains.items() if k != "value"}
+    try:
+        return dist_class.infer_shapes(**arg_shapes)
+    except (AttributeError, NotImplementedError):
+        pass
+        # warnings.warn(f"Failed to infer shape for {dist_class.__name__}, "
+        #               "falling back to expensive instance construction")
+
+    # Rely on the underlying distribution's logic to infer the event_shape
+    # given param domains.
+    args = {k: dummy_numeric_array(domain)
+            for k, domain in domains.items() if k != "value"}
+    instance = dist_class(**args, validate_args=False)
+    return instance.batch_shape, instance.event_shape
 
 
 ################################################################################
