@@ -496,11 +496,7 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
 
     # attempt to generically infer the independent output dimensions
     domains = {k: v.output for k, v in funsor_dist.params.items()}
-    batch_shape, event_shape = infer_shapes(funsor_dist.dist_class, domains)
-    new_event_shape = broadcast_shape(event_shape, funsor_dist.value.output.shape)
-    reinterpreted_batch_ndims = len(new_event_shape) - len(event_shape)
-    assert reinterpreted_batch_ndims >= 0  # XXX is this ever nonzero?
-    indep_shape = broadcast_shape(batch_shape, new_event_shape[:reinterpreted_batch_ndims])
+    indep_shape, _ = infer_shapes(funsor_dist.dist_class, domains)
 
     params = []
     for param_name, funsor_param in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1]):
