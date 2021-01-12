@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import copyreg
+import functools
 import operator
 import warnings
 from functools import reduce

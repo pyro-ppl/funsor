@@ -90,7 +90,7 @@ ne, NeOp = make_op_and_type(operator.ne, Op)
 neg, NegOp = make_op_and_type(operator.neg, Op)
 pow, PowOp = make_op_and_type(operator.pow, Op)
 sub, SubOp = make_op_and_type(operator.sub, Op)
-truediv, TruedivOp = make_op_and_type(operator.truediv, DivOp)
+truediv, DivOp = make_op_and_type(operator.truediv, DivOp)
 
 add, AddOp = make_op_and_type(operator.add, AssociativeOp)
 and_, AndOp = make_op_and_type(operator.and_, AssociativeOp)
