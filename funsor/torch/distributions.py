@@ -116,6 +116,7 @@ def _infer_value_domain(**kwargs):
 
 
 @methodof(Categorical)  # noqa: F821
+@methodof(CategoricalLogits)  # noqa: F821
 @classmethod
 def _infer_value_dtype(cls, domains):
     if "logits" in domains:
