@@ -26,9 +26,10 @@ def make_op(fn=None, parent=None, *, name=None):
         return functools.partial(make_op, parent=parent)
 
     if name is None:
-        name = fn.__name__ + "Op"
+        name = fn.__name__
 
-    return OpCacheMeta(name, (parent,))(fn, name=name)
+    classname = name[0].upper() + name[1:] + "Op"
+    return OpCacheMeta(classname, (parent,), {})(fn, name=name)
 
 
 def make_op_and_type(fn, parent=None, *, name=None):

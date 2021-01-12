@@ -90,7 +90,7 @@ ne, NeOp = make_op_and_type(operator.ne, Op)
 neg, NegOp = make_op_and_type(operator.neg, Op)
 pow, PowOp = make_op_and_type(operator.pow, Op)
 sub, SubOp = make_op_and_type(operator.sub, Op)
-truediv, DivOp = make_op_and_type(operator.truediv, DivOp)
+truediv, DivOp = make_op_and_type(operator.truediv, Op)
 
 add, AddOp = make_op_and_type(operator.add, AssociativeOp)
 and_, AndOp = make_op_and_type(operator.and_, AssociativeOp)
@@ -98,21 +98,21 @@ mul, MulOp = make_op_and_type(operator.mul, AssociativeOp)
 matmul, MatmulOp = make_op_and_type(operator.matmul, Op)
 or_, OrOp = make_op_and_type(operator.or_, AssociativeOp)
 xor, XorOp = make_op_and_type(operator.xor, AssociativeOp)
-
-log1p, Log1pOp = make_op_and_type(math.log1p, Op)
-sqrt, SqrtOp = make_op_and_type(math.sqrt, Op)
-exp, ExpOp = make_op_and_type(math.exp, TransformOp)
-tanh, TanhOp = make_op_and_type(math.tanh, TransformOp)
-atanh, AtanhOp = make_op_and_type(math.atanh, TransformOp)
-log, LogOp = make_op_and_type(lambda x: math.log(x) if x > 0 else -math.inf,
-                              parent=TransformOp, name="log")
-
-sigmoid, SigmoidOp = make_op_and_type(sigmoid, TransformOp)
-softplus, SoftplusOp = make_op_and_type(softplus, Op)
 max, MaxOp = make_op_and_type(max, AssociativeOp)
 min, MinOp = make_op_and_type(min, AssociativeOp)
-reciprocal, ReciprocalOp = make_op_and_type(reciprocal, Op)
+
 lgamma, LgammaOp = make_op_and_type(math.lgamma, Op)
+log1p, Log1pOp = make_op_and_type(math.log1p, Op)
+reciprocal, ReciprocalOp = make_op_and_type(reciprocal, Op)
+softplus, SoftplusOp = make_op_and_type(softplus, Op)
+sqrt, SqrtOp = make_op_and_type(math.sqrt, Op)
+
+exp, ExpOp = make_op_and_type(math.exp, TransformOp)
+log, LogOp = make_op_and_type(lambda x: math.log(x) if x > 0 else -math.inf,
+                              parent=TransformOp, name="log")
+tanh, TanhOp = make_op_and_type(math.tanh, TransformOp)
+atanh, AtanhOp = make_op_and_type(math.atanh, TransformOp)
+sigmoid, SigmoidOp = make_op_and_type(sigmoid, TransformOp)
 
 
 @SubOp
@@ -194,12 +194,19 @@ __all__ = [
     'AtanhOp',
     'DivOp',
     'ExpOp',
+    'EqOp',
+    'GeOp',
+    'GtOp',
+    'LeOp',
+    'LtOp',
+    'NeOp',
     'GetitemOp',
     'LogOp',
     'MatmulOp',
     'MulOp',
     'NegOp',
     'NullOp',
+    'PowOp',
     'ReciprocalOp',
     'SigmoidOp',
     'SubOp',

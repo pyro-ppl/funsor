@@ -191,6 +191,8 @@ def find_domain(op, *domains):
     raise NotImplementedError
 
 
+@find_domain.register(ops.Op)  # TODO this is too general, register all ops
+@find_domain.register(ops.TransformOp)  # TODO too general, may be wrong for some
 @find_domain.register(ops.ReciprocalOp)
 @find_domain.register(ops.SigmoidOp)
 @find_domain.register(ops.TanhOp)
@@ -199,7 +201,7 @@ def find_domain(op, *domains):
 @find_domain.register(ops.ExpOp)
 def _find_domain_pointwise_unary_transform(op, domain):
     if isinstance(domain, ArrayType):
-        return Array['real', domain.shape]
+        return Array[domain.dtype, domain.shape]
     raise NotImplementedError
 
 
@@ -215,13 +217,20 @@ def _find_domain_getitem(op, lhs, rhs):
     return Array[dtype, shape]
 
 
+@find_domain.register(ops.EqOp)
+@find_domain.register(ops.GeOp)
+@find_domain.register(ops.GtOp)
+@find_domain.register(ops.LeOp)
+@find_domain.register(ops.LtOp)
+@find_domain.register(ops.NeOp)
 @find_domain.register(ops.PowOp)
 @find_domain.register(ops.SubOp)
 @find_domain.register(ops.DivOp)
 def _find_domain_pointwise_binary_generic(op, lhs, rhs):
-    if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType):
+    if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType) and \
+            lhs.dtype == rhs.dtype:
         return Array[lhs.dtype, broadcast_shape(lhs.shape, rhs.shape)]
-    raise NotImplementedError
+    raise NotImplementedError("TODO")
 
 
 @find_domain.register(ops.MatmulOp)
