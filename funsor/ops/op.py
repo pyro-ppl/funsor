@@ -17,26 +17,6 @@ class CachedOpMeta(type):
             return instance
 
 
-def make_op(fn=None, parent=None, *, name=None):
-    if parent is None:
-        parent = Op
-    assert issubclass(parent, Op)
-
-    if fn is None:
-        return functools.partial(make_op, parent=parent)
-
-    if name is None:
-        name = fn.__name__
-
-    classname = name[0].upper() + name[1:] + "Op"
-    return OpCacheMeta(classname, (parent,), {})(fn, name=name)
-
-
-def make_op_and_type(fn, parent=None, *, name=None):
-    new_op = make_op(fn, parent, name=name)
-    return new_op, type(new_op)
-
-
 class Op(Dispatcher):
 
     def __init_subclass__(cls, **kwargs):
@@ -69,6 +49,20 @@ class Op(Dispatcher):
 
     def __str__(self):
         return self.__name__
+
+
+def make_op_and_type(fn, parent=None, *, name=None):
+    if parent is None:
+        parent = Op
+    assert issubclass(parent, Op)
+
+    if name is None:
+        name = fn.__name__
+    assert isinstance(name, str)
+
+    classname = name[0].upper() + name[1:] + "Op"  # e.g. add -> AddOp
+    new_type = OpCacheMeta(classname, (parent,), {})
+    return new_type(fn, name=name), new_type
 
 
 class TransformOp(Op):
@@ -111,4 +105,5 @@ __all__ = [
     'PRODUCT_INVERSES',
     'TransformOp',
     'UNITS',
+    'make_op_and_type',
 ]

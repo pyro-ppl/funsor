@@ -103,9 +103,10 @@ min, MinOp = make_op_and_type(min, AssociativeOp)
 
 lgamma, LgammaOp = make_op_and_type(math.lgamma, Op)
 log1p, Log1pOp = make_op_and_type(math.log1p, Op)
+sqrt, SqrtOp = make_op_and_type(math.sqrt, Op)
+
 reciprocal, ReciprocalOp = make_op_and_type(reciprocal, Op)
 softplus, SoftplusOp = make_op_and_type(softplus, Op)
-sqrt, SqrtOp = make_op_and_type(math.sqrt, Op)
 
 exp, ExpOp = make_op_and_type(math.exp, TransformOp)
 log, LogOp = make_op_and_type(lambda x: math.log(x) if x > 0 else -math.inf,
