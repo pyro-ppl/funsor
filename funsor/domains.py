@@ -180,43 +180,73 @@ def _(arg, indent, out):
     out.append((indent, repr(arg)))
 
 
+@functools.singledispatch
 def find_domain(op, *domains):
     r"""
     Finds the :class:`Domain` resulting when applying ``op`` to ``domains``.
     :param callable op: An operation.
     :param Domain \*domains: One or more input domains.
     """
-    assert callable(op), op
-    assert all(isinstance(arg, Domain) for arg in domains)
+    raise NotImplementedError
+
+
+@find_domain.register(ops.ReciprocalOp)
+@find_domain.register(ops.SigmoidOp)
+@find_domain.register(ops.TanhOp)
+@find_domain.register(ops.AtanhOp)
+@find_domain.register(ops.LogOp)
+@find_domain.register(ops.ExpOp)
+def _find_domain_pointwise_unary_transform(op, domain):
+    if isinstance(domain, ArrayType):
+        return Array['real', domain.shape]
+    raise NotImplementedError
+
+
+@find_domain.register(ops.ReshapeOp)
+def _find_domain_reshape(op, domain):
+    return Array[domain.dtype, op.shape]
+
+
+@find_domain.register(ops.GetitemOp)
+def _find_domain_getitem(op, lhs, rhs):
+    dtype = lhs.dtype
+    shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
+    return Array[dtype, shape]
+
+
+# @find_domain.register(ops.PowOp)
+@find_domain.register(ops.SubOp)
+@find_domain.register(ops.DivOp)
+def _find_domain_pointwise_binary_generic(op, lhs, rhs):
+    if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType):
+        return Array[lhs.dtype, broadcast_shape(lhs.shape, rhs.shape)]
+    raise NotImplementedError
+
+
+@find_domain.register(ops.MatmulOp)
+def _find_domain_matmul(op, lhs, rhs):
+    assert lhs.shape and rhs.shape
+    if len(rhs.shape) == 1:
+        assert lhs.shape[-1] == rhs.shape[-1]
+        shape = lhs.shape[:-1]
+    elif len(lhs.shape) == 1:
+        assert lhs.shape[-1] == rhs.shape[-2]
+        shape = rhs.shape[:-2] + rhs.shape[-1:]
+    else:
+        assert lhs.shape[-1] == rhs.shape[-2]
+        shape = broadcast_shape(lhs.shape[:-1], rhs.shape[:-2] + (1,)) + rhs.shape[-1:]
+    return Reals[shape]
+
+
+@find_domain.register(ops.AssociativeOp)
+def _find_domain_associative_generic(op, *domains):
+
+    assert 1 <= len(domains) <= 2
+
     if len(domains) == 1:
-        dtype = domains[0].dtype
-        shape = domains[0].shape
-        if op is ops.log or op is ops.exp:
-            dtype = 'real'
-        elif isinstance(op, ops.ReshapeOp):
-            shape = op.shape
-        elif isinstance(op, ops.AssociativeOp):
-            shape = ()
-        return Array[dtype, shape]
+        return Array[domains[0].dtype, domains[0].shape]
 
     lhs, rhs = domains
-    if isinstance(op, ops.GetitemOp):
-        dtype = lhs.dtype
-        shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
-        return Array[dtype, shape]
-    elif op == ops.matmul:
-        assert lhs.shape and rhs.shape
-        if len(rhs.shape) == 1:
-            assert lhs.shape[-1] == rhs.shape[-1]
-            shape = lhs.shape[:-1]
-        elif len(lhs.shape) == 1:
-            assert lhs.shape[-1] == rhs.shape[-2]
-            shape = rhs.shape[:-2] + rhs.shape[-1:]
-        else:
-            assert lhs.shape[-1] == rhs.shape[-2]
-            shape = broadcast_shape(lhs.shape[:-1], rhs.shape[:-2] + (1,)) + rhs.shape[-1:]
-        return Reals[shape]
-
     if lhs.dtype == 'real' or rhs.dtype == 'real':
         dtype = 'real'
     elif op in (ops.add, ops.mul, ops.pow, ops.max, ops.min):
@@ -228,10 +258,7 @@ def find_domain(op, *domains):
     else:
         raise NotImplementedError('TODO')
 
-    if lhs.shape == rhs.shape:
-        shape = lhs.shape
-    else:
-        shape = broadcast_shape(lhs.shape, rhs.shape)
+    shape = broadcast_shape(lhs.shape, rhs.shape)
     return Array[dtype, shape]
 
 
