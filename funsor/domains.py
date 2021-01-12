@@ -254,7 +254,7 @@ def _find_domain_associative_generic(op, *domains):
     assert 1 <= len(domains) <= 2
 
     if len(domains) == 1:
-        return Array[domains[0].dtype, domains[0].shape]
+        return Array[domains[0].dtype, ()]
 
     lhs, rhs = domains
     if lhs.dtype == 'real' or rhs.dtype == 'real':
