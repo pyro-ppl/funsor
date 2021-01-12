@@ -1,6 +1,8 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import weakref
+
 from multipledispatch import Dispatcher
 
 
@@ -8,13 +10,19 @@ class OpCacheMeta(type):
     """
     Metaclass for caching op instance construction.
     """
-    _cache = {}
+    # use a WeakKeyDictionary to allow garbage collection of out-of-scope op classes.
+    # this is especially important when some ops are dynamically generated and
+    # their instances are large, e.g. an op corresponding to a neural network.
+    _cls_caches = weakref.WeakKeyDictionary()  # class -> {args: instance}
 
     def __call__(cls, *args, **kwargs):
-        key = (cls,) + tuple(args) + tuple(kwargs.items())
-        if key not in OpCacheMeta._cache:
-            OpCacheMeta._cache[key] = super(OpCacheMeta, cls).__call__(*args, **kwargs)
-        return OpCacheMeta._cache[key]
+        if cls not in OpCacheMeta._cls_caches:
+            OpCacheMeta._cls_caches[cls] = {}
+        cls_cache = OpCacheMeta._cls_caches[cls]
+        key = tuple(args) + tuple(kwargs.items())
+        if key not in cls_cache:
+            cls_cache[key] = super(OpCacheMeta, cls).__call__(*args, **kwargs)
+        return cls_cache[key]
 
 
 class Op(Dispatcher):
