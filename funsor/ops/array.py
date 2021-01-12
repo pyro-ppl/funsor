@@ -6,7 +6,7 @@ import math
 import numpy as np
 
 from .builtin import AssociativeOp, add, atanh, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt, tanh
-from .op import DISTRIBUTIVE_OPS, Op
+from .op import DISTRIBUTIVE_OPS, Op, OpCacheMeta
 
 _builtin_all = all
 _builtin_any = any
@@ -66,20 +66,7 @@ logaddexp = LogAddExpOp(_logaddexp, name="logaddexp")
 sample = SampleOp(_logaddexp, name="sample")
 
 
-class ReshapeMeta(type):
-    _cache = {}
-
-    def __call__(cls, shape):
-        shape = tuple(shape)
-        try:
-            return ReshapeMeta._cache[shape]
-        except KeyError:
-            instance = super().__call__(shape)
-            ReshapeMeta._cache[shape] = instance
-            return instance
-
-
-class ReshapeOp(Op, metaclass=ReshapeMeta):
+class ReshapeOp(Op, metaclass=OpCacheMeta):
     def __init__(self, shape):
         self.shape = shape
         super().__init__(self._default)
