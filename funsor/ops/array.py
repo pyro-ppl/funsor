@@ -6,7 +6,7 @@ import math
 import numpy as np
 
 from .builtin import AssociativeOp, add, atanh, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt, tanh
-from .op import DISTRIBUTIVE_OPS, Op, CachedOpMeta
+from .op import DISTRIBUTIVE_OPS, Op, CachedOpMeta, make_op_and_type
 
 _builtin_all = all
 _builtin_any = any
@@ -37,14 +37,6 @@ tanh.register(array)(np.tanh)
 atanh.register(array)(np.arctanh)
 
 
-class LogAddExpOp(AssociativeOp):
-    pass
-
-
-class SampleOp(LogAddExpOp):
-    pass
-
-
 @log.register(array)
 def _log(x):
     if x.dtype == 'bool':
@@ -62,8 +54,8 @@ def _logaddexp(x, y):
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
-logaddexp = LogAddExpOp(_logaddexp, name="logaddexp")
-sample = SampleOp(_logaddexp, name="sample")
+logaddexp, LogAddExpOp = make_op_and_type(_logaddexp, AssociativeOp, name="logaddexp")
+sample, SampleOp = make_op_and_type(_logaddexp, LogAddExpOp, name="sample")
 
 
 class ReshapeMeta(CachedOpMeta):

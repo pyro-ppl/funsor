@@ -5,7 +5,7 @@ import math
 import operator
 from numbers import Number
 
-from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, Op, CachedOpMeta, TransformOp
+from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, Op, CachedOpMeta, TransformOp, make_op_and_type
 
 _builtin_abs = abs
 _builtin_max = max
@@ -14,32 +14,38 @@ _builtin_pow = pow
 _builtin_sum = sum
 
 
+def sigmoid(x):
+    return 1 / (1 + exp(-x))
+
+
+def softplus(x):
+    return log(1. + exp(x))
+
+
+def min(x, y):
+    if hasattr(x, '__min__'):
+        return x.__min__(y)
+    if hasattr(y, '__min__'):
+        return y.__min__(x)
+    return _builtin_min(x, y)
+
+
+def max(x, y):
+    if hasattr(x, '__max__'):
+        return x.__max__(y)
+    if hasattr(y, '__max__'):
+        return y.__max__(x)
+    return _builtin_max(x, y)
+
+
+def reciprocal(x):
+    if isinstance(x, Number):
+        return 1. / x
+    raise ValueError("No reciprocal for type {}".format(type(x)))
+
+
 # FIXME Most code assumes this is an AssociativeCommutativeOp.
 class AssociativeOp(Op):
-    pass
-
-
-class AddOp(AssociativeOp):
-    pass
-
-
-class MulOp(AssociativeOp):
-    pass
-
-
-class MatmulOp(Op):  # Associtive but not commutative.
-    pass
-
-
-class SubOp(Op):
-    pass
-
-
-class NegOp(Op):
-    pass
-
-
-class DivOp(Op):
     pass
 
 
@@ -73,156 +79,40 @@ class GetitemOp(Op, metaclass=CachedOpMeta):
 
 
 getitem = GetitemOp(0)
-abs = Op(_builtin_abs)
-eq = Op(operator.eq)
-ge = Op(operator.ge)
-gt = Op(operator.gt)
-invert = Op(operator.invert)
-le = Op(operator.le)
-lt = Op(operator.lt)
-ne = Op(operator.ne)
-neg = NegOp(operator.neg)
-sub = SubOp(operator.sub)
-truediv = DivOp(operator.truediv)
+abs, AbsOp = make_op_and_type(_builtin_abs, Op)
+eq, EqOp = make_op_and_type(operator.eq, Op)
+ge, GeOp = make_op_and_type(operator.ge, Op)
+gt, GtOp = make_op_and_type(operator.gt, Op)
+invert, InvertOp = make_op_and_type(operator.invert, Op)
+le, LeOp = make_op_and_type(operator.le, Op)
+lt, LtOp = make_op_and_type(operator.lt, Op)
+ne, NeOp = make_op_and_type(operator.ne, Op)
+neg, NegOp = make_op_and_type(operator.neg, Op)
+pow, PowOp = make_op_and_type(operator.pow, Op)
+sub, SubOp = make_op_and_type(operator.sub, Op)
+truediv, TruedivOp = make_op_and_type(operator.truediv, DivOp)
 
-add = AddOp(operator.add)
-and_ = AssociativeOp(operator.and_)
-mul = MulOp(operator.mul)
-matmul = MatmulOp(operator.matmul)
-or_ = AssociativeOp(operator.or_)
-xor = AssociativeOp(operator.xor)
+add, AddOp = make_op_and_type(operator.add, AssociativeOp)
+and_, AndOp = make_op_and_type(operator.and_, AssociativeOp)
+mul, MulOp = make_op_and_type(operator.mul, AssociativeOp)
+matmul, MatmulOp = make_op_and_type(operator.matmul, Op)
+or_, OrOp = make_op_and_type(operator.or_, AssociativeOp)
+xor, XorOp = make_op_and_type(operator.xor, AssociativeOp)
 
+log1p, Log1pOp = make_op_and_type(math.log1p, Op)
+sqrt, SqrtOp = make_op_and_type(math.sqrt, Op)
+exp, ExpOp = make_op_and_type(math.exp, TransformOp)
+tanh, TanhOp = make_op_and_type(math.tanh, TransformOp)
+atanh, AtanhOp = make_op_and_type(math.atanh, TransformOp)
+log, LogOp = make_op_and_type(lambda x: math.log(x) if x > 0 else -math.inf,
+                              parent=TransformOp, name="log")
 
-@add.register(object)
-def _unary_add(x):
-    return x.sum()
-
-
-@Op
-def sqrt(x):
-    return math.sqrt(x)
-
-
-class ExpOp(TransformOp):
-    pass
-
-
-@ExpOp
-def exp(x):
-    return math.exp(x)
-
-
-@exp.set_log_abs_det_jacobian
-def log_abs_det_jacobian(x, y):
-    return add(x)
-
-
-class LogOp(TransformOp):
-    pass
-
-
-@LogOp
-def log(x):
-    return math.log(x) if x > 0 else -math.inf
-
-
-@log.set_log_abs_det_jacobian
-def log_abs_det_jacobian(x, y):
-    return -add(y)
-
-
-exp.set_inv(log)
-log.set_inv(exp)
-
-
-class TanhOp(TransformOp):
-    pass
-
-
-@TanhOp
-def tanh(x):
-    return math.tanh(x)
-
-
-@tanh.set_inv
-def tanh_inv(y):
-    return atanh(y)
-
-
-@tanh.set_log_abs_det_jacobian
-def tanh_log_abs_det_jacobian(x, y):
-    return 2. * (math.log(2.) - x - softplus(-2. * x))
-
-
-class AtanhOp(TransformOp):
-    pass
-
-
-@AtanhOp
-def atanh(x):
-    return math.atanh(x)
-
-
-@atanh.set_inv
-def atanh_inv(y):
-    return tanh(y)
-
-
-@atanh.set_log_abs_det_jacobian
-def atanh_log_abs_det_jacobian(x, y):
-    return -tanh.log_abs_det_jacobian(y, x)
-
-
-@Op
-def log1p(x):
-    return math.log1p(x)
-
-
-class SigmoidOp(TransformOp):
-    pass
-
-
-@SigmoidOp
-def sigmoid(x):
-    return 1 / (1 + exp(-x))
-
-
-@sigmoid.set_inv
-def sigmoid_inv(y):
-    return log(y) - log1p(-y)
-
-
-@sigmoid.set_log_abs_det_jacobian
-def sigmoid_log_abs_det_jacobian(x, y):
-    return -softplus(-x) - softplus(x)
-
-
-@Op
-def pow(x, y):
-    return x ** y
-
-
-@Op
-def softplus(x):
-    return log(1. + exp(x))
-
-
-@AssociativeOp
-def min(x, y):
-    if hasattr(x, '__min__'):
-        return x.__min__(y)
-    if hasattr(y, '__min__'):
-        return y.__min__(x)
-    return _builtin_min(x, y)
-
-
-@AssociativeOp
-def max(x, y):
-    if hasattr(x, '__max__'):
-        return x.__max__(y)
-    if hasattr(y, '__max__'):
-        return y.__max__(x)
-    return _builtin_max(x, y)
+sigmoid, SigmoidOp = make_op_and_type(sigmoid, TransformOp)
+softplus, SoftplusOp = make_op_and_type(softplus, Op)
+max, MaxOp = make_op_and_type(max, AssociativeOp)
+min, MinOp = make_op_and_type(min, AssociativeOp)
+reciprocal, ReciprocalOp = make_op_and_type(reciprocal, Op)
+lgamma, LgammaOp = make_op_and_type(math.lgamma, Op)
 
 
 @SubOp
@@ -237,20 +127,53 @@ def safediv(x, y):
         return truediv(x, y)
 
 
-class ReciprocalOp(Op):
-    pass
+@add.register(object)
+def _unary_add(x):
+    return x.sum()
 
 
-@ReciprocalOp
-def reciprocal(x):
-    if isinstance(x, Number):
-        return 1. / x
-    raise ValueError("No reciprocal for type {}".format(type(x)))
+@exp.set_log_abs_det_jacobian
+def log_abs_det_jacobian(x, y):
+    return add(x)
 
 
-@Op
-def lgamma(x):
-    return math.lgamma(x)
+@log.set_log_abs_det_jacobian
+def log_abs_det_jacobian(x, y):
+    return -add(y)
+
+
+exp.set_inv(log)
+log.set_inv(exp)
+
+
+@tanh.set_inv
+def tanh_inv(y):
+    return atanh(y)
+
+
+@tanh.set_log_abs_det_jacobian
+def tanh_log_abs_det_jacobian(x, y):
+    return 2. * (math.log(2.) - x - softplus(-2. * x))
+
+
+@atanh.set_inv
+def atanh_inv(y):
+    return tanh(y)
+
+
+@atanh.set_log_abs_det_jacobian
+def atanh_log_abs_det_jacobian(x, y):
+    return -tanh.log_abs_det_jacobian(y, x)
+
+
+@sigmoid.set_inv
+def sigmoid_inv(y):
+    return log(y) - log1p(-y)
+
+
+@sigmoid.set_log_abs_det_jacobian
+def sigmoid_log_abs_det_jacobian(x, y):
+    return -softplus(-x) - softplus(x)
 
 
 DISTRIBUTIVE_OPS.add((add, mul))
