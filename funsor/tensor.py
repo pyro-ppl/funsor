@@ -88,15 +88,6 @@ class TensorMeta(FunsorMeta):
         # it seems that there is no harm with the conversion generic -> ndarray here
         if isinstance(data, np.generic):
             data = data.__array__()
-        # XXX: in jaxlib 0.1.58 + jax 0.2.8, sometime opt_einsum returns
-        # a jaxlib.xla_client.Buffer, which is a type not supported in Tensor.
-        # It is unclear whether this is an issue. The good thing is: under jit,
-        # data will be a ShapedArray, so we won't go to this branch to do
-        # the extra job `jax.numpy.array(data)`.
-        elif "Buffer" in type(data).__name__ and get_backend() == "jax":
-            import jax
-
-            data = jax.numpy.array(data)
 
         return super(TensorMeta, cls).__call__(data, inputs, dtype)
 
