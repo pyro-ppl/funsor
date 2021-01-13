@@ -68,7 +68,7 @@ def reflect(cls, *args, **kwargs):
         _, args = args, new_args
 
     # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
-    cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
+    cache_key = tuple(id(arg) if ("DeviceArray" in type(arg).__name__) or not isinstance(arg, Hashable)
                       else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]

@@ -299,6 +299,15 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
                              if dim in symbols))
     equation = ",".join(einsum_inputs) + "->" + einsum_output
     data = opt_einsum.contract(equation, *operands, backend=backend)
+    # XXX: in jaxlib 0.1.58 + jax 0.2.8, opt_einsum.contract returns
+    # a jaxlib.xla_client.Buffer, which is a type not supported in Tensor.
+    # It is unclear whether this is an issue. The good thing is: under jit,
+    # data will be a ShapedArray, so we won't go to this branch to do
+    # the extra job `jax.numpy.array(data)`.
+    if "Buffer" in type(data).__name__:
+        import jax
+
+        data = jax.numpy.array(data)
     data = data.reshape(batch_shape + event_shape)
     return Tensor(data, inputs)
 
