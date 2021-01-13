@@ -8,7 +8,7 @@ class CachedOpMeta(type):
     """
     Metaclass for caching op instance construction.
     """
-    def __call__(cls, *args):
+    def __call__(cls, *args, **kwargs):
         try:
             return cls._cache[args]
         except KeyError:
@@ -61,7 +61,7 @@ def make_op_and_type(fn, parent=None, *, name=None):
     assert isinstance(name, str)
 
     classname = name[0].upper() + name[1:] + "Op"  # e.g. add -> AddOp
-    new_type = OpCacheMeta(classname, (parent,), {})
+    new_type = CachedOpMeta(classname, (parent,), {})
     return new_type(fn, name=name), new_type
 
 
