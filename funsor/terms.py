@@ -20,7 +20,7 @@ import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, lazy_property, pretty, quote
+from funsor.util import getargspec, get_backend, lazy_property, pretty, quote
 
 
 def substitute(expr, subs):
@@ -68,8 +68,15 @@ def reflect(cls, *args, **kwargs):
         _, args = args, new_args
 
     # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
-    cache_key = tuple(id(arg) if ("DeviceArray" in type(arg).__name__) or not isinstance(arg, Hashable)
-                      else arg for arg in args)
+    if get_backend() == "jax":
+        import jax
+
+        cache_key = tuple(id(arg)
+                          if isinstance(arg, jax.interpreters.xla.DeviceArray)
+                          or not isinstance(arg, Hashable)
+                          else arg for arg in args)
+    else:
+        cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 

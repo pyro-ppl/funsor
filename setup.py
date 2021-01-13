@@ -47,11 +47,7 @@ setup(
         'jax': [
             'numpyro>=0.2.4',
             'jax>=0.1.57',
-            # TODO: relax the restriction
-            # In jaxlib 0.1.58, sometime operatores return
-            # a jaxlib.xla_client.Buffer, which is a type not supported in Tensor.
-            # It is unclear whether this is an issue so we restrict jaxlib version for now.
-            'jaxlib>=0.1.37<0.1.58',
+            'jaxlib>=0.1.37',
         ],
         'test': [
             'flake8',
