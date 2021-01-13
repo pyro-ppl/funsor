@@ -488,7 +488,8 @@ def forward_terms(sum_op, prod_op, trans, time, step):
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
     prev_to_drop = dict(zip(step.keys(), drop))
     curr_to_drop = dict(zip(step.values(), drop))
-    drop = frozenset(drop)
+    drop = frozenset(Variable(v, trans.inputs[k])
+                     for k, v in curr_to_drop.items())
     sum_terms = []
 
     # up sweep
