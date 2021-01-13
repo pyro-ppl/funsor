@@ -88,6 +88,7 @@ class TensorMeta(FunsorMeta):
         # it seems that there is no harm with the conversion generic -> ndarray here
         if isinstance(data, np.generic):
             data = data.__array__()
+
         return super(TensorMeta, cls).__call__(data, inputs, dtype)
 
 
