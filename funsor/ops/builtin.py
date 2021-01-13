@@ -5,7 +5,7 @@ import math
 import operator
 from numbers import Number
 
-from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, Op, OpCacheMeta, TransformOp
+from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, Op, CachedOpMeta, TransformOp
 
 _builtin_abs = abs
 _builtin_max = max
@@ -53,7 +53,7 @@ def nullop(x, y):
     raise ValueError("should never actually evaluate this!")
 
 
-class GetitemOp(Op, metaclass=OpCacheMeta):
+class GetitemOp(Op, metaclass=CachedOpMeta):
     """
     Op encoding an index into one dimension, e.g. ``x[:,:,y]`` for offset of 2.
     """

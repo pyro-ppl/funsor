@@ -1,31 +1,28 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import weakref
-
 from multipledispatch import Dispatcher
 
 
-class OpCacheMeta(type):
+class CachedOpMeta(type):
     """
     Metaclass for caching op instance construction.
     """
-    # use a WeakKeyDictionary to allow garbage collection of out-of-scope op classes.
-    # this is especially important when some ops are dynamically generated and
-    # their instances are large, e.g. an op corresponding to a neural network.
-    _cls_caches = weakref.WeakKeyDictionary()  # class -> {args: instance}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in OpCacheMeta._cls_caches:
-            OpCacheMeta._cls_caches[cls] = {}
-        cls_cache = OpCacheMeta._cls_caches[cls]
-        key = tuple(args) + tuple(kwargs.items())
-        if key not in cls_cache:
-            cls_cache[key] = super(OpCacheMeta, cls).__call__(*args, **kwargs)
-        return cls_cache[key]
+    def __call__(cls, *args):
+        try:
+            return cls._cache[args]
+        except KeyError:
+            instance = super(CachedOpMeta, cls).__call__(*args)
+            cls._cache[args] = instance
+            return instance
 
 
 class Op(Dispatcher):
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls._cache = {}
+
     def __init__(self, fn, *, name=None):
         if isinstance(fn, str):
             fn, name = None, fn
@@ -90,7 +87,7 @@ PRODUCT_INVERSES = {}     # op -> inverse op
 __all__ = [
     'DISTRIBUTIVE_OPS',
     'Op',
-    'OpCacheMeta',
+    'CachedOpMeta',
     'PRODUCT_INVERSES',
     'TransformOp',
     'UNITS',
