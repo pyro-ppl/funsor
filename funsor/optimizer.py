@@ -83,14 +83,16 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
         return None
 
     # build opt_einsum optimizer IR
-    inputs = [frozenset(term.inputs) for term in terms]
+    inputs = [term.input_vars for term in terms]
     size_dict = {k: ((REAL_SIZE * v.num_elements) if v.dtype == 'real' else v.dtype)
                  for term in terms for k, v in term.inputs.items()}
     outputs = frozenset().union(*inputs) - reduced_vars
 
     # optimize path with greedy opt_einsum optimizer
     # TODO switch to new 'auto' strategy
-    path = greedy(inputs, outputs, size_dict)
+    input_names = [frozenset(term.inputs) for term in terms]
+    output_names = frozenset(v.name for v in outputs)
+    path = greedy(input_names, output_names, size_dict)
 
     # first prepare a reduce_dim counter to avoid early reduction
     reduce_dim_counter = collections.Counter()
@@ -105,18 +107,19 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
 
         # don't reduce a dimension too early - keep a collections.Counter
         # and only reduce when the dimension is removed from all lhs terms in path
-        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & frozenset(ta.inputs.keys())})
-        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & frozenset(tb.inputs.keys())})
+        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & ta.input_vars})
+        reduce_dim_counter.subtract({d: 1 for d in reduced_vars & tb.input_vars})
 
         # reduce variables that don't appear in other terms
-        both_vars = frozenset(ta.inputs.keys()) | frozenset(tb.inputs.keys())
+        both_vars = ta.input_vars | tb.input_vars
         path_end_reduced_vars = frozenset(d for d in reduced_vars & both_vars
                                           if reduce_dim_counter[d] == 0)
 
         # count new appearance of variables that aren't reduced
         reduce_dim_counter.update({d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)})
 
-        path_end = Contraction(red_op if path_end_reduced_vars else nullop, bin_op, path_end_reduced_vars, ta, tb)
+        path_end = Contraction(red_op if path_end_reduced_vars else nullop,
+                               bin_op, path_end_reduced_vars, ta, tb)
         operands.append(path_end)
 
     # reduce any remaining dims, if necessary

@@ -1575,13 +1575,13 @@ def test_sarkka_bilmes_example_1(duration):
         "time": Bint[duration],
         "a": Bint[3],
         "b": Bint[2],
-        "Pb": Bint[2],
+        "_PREV_b": Bint[2],
     }))
 
     expected_inputs = {
         "a": Bint[3],
         "b": Bint[2],
-        "Pb": Bint[2],
+        "_PREV_b": Bint[2],
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
@@ -1594,18 +1594,18 @@ def test_sarkka_bilmes_example_2(duration):
         "time": Bint[duration],
         "a": Bint[4],
         "b": Bint[3],
-        "Pb": Bint[3],
+        "_PREV_b": Bint[3],
         "c": Bint[2],
-        "PPc": Bint[2],
+        "_PREV__PREV_c": Bint[2],
     }))
 
     expected_inputs = {
         "a": Bint[4],
         "b": Bint[3],
-        "Pb": Bint[3],
+        "_PREV_b": Bint[3],
         "c": Bint[2],
-        "PPc": Bint[2],
-        "Pc": Bint[2],
+        "_PREV__PREV_c": Bint[2],
+        "_PREV_c": Bint[2],
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
@@ -1618,14 +1618,14 @@ def test_sarkka_bilmes_example_3(duration):
         "time": Bint[duration],
         "a": Bint[4],
         "c": Bint[2],
-        "PPc": Bint[2],
+        "_PREV__PREV_c": Bint[2],
     }))
 
     expected_inputs = {
         "a": Bint[4],
         "c": Bint[2],
-        "PPc": Bint[2],
-        "Pc": Bint[2],
+        "_PREV__PREV_c": Bint[2],
+        "_PREV_c": Bint[2],
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
@@ -1637,15 +1637,15 @@ def test_sarkka_bilmes_example_4(duration):
     trans = random_tensor(OrderedDict({
         "time": Bint[duration],
         "a": Bint[2],
-        "Pa": Bint[2],
-        "PPPa": Bint[2],
+        "_PREV_a": Bint[2],
+        "_PREV__PREV__PREV_a": Bint[2],
     }))
 
     expected_inputs = {
         "a": Bint[2],
-        "PPa": Bint[2],
-        "PPPa": Bint[2],
-        "Pa": Bint[2],
+        "_PREV__PREV_a": Bint[2],
+        "_PREV__PREV__PREV_a": Bint[2],
+        "_PREV_a": Bint[2],
     }
 
     _check_sarkka_bilmes(trans, expected_inputs, frozenset())
@@ -1657,13 +1657,13 @@ def test_sarkka_bilmes_example_5(duration):
     trans = random_tensor(OrderedDict({
         "time": Bint[duration],
         "a": Bint[3],
-        "Pa": Bint[3],
+        "_PREV_a": Bint[3],
         "x": Bint[2],
     }))
 
     expected_inputs = {
         "a": Bint[3],
-        "Pa": Bint[3],
+        "_PREV_a": Bint[3],
         "x": Bint[2],
     }
 
@@ -1678,16 +1678,16 @@ def test_sarkka_bilmes_example_6(duration):
     trans = random_tensor(OrderedDict({
         "time": Bint[duration],
         "a": Bint[2],
-        "Pa": Bint[2],
-        "PPPa": Bint[2],
+        "_PREV_a": Bint[2],
+        "_PREV__PREV__PREV_a": Bint[2],
         "x": Bint[3],
     }))
 
     expected_inputs = {
         "a": Bint[2],
-        "PPa": Bint[2],
-        "PPPa": Bint[2],
-        "Pa": Bint[2],
+        "_PREV__PREV_a": Bint[2],
+        "_PREV__PREV__PREV_a": Bint[2],
+        "_PREV_a": Bint[2],
         "x": Bint[3],
     }
 
@@ -1704,36 +1704,36 @@ def test_sarkka_bilmes_example_6(duration):
 @pytest.mark.parametrize("local_inputs", [
     # tensor
     (("a", Bint[2]),),
-    (("a", Bint[2]), ("Pa", Bint[2])),
-    (("a", Bint[2]), ("b", Bint[2]), ("Pb", Bint[2])),
-    (("a", Bint[2]), ("b", Bint[2]), ("PPb", Bint[2])),
-    (("a", Bint[2]), ("b", Bint[2]), ("Pb", Bint[2]), ("c", Bint[2]), ("PPc", Bint[2])),
-    (("a", Bint[2]), ("Pa", Bint[2]), ("PPPa", Bint[2])),
-    (("a", Bint[2]), ("b", Bint[2]), ("PPb", Bint[2]), ("PPPa", Bint[2])),
+    (("a", Bint[2]), ("_PREV_a", Bint[2])),
+    (("a", Bint[2]), ("b", Bint[2]), ("_PREV_b", Bint[2])),
+    (("a", Bint[2]), ("b", Bint[2]), ("_PREV__PREV_b", Bint[2])),
+    (("a", Bint[2]), ("b", Bint[2]), ("_PREV_b", Bint[2]), ("c", Bint[2]), ("_PREV__PREV_c", Bint[2])),
+    (("a", Bint[2]), ("_PREV_a", Bint[2]), ("_PREV__PREV__PREV_a", Bint[2])),
+    (("a", Bint[2]), ("b", Bint[2]), ("_PREV__PREV_b", Bint[2]), ("_PREV__PREV__PREV_a", Bint[2])),
     # gaussian
     (("a", Real),),
-    (("a", Real), ("Pa", Real)),
-    (("a", Real), ("b", Real), ("Pb", Real)),
-    (("a", Real), ("b", Real), ("PPb", Real)),
-    (("a", Real), ("b", Real), ("Pb", Real), ("c", Real), ("PPc", Real)),
-    (("a", Real), ("Pa", Real), ("PPPa", Real)),
-    (("a", Real), ("b", Real), ("PPb", Real), ("PPPa", Real)),
+    (("a", Real), ("_PREV_a", Real)),
+    (("a", Real), ("b", Real), ("_PREV_b", Real)),
+    (("a", Real), ("b", Real), ("_PREV__PREV_b", Real)),
+    (("a", Real), ("b", Real), ("_PREV_b", Real), ("c", Real), ("_PREV__PREV_c", Real)),
+    (("a", Real), ("_PREV_a", Real), ("_PREV__PREV__PREV_a", Real)),
+    (("a", Real), ("b", Real), ("_PREV__PREV_b", Real), ("_PREV__PREV__PREV_a", Real)),
     # mv gaussian
-    (("a", Reals[2]), ("b", Reals[2]), ("Pb", Reals[2])),
-    (("a", Reals[2]), ("b", Reals[2]), ("PPb", Reals[2])),
+    (("a", Reals[2]), ("b", Reals[2]), ("_PREV_b", Reals[2])),
+    (("a", Reals[2]), ("b", Reals[2]), ("_PREV__PREV_b", Reals[2])),
 ])
 @pytest.mark.parametrize("num_periods", [1, 2])
 def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_periods):
 
     lags = {
         kk: reduce(max, [
-            len(re.search("^P*", k).group(0)) for k, v in local_inputs
-            if k.strip("P") == kk], 0)
-        for kk, vv in local_inputs if not kk.startswith("P")
+            len(re.search("^(_PREV_)*", k).group(0)) // 6 for k, v in local_inputs
+            if k.strip("_PREV_") == kk], 0)
+        for kk, vv in local_inputs if not kk.startswith("_PREV_")
     }
     expected_inputs = dict(global_inputs + tuple(set(
-        ((t * "P" + k), v)
-        for k, v in local_inputs if not k.startswith("P")
+        ((t * "_PREV_" + k), v)
+        for k, v in local_inputs if not k.startswith("_PREV_")
         for t in range(0, lags[k] + 1))))
 
     trans_inputs = OrderedDict(global_inputs + (time_input,) + local_inputs)
@@ -1752,7 +1752,7 @@ def test_mixed_sequential_sum_product(duration, num_segments):
 
     sum_op, prod_op = ops.logaddexp, ops.add
     time_var = Variable("time", Bint[duration])
-    step = {"Px": "x"}
+    step = {"_PREV_x": "x"}
 
     trans_inputs = ((time_var.name, Bint[duration]),) + \
         tuple((k, Bint[2]) for k in step.keys()) + \

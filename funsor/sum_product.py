@@ -650,7 +650,8 @@ def sequential_sum_product(sum_op, prod_op, trans, time, step):
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
     prev_to_drop = dict(zip(step.keys(), drop))
     curr_to_drop = dict(zip(step.values(), drop))
-    drop = frozenset(drop)
+    drop = frozenset(Variable(v, trans.inputs[k])
+                     for k, v in curr_to_drop.items())
 
     time, duration = time.name, time.output.size
     while duration > 1:
@@ -729,14 +730,14 @@ def mixed_sequential_sum_product(sum_op, prod_op, trans, time, step, num_segment
 
 def _get_shift(name):
     """helper function used internally in sarkka_bilmes_product"""
-    return len(re.search("^P*", name).group(0))
+    return len(re.search(r"^(_PREV_)*", name).group(0)) // 6
 
 
 def _shift_name(name, t):
     """helper function used internally in sarkka_bilmes_product"""
     if t >= 0:
-        return t * "P" + name
-    return name.replace("P" * -t, "", 1)
+        return t * "_PREV_" + name
+    return name.replace("_PREV_" * -t, "", 1)
 
 
 def _shift_funsor(f, t, global_vars):
@@ -759,7 +760,7 @@ def naive_sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=fr
         return naive_sequential_sum_product(sum_op, prod_op, trans, time_var, {})
 
     original_names = frozenset(name for name in trans.inputs
-                               if name not in global_vars and not name.startswith("P"))
+                               if name not in global_vars and not name.startswith("_PREV_"))
 
     duration = trans.inputs[time].size
 
@@ -787,7 +788,7 @@ def sarkka_bilmes_product(sum_op, prod_op, trans, time_var, global_vars=frozense
 
     period = int(reduce(lambda a, b: a * b // gcd(a, b), list(lags)))
     original_names = frozenset(name for name in trans.inputs
-                               if name not in global_vars and not name.startswith("P"))
+                               if name not in global_vars and not name.startswith("_PREV_"))
     renamed_factors = []
     duration = trans.inputs[time].size
     if duration % period != 0:
@@ -883,7 +884,8 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
                              if k != time.name)
         output = trans.output
         fresh = frozenset(step_names.values())
-        bound = frozenset(step_names.keys()) | {time.name}
+        bound = {k: trans.inputs[k] for k in step_names}
+        bound[time.name] = time.output
         super().__init__(inputs, output, fresh, bound)
         self.sum_op = sum_op
         self.prod_op = prod_op
@@ -893,7 +895,7 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
         self.step_names = step_names
 
     def _alpha_convert(self, alpha_subs):
-        assert self.bound.issuperset(alpha_subs)
+        assert set(alpha_subs).issubset(self.bound)
         time = Variable(alpha_subs.get(self.time.name, self.time.name),
                         self.time.output)
         step = frozenset((alpha_subs.get(k, k), alpha_subs.get(v, v))

@@ -16,7 +16,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.cnf import Contraction, GaussianMixture
-from funsor.domains import Array, Real, Reals, RealsType
+from funsor.domains import Array, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
@@ -72,16 +72,18 @@ class DistributionMeta(FunsorMeta):
 
             # broadcast individual param domains with Funsor inputs
             # this avoids .expand-ing underlying parameter tensors
-            if isinstance(v, Funsor) and isinstance(v.output, RealsType):
-                domains[k] = Reals[broadcast_shape(v.shape, domains[k].shape)]
+            dtype = domains[k].dtype
+            if isinstance(v, Funsor):
+                domains[k] = Array[dtype, broadcast_shape(v.shape, domains[k].shape)]
             elif ops.is_numeric_array(v):
-                domains[k] = Reals[broadcast_shape(v.shape, domains[k].shape)]
+                domains[k] = Array[dtype, broadcast_shape(v.shape, domains[k].shape)]
 
         # now use the broadcasted parameter shapes to infer the event_shape
         domains["value"] = cls._infer_value_domain(**domains)
-        if isinstance(kwargs["value"], Funsor) and isinstance(kwargs["value"].output, RealsType):
+        if isinstance(kwargs["value"], Funsor):
             # try to broadcast the event shape with the value, in case they disagree
-            domains["value"] = Reals[broadcast_shape(domains["value"].shape, kwargs["value"].output.shape)]
+            dtype = domains["value"].dtype
+            domains["value"] = Array[dtype, broadcast_shape(domains["value"].shape, kwargs["value"].output.shape)]
 
         # finally, perform conversions to funsors
         kwargs = OrderedDict((k, to_funsor(v, output=domains[k])) for k, v in kwargs.items())
@@ -118,6 +120,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
                                ', '.join('{}={}'.format(*kv) for kv in self.params.items()))
 
     def eager_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)
         if op is ops.logaddexp and isinstance(self.value, Variable) and self.value.name in reduced_vars:
             return Number(0.)  # distributions are normalized
         return super(Distribution, self).eager_reduce(op, reduced_vars)
@@ -354,6 +357,25 @@ def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
         name = "_pyro_event_dim_{}".format(i)
         result = funsor.terms.Independent(result, "value", name, "value")
     return result
+
+
+def expandeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
+
+    funsor_base_dist = to_funsor(backend_dist.base_dist, output=output, dim_to_name=dim_to_name)
+    if not dim_to_name:
+        assert not backend_dist.batch_shape
+        return funsor_base_dist
+
+    name_to_dim = {name: dim for dim, name in dim_to_name.items()}
+    raw_expanded_params = {}
+    for name, funsor_param in funsor_base_dist.params.items():
+        if name == "value":
+            continue
+        raw_param = to_data(funsor_param, name_to_dim=name_to_dim)
+        raw_expanded_params[name] = ops.expand(raw_param, backend_dist.batch_shape + funsor_param.shape)
+
+    raw_expanded_dist = type(backend_dist.base_dist)(**raw_expanded_params)
+    return to_funsor(raw_expanded_dist, output, dim_to_name)
 
 
 def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
@@ -684,7 +706,7 @@ def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
-    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    dirichlet_reduction = x.input_vars & reduced_vars
     if dirichlet_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
         identity = Tensor(ops.new_eye(funsor.tensor.get_default_prototype(), x.concentration.shape))
@@ -696,7 +718,7 @@ def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
-    dirichlet_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    dirichlet_reduction = x.input_vars & reduced_vars
     if dirichlet_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
         return backend_dist.DirichletMultinomial(concentration=x.concentration,
@@ -707,18 +729,18 @@ def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_plate_multinomial(op, x, reduced_vars):
-    if not reduced_vars.isdisjoint(x.probs.inputs):
+    if not reduced_vars.isdisjoint(x.probs.input_vars):
         return None
-    if not reduced_vars.issubset(x.value.inputs):
+    if not reduced_vars.issubset(x.value.input_vars):
         return None
 
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     total_count = x.total_count
     for v in reduced_vars:
-        if v in total_count.inputs:
+        if v.name in total_count.inputs:
             total_count = total_count.reduce(ops.add, v)
         else:
-            total_count = total_count * x.inputs[v].size
+            total_count = total_count * v.output.size
     return backend_dist.Multinomial(total_count=total_count,
                                     probs=x.probs,
                                     value=x.value.reduce(ops.add, reduced_vars))
@@ -729,7 +751,7 @@ def _log_beta(x, y):
 
 
 def eager_gamma_gamma(red_op, bin_op, reduced_vars, x, y):
-    gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    gamma_reduction = x.input_vars & reduced_vars
     if gamma_reduction:
         unnormalized = (y.concentration - 1) * ops.log(y.value) \
             - (y.concentration + x.concentration) * ops.log(y.value + x.rate)
@@ -740,7 +762,7 @@ def eager_gamma_gamma(red_op, bin_op, reduced_vars, x, y):
 
 
 def eager_gamma_poisson(red_op, bin_op, reduced_vars, x, y):
-    gamma_reduction = frozenset(x.inputs).intersection(reduced_vars)
+    gamma_reduction = x.input_vars & reduced_vars
     if gamma_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
         return backend_dist.GammaPoisson(concentration=x.concentration,

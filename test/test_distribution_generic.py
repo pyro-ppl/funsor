@@ -40,6 +40,14 @@ if get_backend() != "numpy":
     FAKES = _fakes()
 
 
+if get_backend() == "jax":
+    _expanded_dist_path = "backend_dist.ExpandedDistribution"
+elif get_backend() == "torch":
+    _expanded_dist_path = "backend_dist.torch_distribution.ExpandedDistribution"
+else:
+    _expanded_dist_path = ""
+
+
 def normalize_with_subs(cls, *args):
     """
     This interpretation is like normalize, except it also evaluates Subs eagerly.
@@ -427,6 +435,15 @@ for batch_shape in [(), (5,), (2, 3)]:
             xfail_reason="to_funsor/to_data conversion is not yet reversible",
         )
 
+    # ExpandedDistribution
+    for extra_shape in [(), (3,), (2, 3)]:
+        # Poisson
+        DistTestCase(
+            _expanded_dist_path + f"(backend_dist.Poisson(rate=case.rate), {extra_shape + batch_shape})",  # noqa: E501
+            (("rate", f"rand({batch_shape})"),),
+            funsor.Real,
+        )
+
 
 ###########################
 # Generic tests:
@@ -447,6 +464,12 @@ def _default_dim_to_name(inputs_shape, event_inputs=None):
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
 def test_generic_distribution_to_funsor(case):
 
+    HIGHER_ORDER_DISTS = [
+        backend_dist.Independent,
+        backend_dist.TransformedDistribution,
+    ] + ([backend_dist.torch_distribution.ExpandedDistribution] if get_backend() == "torch"
+         else [backend_dist.ExpandedDistribution])
+
     with xfail_if_not_found():
         raw_dist, expected_value_domain = eval(case.raw_dist), case.expected_value_domain
 
@@ -462,12 +485,16 @@ def test_generic_distribution_to_funsor(case):
     actual_dist = to_data(funsor_dist, name_to_dim=name_to_dim)
 
     assert isinstance(actual_dist, backend_dist.Distribution)
-    assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
-    while isinstance(raw_dist, backend_dist.Independent) or type(raw_dist) == backend_dist.TransformedDistribution:
+    orig_raw_dist = raw_dist
+    while type(raw_dist) in HIGHER_ORDER_DISTS:
         raw_dist = raw_dist.base_dist
-        actual_dist = actual_dist.base_dist
+        actual_dist = actual_dist.base_dist if type(actual_dist) in HIGHER_ORDER_DISTS else actual_dist
         assert isinstance(actual_dist, backend_dist.Distribution)
-        assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
+    assert issubclass(type(actual_dist), type(raw_dist))  # subclass to handle wrappers
+
+    if "ExpandedDistribution" in case.raw_dist:
+        assert orig_raw_dist.batch_shape == actual_dist.batch_shape
+        return
 
     for param_name, _ in case.raw_params:
         assert hasattr(raw_dist, param_name)

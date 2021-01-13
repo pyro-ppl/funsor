@@ -123,7 +123,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         inputs = OrderedDict(inputs)
         output = Array[dtype, data.shape[len(inputs):]]
         fresh = frozenset(inputs.keys())
-        bound = frozenset()
+        bound = {}
         super(Tensor, self).__init__(inputs, output, fresh, bound)
         self.data = data
 

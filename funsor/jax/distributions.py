@@ -30,6 +30,7 @@ from funsor.distribution import (  # noqa: F401
     eager_mvn,
     eager_normal,
     eager_plate_multinomial,
+    expandeddist_to_funsor,
     indepdist_to_funsor,
     make_dist,
     maskeddist_to_funsor,
@@ -211,6 +212,7 @@ if not hasattr(dist.TransformedDistribution, "has_rsample"):
     dist.TransformedDistribution.has_rsample = property(lambda self: self.base_dist.has_rsample)
     dist.TransformedDistribution.rsample = dist.TransformedDistribution.sample
 
+to_funsor.register(dist.ExpandedDistribution)(expandeddist_to_funsor)
 to_funsor.register(dist.Independent)(indepdist_to_funsor)
 if hasattr(dist, "MaskedDistribution"):
     to_funsor.register(dist.MaskedDistribution)(maskeddist_to_funsor)
