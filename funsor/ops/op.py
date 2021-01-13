@@ -12,7 +12,7 @@ class CachedOpMeta(type):
         try:
             return cls._cache[args]
         except KeyError:
-            instance = super(CachedOpMeta, cls).__call__(*args)
+            instance = super(CachedOpMeta, cls).__call__(*args, **kwargs)
             cls._cache[args] = instance
             return instance
 
@@ -51,7 +51,7 @@ class Op(Dispatcher):
         return self.__name__
 
 
-def make_op_and_type(fn, parent=None, *, name=None):
+def make_op_and_type(fn, parent=None, *, name=None, module_name="funsor.ops"):
     if parent is None:
         parent = Op
     assert issubclass(parent, Op)
@@ -62,6 +62,7 @@ def make_op_and_type(fn, parent=None, *, name=None):
 
     classname = name[0].upper() + name[1:] + "Op"  # e.g. add -> AddOp
     new_type = CachedOpMeta(classname, (parent,), {})
+    new_type.__module__ = module_name
     return new_type(fn, name=name), new_type
 
 
