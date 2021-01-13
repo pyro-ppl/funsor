@@ -6,7 +6,7 @@ import math
 import numpy as np
 
 from .builtin import AssociativeOp, add, atanh, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt, tanh
-from .op import DISTRIBUTIVE_OPS, Op
+from .op import DISTRIBUTIVE_OPS, Op, CachedOpMeta
 
 _builtin_all = all
 _builtin_any = any
@@ -66,17 +66,10 @@ logaddexp = LogAddExpOp(_logaddexp, name="logaddexp")
 sample = SampleOp(_logaddexp, name="sample")
 
 
-class ReshapeMeta(type):
-    _cache = {}
-
+class ReshapeMeta(CachedOpMeta):
     def __call__(cls, shape):
-        shape = tuple(shape)
-        try:
-            return ReshapeMeta._cache[shape]
-        except KeyError:
-            instance = super().__call__(shape)
-            ReshapeMeta._cache[shape] = instance
-            return instance
+        shape = tuple(shape)  # necessary to convert torch.Size to tuple
+        return super().__call__(shape)
 
 
 class ReshapeOp(Op, metaclass=ReshapeMeta):

@@ -4,7 +4,25 @@
 from multipledispatch import Dispatcher
 
 
+class CachedOpMeta(type):
+    """
+    Metaclass for caching op instance construction.
+    """
+    def __call__(cls, *args):
+        try:
+            return cls._cache[args]
+        except KeyError:
+            instance = super(CachedOpMeta, cls).__call__(*args)
+            cls._cache[args] = instance
+            return instance
+
+
 class Op(Dispatcher):
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        cls._cache = {}
+
     def __init__(self, fn, *, name=None):
         if isinstance(fn, str):
             fn, name = None, fn
@@ -69,6 +87,7 @@ PRODUCT_INVERSES = {}     # op -> inverse op
 __all__ = [
     'DISTRIBUTIVE_OPS',
     'Op',
+    'CachedOpMeta',
     'PRODUCT_INVERSES',
     'TransformOp',
     'UNITS',
