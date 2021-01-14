@@ -6,7 +6,7 @@ import math
 import numpy as np
 
 from .builtin import AssociativeOp, add, atanh, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt, tanh
-from .op import DISTRIBUTIVE_OPS, Op, CachedOpMeta
+from .op import DISTRIBUTIVE_OPS, CachedOpMeta, Op, declare_op_types, make_op
 
 _builtin_all = all
 _builtin_any = any
@@ -14,35 +14,27 @@ _builtin_any = any
 # This is used only for pattern matching.
 array = (np.ndarray, np.generic)
 
-all = Op(np.all)
-amax = Op(np.amax)
-amin = Op(np.amin)
-any = Op(np.any)
-astype = Op("astype")
-cat = Op("cat")
-clamp = Op("clamp")
-diagonal = Op("diagonal")
-einsum = Op("einsum")
-full_like = Op(np.full_like)
-isnan = Op(np.isnan)
-prod = Op(np.prod)
-stack = Op("stack")
-sum = Op(np.sum)
-transpose = Op("transpose")
+all = make_op(np.all)
+amax = make_op(np.amax)
+amin = make_op(np.amin)
+any = make_op(np.any)
+astype = make_op("astype")
+cat = make_op("cat")
+clamp = make_op("clamp")
+diagonal = make_op("diagonal")
+einsum = make_op("einsum")
+full_like = make_op(np.full_like)
+isnan = make_op(np.isnan)
+prod = make_op(np.prod)
+stack = make_op("stack")
+sum = make_op(np.sum)
+transpose = make_op("transpose")
 
 sqrt.register(array)(np.sqrt)
 exp.register(array)(np.exp)
 log1p.register(array)(np.log1p)
 tanh.register(array)(np.tanh)
 atanh.register(array)(np.arctanh)
-
-
-class LogAddExpOp(AssociativeOp):
-    pass
-
-
-class SampleOp(LogAddExpOp):
-    pass
 
 
 @log.register(array)
@@ -62,8 +54,8 @@ def _logaddexp(x, y):
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
-logaddexp = LogAddExpOp(_logaddexp, name="logaddexp")
-sample = SampleOp(_logaddexp, name="sample")
+logaddexp = make_op(_logaddexp, AssociativeOp, name="logaddexp")
+sample = make_op(_logaddexp, type(logaddexp), name="sample")
 
 
 class ReshapeMeta(CachedOpMeta):
@@ -273,9 +265,6 @@ DISTRIBUTIVE_OPS.add((sample, add))
 
 
 __all__ = [
-    'LogAddExpOp',
-    'ReshapeOp',
-    'SampleOp',
     'all',
     'amax',
     'amin',
@@ -309,6 +298,7 @@ __all__ = [
     'unsqueeze',
 ]
 
+declare_op_types(globals(), __all__, __name__)
 
 __doc__ = "\n".join(".. autodata:: {}\n".format(_name)
                     for _name in __all__ if isinstance(globals()[_name], Op))

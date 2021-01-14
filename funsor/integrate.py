@@ -78,7 +78,7 @@ def normalize_integrate(log_measure, integrand, reduced_vars):
 
 
 @normalize.register(Integrate,
-                    Contraction[Union[ops.NullOp, ops.LogAddExpOp], ops.AddOp, frozenset, tuple],
+                    Contraction[Union[ops.NullOp, ops.LogaddexpOp], ops.AddOp, frozenset, tuple],
                     Funsor, frozenset)
 def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
     reduced_names = frozenset(v.name for v in reduced_vars)

@@ -256,7 +256,7 @@ def _scatter(src, res, subs):
     return Tensor(data, inputs, res.dtype)
 
 
-@adjoint_ops.register(Subs, ops.LogAddExpOp, ops.AddOp, GaussianMixture, GaussianMixture, tuple)
+@adjoint_ops.register(Subs, ops.LogaddexpOp, ops.AddOp, GaussianMixture, GaussianMixture, tuple)
 def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, arg, subs):
 
     if any(v.dtype == 'real' and not isinstance(v, Variable) for k, v in subs):
@@ -301,7 +301,7 @@ def adjoint_subs_gaussianmixture_gaussianmixture(adj_redop, adj_binop, out_adj, 
     return {arg: in_adj}
 
 
-@adjoint_ops.register(Subs, ops.LogAddExpOp, ops.AddOp, Gaussian, GaussianMixture, tuple)
+@adjoint_ops.register(Subs, ops.LogaddexpOp, ops.AddOp, Gaussian, GaussianMixture, tuple)
 def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, subs):
 
     if any(v.dtype == 'real' and not isinstance(v, Variable) for k, v in subs):
@@ -312,7 +312,7 @@ def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, su
     return {arg: adjoint_ops(Subs, adj_redop, adj_binop, out_adj_, arg, subs)[arg]}
 
 
-@adjoint_ops.register(Subs, ops.LogAddExpOp, ops.AddOp, (GaussianMixture, Gaussian), Gaussian, tuple)
+@adjoint_ops.register(Subs, ops.LogaddexpOp, ops.AddOp, (GaussianMixture, Gaussian), Gaussian, tuple)
 def adjoint_subs_gaussian_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
 
     if any(v.dtype == 'real' and not isinstance(v, Variable) for k, v in subs):
@@ -323,7 +323,7 @@ def adjoint_subs_gaussian_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
     return {arg: adjoint_ops(Subs, adj_redop, adj_binop, out_adj, arg_, subs)[arg_]}
 
 
-@adjoint_ops.register(Subs, ops.LogAddExpOp, ops.AddOp, (Number, Tensor), GaussianMixture, tuple)
+@adjoint_ops.register(Subs, ops.LogaddexpOp, ops.AddOp, (Number, Tensor), GaussianMixture, tuple)
 def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, subs):
 
     if any(v.dtype == 'real' and not isinstance(v, Variable) for k, v in subs):
