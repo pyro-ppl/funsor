@@ -197,12 +197,16 @@ def find_domain(op, *domains):
 @find_domain.register(ops.SigmoidOp)
 @find_domain.register(ops.TanhOp)
 @find_domain.register(ops.AtanhOp)
-@find_domain.register(ops.LogOp)
-@find_domain.register(ops.ExpOp)
 def _find_domain_pointwise_unary_transform(op, domain):
     if isinstance(domain, ArrayType):
         return Array[domain.dtype, domain.shape]
     raise NotImplementedError
+
+
+@find_domain.register(ops.LogOp)
+@find_domain.register(ops.ExpOp)
+def _find_domain_log_exp(op, domain):
+    return Array['real', domain.shape]
 
 
 @find_domain.register(ops.ReshapeOp)
