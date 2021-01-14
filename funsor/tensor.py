@@ -21,6 +21,7 @@ from funsor.domains import Array, ArrayType, Bint, Real, Reals, find_domain
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
+    Finitary,
     Funsor,
     FunsorMeta,
     Lambda,
@@ -694,6 +695,18 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
+# TODO handle variable length Tuple
+@eager.register(Finitary, Op, typing.Tuple[Tensor])
+@eager.register(Finitary, Op, typing.Tuple[Tensor, Tensor])
+@eager.register(Finitary, Op, typing.Tuple[Tensor, Tensor, Tensor])
+@eager.register(Finitary, Op, typing.Tuple[Tensor, Tensor, Tensor, Tensor])
+@eager.register(Finitary, Op, typing.Tuple[Tensor, Tensor, Tensor, Tensor, Tensor])
+def eager_finitary_generic_tensors(op, args):
+    inputs, raw_args = align_tensors(*args)
+    raw_result = op(*raw_args)
+    return Tensor(raw_result, inputs, args[0].dtype)
+
+
 @eager.register(Lambda, Variable, Tensor)
 def eager_lambda(var, expr):
     inputs = expr.inputs.copy()
@@ -949,7 +962,29 @@ def function(*signature):
     return functools.partial(_function, inputs, output)
 
 
-class Einsum(Funsor):
+class EinsumOp(ops.Op, metaclass=ops.CachedOpMeta):
+    def __init__(self, equation):
+        self.equation = equation
+
+
+@find_domain.register(EinsumOp)
+def _find_domain_einsum(op, *operands):
+    equation = op.equation
+    ein_inputs, ein_output = equation.split('->')
+    ein_inputs = ein_inputs.split(',')
+    size_dict = {}
+    for ein_input, x in zip(ein_inputs, operands):
+        assert x.dtype == 'real'
+        assert len(ein_input) == len(x.output.shape)
+        for name, size in zip(ein_input, x.output.shape):
+            other_size = size_dict.setdefault(name, size)
+            if other_size != size:
+                raise ValueError("Size mismatch at {}: {} vs {}"
+                                 .format(name, size, other_size))
+    return Reals[tuple(size_dict[d] for d in ein_output)]
+
+
+def Einsum(equation, operands):
     """
     Wrapper around :func:`torch.einsum` or :func:`np.einsum` to operate on real-valued Funsors.
 
@@ -960,40 +995,14 @@ class Einsum(Funsor):
     :param str equation: An :func:`torch.einsum` or :func:`np.einsum` equation.
     :param tuple operands: A tuple of input funsors.
     """
-    def __init__(self, equation, operands):
-        assert isinstance(equation, str)
-        assert isinstance(operands, tuple)
-        assert all(isinstance(x, Funsor) for x in operands)
-        ein_inputs, ein_output = equation.split('->')
-        ein_inputs = ein_inputs.split(',')
-        size_dict = {}
-        inputs = OrderedDict()
-        assert len(ein_inputs) == len(operands)
-        for ein_input, x in zip(ein_inputs, operands):
-            assert x.dtype == 'real'
-            inputs.update(x.inputs)
-            assert len(ein_input) == len(x.output.shape)
-            for name, size in zip(ein_input, x.output.shape):
-                other_size = size_dict.setdefault(name, size)
-                if other_size != size:
-                    raise ValueError("Size mismatch at {}: {} vs {}"
-                                     .format(name, size, other_size))
-        output = Reals[tuple(size_dict[d] for d in ein_output)]
-        super(Einsum, self).__init__(inputs, output)
-        self.equation = equation
-        self.operands = operands
-
-    def __repr__(self):
-        return 'Einsum({}, {})'.format(repr(self.equation), repr(self.operands))
-
-    def __str__(self):
-        return 'Einsum({}, {})'.format(repr(self.equation), str(self.operands))
+    return Finitary(EinsumOp(equation), tuple(operands))
 
 
-@eager.register(Einsum, str, tuple)
-def eager_einsum(equation, operands):
+@eager.register(Finitary, EinsumOp, tuple)
+def eager_einsum(op, operands):
     if all(isinstance(x, Tensor) for x in operands):
         # Make new symbols for inputs of operands.
+        equation = op.equation
         inputs = OrderedDict()
         for x in operands:
             inputs.update(x.inputs)

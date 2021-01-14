@@ -1309,6 +1309,21 @@ def eager_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
 
 
+class Finitary(Funsor):
+
+    def __init__(self, op, args):
+        assert isinstance(op, ops.Op)
+        assert isinstance(args, tuple)
+        assert all(isinstance(v, Funsor) for v in args)
+        inputs = OrderedDict()
+        for arg in args:
+            inputs.update(arg.inputs)
+        output = find_domain(op, *(arg.output for arg in args))
+        super().__init__(inputs, output)
+        self.op = op
+        self.args = args
+
+
 class Stack(Funsor):
     """
     Stack of funsors along a new input dimension.
