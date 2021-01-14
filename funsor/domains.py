@@ -225,7 +225,7 @@ def _find_domain_getitem(op, lhs, rhs):
 @find_domain.register(ops.NeOp)
 @find_domain.register(ops.PowOp)
 @find_domain.register(ops.SubOp)
-@find_domain.register(ops.DivOp)
+@find_domain.register(ops.TruedivOp)
 def _find_domain_pointwise_binary_generic(op, lhs, rhs):
     if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType) and \
             lhs.dtype == rhs.dtype:

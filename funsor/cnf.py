@@ -160,7 +160,7 @@ class Contraction(Funsor):
         return red_op, bin_op, reduced_vars, terms
 
 
-GaussianMixture = Contraction[Union[ops.LogAddExpOp, NullOp], ops.AddOp, frozenset,
+GaussianMixture = Contraction[Union[ops.LogaddexpOp, NullOp], ops.AddOp, frozenset,
                               Tuple[Union[Tensor, Number], Gaussian]]
 
 
@@ -259,7 +259,7 @@ def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     return _eager_contract_tensors(reduced_vars, terms, backend=backend)
 
 
-@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Tensor, Tensor)
+@eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Tensor, Tensor)
 def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
@@ -306,7 +306,7 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
 # TODO(https://github.com/pyro-ppl/funsor/issues/238) Use a port of
 # Pyro's gaussian_tensordot() here. Until then we must eagerly add the
 # possibly-rank-deficient terms before reducing to avoid Cholesky errors.
-@eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset,
+@eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset,
                 GaussianMixture, GaussianMixture)
 def eager_contraction_gaussian(red_op, bin_op, reduced_vars, x, y):
     return (x + y).reduce(red_op, reduced_vars)
@@ -455,7 +455,7 @@ def binary_subtract(op, lhs, rhs):
     return lhs + -rhs
 
 
-@normalize.register(Binary, ops.DivOp, Funsor, Funsor)
+@normalize.register(Binary, ops.TruedivOp, Funsor, Funsor)
 def binary_divide(op, lhs, rhs):
     return lhs * Unary(ops.reciprocal, rhs)
 

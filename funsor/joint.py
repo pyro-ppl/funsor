@@ -80,7 +80,7 @@ def moment_matching_contract_default(*args):
     return None
 
 
-@moment_matching.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
+@moment_matching.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
 def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
 
     approx_vars = frozenset(v for v in reduced_vars

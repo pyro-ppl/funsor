@@ -5,7 +5,7 @@ import math
 import operator
 from numbers import Number
 
-from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, Op, CachedOpMeta, TransformOp, make_op_and_type
+from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, CachedOpMeta, Op, TransformOp, declare_op_types, make_op
 
 _builtin_abs = abs
 _builtin_max = max
@@ -79,53 +79,54 @@ class GetitemOp(Op, metaclass=CachedOpMeta):
 
 
 getitem = GetitemOp(0)
-abs, AbsOp = make_op_and_type(_builtin_abs, Op)
-eq, EqOp = make_op_and_type(operator.eq, Op)
-ge, GeOp = make_op_and_type(operator.ge, Op)
-gt, GtOp = make_op_and_type(operator.gt, Op)
-invert, InvertOp = make_op_and_type(operator.invert, Op)
-le, LeOp = make_op_and_type(operator.le, Op)
-lt, LtOp = make_op_and_type(operator.lt, Op)
-ne, NeOp = make_op_and_type(operator.ne, Op)
-neg, NegOp = make_op_and_type(operator.neg, Op)
-pow, PowOp = make_op_and_type(operator.pow, Op)
-sub, SubOp = make_op_and_type(operator.sub, Op)
-truediv, DivOp = make_op_and_type(operator.truediv, Op)
+abs = make_op(_builtin_abs, Op)
+abs = make_op(_builtin_abs, Op)
+eq = make_op(operator.eq, Op)
+ge = make_op(operator.ge, Op)
+gt = make_op(operator.gt, Op)
+invert = make_op(operator.invert, Op)
+le = make_op(operator.le, Op)
+lt = make_op(operator.lt, Op)
+ne = make_op(operator.ne, Op)
+neg = make_op(operator.neg, Op)
+pow = make_op(operator.pow, Op)
+sub = make_op(operator.sub, Op)
+truediv = make_op(operator.truediv, Op)
 
-add, AddOp = make_op_and_type(operator.add, AssociativeOp)
-and_, AndOp = make_op_and_type(operator.and_, AssociativeOp)
-mul, MulOp = make_op_and_type(operator.mul, AssociativeOp)
-matmul, MatmulOp = make_op_and_type(operator.matmul, Op)
-or_, OrOp = make_op_and_type(operator.or_, AssociativeOp)
-xor, XorOp = make_op_and_type(operator.xor, AssociativeOp)
-max, MaxOp = make_op_and_type(max, AssociativeOp)
-min, MinOp = make_op_and_type(min, AssociativeOp)
+add = make_op(operator.add, AssociativeOp)
+and_ = make_op(operator.and_, AssociativeOp)
+mul = make_op(operator.mul, AssociativeOp)
+matmul = make_op(operator.matmul, Op)
+or_ = make_op(operator.or_, AssociativeOp)
+xor = make_op(operator.xor, AssociativeOp)
+max = make_op(max, AssociativeOp)
+min = make_op(min, AssociativeOp)
 
-lgamma, LgammaOp = make_op_and_type(math.lgamma, Op)
-log1p, Log1pOp = make_op_and_type(math.log1p, Op)
-sqrt, SqrtOp = make_op_and_type(math.sqrt, Op)
+lgamma = make_op(math.lgamma, Op)
+log1p = make_op(math.log1p, Op)
+sqrt = make_op(math.sqrt, Op)
 
-reciprocal, ReciprocalOp = make_op_and_type(reciprocal, Op)
-softplus, SoftplusOp = make_op_and_type(softplus, Op)
+reciprocal = make_op(reciprocal, Op)
+softplus = make_op(softplus, Op)
 
-exp, ExpOp = make_op_and_type(math.exp, TransformOp)
-log, LogOp = make_op_and_type(lambda x: math.log(x) if x > 0 else -math.inf,
-                              parent=TransformOp, name="log")
-tanh, TanhOp = make_op_and_type(math.tanh, TransformOp)
-atanh, AtanhOp = make_op_and_type(math.atanh, TransformOp)
-sigmoid, SigmoidOp = make_op_and_type(sigmoid, TransformOp)
+exp = make_op(math.exp, TransformOp)
+log = make_op(lambda x: math.log(x) if x > 0 else -math.inf,
+              parent=TransformOp, name="log")
+tanh = make_op(math.tanh, TransformOp)
+atanh = make_op(math.atanh, TransformOp)
+sigmoid = make_op(sigmoid, TransformOp)
 
 
-@SubOp
+@make_op(parent=type(sub))
 def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
 
 
-@DivOp
+@make_op(parent=type(truediv))
 def safediv(x, y):
     if isinstance(y, Number):
-        return truediv(x, y)
+        return operator.truediv(x, y)
 
 
 @add.register(object)
@@ -190,28 +191,6 @@ PRODUCT_INVERSES[mul] = safediv
 PRODUCT_INVERSES[add] = safesub
 
 __all__ = [
-    'AddOp',
-    'AssociativeOp',
-    'AtanhOp',
-    'DivOp',
-    'ExpOp',
-    'EqOp',
-    'GeOp',
-    'GtOp',
-    'LeOp',
-    'LtOp',
-    'NeOp',
-    'GetitemOp',
-    'LogOp',
-    'MatmulOp',
-    'MulOp',
-    'NegOp',
-    'NullOp',
-    'PowOp',
-    'ReciprocalOp',
-    'SigmoidOp',
-    'SubOp',
-    'TanhOp',
     'abs',
     'add',
     'and_',
@@ -246,6 +225,8 @@ __all__ = [
     'truediv',
     'xor',
 ]
+
+declare_op_types(globals(), __all__, __name__)
 
 __doc__ = "\n".join(".. autodata:: {}\n".format(_name)
                     for _name in __all__ if isinstance(globals()[_name], Op))

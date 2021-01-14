@@ -298,7 +298,7 @@ def test_reduce_all(op):
     x = Variable('x', Bint[2])
     y = Variable('y', Bint[3])
     z = Variable('z', Bint[4])
-    if isinstance(op, ops.LogAddExpOp):
+    if isinstance(op, ops.LogaddexpOp):
         pytest.skip()  # not defined for integers
 
     with interpretation(sequential):
@@ -332,7 +332,7 @@ def test_reduce_subset(op, reduced_vars):
     f = x * y + z
     dtype = f.dtype
     check_funsor(f, {'x': Bint[2], 'y': Bint[3], 'z': Bint[4]}, Array[dtype, ()])
-    if isinstance(op, ops.LogAddExpOp):
+    if isinstance(op, ops.LogaddexpOp):
         pytest.skip()  # not defined for integers
 
     with interpretation(sequential):
