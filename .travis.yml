@@ -35,7 +35,8 @@ jobs:
           script:
               - pip install torch==1.6.0+cpu torchvision==0.7.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
               # Keep track of Pyro dev branch
-              - pip install https://github.com/pyro-ppl/pyro/archive/dev.zip
+              # FIXME replace with dev before merging
+              # - pip install https://github.com/pyro-ppl/pyro/archive/infer-shapes.zip
               - pip install -e .[torch]
               - FUNSOR_BACKEND=torch make test
         - name: jax
