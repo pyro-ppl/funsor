@@ -276,9 +276,9 @@ def infer_shapes(dist_class, domains):
     try:
         return dist_class.infer_shapes(**arg_shapes)
     except (AttributeError, NotImplementedError):
-        pass
-        # warnings.warn(f"Failed to infer shape for {dist_class.__name__}, "
-        #               "falling back to expensive instance construction")
+        warnings.warn(f"Failed to infer shape for {dist_class.__name__}, "
+                      "falling back to expensive instance construction. "
+                      f"Consider implementing {dist_class.__name__}.infer_shapes().")
 
     # Rely on the underlying distribution's logic to infer the event_shape
     # given param domains.
