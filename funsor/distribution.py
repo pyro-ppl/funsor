@@ -496,7 +496,14 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
 
     # attempt to generically infer the independent output dimensions
     domains = {k: v.output for k, v in funsor_dist.params.items()}
+
+    # Version 1.
     indep_shape, _ = infer_shapes(funsor_dist.dist_class, domains)
+
+    # Version 2.
+    shape = infer_shape(funsor_dist.dist_class, domains)
+    event_dim = funsor_dist.dist_class.event_dim  # Does this work?
+    indep_shape = shape[:len(shape) - event_dim]
 
     params = []
     for param_name, funsor_param in zip(funsor_dist._ast_fields, funsor_dist._ast_values[:-1]):
@@ -519,6 +526,10 @@ def distribution_to_data(funsor_dist, name_to_dim=None):
         if get_backend() != "torch":
             raise NotImplementedError("transformed distributions not yet supported under this backend,"
                                       "try set_backend('torch')")
+        # TODO try to use funsor.invert.invert()
+        # inv_value = invert("TODO determine value name",
+        #                    funsor_dist.value,
+        #                    Variable("value", funsor_dist.value.output))
         inv_value = funsor.delta.solve(funsor_dist.value, Variable("value", funsor_dist.value.output))[1]
         transforms = to_data(inv_value, name_to_dim=name_to_dim)
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
