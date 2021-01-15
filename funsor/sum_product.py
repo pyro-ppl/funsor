@@ -367,7 +367,7 @@ def modified_partial_sum_product(sum_op, prod_op, factors,
     return results
 
 
-def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step=dict()):
+def compute_expectations(factors, integrands, eliminate=frozenset(), plate_to_step=dict()):
     """
     Compute expectation of integrand w.r.t. log factors.
 
@@ -385,7 +385,8 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
     """
     assert isinstance(factors, (tuple, list))
     assert all(isinstance(f, Funsor) for f in factors)
-    assert isinstance(integrand, Funsor)
+    assert isinstance(integrands, (tuple, list))
+    assert all(isinstance(f, Funsor) for f in integrands)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plate_to_step, dict)
     # process plate_to_step
@@ -401,6 +402,7 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
 
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
+    prod_vars = eliminate.intersection(plates)
     markov_sum_vars = frozenset()
     for step in plate_to_step.values():
         markov_sum_vars |= frozenset(step.keys()) | frozenset(step.values())
@@ -420,53 +422,74 @@ def compute_expectation(factors, integrand, eliminate=frozenset(), plate_to_step
         for var in sum_vars.intersection(f.inputs):
             var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
 
+    ordinal_to_integrands = defaultdict(list)
+    for integrand in integrands:
+        ordinal = plates.intersection(integrand.inputs)
+        ordinal_to_integrands[ordinal].append(integrand)
+
     ordinal_to_vars = defaultdict(set)
     for var, ordinal in var_to_ordinal.items():
         ordinal_to_vars[ordinal].add(var)
 
-    while ordinal_to_factors:
-        leaf = max(ordinal_to_factors, key=len)
+    results = []
+    while ordinal_to_integrands:
+        leaf = max(ordinal_to_integrands, key=len)
         leaf_factors = ordinal_to_factors.pop(leaf)
+        leaf_integrands = ordinal_to_integrands.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars | markov_prod_vars):
-            if not group_vars.isdisjoint(integrand.inputs):
-                # compute the expectation of integrand wrt group_vars
-                # eliminate non markov vars
-                nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
-                nonmarkov_factors = [f for f in group_factors if not nonmarkov_vars.isdisjoint(f.inputs)]
-                markov_factors = [f for f in group_factors if not nonmarkov_vars.intersection(f.inputs)]
-                if nonmarkov_factors:
-                    # compute expectation of integrand wrt nonmarkov vars
-                    log_measure = reduce(ops.add, nonmarkov_factors)
-                    integrand = funsor.Integrate(log_measure, integrand, nonmarkov_vars)
-                # eliminate markov vars
-                markov_vars = group_vars.intersection(markov_sum_vars)
-                if markov_vars:
-                    markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
-                    assert all(p == markov_prod_var[0] for p in markov_prod_var)
-                    if len(markov_prod_var[0]) != 1:
+        for (group_factors, group_vars) in _partition(leaf_factors + leaf_integrands, leaf_reduce_vars | markov_prod_vars):
+            # compute the expectation of integrand wrt group_vars
+            # eliminate non markov vars
+            group_integrands = frozenset(group_factors) & frozenset(leaf_integrands)
+            group_factors = frozenset(group_factors) - frozenset(leaf_integrands)
+            if group_integrands:
+                integrand = reduce(ops.add, group_integrands)
+            else:
+                continue
+            nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
+            nonmarkov_factors = [f for f in group_factors if not nonmarkov_vars.isdisjoint(f.inputs)]
+            markov_factors = [f for f in group_factors if not nonmarkov_vars.intersection(f.inputs)]
+            if nonmarkov_factors:
+                # compute expectation of integrand wrt nonmarkov vars
+                log_measure = reduce(ops.add, nonmarkov_factors)
+                integrand = funsor.Integrate(log_measure, integrand, nonmarkov_vars)
+            # eliminate markov vars
+            markov_vars = group_vars.intersection(markov_sum_vars)
+            if markov_vars:
+                markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
+                assert all(p == markov_prod_var[0] for p in markov_prod_var)
+                if len(markov_prod_var[0]) != 1:
+                    raise ValueError("intractable!")
+                time = next(iter(markov_prod_var[0]))
+                for v in sum_vars.intersection(f.inputs):
+                    if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
                         raise ValueError("intractable!")
-                    time = next(iter(markov_prod_var[0]))
-                    for v in sum_vars.intersection(f.inputs):
-                        if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
-                            raise ValueError("intractable!")
-                    f = reduce(ops.add, markov_factors)
-                    time_var = Variable(time, f.inputs[time])
-                    group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
-                    # calculate forward (alpha) terms
-                    # FIXME: implement lazy funsor.adjoint._scatter function
-                    alphas = forward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
-                    # alphas = naive_forward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
-                    alphas = _left_pad_right_crop(alphas, time, group_step)
-                    # compute expectation of integrand wrt markov vars
-                    history_var = Variable("history", Bint[2])
-                    integrand = reduce(ops.mul, [integrand, f.exp()])
-                    integrand = Stack("history", (alphas.exp(), integrand))
-                    integrand = MarkovProduct(ops.add, ops.mul, integrand, history_var, group_step)
-                    integrand = integrand.reduce(ops.add, frozenset(group_step.values()))
-                    integrand = integrand(**prev_to_init)
+                f = reduce(ops.add, markov_factors)
+                time_var = Variable(time, f.inputs[time])
+                group_step = {k: v for (k, v) in plate_to_step[time].items() if v in markov_vars}
+                # calculate forward (alpha) terms
+                # FIXME: implement lazy funsor.adjoint._scatter function
+                # alphas = naive_forward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
+                alphas = forward_terms(ops.logaddexp, ops.add, f, time_var, group_step)
+                alphas = _left_pad_right_crop(alphas, time, group_step)
+                alphas = alphas(**prev_to_init, **{v: k for k, v in group_step.items()})
+                # compute expectation of integrand wrt markov vars
+                log_measure = reduce(ops.add, [alphas, f])
+                integrand = funsor.Integrate(log_measure, integrand, markov_vars)
 
-    return integrand
+            remaining_sum_vars = sum_vars.intersection(integrand.inputs)
+
+            if not remaining_sum_vars:
+                results.append(integrand.reduce(ops.add, leaf & prod_vars))
+            else:
+                new_plates = frozenset().union(
+                    *(var_to_ordinal[v] for v in remaining_sum_vars))
+                if new_plates == leaf:
+                    raise ValueError("intractable!")
+                integrand = integrand.reduce(ops.add, leaf - new_plates)
+                ordinal_to_integrands[new_plates].append(integrand)
+
+    return results
 
 
 def forward_terms(sum_op, prod_op, trans, time, step):
