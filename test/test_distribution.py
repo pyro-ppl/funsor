@@ -1215,3 +1215,17 @@ def test_categorical_event_dim_conversion(batch_shape, event_shape):
         funsor.to_data(data, name_to_dim=name_to_dim))
     assert actual_log_prob.shape == expected_log_prob.shape
     assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize("shape", [(10,), (4, 3)], ids=str)
+def test_haar_transform(shape):
+    d = backend_dist.TransformedDistribution(
+        backend_dist.Normal(0, 1).expand(shape),
+        backend_dist.transforms.HaarTransform(dim=-len(shape)))
+    data = ops.randn(shape)
+    expected_log_prob = d.log_prob(data)
+
+    f = to_funsor(d, output=Real)
+    log_prob = f(data)
+    actual_log_prob = funsor.to_data(log_prob)
+    assert_close(actual_log_prob, expected_log_prob)

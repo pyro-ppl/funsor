@@ -114,6 +114,47 @@ class TransformOp(Op):
         raise NotImplementedError
 
 
+class LogAbsDetJacobianOp(Op):
+    pass
+
+
+# TODO memoize or use weakrefs
+def make_transform_op(backend_transform):
+    name = backend_transform.__name__
+
+    # Check that the op is not batched.
+    if backend_transform.batch_shape:
+        raise ValueError("Cannot create an op from a transform "
+                         f"{name} with nontrivial batch shape "
+                         f"{backend_transform.batch_shape}.")
+
+    # Create four ops.
+    op = make_op(backend_transform, TransformOp, name=name)
+    op_ldaj = make_op(backend_transform.log_abs_det_jacobian,
+                      LogAbsDetJacobianOp,
+                      name=name + "_log_abs_det_jacobian")
+    inv = make_op(backend_transform.inv, TransformOp,
+                  name=name + "_inv")
+    inv_ldaj = make_op(backend_transform.log_abs_det_jacobian,
+                       LogAbsDetJacobianOp,
+                       name=name + "_inv_log_abs_det_jacobian")
+
+    # Register relationships.
+    op.set_inv(inv)
+    op.set_log_det_abs_jacobian(op_ldaj)
+    inv.set_inv(op)
+    inv.set_log_det_abs_jacobian(inv_ldaj)
+
+    # Register funsor conversions.
+    from funsor.terms import Binary, Funsor, Unary
+    op.register(Funsor)(functools.partial(Unary, op))
+    inv.register(Funsor)(functools.partial(Unary, inv))
+    op_ladj.register(Funsor, Funsor)(functools.partial(Binary, op_ladj))
+    inv_ladj.register(Funsor, Funsor)(functools.partial(Binary, ladj_ladj))
+
+    return op
+
+
 # Op registration tables.
 DISTRIBUTIVE_OPS = set()  # (add, mul) pairs
 UNITS = {}                # op -> value

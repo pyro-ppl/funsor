@@ -269,7 +269,9 @@ def transform_to_data(expr, name_to_dim=None):
 
 @to_funsor.register(torch.distributions.Transform)
 def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    raise NotImplementedError("{} is not a currently supported transform".format(tfm))
+    op = make_transform_op(tfm)
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return op(Variable(name, output))
 
 
 @to_funsor.register(torch.distributions.transforms.ExpTransform)
