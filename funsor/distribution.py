@@ -366,6 +366,8 @@ def backenddist_to_funsor(funsor_dist_class, backend_dist, output=None, dim_to_n
 
 
 def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
+    if dim_to_name is None:
+        dim_to_name = {}
     dim_to_name = OrderedDict((dim - backend_dist.reinterpreted_batch_ndims, name)
                               for dim, name in dim_to_name.items())
     dim_to_name.update(OrderedDict((i, "_pyro_event_dim_{}".format(i))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import warnings
 
 from multipledispatch import Dispatcher
 
@@ -17,6 +18,12 @@ class CachedOpMeta(type):
             instance = super(CachedOpMeta, cls).__call__(*args, **kwargs)
             cls._cache[args] = instance
             return instance
+        except TypeError as e:
+            if str(e).startswith("unhashable type"):
+                warnings.warn(f"Cannot memoize Op ({e})")
+                instance = super(CachedOpMeta, cls).__call__(*args, **kwargs)
+                return instance
+            raise e from None
 
 
 class Op(Dispatcher):
@@ -54,6 +61,9 @@ class Op(Dispatcher):
 
 
 def make_op(fn=None, parent=None, *, name=None, module_name="funsor.ops"):
+    """
+    Factory to create a new :class:`Op` subclass and a new instance of that class.
+    """
     # Support use as decorator.
     if fn is None:
         return lambda fn: make_op(fn, parent, name=name, module_name=module_name)
@@ -66,10 +76,11 @@ def make_op(fn=None, parent=None, *, name=None, module_name="funsor.ops"):
         name = fn if isinstance(fn, str) else fn.__name__
     assert isinstance(name, str)
 
-    classname = name[0].upper() + name[1:].rstrip("_") + "Op"  # e.g. add -> AddOp
-    new_type = CachedOpMeta(classname, (parent,), {})
-    new_type.__module__ = module_name
-    return new_type(fn, name=name)
+    classname = name.capitalize().rstrip("_") + "Op"  # e.g. add -> AddOp
+    cls = CachedOpMeta(classname, (parent,), {})
+    cls.__module__ = module_name
+    op = cls(fn, name=name)
+    return op
 
 
 def declare_op_types(locals_, all_, name_):
@@ -120,15 +131,25 @@ class LogAbsDetJacobianOp(Op):
     pass
 
 
-# TODO memoize or use weakrefs
+# TODO Memoize or use weakrefs. This currently creates reference cycles,
+# delaying gc of backend_transform which may be a large expensive per-iteration
+# data structure such as a normalizing flow defined by a hyper net.
 def make_transform_op(backend_transform):
+    """
+    Factory to create a collection four new ops corresponding to a bijective
+    transform.
+
+    :returns: An ``op`` from which can be accessed ``op.inv``,
+        ``op.log_abs_det_jacobian``, and ``op.inv.log_abs_det_jacobian``.
+    :rtype: TransformOp
+    """
     name = type(backend_transform).__name__
 
-    # Check that the op is not batched.
-    if backend_transform.batch_shape:
-        raise ValueError("Cannot create an op from a transform "
-                         f"{name} with nontrivial batch shape "
-                         f"{backend_transform.batch_shape}.")
+    # TODO Check that the op is not batched. Something like:
+    # if backend_transform.batch_shape:
+    #     raise ValueError("Cannot create an op from a transform "
+    #                      f"{name} with nontrivial batch shape "
+    #                      f"{backend_transform.batch_shape}.")
 
     # Create four ops.
     op = make_op(backend_transform, TransformOp, name=name)
@@ -143,9 +164,9 @@ def make_transform_op(backend_transform):
 
     # Register relationships.
     op.set_inv(inv)
-    op.set_log_det_abs_jacobian(op_ldaj)
+    op.set_log_abs_det_jacobian(op_ldaj)
     inv.set_inv(op)
-    inv.set_log_det_abs_jacobian(inv_ldaj)
+    inv.set_log_abs_det_jacobian(inv_ldaj)
 
     # Register funsor conversions.
     from funsor.terms import Binary, Funsor, Unary
