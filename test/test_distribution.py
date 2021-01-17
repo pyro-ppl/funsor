@@ -1220,12 +1220,14 @@ def test_categorical_event_dim_conversion(batch_shape, event_shape):
 @pytest.mark.parametrize("shape", [(10,), (4, 3)], ids=str)
 def test_haar_transform(shape):
     d = backend_dist.TransformedDistribution(
-        backend_dist.Normal(0, 1).expand(shape),
+        # backend_dist.Normal(0, 1).expand(shape),  # FIXME
+        backend_dist.Normal(0, 1).expand(shape).to_event(),
         backend_dist.transforms.HaarTransform(dim=-len(shape)))
-    data = ops.randn(shape)
+    data = randn(shape)
     expected_log_prob = d.log_prob(data)
 
-    f = to_funsor(d, output=Real)
+    # f = to_funsor(d, output=Real)  # FIXME
+    f = to_funsor(d, output=Real, dim_to_name={})
     log_prob = f(data)
     actual_log_prob = funsor.to_data(log_prob)
     assert_close(actual_log_prob, expected_log_prob)

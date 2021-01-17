@@ -1,6 +1,8 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import functools
+
 from multipledispatch import Dispatcher
 
 
@@ -120,7 +122,7 @@ class LogAbsDetJacobianOp(Op):
 
 # TODO memoize or use weakrefs
 def make_transform_op(backend_transform):
-    name = backend_transform.__name__
+    name = type(backend_transform).__name__
 
     # Check that the op is not batched.
     if backend_transform.batch_shape:
@@ -149,8 +151,8 @@ def make_transform_op(backend_transform):
     from funsor.terms import Binary, Funsor, Unary
     op.register(Funsor)(functools.partial(Unary, op))
     inv.register(Funsor)(functools.partial(Unary, inv))
-    op_ladj.register(Funsor, Funsor)(functools.partial(Binary, op_ladj))
-    inv_ladj.register(Funsor, Funsor)(functools.partial(Binary, ladj_ladj))
+    op_ldaj.register(Funsor, Funsor)(functools.partial(Binary, op_ldaj))
+    inv_ldaj.register(Funsor, Funsor)(functools.partial(Binary, inv_ldaj))
 
     return op
 
@@ -163,10 +165,12 @@ PRODUCT_INVERSES = {}     # op -> inverse op
 __all__ = [
     'CachedOpMeta',
     'DISTRIBUTIVE_OPS',
+    'LogAbsDetJacobianOp',
     'Op',
     'PRODUCT_INVERSES',
     'TransformOp',
     'UNITS',
     'declare_op_types',
     'make_op',
+    'make_transform_op',
 ]

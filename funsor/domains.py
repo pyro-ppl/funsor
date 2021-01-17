@@ -282,7 +282,7 @@ def _transform_find_domain(op, domain):
     return Array[domain.dtype, shape]
 
 
-@find_domain.register(ops.LogAbsDetJacobian)
+@find_domain.register(ops.LogAbsDetJacobianOp)
 def _transform_log_abs_det_jacobian(op, domain, codomain):
     # TODO do we need to handle batch shape here?
     return Real

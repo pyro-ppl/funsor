@@ -7,13 +7,14 @@ from typing import Tuple, Union
 
 import pyro.distributions as dist
 import pyro.distributions.testing.fakes as fakes
-from pyro.distributions.torch_distribution import ExpandedDistribution, MaskedDistribution
 import torch
+from pyro.distributions.torch_distribution import ExpandedDistribution, MaskedDistribution
 
+import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.distribution import (  # noqa: F401
-    Bernoulli,
     FUNSOR_DIST_NAMES,
+    Bernoulli,
     LogNormal,
     backenddist_to_funsor,
     eager_beta,
@@ -24,10 +25,10 @@ from funsor.distribution import (  # noqa: F401
     eager_delta_funsor_funsor,
     eager_delta_funsor_variable,
     eager_delta_tensor,
+    eager_delta_variable_variable,
     eager_dirichlet_categorical,
     eager_dirichlet_multinomial,
     eager_dirichlet_posterior,
-    eager_delta_variable_variable,
     eager_gamma_gamma,
     eager_gamma_poisson,
     eager_multinomial,
@@ -38,14 +39,13 @@ from funsor.distribution import (  # noqa: F401
     indepdist_to_funsor,
     make_dist,
     maskeddist_to_funsor,
-    transformeddist_to_funsor,
+    transformeddist_to_funsor
 )
 from funsor.domains import Real, Reals
-import funsor.ops as ops
+from funsor.ops.op import make_transform_op
 from funsor.tensor import Tensor
 from funsor.terms import Binary, Funsor, Reduce, Unary, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
-
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES)
 
