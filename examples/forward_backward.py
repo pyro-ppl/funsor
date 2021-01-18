@@ -105,6 +105,13 @@ def backward_algorithm(
 
 def main(args):
     """
+    Compute smoothed values (gamma[t] = p(x[t]|y[1:T])) for an HMM:
+
+    x[0] -> ... -> x[t-1] -> x[t] -> ... -> x[T]
+     |              |         |             |
+     v              v         v             v
+    y[0]           y[t-1]    y[t]           y[T]
+
     **References:**
 
     [1] Jason Eisner (2016)
@@ -133,7 +140,7 @@ def main(args):
         )
     )
 
-    # Compute smoothed values by using the forward-backward algorith
+    # Compute smoothed values by using the forward-backward algorithm
     # gamma[t] = p(x[t]|y[1:T])
     # gamma[t] = alpha[t] * beta[t]
     Z_forward, alphas = forward_algorithm(
