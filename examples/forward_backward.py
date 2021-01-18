@@ -24,7 +24,7 @@ def forward_algorithm(
 ) -> Tuple[Funsor, List[Funsor]]:
     """
     Calculate forward probabilities defined as:
-    alpha[t] = p(y[1:t], x[t])
+    alpha[t] = p(y[0:t], x[t])
 
     Transition and emission probabilities are given by init and trans:
     init = p(y[0], x[0])
@@ -105,7 +105,7 @@ def backward_algorithm(
 
 def main(args):
     """
-    Compute smoothed values (gamma[t] = p(x[t]|y[1:T])) for an HMM:
+    Compute smoothed values (gamma[t] = p(x[t]|y[0:T])) for an HMM:
 
     x[0] -> ... -> x[t-1] -> x[t] -> ... -> x[T]
      |              |         |             |
@@ -141,7 +141,7 @@ def main(args):
     )
 
     # Compute smoothed values by using the forward-backward algorithm
-    # gamma[t] = p(x[t]|y[1:T])
+    # gamma[t] = p(x[t]|y[0:T])
     # gamma[t] = alpha[t] * beta[t]
     Z_forward, alphas = forward_algorithm(
         sum_op, prod_op, init, trans, time, {"x_prev": "x_curr"}
