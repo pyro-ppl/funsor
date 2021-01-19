@@ -15,7 +15,7 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.domains import Array, Bint, Real, Reals
+from funsor.domains import Array, Bint, Product, Real, Reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
@@ -29,6 +29,7 @@ from funsor.terms import (
     Slice,
     Stack,
     Subs,
+    Tuple,
     Variable,
     eager,
     eager_or_die,
@@ -611,3 +612,24 @@ def test_stack_lambda(dtype):
 
     assert z[0] is x1
     assert z[1] is x2
+
+
+def test_funsor_tuple():
+    x = Number(1, 3)
+    y = Number(2.5, 'real')
+    z = random_tensor(OrderedDict([('i', Bint[2])]))
+
+    xyz = Tuple((x, y, z))
+
+    check_funsor(xyz, {'i': Bint[2]}, Product[x.output, y.output, z.output])
+
+    assert eval(repr(xyz.output)) is xyz.output
+
+    assert xyz[0] is x
+    assert xyz[1] is y
+    assert xyz[2] is z
+
+    x1, y1, z1 = xyz
+    assert x1 is x
+    assert y1 is y
+    assert z1 is z
