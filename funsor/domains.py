@@ -185,21 +185,25 @@ class ProductDomain(Domain):
         except KeyError:
             assert isinstance(arg_domains, tuple)
             assert all(isinstance(arg_domain, Domain) for arg_domain in arg_domains)
-            subcls = type("Product_", (Product,), {"arg_domains": arg_domains})
+            subcls = type("Product_", (Product,), {"__args__": arg_domains})
             ProductDomain._type_cache[arg_domains] = subcls
             return subcls
 
     def __repr__(cls):
-        return "Product[{}]".format(", ".join(map(repr, cls.arg_domains)))
+        return "Product[{}]".format(", ".join(map(repr, cls.__args__)))
+
+    @property
+    def __origin__(cls):
+        return Product
 
     @property
     def shape(cls):
-        return (len(cls.arg_domains),)
+        return (len(cls.__args__),)
 
 
 class Product(tuple, metaclass=ProductDomain):
     """like typing.Tuple, but works with issubclass"""
-    arg_domains = NotImplemented
+    __args__ = NotImplemented
 
 
 @quote.register(BintType)

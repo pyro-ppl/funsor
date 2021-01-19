@@ -17,7 +17,7 @@ from multipledispatch.variadic import Variadic
 import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import Array, ArrayType, Bint, Real, Reals, find_domain
+from funsor.domains import Array, ArrayType, Bint, Product, Real, Reals, find_domain
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
@@ -819,7 +819,7 @@ def _select(fn, i, *args):
 def _nested_function(fn, args, output):
     if isinstance(output, ArrayType):
         return Function(fn, output, args)
-    elif output.__origin__ in (tuple, typing.Tuple):
+    elif output.__origin__ in (tuple, Product, typing.Tuple):
         result = []
         for i, output_i in enumerate(output.__args__):
             fn_i = functools.partial(_select, fn, i)
@@ -865,7 +865,7 @@ def _function(inputs, output, fn):
                      for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
     if not isinstance(output, ArrayType):
-        assert output.__origin__ in (tuple, typing.Tuple)
+        assert output.__origin__ in (tuple, Product, typing.Tuple)
         # Memoize multiple-output functions so that invocations can be shared among
         # all outputs. This is not foolproof, but does work in simple situations.
         fn = _Memoized(fn)
@@ -923,14 +923,14 @@ def function(*signature):
             output = inputs.pop("return")
             assert all(isinstance(d, ArrayType) for d in inputs.values())
             assert (isinstance(output, (ArrayType, tuple)) or
-                    output.__origin__ in (tuple, typing.Tuple))
+                    output.__origin__ in (tuple, Product, typing.Tuple))
             return _function(inputs, output, fn)
     # Usage @function(input1, ..., inputN, output)
     inputs, output = signature[:-1], signature[-1]
     output = _tuple_to_Tuple(output)
     assert all(isinstance(d, ArrayType) for d in inputs)
     assert (isinstance(output, (ArrayType, tuple)) or
-            output.__origin__ in (tuple, typing.Tuple))
+            output.__origin__ in (tuple, Product, typing.Tuple))
     return functools.partial(_function, inputs, output)
 
 
