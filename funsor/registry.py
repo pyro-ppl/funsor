@@ -1,10 +1,15 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import functools
+import typing
 from collections import defaultdict
 
+import pytypes
 from multipledispatch import Dispatcher
 from multipledispatch.conflict import supercedes
+
+from funsor.util import _type_to_typing
 
 
 class PartialDispatcher(Dispatcher):
@@ -16,6 +21,7 @@ class PartialDispatcher(Dispatcher):
         Likde :meth:`__call__` but avoids calling ``func()``.
         """
         types = tuple(map(type, args))
+        types = tuple(map(_type_to_typing, types))
         try:
             func = self._cache[types]
         except KeyError:
@@ -47,10 +53,11 @@ class KeyedRegistry(object):
         self.registry = defaultdict(lambda: PartialDispatcher('f'))
 
     def register(self, key, *types):
+        types = tuple(map(_type_to_typing, types))
         key = getattr(key, "__origin__", key)
         register = self.registry[key].register
         if self.default:
-            objects = (object,) * len(types)
+            objects = (typing.Any,) * len(types)
             try:
                 if objects != types and supercedes(types, objects):
                     register(*objects)(self.default)

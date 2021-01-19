@@ -5,8 +5,10 @@ import functools
 import inspect
 import re
 import typing
+import typing_extensions
 import weakref
 
+import pytypes
 import numpy as np
 from multipledispatch.variadic import isvariadic
 
@@ -236,6 +238,26 @@ def methodof(cls, name=None):
     return decorator
 
 
+def _type_to_typing(tp):
+    if tp is object:
+        tp = typing.Any
+    if isinstance(tp, tuple):
+        tp = typing.Union[tuple(map(_type_to_typing, tp))]
+    return tp
+
+
+def get_origin(tp):
+    if isinstance(tp, GenericTypeMeta):
+        return getattr(tp, "__origin__", tp)
+    return typing_extensions.get_origin(tp)
+
+
+def get_args(tp):
+    if isinstance(tp, GenericTypeMeta):
+        return getattr(tp, "__args__", tp)
+    return typing_extensions.get_args(tp)
+
+
 class GenericTypeMeta(type):
     """
     Metaclass to support subtyping with parameters for pattern matching, e.g. Number[int, int].
@@ -254,10 +276,8 @@ class GenericTypeMeta(type):
         if not isinstance(arg_types, tuple):
             arg_types = (arg_types,)
         assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
-        # switch tuple to typing.Tuple
-        arg_types = tuple(typing.Tuple if arg_type is tuple else arg_type for arg_type in arg_types)
         if arg_types not in cls._type_cache:
-            assert not cls.__args__, "cannot subscript a subscripted type {}".format(cls)
+            assert not get_args(cls), "cannot subscript a subscripted type {}".format(cls)
             new_dct = cls.__dict__.copy()
             new_dct.update({"__args__": arg_types})
             # type(cls) to handle GenericTypeMeta subclasses
@@ -267,58 +287,24 @@ class GenericTypeMeta(type):
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
         if cls is subcls:
             return True
-        if not isinstance(subcls, GenericTypeMeta):
-            return super(GenericTypeMeta, getattr(cls, "__origin__", cls)).__subclasscheck__(subcls)
 
-        cls_origin = getattr(cls, "__origin__", cls)
-        subcls_origin = getattr(subcls, "__origin__", subcls)
-        if not super(GenericTypeMeta, cls_origin).__subclasscheck__(subcls_origin):
+        if not isinstance(subcls, GenericTypeMeta):
+            return super(GenericTypeMeta, get_origin(cls)).__subclasscheck__(subcls)
+
+        if not super(GenericTypeMeta, get_origin(cls)).__subclasscheck__(get_origin(subcls)):
             return False
 
-        if cls.__args__:
-            if not subcls.__args__:
-                return False
-            if len(cls.__args__) != len(subcls.__args__):
-                return False
-            for subcls_param, param in zip(subcls.__args__, cls.__args__):
-                if not _issubclass_tuple(subcls_param, param):
-                    return False
-        return True
+        if len(get_args(cls)) != len(get_args(subcls)):
+            return len(get_args(cls)) == 0
+
+        return all(pytypes.is_subtype(_type_to_typing(ps), _type_to_typing(pc))
+                   for ps, pc in zip(get_args(subcls), get_args(cls)))
 
     def __repr__(cls):
-        return cls.__name__ + (
-            "" if not cls.__args__ else
-            "[{}]".format(", ".join(repr(t) for t in cls.__args__)))
+        return get_origin(cls).__name__ + (
+            "" if not get_args(cls) else
+            "[{}]".format(", ".join(repr(t) for t in get_args(cls))))
 
     @lazy_property
     def classname(cls):
         return repr(cls)
-
-
-def _issubclass_tuple(subcls, cls):
-    """
-    utility for structural subtype checking with tuple subexpressions
-    """
-    # so much boilerplate...
-    cls_is_union = hasattr(cls, "__origin__") and (cls.__origin__ or cls) is typing.Union
-    if isinstance(cls, tuple) or cls_is_union:
-        return any(_issubclass_tuple(subcls, option)
-                   for option in (getattr(cls, "__args__", []) if cls_is_union else cls))
-
-    subcls_is_union = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) is typing.Union
-    if isinstance(subcls, tuple) or subcls_is_union:
-        return any(_issubclass_tuple(option, cls)
-                   for option in (getattr(subcls, "__args__", []) if subcls_is_union else subcls))
-
-    subcls_is_tuple = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) in (tuple, typing.Tuple)
-    cls_is_tuple = hasattr(cls, "__origin__") and (cls.__origin__ or cls) in (tuple, typing.Tuple)
-    if subcls_is_tuple != cls_is_tuple:
-        return False
-    if not cls_is_tuple:
-        return issubclass(subcls, cls)
-    if not cls.__args__:
-        return True
-    if not subcls.__args__ or len(subcls.__args__) != len(cls.__args__):
-        return False
-
-    return all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__))

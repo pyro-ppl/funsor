@@ -20,7 +20,7 @@ import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import GenericTypeMeta, getargspec, get_backend, lazy_property, pretty, quote
+from funsor.util import GenericTypeMeta, getargspec, get_backend, lazy_property, pretty, quote, _type_to_typing
 
 
 def substitute(expr, subs):
@@ -215,6 +215,7 @@ class FunsorMeta(GenericTypeMeta):
             arg_types = (arg_types,)
         assert len(arg_types) == len(cls._ast_fields), \
             "Must provide exactly one type per subexpression"
+        arg_types = tuple(map(_type_to_typing, arg_types))
         return super().__getitem__(arg_types)
 
     def __call__(cls, *args, **kwargs):
