@@ -47,9 +47,6 @@ def _log(x):
 
 
 def _logaddexp(x, y):
-    from funsor.terms import Funsor
-    assert not isinstance(x, Funsor)
-    assert not isinstance(y, Funsor)
     shift = max(detach(x), detach(y))
     return log(exp(x - shift) + exp(y - shift)) + shift
 
