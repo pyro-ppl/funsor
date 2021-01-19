@@ -267,7 +267,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         elif support_name == "Real":
             if name == "logits" and (
                     "probs" in cls.dist_class.arg_constraints
-                    and type(cls.dist_class.arg_constraints["probs"]).__name__ == "Simplex"):
+                    and type(cls.dist_class.arg_constraints["probs"]).__name__.lstrip("_") == "Simplex"):
                 output = Reals[raw_shape[-1 - event_dim:]]
             else:
                 output = Reals[raw_shape[len(raw_shape) - event_dim:]]
