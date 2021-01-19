@@ -249,23 +249,30 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         # `infer_param_domain` methods.
         # Because NumPyro and Pyro have the same pattern, we use name check for simplicity.
         support_name = type(support).__name__
+
+        event_dim = 0
+        while support_name == "_IndependentConstraint":
+            event_dim += support.event_dim
+            support = support.base_constraint
+            support_name = type(support).__name__
+
         if support_name == "_Simplex":
-            output = Reals[raw_shape[-1]]
+            output = Reals[raw_shape[-1 - event_dim:]]
         elif support_name == "_RealVector":
-            output = Reals[raw_shape[-1]]
+            output = Reals[raw_shape[-1 - event_dim:]]
         elif support_name in ["_LowerCholesky", "_PositiveDefinite"]:
-            output = Reals[raw_shape[-2:]]
+            output = Reals[raw_shape[-2 - event_dim:]]
         # resolve the issue: logits's constraints are real (instead of real_vector)
         # for discrete multivariate distributions in Pyro
         elif support_name == "_Real":
             if name == "logits" and (
                     "probs" in cls.dist_class.arg_constraints
                     and type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex"):
-                output = Reals[raw_shape[-1]]
+                output = Reals[raw_shape[-1 - event_dim:]]
             else:
-                output = Real
+                output = Reals[raw_shape[len(raw_shape) - event_dim:]]
         elif support_name in ("_Interval", "_GreaterThan", "_LessThan"):
-            output = Real
+            output = Reals[raw_shape[len(raw_shape) - event_dim:]]
         else:
             output = None
         return output
