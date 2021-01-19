@@ -5,11 +5,19 @@ import math
 import operator
 from numbers import Number
 
-from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, CachedOpMeta, Op, TransformOp, declare_op_types, make_op
+from .op import (
+    DISTRIBUTIVE_OPS,
+    PRODUCT_INVERSES,
+    UNITS,
+    CachedOpMeta,
+    Op,
+    TransformOp,
+    UnaryOp,
+    declare_op_types,
+    make_op
+)
 
 _builtin_abs = abs
-_builtin_max = max
-_builtin_min = min
 _builtin_pow = pow
 _builtin_sum = sum
 
@@ -20,22 +28,6 @@ def sigmoid(x):
 
 def softplus(x):
     return log(1. + exp(x))
-
-
-def min(x, y):
-    if hasattr(x, '__min__'):
-        return x.__min__(y)
-    if hasattr(y, '__min__'):
-        return y.__min__(x)
-    return _builtin_min(x, y)
-
-
-def max(x, y):
-    if hasattr(x, '__max__'):
-        return x.__max__(y)
-    if hasattr(y, '__max__'):
-        return y.__max__(x)
-    return _builtin_max(x, y)
 
 
 def reciprocal(x):
@@ -79,12 +71,11 @@ class GetitemOp(Op, metaclass=CachedOpMeta):
 
 
 getitem = GetitemOp(0)
-abs = make_op(_builtin_abs, Op)
-abs = make_op(_builtin_abs, Op)
+abs = make_op(_builtin_abs, UnaryOp)
 eq = make_op(operator.eq, Op)
 ge = make_op(operator.ge, Op)
 gt = make_op(operator.gt, Op)
-invert = make_op(operator.invert, Op)
+invert = make_op(operator.invert, UnaryOp)
 le = make_op(operator.le, Op)
 lt = make_op(operator.lt, Op)
 ne = make_op(operator.ne, Op)
@@ -102,12 +93,12 @@ xor = make_op(operator.xor, AssociativeOp)
 max = make_op(max, AssociativeOp)
 min = make_op(min, AssociativeOp)
 
-lgamma = make_op(math.lgamma, Op)
-log1p = make_op(math.log1p, Op)
-sqrt = make_op(math.sqrt, Op)
+lgamma = make_op(math.lgamma, UnaryOp)
+log1p = make_op(math.log1p, UnaryOp)
+sqrt = make_op(math.sqrt, UnaryOp)
 
-reciprocal = make_op(reciprocal, Op)
-softplus = make_op(softplus, Op)
+reciprocal = make_op(reciprocal, UnaryOp)
+softplus = make_op(softplus, UnaryOp)
 
 exp = make_op(math.exp, TransformOp)
 log = make_op(lambda x: math.log(x) if x > 0 else -math.inf,

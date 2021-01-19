@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
+import numbers
 
 import numpy as np
 
@@ -46,10 +47,9 @@ def _log(x):
 
 
 def _logaddexp(x, y):
-    if hasattr(x, "__logaddexp__"):
-        return x.__logaddexp__(y)
-    if hasattr(y, "__rlogaddexp__"):
-        return y.__logaddexp__(x)
+    from funsor.terms import Funsor
+    assert not isinstance(x, Funsor)
+    assert not isinstance(y, Funsor)
     shift = max(detach(x), detach(y))
     return log(exp(x - shift) + exp(y - shift)) + shift
 
@@ -86,7 +86,10 @@ def _cat(dim, *x):
     return np.concatenate(x, axis=dim)
 
 
-@clamp.register(array, object, object)
+@clamp.register(array, numbers.Number, numbers.Number)
+@clamp.register(array, numbers.Number, type(None))
+@clamp.register(array, type(None), numbers.Number)
+@clamp.register(array, type(None), type(None))
 def _clamp(x, min, max):
     return np.clip(x, a_min=min, a_max=max)
 
@@ -220,7 +223,7 @@ def _reciprocal(x):
     return result
 
 
-@safediv.register(object, array)
+@safediv.register(numbers.Number, array)
 def _safediv(x, y):
     try:
         finfo = np.finfo(y.dtype)
@@ -229,7 +232,7 @@ def _safediv(x, y):
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
-@safesub.register(object, array)
+@safesub.register(numbers.Number, array)
 def _safesub(x, y):
     try:
         finfo = np.finfo(y.dtype)
