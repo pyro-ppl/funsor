@@ -254,7 +254,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         while support_name == "IndependentConstraint":
             event_dim += support.reinterpreted_batch_ndims
             support = support.base_constraint
-            support_name = type(support).__name__
+            support_name = type(support).__name__.lstrip("_")
 
         if support_name == "Simplex":
             output = Reals[raw_shape[-1 - event_dim:]]
