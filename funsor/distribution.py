@@ -248,11 +248,11 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         # define backend-specific distributions and overide these `infer_value_domain`,
         # `infer_param_domain` methods.
         # Because NumPyro and Pyro have the same pattern, we use name check for simplicity.
-        support_name = type(support).__name__
+        support_name = type(support).__name__.lstrip("_")
 
         event_dim = 0
-        while support_name == "_IndependentConstraint":
-            event_dim += support.event_dim
+        while support_name == "IndependentConstraint":
+            event_dim += support.reinterpreted_batch_ndims
             support = support.base_constraint
             support_name = type(support).__name__
 
