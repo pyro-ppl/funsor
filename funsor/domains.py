@@ -6,20 +6,19 @@ import functools
 import operator
 import warnings
 from functools import reduce
-from weakref import WeakValueDictionary
 
 import funsor.ops as ops
-from funsor.util import broadcast_shape, get_backend, get_tracing_state, quote
+from funsor.util import GenericTypeMeta, broadcast_shape, get_backend, get_tracing_state, quote
 
-Domain = type
+
+class Domain(GenericTypeMeta):
+    pass
 
 
 class ArrayType(Domain):
     """
     Base class of array-like domains.
     """
-    _type_cache = WeakValueDictionary()
-
     def __getitem__(cls, dtype_shape):
         dtype, shape = dtype_shape
         assert dtype is not None
@@ -32,23 +31,7 @@ class ArrayType(Domain):
             if shape is not None:
                 shape = tuple(map(int, shape))
 
-        assert cls.dtype in (None, dtype)
-        assert cls.shape in (None, shape)
-        key = dtype, shape
-        result = ArrayType._type_cache.get(key, None)
-        if result is None:
-            if dtype == "real":
-                assert all(isinstance(size, int) and size >= 0 for size in shape)
-                name = "Reals[{}]".format(",".join(map(str, shape))) if shape else "Real"
-                result = RealsType(name, (), {"shape": shape})
-            elif isinstance(dtype, int):
-                assert dtype >= 0
-                name = "Bint[{}, {}]".format(dtype, ",".join(map(str, shape)))
-                result = BintType(name, (), {"dtype": dtype, "shape": shape})
-            else:
-                raise ValueError("invalid dtype: {}".format(dtype))
-            ArrayType._type_cache[key] = result
-        return result
+        return super().__getitem__((dtype, shape))
 
     def __subclasscheck__(cls, subcls):
         if not isinstance(subcls, ArrayType):
@@ -59,33 +42,17 @@ class ArrayType(Domain):
             return False
         return True
 
-    def __repr__(cls):
-        return cls.__name__
+    @property
+    def dtype(cls):
+        return cls.__args__[0]
 
-    def __str__(cls):
-        return cls.__name__
+    @property
+    def shape(cls):
+        return cls.__args__[1]
 
     @property
     def num_elements(cls):
         return reduce(operator.mul, cls.shape, 1)
-
-
-class BintType(ArrayType):
-    def __getitem__(cls, size_shape):
-        if isinstance(size_shape, tuple):
-            size, shape = size_shape[0], size_shape[1:]
-        else:
-            size, shape = size_shape, ()
-        return super().__getitem__((size, shape))
-
-    def __subclasscheck__(cls, subcls):
-        if not isinstance(subcls, BintType):
-            return False
-        if cls.dtype not in (None, subcls.dtype):
-            return False
-        if cls.shape not in (None, subcls.shape):
-            return False
-        return True
 
     @property
     def size(cls):
@@ -96,27 +63,25 @@ class BintType(ArrayType):
         return (Number(i, cls.size) for i in range(cls.size))
 
 
-class RealsType(ArrayType):
-    dtype = "real"
+class BintType(ArrayType):
+    def __getitem__(cls, size_shape):
+        if isinstance(size_shape, tuple):
+            size, shape = size_shape[0], size_shape[1:]
+        else:
+            size, shape = size_shape, ()
+        return Array.__getitem__((size, shape))
 
+
+class RealsType(ArrayType):
     def __getitem__(cls, shape):
         if not isinstance(shape, tuple):
             shape = (shape,)
-        return super().__getitem__(("real", shape))
-
-    def __subclasscheck__(cls, subcls):
-        if not isinstance(subcls, RealsType):
-            return False
-        if cls.dtype not in (None, subcls.dtype):
-            return False
-        if cls.shape not in (None, subcls.shape):
-            return False
-        return True
+        return Array.__getitem__(("real", shape))
 
 
 def _pickle_array(cls):
-    if cls in (Array, Bint, Real, Reals):
-        return cls.__name__
+    if cls in (Array, Bint, Reals):
+        return repr(cls)
     return operator.getitem, (Array, (cls.dtype, cls.shape))
 
 
@@ -132,22 +97,20 @@ class Array(metaclass=ArrayType):
         Arary["real", (3, 3)] = Reals[3, 3]
         Array["real", ()] = Real
     """
-    dtype = None
-    shape = None
+    pass
 
 
-class Bint(metaclass=BintType):
+class Bint(Array, metaclass=BintType):
     """
     Factory for bounded integer types::
 
         Bint[5]           # integers ranging in {0,1,2,3,4}
         Bint[2, 3, 3]     # 3x3 matrices with entries in {0,1}
     """
-    dtype = None
-    shape = None
+    pass
 
 
-class Reals(metaclass=RealsType):
+class Reals(Array, metaclass=RealsType):
     """
     Type of a real-valued array with known shape::
 
@@ -155,7 +118,7 @@ class Reals(metaclass=RealsType):
         Reals[8]          # vector of length 8
         Reals[3, 3]       # 3x3 matrix
     """
-    shape = None
+    pass
 
 
 Real = Reals[()]
@@ -176,26 +139,6 @@ def bint(size):
 
 
 class ProductDomain(Domain):
-
-    _type_cache = WeakValueDictionary()
-
-    def __getitem__(cls, arg_domains):
-        try:
-            return ProductDomain._type_cache[arg_domains]
-        except KeyError:
-            assert isinstance(arg_domains, tuple)
-            assert all(isinstance(arg_domain, Domain) for arg_domain in arg_domains)
-            subcls = type("Product_", (Product,), {"__args__": arg_domains})
-            ProductDomain._type_cache[arg_domains] = subcls
-            return subcls
-
-    def __repr__(cls):
-        return "Product[{}]".format(", ".join(map(repr, cls.__args__)))
-
-    @property
-    def __origin__(cls):
-        return Product
-
     @property
     def shape(cls):
         return (len(cls.__args__),)
@@ -203,7 +146,7 @@ class ProductDomain(Domain):
 
 class Product(tuple, metaclass=ProductDomain):
     """like typing.Tuple, but works with issubclass"""
-    __args__ = NotImplemented
+    pass
 
 
 @quote.register(BintType)

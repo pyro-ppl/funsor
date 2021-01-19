@@ -13,14 +13,14 @@ from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
 from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic, isvariadic
+from multipledispatch.variadic import Variadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, get_backend, lazy_property, pretty, quote
+from funsor.util import GenericTypeMeta, getargspec, get_backend, lazy_property, pretty, quote
 
 
 def substitute(expr, subs):
@@ -182,7 +182,7 @@ def moment_matching(cls, *args):
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
 
-class FunsorMeta(type):
+class FunsorMeta(GenericTypeMeta):
     """
     Metaclass for Funsors to perform four independent tasks:
 
@@ -206,15 +206,9 @@ class FunsorMeta(type):
     """
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
-        if not hasattr(cls, "__args__"):
-            cls.__args__ = ()
-        if cls.__args__:
-            base, = bases
-            cls.__origin__ = base
-        else:
+        if not cls.__args__:
             cls._ast_fields = getargspec(cls.__init__)[0][1:]
             cls._cons_cache = WeakValueDictionary()
-            cls._type_cache = WeakValueDictionary()
 
     def __call__(cls, *args, **kwargs):
         if cls.__args__:
@@ -229,77 +223,6 @@ class FunsorMeta(type):
             args = tuple(args)
 
         return interpret(cls, *args)
-
-    def __getitem__(cls, arg_types):
-        if not isinstance(arg_types, tuple):
-            arg_types = (arg_types,)
-        assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
-        # switch tuple to typing.Tuple
-        arg_types = tuple(typing.Tuple if arg_type is tuple else arg_type for arg_type in arg_types)
-        if arg_types not in cls._type_cache:
-            assert not cls.__args__, "cannot subscript a subscripted type {}".format(cls)
-            assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
-            new_dct = cls.__dict__.copy()
-            new_dct.update({"__args__": arg_types})
-            # type(cls) to handle FunsorMeta subclasses
-            cls._type_cache[arg_types] = type(cls)(cls.__name__, (cls,), new_dct)
-        return cls._type_cache[arg_types]
-
-    def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
-        if cls is subcls:
-            return True
-        if not isinstance(subcls, FunsorMeta):
-            return super(FunsorMeta, getattr(cls, "__origin__", cls)).__subclasscheck__(subcls)
-
-        cls_origin = getattr(cls, "__origin__", cls)
-        subcls_origin = getattr(subcls, "__origin__", subcls)
-        if not super(FunsorMeta, cls_origin).__subclasscheck__(subcls_origin):
-            return False
-
-        if cls.__args__:
-            if not subcls.__args__:
-                return False
-            if len(cls.__args__) != len(subcls.__args__):
-                return False
-            for subcls_param, param in zip(subcls.__args__, cls.__args__):
-                if not _issubclass_tuple(subcls_param, param):
-                    return False
-        return True
-
-    @lazy_property
-    def classname(cls):
-        return cls.__name__ + "[{}]".format(", ".join(
-            str(getattr(t, "classname", t))  # Tuple doesn't have __name__
-            for t in cls.__args__))
-
-
-def _issubclass_tuple(subcls, cls):
-    """
-    utility for pattern matching with tuple subexpressions
-    """
-    # so much boilerplate...
-    cls_is_union = hasattr(cls, "__origin__") and (cls.__origin__ or cls) is typing.Union
-    if isinstance(cls, tuple) or cls_is_union:
-        return any(_issubclass_tuple(subcls, option)
-                   for option in (getattr(cls, "__args__", []) if cls_is_union else cls))
-
-    subcls_is_union = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) is typing.Union
-    if isinstance(subcls, tuple) or subcls_is_union:
-        return any(_issubclass_tuple(option, cls)
-                   for option in (getattr(subcls, "__args__", []) if subcls_is_union else subcls))
-
-    subcls_is_tuple = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) in (tuple, typing.Tuple)
-    cls_is_tuple = hasattr(cls, "__origin__") and (cls.__origin__ or cls) in (tuple, typing.Tuple)
-    if subcls_is_tuple != cls_is_tuple:
-        return False
-    if not cls_is_tuple:
-        return issubclass(subcls, cls)
-    if not cls.__args__:
-        return True
-    if not subcls.__args__ or len(subcls.__args__) != len(cls.__args__):
-        return False
-
-    return all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__))
 
 
 def _convert_reduced_vars(reduced_vars, inputs):
