@@ -26,6 +26,7 @@ from funsor.terms import (
     Lambda,
     Number,
     Slice,
+    Tuple,
     Unary,
     Variable,
     eager,
@@ -33,7 +34,7 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, lazy_property, quote
+from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
 
 
 def get_default_prototype():
@@ -752,22 +753,6 @@ def eager_cat_homogeneous(name, part_name, *parts):
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 
-# TODO Promote this to a Funsor subclass.
-class LazyTuple(tuple):
-    def __call__(self, *args, **kwargs):
-        return LazyTuple(x(*args, **kwargs) for x in self)
-
-    @lazy_property
-    def __annotations__(self):
-        result = {}
-        output = []
-        for part in self:
-            result.update(part.__annotations__)
-            output.append(result.pop("return"))
-        result["return"] = typing.Tuple[tuple(output)]
-        return result
-
-
 # TODO Move this to terms.py; it is no longer Tensor-specific.
 class Function(Funsor):
     r"""
@@ -840,7 +825,7 @@ def _nested_function(fn, args, output):
             fn_i = functools.partial(_select, fn, i)
             fn_i.__name__ = "{}_{}".format(_nameof(fn), i)
             result.append(_nested_function(fn_i, args, output_i))
-        return LazyTuple(result)
+        return Tuple(tuple(result))
     raise ValueError("Invalid output: {}".format(output))
 
 
