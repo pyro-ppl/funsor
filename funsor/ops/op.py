@@ -210,13 +210,6 @@ def make_transform_op(backend_transform):
     inv.set_inv(op)
     inv.set_log_abs_det_jacobian(inv_ldaj)
 
-    # Register funsor conversions.
-    from funsor.terms import Binary, Funsor, Unary
-    op.register(Funsor)(functools.partial(Unary, op))
-    inv.register(Funsor)(functools.partial(Unary, inv))
-    op_ldaj.register(Funsor, Funsor)(functools.partial(Binary, op_ldaj))
-    inv_ldaj.register(Funsor, Funsor)(functools.partial(Binary, inv_ldaj))
-
     return op
 
 
