@@ -175,6 +175,37 @@ def bint(size):
     return Bint[size]
 
 
+class ProductDomain(Domain):
+
+    _type_cache = WeakValueDictionary()
+
+    def __getitem__(cls, arg_domains):
+        try:
+            return ProductDomain._type_cache[arg_domains]
+        except KeyError:
+            assert isinstance(arg_domains, tuple)
+            assert all(isinstance(arg_domain, Domain) for arg_domain in arg_domains)
+            subcls = type("Product_", (Product,), {"__args__": arg_domains})
+            ProductDomain._type_cache[arg_domains] = subcls
+            return subcls
+
+    def __repr__(cls):
+        return "Product[{}]".format(", ".join(map(repr, cls.__args__)))
+
+    @property
+    def __origin__(cls):
+        return Product
+
+    @property
+    def shape(cls):
+        return (len(cls.__args__),)
+
+
+class Product(tuple, metaclass=ProductDomain):
+    """like typing.Tuple, but works with issubclass"""
+    __args__ = NotImplemented
+
+
 @quote.register(BintType)
 @quote.register(RealsType)
 def _(arg, indent, out):
@@ -215,10 +246,15 @@ def _find_domain_reshape(op, domain):
 
 
 @find_domain.register(ops.GetitemOp)
-def _find_domain_getitem(op, lhs, rhs):
-    dtype = lhs.dtype
-    shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
-    return Array[dtype, shape]
+def _find_domain_getitem(op, lhs_domain, rhs_domain):
+    if isinstance(lhs_domain, ArrayType):
+        dtype = lhs_domain.dtype
+        shape = lhs_domain.shape[:op.offset] + lhs_domain.shape[1 + op.offset:]
+        return Array[dtype, shape]
+    elif isinstance(lhs_domain, ProductDomain):
+        # XXX should this return a Union?
+        raise NotImplementedError("Cannot statically infer domain from: "
+                                  f"{lhs_domain}[{rhs_domain}]")
 
 
 @find_domain.register(ops.EqOp)

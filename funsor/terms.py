@@ -17,7 +17,7 @@ from multipledispatch.variadic import Variadic, isvariadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Array, Bint, Domain, Real, find_domain
+from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import getargspec, get_backend, lazy_property, pretty, quote
@@ -1590,6 +1590,31 @@ def eager_independent_trivial(fn, reals_var, bint_var, diag_var):
     if diag_var not in fn.inputs:
         return fn.reduce(ops.add, bint_var)
     return None
+
+
+class Tuple(Funsor):
+    """
+    Funsor term representing tuples of other terms of possibly heterogeneous type.
+    """
+    def __init__(self, args):
+        assert isinstance(args, tuple)
+        assert all(isinstance(arg, Funsor) for arg in args)
+        inputs = OrderedDict()
+        for arg in args:
+            inputs.update(arg.inputs)
+        output = Product[tuple(arg.output for arg in args)]
+        super().__init__(inputs, output)
+        self.args = args
+
+    def __iter__(self):
+        for i in range(len(self.args)):
+            yield self[i]
+
+
+@lazy.register(Binary, GetitemOp, Tuple, Number)
+@eager.register(Binary, GetitemOp, Tuple, Number)
+def eager_getitem_tuple(op, lhs, rhs):
+    return op(lhs.args, rhs.data)
 
 
 def _symbolic(inputs, output, fn):
