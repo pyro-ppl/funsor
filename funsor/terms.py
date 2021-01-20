@@ -88,6 +88,12 @@ def reflect(cls, *args, **kwargs):
     result = super(FunsorMeta, cls_specific).__call__(*args)
     result._ast_values = args
 
+    if interpreter._PROFILE:
+        size, depth = _get_ast_stats(result)
+        interpreter.COUNTERS["ast_size"][size] += 1
+        interpreter.COUNTERS["ast_depth"][depth] += 1
+        interpreter.COUNTERS["funsor"][getattr(cls, "__origin__", cls).__name__] += 1
+
     # alpha-convert eagerly upon binding any variable
     result = _alpha_mangle(result)
 
@@ -1667,6 +1673,29 @@ def of_shape(*shape):
     warnings.warn("@of_shape is deprecated, use @symbolic instead",
                   DeprecationWarning)
     return symbolic(*shape)
+
+
+# Profiling helpers
+@singledispatch
+def _get_ast_stats(x):
+    return 1, 1
+
+
+@_get_ast_stats.register(Funsor)
+def _(x):
+    result = getattr(x, "_ast_stats", None)
+    if result is None:
+        size, depth = _get_ast_stats(x._ast_values)
+        result = x._ast_stats = size + 1, depth + 1
+    return result
+
+
+@_get_ast_stats.register(tuple)
+def _(x):
+    parts = list(map(_get_ast_stats, x))
+    size = sum(size for size, _ in parts)
+    depth = max([0] + [depth for _, depth in parts])
+    return size, depth
 
 
 ################################################################################

@@ -7,7 +7,7 @@ import inspect
 import os
 import re
 import types
-from collections import Counter, OrderedDict, namedtuple
+from collections import Counter, OrderedDict, defaultdict, namedtuple
 from contextlib import contextmanager
 from functools import singledispatch
 
@@ -73,7 +73,7 @@ elif _PROFILE:
             self._message = "{} {} {}".format(fn.__name__, path, lineno)
 
         def __call__(self, *args, **kwargs):
-            COUNTERS[self._message] += 1
+            COUNTERS["call"][self._message] += 1
             return self.fn(*args, **kwargs)
 
         @property
@@ -89,14 +89,15 @@ else:
         return fn
 
 
-COUNTERS = Counter()
+COUNTERS = defaultdict(Counter)
 if _PROFILE:
     @atexit.register
     def print_counters():
-        print("-" * 80)
-        print("     COUNT NAME")
-        for name, value in COUNTERS.most_common():
-            print(f"{value: >10} {name}")
+        for name, counter in sorted(COUNTERS.items()):
+            print("-" * 80)
+            print(f"     count {name}")
+            for key, value in counter.most_common():
+                print(f"{value: >10} {key}")
         print("-" * 80)
 
 
