@@ -178,8 +178,8 @@ DISTRIBUTIVE_OPS.add((min, add))
 UNITS[mul] = 1.
 UNITS[add] = 0.
 
-PRODUCT_INVERSES[mul] = safediv
-PRODUCT_INVERSES[add] = safesub
+PRODUCT_INVERSES[mul] = truediv
+PRODUCT_INVERSES[add] = sub
 
 __all__ = [
     'abs',
