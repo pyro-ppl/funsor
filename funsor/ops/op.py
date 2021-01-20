@@ -8,6 +8,20 @@ import weakref
 from multipledispatch import Dispatcher
 
 
+class WeakPartial:
+    """
+    Like ``functools.partial(fn, arg)`` but weakly referencing ``arg``.
+    """
+    def __init__(self, fn, arg):
+        self.fn = fn
+        self.weak_arg = weakref.ref(arg)
+        functools.update_wrapper(self, fn)
+
+    def __call__(self, *args):
+        arg = self.weak_arg()
+        return self.fn(arg, *args)
+
+
 class CachedOpMeta(type):
     """
     Metaclass for caching op instance construction.
@@ -71,7 +85,7 @@ class Op(Dispatcher):
         # Register all existing patterns.
         for supercls in reversed(inspect.getmro(type(self))):
             for pattern, fn in getattr(supercls, "_subclass_registry", ()):
-                self.register(*pattern)(functools.partial(fn, self))
+                self.add(pattern, WeakPartial(fn, self))
         # Save self for registering future patterns.
         Op._all_instances.add(self)
 
@@ -96,7 +110,7 @@ class Op(Dispatcher):
             # Register with all existing instances.
             for op in Op._all_instances:
                 if isinstance(op, cls):
-                    op.register(*pattern)(functools.partial(fn, op))
+                    op.add(pattern, WeakPartial(fn, op))
             # Ensure registration with all future instances.
             cls._subclass_registry.append((pattern, fn))
             return fn
