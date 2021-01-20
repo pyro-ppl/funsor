@@ -156,8 +156,9 @@ class TransformOp(UnaryOp):
 
 class ValidatedTransformOp(TransformOp):
     """
-    Like :class:`TransformOp` but additionally checks that the backing tranforn
-    is not batched. This check is performed only on the first :meth:`__call__`.
+    Like :class:`TransformOp` but additionally checks that the backing
+    transform is not batched. This check is performed only on the first
+    :meth:`__call__`.
     """
     def __init__(self, fn, *, name=None):
         super().__init__(fn, name=name)
@@ -171,7 +172,8 @@ class ValidatedTransformOp(TransformOp):
             event_shape = x.shape[len(x.shape) - fn.domain.event_dim:]
             shape = fn.forward_shape(event_shape)
             if len(shape) > fn.codomain.event_dim:
-                raise ValueError(f"Cannot treat batched transform {self.name} as an Op")
+                raise ValueError(f"Cannot treat transform {self.name} as an Op "
+                                 "because it is batched")
         return super().__call__(x)
 
 
