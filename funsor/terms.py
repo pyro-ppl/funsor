@@ -665,12 +665,6 @@ class Funsor(object, metaclass=FunsorMeta):
     def __rsub__(self, other):
         return Binary(ops.sub, to_funsor(other), self)
 
-    def __logaddexp__(self, other):
-        return Binary(ops.logaddexp, self, to_funsor(other))
-
-    def __rlogaddexp__(self, other):
-        return Binary(ops.logaddexp, to_funsor(other), self)
-
     def __mul__(self, other):
         return Binary(ops.mul, self, to_funsor(other))
 
@@ -727,12 +721,6 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def __ge__(self, other):
         return Binary(ops.ge, self, to_funsor(other))
-
-    def __min__(self, other):
-        return Binary(ops.min, self, to_funsor(other))
-
-    def __max__(self, other):
-        return Binary(ops.max, self, to_funsor(other))
 
     def __getitem__(self, other):
         if type(other) is not tuple:
@@ -1702,54 +1690,19 @@ def quote_inplace_first_arg_on_first_line(arg, indent, out):
         out[-1] = i, line + ")"
 
 
-@ops.abs.register(Funsor)
-def _abs(x):
-    return Unary(ops.abs, x)
+ops.UnaryOp.subclass_register(Funsor)(Unary)
+ops.AssociativeOp.subclass_register(Funsor)(Unary)  # Reductions.
+ops.AssociativeOp.subclass_register(Funsor, Funsor)(Binary)
 
 
-@ops.atanh.register(Funsor)
-def _atanh(x):
-    return Unary(ops.atanh, x)
+@AssociativeOp.subclass_register(object, Funsor)
+def binary_object_funsor(op, x, y):
+    return Binary(op, to_funsor(x), y)
 
 
-@ops.sqrt.register(Funsor)
-def _sqrt(x):
-    return Unary(ops.sqrt, x)
-
-
-@ops.exp.register(Funsor)
-def _exp(x):
-    return Unary(ops.exp, x)
-
-
-@ops.lgamma.register(Funsor)
-def _lgamma(x):
-    return Unary(ops.lgamma, x)
-
-
-@ops.log.register(Funsor)
-def _log(x):
-    return Unary(ops.log, x)
-
-
-@ops.log1p.register(Funsor)
-def _log1p(x):
-    return Unary(ops.log1p, x)
-
-
-@ops.reciprocal.register(Funsor)
-def _reciprocal(x):
-    return Unary(ops.reciprocal, x)
-
-
-@ops.sigmoid.register(Funsor)
-def _sigmoid(x):
-    return Unary(ops.sigmoid, x)
-
-
-@ops.tanh.register(Funsor)
-def _tanh(x):
-    return Unary(ops.tanh, x)
+@AssociativeOp.subclass_register(Funsor, object)
+def binary_funsor_object(op, x, y):
+    return Binary(op, x, to_funsor(y))
 
 
 __all__ = [
