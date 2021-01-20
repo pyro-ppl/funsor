@@ -248,24 +248,31 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         # define backend-specific distributions and overide these `infer_value_domain`,
         # `infer_param_domain` methods.
         # Because NumPyro and Pyro have the same pattern, we use name check for simplicity.
-        support_name = type(support).__name__
-        if support_name == "_Simplex":
-            output = Reals[raw_shape[-1]]
-        elif support_name == "_RealVector":
-            output = Reals[raw_shape[-1]]
-        elif support_name in ["_LowerCholesky", "_PositiveDefinite"]:
-            output = Reals[raw_shape[-2:]]
+        support_name = type(support).__name__.lstrip("_")
+
+        event_dim = 0
+        while support_name == "IndependentConstraint":
+            event_dim += support.reinterpreted_batch_ndims
+            support = support.base_constraint
+            support_name = type(support).__name__.lstrip("_")
+
+        if support_name == "Simplex":
+            output = Reals[raw_shape[-1 - event_dim:]]
+        elif support_name == "RealVector":
+            output = Reals[raw_shape[-1 - event_dim:]]
+        elif support_name in ["LowerCholesky", "PositiveDefinite"]:
+            output = Reals[raw_shape[-2 - event_dim:]]
         # resolve the issue: logits's constraints are real (instead of real_vector)
         # for discrete multivariate distributions in Pyro
-        elif support_name == "_Real":
+        elif support_name == "Real":
             if name == "logits" and (
                     "probs" in cls.dist_class.arg_constraints
-                    and type(cls.dist_class.arg_constraints["probs"]).__name__ == "_Simplex"):
-                output = Reals[raw_shape[-1]]
+                    and type(cls.dist_class.arg_constraints["probs"]).__name__.lstrip("_") == "Simplex"):
+                output = Reals[raw_shape[-1 - event_dim:]]
             else:
-                output = Real
-        elif support_name in ("_Interval", "_GreaterThan", "_LessThan"):
-            output = Real
+                output = Reals[raw_shape[len(raw_shape) - event_dim:]]
+        elif support_name in ("Interval", "GreaterThan", "LessThan"):
+            output = Reals[raw_shape[len(raw_shape) - event_dim:]]
         else:
             output = None
         return output
