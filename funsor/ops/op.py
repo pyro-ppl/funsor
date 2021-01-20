@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import inspect
 import warnings
+import weakref
 
 from multipledispatch import Dispatcher
 
@@ -27,10 +29,12 @@ class CachedOpMeta(type):
 
 
 class Op(Dispatcher):
+    _all_instances = weakref.WeakSet()
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         cls._cache = {}
+        cls._subclass_registry = []
 
     def __init__(self, fn, *, name=None):
         if isinstance(fn, str):
@@ -43,6 +47,13 @@ class Op(Dispatcher):
             for nargs in (1, 2):
                 default_signature = (object,) * nargs
                 self.add(default_signature, fn)
+
+        # Register all existing patterns.
+        for supercls in reversed(inspect.getmro(type(self))):
+            for pattern, fn in getattr(supercls, "_subclass_registry", ()):
+                self.register(*pattern)(functools.partial(fn, self))
+        # Save self for registering future patterns.
+        Op._all_instances.add(self)
 
     def __copy__(self):
         return self
@@ -58,6 +69,18 @@ class Op(Dispatcher):
 
     def __str__(self):
         return self.__name__
+
+    @classmethod
+    def subclass_register(cls, *pattern):
+        def decorator(fn):
+            # Register with all existing instances.
+            for op in Op._all_instances:
+                if isinstance(op, cls):
+                    op.register(*pattern)(functools.partial(fn, op))
+            # Ensure registration with all future instances.
+            cls._subclass_registry.append((pattern, fn))
+            return fn
+        return decorator
 
 
 def make_op(fn=None, parent=None, *, name=None, module_name="funsor.ops"):
@@ -99,7 +122,11 @@ def declare_op_types(locals_, all_, name_):
     all_.sort()
 
 
-class TransformOp(Op):
+class UnaryOp(Op):
+    pass
+
+
+class TransformOp(UnaryOp):
     def set_inv(self, fn):
         """
         :param callable fn: A function that inputs an arg ``y`` and outputs a
@@ -191,6 +218,7 @@ __all__ = [
     'PRODUCT_INVERSES',
     'TransformOp',
     'UNITS',
+    'UnaryOp',
     'declare_op_types',
     'make_op',
     'make_transform_op',
