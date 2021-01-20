@@ -36,12 +36,16 @@ class WrappedOpMeta(type):
         cls._instance_cache = weakref.WeakValueDictionary()
 
     def __call__(cls, fn):
+        if inspect.ismethod(fn):
+            key = id(fn.__self__), fn.__func__  # e.g. t.log_abs_det_jacobian
+        else:
+            key = id(fn)  # e.g. t.inv
         try:
-            return cls._instance_cache[id(fn)]
+            return cls._instance_cache[key]
         except KeyError:
             op = super().__call__(fn)
             op.fn = fn  # Ensures the key id(fn) is not reused.
-            cls._instance_cache[id(fn)] = op
+            cls._instance_cache[key] = op
             return op
 
 
