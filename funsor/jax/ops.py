@@ -1,6 +1,8 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import numbers
+
 import jax.numpy as np
 import numpy as onp
 from jax import lax
@@ -11,16 +13,18 @@ from jax.scipy.special import expit, gammaln, logsumexp
 
 import funsor.ops as ops
 
-
 ################################################################################
 # Register Ops
 ################################################################################
 
 array = (onp.generic, onp.ndarray, DeviceArray, Tracer)
 ops.atanh.register(array)(np.arctanh)
-ops.clamp.register(array, object, object)(np.clip)
+ops.clamp.register(array, numbers.Number, numbers.Number)(np.clip)
+ops.clamp.register(array, numbers.Number, type(None))(np.clip)
+ops.clamp.register(array, type(None), numbers.Number)(np.clip)
+ops.clamp.register(array, type(None), type(None))(np.clip)
 ops.exp.register(array)(np.exp)
-ops.full_like.register(array, object)(np.full_like)
+ops.full_like.register(array, numbers.Number)(np.full_like)
 ops.log1p.register(array)(np.log1p)
 ops.max.register(array)(np.maximum)
 ops.min.register(array)(np.minimum)
@@ -161,7 +165,7 @@ def _min(x, y):
     return np.minimum(x, y)
 
 
-# TODO: replace (int, float) by object
+# TODO: replace (int, float) by numbers.Number
 @ops.min.register((int, float), array)
 def _min(x, y):
     return np.clip(y, a_min=None, a_max=x)
