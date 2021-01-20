@@ -42,7 +42,6 @@ from funsor.distribution import (  # noqa: F401
     transformeddist_to_funsor
 )
 from funsor.domains import Real, Reals
-from funsor.ops.op import make_transform_op
 from funsor.tensor import Tensor
 from funsor.terms import Binary, Funsor, Reduce, Unary, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
@@ -269,7 +268,7 @@ def transform_to_data(expr, name_to_dim=None):
 
 @to_funsor.register(torch.distributions.Transform)
 def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    op = make_transform_op(tfm)
+    op = ops.WrappedTransformOp(tfm)
     name = next(real_inputs.keys()) if real_inputs else "value"
     return op(Variable(name, output))
 

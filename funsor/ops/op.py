@@ -3,7 +3,6 @@
 
 import functools
 import inspect
-import warnings
 import weakref
 
 from multipledispatch import Dispatcher
@@ -12,20 +11,38 @@ from multipledispatch import Dispatcher
 class CachedOpMeta(type):
     """
     Metaclass for caching op instance construction.
+    Caching strategy is to key on ``*args`` and retain values forever.
     """
+    def __init__(cls, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        cls._instance_cache = {}
+
     def __call__(cls, *args, **kwargs):
         try:
-            return cls._cache[args]
+            return cls._instance_cache[args]
         except KeyError:
             instance = super(CachedOpMeta, cls).__call__(*args, **kwargs)
-            cls._cache[args] = instance
+            cls._instance_cache[args] = instance
             return instance
-        except TypeError as e:
-            if str(e).startswith("unhashable type"):
-                warnings.warn(f"Cannot memoize Op ({e})")
-                instance = super(CachedOpMeta, cls).__call__(*args, **kwargs)
-                return instance
-            raise e from None
+
+
+class WrappedOpMeta(type):
+    """
+    Metaclass for ops that wrap temporary backend ops.
+    Caching strategy is to key on ``id(backend_op)`` and forget values asap.
+    """
+    def __init__(cls, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        cls._instance_cache = weakref.WeakValueDictionary()
+
+    def __call__(cls, fn):
+        try:
+            return cls._instance_cache[id(fn)]
+        except KeyError:
+            op = super().__call__(fn)
+            op.fn = fn  # Ensures the key id(fn) is not reused.
+            cls._instance_cache[id(fn)] = op
+            return op
 
 
 class Op(Dispatcher):
@@ -33,7 +50,6 @@ class Op(Dispatcher):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        cls._cache = {}
         cls._subclass_registry = []
 
     def __init__(self, fn, *, name=None):
@@ -100,7 +116,7 @@ def make_op(fn=None, parent=None, *, name=None, module_name="funsor.ops"):
     assert isinstance(name, str)
 
     classname = name.capitalize().rstrip("_") + "Op"  # e.g. add -> AddOp
-    cls = CachedOpMeta(classname, (parent,), {})
+    cls = type(classname, (parent,), {})
     cls.__module__ = module_name
     op = cls(fn, name=name)
     return op
@@ -123,6 +139,10 @@ def declare_op_types(locals_, all_, name_):
 
 
 class UnaryOp(Op):
+    pass
+
+
+class BinaryOp(Op):
     pass
 
 
@@ -154,65 +174,40 @@ class TransformOp(UnaryOp):
         raise NotImplementedError
 
 
-class ValidatedTransformOp(TransformOp):
+class WrappedTransformOp(TransformOp, metaclass=WrappedOpMeta):
     """
-    Like :class:`TransformOp` but additionally checks that the backing
-    transform is not batched. This check is performed only on the first
+    Wrapper for a backend ``Transform`` object that provides ``.inv`` and
+    ``.log_abs_det_jacobian``. This additionally validates shapes on the first
     :meth:`__call__`.
     """
-    def __init__(self, fn, *, name=None):
-        super().__init__(fn, name=name)
-        self._pending_validation = [fn]
+    def __init__(self, fn):
+        super().__init__(fn, name=type(fn).__name__)
+        self._is_validated = False
 
     def __call__(self, x):
-        while self._pending_validation:
-            fn = self._pending_validation.pop()
-            if len(x.shape) < fn.domain.event_dim:
-                raise ValueError(f"Too few dimensions for input, in {self.name}")
-            event_shape = x.shape[len(x.shape) - fn.domain.event_dim:]
-            shape = fn.forward_shape(event_shape)
-            if len(shape) > fn.codomain.event_dim:
-                raise ValueError(f"Cannot treat transform {self.name} as an Op "
-                                 "because it is batched")
+        if self._is_validated:
+            return super().__call__(x)
+        if len(x.shape) < self.fn.domain.event_dim:
+            raise ValueError(f"Too few dimensions for input, in {self.name}")
+        event_shape = x.shape[len(x.shape) - self.fn.domain.event_dim:]
+        shape = self.fn.forward_shape(event_shape)
+        if len(shape) > self.fn.codomain.event_dim:
+            raise ValueError(f"Cannot treat transform {self.name} as an Op "
+                             "because it is batched")
+        self._is_validated = True
         return super().__call__(x)
 
+    @property
+    def inv(self):
+        return WrappedTransformOp(self.fn.inv)
 
-class LogAbsDetJacobianOp(Op):
+    @property
+    def log_abs_det_jacobian(self):
+        return LogAbsDetJacobianOp(self.fn.log_abs_det_jacobian)
+
+
+class LogAbsDetJacobianOp(BinaryOp, metaclass=WrappedOpMeta):
     pass
-
-
-# TODO Memoize or use weakrefs. This currently creates reference cycles,
-# delaying gc of backend_transform which may be a large expensive per-iteration
-# data structure such as a normalizing flow defined by a hyper net.
-def make_transform_op(backend_transform):
-    """
-    Factory to create a collection four new ops corresponding to a bijective
-    transform.
-
-    :returns: An ``op`` from which can be accessed ``op.inv``,
-        ``op.log_abs_det_jacobian``, and ``op.inv.log_abs_det_jacobian``.
-    :rtype: TransformOp
-    """
-    name = type(backend_transform).__name__
-
-    # Create four ops.
-    op = make_op(backend_transform, ValidatedTransformOp, name=name)
-    op_ldaj = make_op(backend_transform.log_abs_det_jacobian,
-                      LogAbsDetJacobianOp,
-                      name=name + "_log_abs_det_jacobian")
-    inv = make_op(backend_transform.inv, ValidatedTransformOp,
-                  name=name + "_inv")
-    inv_ldaj = make_op(backend_transform.log_abs_det_jacobian,
-                       LogAbsDetJacobianOp,
-                       name=name + "_inv_log_abs_det_jacobian")
-
-    # Register relationships.
-    op.set_inv(inv)
-    op.set_log_abs_det_jacobian(op_ldaj)
-    inv.set_inv(op)
-    inv.set_log_abs_det_jacobian(inv_ldaj)
-
-    return op
 
 
 # Op registration tables.
@@ -221,6 +216,7 @@ UNITS = {}                # op -> value
 PRODUCT_INVERSES = {}     # op -> inverse op
 
 __all__ = [
+    'BinaryOp',
     'CachedOpMeta',
     'DISTRIBUTIVE_OPS',
     'LogAbsDetJacobianOp',
@@ -229,7 +225,7 @@ __all__ = [
     'TransformOp',
     'UNITS',
     'UnaryOp',
+    'WrappedTransformOp',
     'declare_op_types',
     'make_op',
-    'make_transform_op',
 ]
