@@ -33,18 +33,14 @@ setup(
     author='Uber AI Labs',
     author_email='fritzo@uber.com',
     python_requires=">=3.6",
-    dependency_links=[
-        # pin pytypes to master
-        'git+https://github.com/Stewori/pytypes.git@master#egg=pytypes-0a0',
-        # use a fork of multipledispatch that depends on pytypes
-        'git+https://github.com/eb8680/multipledispatch.git@pytypes-master#egg=multipledispatch.git-0.6.0a0',
-    ],
     install_requires=[
         'makefun',
-        'multipledispatch',
+        # use a fork of multipledispatch that depends on pytypes
+        'git+https://github.com/eb8680/multipledispatch.git@pytypes-master#egg=multipledispatch',
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
-        'pytypes',
+        # pin pytypes to master
+        'git+https://github.com/Stewori/pytypes.git@master#egg=pytypes',
     ],
     extras_require={
         'torch': [
