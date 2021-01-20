@@ -154,6 +154,27 @@ class TransformOp(UnaryOp):
         raise NotImplementedError
 
 
+class ValidatedTransformOp(TransformOp):
+    """
+    Like :class:`TransformOp` but additionally checks that the backing tranforn
+    is not batched. This check is performed only on the first :meth:`__call__`.
+    """
+    def __init__(self, fn, *, name=None):
+        super().__init__(fn, name=name)
+        self._pending_validation = [fn]
+
+    def __call__(self, x):
+        while self._pending_validation:
+            fn = self._pending_validation.pop()
+            if len(x.shape) < fn.domain.event_dim:
+                raise ValueError(f"Too few dimensions for input, in {self.name}")
+            event_shape = x.shape[len(x.shape) - fn.domain.event_dim:]
+            shape = fn.forward_shape(event_shape)
+            if len(shape) > fn.codomain.event_dim:
+                raise ValueError(f"Cannot treat batched transform {self.name} as an Op")
+        return super().__call__(x)
+
+
 class LogAbsDetJacobianOp(Op):
     pass
 
@@ -172,18 +193,12 @@ def make_transform_op(backend_transform):
     """
     name = type(backend_transform).__name__
 
-    # TODO Check that the op is not batched. Something like:
-    # if backend_transform.batch_shape:
-    #     raise ValueError("Cannot create an op from a transform "
-    #                      f"{name} with nontrivial batch shape "
-    #                      f"{backend_transform.batch_shape}.")
-
     # Create four ops.
-    op = make_op(backend_transform, TransformOp, name=name)
+    op = make_op(backend_transform, ValidatedTransformOp, name=name)
     op_ldaj = make_op(backend_transform.log_abs_det_jacobian,
                       LogAbsDetJacobianOp,
                       name=name + "_log_abs_det_jacobian")
-    inv = make_op(backend_transform.inv, TransformOp,
+    inv = make_op(backend_transform.inv, ValidatedTransformOp,
                   name=name + "_inv")
     inv_ldaj = make_op(backend_transform.log_abs_det_jacobian,
                        LogAbsDetJacobianOp,
