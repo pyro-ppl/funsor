@@ -649,12 +649,20 @@ def eager_multinomial(total_count, probs, value):
 
 
 def eager_categorical_funsor(probs, value):
+    # Fixme this does not clamp.
     return probs[value].log()
 
 
-def eager_categorical_tensor_variable(probs, value):
+def eager_categorical_tensor_variable(probs, value, clamp=True):
     assert value.name not in probs.inputs
-    return ops.log(probs[value.name])
+    if clamp:
+        data = probs.data
+        eps = ops.finfo(data).eps
+        data = ops.clamp(probs.data, eps, 1 - eps)
+        probs = Tensor(data, probs.inputs)
+    probs = probs[value]
+    logits = ops.log(probs)
+    return logits
 
 
 def eager_delta_tensor(v, log_density, value):
