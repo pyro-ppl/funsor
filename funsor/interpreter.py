@@ -380,10 +380,11 @@ def dispatched_interpretation(fn):
 
     if _PROFILE:
         def profiled_dispatch(*args):
+            name = fn.__name__ + ".dispatch"
             start = default_timer()
             result = registry.dispatch(*args)
-            COUNTERS["time"][fn.__name__ + ".dispatch"] += default_timer() - start
-
+            COUNTERS["time"][name] += default_timer() - start
+            COUNTERS["call"][name] += 1
             COUNTERS["interpretation"][fn.__name__] += 1
             return result
         fn.dispatch = profiled_dispatch
