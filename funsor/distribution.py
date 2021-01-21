@@ -652,10 +652,9 @@ def eager_categorical_funsor(probs, value):
     return probs[value].log()
 
 
-def eager_categorical_tensor(probs, value):
-    value = probs.materialize(value)
-    backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
-    return backend_dist.Categorical(probs=probs, value=value)  # noqa: F821
+def eager_categorical_tensor_variable(probs, value):
+    assert value.name not in probs.inputs
+    return ops.log(probs[value.name])
 
 
 def eager_delta_tensor(v, log_density, value):
