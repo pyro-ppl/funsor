@@ -10,7 +10,7 @@ import pytypes
 
 from multipledispatch.conflict import supercedes
 from multipledispatch.dispatcher import Dispatcher
-from multipledispatch.variadic import isvariadic
+from multipledispatch.variadic import VariadicSignatureType, isvariadic
 
 
 def _type_to_typing(tp):
@@ -49,11 +49,6 @@ def deep_issubclass(subcls, cls):
 
 def deep_isinstance(obj, cls):
     return pytypes.is_of_type(obj, cls)
-
-
-def deep_supercedes(xs, ys):
-    return supercedes(tuple(typing_wrap[_type_to_typing(x)] for x in xs),
-                      tuple(typing_wrap[_type_to_typing(y)] for y in ys))
 
 
 class GenericTypeMeta(type):
@@ -120,15 +115,57 @@ class _PytypesSubclasser(GenericTypeMeta):
 
 
 class typing_wrap(metaclass=_PytypesSubclasser):
+    """
+    Metaclass for overriding the runtime behavior of `typing` objects.
+    """
     pass
 
 
-class TypingDispatcher(Dispatcher):
+def deep_supercedes(xs, ys):
+    """typing-compatible version of multipledispatch.conflict.supercedes"""
+    return supercedes(tuple(typing_wrap[_type_to_typing(x)] for x in xs),
+                      tuple(typing_wrap[_type_to_typing(y)] for y in ys))
 
+
+class DeepVariadicSignatureType(VariadicSignatureType):
+    pass  # TODO
+
+
+class Variadic(metaclass=DeepVariadicSignatureType):
+    """
+    A version of multipledispatch.variadic.Variadic compatible with typing.
+    """
+    pass  # TODO
+
+
+class TypingDispatcher(Dispatcher):
+    """
+    A Dispatcher class designed for compatibility with the typing standard library.
+    """
     def register(self, *types):
         types = tuple(typing_wrap[tp] for tp in map(_type_to_typing, types))
-        if self.default:
+        if getattr(self, "default", None):
             objects = (typing_wrap[typing.Any],) * len(types)
             if objects != types and deep_supercedes(types, objects):
                 super().register(*objects)(self.default)
         return super().register(*types)
+
+    def partial_call(self, *args):
+        """
+        Likde :meth:`__call__` but avoids calling ``func()``.
+        """
+        types = tuple(map(deep_type, args))
+        types = tuple(map(_type_to_typing, types))
+        try:
+            func = self._cache[types]
+        except KeyError:
+            func = self.dispatch(*types)
+            if func is None:
+                raise NotImplementedError(
+                    'Could not find signature for %s: <%s>' %
+                    (self.name, ', '.join(cls.__name__ for cls in types)))
+            self._cache[types] = func
+        return func
+
+    def __call__(self, *args):
+        return self.partial_call(*args)(*args)

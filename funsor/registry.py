@@ -3,7 +3,7 @@
 
 from collections import defaultdict
 
-from funsor.typing import TypingDispatcher, _type_to_typing, deep_type, get_origin
+from funsor.typing import TypingDispatcher, get_origin
 
 
 class PartialDispatcher(TypingDispatcher):
@@ -13,23 +13,6 @@ class PartialDispatcher(TypingDispatcher):
     def __init__(self, name, default=None):
         self.default = default if default is None else PartialDefault(default)
         super().__init__(name)
-
-    def partial_call(self, *args):
-        """
-        Likde :meth:`__call__` but avoids calling ``func()``.
-        """
-        types = tuple(map(deep_type, args))
-        types = tuple(map(_type_to_typing, types))
-        try:
-            func = self._cache[types]
-        except KeyError:
-            func = self.dispatch(*types)
-            if func is None:
-                raise NotImplementedError(
-                    'Could not find signature for %s: <%s>' %
-                    (self.name, ', '.join(cls.__name__ for cls in types)))
-            self._cache[types] = func
-        return func
 
 
 class PartialDefault:
