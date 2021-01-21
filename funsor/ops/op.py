@@ -7,8 +7,6 @@ import weakref
 
 from multipledispatch import Dispatcher
 
-from funsor.util import _type_to_typing
-
 
 class CachedOpMeta(type):
     """
@@ -41,10 +39,7 @@ class Op(Dispatcher):
             # register as default operation
             for nargs in (1, 2):
                 default_signature = (object,) * nargs
-                self.register(*default_signature)(fn)
-
-    def register(self, *types):
-        return super().register(*tuple(map(_type_to_typing, types)))
+                self.add(default_signature, fn)
 
         # Register all existing patterns.
         for supercls in reversed(inspect.getmro(type(self))):

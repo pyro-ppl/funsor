@@ -284,6 +284,7 @@ class GenericTypeMeta(type):
             cls._type_cache[arg_types] = type(cls)(cls.__name__, (cls,), new_dct)
         return cls._type_cache[arg_types]
 
+    @functools.lru_cache(maxsize=None)
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
         if cls is subcls:
             return True
@@ -308,3 +309,15 @@ class GenericTypeMeta(type):
     @lazy_property
     def classname(cls):
         return repr(cls)
+
+
+class _PytypesSubclasser(GenericTypeMeta):
+    def __getitem__(cls, tp):
+        return tp if isinstance(tp, GenericTypeMeta) or isvariadic(tp) else super().__getitem__(tp)
+
+    def __subclasscheck__(cls, subcls):
+        return pytypes.is_subtype(subcls, cls.__args__[0])
+
+
+class typing_wrap(metaclass=_PytypesSubclasser):
+    pass

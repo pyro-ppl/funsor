@@ -9,13 +9,17 @@ import pytypes
 from multipledispatch import Dispatcher
 from multipledispatch.conflict import supercedes
 
-from funsor.util import _type_to_typing
+from funsor.util import _type_to_typing, get_origin, typing_wrap
 
 
 class PartialDispatcher(Dispatcher):
     """
     Wrapper to avoid appearance in stack traces.
     """
+    def __init__(self, name, default=None):
+        self.default = default if default is None else PartialDefault(default)
+        super().__init__(name)
+
     def partial_call(self, *args):
         """
         Likde :meth:`__call__` but avoids calling ``func()``.
@@ -33,6 +37,14 @@ class PartialDispatcher(Dispatcher):
             self._cache[types] = func
         return func
 
+    def register(self, *types):
+        types = tuple(typing_wrap[tp] for tp in map(_type_to_typing, types))
+        if self.default:
+            objects = (typing_wrap[typing.Any],) * len(types)
+            if objects != types and safe_supercedes(types, objects):
+                super().register(*objects)(self.default)
+        return super().register(*types)
+
 
 class PartialDefault:
     def __init__(self, default):
@@ -46,23 +58,19 @@ class PartialDefault:
         return self.default
 
 
+def safe_supercedes(xs, ys):
+    return supercedes(tuple(typing_wrap[_type_to_typing(x)] for x in xs),
+                      tuple(typing_wrap[_type_to_typing(y)] for y in ys))
+
+
 class KeyedRegistry(object):
 
     def __init__(self, default=None):
-        self.default = default if default is None else PartialDefault(default)
-        self.registry = defaultdict(lambda: PartialDispatcher('f'))
+        self.registry = defaultdict(lambda: PartialDispatcher('f', default=default))
+        self.default = PartialDefault(default) if default is not None else default
 
     def register(self, key, *types):
-        types = tuple(map(_type_to_typing, types))
-        key = getattr(key, "__origin__", key)
-        register = self.registry[key].register
-        if self.default:
-            objects = (typing.Any,) * len(types)
-            try:
-                if objects != types and supercedes(types, objects):
-                    register(*objects)(self.default)
-            except TypeError:
-                pass  # mysterious source of ambiguity in Python 3.5 breaks this
+        register = self.registry[get_origin(key)].register
 
         # This decorator supports stacking multiple decorators, which is not
         # supported by multipledipatch (which returns a Dispatch object rather
@@ -77,7 +85,7 @@ class KeyedRegistry(object):
         return key in self.registry
 
     def __getitem__(self, key):
-        key = getattr(key, "__origin__", key)
+        key = get_origin(key)
         if self.default is None:
             return self.registry[key]
         return self.registry.get(key, self.default)

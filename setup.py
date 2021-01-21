@@ -35,8 +35,7 @@ setup(
     python_requires=">=3.6",
     install_requires=[
         'makefun',
-        # use a fork of multipledispatch that depends on pytypes
-        'git+https://github.com/eb8680/multipledispatch.git@pytypes-master#egg=multipledispatch',
+        'multipledispatch',
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
         # pin pytypes to master
