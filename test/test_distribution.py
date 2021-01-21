@@ -1234,7 +1234,7 @@ def test_power_transform(shape):
     base_dist = backend_dist.Exponential(1)
     d = backend_dist.TransformedDistribution(base_dist, transform)
 
-    data = randn(shape).exp()
+    data = ops.exp(randn(shape))
     expected_log_prob = d.log_prob(data)
 
     name_to_dim = dict(i=-3, j=-2, k=-1)
