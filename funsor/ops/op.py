@@ -205,6 +205,19 @@ class WrappedTransformOp(TransformOp, metaclass=WrappedOpMeta):
     def __call__(self, x):
         if self._is_validated:
             return super().__call__(x)
+        try:
+            # Check for shape metadata available after
+            # https://github.com/pytorch/pytorch/pull/50547
+            # https://github.com/pytorch/pytorch/pull/50581
+            # https://github.com/pyro-ppl/pyro/pull/2739
+            # https://github.com/pyro-ppl/numpyro/pull/876
+            self.fn.domain.event_dim
+            self.fn.codomain.event_dim
+            self.fn.forward_shape
+        except AttributeError:
+            backend = self.fn.__module__.split(">")[0]
+            raise NotImplementedError(f"{self.fn} is missing shape metadata; "
+                                      f"try upgrading backend {backend}")
         if len(x.shape) < self.fn.domain.event_dim:
             raise ValueError(f"Too few dimensions for input, in {self.name}")
         event_shape = x.shape[len(x.shape) - self.fn.domain.event_dim:]

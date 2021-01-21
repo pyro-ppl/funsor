@@ -19,8 +19,18 @@ from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Einsum, Tensor, numeric_array, stack
 from funsor.terms import Independent, Variable, eager, lazy, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn, \
-    random_mvn, random_scale_tril, random_tensor, xfail_param
+from funsor.testing import (
+    assert_close,
+    check_funsor,
+    rand,
+    randint,
+    randn,
+    random_mvn,
+    random_scale_tril,
+    random_tensor,
+    xfail_if_not_implemented,
+    xfail_param
+)
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
@@ -1217,6 +1227,7 @@ def test_categorical_event_dim_conversion(batch_shape, event_shape):
     assert_close(actual_log_prob, expected_log_prob)
 
 
+@xfail_if_not_implemented()
 @pytest.mark.parametrize("shape", [(), (4,), (3, 2)], ids=str)
 def test_power_transform(shape):
     transform = backend_dist.transforms.PowerTransform(1.5)
@@ -1235,6 +1246,7 @@ def test_power_transform(shape):
     assert_close(actual_log_prob, expected_log_prob)
 
 
+@xfail_if_not_implemented()
 @pytest.mark.parametrize("shape", [(10,), (4, 3)], ids=str)
 @pytest.mark.parametrize("to_event", [
     True,
