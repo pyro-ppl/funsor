@@ -645,8 +645,8 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     return Gaussian(info_vec, precision, inputs)
 
 
-# @eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
-# @eager.register(Binary, SubOp, (Funsor, Align, Delta), Gaussian)
+@eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
+@eager.register(Binary, SubOp, (Funsor, Align, Delta), Gaussian)
 def eager_sub(op, lhs, rhs):
     return lhs + -rhs
 
