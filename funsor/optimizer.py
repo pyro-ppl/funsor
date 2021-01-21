@@ -50,8 +50,9 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
     return None
 
 
-unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])(
-    lambda r, b, v, *ts: unfold(Contraction, r, b, v, tuple(ts)))
+@unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+def unfold_contraction_variadic(r, b, v, *ts):
+    return unfold(Contraction, r, b, v, tuple(ts))
 
 
 @interpreter.dispatched_interpretation
@@ -66,8 +67,9 @@ def optimize(cls, *args):
 REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimizer
 
 
-optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])(
-    lambda r, b, v, *ts: optimize(Contraction, r, b, v, tuple(ts)))
+@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+def optimize_contraction_variadic(r, b, v, *ts):
+    return optimize(Contraction, r, b, v, tuple(ts))
 
 
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)

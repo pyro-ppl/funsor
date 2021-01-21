@@ -1,14 +1,16 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import atexit
 import functools
 import inspect
 import os
 import re
 import types
-from collections import OrderedDict, namedtuple
+from collections import Counter, OrderedDict, defaultdict, namedtuple
 from contextlib import contextmanager
 from functools import singledispatch
+from timeit import default_timer
 
 import numpy as np
 
@@ -19,6 +21,7 @@ from funsor.util import is_nn_module
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
+_PROFILE = int(os.environ.get("FUNSOR_PROFILE", 0))
 _STACK_SIZE = 0
 
 _INTERPRETATION = None  # To be set later in funsor.terms
@@ -59,9 +62,55 @@ if _DEBUG:
         if isinstance(fn, DebugLogged):
             return fn
         return DebugLogged(fn)
+elif _PROFILE:
+
+    class ProfileLogged(object):
+        def __init__(self, fn):
+            self.fn = fn
+            while isinstance(fn, functools.partial):
+                fn = fn.func
+            path = inspect.getabsfile(fn).split("/funsor/")[-1]
+            lineno = inspect.getsourcelines(fn)[1]
+            self._message = "{} {} {}".format(fn.__name__, path, lineno)
+
+        def __call__(self, *args, **kwargs):
+            start = default_timer()
+            result = self.fn(*args, **kwargs)
+            COUNTERS["time"][self._message] += default_timer() - start
+            COUNTERS["call"][self._message] += 1
+            return result
+
+        @property
+        def register(self):
+            return self.fn.register
+
+    def debug_logged(fn):
+        if isinstance(fn, ProfileLogged):
+            return fn
+        return ProfileLogged(fn)
 else:
     def debug_logged(fn):
         return fn
+
+
+COUNTERS = defaultdict(Counter)
+if _PROFILE:
+    COUNTERS["time"]["total"] -= default_timer()
+
+    @atexit.register
+    def print_counters():
+        COUNTERS["time"]["total"] += default_timer()
+        for name, counter in sorted(COUNTERS.items()):
+            if "total" not in counter and len(counter) > 1:
+                counter["total"] = sum(counter.values())
+            print("-" * 80)
+            print(f"     count {name}")
+            for key, value in counter.most_common(_PROFILE):
+                if isinstance(value, float):
+                    print(f"{value: >10f} {key}")
+                else:
+                    print(f"{value: >10} {key}")
+        print("-" * 80)
 
 
 def _classname(cls):
@@ -325,11 +374,25 @@ def dispatched_interpretation(fn):
     Decorator to create a dispatched interpretation function.
     """
     registry = KeyedRegistry(default=lambda *args: None)
-    if _DEBUG:
+
+    if _DEBUG or _PROFILE:
         fn.register = lambda *args: lambda fn: registry.register(*args)(debug_logged(fn))
     else:
         fn.register = registry.register
-    fn.dispatch = registry.dispatch
+
+    if _PROFILE:
+        def profiled_dispatch(*args):
+            name = fn.__name__ + ".dispatch"
+            start = default_timer()
+            result = registry.dispatch(*args)
+            COUNTERS["time"][name] += default_timer() - start
+            COUNTERS["call"][name] += 1
+            COUNTERS["interpretation"][fn.__name__] += 1
+            return result
+        fn.dispatch = profiled_dispatch
+    else:
+        fn.dispatch = registry.dispatch
+
     return fn
 
 
