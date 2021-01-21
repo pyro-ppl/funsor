@@ -95,8 +95,11 @@ else:
 
 COUNTERS = defaultdict(Counter)
 if _PROFILE:
+    COUNTERS["time"]["total"] -= default_timer()
+
     @atexit.register
     def print_counters():
+        COUNTERS["time"]["total"] += default_timer()
         for name, counter in sorted(COUNTERS.items()):
             print("-" * 80)
             print(f"     count {name}")
@@ -377,8 +380,12 @@ def dispatched_interpretation(fn):
 
     if _PROFILE:
         def profiled_dispatch(*args):
+            start = default_timer()
+            result = registry.dispatch(*args)
+            COUNTERS["time"][fn.__name__ + ".dispatch"] += default_timer() - start
+
             COUNTERS["interpretation"][fn.__name__] += 1
-            return registry.dispatch(*args)
+            return result
         fn.dispatch = profiled_dispatch
     else:
         fn.dispatch = registry.dispatch
