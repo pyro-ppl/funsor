@@ -22,7 +22,7 @@ test: lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)
 	pytest -v -n auto test/
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
-	FUNSOR_PROFILE=1 pytest -v test/test_einsum.py
+	FUNSOR_PROFILE=99 pytest -v test/test_einsum.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
 	python examples/discrete_hmm.py -n 2

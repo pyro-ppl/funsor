@@ -101,9 +101,11 @@ if _PROFILE:
     def print_counters():
         COUNTERS["time"]["total"] += default_timer()
         for name, counter in sorted(COUNTERS.items()):
+            if "total" not in counter and len(counter) > 1:
+                counter["total"] = sum(counter.values())
             print("-" * 80)
             print(f"     count {name}")
-            for key, value in counter.most_common():
+            for key, value in counter.most_common(_PROFILE):
                 if isinstance(value, float):
                     print(f"{value: >10f} {key}")
                 else:
