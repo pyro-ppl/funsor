@@ -10,6 +10,7 @@ import types
 from collections import Counter, OrderedDict, defaultdict, namedtuple
 from contextlib import contextmanager
 from functools import singledispatch
+from timeit import default_timer
 
 import numpy as np
 
@@ -73,8 +74,11 @@ elif _PROFILE:
             self._message = "{} {} {}".format(fn.__name__, path, lineno)
 
         def __call__(self, *args, **kwargs):
+            start = default_timer()
+            result = self.fn(*args, **kwargs)
+            COUNTERS["time"][self._message] += default_timer() - start
             COUNTERS["call"][self._message] += 1
-            return self.fn(*args, **kwargs)
+            return result
 
         @property
         def register(self):
@@ -97,7 +101,10 @@ if _PROFILE:
             print("-" * 80)
             print(f"     count {name}")
             for key, value in counter.most_common():
-                print(f"{value: >10} {key}")
+                if isinstance(value, float):
+                    print(f"{value: >10f} {key}")
+                else:
+                    print(f"{value: >10} {key}")
         print("-" * 80)
 
 
@@ -362,11 +369,20 @@ def dispatched_interpretation(fn):
     Decorator to create a dispatched interpretation function.
     """
     registry = KeyedRegistry(default=lambda *args: None)
+
     if _DEBUG or _PROFILE:
         fn.register = lambda *args: lambda fn: registry.register(*args)(debug_logged(fn))
     else:
         fn.register = registry.register
-    fn.dispatch = registry.dispatch
+
+    if _PROFILE:
+        def profiled_dispatch(*args):
+            COUNTERS["interpretation"][fn.__name__] += 1
+            return registry.dispatch(*args)
+        fn.dispatch = profiled_dispatch
+    else:
+        fn.dispatch = registry.dispatch
+
     return fn
 
 

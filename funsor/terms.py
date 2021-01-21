@@ -7,7 +7,7 @@ import math
 import numbers
 import typing
 import warnings
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from collections.abc import Hashable
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
@@ -35,6 +35,8 @@ def substitute(expr, subs):
         fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
         if fresh_subs:
             expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
+        if interpreter._PROFILE:
+            interpreter.COUNTERS["interpretation"]["substitute"] += 1
         return expr
 
     with interpreter.interpretation(subs_interpreter):
@@ -52,7 +54,7 @@ def _alpha_mangle(expr):
     if not alpha_subs:
         return expr
 
-    ast_values = expr._alpha_convert(alpha_subs)
+    ast_values = interpreter.debug_logged(expr._alpha_convert)(alpha_subs)
     return reflect(type(expr), *ast_values)
 
 
@@ -89,10 +91,12 @@ def reflect(cls, *args, **kwargs):
     result._ast_values = args
 
     if interpreter._PROFILE:
-        size, depth = _get_ast_stats(result)
+        size, depth, width = _get_ast_stats(result)
         interpreter.COUNTERS["ast_size"][size] += 1
         interpreter.COUNTERS["ast_depth"][depth] += 1
-        interpreter.COUNTERS["funsor"][getattr(cls, "__origin__", cls).__name__] += 1
+        classname = getattr(cls, "__origin__", cls).__name__
+        interpreter.COUNTERS["funsor"][classname] += 1
+        interpreter.COUNTERS[classname][width] += 1
 
     # alpha-convert eagerly upon binding any variable
     result = _alpha_mangle(result)
@@ -1675,27 +1679,46 @@ def of_shape(*shape):
     return symbolic(*shape)
 
 
+AstStats = namedtuple("AstStats", ("size", "depth", "width"))
+
+
 # Profiling helpers
 @singledispatch
+def _count_funsors(x):
+    return 0
+
+
+@_count_funsors.register(Funsor)
+def _(x):
+    return 1
+
+
+@_count_funsors.register(tuple)
+def _(x):
+    return sum(map(_count_funsors, x))
+
+
+@singledispatch
 def _get_ast_stats(x):
-    return 1, 1
+    return AstStats(1, 1, 0)
 
 
 @_get_ast_stats.register(Funsor)
 def _(x):
     result = getattr(x, "_ast_stats", None)
     if result is None:
-        size, depth = _get_ast_stats(x._ast_values)
-        result = x._ast_stats = size + 1, depth + 1
+        size, depth, _ = _get_ast_stats(x._ast_values)
+        width = _count_funsors(x._ast_values)
+        result = x._ast_stats = AstStats(size + 1, depth + 1, width)
     return result
 
 
 @_get_ast_stats.register(tuple)
 def _(x):
     parts = list(map(_get_ast_stats, x))
-    size = sum(size for size, _ in parts)
-    depth = max([0] + [depth for _, depth in parts])
-    return size, depth
+    size = sum(p.size for p in parts)
+    depth = max([0] + [p.depth for p in parts])
+    return AstStats(size, depth, 0)
 
 
 ################################################################################
