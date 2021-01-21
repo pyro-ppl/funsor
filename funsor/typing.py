@@ -57,8 +57,8 @@ def get_origin(tp):
 
 
 def get_type_hints(obj, globalns=None, localns=None, include_extras=False):
-    if isinstance(obj, GenericTypeMeta) and hasattr(obj, "__annotations__"):
-        return obj.__annotations__
+    if isinstance(obj, GenericTypeMeta):
+        return getattr(obj, "__annotations__", {})
     return typing_extensions.get_type_hints(obj, globalns=globalns, localns=localns, include_extras=include_extras)
 
 
@@ -152,7 +152,7 @@ class DeepVariadicSignatureType(VariadicSignatureType):
 
 class Variadic(metaclass=DeepVariadicSignatureType):
     """
-    A version of multipledispatch.variadic.Variadic compatible with typing.
+    A typing-compatible drop-in replacement for multipledispatch.variadic.Variadic.
     """
     pass  # TODO is there anything else to do here?
 
