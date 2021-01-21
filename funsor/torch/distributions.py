@@ -20,7 +20,6 @@ from funsor.distribution import (  # noqa: F401
     eager_beta_bernoulli,
     eager_binomial,
     eager_categorical_funsor,
-    eager_categorical_tensor_variable,
     eager_delta_funsor_funsor,
     eager_delta_funsor_variable,
     eager_delta_tensor,
@@ -337,7 +336,7 @@ eager.register(Beta, Funsor, Funsor, Funsor)(eager_beta)  # noqa: F821)
 eager.register(Binomial, Funsor, Funsor, Funsor)(eager_binomial)  # noqa: F821
 eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: F821)
 eager.register(Categorical, Funsor, Tensor)(eager_categorical_funsor)  # noqa: F821)
-eager.register(Categorical, Tensor, Variable)(eager_categorical_tensor_variable)  # noqa: F821)
+eager.register(Categorical, Tensor, Variable)(eager_categorical_funsor)  # noqa: F821)
 eager.register(Delta, Tensor, Tensor, Tensor)(eager_delta_tensor)  # noqa: F821
 eager.register(Delta, Funsor, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821
 eager.register(Delta, Variable, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821

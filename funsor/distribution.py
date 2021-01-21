@@ -653,18 +653,6 @@ def eager_categorical_funsor(probs, value):
     return probs[value].log()
 
 
-def eager_categorical_tensor_variable(probs, value, clamp=True):
-    assert value.name not in probs.inputs
-    if clamp:
-        data = probs.data
-        eps = ops.finfo(data).eps
-        data = ops.clamp(probs.data, eps, 1 - eps)
-        probs = Tensor(data, probs.inputs)
-    probs = probs[value]
-    logits = ops.log(probs)
-    return logits
-
-
 def eager_delta_tensor(v, log_density, value):
     # This handles event_dim specially, and hence cannot use the
     # generic Delta.eager_log_prob() method.
