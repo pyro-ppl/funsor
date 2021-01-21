@@ -187,7 +187,8 @@ def eager_add_multidelta(op, lhs, rhs):
     return Delta(lhs.terms + rhs.terms)
 
 
-@eager.register(Binary, (AddOp, SubOp), Delta, (Funsor, Align))
+@eager.register(Binary, (AddOp, SubOp), Delta, Align)
+@eager.register(Binary, (AddOp, SubOp), Delta, Funsor)
 def eager_add_delta_funsor(op, lhs, rhs):
     if lhs.fresh.intersection(rhs.inputs):
         rhs = rhs(**{name: point for name, (point, log_density) in lhs.terms if name in rhs.inputs})
@@ -196,7 +197,8 @@ def eager_add_delta_funsor(op, lhs, rhs):
     return None  # defer to default implementation
 
 
-@eager.register(Binary, AddOp, (Funsor, Align), Delta)
+@eager.register(Binary, AddOp, Align, Delta)
+@eager.register(Binary, AddOp, Funsor, Delta)
 def eager_add_funsor_delta(op, lhs, rhs):
     if rhs.fresh.intersection(lhs.inputs):
         lhs = lhs(**{name: point for name, (point, log_density) in rhs.terms if name in lhs.inputs})

@@ -11,8 +11,6 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
-from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic
 
 import funsor
 import funsor.ops as ops
@@ -21,11 +19,13 @@ from funsor.domains import Array, ArrayType, Bint, Product, Real, Reals, find_do
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Binary,
+    Cat,
     Funsor,
     FunsorMeta,
     Lambda,
     Number,
     Slice,
+    Stack,
     Tuple,
     Unary,
     Variable,
@@ -712,8 +712,8 @@ def eager_lambda(var, expr):
     return Tensor(data, inputs, expr.dtype)
 
 
-@dispatch(str, Variadic[Tensor])
-def eager_stack_homogeneous(name, *parts):
+@eager.register(Stack, str, typing.Tuple[Tensor, ...])
+def eager_stack_tensors(name, parts):
     assert parts
     output = parts[0].output
     part_inputs = OrderedDict()
@@ -730,9 +730,12 @@ def eager_stack_homogeneous(name, *parts):
     return Tensor(data, inputs, dtype=output.dtype)
 
 
-@dispatch(str, str, Variadic[Tensor])
-def eager_cat_homogeneous(name, part_name, *parts):
+@eager.register(Cat, str, typing.Tuple[Tensor, ...], str)
+def eager_cat_tensors(name, parts, part_name):
     assert parts
+    if len(parts) == 1:
+        return parts[0](**{part_name: name})
+
     output = parts[0].output
     inputs = OrderedDict([(part_name, None)])
     for part in parts:

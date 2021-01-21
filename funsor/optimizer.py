@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import collections
+from typing import Tuple
 
-from multipledispatch.variadic import Variadic
 from opt_einsum.paths import greedy
 
 import funsor.interpreter as interpreter
@@ -22,7 +22,7 @@ def unfold(cls, *args):
     return result
 
 
-@unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
+@unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Tuple[Funsor, ...])
 def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
 
     for i, v in enumerate(terms):
@@ -50,10 +50,6 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
     return None
 
 
-unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])(
-    lambda r, b, v, *ts: unfold(Contraction, r, b, v, tuple(ts)))
-
-
 @interpreter.dispatched_interpretation
 def optimize(cls, *args):
     result = optimize.dispatch(cls, *args)(*args)
@@ -66,17 +62,13 @@ def optimize(cls, *args):
 REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimizer
 
 
-optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])(
-    lambda r, b, v, *ts: optimize(Contraction, r, b, v, tuple(ts)))
-
-
-@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
-@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor)
-def eager_contract_base(red_op, bin_op, reduced_vars, *terms):
+@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Tuple[Funsor, Funsor])
+@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Tuple[Funsor])
+def eager_contract_base(red_op, bin_op, reduced_vars, terms):
     return None
 
 
-@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
+@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Tuple[Funsor, ...])
 def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
 
     if red_op is nullop or bin_op is nullop or not (red_op, bin_op) in DISTRIBUTIVE_OPS:

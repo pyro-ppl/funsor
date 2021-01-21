@@ -258,6 +258,10 @@ def get_args(tp):
     return typing_extensions.get_args(tp)
 
 
+def deep_type(obj):
+    return pytypes.deep_type(obj)
+
+
 class GenericTypeMeta(type):
     """
     Metaclass to support subtyping with parameters for pattern matching, e.g. Number[int, int].
@@ -316,6 +320,8 @@ class _PytypesSubclasser(GenericTypeMeta):
         return tp if isinstance(tp, GenericTypeMeta) or isvariadic(tp) else super().__getitem__(tp)
 
     def __subclasscheck__(cls, subcls):
+        if isinstance(subcls, _PytypesSubclasser):
+            subcls = subcls.__args__[0]
         return pytypes.is_subtype(subcls, cls.__args__[0])
 
 

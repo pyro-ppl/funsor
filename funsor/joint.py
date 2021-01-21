@@ -6,21 +6,17 @@ from collections import OrderedDict
 from functools import reduce
 from typing import Tuple, Union
 
-from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic
-
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, align_tensor
-from funsor.terms import Funsor, Independent, Number, Reduce, Unary, eager, moment_matching, normalize
+from funsor.terms import Cat, Funsor, Independent, Number, Reduce, Unary, eager, moment_matching, normalize
 
 
-@dispatch(str, str, Variadic[(Gaussian, GaussianMixture)])
-def eager_cat_homogeneous(name, part_name, *parts):
+@eager.register(Cat, str, Tuple[Union[Gaussian, GaussianMixture], ...], str)
+def eager_cat_gaussian(name, parts, part_name):
     assert parts
     output = parts[0].output
     inputs = OrderedDict([(part_name, None)])
@@ -75,14 +71,9 @@ def eager_cat_homogeneous(name, part_name, *parts):
 # patterns for moment-matching
 #################################
 
-@moment_matching.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[object])
-def moment_matching_contract_default(*args):
-    return None
-
-
-@moment_matching.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, (Number, Tensor), Gaussian)
-def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gaussian):
-
+@moment_matching.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Tuple[Union[Number, Tensor], Gaussian])
+def moment_matching_contract_joint(red_op, bin_op, reduced_vars, terms):
+    discrete, gaussian = terms
     approx_vars = frozenset(v for v in reduced_vars
                             if v.name in gaussian.inputs
                             if v.dtype != 'real')

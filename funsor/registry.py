@@ -9,7 +9,7 @@ import pytypes
 from multipledispatch import Dispatcher
 from multipledispatch.conflict import supercedes
 
-from funsor.util import _type_to_typing, get_origin, typing_wrap
+from funsor.util import _type_to_typing, deep_type, get_origin, typing_wrap
 
 
 class PartialDispatcher(Dispatcher):
@@ -24,7 +24,7 @@ class PartialDispatcher(Dispatcher):
         """
         Likde :meth:`__call__` but avoids calling ``func()``.
         """
-        types = tuple(map(type, args))
+        types = tuple(map(deep_type, args))
         types = tuple(map(_type_to_typing, types))
         try:
             func = self._cache[types]

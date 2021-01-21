@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import OrderedDict
-from typing import Union
+from typing import Tuple, Union
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
@@ -91,9 +91,10 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset,
-                Unary[ops.ExpOp, Union[GaussianMixture, Delta, Gaussian, Number, Tensor]],
-                (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture))
-def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
+                Tuple[Unary[ops.ExpOp, Union[GaussianMixture, Delta, Gaussian, Number, Tensor]],
+                      Union[Variable, Delta, Gaussian, Number, Tensor, GaussianMixture]])
+def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, terms):
+    lhs, rhs = terms
     reduced_names = frozenset(v.name for v in reduced_vars)
     if not (reduced_names.issubset(lhs.inputs) and reduced_names.issubset(rhs.inputs)):
         args = red_op, bin_op, reduced_vars, (lhs, rhs)
