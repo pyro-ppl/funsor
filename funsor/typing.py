@@ -13,6 +13,29 @@ from multipledispatch.dispatcher import Dispatcher
 from multipledispatch.variadic import VariadicSignatureType, isvariadic
 
 
+#################################
+# Runtime type-checking helpers
+#################################
+
+def deep_isinstance(obj, cls):
+    """replaces isinstance()"""
+    return pytypes.is_of_type(obj, cls)
+
+
+def deep_issubclass(subcls, cls):
+    """replaces issubclass()"""
+    return pytypes.is_subtype(subcls, cls)
+
+
+def deep_type(obj):
+    """replaces type()"""
+    return pytypes.deep_type(obj)
+
+
+##############################################
+# Funsor-compatible typing introspection API
+##############################################
+
 def _type_to_typing(tp):
     if tp is object:
         tp = typing.Any
@@ -21,16 +44,16 @@ def _type_to_typing(tp):
     return tp
 
 
-def get_origin(tp):
-    if isinstance(tp, GenericTypeMeta):
-        return getattr(tp, "__origin__", tp)
-    return typing_extensions.get_origin(tp)
-
-
 def get_args(tp):
     if isinstance(tp, GenericTypeMeta):
         return getattr(tp, "__args__", tp)
     return typing_extensions.get_args(tp)
+
+
+def get_origin(tp):
+    if isinstance(tp, GenericTypeMeta):
+        return getattr(tp, "__origin__", tp)
+    return typing_extensions.get_origin(tp)
 
 
 def get_type_hints(obj, globalns=None, localns=None, include_extras=False):
@@ -39,17 +62,9 @@ def get_type_hints(obj, globalns=None, localns=None, include_extras=False):
     return typing_extensions.get_type_hints(obj, globalns=globalns, localns=localns, include_extras=include_extras)
 
 
-def deep_type(obj):
-    return pytypes.deep_type(obj)
-
-
-def deep_issubclass(subcls, cls):
-    return pytypes.is_subtype(subcls, cls)
-
-
-def deep_isinstance(obj, cls):
-    return pytypes.is_of_type(obj, cls)
-
+######################################################################
+# Metaclass for generating parametric types with Tuple-like variance
+######################################################################
 
 class GenericTypeMeta(type):
     """
@@ -104,17 +119,21 @@ class GenericTypeMeta(type):
         return repr(cls)
 
 
-class _PytypesSubclasser(GenericTypeMeta):
+##############################################################
+# Tools and overrides for typing-compatible multipledispatch
+##############################################################
+
+class _RuntimeSubclassCheckMeta(GenericTypeMeta):
     def __getitem__(cls, tp):
         return tp if isinstance(tp, GenericTypeMeta) or isvariadic(tp) else super().__getitem__(tp)
 
     def __subclasscheck__(cls, subcls):
-        if isinstance(subcls, _PytypesSubclasser):
+        if isinstance(subcls, _RuntimeSubclassCheckMeta):
             subcls = subcls.__args__[0]
         return deep_issubclass(subcls, cls.__args__[0])
 
 
-class typing_wrap(metaclass=_PytypesSubclasser):
+class typing_wrap(metaclass=_RuntimeSubclassCheckMeta):
     """
     Metaclass for overriding the runtime behavior of `typing` objects.
     """
@@ -128,14 +147,14 @@ def deep_supercedes(xs, ys):
 
 
 class DeepVariadicSignatureType(VariadicSignatureType):
-    pass  # TODO
+    pass  # TODO define __getitem__, possibly __eq__/__hash__?
 
 
 class Variadic(metaclass=DeepVariadicSignatureType):
     """
     A version of multipledispatch.variadic.Variadic compatible with typing.
     """
-    pass  # TODO
+    pass  # TODO is there anything else to do here?
 
 
 class TypingDispatcher(Dispatcher):
@@ -144,7 +163,7 @@ class TypingDispatcher(Dispatcher):
     """
     def register(self, *types):
         types = tuple(typing_wrap[tp] for tp in map(_type_to_typing, types))
-        if getattr(self, "default", None):
+        if getattr(self, "default", None):  # XXX should this class have default?
             objects = (typing_wrap[typing.Any],) * len(types)
             if objects != types and deep_supercedes(types, objects):
                 super().register(*objects)(self.default)
