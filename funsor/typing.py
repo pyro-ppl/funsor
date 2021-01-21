@@ -104,7 +104,7 @@ class GenericTypeMeta(type):
             "" if not get_args(cls) else
             "[{}]".format(", ".join(repr(t) for t in get_args(cls))))
 
-    @lazy_property
+    @property
     def classname(cls):
         return repr(cls)
 
@@ -124,7 +124,7 @@ class typing_wrap(metaclass=_PytypesSubclasser):
 
 
 class TypingDispatcher(Dispatcher):
-    
+
     def register(self, *types):
         types = tuple(typing_wrap[tp] for tp in map(_type_to_typing, types))
         if self.default:

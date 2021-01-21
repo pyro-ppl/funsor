@@ -8,7 +8,8 @@ import warnings
 from functools import reduce
 
 import funsor.ops as ops
-from funsor.util import GenericTypeMeta, broadcast_shape, get_backend, get_tracing_state, quote
+from funsor.typing import GenericTypeMeta
+from funsor.util import broadcast_shape, get_backend, get_tracing_state, quote
 
 
 class Domain(GenericTypeMeta):

@@ -17,7 +17,8 @@ import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import GenericTypeMeta, getargspec, get_backend, lazy_property, pretty, quote, _type_to_typing
+from funsor.typing import GenericTypeMeta, _type_to_typing
+from funsor.util import getargspec, get_backend, lazy_property, pretty, quote
 
 
 def substitute(expr, subs):

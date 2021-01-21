@@ -1,18 +1,12 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import functools
-import typing
 from collections import defaultdict
 
-import pytypes
-from multipledispatch import Dispatcher
-from multipledispatch.conflict import supercedes
-
-from funsor.util import _type_to_typing, deep_type, get_origin, typing_wrap
+from funsor.typing import TypingDispatcher, _type_to_typing, deep_type, get_origin
 
 
-class PartialDispatcher(Dispatcher):
+class PartialDispatcher(TypingDispatcher):
     """
     Wrapper to avoid appearance in stack traces.
     """
@@ -37,14 +31,6 @@ class PartialDispatcher(Dispatcher):
             self._cache[types] = func
         return func
 
-    def register(self, *types):
-        types = tuple(typing_wrap[tp] for tp in map(_type_to_typing, types))
-        if self.default:
-            objects = (typing_wrap[typing.Any],) * len(types)
-            if objects != types and safe_supercedes(types, objects):
-                super().register(*objects)(self.default)
-        return super().register(*types)
-
 
 class PartialDefault:
     def __init__(self, default):
@@ -56,11 +42,6 @@ class PartialDefault:
 
     def partial_call(self, *args):
         return self.default
-
-
-def safe_supercedes(xs, ys):
-    return supercedes(tuple(typing_wrap[_type_to_typing(x)] for x in xs),
-                      tuple(typing_wrap[_type_to_typing(y)] for y in ys))
 
 
 class KeyedRegistry(object):
