@@ -124,8 +124,8 @@ class GenericTypeMeta(type):
 ##############################################################
 
 class _RuntimeSubclassCheckMeta(GenericTypeMeta):
-    def __getitem__(cls, tp):
-        return tp if isinstance(tp, GenericTypeMeta) or isvariadic(tp) else super().__getitem__(tp)
+    def __call__(cls, tp):
+        return tp if isinstance(tp, GenericTypeMeta) or isvariadic(tp) else cls[tp]
 
     def __subclasscheck__(cls, subcls):
         if isinstance(subcls, _RuntimeSubclassCheckMeta):
@@ -135,15 +135,15 @@ class _RuntimeSubclassCheckMeta(GenericTypeMeta):
 
 class typing_wrap(metaclass=_RuntimeSubclassCheckMeta):
     """
-    Metaclass for overriding the runtime behavior of `typing` objects.
+    Utility callable for overriding the runtime behavior of `typing` objects.
     """
     pass
 
 
 def deep_supercedes(xs, ys):
     """typing-compatible version of multipledispatch.conflict.supercedes"""
-    return supercedes(tuple(typing_wrap[_type_to_typing(x)] for x in xs),
-                      tuple(typing_wrap[_type_to_typing(y)] for y in ys))
+    return supercedes(tuple(typing_wrap(_type_to_typing(x)) for x in xs),
+                      tuple(typing_wrap(_type_to_typing(y)) for y in ys))
 
 
 class DeepVariadicSignatureType(VariadicSignatureType):
@@ -162,9 +162,9 @@ class TypingDispatcher(Dispatcher):
     A Dispatcher class designed for compatibility with the typing standard library.
     """
     def register(self, *types):
-        types = tuple(typing_wrap[tp] for tp in map(_type_to_typing, types))
+        types = tuple(map(typing_wrap, map(_type_to_typing, types))
         if getattr(self, "default", None):  # XXX should this class have default?
-            objects = (typing_wrap[typing.Any],) * len(types)
+            objects = (typing_wrap(typing.Any),) * len(types)
             if objects != types and deep_supercedes(types, objects):
                 super().register(*objects)(self.default)
         return super().register(*types)
