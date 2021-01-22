@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import contextlib
+import importlib
 import itertools
 import numbers
 import operator
@@ -28,6 +29,15 @@ def xfail_if_not_implemented(msg="Not implemented"):
     try:
         yield
     except NotImplementedError as e:
+        import pytest
+        pytest.xfail(reason='{}:\n{}'.format(msg, e))
+
+
+@contextlib.contextmanager
+def xfail_if_not_found(msg="Not implemented"):
+    try:
+        yield
+    except AttributeError as e:
         import pytest
         pytest.xfail(reason='{}:\n{}'.format(msg, e))
 
@@ -66,7 +76,7 @@ def allclose(a, b, rtol=1e-05, atol=1e-08):
 
 
 def is_array(x):
-    return isinstance(x, (np.ndarray, np.generic)) or type(x).__name__ == "DeviceArray"
+    return get_backend() != "torch" and ops.is_numeric_array(x)
 
 
 def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
@@ -263,6 +273,24 @@ def randn(*args):
     else:
         # work around numpy random returns float object instead of np.ndarray object when shape == ()
         return np.array(np.random.randn(*shape))
+
+
+def random_scale_tril(*args):
+    if isinstance(args[0], tuple):
+        assert len(args) == 1
+        shape = args[0]
+    else:
+        shape = args
+
+    from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
+    backend_dist = importlib.import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
+
+    if get_backend() == "torch":
+        data = randn(shape)
+        return backend_dist.transforms.transform_to(backend_dist.constraints.lower_cholesky)(data)
+    else:
+        data = randn(shape[:-2] + (shape[-1] * (shape[-1] + 1) // 2,))
+        return backend_dist.biject_to(backend_dist.constraints.lower_cholesky)(data)
 
 
 def zeros(*args):

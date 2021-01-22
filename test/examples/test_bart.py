@@ -86,7 +86,7 @@ def test_bart(analytic_kl):
          'time_b4',
          'gate_rate_b3')
         p_prior = Contraction(ops.logaddexp, ops.add,
-         frozenset({'state(time=1)_b11', 'state_b10'}),
+         frozenset({Variable('state(time=1)_b11', Reals[2]), Variable('state_b10', Reals[2])}),
          (MarkovProduct(ops.logaddexp, ops.add,
            Contraction(ops.nullop, ops.add,
             frozenset(),
@@ -140,9 +140,9 @@ def test_bart(analytic_kl):
            (('value_b5',
              Variable('state_b10', Reals[2]),),)),))
         p_likelihood = Contraction(ops.add, ops.nullop,
-         frozenset({'time_b17', 'destin_b16', 'origin_b15'}),
+         frozenset({Variable('time_b17', Bint[2]), Variable('destin_b16', Bint[2]), Variable('origin_b15', Bint[2])}),
          (Contraction(ops.logaddexp, ops.add,
-           frozenset({'gated_b14'}),
+           frozenset({Variable('gated_b14', Bint[2])}),
            (dist.Categorical(
              Binary(ops.GetitemOp(0),
               Binary(ops.GetitemOp(0),

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import copyreg
+import functools
 import operator
 import warnings
 from functools import reduce
@@ -174,49 +175,128 @@ def bint(size):
     return Bint[size]
 
 
+class ProductDomain(Domain):
+
+    _type_cache = WeakValueDictionary()
+
+    def __getitem__(cls, arg_domains):
+        try:
+            return ProductDomain._type_cache[arg_domains]
+        except KeyError:
+            assert isinstance(arg_domains, tuple)
+            assert all(isinstance(arg_domain, Domain) for arg_domain in arg_domains)
+            subcls = type("Product_", (Product,), {"__args__": arg_domains})
+            ProductDomain._type_cache[arg_domains] = subcls
+            return subcls
+
+    def __repr__(cls):
+        return "Product[{}]".format(", ".join(map(repr, cls.__args__)))
+
+    @property
+    def __origin__(cls):
+        return Product
+
+    @property
+    def shape(cls):
+        return (len(cls.__args__),)
+
+
+class Product(tuple, metaclass=ProductDomain):
+    """like typing.Tuple, but works with issubclass"""
+    __args__ = NotImplemented
+
+
 @quote.register(BintType)
 @quote.register(RealsType)
 def _(arg, indent, out):
     out.append((indent, repr(arg)))
 
 
+@functools.singledispatch
 def find_domain(op, *domains):
     r"""
     Finds the :class:`Domain` resulting when applying ``op`` to ``domains``.
     :param callable op: An operation.
     :param Domain \*domains: One or more input domains.
     """
-    assert callable(op), op
-    assert all(isinstance(arg, Domain) for arg in domains)
+    raise NotImplementedError
+
+
+@find_domain.register(ops.Op)  # TODO this is too general, register all ops
+@find_domain.register(ops.TransformOp)  # TODO too general, may be wrong for some
+@find_domain.register(ops.ReciprocalOp)
+@find_domain.register(ops.SigmoidOp)
+@find_domain.register(ops.TanhOp)
+@find_domain.register(ops.AtanhOp)
+def _find_domain_pointwise_unary_transform(op, domain):
+    if isinstance(domain, ArrayType):
+        return Array[domain.dtype, domain.shape]
+    raise NotImplementedError
+
+
+@find_domain.register(ops.LogOp)
+@find_domain.register(ops.ExpOp)
+def _find_domain_log_exp(op, domain):
+    return Array['real', domain.shape]
+
+
+@find_domain.register(ops.ReshapeOp)
+def _find_domain_reshape(op, domain):
+    return Array[domain.dtype, op.shape]
+
+
+@find_domain.register(ops.GetitemOp)
+def _find_domain_getitem(op, lhs_domain, rhs_domain):
+    if isinstance(lhs_domain, ArrayType):
+        dtype = lhs_domain.dtype
+        shape = lhs_domain.shape[:op.offset] + lhs_domain.shape[1 + op.offset:]
+        return Array[dtype, shape]
+    elif isinstance(lhs_domain, ProductDomain):
+        # XXX should this return a Union?
+        raise NotImplementedError("Cannot statically infer domain from: "
+                                  f"{lhs_domain}[{rhs_domain}]")
+
+
+@find_domain.register(ops.EqOp)
+@find_domain.register(ops.GeOp)
+@find_domain.register(ops.GtOp)
+@find_domain.register(ops.LeOp)
+@find_domain.register(ops.LtOp)
+@find_domain.register(ops.NeOp)
+@find_domain.register(ops.PowOp)
+@find_domain.register(ops.SubOp)
+@find_domain.register(ops.TruedivOp)
+def _find_domain_pointwise_binary_generic(op, lhs, rhs):
+    if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType) and \
+            lhs.dtype == rhs.dtype:
+        return Array[lhs.dtype, broadcast_shape(lhs.shape, rhs.shape)]
+    raise NotImplementedError("TODO")
+
+
+@find_domain.register(ops.MatmulOp)
+def _find_domain_matmul(op, lhs, rhs):
+    assert lhs.shape and rhs.shape
+    if len(rhs.shape) == 1:
+        assert lhs.shape[-1] == rhs.shape[-1]
+        shape = lhs.shape[:-1]
+    elif len(lhs.shape) == 1:
+        assert lhs.shape[-1] == rhs.shape[-2]
+        shape = rhs.shape[:-2] + rhs.shape[-1:]
+    else:
+        assert lhs.shape[-1] == rhs.shape[-2]
+        shape = broadcast_shape(lhs.shape[:-1], rhs.shape[:-2] + (1,)) + rhs.shape[-1:]
+    return Reals[shape]
+
+
+@find_domain.register(ops.AssociativeOp)
+def _find_domain_associative_generic(op, *domains):
+
+    assert 1 <= len(domains) <= 2
+
     if len(domains) == 1:
-        dtype = domains[0].dtype
-        shape = domains[0].shape
-        if op is ops.log or op is ops.exp:
-            dtype = 'real'
-        elif isinstance(op, ops.ReshapeOp):
-            shape = op.shape
-        elif isinstance(op, ops.AssociativeOp):
-            shape = ()
-        return Reals[shape] if dtype == "real" else Bint[dtype]
+        return Array[domains[0].dtype, ()]
 
     lhs, rhs = domains
-    if isinstance(op, ops.GetitemOp):
-        dtype = lhs.dtype
-        shape = lhs.shape[:op.offset] + lhs.shape[1 + op.offset:]
-        return Reals[shape] if dtype == "real" else Bint[dtype]
-    elif op == ops.matmul:
-        assert lhs.shape and rhs.shape
-        if len(rhs.shape) == 1:
-            assert lhs.shape[-1] == rhs.shape[-1]
-            shape = lhs.shape[:-1]
-        elif len(lhs.shape) == 1:
-            assert lhs.shape[-1] == rhs.shape[-2]
-            shape = rhs.shape[:-2] + rhs.shape[-1:]
-        else:
-            assert lhs.shape[-1] == rhs.shape[-2]
-            shape = broadcast_shape(lhs.shape[:-1], rhs.shape[:-2] + (1,)) + rhs.shape[-1:]
-        return Reals[shape]
-
     if lhs.dtype == 'real' or rhs.dtype == 'real':
         dtype = 'real'
     elif op in (ops.add, ops.mul, ops.pow, ops.max, ops.min):
@@ -228,11 +308,8 @@ def find_domain(op, *domains):
     else:
         raise NotImplementedError('TODO')
 
-    if lhs.shape == rhs.shape:
-        shape = lhs.shape
-    else:
-        shape = broadcast_shape(lhs.shape, rhs.shape)
-    return Reals[shape] if dtype == "real" else Bint[dtype]
+    shape = broadcast_shape(lhs.shape, rhs.shape)
+    return Array[dtype, shape]
 
 
 __all__ = [

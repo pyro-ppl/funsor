@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
+import numbers
 
 import numpy as np
 
 from .builtin import AssociativeOp, add, atanh, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt, tanh
-from .op import DISTRIBUTIVE_OPS, Op
+from .op import DISTRIBUTIVE_OPS, CachedOpMeta, Op, declare_op_types, make_op
 
 _builtin_all = all
 _builtin_any = any
@@ -14,35 +15,28 @@ _builtin_any = any
 # This is used only for pattern matching.
 array = (np.ndarray, np.generic)
 
-all = Op(np.all)
-amax = Op(np.amax)
-amin = Op(np.amin)
-any = Op(np.any)
-astype = Op("astype")
-cat = Op("cat")
-clamp = Op("clamp")
-diagonal = Op("diagonal")
-einsum = Op("einsum")
-full_like = Op(np.full_like)
-prod = Op(np.prod)
-stack = Op("stack")
-sum = Op(np.sum)
-transpose = Op("transpose")
-argmax = Op("argmax")
+all = make_op(np.all)
+amax = make_op(np.amax)
+amin = make_op(np.amin)
+any = make_op(np.any)
+astype = make_op("astype")
+cat = make_op("cat")
+clamp = make_op("clamp")
+diagonal = make_op("diagonal")
+einsum = make_op("einsum")
+full_like = make_op(np.full_like)
+isnan = make_op(np.isnan)
+prod = make_op(np.prod)
+stack = make_op("stack")
+sum = make_op(np.sum)
+transpose = make_op("transpose")
+argmax = make_op("argmax")
 
 sqrt.register(array)(np.sqrt)
 exp.register(array)(np.exp)
 log1p.register(array)(np.log1p)
 tanh.register(array)(np.tanh)
 atanh.register(array)(np.arctanh)
-
-
-class LogAddExpOp(AssociativeOp):
-    pass
-
-
-class SampleOp(LogAddExpOp):
-    pass
 
 
 @log.register(array)
@@ -54,29 +48,18 @@ def _log(x):
 
 
 def _logaddexp(x, y):
-    if hasattr(x, "__logaddexp__"):
-        return x.__logaddexp__(y)
-    if hasattr(y, "__rlogaddexp__"):
-        return y.__logaddexp__(x)
     shift = max(detach(x), detach(y))
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
-logaddexp = LogAddExpOp(_logaddexp, name="logaddexp")
-sample = SampleOp(_logaddexp, name="sample")
+logaddexp = make_op(_logaddexp, AssociativeOp, name="logaddexp")
+sample = make_op(_logaddexp, type(logaddexp), name="sample")
 
 
-class ReshapeMeta(type):
-    _cache = {}
-
+class ReshapeMeta(CachedOpMeta):
     def __call__(cls, shape):
-        shape = tuple(shape)
-        try:
-            return ReshapeMeta._cache[shape]
-        except KeyError:
-            instance = super().__call__(shape)
-            ReshapeMeta._cache[shape] = instance
-            return instance
+        shape = tuple(shape)  # necessary to convert torch.Size to tuple
+        return super().__call__(shape)
 
 
 class ReshapeOp(Op, metaclass=ReshapeMeta):
@@ -101,7 +84,10 @@ def _cat(dim, *x):
     return np.concatenate(x, axis=dim)
 
 
-@clamp.register(array, object, object)
+@clamp.register(array, numbers.Number, numbers.Number)
+@clamp.register(array, numbers.Number, type(None))
+@clamp.register(array, type(None), numbers.Number)
+@clamp.register(array, type(None), type(None))
 def _clamp(x, min, max):
     return np.clip(x, a_min=min, a_max=max)
 
@@ -152,7 +138,6 @@ def expand(x, shape):
     assert prepend_dim >= 0
     shape = shape[:prepend_dim] + tuple(dx if size == -1 else size
                                         for dx, size in zip(np.shape(x), shape[prepend_dim:]))
-    return np.broadcast_to(x, shape)
     return np.broadcast_to(x, shape)
 
 
@@ -236,7 +221,7 @@ def _reciprocal(x):
     return result
 
 
-@safediv.register(object, array)
+@safediv.register(numbers.Number, array)
 def _safediv(x, y):
     try:
         finfo = np.finfo(y.dtype)
@@ -245,7 +230,7 @@ def _safediv(x, y):
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
-@safesub.register(object, array)
+@safesub.register(numbers.Number, array)
 def _safesub(x, y):
     try:
         finfo = np.finfo(y.dtype)
@@ -281,9 +266,6 @@ DISTRIBUTIVE_OPS.add((sample, add))
 
 
 __all__ = [
-    'LogAddExpOp',
-    'ReshapeOp',
-    'SampleOp',
     'all',
     'amax',
     'amin',
@@ -301,6 +283,7 @@ __all__ = [
     'finfo',
     'full_like',
     'is_numeric_array',
+    'isnan',
     'logaddexp',
     'logsumexp',
     'new_arange',
@@ -316,6 +299,7 @@ __all__ = [
     'unsqueeze',
 ]
 
+declare_op_types(globals(), __all__, __name__)
 
 __doc__ = "\n".join(".. autodata:: {}\n".format(_name)
                     for _name in __all__ if isinstance(globals()[_name], Op))

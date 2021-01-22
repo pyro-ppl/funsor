@@ -17,7 +17,7 @@ from multipledispatch.variadic import Variadic
 import funsor
 import funsor.ops as ops
 from funsor.delta import Delta
-from funsor.domains import Array, ArrayType, Bint, Real, Reals, find_domain
+from funsor.domains import Array, ArrayType, Bint, Product, Real, Reals, find_domain
 from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from funsor.terms import (
     Argreduce,
@@ -27,6 +27,7 @@ from funsor.terms import (
     Lambda,
     Number,
     Slice,
+    Tuple,
     Unary,
     Variable,
     eager,
@@ -34,7 +35,7 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, lazy_property, quote
+from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
 
 
 def get_default_prototype():
@@ -89,6 +90,7 @@ class TensorMeta(FunsorMeta):
         # it seems that there is no harm with the conversion generic -> ndarray here
         if isinstance(data, np.generic):
             data = data.__array__()
+
         return super(TensorMeta, cls).__call__(data, inputs, dtype)
 
 
@@ -124,7 +126,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         inputs = OrderedDict(inputs)
         output = Array[dtype, data.shape[len(inputs):]]
         fresh = frozenset(inputs.keys())
-        bound = frozenset()
+        bound = {}
         super(Tensor, self).__init__(inputs, output, fresh, bound)
         self.data = data
 
@@ -455,7 +457,7 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
         packed_inputs = OrderedDict()
         for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
             name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
-            if name is not None and size > 1:
+            if name is not None and size != 1:
                 packed_inputs[name] = Bint[size]
         shape = tuple(d.size for d in packed_inputs.values()) + output.shape
         if x.shape != shape:
@@ -826,22 +828,6 @@ def eager_cat_homogeneous(name, part_name, *parts):
     return Tensor(tensor, inputs, dtype=output.dtype)
 
 
-# TODO Promote this to a Funsor subclass.
-class LazyTuple(tuple):
-    def __call__(self, *args, **kwargs):
-        return LazyTuple(x(*args, **kwargs) for x in self)
-
-    @lazy_property
-    def __annotations__(self):
-        result = {}
-        output = []
-        for part in self:
-            result.update(part.__annotations__)
-            output.append(result.pop("return"))
-        result["return"] = typing.Tuple[tuple(output)]
-        return result
-
-
 # TODO Move this to terms.py; it is no longer Tensor-specific.
 class Function(Funsor):
     r"""
@@ -908,13 +894,13 @@ def _select(fn, i, *args):
 def _nested_function(fn, args, output):
     if isinstance(output, ArrayType):
         return Function(fn, output, args)
-    elif output.__origin__ in (tuple, typing.Tuple):
+    elif output.__origin__ in (tuple, Product, typing.Tuple):
         result = []
         for i, output_i in enumerate(output.__args__):
             fn_i = functools.partial(_select, fn, i)
             fn_i.__name__ = "{}_{}".format(_nameof(fn), i)
             result.append(_nested_function(fn_i, args, output_i))
-        return LazyTuple(result)
+        return Tuple(tuple(result))
     raise ValueError("Invalid output: {}".format(output))
 
 
@@ -954,7 +940,7 @@ def _function(inputs, output, fn):
                      for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
     if not isinstance(output, ArrayType):
-        assert output.__origin__ in (tuple, typing.Tuple)
+        assert output.__origin__ in (tuple, Product, typing.Tuple)
         # Memoize multiple-output functions so that invocations can be shared among
         # all outputs. This is not foolproof, but does work in simple situations.
         fn = _Memoized(fn)
@@ -1012,14 +998,14 @@ def function(*signature):
             output = inputs.pop("return")
             assert all(isinstance(d, ArrayType) for d in inputs.values())
             assert (isinstance(output, (ArrayType, tuple)) or
-                    output.__origin__ in (tuple, typing.Tuple))
+                    output.__origin__ in (tuple, Product, typing.Tuple))
             return _function(inputs, output, fn)
     # Usage @function(input1, ..., inputN, output)
     inputs, output = signature[:-1], signature[-1]
     output = _tuple_to_Tuple(output)
     assert all(isinstance(d, ArrayType) for d in inputs)
     assert (isinstance(output, (ArrayType, tuple)) or
-            output.__origin__ in (tuple, typing.Tuple))
+            output.__origin__ in (tuple, Product, typing.Tuple))
     return functools.partial(_function, inputs, output)
 
 

@@ -275,7 +275,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         output = Real
         fresh = frozenset(inputs.keys())
-        bound = frozenset()
+        bound = {}
         super(Gaussian, self).__init__(inputs, output, fresh, bound)
         self.info_vec = info_vec
         self.precision = precision
@@ -519,6 +519,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return Subs(result, remaining_subs) if remaining_subs else result
 
     def eager_reduce(self, op, reduced_vars):
+        assert reduced_vars.issubset(self.inputs)
         if op is ops.logaddexp:
             # Marginalize out real variables, but keep mixtures lazy.
             assert all(v in self.inputs for v in reduced_vars)

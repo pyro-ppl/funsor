@@ -6,14 +6,14 @@ import io
 import itertools
 import pickle
 from collections import OrderedDict
-from typing import Tuple, get_type_hints
+from typing import get_type_hints
 
 import numpy as np
 import pytest
 
 import funsor
 import funsor.ops as ops
-from funsor.domains import Array, Bint, Real, Reals, find_domain
+from funsor.domains import Array, Bint, Real, Product, Reals, find_domain
 from funsor.interpreter import interpretation
 from funsor.tensor import REDUCE_OP_TO_NUMERIC, Einsum, Tensor, align_tensors, numeric_array, stack, tensordot
 from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
@@ -774,10 +774,10 @@ def _numeric_max_and_argmax(x):
 def test_function_nested_eager_hint():
 
     @funsor.function
-    def max_and_argmax(x: Reals[8]) -> Tuple[Real, Bint[8]]:
+    def max_and_argmax(x: Reals[8]) -> Product[Real, Bint[8]]:
         return tuple(_numeric_max_and_argmax(x))
 
-    expected = {"x": Reals[8], "return": Tuple[Real, Bint[8]]}
+    expected = {"x": Reals[8], "return": Product[Real, Bint[8]]}
     assert get_type_hints(max_and_argmax) == expected
 
     inputs = OrderedDict([('i', Bint[2]), ('j', Bint[3])])
@@ -1109,3 +1109,7 @@ def test_diagonal_rename():
     yt = x(a=dt, b=dt)
     y = x(a=d, b=d)
     assert_close(y, yt)
+
+
+def test_empty_tensor_possible():
+    funsor.to_funsor(randn(3, 0), dim_to_name=OrderedDict([(-1, "a"), (-2, "b")]))

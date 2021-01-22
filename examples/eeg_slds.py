@@ -19,6 +19,7 @@ from urllib.request import urlopen
 import numpy as np
 import torch
 import torch.nn as nn
+import pyro
 
 import funsor
 import funsor.torch.distributions as dist
@@ -82,7 +83,7 @@ class SLDS(nn.Module):
             self.log_obs_noise = nn.Parameter(0.1 * torch.randn(obs_dim))
 
         # define the prior distribution p(x_0) over the continuous latent at the initial time step t=0
-        x_init_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.hidden_dim), torch.eye(self.hidden_dim))
+        x_init_mvn = pyro.distributions.MultivariateNormal(torch.zeros(self.hidden_dim), torch.eye(self.hidden_dim))
         self.x_init_mvn = mvn_to_funsor(x_init_mvn, real_inputs=OrderedDict([('x_0', funsor.Reals[self.hidden_dim])]))
 
     # we construct the various funsors used to compute the marginal log probability and other model quantities.
@@ -92,10 +93,10 @@ class SLDS(nn.Module):
         trans_logits = self.transition_logits - self.transition_logits.logsumexp(dim=-1, keepdim=True)
         trans_probs = funsor.Tensor(trans_logits, OrderedDict([("s", funsor.Bint[self.num_components])]))
 
-        trans_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.hidden_dim),
-                                                           self.log_transition_noise.exp().diag_embed())
-        obs_mvn = torch.distributions.MultivariateNormal(torch.zeros(self.obs_dim),
-                                                         self.log_obs_noise.exp().diag_embed())
+        trans_mvn = pyro.distributions.MultivariateNormal(torch.zeros(self.hidden_dim),
+                                                          self.log_transition_noise.exp().diag_embed())
+        obs_mvn = pyro.distributions.MultivariateNormal(torch.zeros(self.obs_dim),
+                                                        self.log_obs_noise.exp().diag_embed())
 
         event_dims = ("s",) if self.fine_transition_matrix or self.fine_transition_noise else ()
         x_trans_dist = matrix_and_mvn_to_funsor(self.transition_matrix, trans_mvn, event_dims, "x", "y")

@@ -22,6 +22,7 @@ test: lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)
 	pytest -v -n auto test/
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
+	FUNSOR_PROFILE=99 pytest -v test/test_einsum.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
 	python examples/discrete_hmm.py -n 2
@@ -43,7 +44,9 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/sensor.py --seed=0 --num-frames=2 -n 1
 	@echo PASS
 else ifeq (${FUNSOR_BACKEND}, jax)
-	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi
+	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi --ignore=test/test_distribution.py --ignore=test/test_distribution_generic.py
+	pytest -v -n auto test/test_distribution.py
+	pytest -v -n auto test/test_distribution_generic.py
 	@echo PASS
 else
 	# default backend

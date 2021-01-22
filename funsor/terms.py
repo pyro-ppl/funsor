@@ -7,7 +7,8 @@ import math
 import numbers
 import typing
 import warnings
-from collections import Hashable, OrderedDict
+from collections import OrderedDict, namedtuple
+from collections.abc import Hashable
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
@@ -16,10 +17,10 @@ from multipledispatch.variadic import Variadic, isvariadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Bint, Domain, Real, Reals, find_domain
+from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, lazy_property, pretty, quote
+from funsor.util import getargspec, get_backend, lazy_property, pretty, quote
 
 
 def substitute(expr, subs):
@@ -34,6 +35,8 @@ def substitute(expr, subs):
         fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
         if fresh_subs:
             expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
+        if interpreter._PROFILE:
+            interpreter.COUNTERS["interpretation"]["substitute"] += 1
         return expr
 
     with interpreter.interpretation(subs_interpreter):
@@ -51,7 +54,7 @@ def _alpha_mangle(expr):
     if not alpha_subs:
         return expr
 
-    ast_values = expr._alpha_convert(alpha_subs)
+    ast_values = interpreter.debug_logged(expr._alpha_convert)(alpha_subs)
     return reflect(type(expr), *ast_values)
 
 
@@ -67,8 +70,15 @@ def reflect(cls, *args, **kwargs):
         _, args = args, new_args
 
     # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
-    cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
-                      else arg for arg in args)
+    if get_backend() == "jax":
+        import jax
+
+        cache_key = tuple(id(arg)
+                          if isinstance(arg, jax.interpreters.xla.DeviceArray)
+                          or not isinstance(arg, Hashable)
+                          else arg for arg in args)
+    else:
+        cache_key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
@@ -79,6 +89,14 @@ def reflect(cls, *args, **kwargs):
     cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
     result = super(FunsorMeta, cls_specific).__call__(*args)
     result._ast_values = args
+
+    if interpreter._PROFILE:
+        size, depth, width = _get_ast_stats(result)
+        interpreter.COUNTERS["ast_size"][size] += 1
+        interpreter.COUNTERS["ast_depth"][depth] += 1
+        classname = getattr(cls, "__origin__", cls).__name__
+        interpreter.COUNTERS["funsor"][classname] += 1
+        interpreter.COUNTERS[classname][width] += 1
 
     # alpha-convert eagerly upon binding any variable
     result = _alpha_mangle(result)
@@ -188,9 +206,9 @@ class FunsorMeta(type):
         allows the instance to be reflectively reconstructed under a different
         interpretation, and is used by :func:`funsor.interpreter.reinterpret`.
     3.  Cons-hash construction, so that repeatedly calling the constructor
-        with identical args will product the same object. This enables cheap
+        with identical args will produce the same object. This enables cheap
         syntactic equality testing using the ``is`` operator, which is
-        is important both for hashing (e.g. for memoizing funsor functions)
+        important both for hashing (e.g. for memoizing funsor functions)
         and for unit testing, since ``.__eq__()`` is overloaded with
         elementwise semantics. Cons hashing differs from memoization in that
         it incurs no memory overhead beyond the cons hash dict.
@@ -294,24 +312,24 @@ def _issubclass_tuple(subcls, cls):
     return all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__))
 
 
-def _convert_reduced_vars(reduced_vars):
+def _convert_reduced_vars(reduced_vars, inputs):
     """
     Helper to convert the reduced_vars arg of ``.reduce()`` and friends.
 
     :param reduced_vars:
     :type reduced_vars: str, Variable, or set or frozenset thereof.
-    :rtype: frozenset of str
+    :rtype: frozenset of Variable
     """
     # Avoid copying if arg is of correct type.
     if (isinstance(reduced_vars, frozenset) and
-            all(isinstance(var, str) for var in reduced_vars)):
+            all(isinstance(var, Variable) for var in reduced_vars)):
         return reduced_vars
 
     if isinstance(reduced_vars, (str, Variable)):
         reduced_vars = {reduced_vars}
     assert isinstance(reduced_vars, (frozenset, set))
     assert all(isinstance(var, (str, Variable)) for var in reduced_vars)
-    return frozenset(var if isinstance(var, str) else var.name
+    return frozenset(Variable(var, inputs[var]) if isinstance(var, str) else var
                      for var in reduced_vars)
 
 
@@ -334,14 +352,14 @@ class Funsor(object, metaclass=FunsorMeta):
     """
     def __init__(self, inputs, output, fresh=None, bound=None):
         fresh = frozenset() if fresh is None else fresh
-        bound = frozenset() if bound is None else bound
+        bound = {} if bound is None else bound
         assert isinstance(inputs, OrderedDict)
         for name, input_ in inputs.items():
             assert isinstance(name, str)
             assert isinstance(input_, Domain)
         assert isinstance(output, Domain)
         assert isinstance(fresh, frozenset)
-        assert isinstance(bound, frozenset)
+        assert isinstance(bound, dict)
         super(Funsor, self).__init__()
         self.inputs = inputs
         self.output = output
@@ -355,6 +373,10 @@ class Funsor(object, metaclass=FunsorMeta):
     @property
     def shape(self):
         return self.output.shape
+
+    @lazy_property
+    def input_vars(self):
+        return frozenset(Variable(k, v) for k, v in self.inputs.items())
 
     def __copy__(self):
         return self
@@ -392,7 +414,7 @@ class Funsor(object, metaclass=FunsorMeta):
         """
         # Substitute all funsor values.
         # Subclasses must handle string conversion.
-        assert self.bound.issuperset(alpha_subs)
+        assert set(alpha_subs).issubset(self.bound)
         return tuple(substitute(v, alpha_subs) for v in self._ast_values)
 
     def __call__(self, *args, **kwargs):
@@ -449,13 +471,12 @@ class Funsor(object, metaclass=FunsorMeta):
         # Eagerly convert reduced_vars to appropriate things.
         if reduced_vars is None:
             # Empty reduced_vars means "reduce over everything".
-            reduced_vars = frozenset(self.inputs)
+            reduced_vars = frozenset(Variable(k, v) for k, v in self.inputs.items())
         else:
-            reduced_vars = _convert_reduced_vars(reduced_vars)
+            reduced_vars = _convert_reduced_vars(reduced_vars, self.inputs)
         assert isinstance(reduced_vars, frozenset), reduced_vars
         if not reduced_vars:
             return self
-        assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
 
     def argreduce(self, op, reduced_vars):
@@ -509,7 +530,8 @@ class Funsor(object, metaclass=FunsorMeta):
         :type rng_key: None or JAX's random.PRNGKey
         """
         assert self.output == Real
-        sampled_vars = _convert_reduced_vars(sampled_vars)
+        sampled_vars = _convert_reduced_vars(sampled_vars, self.inputs)
+        sampled_vars = frozenset(v.name for v in sampled_vars)
         assert isinstance(sampled_vars, frozenset)
         if sample_inputs is None:
             sample_inputs = OrderedDict()
@@ -568,7 +590,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return None  # defer to default implementation
 
     def eager_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
 
@@ -582,7 +604,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return None  # defer to default implementation
 
     def sequential_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
 
@@ -607,7 +629,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return None  # defer to default implementation
 
     def moment_matching_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
 
@@ -685,12 +707,6 @@ class Funsor(object, metaclass=FunsorMeta):
     def __rsub__(self, other):
         return Binary(ops.sub, to_funsor(other), self)
 
-    def __logaddexp__(self, other):
-        return Binary(ops.logaddexp, self, to_funsor(other))
-
-    def __rlogaddexp__(self, other):
-        return Binary(ops.logaddexp, to_funsor(other), self)
-
     def __mul__(self, other):
         return Binary(ops.mul, self, to_funsor(other))
 
@@ -747,12 +763,6 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def __ge__(self, other):
         return Binary(ops.ge, self, to_funsor(other))
-
-    def __min__(self, other):
-        return Binary(ops.min, self, to_funsor(other))
-
-    def __max__(self, other):
-        return Binary(ops.max, self, to_funsor(other))
 
     def __getitem__(self, other):
         if type(other) is not tuple:
@@ -924,7 +934,7 @@ class Subs(Funsor, metaclass=SubsMeta):
         for key, value in subs:
             inputs.update(value.inputs)
         fresh = frozenset()
-        bound = frozenset(key for key, value in subs)
+        bound = {key: value.output for key, value in subs}
         super(Subs, self).__init__(inputs, arg.output, fresh, bound)
         self.arg = arg
         self.subs = OrderedDict(subs)
@@ -933,7 +943,7 @@ class Subs(Funsor, metaclass=SubsMeta):
         return 'Subs({}, {})'.format(self.arg, self.subs)
 
     def _alpha_convert(self, alpha_subs):
-        assert self.bound.issuperset(alpha_subs)
+        assert set(alpha_subs).issubset(self.bound)
         alpha_subs = {k: to_funsor(v, self.subs[k].output)
                       for k, v in alpha_subs.items()}
         arg, subs = self._ast_values
@@ -1048,16 +1058,19 @@ class Reduce(Funsor):
 
     :param ~funsor.ops.Op op: A binary operator.
     :param funsor arg: An argument to be reduced.
-    :param frozenset reduced_vars: A set of variable names over which to reduce.
+    :param frozenset reduced_vars: A set of variables over which to reduce.
     """
     def __init__(self, op, arg, reduced_vars):
         assert callable(op)
         assert isinstance(arg, Funsor)
         assert isinstance(reduced_vars, frozenset)
-        inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if k not in reduced_vars)
+        assert all(isinstance(v, Variable) for v in reduced_vars)
+        reduced_names = frozenset(v.name for v in reduced_vars)
+        inputs = OrderedDict((k, v) for k, v in arg.inputs.items()
+                             if k not in reduced_names)
         output = arg.output
         fresh = frozenset()
-        bound = reduced_vars
+        bound = {var.name: var.output for var in reduced_vars}
         super(Reduce, self).__init__(inputs, output, fresh, bound)
         self.op = op
         self.arg = arg
@@ -1071,22 +1084,49 @@ class Reduce(Funsor):
         alpha_subs = {k: to_funsor(v, self.arg.inputs[k])
                       for k, v in alpha_subs.items()}
         op, arg, reduced_vars = super()._alpha_convert(alpha_subs)
-        reduced_vars = frozenset(str(alpha_subs.get(k, k)) for k in reduced_vars)
+        reduced_vars = frozenset(alpha_subs.get(var.name, var)
+                                 for var in reduced_vars)
         return op, arg, reduced_vars
+
+
+def _reduce_unrelated_vars(op, arg, reduced_vars):
+    factor_vars = reduced_vars - arg.input_vars
+    if factor_vars:
+        reduced_vars = reduced_vars & arg.input_vars
+        multiplicity = reduce(ops.mul, [
+            v.output.size ** v.output.num_elements
+            for v in factor_vars
+            if v.dtype != "real"
+        ])
+        for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
+            if add_op is op:
+                arg = mul_op(arg, multiplicity).reduce(op, reduced_vars)
+                return arg, None
+        raise NotImplementedError(f"Cannot reduce {op}")
+    return arg, frozenset(v.name for v in reduced_vars)
 
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
+    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
+    if reduced_vars is None:
+        return arg
     return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
 
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
+    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
+    if reduced_vars is None:
+        return arg
     return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
 
 
 @moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
 def moment_matching_reduce(op, arg, reduced_vars):
+    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
+    if reduced_vars is None:
+        return arg
     return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
 
 
@@ -1146,7 +1186,7 @@ class Number(Funsor, metaclass=NumberMeta):
             assert isinstance(dtype, str) and dtype == "real"
             data = float(data)
         inputs = OrderedDict()
-        output = Real if dtype == "real" else Bint[dtype]
+        output = Array[dtype, ()]
         super(Number, self).__init__(inputs, output)
         self.data = data
 
@@ -1291,7 +1331,7 @@ class Align(Funsor):
         inputs.update(arg.inputs)
         output = arg.output
         fresh = frozenset()  # TODO get this right
-        bound = frozenset()
+        bound = {}
         super(Align, self).__init__(inputs, output, fresh, bound)
         self.arg = arg
 
@@ -1425,7 +1465,7 @@ class Cat(Funsor, metaclass=CatMeta):
         del inputs[part_name]
         inputs[name] = Bint[sum(x.inputs[part_name].size for x in parts)]
         fresh = frozenset({name})
-        bound = frozenset({part_name})
+        bound = {part_name: x.inputs[part_name]}
         super().__init__(inputs, output, fresh, bound)
         self.name = name
         self.parts = parts
@@ -1510,9 +1550,9 @@ class Lambda(Funsor):
         inputs = expr.inputs.copy()
         inputs.pop(var.name, None)
         shape = (var.dtype,) + expr.output.shape
-        output = Reals[shape] if expr.dtype == "real" else Bint[expr.size]
+        output = Array[expr.dtype, shape]
         fresh = frozenset()
-        bound = frozenset({var.name})
+        bound = {var.name: var.output}
         super(Lambda, self).__init__(inputs, output, fresh, bound)
         self.var = var
         self.expr = expr
@@ -1562,13 +1602,14 @@ class Independent(Funsor):
         assert isinstance(fn.inputs[bint_var].dtype, int)
         assert isinstance(diag_var, str)
         assert diag_var in fn.inputs
-        assert fn.inputs[diag_var].dtype == 'real'
         inputs = fn.inputs.copy()
-        shape = (inputs.pop(bint_var).dtype,) + inputs.pop(diag_var).shape
+        diag_input = inputs.pop(diag_var)
+        shape = (inputs.pop(bint_var).dtype,) + diag_input.shape
         assert reals_var not in inputs
-        inputs[reals_var] = Reals[shape]
+        inputs[reals_var] = Array[diag_input.dtype, shape]
         fresh = frozenset({reals_var})
-        bound = frozenset({bint_var, diag_var})
+        bound = {bint_var: fn.inputs[bint_var],
+                 diag_var: fn.inputs[diag_var]}
         super(Independent, self).__init__(inputs, fn.output, fresh, bound)
         self.fn = fn
         self.reals_var = reals_var
@@ -1604,6 +1645,15 @@ class Independent(Funsor):
         result = result.reduce(ops.add, self.bint_var)
         return result
 
+    def mean(self):
+        raise NotImplementedError("mean() not yet implemented for Independent")
+
+    def variance(self):
+        raise NotImplementedError("variance() not yet implemented for Independent")
+
+    def entropy(self):
+        raise NotImplementedError("entropy() not yet implemented for Independent")
+
 
 @eager.register(Independent, Funsor, str, str, str)
 def eager_independent_trivial(fn, reals_var, bint_var, diag_var):
@@ -1611,6 +1661,31 @@ def eager_independent_trivial(fn, reals_var, bint_var, diag_var):
     if diag_var not in fn.inputs:
         return fn.reduce(ops.add, bint_var)
     return None
+
+
+class Tuple(Funsor):
+    """
+    Funsor term representing tuples of other terms of possibly heterogeneous type.
+    """
+    def __init__(self, args):
+        assert isinstance(args, tuple)
+        assert all(isinstance(arg, Funsor) for arg in args)
+        inputs = OrderedDict()
+        for arg in args:
+            inputs.update(arg.inputs)
+        output = Product[tuple(arg.output for arg in args)]
+        super().__init__(inputs, output)
+        self.args = args
+
+    def __iter__(self):
+        for i in range(len(self.args)):
+            yield self[i]
+
+
+@lazy.register(Binary, GetitemOp, Tuple, Number)
+@eager.register(Binary, GetitemOp, Tuple, Number)
+def eager_getitem_tuple(op, lhs, rhs):
+    return op(lhs.args, rhs.data)
 
 
 def _symbolic(inputs, output, fn):
@@ -1665,6 +1740,48 @@ def of_shape(*shape):
     return symbolic(*shape)
 
 
+AstStats = namedtuple("AstStats", ("size", "depth", "width"))
+
+
+# Profiling helpers
+@singledispatch
+def _count_funsors(x):
+    return 0
+
+
+@_count_funsors.register(Funsor)
+def _(x):
+    return 1
+
+
+@_count_funsors.register(tuple)
+def _(x):
+    return sum(map(_count_funsors, x))
+
+
+@singledispatch
+def _get_ast_stats(x):
+    return AstStats(1, 1, 0)
+
+
+@_get_ast_stats.register(Funsor)
+def _(x):
+    result = getattr(x, "_ast_stats", None)
+    if result is None:
+        size, depth, _ = _get_ast_stats(x._ast_values)
+        width = _count_funsors(x._ast_values)
+        result = x._ast_stats = AstStats(size + 1, depth + 1, width)
+    return result
+
+
+@_get_ast_stats.register(tuple)
+def _(x):
+    parts = list(map(_get_ast_stats, x))
+    size = sum(p.size for p in parts)
+    depth = max([0] + [p.depth for p in parts])
+    return AstStats(size, depth, 0)
+
+
 ################################################################################
 # Register Ops
 ################################################################################
@@ -1696,54 +1813,19 @@ def quote_inplace_first_arg_on_first_line(arg, indent, out):
         out[-1] = i, line + ")"
 
 
-@ops.abs.register(Funsor)
-def _abs(x):
-    return Unary(ops.abs, x)
+ops.UnaryOp.subclass_register(Funsor)(Unary)
+ops.AssociativeOp.subclass_register(Funsor)(Unary)  # Reductions.
+ops.AssociativeOp.subclass_register(Funsor, Funsor)(Binary)
 
 
-@ops.atanh.register(Funsor)
-def _atanh(x):
-    return Unary(ops.atanh, x)
+@AssociativeOp.subclass_register(object, Funsor)
+def binary_object_funsor(op, x, y):
+    return Binary(op, to_funsor(x), y)
 
 
-@ops.sqrt.register(Funsor)
-def _sqrt(x):
-    return Unary(ops.sqrt, x)
-
-
-@ops.exp.register(Funsor)
-def _exp(x):
-    return Unary(ops.exp, x)
-
-
-@ops.lgamma.register(Funsor)
-def _lgamma(x):
-    return Unary(ops.lgamma, x)
-
-
-@ops.log.register(Funsor)
-def _log(x):
-    return Unary(ops.log, x)
-
-
-@ops.log1p.register(Funsor)
-def _log1p(x):
-    return Unary(ops.log1p, x)
-
-
-@ops.reciprocal.register(Funsor)
-def _reciprocal(x):
-    return Unary(ops.reciprocal, x)
-
-
-@ops.sigmoid.register(Funsor)
-def _sigmoid(x):
-    return Unary(ops.sigmoid, x)
-
-
-@ops.tanh.register(Funsor)
-def _tanh(x):
-    return Unary(ops.tanh, x)
+@AssociativeOp.subclass_register(Funsor, object)
+def binary_funsor_object(op, x, y):
+    return Binary(op, x, to_funsor(y))
 
 
 __all__ = [

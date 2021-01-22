@@ -15,7 +15,7 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.domains import Array, Bint, Real, Reals
+from funsor.domains import Array, Bint, Product, Real, Reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
@@ -29,6 +29,7 @@ from funsor.terms import (
     Slice,
     Stack,
     Subs,
+    Tuple,
     Variable,
     eager,
     eager_or_die,
@@ -298,7 +299,7 @@ def test_reduce_all(op):
     x = Variable('x', Bint[2])
     y = Variable('y', Bint[3])
     z = Variable('z', Bint[4])
-    if isinstance(op, ops.LogAddExpOp):
+    if isinstance(op, ops.LogaddexpOp):
         pytest.skip()  # not defined for integers
 
     with interpretation(sequential):
@@ -332,7 +333,7 @@ def test_reduce_subset(op, reduced_vars):
     f = x * y + z
     dtype = f.dtype
     check_funsor(f, {'x': Bint[2], 'y': Bint[3], 'z': Bint[4]}, Array[dtype, ()])
-    if isinstance(op, ops.LogAddExpOp):
+    if isinstance(op, ops.LogaddexpOp):
         pytest.skip()  # not defined for integers
 
     with interpretation(sequential):
@@ -366,6 +367,18 @@ def test_reduce_syntactic_sugar():
     assert x.reduce(ops.add, i) is expected
     assert x.reduce(ops.add, {i}) is expected
     assert x.reduce(ops.add, frozenset([i])) is expected
+
+
+def test_reduce_constant():
+    x = Number(1)
+    i = Variable("i", Bint[4])
+    assert x.reduce(ops.add, i) == Number(4)
+
+
+def test_reduce_variable():
+    x = Variable("x", Real)
+    i = Variable("i", Bint[4])
+    assert x.reduce(ops.add, i) is x * 4
 
 
 def test_slice():
@@ -404,16 +417,17 @@ def test_lambda(base_shape):
     check_funsor(zij[:, i], zj.inputs, zj.output)
 
 
-def test_independent():
-    f = Variable('x_i', Reals[4, 5]) + random_tensor(OrderedDict(i=Bint[3]))
-    assert f.inputs['x_i'] == Reals[4, 5]
+@pytest.mark.parametrize("dtype", ["real", 2, 3])
+def test_independent(dtype):
+    f = Variable('x_i', Array[dtype, (4, 5)]) + random_tensor(OrderedDict(i=Bint[3]), output=Array[dtype, ()])
+    assert f.inputs['x_i'] == Array[dtype, (4, 5)]
     assert f.inputs['i'] == Bint[3]
 
     actual = Independent(f, 'x', 'i', 'x_i')
-    assert actual.inputs['x'] == Reals[3, 4, 5]
+    assert actual.inputs['x'] == Array[dtype, (3, 4, 5)]
     assert 'i' not in actual.inputs
 
-    x = Variable('x', Reals[3, 4, 5])
+    x = Variable('x', Array[dtype, (3, 4, 5)])
     expected = f(x_i=x['i']).reduce(ops.add, 'i')
     assert actual.inputs == expected.inputs
     assert actual.output == expected.output
@@ -581,3 +595,41 @@ def test_cat_slice_tensor(start, stop, step):
     actual = reinterpret(actual)
 
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("dtype", ["real", 2, 3])
+def test_stack_lambda(dtype):
+
+    x1 = Number(0, dtype)
+    x2 = Number(1, dtype)
+
+    y = Stack("i", (x1, x2))
+
+    z = Lambda(Variable("i", Bint[2]), y)
+
+    assert y.shape == ()
+    assert z.output == Array[dtype, (2,)]
+
+    assert z[0] is x1
+    assert z[1] is x2
+
+
+def test_funsor_tuple():
+    x = Number(1, 3)
+    y = Number(2.5, 'real')
+    z = random_tensor(OrderedDict([('i', Bint[2])]))
+
+    xyz = Tuple((x, y, z))
+
+    check_funsor(xyz, {'i': Bint[2]}, Product[x.output, y.output, z.output])
+
+    assert eval(repr(xyz.output)) is xyz.output
+
+    assert xyz[0] is x
+    assert xyz[1] is y
+    assert xyz[2] is z
+
+    x1, y1, z1 = xyz
+    assert x1 is x
+    assert y1 is y
+    assert z1 is z

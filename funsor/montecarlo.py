@@ -32,7 +32,8 @@ def monte_carlo_integrate(state, log_measure, integrand, reduced_vars):
     sample = log_measure.sample(reduced_vars, state.sample_inputs, **sample_options)
     if sample is log_measure:
         return None  # cannot progress
-    reduced_vars |= frozenset(state.sample_inputs).intersection(sample.inputs)
+    reduced_vars |= frozenset(v for v in sample.input_vars
+                              if v.name in state.sample_inputs)
     return Integrate(sample, integrand, reduced_vars)
 
 

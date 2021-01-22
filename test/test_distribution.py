@@ -14,12 +14,13 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.domains import Bint, Real, Reals
+from funsor.domains import Array, Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
-from funsor.tensor import Einsum, Tensor, align_tensors, numeric_array, stack
+from funsor.tensor import Einsum, Tensor, numeric_array, stack
 from funsor.terms import Independent, Variable, eager, lazy, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn, random_mvn, random_tensor, xfail_param
+from funsor.testing import assert_close, check_funsor, rand, randint, randn, \
+    random_mvn, random_scale_tril, random_tensor, xfail_param
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
@@ -245,7 +246,7 @@ def test_dirichlet_density(batch_shape, event_shape):
     check_funsor(expected, inputs, Real)
     actual = dist.Dirichlet(concentration, value)
     check_funsor(actual, inputs, Real)
-    assert_close(actual, expected)
+    assert_close(actual, expected, atol=1e-3, rtol=1e-3)
 
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
@@ -472,15 +473,6 @@ def test_mvn_defaults():
     assert dist.MultivariateNormal(loc, scale_tril) is dist.MultivariateNormal(loc, scale_tril, value)
 
 
-def _random_scale_tril(shape):
-    if get_backend() == "torch":
-        data = randn(shape)
-        return backend_dist.transforms.transform_to(backend_dist.constraints.lower_cholesky)(data)
-    else:
-        data = randn(shape[:-2] + (shape[-1] * (shape[-1] + 1) // 2,))
-        return backend_dist.biject_to(backend_dist.constraints.lower_cholesky)(data)
-
-
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 def test_mvn_density(batch_shape):
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
@@ -493,7 +485,7 @@ def test_mvn_density(batch_shape):
     check_funsor(mvn, {'loc': Reals[3], 'scale_tril': Reals[3, 3], 'value': Reals[3]}, Real)
 
     loc = Tensor(randn(batch_shape + (3,)), inputs)
-    scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
+    scale_tril = Tensor(random_scale_tril(batch_shape + (3, 3)), inputs)
     value = Tensor(randn(batch_shape + (3,)), inputs)
     expected = mvn(loc, scale_tril, value)
     check_funsor(expected, inputs, Real)
@@ -509,7 +501,7 @@ def test_mvn_gaussian(batch_shape):
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = Tensor(randn(batch_shape + (3,)), inputs)
-    scale_tril = Tensor(_random_scale_tril(batch_shape + (3, 3)), inputs)
+    scale_tril = Tensor(random_scale_tril(batch_shape + (3, 3)), inputs)
     value = Tensor(randn(batch_shape + (3,)), inputs)
 
     expected = dist.MultivariateNormal(loc, scale_tril, value)
@@ -701,29 +693,26 @@ def _get_stat_diff(funsor_dist_class, sample_inputs, inputs, num_samples, statis
     check_funsor(sample_value, expected_inputs, Real)
 
     if sample_inputs:
-
-        actual_mean = Integrate(
-            sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
-        ).reduce(ops.add, frozenset(sample_inputs))
-
-        inputs, tensors = align_tensors(*list(funsor_dist.params.values())[:-1])
-        raw_dist = funsor_dist.dist_class(**dict(zip(funsor_dist._ast_fields[:-1], tensors)))
-        expected_mean = Tensor(raw_dist.mean, inputs)
-
         if statistic == "mean":
-            actual_stat, expected_stat = actual_mean, expected_mean
+            actual_stat = Integrate(
+                sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
+            ).reduce(ops.add, frozenset(sample_inputs))
+            expected_stat = funsor_dist.mean()
         elif statistic == "variance":
+            actual_mean = Integrate(
+                sample_value, Variable('value', funsor_dist.inputs['value']), frozenset(['value'])
+            ).reduce(ops.add, frozenset(sample_inputs))
             actual_stat = Integrate(
                 sample_value,
                 (Variable('value', funsor_dist.inputs['value']) - actual_mean) ** 2,
                 frozenset(['value'])
             ).reduce(ops.add, frozenset(sample_inputs))
-            expected_stat = Tensor(raw_dist.variance, inputs)
+            expected_stat = funsor_dist.variance()
         elif statistic == "entropy":
             actual_stat = -Integrate(
                 sample_value, funsor_dist, frozenset(['value'])
             ).reduce(ops.add, frozenset(sample_inputs))
-            expected_stat = Tensor(raw_dist.entropy(), inputs)
+            expected_stat = funsor_dist.entropy()
         else:
             raise ValueError("invalid test statistic")
 
@@ -811,7 +800,7 @@ def test_mvn_sample(with_lazy, batch_shape, sample_inputs, event_shape):
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     loc = randn(batch_shape + event_shape)
-    scale_tril = _random_scale_tril(batch_shape + event_shape * 2)
+    scale_tril = random_scale_tril(batch_shape + event_shape * 2)
     funsor_dist_class = dist.MultivariateNormal
     params = (loc, scale_tril)
 
@@ -896,7 +885,7 @@ def test_binomial_sample(with_lazy, batch_shape, sample_inputs):
     funsor_dist_class = dist.Binomial
     params = (total_count, probs)
 
-    _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=2e-2, skip_grad=True, with_lazy=with_lazy)
+    _check_sample(funsor_dist_class, params, sample_inputs, inputs, atol=5e-2, skip_grad=True, with_lazy=with_lazy)
 
 
 @pytest.mark.parametrize('sample_inputs', [(), ('ii',), ('ii', 'jj'), ('ii', 'jj', 'kk')])
@@ -1050,6 +1039,30 @@ def test_dirichlet_categorical_conjugate(batch_shape, size):
 
 @pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
 @pytest.mark.parametrize('size', [2, 4, 5], ids=str)
+def test_dirichlet_multinomial_conjugate_plate(batch_shape, size):
+    max_count = 10
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+    full_shape = batch_shape + (size,)
+    prior = Variable("prior", Reals[size])
+    concentration = Tensor(ops.exp(randn(full_shape)), inputs)
+    value_data = ops.astype(randint(0, max_count, size=batch_shape + (7, size)), 'float32')
+    obs_inputs = inputs.copy()
+    obs_inputs['plate'] = Bint[7]
+    obs = Tensor(value_data, obs_inputs)
+    total_count_data = value_data.sum(-1)
+    total_count = Tensor(total_count_data, obs_inputs)
+    latent = dist.Dirichlet(concentration, value=prior)
+    conditional = dist.Multinomial(probs=prior, total_count=total_count, value=obs)
+    p = latent + conditional.reduce(ops.add, 'plate')
+    reduced = p.reduce(ops.logaddexp, 'prior')
+    assert isinstance(reduced, Tensor)
+
+    _assert_conjugate_density_ok(latent, conditional, obs)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('size', [2, 4, 5], ids=str)
 def test_dirichlet_multinomial_conjugate(batch_shape, size):
     max_count = 10
     batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
@@ -1110,3 +1123,95 @@ def test_gamma_poisson_conjugate(batch_shape):
 
     obs = Tensor(ops.astype(ops.astype(ops.exp(randn(batch_shape)), 'int32'), 'float32'), inputs)
     _assert_conjugate_density_ok(latent, conditional, obs)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(4,), (4, 7), (1, 4), (4, 1), (4, 1, 7)], ids=str)
+@pytest.mark.parametrize('use_raw_scale', [False, True])
+def test_normal_event_dim_conversion(batch_shape, event_shape, use_raw_scale):
+
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+
+    value = Variable("value", Reals[event_shape])
+    loc = Tensor(randn(batch_shape + event_shape), inputs)
+    scale = Tensor(ops.exp(randn(batch_shape)), inputs)
+    if use_raw_scale:
+        if batch_shape:
+            pytest.xfail(reason="raw scale is underspecified for nonempty batch_shape")
+        scale = scale.data
+
+    with interpretation(lazy):
+        actual = dist.Normal(loc=loc, scale=scale, value=value)
+
+    expected_inputs = inputs.copy()
+    expected_inputs.update({"value": Reals[event_shape]})
+    check_funsor(actual, expected_inputs, Real)
+
+    name_to_dim = {batch_dim: -1-i for i, batch_dim in enumerate(batch_dims)}
+    rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
+    data = actual.sample(frozenset(["value"]), rng_key=rng_key).terms[0][1][0]
+
+    actual_log_prob = funsor.to_data(actual(value=data), name_to_dim=name_to_dim)
+    expected_log_prob = funsor.to_data(actual, name_to_dim=name_to_dim).log_prob(
+        funsor.to_data(data, name_to_dim=name_to_dim))
+    assert actual_log_prob.shape == expected_log_prob.shape
+    assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(4,), (4, 7), (1, 4), (4, 1), (4, 1, 7)], ids=str)
+def test_mvnormal_event_dim_conversion(batch_shape, event_shape):
+
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+
+    value = Variable("value", Reals[event_shape])
+    loc = Tensor(randn(batch_shape + event_shape), inputs)
+    scale_tril = Tensor(random_scale_tril(batch_shape + event_shape + event_shape[-1:]), inputs)
+
+    with interpretation(lazy):
+        actual = dist.MultivariateNormal(loc=loc, scale_tril=scale_tril, value=value)
+
+    expected_inputs = inputs.copy()
+    expected_inputs.update({"value": Reals[event_shape]})
+    check_funsor(actual, expected_inputs, Real)
+
+    name_to_dim = {batch_dim: -1-i for i, batch_dim in enumerate(batch_dims)}
+    rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
+    data = actual.sample(frozenset(["value"]), rng_key=rng_key).terms[0][1][0]
+
+    actual_log_prob = funsor.to_data(actual(value=data), name_to_dim=name_to_dim)
+    expected_log_prob = funsor.to_data(actual, name_to_dim=name_to_dim).log_prob(
+        funsor.to_data(data, name_to_dim=name_to_dim))
+    assert actual_log_prob.shape == expected_log_prob.shape
+    assert_close(actual_log_prob, expected_log_prob)
+
+
+@pytest.mark.parametrize('batch_shape', [(), (5,), (2, 3)], ids=str)
+@pytest.mark.parametrize('event_shape', [(), (4,), (4, 7), (1, 4), (4, 1), (4, 1, 7)], ids=str)
+def test_categorical_event_dim_conversion(batch_shape, event_shape):
+
+    dtype = 6
+    batch_dims = ('i', 'j', 'k')[:len(batch_shape)]
+    inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
+
+    value = Variable("value", Array[dtype, event_shape])
+    probs = Tensor(rand(batch_shape + event_shape + (6,)), inputs)
+
+    with interpretation(lazy):
+        actual = dist.Categorical(probs=probs, value=value)
+
+    expected_inputs = inputs.copy()
+    expected_inputs.update({"value": Array[dtype, event_shape]})
+    check_funsor(actual, expected_inputs, Real)
+
+    name_to_dim = {batch_dim: -1-i for i, batch_dim in enumerate(batch_dims)}
+    rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
+    data = actual.sample(frozenset(["value"]), rng_key=rng_key).terms[0].terms[0][1][0]
+
+    actual_log_prob = funsor.to_data(actual(value=data), name_to_dim=name_to_dim)
+    expected_log_prob = funsor.to_data(actual, name_to_dim=name_to_dim).log_prob(
+        funsor.to_data(data, name_to_dim=name_to_dim))
+    assert actual_log_prob.shape == expected_log_prob.shape
+    assert_close(actual_log_prob, expected_log_prob)
