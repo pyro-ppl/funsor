@@ -17,6 +17,14 @@ from multipledispatch.variadic import VariadicSignatureType, isvariadic
 # Runtime type-checking helpers
 #################################
 
+def _type_to_typing(tp):
+    if tp is object:
+        tp = typing.Any
+    if isinstance(tp, tuple):
+        tp = typing.Union[tuple(map(_type_to_typing, tp))]
+    return tp
+
+
 def deep_isinstance(obj, cls):
     """replaces isinstance()"""
     return pytypes.is_of_type(obj, cls)
@@ -35,14 +43,6 @@ def deep_type(obj):
 ##############################################
 # Funsor-compatible typing introspection API
 ##############################################
-
-def _type_to_typing(tp):
-    if tp is object:
-        tp = typing.Any
-    if isinstance(tp, tuple):
-        tp = typing.Union[tuple(map(_type_to_typing, tp))]
-    return tp
-
 
 def get_args(tp):
     if isinstance(tp, GenericTypeMeta):
@@ -92,7 +92,6 @@ class GenericTypeMeta(type):
             cls._type_cache[arg_types] = type(cls)(cls.__name__, (cls,), new_dct)
         return cls._type_cache[arg_types]
 
-    @functools.lru_cache(maxsize=None)
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
         if cls is subcls:
             return True
@@ -146,11 +145,11 @@ def deep_supercedes(xs, ys):
                       tuple(typing_wrap(_type_to_typing(y)) for y in ys))
 
 
-class DeepVariadicSignatureType(VariadicSignatureType):
+class _DeepVariadicSignatureType(VariadicSignatureType):
     pass  # TODO define __getitem__, possibly __eq__/__hash__?
 
 
-class Variadic(metaclass=DeepVariadicSignatureType):
+class Variadic(metaclass=_DeepVariadicSignatureType):
     """
     A typing-compatible drop-in replacement for multipledispatch.variadic.Variadic.
     """
