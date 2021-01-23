@@ -946,6 +946,64 @@ def eager_subs(arg, subs):
     return substitute(arg, subs)
 
 
+class ScatterMeta(FunsorMeta):
+    """
+    Wrapper to call :func:`to_funsor` and check types.
+    """
+    def __call__(cls, destin, subs, source):
+        destin = to_funsor(destin)
+        source = to_funsor(source)
+        subs = tuple((k, to_funsor(v, destin.inputs.get(k, None))) for k, v in subs)
+        return super().__call__(destin, subs, source)
+
+
+class Scatter(Funsor, metaclass=ScatterMeta):
+    """
+    Lazy, broadcastable inverse of Subs.
+
+    Algebraic relations between Subs and Scatter::
+
+        Scatter(source, subs, Subs(source, subs)) is source
+        Subs(Scatter(destin, subs, source), subs) is source
+        Scatter(destin, (), source) is source  (but we don't allow this)
+        Scatter(destin, subs, source).inputs <= source.inputs | Subs(destin, subs).inputs
+    """
+    def __init__(self, destin, subs, source):
+        assert isinstance(destin, Funsor)
+        assert isinstance(subs, tuple)
+        assert isinstance(source, Funsor)
+
+        assert subs, "cannot scatter empty subs"  # TODO is this right?
+        for key, value in subs:
+            assert isinstance(key, str)
+            assert isinstance(value, Funsor)
+
+        inputs = destin.inputs.copy()
+        subs_value_inputs = OrderedDict()
+        for key, value in subs:
+            subs_value_inputs.update(value.inputs)
+        for key, domain in source.inputs.items():
+            if key not in subs_value_inputs:
+                inputs[key] = domain
+
+        output = destin.output
+        assert destin.output == source.output  # TODO is this too strict?
+
+        fresh = frozenset(key for key, value in subs)
+        bound = {key: value.output for key, value in subs if key in destin.inputs}
+
+        super().__init__(inputs, output, fresh, bound)
+        self.destin = destin
+        self.subs = subs
+        self.source = source
+
+    def eager_subs(self, subs):
+        raise NotImplementedError
+
+    def _alpha_convert(self, *args):
+        raise NotImplementedError
+
+
 _PREFIX = {
     ops.neg: '-',
     ops.invert: '~',

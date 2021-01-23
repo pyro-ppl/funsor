@@ -26,6 +26,7 @@ from funsor.terms import (
     Lambda,
     Number,
     Reduce,
+    Scatter,
     Slice,
     Stack,
     Subs,
@@ -229,6 +230,32 @@ def test_substitute():
     assert f(x=y) is y * y + y * z
     assert f(y=z, z=y) is x * z + x * y
     assert f(x=y, y=z, z=x) is y * z + y * x
+
+
+def test_scatter_symbolic():
+
+    x = Variable('x', Real)
+    y = Variable('y', Real)
+    z = Variable('z', Real)
+
+    f = x * y + x * z
+
+    actual = Scatter(0, (('y', 2),), f(y=2))
+    assert isinstance(actual, Scatter)
+    assert actual.input_vars == {x, y, z}
+    assert actual.input_vars == f.input_vars
+    assert actual.fresh == {y}  # or {'y'}
+    assert actual(y=2) is f(y=2)
+    assert actual(y=1) is Number(0)  # TODO write an eager pattern for this?
+    # note the inequality
+    assert actual(y=1).input_vars <= reflect(Subs, actual, (('y', Number(1)),)).input_vars
+
+    actual = Scatter(0, (('y', x),), f(y=x))
+    assert isinstance(actual, Scatter)
+    assert actual.input_vars == {x, y, z}
+    assert actual.input_vars == f.input_vars
+    assert actual(y=x) is f(y=x)
+    # assert actual(y=1) is ???  # TODO
 
 
 def unary_eval(symbol, x):
