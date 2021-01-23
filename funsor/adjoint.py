@@ -11,9 +11,10 @@ from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
-from funsor.ops import AssociativeOp
+from funsor.ops import AddOp, AssociativeOp, LogaddexpOp, NullOp, SampleOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, reflect, substitute, to_funsor
+from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Stack, Subs, Variable, \
+    reflect, substitute, to_funsor
 from funsor.tensor import Tensor
 
 
@@ -111,6 +112,14 @@ def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
     return {lhs: lhs_adj, rhs: rhs_adj}
 
 
+@adjoint_ops.register(Binary, SampleOp, AddOp, Funsor, LogaddexpOp, Funsor, Funsor)
+def adjoint_binary_sample_mixture(adj_redop, adj_binop, out_adj, op, lhs, rhs):
+    component = interpreter.gensym("component")
+    arg = Stack((lhs, rhs), component)
+    arg_adj = adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, arg.fresh)[arg]
+    return {lhs: arg_adj(**{component: 0}), rhs: arg_adj(**{component: 1})}
+
+
 @adjoint_ops.register(Reduce, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, frozenset)
 def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
     assert adj_binop is op or (op, adj_binop) in ops.DISTRIBUTIVE_OPS
@@ -121,6 +130,13 @@ def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
     elif op is adj_binop:  # plate!
         out = arg.reduce(op, reduced_vars)
         return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
+
+
+@adjoint_ops.register(Reduce, SampleOp, AddOp, Funsor, LogaddexpOp, AddOp, Funsor, frozenset)
+def adjoint_reduce_sample(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
+    out = arg.reduce(op, reduced_vars)
+    # TODO define ops.safesub for pairs of tensors
+    return {arg: ops.safesub(out_adj + arg, out).sample(reduced_vars)}
 
 
 @adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
@@ -145,6 +161,21 @@ def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_var
                           prod_op, rhs.input_vars - lhs.input_vars, out_adj, rhs)
     rhs_adj = Contraction(sum_op if sum_op is not nullop else adj_redop,
                           prod_op, lhs.input_vars - rhs.input_vars, out_adj, lhs)
+
+    return {lhs: lhs_adj, rhs: rhs_adj}
+
+
+@adjoint_ops.register(Contraction, SampleOp, AddOp, Funsor,
+                      (LogaddexpOp, NullOp), AddOp, frozenset, Funsor, Funsor)
+def adjoint_contract_sample(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs):
+    assert sum_op is nullop or (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
+
+    lhs_rhs = lhs + rhs
+    out = lhs_rhs.reduce(ops.logaddexp, reduced_vars)
+    joint_adj = ops.safesub(out_adj + lhs_rhs, out).sample(reduced_vars)
+
+    lhs_adj = joint_adj.reduce(ops.logaddexp, rhs.input_vars - lhs.input_vars)
+    rhs_adj = joint_adj.reduce(ops.logaddexp, lhs.input_vars - rhs.input_vars)
 
     return {lhs: lhs_adj, rhs: rhs_adj}
 
