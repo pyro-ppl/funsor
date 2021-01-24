@@ -4,10 +4,12 @@
 import argparse
 from collections import OrderedDict
 from typing import Dict, List, Tuple
+from functools import reduce
 
 import funsor
 import funsor.ops as ops
-from funsor import Funsor, Tensor
+from funsor import Funsor, Tensor, Cat, Slice, Variable
+from funsor.cnf import Contraction
 from funsor.adjoint import AdjointTape
 from funsor.domains import Bint
 from funsor.ops.builtin import UNITS, AssociativeOp
@@ -38,21 +40,39 @@ def forward_algorithm(
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
     prev_to_drop = dict(zip(step.keys(), drop))
     curr_to_drop = dict(zip(step.values(), drop))
-    reduce_vars = frozenset(drop)
+    # reduce_vars = frozenset(drop)
+    reduce_vars = frozenset(Variable(v, trans.inputs[k])
+                     for k, v in curr_to_drop.items())
 
-    factors = [trans(**{time: t}) for t in range(trans.inputs[time].size)]
-    factors.reverse()
-    # base case
-    base = init
-    alphas = [base]
-    # inductive steps
-    while factors:
-        y = factors.pop()(**prev_to_drop)
-        base = prod_op(base(**curr_to_drop), y).reduce(sum_op, reduce_vars)
-        alphas.append(base)
+    duration = trans.inputs[time].size
+    while duration > 1:
+        even_duration = duration // 2 * 2
+        x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
+        y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
+        contracted = Contraction(sum_op, prod_op, reduce_vars, x, y)
+
+        if duration > even_duration:
+            extra = trans(**{time: Slice(time, duration - 1, duration)})
+            contracted = Cat(time, (contracted, extra))
+        trans = contracted
+        duration = (duration + 1) // 2
     else:
-        base = base(**curr_to_drop).reduce(sum_op, reduce_vars)
-    return base, alphas
+        Z = prod_op(init(**{"x_curr": "x_prev"}), trans(**{time: 0})).reduce(sum_op, frozenset({"x_prev", "x_curr"}))
+    return Z
+
+    #  # base case
+    #  alpha = init
+    #  alphas = [alpha]
+    #  ys = []
+    #  # inductive steps
+    #  for t in range(trans.inputs[time].size):
+    #      y = trans(**{time: t})
+    #      alpha = prod_op(alpha(**curr_to_drop), y(**prev_to_drop)).reduce(sum_op, reduce_vars)
+    #      alphas.append(alpha)
+    #      ys.append(y)
+    #  else:
+    #      Z = alpha(**curr_to_drop).reduce(sum_op, reduce_vars)
+    #  return Z, ys
 
 
 def backward_algorithm(
@@ -81,26 +101,40 @@ def backward_algorithm(
     curr_to_drop = dict(zip(step.values(), drop))
     reduce_vars = frozenset(drop)
 
-    factors = [trans(**{time: t}) for t in range(trans.inputs[time].size)]
     # base case
     inputs = OrderedDict((k, v) for k, v in trans.inputs.items() if k in step.keys())
     data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
         tuple(v.size for v in inputs.values())
     )
     data = data + UNITS[prod_op]
-    base = Tensor(data, inputs, trans.dtype)
-    betas = [base]
+    beta = Tensor(data, inputs, trans.dtype)
+    betas = [beta]
     # inductive steps
-    while factors:
-        x = factors.pop()(**curr_to_drop)
-        base = prod_op(x, base(**prev_to_drop)).reduce(sum_op, reduce_vars)
-        betas.append(base)
+    for t in reversed(range(trans.inputs[time].size)):
+        x = trans(**{time: t}, **curr_to_drop)
+        beta = prod_op(x, beta(**prev_to_drop)).reduce(sum_op, reduce_vars)
+        betas.append(beta)
     else:
-        base = prod_op(init(**curr_to_drop), base(**prev_to_drop)).reduce(
+        Z = prod_op(init(**curr_to_drop), beta(**prev_to_drop)).reduce(
             sum_op, reduce_vars
         )
     betas.reverse()
-    return base, betas
+
+    # base case
+    alpha = init
+    alphas = [alpha]
+    marginals = []
+    # inductive steps
+    for t in range(trans.inputs[time].size):
+        y = trans(**{time: t}, **prev_to_drop)
+        alpha = prod_op(alpha(**curr_to_drop), y).reduce(sum_op, reduce_vars)
+        alphas.append(alpha)
+        marginal = reduce(prod_op, [alphas[t](**{"x_curr": "x_prev"}), trans(**{time: t}), betas[t+1](**{"x_prev": "x_curr"})])
+        marginals.append(marginal)
+    else:
+        Z = alpha(**curr_to_drop).reduce(sum_op, reduce_vars)
+
+    return Z, betas, marginals
 
 
 def main(args):
@@ -124,8 +158,8 @@ def main(args):
         http://www.cs.jhu.edu/~zfli/pubs/semiring_translation_zhifei_emnlp09.pdf
     """
     funsor.set_backend("torch")
-    sum_op = ops.logaddexp
-    prod_op = ops.add
+    sum_op = ops.add
+    prod_op = ops.mul
 
     # transition and emission probabilities
     time = "time"
@@ -143,25 +177,28 @@ def main(args):
     # Compute smoothed values by using the forward-backward algorithm
     # gamma[t] = p(x[t]|y[0:T])
     # gamma[t] = alpha[t] * beta[t]
-    Z_forward, alphas = forward_algorithm(
-        sum_op, prod_op, init, trans, time, {"x_prev": "x_curr"}
-    )
-    Z_backward, betas = backward_algorithm(
-        sum_op, prod_op, init, trans, time, {"x_prev": "x_curr"}
-    )
-    assert_close(Z_forward, Z_backward)
-    gammas = []
-    for alpha, beta in zip(alphas, betas):
-        gamma = prod_op(alpha(**{"x_curr": "x_prev"}), beta)
-        gammas.append(gamma)
-
-    # forward-backward algorithm can be obtained by differentiating the backward algorithm
-    with AdjointTape() as tape:
-        Z_backward, betas = backward_algorithm(
+    with AdjointTape() as forward_tape:
+        Z_forward = forward_algorithm(
             sum_op, prod_op, init, trans, time, {"x_prev": "x_curr"}
         )
-    result = tape.adjoint(sum_op, prod_op, Z_backward, betas)
-    adjoint_gammas = list(result.values())
+    with AdjointTape() as backward_tape:
+        Z_backward, betas, marginals = backward_algorithm(
+            sum_op, prod_op, init, trans, time, {"x_prev": "x_curr"}
+        )
+    assert_close(Z_forward, Z_backward)
+    #  gammas = []
+    #  for alpha, beta in zip(alphas, betas):
+    #      gamma = prod_op(alpha, beta(**{"x_prev": "x_curr"}))
+    #      # gamma = prod_op(alpha(**{"x_curr": "x_prev"}), beta)
+    #      gammas.append(gamma)
+
+    # forward-backward algorithm can be obtained by differentiating the backward algorithm
+    #  bresult = backward_tape.adjoint(sum_op, prod_op, Z_backward, betas)
+    #  fresult = forward_tape.adjoint(sum_op, prod_op, Z_forward, alphas)
+    result = forward_tape.adjoint(sum_op, prod_op, Z_forward, [trans])
+    #  adjoint_gammas = list(fresult.values())
+    adjoint_marginals = list(result.values())
+    breakpoint()
 
     print("Smoothed term")
     print("Forward-backward algorithm")
