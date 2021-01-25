@@ -1,7 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import os
 import re
 from collections import OrderedDict
 from importlib import import_module
@@ -26,8 +25,6 @@ from funsor.testing import (  # noqa: F401
     xfail_param
 )
 from funsor.util import get_backend
-
-_ENABLE_MC_DIST_TESTS = int(os.environ.get("FUNSOR_ENABLE_MC_DIST_TESTS", 0))
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
                                 reason="numpy does not have distributions backend")
