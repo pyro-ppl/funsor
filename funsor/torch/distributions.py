@@ -227,6 +227,11 @@ def transform_to_torch_transform(op, name_to_dim=None):
     raise NotImplementedError("{} is not a currently supported transform".format(op))
 
 
+@op_to_torch_transform.register(ops.WrappedTransformOp)
+def transform_to_torch_transform(op, name_to_dim=None):
+    return op.fn
+
+
 @op_to_torch_transform.register(ops.ExpOp)
 def exp_to_torch_transform(op, name_to_dim=None):
     return torch.distributions.transforms.ExpTransform()

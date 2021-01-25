@@ -468,7 +468,6 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
         xfail_reason="backend not supported" if get_backend() != "torch" else "",
     )
-
     # SigmoidTransform (inversion not working)
     DistTestCase(
         """
@@ -480,6 +479,28 @@ for batch_shape in [(), (5,), (2, 3)]:
          ("high", f"2. + rand({batch_shape})")),
         funsor.Real,
         xfail_reason="failure to re-invert ops.sigmoid.inv, which is not atomic",
+    )
+    # PowerTransform
+    DistTestCase(
+        """
+        dist.TransformedDistribution(
+            dist.Exponential(rate=case.rate),
+            dist.transforms.PowerTransform(0.5))
+        """,
+        (("rate", f"rand({batch_shape})"),),
+        funsor.Real,
+        xfail_reason=("backend not supported" if get_backend() != "torch" else ""),
+    )
+    # HaarTransform
+    DistTestCase(
+        """
+        dist.TransformedDistribution(
+            dist.Normal(loc=case.loc, scale=1.).to_event(1),
+            dist.transforms.HaarTransform(dim=-1))
+        """,
+        (("loc", f"rand({batch_shape} + (3,))"),),
+        funsor.Reals[3],
+        xfail_reason=("backend not supported" if get_backend() != "torch" else ""),
     )
 
     # Independent
@@ -559,7 +580,8 @@ def test_generic_distribution_to_funsor(case):
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(normalize_with_subs):
-        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+        with xfail_if_not_implemented(match="try upgrading backend"):
+            funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
     assert funsor_dist.inputs["value"] == expected_value_domain
 
     while isinstance(funsor_dist, funsor.cnf.Contraction):
@@ -593,8 +615,9 @@ def test_generic_log_prob(case, use_lazy):
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(normalize_with_subs if use_lazy else eager):
-        # some distributions have nontrivial eager patterns
-        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+        with xfail_if_not_implemented(match="try upgrading backend"):
+            # some distributions have nontrivial eager patterns
+            funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
     expected_inputs = {name: funsor.Bint[raw_dist.batch_shape[dim]] for dim, name in dim_to_name.items()}
     expected_inputs.update({"value": expected_value_domain})
 
@@ -616,7 +639,8 @@ def test_generic_enumerate_support(case, expand):
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(normalize_with_subs):
-        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+        with xfail_if_not_implemented(match="try upgrading backend"):
+            funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
     assert getattr(raw_dist, "has_enumerate_support", False) == getattr(funsor_dist, "has_enumerate_support", False)
     if getattr(funsor_dist, "has_enumerate_support", False):
@@ -634,7 +658,8 @@ def test_generic_sample(case, sample_shape):
 
     dim_to_name, name_to_dim = _default_dim_to_name(sample_shape + raw_dist.batch_shape)
     with interpretation(normalize_with_subs):
-        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+        with xfail_if_not_implemented(match="try upgrading backend"):
+            funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
     sample_inputs = OrderedDict((dim_to_name[dim - len(raw_dist.batch_shape)], funsor.Bint[sample_shape[dim]])
                                 for dim in range(-len(sample_shape), 0))
@@ -656,13 +681,15 @@ def test_generic_stats(case, statistic):
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
     with interpretation(normalize_with_subs):
-        funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
+        with xfail_if_not_implemented(match="try upgrading backend"):
+            funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
     with xfail_if_not_implemented(msg="entropy not implemented for some distributions"), \
             xfail_if_not_found(msg="stats not implemented yet for TransformedDist"):
         actual_stat = getattr(funsor_dist, statistic)()
 
-    expected_stat_raw = getattr(raw_dist, statistic)
+    with xfail_if_not_implemented():
+        expected_stat_raw = getattr(raw_dist, statistic)
     if statistic == "entropy":
         expected_stat = to_funsor(expected_stat_raw(), output=funsor.Real, dim_to_name=dim_to_name)
     else:
