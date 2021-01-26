@@ -50,8 +50,8 @@ def test_flatten():
         x: Funsor,
         i: Bound,
         j: Bound,
-        ij: Fresh[lambda x, i, j: Bint[i.size * j.size]],
-    ) -> Fresh[lambda x, i, j: x.dtype]:
+        ij: Fresh[lambda i, j: Bint[i.size * j.size]],
+    ) -> Fresh[lambda x: x.dtype]:
         m = to_funsor(i, x.inputs.get(i, None)).output.size
         n = to_funsor(j, x.inputs.get(j, None)).output.size
         ij = to_funsor(ij, Bint[m * n])
@@ -73,8 +73,8 @@ def test_cat2():
         y: Funsor,
         i: Bound,
         j: Bound,
-        ij: Fresh[lambda x, y, i, j: Bint[i.size + j.size]],
-    ) -> Fresh[lambda x, y, i, j: x]:
+        ij: Fresh[lambda i, j: Bint[i.size + j.size]],
+    ) -> Fresh[lambda x: x]:
         y = y(**{j.name: i})
         result = Cat(i.name, (x, y))
         result = result(**{i.name: ij})

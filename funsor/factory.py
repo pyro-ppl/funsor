@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import inspect
 import typing
 from collections import OrderedDict
 
@@ -26,9 +27,10 @@ class FreshMeta(type):
 class Fresh(metaclass=FreshMeta):
     def __init__(self, fn):
         self.fn = fn
+        self.args = inspect.getargspec(fn)[0]
 
-    def __call__(self, *domains):
-        return self.fn(*domains)
+    def __call__(self, **kwargs):
+        return self.fn(*map(kwargs.__getitem__, self.args))
 
 
 class Bound:
@@ -62,20 +64,22 @@ def make_funsor(fn):
                     raise TypeError(f"Invalid type hint {name}: {hint}")
 
             # Compute domains of fresh variables.
-            dependent_args = [arg.output for hint, arg in zip(hints, args)
-                              if hint in (Funsor, Bound)]
+            dependent_args = {name: arg.output
+                              for name, arg, hint in zip(cls._ast_fields, args, hints)
+                              if hint in (Funsor, Bound)}
             for i, (hint, arg) in enumerate(zip(hints, args)):
                 if isinstance(hint, Fresh):
-                    domain = hint(*dependent_args)
+                    domain = hint(**dependent_args)
                     args[i] = to_funsor(arg, domain)
             return super().__call__(*args)
 
     @makefun.with_signature("__init__({})".format(", ".join(["self"] + list(input_types))))
     def __init__(self, **kwargs):
         args = tuple(kwargs[k] for k in self._ast_fields)
-        dependent_args = [arg.output for hint, arg in zip(hints, args)
-                          if hint in (Funsor, Bound)]
-        output = output_type(*dependent_args)
+        dependent_args = {name: arg.output
+                          for name, arg, hint in zip(self._ast_fields, args, hints)
+                          if hint in (Funsor, Bound)}
+        output = output_type(**dependent_args)
         inputs = OrderedDict()
         fresh = set()
         bound = {}
