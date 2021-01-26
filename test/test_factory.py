@@ -46,7 +46,7 @@ def test_getitem_getitem(num_inputs):
     check_funsor(actual, expected.inputs, expected.output, expected.data)
 
 
-@pytest.mark.xfail(reason="missing pattern Variable // Number")
+@pytest.mark.xfail(reason="missing pattern Variable //,% Number")
 def test_flatten():
     @make_funsor
     def Flatten21(
@@ -58,7 +58,9 @@ def test_flatten():
         m = to_funsor(i, x.inputs.get(i, None)).output.size
         n = to_funsor(j, x.inputs.get(j, None)).output.size
         ij = to_funsor(ij, Bint[m * n])
-        return x(**{i: ij // n, j: ij % n})
+        ij = x.materialize(ij)
+        return x(**{i.name: ij // Number(n, m * n),
+                    j.name: ij % Number(n, m * n)})
 
     inputs = OrderedDict()
     inputs["a"] = Bint[3]
@@ -67,6 +69,27 @@ def test_flatten():
     x = Flatten21(data, "a", "b", "ab")
 
     check_funsor(x, {"ab": Bint[12]}, Real, data.data.reshape(-1))
+
+
+def test_unflatten():
+    @make_funsor
+    def Unflatten(
+        x: Funsor,
+        i: Bound,
+        i_over_2: Fresh[lambda i: Bint[i.size // 2]],
+        i_mod_2: Fresh[lambda: Bint[2]],
+    ) -> Fresh[lambda x: x]:
+        assert i.output.size % 2 == 0
+        return x(**{i.name: i_over_2 * Number(2, 3) + i_mod_2})
+
+    inputs = OrderedDict()
+    inputs["a"] = Bint[5]
+    inputs["b"] = Bint[6]
+    data = random_tensor(inputs, Real)
+    x = Unflatten(data, "b", "c", "d")
+
+    check_funsor(x, {"a": Bint[5], "c": Bint[3], "d": Bint[2]}, Real,
+                 data.data.reshape(5, 3, 2))
 
 
 def test_cat2():
