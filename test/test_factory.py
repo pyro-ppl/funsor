@@ -10,7 +10,7 @@ import funsor.ops as ops
 from funsor.domains import Array, Bint, Real, Reals
 from funsor.factory import Bound, Fresh, make_funsor, to_funsor
 from funsor.tensor import Tensor
-from funsor.terms import Cat, Funsor, Lambda, eager
+from funsor.terms import Cat, Funsor, Lambda, Number, eager
 from funsor.testing import check_funsor, random_tensor
 
 
@@ -93,7 +93,7 @@ def test_cat2():
     check_funsor(xy, {"aa": Bint[6], "b": Bint[4]}, Real)
 
 
-def test_Normal():
+def test_normal():
     @make_funsor
     def Normal(
         loc: Funsor,
@@ -119,3 +119,37 @@ def test_Normal():
     actual = d(value=value)
     assert isinstance(actual, Tensor)
     check_funsor(actual, {"i": Bint[3]}, Real)
+
+
+def test_matmul():
+    @make_funsor
+    def MatMul(
+        x: Funsor,
+        y: Funsor,
+        i: Bound,
+    ) -> Fresh[lambda x: x]:
+        return (x * y).reduce(ops.add, i)
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    y = random_tensor(OrderedDict(c=Bint[4], d=Bint[3]))
+    xy = MatMul(x, y, "b")
+    check_funsor(xy, {"a": Bint[3], "c": Bint[4], "d": Bint[3]}, Real)
+
+
+@pytest.mark.xfail(reason="alpha conversion incorrectly changes key")
+def test_scatter1():
+    @make_funsor
+    def Scatter1(
+        destin: Funsor,
+        key: Bound,
+        key_: Fresh[lambda key: key],
+        value: Funsor,
+        source: Funsor,
+    ) -> Fresh[lambda destin: destin]:
+        return None
+
+    destin = random_tensor(OrderedDict(a=Bint[9]))
+    source = random_tensor(OrderedDict(b=Bint[3]))
+    value = Number(4, 9)
+    x = Scatter1(destin, "a", "a", value, source)
+    check_funsor(x, {"a": Bint[9], "b": Bint[3]}, Real)

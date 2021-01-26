@@ -89,7 +89,7 @@ def make_funsor(fn):
                 inputs.update(arg.inputs)
         for hint, arg in zip(hints, args):
             if hint is Bound:
-                bound[arg.name] = inputs.pop(arg).output
+                bound[arg.name] = inputs.pop(arg.name)
         for hint, arg in zip(hints, args):
             if isinstance(hint, Fresh):
                 fresh.add(arg.name)
