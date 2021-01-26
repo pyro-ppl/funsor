@@ -44,6 +44,7 @@ class KeyedRegistry(object):
 
     def __init__(self, default=None):
         self.default = default if default is None else PartialDefault(default)
+        # TODO make registry a WeakKeyDictionary
         self.registry = defaultdict(lambda: PartialDispatcher('f'))
 
     def register(self, key, *types):
