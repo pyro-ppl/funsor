@@ -1,13 +1,16 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import math
 from collections import OrderedDict
 
 import pytest
 
+import funsor.ops as ops
 from funsor.domains import Array, Bint, Real, Reals
 from funsor.factory import Bound, Fresh, make_funsor, to_funsor
-from funsor.terms import Cat, Funsor, Lambda
+from funsor.tensor import Tensor
+from funsor.terms import Cat, Funsor, Lambda, eager
 from funsor.testing import check_funsor, random_tensor
 
 
@@ -88,3 +91,31 @@ def test_cat2():
     xy = Cat2(x, y, "a", "a", "aa")
 
     check_funsor(xy, {"aa": Bint[6], "b": Bint[4]}, Real)
+
+
+def test_Normal():
+    @make_funsor
+    def Normal(
+        loc: Funsor,
+        scale: Funsor,
+        value: Fresh[lambda loc: loc],
+    ) -> Fresh[Real]:
+        return None
+
+    @eager.register(Normal, Tensor, Tensor, Tensor)
+    def _(loc, scale, value):
+        z = (value - loc) / scale
+        log_prob = (-0.5) * z ** 2 - 0.5 * math.log(2 * math.pi)
+        return log_prob.sum()
+
+    inputs = OrderedDict(i=Bint[3])
+    loc = random_tensor(inputs)
+    scale = random_tensor(inputs).exp()
+    value = random_tensor(inputs)
+    d = Normal(loc, scale, "value")
+    assert isinstance(d, Normal)
+    check_funsor(d, {"value": Real, "i": Bint[3]}, Real)
+
+    actual = d(value=value)
+    assert isinstance(actual, Tensor)
+    check_funsor(actual, {"i": Bint[3]}, Real)
