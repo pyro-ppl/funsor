@@ -11,9 +11,10 @@ from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
-from funsor.ops import AssociativeOp
+from funsor.ops import AssociativeOp, LogOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, reflect, substitute, to_funsor
+from funsor.terms import Binary, Unary, Cat, Funsor, Number, Reduce, Slice, \
+        Subs, Variable, reflect, substitute, to_funsor
 from funsor.tensor import Tensor
 
 
@@ -94,6 +95,11 @@ adjoint_ops = KeyedRegistry(default=_fail_default)
 if interpreter._DEBUG:
     adjoint_ops_register = adjoint_ops.register
     adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(interpreter.debug_logged(fn))
+
+
+@adjoint_ops.register(Unary, AssociativeOp, AssociativeOp, Funsor, LogOp, Funsor)
+def adjoint_unary(adj_redop, adj_binop, out_adj, op, arg):
+    return {arg: ops.truediv(out_adj, arg)}
 
 
 @adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, (np.ndarray, np.generic), tuple, object)

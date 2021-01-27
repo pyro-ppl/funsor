@@ -4,12 +4,10 @@
 import argparse
 from collections import OrderedDict
 from typing import Dict, List, Tuple
-from functools import reduce
 
 import funsor
 import funsor.ops as ops
-from funsor import Funsor, Tensor, Cat, Slice, Variable
-from funsor.cnf import Contraction
+from funsor import Funsor, Tensor
 from funsor.adjoint import AdjointTape
 from funsor.domains import Bint
 from funsor.ops.builtin import UNITS, AssociativeOp
@@ -19,81 +17,21 @@ from funsor.testing import assert_close, random_tensor
 def forward_algorithm(
     sum_op: AssociativeOp,
     prod_op: AssociativeOp,
-    init: Funsor,
-    trans: Funsor,
-    time: str,
+    factors: List[Funsor],
     step: Dict[str, str],
 ) -> Tuple[Funsor, List[Funsor]]:
     """
-    Calculate forward probabilities defined as:
-    alpha[t] = p(y[0:t], x[t])
+    Calculate log marginal probability using the forward algorithm:
+    log_Z = log p(y[0:T])
 
     Transition and emission probabilities are given by init and trans:
     init = p(y[0], x[0])
-    trans[t] = p(y[t], x[t]|x[t-1])
+    trans[t] = p(y[t], x[t] | x[t-1])
 
     Forward probabilities are computed inductively:
+    alpha[t] = p(y[0:t], x[t])
     alpha[0] = init
     alpha[t+1] = alpha[t] @ trans[t+1]
-    """
-    step = OrderedDict(sorted(step.items()))
-    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
-    prev_to_drop = dict(zip(step.keys(), drop))
-    curr_to_drop = dict(zip(step.values(), drop))
-    # reduce_vars = frozenset(drop)
-    reduce_vars = frozenset(Variable(v, trans.inputs[k])
-                     for k, v in curr_to_drop.items())
-
-    duration = trans.inputs[time].size
-    while duration > 1:
-        even_duration = duration // 2 * 2
-        x = trans(**{time: Slice(time, 0, even_duration, 2, duration)}, **curr_to_drop)
-        y = trans(**{time: Slice(time, 1, even_duration, 2, duration)}, **prev_to_drop)
-        contracted = Contraction(sum_op, prod_op, reduce_vars, x, y)
-
-        if duration > even_duration:
-            extra = trans(**{time: Slice(time, duration - 1, duration)})
-            contracted = Cat(time, (contracted, extra))
-        trans = contracted
-        duration = (duration + 1) // 2
-    else:
-        Z = prod_op(init(**{"x_curr": "x_prev"}), trans(**{time: 0})).reduce(sum_op, frozenset({"x_prev", "x_curr"}))
-    return Z
-
-    #  # base case
-    #  alpha = init
-    #  alphas = [alpha]
-    #  ys = []
-    #  # inductive steps
-    #  for t in range(trans.inputs[time].size):
-    #      y = trans(**{time: t})
-    #      alpha = prod_op(alpha(**curr_to_drop), y(**prev_to_drop)).reduce(sum_op, reduce_vars)
-    #      alphas.append(alpha)
-    #      ys.append(y)
-    #  else:
-    #      Z = alpha(**curr_to_drop).reduce(sum_op, reduce_vars)
-    #  return Z, ys
-
-
-def backward_algorithm(
-    sum_op: AssociativeOp,
-    prod_op: AssociativeOp,
-    init: Funsor,
-    trans: Funsor,
-    time: str,
-    step: Dict[str, str],
-) -> Tuple[Tensor, List[Tensor]]:
-    """
-    Calculate backward probabilities defined as:
-    beta[t] = p(y[t+1:T]|x[t])
-
-    Transition and emission probabilities are given by init and trans:
-    init = p(y[0], x[0])
-    trans[t] = p(y[t], x[t]|x[t-1])
-
-    Backward probabilities are computed inductively:
-    beta[T] = 1
-    beta[t] = trans[t+1] @ beta[t+1]
     """
     step = OrderedDict(sorted(step.items()))
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
@@ -102,49 +40,96 @@ def backward_algorithm(
     reduce_vars = frozenset(drop)
 
     # base case
-    inputs = OrderedDict((k, v) for k, v in trans.inputs.items() if k in step.keys())
+    alpha = factors[0]
+    alphas = [alpha]
+    # inductive steps
+    for trans in factors[1:]:
+        alpha = prod_op(alpha(**curr_to_drop), trans(**prev_to_drop)).reduce(
+            sum_op, reduce_vars
+        )
+        alphas.append(alpha)
+    else:
+        Z = alpha(**curr_to_drop).reduce(sum_op, reduce_vars)
+    log_Z = Z.log()
+    return log_Z
+
+
+def forward_backward_algorithm(
+    sum_op: AssociativeOp,
+    prod_op: AssociativeOp,
+    factors: List[Funsor],
+    step: Dict[str, str],
+) -> List[Tensor]:
+    """
+    Calculate marginal probabilities:
+    p(x[t], x[t-1] | Y)
+    beta[t] = p(y[t+1:T]|x[t])
+    """
+    step = OrderedDict(sorted(step.items()))
+    drop = tuple("_drop_{}".format(i) for i in range(len(step)))
+    prev_to_drop = dict(zip(step.keys(), drop))
+    curr_to_drop = dict(zip(step.values(), drop))
+    reduce_vars = frozenset(drop)
+
+    # Backward algorithm
+    # beta[T] = 1
+    inputs = factors[0](**{"x_curr": "x_prev"}).inputs.copy()
     data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
         tuple(v.size for v in inputs.values())
     )
     data = data + UNITS[prod_op]
-    beta = Tensor(data, inputs, trans.dtype)
+    beta = Tensor(data, inputs, factors[-1].dtype)
     betas = [beta]
     # inductive steps
-    for t in reversed(range(trans.inputs[time].size)):
-        x = trans(**{time: t}, **curr_to_drop)
-        beta = prod_op(x, beta(**prev_to_drop)).reduce(sum_op, reduce_vars)
+    # beta[t] = trans[t+1] @ beta[t+1]
+    for trans in factors[:0:-1]:
+        beta = prod_op(trans(**curr_to_drop), beta(**prev_to_drop)).reduce(
+            sum_op, reduce_vars
+        )
         betas.append(beta)
     else:
+        init = factors[0]
         Z = prod_op(init(**curr_to_drop), beta(**prev_to_drop)).reduce(
             sum_op, reduce_vars
         )
     betas.reverse()
 
-    # base case
-    alpha = init
+    # Forward algorithm
+    # p(y[0], x[0])
+    alpha = factors[0]
     alphas = [alpha]
-    marginals = []
+    # p(x[0] | Y)
+    marginal = prod_op(factors[0], betas[0](**{"x_prev": "x_curr"})) / Z
+    marginals = [marginal]
     # inductive steps
-    for t in range(trans.inputs[time].size):
-        y = trans(**{time: t}, **prev_to_drop)
-        alpha = prod_op(alpha(**curr_to_drop), y).reduce(sum_op, reduce_vars)
+    for trans, beta in zip(factors[1:], betas[1:]):
+        # p(y[0:t], x[t-1], x[t])
+        new_term = prod_op(alpha(**{"x_curr": "x_prev"}), trans)
+        # p(y[0:t], x[t])
+        alpha = new_term.reduce(sum_op, frozenset({"x_prev"}))
         alphas.append(alpha)
-        marginal = reduce(prod_op, [alphas[t](**{"x_curr": "x_prev"}), trans(**{time: t}), betas[t+1](**{"x_prev": "x_curr"})])
+        # p(x[t-1], x[t] | Y)
+        marginal = prod_op(new_term, beta(**{"x_prev": "x_curr"})) / Z
         marginals.append(marginal)
-    else:
-        Z = alpha(**curr_to_drop).reduce(sum_op, reduce_vars)
 
-    return Z, betas, marginals
+    return marginals
 
 
 def main(args):
     """
-    Compute smoothed values (gamma[t] = p(x[t]|y[0:T])) for an HMM:
+    Compute marginal probabilities p(x[t], x[t-1] | Y) for an HMM:
 
     x[0] -> ... -> x[t-1] -> x[t] -> ... -> x[T]
      |              |         |             |
      v              v         v             v
     y[0]           y[t-1]    y[t]           y[T]
+
+    alpha[t] = alpha[t-1] @ p(y[t], x[t] | x[t-1])
+    beta[t-1] = p(y[t], x[t] | x[t-1]) @ beta[t]
+
+    dlog_Z / dlog_p(y[t], x[t] | x[t-1]) =
+    alpha[t-1] * beta[t] * p(y[t], x[t] | x[t-1]) / Z =
+    p(x[t], x[t-1] | Y)
 
     **References:**
 
@@ -158,53 +143,38 @@ def main(args):
         http://www.cs.jhu.edu/~zfli/pubs/semiring_translation_zhifei_emnlp09.pdf
     """
     funsor.set_backend("torch")
-    sum_op = ops.add
-    prod_op = ops.mul
 
     # transition and emission probabilities
-    time = "time"
     init = random_tensor(OrderedDict([("x_curr", Bint[args.hidden_dim])]))
-    trans = random_tensor(
-        OrderedDict(
-            [
-                (time, Bint[args.time_steps]),
-                ("x_prev", Bint[args.hidden_dim]),
-                ("x_curr", Bint[args.hidden_dim]),
-            ]
+    log_factors = [init]
+    for t in range(args.time_steps - 1):
+        log_factors.append(
+            random_tensor(
+                OrderedDict(
+                    [
+                        ("x_prev", Bint[args.hidden_dim]),
+                        ("x_curr", Bint[args.hidden_dim]),
+                    ]
+                )
+            )
         )
+    factors = [f.exp() for f in log_factors]
+
+    # Compute marginal probabilities using the forward-backward algorithm
+    marginals = forward_backward_algorithm(
+        ops.add, ops.mul, factors, {"x_prev": "x_curr"}
     )
-
-    # Compute smoothed values by using the forward-backward algorithm
-    # gamma[t] = p(x[t]|y[0:T])
-    # gamma[t] = alpha[t] * beta[t]
-    with AdjointTape() as forward_tape:
-        Z_forward = forward_algorithm(
-            sum_op, prod_op, init, trans, time, {"x_prev": "x_curr"}
-        )
-    with AdjointTape() as backward_tape:
-        Z_backward, betas, marginals = backward_algorithm(
-            sum_op, prod_op, init, trans, time, {"x_prev": "x_curr"}
-        )
-    assert_close(Z_forward, Z_backward)
-    #  gammas = []
-    #  for alpha, beta in zip(alphas, betas):
-    #      gamma = prod_op(alpha, beta(**{"x_prev": "x_curr"}))
-    #      # gamma = prod_op(alpha(**{"x_curr": "x_prev"}), beta)
-    #      gammas.append(gamma)
-
-    # forward-backward algorithm can be obtained by differentiating the backward algorithm
-    #  bresult = backward_tape.adjoint(sum_op, prod_op, Z_backward, betas)
-    #  fresult = forward_tape.adjoint(sum_op, prod_op, Z_forward, alphas)
-    result = forward_tape.adjoint(sum_op, prod_op, Z_forward, [trans])
-    #  adjoint_gammas = list(fresult.values())
+    # Compute marginal probabilities using backpropagation
+    with AdjointTape() as tape:
+        log_Z = forward_algorithm(ops.add, ops.mul, factors, {"x_prev": "x_curr"})
+    result = tape.adjoint(ops.add, ops.mul, log_Z, factors)
     adjoint_marginals = list(result.values())
-    breakpoint()
 
     print("Smoothed term")
     print("Forward-backward algorithm")
     print("Differentiating backward algorithm")
     t = 0
-    for v1, v2 in zip(gammas, adjoint_gammas):
+    for v1, v2 in zip(marginals, adjoint_marginals):
         assert_close(v1, v2)
         print("")
         print(f"gamma[{t}]")
