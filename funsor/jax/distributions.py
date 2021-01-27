@@ -218,6 +218,14 @@ if not hasattr(dist.TransformedDistribution, "has_rsample"):
     dist.TransformedDistribution.has_rsample = property(lambda self: self.base_dist.has_rsample)
     dist.TransformedDistribution.rsample = dist.TransformedDistribution.sample
 
+
+@to_funsor.register(dist.transforms.Transform)
+def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    op = ops.WrappedTransformOp(tfm)
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return op(Variable(name, output))
+
+
 to_funsor.register(dist.ExpandedDistribution)(expandeddist_to_funsor)
 to_funsor.register(dist.Independent)(indepdist_to_funsor)
 if hasattr(dist, "MaskedDistribution"):

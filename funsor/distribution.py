@@ -424,6 +424,7 @@ def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     return mask * funsor_base_dist
 
 
+# TODO make this work with transforms with nontrivial event_dim logic
 # converts TransformedDistributions
 def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
