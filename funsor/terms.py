@@ -1753,16 +1753,19 @@ def quote_inplace_first_arg_on_first_line(arg, indent, out):
 
 
 ops.UnaryOp.subclass_register(Funsor)(Unary)
-ops.AssociativeOp.subclass_register(Funsor)(Unary)  # Reductions.
+ops.BinaryOp.subclass_register(Funsor, Funsor)(Binary)
 ops.AssociativeOp.subclass_register(Funsor, Funsor)(Binary)
+ops.AssociativeOp.subclass_register(Funsor)(Unary)  # Reductions.
 
 
-@AssociativeOp.subclass_register(object, Funsor)
+@ops.BinaryOp.subclass_register(object, Funsor)
+@ops.AssociativeOp.subclass_register(object, Funsor)
 def binary_object_funsor(op, x, y):
     return Binary(op, to_funsor(x), y)
 
 
-@AssociativeOp.subclass_register(Funsor, object)
+@ops.BinaryOp.subclass_register(Funsor, object)
+@ops.AssociativeOp.subclass_register(Funsor, object)
 def binary_funsor_object(op, x, y):
     return Binary(op, x, to_funsor(y))
 

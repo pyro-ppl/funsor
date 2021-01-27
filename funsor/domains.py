@@ -223,7 +223,6 @@ def find_domain(op, *domains):
 
 
 @find_domain.register(ops.Op)  # TODO this is too general, register all ops
-@find_domain.register(ops.TransformOp)  # TODO too general, may be wrong for some
 @find_domain.register(ops.ReciprocalOp)
 @find_domain.register(ops.SigmoidOp)
 @find_domain.register(ops.TanhOp)
@@ -310,6 +309,19 @@ def _find_domain_associative_generic(op, *domains):
 
     shape = broadcast_shape(lhs.shape, rhs.shape)
     return Array[dtype, shape]
+
+
+@find_domain.register(ops.TransformOp)
+def _transform_find_domain(op, domain):
+    fn = op.dispatch(object)
+    shape = fn.forward_shape(domain.shape)
+    return Array[domain.dtype, shape]
+
+
+@find_domain.register(ops.LogAbsDetJacobianOp)
+def _transform_log_abs_det_jacobian(op, domain, codomain):
+    # TODO do we need to handle batch shape here?
+    return Real
 
 
 __all__ = [

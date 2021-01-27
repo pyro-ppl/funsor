@@ -19,9 +19,9 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Array, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
-from funsor.tensor import (Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
+from funsor.tensor import (Function, Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
                            ignore_jit_warnings, numeric_array, stack)
-from funsor.terms import Funsor, FunsorMeta, Independent, Number, Variable, \
+from funsor.terms import Funsor, FunsorMeta, Independent, Lambda, Number, Variable, \
     eager, reflect, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
@@ -373,14 +373,29 @@ def backenddist_to_funsor(funsor_dist_class, backend_dist, output=None, dim_to_n
 
 
 def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
+    if dim_to_name is None:
+        dim_to_name = {}
+    event_dim_to_name = OrderedDict((i, "_pyro_event_dim_{}".format(i))
+                                    for i in range(-backend_dist.reinterpreted_batch_ndims, 0))
     dim_to_name = OrderedDict((dim - backend_dist.reinterpreted_batch_ndims, name)
                               for dim, name in dim_to_name.items())
-    dim_to_name.update(OrderedDict((i, "_pyro_event_dim_{}".format(i))
-                                   for i in range(-backend_dist.reinterpreted_batch_ndims, 0)))
+    dim_to_name.update(event_dim_to_name)
     result = to_funsor(backend_dist.base_dist, dim_to_name=dim_to_name)
-    for i in reversed(range(-backend_dist.reinterpreted_batch_ndims, 0)):
-        name = "_pyro_event_dim_{}".format(i)
-        result = funsor.terms.Independent(result, "value", name, "value")
+    if isinstance(result, Distribution) and \
+            not isinstance(result.value, Function):  # Function used in some eager patterns
+        params = tuple(result.params.values())[:-1]
+        for dim, name in reversed(event_dim_to_name.items()):
+            dim_var = to_funsor(name, result.inputs[name])
+            params = tuple(Lambda(dim_var, param) for param in params)
+        if isinstance(result.value, Variable):
+            # broadcasting logic in Distribution will compute correct value domain
+            result = type(result)(*(params + (result.value.name,)))
+        else:
+            raise NotImplementedError("TODO support converting Indep(Transform)")
+    else:
+        # this handles the output of eager rewrites, e.g. Normal->Gaussian or Beta->Dirichlet
+        for dim, name in reversed(event_dim_to_name.items()):
+            result = funsor.terms.Independent(result, "value", name, "value")
     return result
 
 
@@ -409,6 +424,7 @@ def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     return mask * funsor_base_dist
 
 
+# TODO make this work with transforms with nontrivial event_dim logic
 # converts TransformedDistributions
 def transformeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     dist_module = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()]).dist
