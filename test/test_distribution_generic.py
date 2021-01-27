@@ -49,16 +49,20 @@ if get_backend() == "torch":
     backend_dist.ExpandedDistribution = backend_dist.torch_distribution.ExpandedDistribution
 
 
-def normalize_with_subs(cls, *args):
+def eager_no_dists(cls, *args):
     """
-    This interpretation is like normalize, except it also evaluates Subs eagerly.
+    This interpretation is like eager, except it skips special distribution patterns.
 
     This is necessary because we want to convert distribution expressions to
     normal form in some tests, but do not want to trigger eager patterns that
     rewrite some distributions (e.g. Normal to Gaussian) since these tests are
     specifically intended to exercise funsor.distribution.Distribution.
     """
-    result = normalize.dispatch(cls, *args)(*args)
+    if issubclass(cls, funsor.distribution.Distribution) and not isinstance(args[-1], funsor.Tensor):
+        return reflect(cls, *args)
+    result = eager.dispatch(cls, *args)(*args)
+    if result is None:
+        result = normalize.dispatch(cls, *args)(*args)
     if result is None:
         result = lazy.dispatch(cls, *args)(*args)
     if result is None:
@@ -576,7 +580,7 @@ def test_generic_distribution_to_funsor(case):
     expected_value_domain = case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(normalize_with_subs):
+    with interpretation(eager_no_dists):
         with xfail_if_not_implemented(match="try upgrading backend"):
             funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
     assert funsor_dist.inputs["value"] == expected_value_domain
@@ -611,7 +615,7 @@ def test_generic_log_prob(case, use_lazy):
     expected_value_domain = case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(normalize_with_subs if use_lazy else eager):
+    with interpretation(eager_no_dists if use_lazy else eager):
         with xfail_if_not_implemented(match="try upgrading backend"):
             # some distributions have nontrivial eager patterns
             funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
@@ -635,7 +639,7 @@ def test_generic_enumerate_support(case, expand):
     raw_dist = case.get_dist()
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(normalize_with_subs):
+    with interpretation(eager_no_dists):
         with xfail_if_not_implemented(match="try upgrading backend"):
             funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
@@ -654,7 +658,7 @@ def test_generic_sample(case, sample_shape):
     raw_dist = case.get_dist()
 
     dim_to_name, name_to_dim = _default_dim_to_name(sample_shape + raw_dist.batch_shape)
-    with interpretation(normalize_with_subs):
+    with interpretation(eager_no_dists):
         with xfail_if_not_implemented(match="try upgrading backend"):
             funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
@@ -677,7 +681,7 @@ def test_generic_stats(case, statistic):
     raw_dist = case.get_dist()
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(normalize_with_subs):
+    with interpretation(eager_no_dists):
         with xfail_if_not_implemented(match="try upgrading backend"):
             funsor_dist = to_funsor(raw_dist, output=funsor.Real, dim_to_name=dim_to_name)
 
