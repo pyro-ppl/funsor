@@ -27,17 +27,58 @@ def _type_to_typing(tp):
 
 def deep_isinstance(obj, cls):
     """replaces isinstance()"""
-    return pytypes.is_of_type(obj, cls)
+    # return pytypes.is_of_type(obj, cls)
+    return deep_issubclass(deep_type(obj), cls)
 
 
 def deep_issubclass(subcls, cls):
     """replaces issubclass()"""
-    return pytypes.is_subtype(subcls, cls)
+    # return pytypes.is_subtype(subcls, cls)
+    return _issubclass_tuple(subcls, cls)
 
 
 def deep_type(obj):
     """replaces type()"""
     return pytypes.deep_type(obj)
+
+
+def _issubclass_tuple(subcls, cls):
+
+    if get_origin(cls) is typing.Union:
+        return any(_issubclass_tuple(subcls, arg) for arg in get_args(cls))
+
+    if get_origin(subcls) is typing.Union:  # XXX is this right?
+        return any(_issubclass_tuple(arg, cls) for arg in get_args(subcls))
+
+    if cls is typing.Any:
+        return True
+
+    if subcls is typing.Any:
+        return False
+
+    if issubclass(get_origin(subcls), typing.Tuple) and \
+            issubclass(get_origin(cls), typing.Tuple):
+
+        if not issubclass(get_origin(subcls), get_origin(cls)):
+            return False
+
+        if not get_args(cls):  # cls is base Tuple
+            return True
+
+        if get_args(cls)[-1] is Ellipsis:  # cls variadic
+            if get_args(subcls)[-1] is Ellipsis:  # both variadic
+                return _issubclass_tuple(get_args(subcls)[0], get_args(cls)[0])
+            return all(_issubclass_tuple(a, get_args(cls)[0]) for a in get_args(subcls))
+
+        if get_args(subcls)[-1] is Ellipsis:  # only subcls variadic
+            # issubclass(Tuple[A, ...], Tuple[X, Y]) == False
+            return False
+
+        # neither variadic
+        return len(get_args(cls)) == len(get_args(subcls)) and \
+            all(_issubclass_tuple(a, b) for a, b in zip(get_args(subcls), get_args(cls)))
+
+    return issubclass(subcls, cls)
 
 
 ##############################################
@@ -46,14 +87,16 @@ def deep_type(obj):
 
 def get_args(tp):
     if isinstance(tp, GenericTypeMeta):
-        return getattr(tp, "__args__", tp)
-    return typing_extensions.get_args(tp)
+        return getattr(tp, "__args__", ())
+    result = typing_extensions.get_args(tp)
+    return () if result is None else result
 
 
 def get_origin(tp):
     if isinstance(tp, GenericTypeMeta):
         return getattr(tp, "__origin__", tp)
-    return typing_extensions.get_origin(tp)
+    result = typing_extensions.get_origin(tp)
+    return tp if result is None else result
 
 
 def get_type_hints(obj, globalns=None, localns=None, include_extras=False):
@@ -161,7 +204,7 @@ class TypingDispatcher(Dispatcher):
     A Dispatcher class designed for compatibility with the typing standard library.
     """
     def register(self, *types):
-        types = tuple(map(typing_wrap, map(_type_to_typing, types))
+        types = tuple(map(typing_wrap, map(_type_to_typing, types)))
         if getattr(self, "default", None):  # XXX should this class have default?
             objects = (typing_wrap(typing.Any),) * len(types)
             if objects != types and deep_supercedes(types, objects):
