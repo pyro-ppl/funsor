@@ -25,10 +25,12 @@ from funsor.util import get_backend
 
 
 @contextlib.contextmanager
-def xfail_if_not_implemented(msg="Not implemented"):
+def xfail_if_not_implemented(msg="Not implemented", *, match=None):
     try:
         yield
     except NotImplementedError as e:
+        if match is not None and match not in str(e):
+            raise e from None
         import pytest
         pytest.xfail(reason='{}:\n{}'.format(msg, e))
 

@@ -50,7 +50,6 @@ def forward_algorithm(
         alphas.append(alpha)
     else:
         Z = alpha(**curr_to_drop).reduce(sum_op, reduce_vars)
-    # log_Z = Z.log()
     return Z
 
 
@@ -77,7 +76,7 @@ def forward_backward_algorithm(
     data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
         tuple(v.size for v in inputs.values())
     )
-    data = data + UNITS[prod_op]
+    data = data + UNITS[prod_op]  # this kinda looks ugly
     beta = Tensor(data, inputs, factors[-1].dtype)
     betas = [beta]
     # inductive steps
@@ -97,9 +96,8 @@ def forward_backward_algorithm(
     # Forward algorithm
     # p(y[0], x[0])
     alpha = factors[0]
-    alphas = [alpha]
     # p(x[0] | Y)
-    marginal = prod_op(factors[0], betas[0](**{"x_prev": "x_curr"})) / Z
+    marginal = ops.PRODUCT_INVERSES[prod_op](prod_op(alpha, betas[0](**{"x_prev": "x_curr"})), Z)
     marginals = [marginal]
     # inductive steps
     for trans, beta in zip(factors[1:], betas[1:]):
@@ -107,9 +105,8 @@ def forward_backward_algorithm(
         new_term = prod_op(alpha(**{"x_curr": "x_prev"}), trans)
         # p(y[0:t], x[t])
         alpha = new_term.reduce(sum_op, frozenset({"x_prev"}))
-        alphas.append(alpha)
         # p(x[t-1], x[t] | Y)
-        marginal = prod_op(new_term, beta(**{"x_prev": "x_curr"})) / Z
+        marginal = ops.PRODUCT_INVERSES[prod_op](prod_op(new_term, beta(**{"x_prev": "x_curr"})), Z)
         marginals.append(marginal)
 
     return marginals
@@ -124,8 +121,8 @@ def main(args):
      v              v         v             v
     y[0]           y[t-1]    y[t]           y[T]
 
-    alpha[t] = alpha[t-1] @ p(y[t], x[t] | x[t-1])
-    beta[t-1] = p(y[t], x[t] | x[t-1]) @ beta[t]
+    alpha[t] = p(y[0:t], x[t])
+    beta[t] = p(y[t+1:T] | x[t])
 
     dlog_Z / dlog_p(y[t], x[t] | x[t-1]) =
     alpha[t-1] * beta[t] * p(y[t], x[t] | x[t-1]) / Z =
@@ -143,12 +140,14 @@ def main(args):
         http://www.cs.jhu.edu/~zfli/pubs/semiring_translation_zhifei_emnlp09.pdf
     """
     funsor.set_backend("torch")
+    sum_op = ops.add
+    prod_op = ops.mul
 
     # transition and emission probabilities
     init = random_tensor(OrderedDict([("x_curr", Bint[args.hidden_dim])]))
-    log_factors = [init]
+    factors = [init]
     for t in range(args.time_steps - 1):
-        log_factors.append(
+        factors.append(
             random_tensor(
                 OrderedDict(
                     [
@@ -158,30 +157,30 @@ def main(args):
                 )
             )
         )
-    factors = [f.exp() for f in log_factors]
 
     # Compute marginal probabilities using the forward-backward algorithm
     marginals = forward_backward_algorithm(
-        ops.add, ops.mul, factors, {"x_prev": "x_curr"}
+        sum_op, prod_op, factors, {"x_prev": "x_curr"}
     )
     # Compute marginal probabilities using backpropagation
     with AdjointTape() as tape:
-        log_Z = forward_algorithm(ops.logaddexp, ops.add, log_factors, {"x_prev": "x_curr"})
-    result = tape.adjoint(ops.logaddexp, ops.add, log_Z, log_factors)
-    adjoint_marginals = list(result.values())
+        Z = forward_algorithm(sum_op, prod_op, factors, {"x_prev": "x_curr"})
+    result = tape.adjoint(sum_op, prod_op, Z, factors)
+    adjoint_terms = list(result.values())
 
-    print("Smoothed term")
+    print("Marginal probabilities")
     print("Forward-backward algorithm")
     print("Differentiating backward algorithm")
     t = 0
-    for v1, v2 in zip(marginals, adjoint_marginals):
-        breakpoint()
-        v2 = (v2 - log_Z).exp()
-        assert_close(v1, v2)
+    for expected, adj, f in zip(marginals, adjoint_terms, factors):
+        # adjoint returns Z * dZ / df = Z * alpha[t-1] * beta[t]
+        # marginal = adj * f / Z / Z
+        actual = ops.PRODUCT_INVERSES[prod_op](ops.PRODUCT_INVERSES[prod_op](prod_op(adj, f), Z), Z)
+        assert_close(expected, actual, rtol=1e-4)
         print("")
-        print(f"gamma[{t}]")
-        print(v1.data)
-        print(v2.data)
+        print(f"p(x[{t}], x[{t-1}] | Y)")
+        print(expected.data)
+        print(actual.data)
         t += 1
 
 

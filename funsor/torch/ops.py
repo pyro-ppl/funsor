@@ -212,7 +212,7 @@ def _reciprocal(x):
     return result
 
 
-@ops.safediv.register(numbers.Number, torch.Tensor)
+@ops.safediv.register((torch.Tensor, numbers.Number), torch.Tensor)
 def _safediv(x, y):
     try:
         finfo = torch.finfo(y.dtype)
@@ -221,7 +221,7 @@ def _safediv(x, y):
     return x * y.reciprocal().clamp(max=finfo.max)
 
 
-@ops.safesub.register(numbers.Number, torch.Tensor)
+@ops.safesub.register((torch.Tensor, numbers.Number), torch.Tensor)
 def _safesub(x, y):
     try:
         finfo = torch.finfo(y.dtype)

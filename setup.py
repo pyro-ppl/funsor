@@ -23,7 +23,7 @@ long_description = '\n'.join(line for line in long_description.split('\n')[4:])
 
 setup(
     name='funsor',
-    version='0.3.0',
+    version='0.4.0',
     description='A tensor-like library for functions and distributions',
     packages=find_packages(include=['funsor', 'funsor.*']),
     url='https://github.com/pyro-ppl/funsor',
@@ -31,7 +31,6 @@ setup(
         "Documentation": "https://funsor.pyro.ai",
     },
     author='Uber AI Labs',
-    author_email='fritzo@uber.com',
     python_requires=">=3.6",
     install_requires=[
         'makefun',

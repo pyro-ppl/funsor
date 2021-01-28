@@ -11,10 +11,10 @@ from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
-from funsor.ops import AssociativeOp, LogOp
+from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
-from funsor.terms import Binary, Unary, Cat, Funsor, Number, Reduce, Slice, \
-        Subs, Variable, reflect, substitute, to_funsor
+from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, \
+    reflect, substitute, to_funsor
 from funsor.tensor import Tensor
 
 
@@ -56,6 +56,7 @@ class AdjointTape(object):
 
         bin_unit = to_funsor(ops.UNITS[bin_op])
         adjoint_values = defaultdict(lambda: bin_unit)
+        adjoint_values[root] = root
 
         reached_root = False
         while self.tape:
@@ -80,8 +81,6 @@ class AdjointTape(object):
         target_adjs = {}
         for v in targets:
             target_adjs[v] = adjoint_values[v]
-            if not isinstance(v, Variable):
-                target_adjs[v] = bin_op(target_adjs[v], v)
 
         return target_adjs
 
@@ -97,11 +96,6 @@ if interpreter._DEBUG:
     adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(interpreter.debug_logged(fn))
 
 
-@adjoint_ops.register(Unary, AssociativeOp, AssociativeOp, Funsor, LogOp, Funsor)
-def adjoint_unary(adj_redop, adj_binop, out_adj, op, arg):
-    return {arg: ops.truediv(out_adj, arg)}
-
-
 @adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, (np.ndarray, np.generic), tuple, object)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}
@@ -109,37 +103,29 @@ def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
 
 @adjoint_ops.register(Binary, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, Funsor)
 def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
-    assert (adj_redop, op) in ops.DISTRIBUTIVE_OPS
 
-    lhs_adj = op(out_adj, rhs).reduce(adj_redop, rhs.input_vars - lhs.input_vars)
-    rhs_adj = op(out_adj, lhs).reduce(adj_redop, lhs.input_vars - rhs.input_vars)
+    if op is adj_redop:  # abstract binary sum
+        lhs_adj = out_adj.reduce(adj_redop, out_adj.input_vars & rhs.input_vars - lhs.input_vars)
+        rhs_adj = out_adj.reduce(adj_redop, out_adj.input_vars & lhs.input_vars - rhs.input_vars)
+        return {lhs: lhs_adj, rhs: rhs_adj}
+    elif op is adj_binop:  # abstract binary product
+        lhs_adj = op(out_adj, rhs).reduce(adj_redop, rhs.input_vars - lhs.input_vars)
+        rhs_adj = op(out_adj, lhs).reduce(adj_redop, lhs.input_vars - rhs.input_vars)
+        return {lhs: lhs_adj, rhs: rhs_adj}
 
-    return {lhs: lhs_adj, rhs: rhs_adj}
+    raise NotImplementedError("should not be here!")
 
 
 @adjoint_ops.register(Reduce, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, frozenset)
 def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
     assert adj_binop is op or (op, adj_binop) in ops.DISTRIBUTIVE_OPS
 
-    if op is adj_redop:
-        # XXX using a hack to simulate "expand"
-        return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], arg, arg))}
-    elif op is adj_binop:  # plate!
+    if op is adj_redop:  # abstract sum reduction
+        return {arg: out_adj}
+    elif op is adj_binop:  # abstract product reduction
         out = arg.reduce(op, reduced_vars)
-        return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
-
-
-@adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
-                      AssociativeOp, AssociativeOp, frozenset, Funsor)
-def adjoint_contract_unary(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, arg):
-    return adjoint_reduce(adj_redop, adj_binop, out_adj, sum_op, arg, reduced_vars)
-
-
-@adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
-                      AssociativeOp, AssociativeOp, frozenset, tuple)
-def adjoint_contract_generic(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, terms):
-    assert len(terms) == 1 or len(terms) == 2
-    return adjoint_ops(Contraction, adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, *terms)
+        return {arg: ops.PRODUCT_INVERSES[op](adj_binop(out_adj, out), arg)}
+    raise NotImplementedError("should not be here!")
 
 
 @adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
@@ -155,6 +141,19 @@ def adjoint_contract(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_var
     return {lhs: lhs_adj, rhs: rhs_adj}
 
 
+@adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
+                      AssociativeOp, AssociativeOp, frozenset, Funsor)
+def adjoint_contract_unary(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, arg):
+    return adjoint_ops(Reduce, adj_redop, adj_binop, out_adj, sum_op, arg, reduced_vars)
+
+
+@adjoint_ops.register(Contraction, AssociativeOp, AssociativeOp, Funsor,
+                      AssociativeOp, AssociativeOp, frozenset, tuple)
+def adjoint_contract_generic(adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, terms):
+    assert len(terms) == 1 or len(terms) == 2
+    return adjoint_ops(Contraction, adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, *terms)
+
+
 @adjoint_ops.register(Cat, AssociativeOp, AssociativeOp, Funsor, str, tuple, str)
 def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
     in_adjs = {}
@@ -165,7 +164,7 @@ def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
             in_adjs[part] = out_adj(**{name: Slice(name, start, start + part.inputs[part_name].dtype, 1, size)})
             start += part.inputs[part_name].dtype
         else:
-            in_adjs[part] = adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], part, part))
+            in_adjs[part] = out_adj
     return in_adjs
 
 
