@@ -3,8 +3,6 @@
 
 from collections import OrderedDict, defaultdict
 
-import numpy as np
-
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
