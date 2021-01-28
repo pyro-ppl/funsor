@@ -11,7 +11,7 @@ from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
-from funsor.ops import AssociativeOp, NullOp
+from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import Binary, Cat, Funsor, Number, Reduce, Slice, Subs, Variable, \
     reflect, substitute, to_funsor
@@ -56,6 +56,7 @@ class AdjointTape(object):
 
         bin_unit = to_funsor(ops.UNITS[bin_op])
         adjoint_values = defaultdict(lambda: bin_unit)
+        adjoint_values[root] = root
 
         reached_root = False
         while self.tape:
@@ -163,7 +164,7 @@ def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
             in_adjs[part] = out_adj(**{name: Slice(name, start, start + part.inputs[part_name].dtype, 1, size)})
             start += part.inputs[part_name].dtype
         else:
-            in_adjs[part] = adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], part, part))
+            in_adjs[part] = out_adj
     return in_adjs
 
 
