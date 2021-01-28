@@ -20,6 +20,7 @@ from funsor.interpreter import interpretation, recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
 from funsor.tensor import Tensor
 from funsor.terms import (
+    _INFIX,
     Align,
     Binary,
     Funsor,
@@ -79,6 +80,24 @@ class Contraction(Funsor):
         self.bin_op = bin_op
         self.terms = terms
         self.reduced_vars = reduced_vars
+
+    def __repr__(self):
+        if self.red_op is ops.nullop:
+            if self.bin_op in _INFIX:
+                return '({})'.format(' {} '.format(_INFIX[self.bin_op]).join(map(repr, self.terms)))
+        if self.bin_op is ops.nullop:
+            term, = self.terms
+            return '{}.reduce({}, {})'.format(repr(term), self.red_op.__name__, self.reduced_vars)
+        return super().__repr__()
+
+    def __str__(self):
+        if self.red_op is ops.nullop:
+            if self.bin_op in _INFIX:
+                return '({})'.format(' {} '.format(_INFIX[self.bin_op]).join(map(str, self.terms)))
+        if self.bin_op is ops.nullop:
+            term, = self.terms
+            return '{}.reduce({}, {})'.format(str(term), self.red_op.__name__, self.reduced_vars)
+        return super().__str__()
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
