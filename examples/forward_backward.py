@@ -50,8 +50,8 @@ def forward_algorithm(
         alphas.append(alpha)
     else:
         Z = alpha(**curr_to_drop).reduce(sum_op, reduce_vars)
-    log_Z = Z.log()
-    return log_Z
+    # log_Z = Z.log()
+    return Z
 
 
 def forward_backward_algorithm(
@@ -166,8 +166,8 @@ def main(args):
     )
     # Compute marginal probabilities using backpropagation
     with AdjointTape() as tape:
-        log_Z = forward_algorithm(ops.add, ops.mul, factors, {"x_prev": "x_curr"})
-    result = tape.adjoint(ops.add, ops.mul, log_Z, factors)
+        log_Z = forward_algorithm(ops.logaddexp, ops.add, log_factors, {"x_prev": "x_curr"})
+    result = tape.adjoint(ops.logaddexp, ops.add, log_Z, log_factors)
     adjoint_marginals = list(result.values())
 
     print("Smoothed term")
@@ -175,6 +175,8 @@ def main(args):
     print("Differentiating backward algorithm")
     t = 0
     for v1, v2 in zip(marginals, adjoint_marginals):
+        breakpoint()
+        v2 = (v2 - log_Z).exp()
         assert_close(v1, v2)
         print("")
         print(f"gamma[{t}]")
