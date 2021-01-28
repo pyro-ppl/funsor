@@ -9,6 +9,7 @@ from .op import (
     DISTRIBUTIVE_OPS,
     PRODUCT_INVERSES,
     UNITS,
+    BinaryOp,
     CachedOpMeta,
     Op,
     TransformOp,
@@ -72,22 +73,22 @@ class GetitemOp(Op, metaclass=CachedOpMeta):
 
 getitem = GetitemOp(0)
 abs = make_op(_builtin_abs, UnaryOp)
-eq = make_op(operator.eq, Op)
-ge = make_op(operator.ge, Op)
-gt = make_op(operator.gt, Op)
+eq = make_op(operator.eq, BinaryOp)
+ge = make_op(operator.ge, BinaryOp)
+gt = make_op(operator.gt, BinaryOp)
 invert = make_op(operator.invert, UnaryOp)
-le = make_op(operator.le, Op)
-lt = make_op(operator.lt, Op)
-ne = make_op(operator.ne, Op)
+le = make_op(operator.le, BinaryOp)
+lt = make_op(operator.lt, BinaryOp)
+ne = make_op(operator.ne, BinaryOp)
 neg = make_op(operator.neg, Op)
-pow = make_op(operator.pow, Op)
-sub = make_op(operator.sub, Op)
-truediv = make_op(operator.truediv, Op)
+pow = make_op(operator.pow, BinaryOp)
+sub = make_op(operator.sub, BinaryOp)
+truediv = make_op(operator.truediv, BinaryOp)
 
 add = make_op(operator.add, AssociativeOp)
 and_ = make_op(operator.and_, AssociativeOp)
 mul = make_op(operator.mul, AssociativeOp)
-matmul = make_op(operator.matmul, Op)
+matmul = make_op(operator.matmul, BinaryOp)
 or_ = make_op(operator.or_, AssociativeOp)
 xor = make_op(operator.xor, AssociativeOp)
 max = make_op(max, AssociativeOp)
@@ -112,12 +113,14 @@ sigmoid = make_op(sigmoid, TransformOp)
 def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
+    raise NotImplementedError
 
 
 @make_op(parent=type(truediv))
 def safediv(x, y):
     if isinstance(y, Number):
         return operator.truediv(x, y)
+    raise NotImplementedError
 
 
 @add.register(object)

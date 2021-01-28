@@ -229,7 +229,7 @@ def _safediv(x, y):
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
-@safesub.register(numbers.Number, array)
+@safesub.register((array, numbers.Number), array)
 def _safesub(x, y):
     try:
         finfo = np.finfo(y.dtype)
