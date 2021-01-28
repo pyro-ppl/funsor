@@ -54,19 +54,12 @@ class AdjointTape(object):
 
     def adjoint(self, red_op, bin_op, root, targets):
 
-        bin_unit = to_funsor(ops.UNITS[bin_op])
-        adjoint_values = defaultdict(lambda: bin_unit)
+        adjoint_values = defaultdict(lambda: to_funsor(ops.UNITS[bin_op]))
         # TODO should this be root or not?
         # adjoint_values[root] = root
 
-        reached_root = False
         while self.tape:
             output, fn, inputs = self.tape.pop()
-            if not reached_root:
-                if output is root:
-                    reached_root = True
-                else:
-                    continue
 
             # reverse the effects of alpha-renaming
             with interpretation(reflect):
@@ -79,11 +72,7 @@ class AdjointTape(object):
             for v, adjv in in_adjs.items():
                 adjoint_values[v] = bin_op(adjoint_values[v], adjv)
 
-        target_adjs = {}
-        for v in targets:
-            target_adjs[v] = adjoint_values[v]
-
-        return target_adjs
+        return {target: adjoint_values[target] for target in targets}
 
 
 # logaddexp/add
@@ -95,11 +84,6 @@ adjoint_ops = KeyedRegistry(default=_fail_default)
 if interpreter._DEBUG:
     adjoint_ops_register = adjoint_ops.register
     adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(interpreter.debug_logged(fn))
-
-
-@adjoint_ops.register(Tensor, AssociativeOp, AssociativeOp, Funsor, (np.ndarray, np.generic), tuple, object)
-def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
-    return {}
 
 
 @adjoint_ops.register(Binary, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, Funsor)
