@@ -54,6 +54,7 @@ EINSUM_EXAMPLES = [
 @pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', [
     'pyro.ops.einsum.torch_marginal',
+    'torch',
     xfail_param('pyro.ops.einsum.torch_map', reason="wrong adjoint"),
 ])
 def test_einsum_adjoint(einsum_impl, equation, backend):
@@ -64,21 +65,32 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
-    for operand in operands:
-        pyro_require_backward(operand)
-    expected_out = pyro_einsum(equation, *operands,
-                               modulo_total=False,
-                               backend=backend)[0]
-    expected_out._pyro_backward()
+    if backend == "torch":
+        for operand in operands:
+            operand.requires_grad_()
+        expected_out = pyro_einsum(equation, *operands,
+                                   modulo_total=False,
+                                   backend=backend)[0]
+        _grad_bwds = torch.autograd.grad(expected_out, operands)
+        for operand, operand_grad in zip(operands, _grad_bwds):
+            operand._pyro_backward_result = operand_grad
+    else:
+        for operand in operands:
+            pyro_require_backward(operand)
+        expected_out = pyro_einsum(equation, *operands,
+                                   modulo_total=False,
+                                   backend=backend)[0]
+        expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
-        actual = actuals[fv] + fv - fwd_expr
+        actual = actuals[fv] if backend == "torch" else actuals[fv] + fv
+        if isinstance(actual, funsor.Number):
+            actual = funsor.Tensor(tv.new_tensor(actual.data), OrderedDict())
         expected = tv._pyro_backward_result
-        if inp:
-            actual = actual.align(tuple(inp))
-        assert isinstance(actual, (funsor.Number, funsor.Tensor))
-        assert expected.shape == getattr(actual.data, "shape", ())
-        assert torch.allclose(expected, torch.as_tensor(actual.data), atol=1e-5)
+        expected_funsor = to_funsor(expected, dim_to_name={
+            dim - len(expected.shape): name for dim, name in enumerate(tv._pyro_dims)})
+        # assert_close(actual, expected_funsor, atol=1e-4, rtol=1e-4)
+        assert (actual - expected_funsor).data.abs().max() < 1e-4
 
 
 PLATED_EINSUM_EXAMPLES = [
@@ -97,6 +109,7 @@ PLATED_EINSUM_EXAMPLES = [
 @pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', [
     'pyro.ops.einsum.torch_marginal',
+    'torch',
     xfail_param('pyro.ops.einsum.torch_map', reason="wrong adjoint"),
 ])
 def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
@@ -107,23 +120,34 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
         fwd_expr = einsum_impl(equation, *funsor_operands, plates=plates, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
-    for operand in operands:
-        pyro_require_backward(operand)
-    expected_out = pyro_einsum(equation, *operands,
-                               modulo_total=False,
-                               plates=plates,
-                               backend=backend)[0]
-    expected_out._pyro_backward()
+    if backend == "torch":
+        for operand in operands:
+            operand.requires_grad_()
+        expected_out = pyro_einsum(equation, *operands,
+                                   modulo_total=False,
+                                   plates=plates,
+                                   backend=backend)[0]
+        _grad_bwds = torch.autograd.grad(expected_out, operands)
+        for operand, operand_grad in zip(operands, _grad_bwds):
+            operand._pyro_backward_result = operand_grad
+    else:
+        for operand in operands:
+            pyro_require_backward(operand)
+        expected_out = pyro_einsum(equation, *operands,
+                                   modulo_total=False,
+                                   plates=plates,
+                                   backend=backend)[0]
+        expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
-        actual = actuals[fv] + fv - fwd_expr
+        actual = actuals[fv] if backend == 'torch' else actuals[fv] + fv
         if isinstance(actual, funsor.Number):
             actual = funsor.Tensor(tv.new_tensor(actual.data), OrderedDict())
         expected = tv._pyro_backward_result
         expected_funsor = to_funsor(expected, dim_to_name={
             dim - len(expected.shape): name for dim, name in enumerate(tv._pyro_dims)})
         # assert_close(actual, expected_funsor, atol=1e-4, rtol=1e-4)
-        assert (actual - expected_funsor).data.abs().max() < 1e-4
+        assert (actual - expected_funsor).data.abs().max() < 1e-3
 
 
 OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
@@ -136,6 +160,7 @@ OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
 @pytest.mark.parametrize('equation,plates', OPTIMIZED_PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize('backend', [
     'pyro.ops.einsum.torch_marginal',
+    xfail_param('torch', reason="numerically unstable in linear space"),
     xfail_param('pyro.ops.einsum.torch_map', reason="wrong adjoint"),
 ])
 def test_optimized_plated_einsum_adjoint(equation, plates, backend):
@@ -146,16 +171,27 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
         fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
-    for operand in operands:
-        pyro_require_backward(operand)
-    expected_out = pyro_einsum(equation, *operands,
-                               modulo_total=False,
-                               plates=plates,
-                               backend=backend)[0]
-    expected_out._pyro_backward()
+    if backend == "torch":
+        for operand in operands:
+            operand.requires_grad_()
+        expected_out = pyro_einsum(equation, *operands,
+                                   modulo_total=False,
+                                   plates=plates,
+                                   backend=backend)[0]
+        _grad_bwds = torch.autograd.grad(expected_out, operands)
+        for operand, operand_grad in zip(operands, _grad_bwds):
+            operand._pyro_backward_result = operand_grad
+    else:
+        for operand in operands:
+            pyro_require_backward(operand)
+        expected_out = pyro_einsum(equation, *operands,
+                                   modulo_total=False,
+                                   plates=plates,
+                                   backend=backend)[0]
+        expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
-        actual = actuals[fv] + fv - fwd_expr
+        actual = actuals[fv] if backend == 'torch' else actuals[fv] + fv
         if isinstance(actual, funsor.Number):
             actual = funsor.Tensor(tv.new_tensor(actual.data), OrderedDict())
         expected = tv._pyro_backward_result

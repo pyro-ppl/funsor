@@ -24,6 +24,7 @@ BACKEND_OPS = {
 }
 
 BACKEND_ADJOINT_OPS = {
+    "torch": (ops.add, ops.mul),
     "pyro.ops.einsum.torch_marginal": (ops.logaddexp, ops.add),
     "pyro.ops.einsum.torch_map": (ops.max, ops.add),
 }

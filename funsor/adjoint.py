@@ -56,7 +56,8 @@ class AdjointTape(object):
 
         bin_unit = to_funsor(ops.UNITS[bin_op])
         adjoint_values = defaultdict(lambda: bin_unit)
-        adjoint_values[root] = root
+        # TODO should this be root or not?
+        # adjoint_values[root] = root
 
         reached_root = False
         while self.tape:
