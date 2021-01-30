@@ -13,7 +13,7 @@ from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
 from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic, isvariadic
+from multipledispatch.variadic import Variadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
