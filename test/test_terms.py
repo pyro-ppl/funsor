@@ -534,8 +534,8 @@ def test_align_simple():
     ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack"),
     ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack[str, tuple]"),
     # Unions
-    ("Reduce[ops.AssociativeOp, (Number, Stack[str, (tuple, typing.Tuple[Number, Number])]), frozenset]", "Funsor"),
-    ("Reduce[ops.AssociativeOp, (Number, Stack), frozenset]", "Reduce[ops.Op, Funsor, frozenset]"),
+    ("Reduce[ops.AssociativeOp, typing.Union[Number, Stack[str, typing.Tuple[Number, Number]]], frozenset]", "Funsor"),
+    ("Reduce[ops.AssociativeOp, typing.Union[Number, Stack], frozenset]", "Reduce[ops.Op, Funsor, frozenset]"),
 ])
 def test_parametric_subclass(subcls_expr, cls_expr):
     subcls = eval(subcls_expr)
@@ -559,12 +559,12 @@ def test_parametric_subclass(subcls_expr, cls_expr):
     ("Stack[str, typing.Tuple[Number, Number]]", "Stack[str, typing.Tuple[Number, Reduce]]"),
     ("Stack[str, typing.Tuple[Number, Reduce]]", "Stack[str, typing.Tuple[Number, Number]]"),
     # Unions
-    ("Funsor", "Reduce[ops.AssociativeOp, (Number, Funsor), frozenset]"),
-    ("Reduce[ops.Op, Funsor, frozenset]", "Reduce[ops.AssociativeOp, (Number, Stack), frozenset]"),
-    ("Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]",
-     "Reduce[ops.AssociativeOp, (Stack[str, tuple], Reduce[ops.AssociativeOp, (Cat, Stack), frozenset]), frozenset]"),
-    ("Reduce[ops.AssociativeOp, (Stack, Reduce[ops.AssociativeOp, (Number, Stack), frozenset]), frozenset]",
-     "Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]"),
+    ("Funsor", "Reduce[ops.AssociativeOp, typing.Union[Number, Funsor], frozenset]"),
+    ("Reduce[ops.Op, Funsor, frozenset]", "Reduce[ops.AssociativeOp, typing.Union[Number, Stack], frozenset]"),
+    ("Reduce[typing.Union[ops.Op, ops.AssociativeOp], Stack, frozenset]",
+        "Reduce[ops.AssociativeOp, typing.Union[Stack[str, tuple], Reduce[ops.AssociativeOp, typing.Union[Cat, Stack], frozenset]], frozenset]"),  # noqa: E501
+    ("Reduce[ops.AssociativeOp, typing.Union[Stack, Reduce[ops.AssociativeOp, typing.Union[Number, Stack], frozenset]], frozenset]",  # noqa: E501
+     "Reduce[typing.Union[ops.Op, ops.AssociativeOp], Stack, frozenset]"),
 ])
 def test_not_parametric_subclass(subcls_expr, cls_expr):
     subcls = eval(subcls_expr)
