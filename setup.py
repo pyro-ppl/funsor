@@ -38,8 +38,6 @@ setup(
         'multipledispatch',
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
-        # pin pytypes to master
-        'git+https://github.com/Stewori/pytypes.git@master#egg=pytypes',
     ],
     extras_require={
         'torch': [
