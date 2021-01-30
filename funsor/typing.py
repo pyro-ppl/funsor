@@ -104,8 +104,6 @@ def _deep_issubclass(subcls, cls):
 def _type_to_typing(tp):
     if tp is object:
         tp = typing.Any
-    if isinstance(tp, tuple):
-        tp = typing.Union[tuple(map(_type_to_typing, tp))]
     return tp
 
 

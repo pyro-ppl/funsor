@@ -17,7 +17,7 @@ import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.typing import GenericTypeMeta
+from funsor.typing import GenericTypeMeta, deep_type
 from funsor.util import getargspec, get_backend, lazy_property, pretty, quote
 
 
@@ -78,10 +78,7 @@ def reflect(cls, *args, **kwargs):
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
-    arg_types = tuple(typing.Tuple[tuple(map(type, arg))]
-                      if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
-                      else typing.Tuple if (type(arg) is tuple and not arg)
-                      else type(arg) for arg in args)
+    arg_types = tuple(map(deep_type, args))
     cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
     result = super(FunsorMeta, cls_specific).__call__(*args)
     result._ast_values = args
