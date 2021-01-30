@@ -330,7 +330,6 @@ def dispatched_interpretation(fn):
     else:
         fn.register = registry.register
     fn.dispatch = registry.dispatch
-    fn._registry = registry
     return fn
 
 

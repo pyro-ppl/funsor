@@ -7,7 +7,6 @@ import re
 
 import numpy as np
 
-
 _FUNSOR_BACKEND = "numpy"
 _JAX_LOADED = False
 
