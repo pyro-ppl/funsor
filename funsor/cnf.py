@@ -8,6 +8,7 @@ from functools import reduce
 from typing import Tuple, Union
 
 import opt_einsum
+from multipledispatch.variadic import Variadic
 
 import funsor
 import funsor.ops as ops
@@ -15,14 +16,13 @@ from funsor.affine import affine_inputs
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
-from funsor.interpreter import interpretation
+from funsor.interpreter import interpretation, recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
 from funsor.tensor import Tensor
 from funsor.terms import (
     Align,
     Binary,
     Funsor,
-    FunsorMeta,
     Number,
     Reduce,
     Subs,
@@ -36,15 +36,7 @@ from funsor.terms import (
 from funsor.util import broadcast_shape, get_backend, quote
 
 
-class ContractionMeta(FunsorMeta):
-
-    def __call__(self, red_op, bin_op, reduced_vars, *terms):
-        if len(terms) == 1 and isinstance(terms[0], tuple):
-            terms, = terms
-        return super().__call__(red_op, bin_op, reduced_vars, tuple(terms))
-
-
-class Contraction(Funsor, metaclass=ContractionMeta):
+class Contraction(Funsor):
     """
     Declarative representation of a finitary sum-product operation.
 
@@ -185,7 +177,17 @@ def _(arg, indent, out):
     out[-1] = i, line + ")"
 
 
-@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Tuple[Funsor, ...])
+@recursion_reinterpret.register(Contraction)
+def recursion_reinterpret_contraction(x):
+    return type(x)(*map(recursion_reinterpret, (x.red_op, x.bin_op, x.reduced_vars) + x.terms))
+
+
+@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
+    return eager(Contraction, red_op, bin_op, reduced_vars, terms)
+
+
+@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     # Count the number of terms in which each variable is reduced.
     counts = Counter()
@@ -226,16 +228,15 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     return None
 
 
-@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Tuple[Funsor])
-def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, terms):
-    term, = terms
+@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor)
+def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
     args = red_op, term, reduced_vars
     return eager.dispatch(Reduce, *args)(*args)
 
 
-@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Tuple[Funsor, Funsor])
-def eager_contraction_to_binary(red_op, bin_op, reduced_vars, terms):
-    lhs, rhs = terms
+@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
+def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
+
     if not reduced_vars.issubset(lhs.input_vars & rhs.input_vars):
         args = red_op, bin_op, reduced_vars, (lhs, rhs)
         result = eager.dispatch(Contraction, *args)(*args)
@@ -250,16 +251,16 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, terms):
     return result
 
 
-@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Tuple[Tensor, Tensor])
-def eager_contraction_tensor(red_op, bin_op, reduced_vars, terms):
+@eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Tensor, Tensor)
+def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
     backend = BACKEND_TO_EINSUM_BACKEND[get_backend()]
     return _eager_contract_tensors(reduced_vars, terms, backend=backend)
 
 
-@eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Tuple[Tensor, Tensor])
-def eager_contraction_tensor(red_op, bin_op, reduced_vars, terms):
+@eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Tensor, Tensor)
+def eager_contraction_tensor(red_op, bin_op, reduced_vars, *terms):
     if not all(term.dtype == "real" for term in terms):
         raise NotImplementedError('TODO')
     backend = BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()]
@@ -306,9 +307,8 @@ def _eager_contract_tensors(reduced_vars, terms, backend):
 # Pyro's gaussian_tensordot() here. Until then we must eagerly add the
 # possibly-rank-deficient terms before reducing to avoid Cholesky errors.
 @eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset,
-                Tuple[GaussianMixture, GaussianMixture])
-def eager_contraction_gaussian(red_op, bin_op, reduced_vars, terms):
-    x, y = terms
+                GaussianMixture, GaussianMixture)
+def eager_contraction_gaussian(red_op, bin_op, reduced_vars, x, y):
     return (x + y).reduce(red_op, reduced_vars)
 
 
@@ -324,11 +324,11 @@ def _(fn):
 ##########################################
 
 ORDERING = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
-GROUND_TERMS = Union[Delta, Number, Tensor, Gaussian]
+GROUND_TERMS = tuple(ORDERING)
 
 
-@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Tuple[GROUND_TERMS, GROUND_TERMS])
-def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_vars, terms):
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GROUND_TERMS)
+def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_vars, *terms):
     # when bin_op is commutative, put terms into a canonical order for pattern matching
     new_terms = tuple(
         v for i, v in sorted(enumerate(terms),
@@ -336,31 +336,33 @@ def normalize_contraction_commutative_canonical_order(red_op, bin_op, reduced_va
     )
     if any(v is not vv for v, vv in zip(terms, new_terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
-    return None  # normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
+    return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
 
 
-@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Tuple[GaussianMixture, GROUND_TERMS])
-def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, terms):
-    mixture, other = terms
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GaussianMixture, GROUND_TERMS)
+def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, other):
     return Contraction(mixture.red_op if red_op is nullop else red_op, bin_op,
                        reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
 
 
-@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, Tuple[GROUND_TERMS, GaussianMixture])
-def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, terms):
-    other, mixture = terms
+@normalize.register(Contraction, AssociativeOp, ops.AddOp, frozenset, GROUND_TERMS, GaussianMixture)
+def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mixture):
     return Contraction(mixture.red_op if red_op is nullop else red_op, bin_op,
                        reduced_vars | mixture.reduced_vars, *(mixture.terms + (other,)))
 
 
-@normalize.register(Contraction, NullOp, NullOp, frozenset, Tuple[Funsor])
-def normalize_trivial(red_op, bin_op, reduced_vars, terms):
-    term, = terms
+@normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+def normalize_contraction_generic_args(red_op, bin_op, reduced_vars, *terms):
+    return normalize(Contraction, red_op, bin_op, reduced_vars, tuple(terms))
+
+
+@normalize.register(Contraction, NullOp, NullOp, frozenset, Funsor)
+def normalize_trivial(red_op, bin_op, reduced_vars, term):
     assert not reduced_vars
     return term
 
 
-@normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Tuple[Funsor, ...])
+@normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
 
     if not reduced_vars and red_op is not nullop:

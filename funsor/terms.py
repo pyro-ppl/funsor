@@ -12,6 +12,9 @@ from collections.abc import Hashable
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
+from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic, isvariadic
+
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
@@ -1276,9 +1279,14 @@ class Stack(Funsor):
         return Stack(self.name, parts)
 
 
-@eager.register(Stack, str, typing.Tuple[Funsor, ...])
+@eager.register(Stack, str, tuple)
 def eager_stack(name, parts):
-    return None
+    return eager_stack_homogeneous(name, *parts)
+
+
+@dispatch(str, Variadic[Funsor])
+def eager_stack_homogeneous(name, *parts):
+    return None  # defer to default implementation
 
 
 class CatMeta(FunsorMeta):
@@ -1370,9 +1378,16 @@ class Cat(Funsor, metaclass=CatMeta):
                                       .format(type(value)))
 
 
-@eager.register(Cat, str, typing.Tuple[Funsor], str)
+@eager.register(Cat, str, tuple, str)
 def eager_cat(name, parts, part_name):
-    return parts[0](**{part_name: name})
+    if len(parts) == 1:
+        return parts[0](**{part_name: name})
+    return eager_cat_homogeneous(name, part_name, *parts)
+
+
+@dispatch(str, str, Variadic[Funsor])
+def eager_cat_homogeneous(name, part_name, *parts):
+    return None  # defer to default implementation
 
 
 class Lambda(Funsor):
@@ -1405,8 +1420,7 @@ class Lambda(Funsor):
         return super()._alpha_convert(alpha_subs)
 
 
-@eager.register(Binary, GetitemOp, Lambda, Align)
-@eager.register(Binary, GetitemOp, Lambda, Funsor)
+@eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
 def eager_getitem_lambda(op, lhs, rhs):
     if op.offset == 0:
         return Subs(lhs.expr, ((lhs.var.name, rhs),))

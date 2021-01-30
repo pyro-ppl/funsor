@@ -278,15 +278,15 @@ eager.register(Delta, Variable, Funsor, Funsor)(eager_delta_funsor_funsor)  # no
 eager.register(Delta, Variable, Variable, Variable)(eager_delta_variable_variable)  # noqa: F821
 eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Tuple[Dirichlet, BernoulliProbs])(  # noqa: F821
+eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, BernoulliProbs)(  # noqa: F821
     eager_beta_bernoulli)
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Tuple[Dirichlet, Categorical])(  # noqa: F821
+eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Categorical)(  # noqa: F821
     eager_dirichlet_categorical)
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Tuple[Dirichlet, Multinomial])(  # noqa: F821
+eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)(  # noqa: F821
     eager_dirichlet_multinomial)
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Tuple[Gamma, Gamma])(  # noqa: F821
+eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma)(  # noqa: F821
     eager_gamma_gamma)
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Tuple[Gamma, Poisson])(  # noqa: F821
+eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson)(  # noqa: F821
     eager_gamma_poisson)
 if hasattr(dist, "DirichletMultinomial"):
     eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821

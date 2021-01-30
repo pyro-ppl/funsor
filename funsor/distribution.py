@@ -718,15 +718,13 @@ def eager_mvn(loc, scale_tril, value):
     return gaussian(**{var: value - loc})
 
 
-def eager_beta_bernoulli(red_op, bin_op, reduced_vars, xy):
-    x, y = xy
+def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     return eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x,
                                        backend_dist.Binomial(total_count=1, probs=y.probs, value=y.value))
 
 
-def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, xy):
-    x, y = xy
+def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
     dirichlet_reduction = x.input_vars & reduced_vars
     if dirichlet_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
@@ -738,8 +736,7 @@ def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, xy):
         return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
 
-def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, xy):
-    x, y = xy
+def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
     dirichlet_reduction = x.input_vars & reduced_vars
     if dirichlet_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
@@ -772,8 +769,7 @@ def _log_beta(x, y):
     return ops.lgamma(x) + ops.lgamma(y) - ops.lgamma(x + y)
 
 
-def eager_gamma_gamma(red_op, bin_op, reduced_vars, xy):
-    x, y = xy
+def eager_gamma_gamma(red_op, bin_op, reduced_vars, x, y):
     gamma_reduction = x.input_vars & reduced_vars
     if gamma_reduction:
         unnormalized = (y.concentration - 1) * ops.log(y.value) \
@@ -784,8 +780,7 @@ def eager_gamma_gamma(red_op, bin_op, reduced_vars, xy):
         return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
 
-def eager_gamma_poisson(red_op, bin_op, reduced_vars, xy):
-    x, y = xy
+def eager_gamma_poisson(red_op, bin_op, reduced_vars, x, y):
     gamma_reduction = x.input_vars & reduced_vars
     if gamma_reduction:
         backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
