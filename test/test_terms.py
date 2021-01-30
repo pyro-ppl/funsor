@@ -536,8 +536,6 @@ def test_align_simple():
     # Unions
     ("Reduce[ops.AssociativeOp, (Number, Stack[str, (tuple, typing.Tuple[Number, Number])]), frozenset]", "Funsor"),
     ("Reduce[ops.AssociativeOp, (Number, Stack), frozenset]", "Reduce[ops.Op, Funsor, frozenset]"),
-    ("Reduce[ops.AssociativeOp, (Stack, Reduce[ops.AssociativeOp, (Number, Stack), frozenset]), frozenset]",
-     "Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]"),
 ])
 def test_parametric_subclass(subcls_expr, cls_expr):
     subcls = eval(subcls_expr)
@@ -565,6 +563,8 @@ def test_parametric_subclass(subcls_expr, cls_expr):
     ("Reduce[ops.Op, Funsor, frozenset]", "Reduce[ops.AssociativeOp, (Number, Stack), frozenset]"),
     ("Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]",
      "Reduce[ops.AssociativeOp, (Stack[str, tuple], Reduce[ops.AssociativeOp, (Cat, Stack), frozenset]), frozenset]"),
+    ("Reduce[ops.AssociativeOp, (Stack, Reduce[ops.AssociativeOp, (Number, Stack), frozenset]), frozenset]",
+     "Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]"),
 ])
 def test_not_parametric_subclass(subcls_expr, cls_expr):
     subcls = eval(subcls_expr)
