@@ -37,6 +37,7 @@ setup(
         'multipledispatch',
         'numpy>=1.7',
         'opt_einsum>=2.3.2',
+        'typing_extensions',
     ],
     extras_require={
         'torch': [
