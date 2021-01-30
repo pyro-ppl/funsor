@@ -137,21 +137,13 @@ def log_abs_det_jacobian(x, y):
 
 exp.set_inv(log)
 log.set_inv(exp)
-
-
-@tanh.set_inv
-def tanh_inv(y):
-    return atanh(y)
+tanh.set_inv(atanh)
+atanh.set_inv(tanh)
 
 
 @tanh.set_log_abs_det_jacobian
 def tanh_log_abs_det_jacobian(x, y):
     return 2. * (math.log(2.) - x - softplus(-2. * x))
-
-
-@atanh.set_inv
-def atanh_inv(y):
-    return tanh(y)
 
 
 @atanh.set_log_abs_det_jacobian

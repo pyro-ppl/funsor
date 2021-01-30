@@ -30,8 +30,9 @@ class PartialDefault:
 class KeyedRegistry(object):
 
     def __init__(self, default=None):
+        # TODO make registry a WeakKeyDictionary
+        self.default = default if default is None else PartialDefault(default)
         self.registry = defaultdict(lambda: PartialDispatcher('f', default=default))
-        self.default = PartialDefault(default) if default is not None else default
 
     def register(self, key, *types):
         register = self.registry[get_origin(key)].register

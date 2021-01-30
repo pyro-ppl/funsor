@@ -19,8 +19,18 @@ from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Einsum, Tensor, numeric_array, stack
 from funsor.terms import Independent, Variable, eager, lazy, to_funsor
-from funsor.testing import assert_close, check_funsor, rand, randint, randn, \
-    random_mvn, random_scale_tril, random_tensor, xfail_param
+from funsor.testing import (
+    assert_close,
+    check_funsor,
+    rand,
+    randint,
+    randn,
+    random_mvn,
+    random_scale_tril,
+    random_tensor,
+    xfail_if_not_implemented,
+    xfail_param
+)
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(get_backend() == "numpy",
@@ -1214,4 +1224,49 @@ def test_categorical_event_dim_conversion(batch_shape, event_shape):
     expected_log_prob = funsor.to_data(actual, name_to_dim=name_to_dim).log_prob(
         funsor.to_data(data, name_to_dim=name_to_dim))
     assert actual_log_prob.shape == expected_log_prob.shape
+    assert_close(actual_log_prob, expected_log_prob)
+
+
+@xfail_if_not_implemented()
+@pytest.mark.parametrize("shape", [(), (4,), (3, 2)], ids=str)
+def test_power_transform(shape):
+    transform = backend_dist.transforms.PowerTransform(1.5)
+    base_dist = backend_dist.Exponential(1)
+    d = backend_dist.TransformedDistribution(base_dist, transform)
+
+    data = ops.exp(randn(shape))
+    expected_log_prob = d.log_prob(data)
+
+    name_to_dim = dict(i=-3, j=-2, k=-1)
+    dim_to_name = {v: k for k, v in name_to_dim.items()}
+    x = to_funsor(data, Real, dim_to_name)
+    f = to_funsor(d, output=Real)
+    log_prob = f(x)
+    actual_log_prob = funsor.to_data(log_prob, name_to_dim)
+    assert_close(actual_log_prob, expected_log_prob)
+
+
+@xfail_if_not_implemented()
+@pytest.mark.parametrize("shape", [(10,), (4, 3)], ids=str)
+@pytest.mark.parametrize("to_event", [
+    True,
+    xfail_param(False, reason="bug in to_funsor(TransformedDistribution)"),
+])
+def test_haar_transform(shape, to_event):
+    try:
+        transform = backend_dist.transforms.HaarTransform(dim=-len(shape))
+    except AttributeError:
+        pytest.xfail(reason="backend missing HaarTransform")
+    base_dist = backend_dist.Normal(0, 1).expand(shape)
+    if to_event:
+        # Work around a bug in to_funsor(TransformedDistribution)
+        base_dist = base_dist.to_event()
+    d = backend_dist.TransformedDistribution(base_dist, transform)
+
+    data = randn(shape)
+    expected_log_prob = d.log_prob(data)
+
+    f = to_funsor(d, output=Real)
+    log_prob = f(data)
+    actual_log_prob = funsor.to_data(log_prob)
     assert_close(actual_log_prob, expected_log_prob)
