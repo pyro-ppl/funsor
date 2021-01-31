@@ -101,7 +101,6 @@ def _deep_issubclass(subcls, cls):
     return issubclass(subcls, cls)
 
 
-@functools.lru_cache(maxsize=None)
 def _type_to_typing(tp):
     if tp is object:
         tp = typing.Any
@@ -127,8 +126,6 @@ def get_origin(tp):
 
 
 def get_type_hints(obj, globalns=None, localns=None, include_extras=False):
-    if isinstance(obj, GenericTypeMeta):
-        return getattr(obj, "__annotations__", {})
     return typing_extensions.get_type_hints(obj, globalns=globalns, localns=localns, include_extras=include_extras)
 
 
@@ -228,7 +225,7 @@ class Variadic(metaclass=_DeepVariadicSignatureType):
     """
     A typing-compatible drop-in replacement for multipledispatch.variadic.Variadic.
     """
-    pass  # TODO is there anything else to do here?
+    pass
 
 
 class TypingDispatcher(Dispatcher):
