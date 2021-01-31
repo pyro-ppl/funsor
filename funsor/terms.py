@@ -238,6 +238,10 @@ class FunsorMeta(GenericTypeMeta):
 
         return interpret(cls, *args)
 
+    @property
+    def classname(cls):
+        return repr(cls)
+
 
 def _convert_reduced_vars(reduced_vars, inputs):
     """

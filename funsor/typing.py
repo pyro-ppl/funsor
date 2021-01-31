@@ -20,20 +20,9 @@ def deep_isinstance(obj, cls):
     return deep_issubclass(deep_type(obj), cls)
 
 
-def deep_issubclass(subcls, cls):
-    """replaces issubclass()"""
-    # return pytypes.is_subtype(subcls, cls)
-    return _deep_issubclass(subcls, cls)
-
-
 def deep_type(obj):
     """replaces type()"""
     # return pytypes.deep_type(obj)
-    return _deep_type(obj)
-
-
-def _deep_type(obj):
-
     if isinstance(obj, tuple):
         return typing.Tuple[tuple(map(deep_type, obj))] if obj else typing.Tuple
 
@@ -44,7 +33,9 @@ def _deep_type(obj):
 
 
 @functools.lru_cache(maxsize=None)
-def _deep_issubclass(subcls, cls):
+def deep_issubclass(subcls, cls):
+    """replaces issubclass()"""
+    # return pytypes.is_subtype(subcls, cls)
 
     if get_origin(cls) is typing.Union:
         return any(_deep_issubclass(subcls, arg) for arg in get_args(cls))
