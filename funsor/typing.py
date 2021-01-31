@@ -38,10 +38,10 @@ def deep_issubclass(subcls, cls):
     # return pytypes.is_subtype(subcls, cls)
 
     if get_origin(cls) is typing.Union:
-        return any(_deep_issubclass(subcls, arg) for arg in get_args(cls))
+        return any(deep_issubclass(subcls, arg) for arg in get_args(cls))
 
     if get_origin(subcls) is typing.Union:
-        return all(_deep_issubclass(arg, cls) for arg in get_args(subcls))
+        return all(deep_issubclass(arg, cls) for arg in get_args(subcls))
 
     if cls is typing.Any:
         return True
@@ -61,7 +61,7 @@ def deep_issubclass(subcls, cls):
             return get_args(cls)[0] is typing.Any
 
         return len(get_args(subcls)) == len(get_args(cls)) == 1 and \
-            _deep_issubclass(get_args(subcls)[0], get_args(cls)[0])
+            deep_issubclass(get_args(subcls)[0], get_args(cls)[0])
 
     if issubclass(get_origin(cls), typing.Tuple):
 
@@ -76,8 +76,8 @@ def deep_issubclass(subcls, cls):
 
         if get_args(cls)[-1] is Ellipsis:  # cls variadic
             if get_args(subcls)[-1] is Ellipsis:  # both variadic
-                return _deep_issubclass(get_args(subcls)[0], get_args(cls)[0])
-            return all(_deep_issubclass(a, get_args(cls)[0]) for a in get_args(subcls))
+                return deep_issubclass(get_args(subcls)[0], get_args(cls)[0])
+            return all(deep_issubclass(a, get_args(cls)[0]) for a in get_args(subcls))
 
         if get_args(subcls)[-1] is Ellipsis:  # only subcls variadic
             # issubclass(Tuple[A, ...], Tuple[X, Y]) == False
@@ -85,7 +85,7 @@ def deep_issubclass(subcls, cls):
 
         # neither variadic
         return len(get_args(cls)) == len(get_args(subcls)) and \
-            all(_deep_issubclass(a, b) for a, b in zip(get_args(subcls), get_args(cls)))
+            all(deep_issubclass(a, b) for a, b in zip(get_args(subcls), get_args(cls)))
 
     return issubclass(subcls, cls)
 
@@ -169,10 +169,6 @@ class GenericTypeMeta(type):
         return get_origin(cls).__name__ + (
             "" if not get_args(cls) else
             "[{}]".format(", ".join(repr(t) for t in get_args(cls))))
-
-    @property
-    def classname(cls):
-        return repr(cls)
 
 
 ##############################################################
