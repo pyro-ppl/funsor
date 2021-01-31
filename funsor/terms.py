@@ -705,6 +705,18 @@ class Funsor(object, metaclass=FunsorMeta):
     def __rmod__(self, other):
         return Binary(ops.mod, to_funsor(other), self)
 
+    def __lshift__(self, other):
+        return Binary(ops.lshift, self, to_funsor(other))
+
+    def __rlshift__(self, other):
+        return Binary(ops.lshift, to_funsor(other), self)
+
+    def __rshift__(self, other):
+        return Binary(ops.rshift, self, to_funsor(other))
+
+    def __rrshift__(self, other):
+        return Binary(ops.rshift, to_funsor(other), self)
+
     def __pow__(self, other):
         return Binary(ops.pow, self, to_funsor(other))
 
@@ -1022,6 +1034,8 @@ _INFIX = {
     ops.gt: ">=",
     ops.le: "<=",
     ops.lt: "<",
+    ops.lshift: "<<",
+    ops.rshift: ">>",
 }
 
 

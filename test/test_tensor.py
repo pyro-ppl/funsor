@@ -329,7 +329,8 @@ def test_unary(symbol, dims):
 
 
 BINARY_OPS = [
-    '+', '-', '*', '/', '//', '%', '**', '==', '!=', '<', '<=', '>', '>=',
+    '+', '-', '*', '/', '//', '%', '**', "<<", ">>",
+    '==', '!=', '<', '<=', '>', '>=',
     'min', 'max',
 ]
 BOOLEAN_OPS = ['&', '|', '^']
@@ -431,8 +432,8 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, Bint[sizes[d]]) for d in dims)
     data1 = rand(shape) + 0.5
-    if symbol == "%":
-        pytest.xfail(reason="__rmod__ is not triggered")
+    if symbol in ("%", "<<", ">>"):
+        pytest.xfail(reason=f"right application of {symbol} is not triggered")
     expected_data = binary_eval(symbol, scalar, data1)
 
     x1 = Tensor(data1, inputs)

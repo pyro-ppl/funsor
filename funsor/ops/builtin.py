@@ -90,6 +90,8 @@ and_ = make_op(operator.and_, AssociativeOp)
 mul = make_op(operator.mul, AssociativeOp)
 matmul = make_op(operator.matmul, BinaryOp)
 mod = make_op(operator.mod, BinaryOp)
+lshift = make_op(operator.lshift, BinaryOp)
+rshift = make_op(operator.rshift, BinaryOp)
 or_ = make_op(operator.or_, AssociativeOp)
 xor = make_op(operator.xor, AssociativeOp)
 max = make_op(max, AssociativeOp)
@@ -191,6 +193,7 @@ __all__ = [
     'lgamma',
     'log',
     'log1p',
+    'lshift',
     'lt',
     'matmul',
     'max',
@@ -203,6 +206,7 @@ __all__ = [
     'or_',
     'pow',
     'reciprocal',
+    'rshift',
     'safediv',
     'safesub',
     'sigmoid',
