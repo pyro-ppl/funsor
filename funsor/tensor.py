@@ -555,14 +555,16 @@ def tensor_to_data(x, name_to_dim=None):
 
 @eager.register(Binary, Op, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):
+    dtype = find_domain(op, lhs.output, rhs.output).dtype
     data = op(lhs.data, rhs.data)
-    return Tensor(data, lhs.inputs, lhs.dtype)
+    return Tensor(data, lhs.inputs, dtype)
 
 
 @eager.register(Binary, Op, Number, Tensor)
 def eager_binary_number_tensor(op, lhs, rhs):
+    dtype = find_domain(op, lhs.output, rhs.output).dtype
     data = op(lhs.data, rhs.data)
-    return Tensor(data, rhs.inputs, rhs.dtype)
+    return Tensor(data, rhs.inputs, dtype)
 
 
 @eager.register(Binary, Op, Tensor, Tensor)

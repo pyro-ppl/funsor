@@ -46,7 +46,6 @@ def test_getitem_getitem(num_inputs):
     check_funsor(actual, expected.inputs, expected.output, expected.data)
 
 
-@pytest.mark.xfail(reason="missing pattern Variable //,% Number")
 def test_flatten():
     @make_funsor
     def Flatten21(
@@ -59,8 +58,8 @@ def test_flatten():
         n = to_funsor(j, x.inputs.get(j, None)).output.size
         ij = to_funsor(ij, Bint[m * n])
         ij = x.materialize(ij)
-        return x(**{i.name: ij // Number(n, m * n),
-                    j.name: ij % Number(n, m * n)})
+        return x(**{i.name: ij // Number(n, n + 1),
+                    j.name: ij % Number(n, n + 1)})
 
     inputs = OrderedDict()
     inputs["a"] = Bint[3]

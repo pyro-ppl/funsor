@@ -222,12 +222,8 @@ def find_domain(op, *domains):
     raise NotImplementedError
 
 
-@find_domain.register(ops.Op)  # TODO this is too general, register all ops
-@find_domain.register(ops.ReciprocalOp)
-@find_domain.register(ops.SigmoidOp)
-@find_domain.register(ops.TanhOp)
-@find_domain.register(ops.AtanhOp)
-def _find_domain_pointwise_unary_transform(op, domain):
+@find_domain.register(ops.UnaryOp)
+def _find_domain_pointwise_unary_generic(op, domain):
     if isinstance(domain, ArrayType):
         return Array[domain.dtype, domain.shape]
     raise NotImplementedError
@@ -256,19 +252,35 @@ def _find_domain_getitem(op, lhs_domain, rhs_domain):
                                   f"{lhs_domain}[{rhs_domain}]")
 
 
-@find_domain.register(ops.EqOp)
-@find_domain.register(ops.GeOp)
-@find_domain.register(ops.GtOp)
-@find_domain.register(ops.LeOp)
-@find_domain.register(ops.LtOp)
-@find_domain.register(ops.NeOp)
-@find_domain.register(ops.PowOp)
-@find_domain.register(ops.SubOp)
-@find_domain.register(ops.TruedivOp)
+@find_domain.register(ops.BinaryOp)
 def _find_domain_pointwise_binary_generic(op, lhs, rhs):
     if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType) and \
             lhs.dtype == rhs.dtype:
         return Array[lhs.dtype, broadcast_shape(lhs.shape, rhs.shape)]
+    raise NotImplementedError("TODO")
+
+
+@find_domain.register(ops.FloordivOp)
+def _find_domain_floordiv(op, lhs, rhs):
+    if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType):
+        shape = broadcast_shape(lhs.shape, rhs.shape)
+        if isinstance(lhs.dtype, int) and isinstance(rhs.dtype, int):
+            size = (lhs.size - 1) // (rhs.size - 1) + 1
+            return Array[size, shape]
+        if lhs.dtype == "real" and rhs.dtype == "real":
+            return Reals[shape]
+    raise NotImplementedError("TODO")
+
+
+@find_domain.register(ops.ModOp)
+def _find_domain_mod(op, lhs, rhs):
+    if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType):
+        shape = broadcast_shape(lhs.shape, rhs.shape)
+        if isinstance(lhs.dtype, int) and isinstance(rhs.dtype, int):
+            dtype = max(0, rhs.dtype - 1)
+            return Array[dtype, shape]
+        if lhs.dtype == "real" and rhs.dtype == "real":
+            return Reals[shape]
     raise NotImplementedError("TODO")
 
 
@@ -311,7 +323,7 @@ def _find_domain_associative_generic(op, *domains):
     return Array[dtype, shape]
 
 
-@find_domain.register(ops.TransformOp)
+@find_domain.register(ops.WrappedTransformOp)
 def _transform_find_domain(op, domain):
     fn = op.dispatch(object)
     shape = fn.forward_shape(domain.shape)
