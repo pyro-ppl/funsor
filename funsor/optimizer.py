@@ -3,13 +3,13 @@
 
 import collections
 
-from multipledispatch.variadic import Variadic
 from opt_einsum.paths import greedy
 
 import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, nullop
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.terms import Funsor, eager, lazy, normalize
+from funsor.typing import Variadic
 
 
 @interpreter.dispatched_interpretation

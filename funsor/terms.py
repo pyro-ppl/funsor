@@ -13,14 +13,13 @@ from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
 from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.typing import GenericTypeMeta, deep_type
+from funsor.typing import GenericTypeMeta, Variadic, deep_type
 from funsor.util import getargspec, get_backend, lazy_property, pretty, quote
 
 

@@ -7,7 +7,6 @@ from functools import reduce
 from typing import Tuple, Union
 
 from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
@@ -17,6 +16,7 @@ from funsor.gaussian import Gaussian, align_gaussian
 from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, align_tensor
 from funsor.terms import Funsor, Independent, Number, Reduce, Unary, eager, moment_matching, normalize
+from funsor.typing import Variadic
 
 
 @dispatch(str, str, Variadic[(Gaussian, GaussianMixture)])

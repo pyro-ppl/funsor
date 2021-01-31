@@ -263,8 +263,7 @@ class TypingDispatcher(Dispatcher):
         """
         Likde :meth:`__call__` but avoids calling ``func()``.
         """
-        types = tuple(map(deep_type, args))
-        types = tuple(map(_type_to_typing, types))
+        types = tuple(map(typing_wrap, map(_type_to_typing, map(deep_type, args))))
         try:
             func = self._cache[types]
         except KeyError:
