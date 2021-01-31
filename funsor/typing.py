@@ -7,8 +7,9 @@ import typing_extensions
 import weakref
 
 from multipledispatch.conflict import supercedes
-from multipledispatch.dispatcher import Dispatcher
-from multipledispatch.variadic import VariadicSignatureType, isvariadic
+from multipledispatch.dispatcher import Dispatcher, expand_tuples
+from multipledispatch.variadic import isvariadic
+from multipledispatch.variadic import Variadic as _OrigVariadic
 
 
 #################################
@@ -215,8 +216,12 @@ def deep_supercedes(xs, ys):
                       tuple(typing_wrap(_type_to_typing(y)) for y in ys))
 
 
-class _DeepVariadicSignatureType(VariadicSignatureType):
-    pass  # TODO define __getitem__, possibly __eq__/__hash__?
+class _DeepVariadicSignatureType(type):
+
+    def __getitem__(cls, key):
+        if not isinstance(key, tuple):
+            key = (key,)
+        return _OrigVariadic[tuple(map(typing_wrap, map(_type_to_typing, key)))]
 
 
 class Variadic(metaclass=_DeepVariadicSignatureType):
@@ -230,13 +235,29 @@ class TypingDispatcher(Dispatcher):
     """
     A Dispatcher class designed for compatibility with the typing standard library.
     """
-    def register(self, *types):
-        types = tuple(map(typing_wrap, map(_type_to_typing, types)))
+    def add(self, signature, func):
+
+        # Handle annotations
+        if not signature:
+            annotations = self.get_func_annotations(func)
+            if annotations:
+                signature = annotations
+
+        # Handle union types
+        if any(isinstance(typ, tuple) for typ in signature):
+            for typs in expand_tuples(signature):
+                self.add(typs, func)
+            return
+
+        signature = (Variadic[tp] if isinstance(tp, list) else tp for tp in signature)
+        signature = tuple(map(typing_wrap, map(_type_to_typing, signature)))
+
+        super().add(signature, func)
+
         if getattr(self, "default", None):  # XXX should this class have default?
-            objects = (typing_wrap(typing.Any),) * len(types)
-            if objects != types and deep_supercedes(types, objects):
-                super().register(*objects)(self.default)
-        return super().register(*types)
+            objects = (typing_wrap(typing.Any),) * len(signature)
+            if objects != signature and deep_supercedes(signature, objects):
+                super().add(objects, self.default)
 
     def partial_call(self, *args):
         """
