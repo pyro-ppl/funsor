@@ -82,17 +82,21 @@ class Contraction(Funsor):
         self.reduced_vars = reduced_vars
 
     def __repr__(self):
-        if self.op in _INFIX:
+        if self.bin_op in _INFIX:
+            bin_op = " " + _INFIX[self.bin_op] + " "
             return "{}.reduce({}, {})".format(
-                f" {self.bin_op.name} ".join(map(repr, self.terms)),
-                _INFIX[self.op], str(set(self.reduced_vars)))
+                bin_op.join(map(repr, self.terms)),
+                self.red_op,
+                str(set(self.reduced_vars)))
         return super().__repr__()
 
     def __str__(self):
-        if self.op in _INFIX:
+        if self.bin_op in _INFIX:
+            bin_op = " " + _INFIX[self.bin_op] + " "
             return "{}.reduce({}, {})".format(
-                f" {self.bin_op.name} ".join(map(str, self.terms)),
-                _INFIX[self.op], str(set(map(str, self.reduced_vars))))
+                bin_op.join(map(str, self.terms)),
+                self.red_op,
+                str(set(map(str, self.reduced_vars))))
         return super().__str__()
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
