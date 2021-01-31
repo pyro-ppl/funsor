@@ -238,7 +238,7 @@ class FunsorMeta(GenericTypeMeta):
 
         return interpret(cls, *args)
 
-    @property
+    @lazy_property
     def classname(cls):
         return repr(cls)
 
