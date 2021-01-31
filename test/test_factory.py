@@ -58,8 +58,7 @@ def test_flatten():
         n = to_funsor(j, x.inputs.get(j, None)).output.size
         ij = to_funsor(ij, Bint[m * n])
         ij = x.materialize(ij)
-        return x(**{i.name: ij // Number(n, n + 1),
-                    j.name: ij % Number(n, n + 1)})
+        return x(**{i.name: ij // n, j.name: ij % n})
 
     inputs = OrderedDict()
     inputs["a"] = Bint[3]
@@ -79,7 +78,7 @@ def test_unflatten():
         i_mod_2: Fresh[lambda: Bint[2]],
     ) -> Fresh[lambda x: x]:
         assert i.output.size % 2 == 0
-        return x(**{i.name: i_over_2 * Number(2, 3) + i_mod_2})
+        return x(**{i.name: i_over_2 * 2 + i_mod_2})
 
     inputs = OrderedDict()
     inputs["a"] = Bint[5]

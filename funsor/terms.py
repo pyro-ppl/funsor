@@ -1154,7 +1154,13 @@ class NumberMeta(FunsorMeta):
     """
     def __call__(cls, data, dtype=None):
         if dtype is None:
-            dtype = "real"
+            if isinstance(data, int):
+                if data < 0:
+                    raise ValueError(f"Negative integers are not allowed: {data}, "
+                                     "try converting to float")
+                dtype = data + 1
+            else:
+                dtype = "real"
         return super(NumberMeta, cls).__call__(data, dtype)
 
 
