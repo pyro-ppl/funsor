@@ -921,11 +921,11 @@ class Subs(Funsor, metaclass=SubsMeta):
 
     def __repr__(self):
         return "{}({})".format(
-            repr(self.arg), ", ".join(f"{k}={repr(v)}" for k, v in self.subs))
+            repr(self.arg), ", ".join(f"{k}={repr(v)}" for k, v in self.subs.items()))
 
     def __str__(self):
         return "{}({})".format(
-            str(self.arg), ", ".join(f"{k}={str(v)}" for k, v in self.subs))
+            str(self.arg), ", ".join(f"{k}={str(v)}" for k, v in self.subs.items()))
 
     def _alpha_convert(self, alpha_subs):
         assert set(alpha_subs).issubset(self.bound)
