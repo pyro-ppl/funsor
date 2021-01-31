@@ -6,8 +6,6 @@ import typing
 import typing_extensions
 import weakref
 
-from multipledispatch.conflict import supercedes
-from multipledispatch.dispatcher import Dispatcher, expand_tuples
 from multipledispatch.variadic import isvariadic
 from multipledispatch.variadic import Variadic as _OrigVariadic
 
@@ -192,6 +190,7 @@ class GenericTypeMeta(type):
 
 class _RuntimeSubclassCheckMeta(GenericTypeMeta):
     def __call__(cls, tp):
+        tp = _type_to_typing(tp)
         return tp if isinstance(tp, GenericTypeMeta) or isvariadic(tp) else cls[tp]
 
     def __subclasscheck__(cls, subcls):
@@ -207,18 +206,12 @@ class typing_wrap(metaclass=_RuntimeSubclassCheckMeta):
     pass
 
 
-def deep_supercedes(xs, ys):
-    """typing-compatible version of multipledispatch.conflict.supercedes"""
-    return supercedes(tuple(typing_wrap(_type_to_typing(x)) for x in xs),
-                      tuple(typing_wrap(_type_to_typing(y)) for y in ys))
-
-
 class _DeepVariadicSignatureType(type):
 
     def __getitem__(cls, key):
         if not isinstance(key, tuple):
             key = (key,)
-        return _OrigVariadic[tuple(map(typing_wrap, map(_type_to_typing, key)))]
+        return _OrigVariadic[tuple(map(typing_wrap, key))]
 
 
 class Variadic(metaclass=_DeepVariadicSignatureType):
@@ -226,51 +219,3 @@ class Variadic(metaclass=_DeepVariadicSignatureType):
     A typing-compatible drop-in replacement for multipledispatch.variadic.Variadic.
     """
     pass
-
-
-class TypingDispatcher(Dispatcher):
-    """
-    A Dispatcher class designed for compatibility with the typing standard library.
-    """
-    def add(self, signature, func):
-
-        # Handle annotations
-        if not signature:
-            annotations = self.get_func_annotations(func)
-            if annotations:
-                signature = annotations
-
-        # Handle union types
-        if any(isinstance(typ, tuple) for typ in signature):
-            for typs in expand_tuples(signature):
-                self.add(typs, func)
-            return
-
-        signature = (Variadic[tp] if isinstance(tp, list) else tp for tp in signature)
-        signature = tuple(map(typing_wrap, map(_type_to_typing, signature)))
-
-        super().add(signature, func)
-
-        if getattr(self, "default", None):  # XXX should this class have default?
-            objects = (typing_wrap(typing.Any),) * len(signature)
-            if objects != signature and deep_supercedes(signature, objects):
-                super().add(objects, self.default)
-
-    def partial_call(self, *args):
-        """
-        Likde :meth:`__call__` but avoids calling ``func()``.
-        """
-        types = tuple(map(typing_wrap, map(_type_to_typing, map(deep_type, args))))
-        try:
-            func = self._cache[types]
-        except KeyError:
-            func = self.dispatch(*types)
-            if func is None:
-                raise NotImplementedError(
-                    'Could not find signature for %s: <%s>' %
-                    (self.name, ', '.join(cls.__name__ for cls in types)))
-            self._cache[types] = func
-        return func
-
-    def __call__(self, *args):
-        return self.partial_call(*args)(*args)

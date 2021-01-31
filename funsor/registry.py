@@ -3,16 +3,59 @@
 
 from collections import defaultdict
 
-from funsor.typing import TypingDispatcher, get_origin
+from multipledispatch.dispatcher import Dispatcher, expand_tuples
+
+from funsor.typing import Variadic, deep_type, get_origin, typing_wrap
 
 
-class PartialDispatcher(TypingDispatcher):
+class PartialDispatcher(Dispatcher):
     """
     Wrapper to avoid appearance in stack traces.
     """
     def __init__(self, name, default=None):
         self.default = default if default is None else PartialDefault(default)
         super().__init__(name)
+        if default is not None:
+            self.add((Variadic[object],), self.default)
+
+    def add(self, signature, func):
+
+        # Handle annotations
+        if not signature:
+            annotations = self.get_func_annotations(func)
+            if annotations:
+                signature = annotations
+
+        # Handle some union types by expanding at registration time
+        if any(isinstance(typ, tuple) for typ in signature):
+            for typs in expand_tuples(signature):
+                self.add(typs, func)
+            return
+
+        # Handle variadic types
+        signature = (Variadic[tp] if isinstance(tp, list) else tp for tp in signature)
+
+        signature = tuple(map(typing_wrap, signature))
+        super().add(signature, func)
+
+    def partial_call(self, *args):
+        """
+        Likde :meth:`__call__` but avoids calling ``func()``.
+        """
+        types = tuple(map(typing_wrap, map(deep_type, args)))
+        try:
+            func = self._cache[types]
+        except KeyError:
+            func = self.dispatch(*types)
+            if func is None:
+                raise NotImplementedError(
+                    'Could not find signature for %s: <%s>' %
+                    (self.name, ', '.join(cls.__name__ for cls in types)))
+            self._cache[types] = func
+        return func
+
+    def __call__(self, *args):
+        return self.partial_call(*args)(*args)
 
 
 class PartialDefault:
