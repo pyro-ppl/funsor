@@ -20,7 +20,7 @@ import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, get_backend, lazy_property, pretty, quote
+from funsor.util import get_backend, getargspec, lazy_property, pretty, quote
 
 
 def substitute(expr, subs):
@@ -687,11 +687,35 @@ class Funsor(object, metaclass=FunsorMeta):
     def __rtruediv__(self, other):
         return Binary(ops.truediv, to_funsor(other), self)
 
+    def __floordiv__(self, other):
+        return Binary(ops.floordiv, self, to_funsor(other))
+
+    def __rfloordiv__(self, other):
+        return Binary(ops.floordiv, to_funsor(other), self)
+
     def __matmul__(self, other):
         return Binary(ops.matmul, self, to_funsor(other))
 
     def __rmatmul__(self, other):
         return Binary(ops.matmul, to_funsor(other), self)
+
+    def __mod__(self, other):
+        return Binary(ops.mod, self, to_funsor(other))
+
+    def __rmod__(self, other):
+        return Binary(ops.mod, to_funsor(other), self)
+
+    def __lshift__(self, other):
+        return Binary(ops.lshift, self, to_funsor(other))
+
+    def __rlshift__(self, other):
+        return Binary(ops.lshift, to_funsor(other), self)
+
+    def __rshift__(self, other):
+        return Binary(ops.rshift, self, to_funsor(other))
+
+    def __rrshift__(self, other):
+        return Binary(ops.rshift, to_funsor(other), self)
 
     def __pow__(self, other):
         return Binary(ops.pow, self, to_funsor(other))
@@ -908,7 +932,12 @@ class Subs(Funsor, metaclass=SubsMeta):
         self.subs = OrderedDict(subs)
 
     def __repr__(self):
-        return 'Subs({}, {})'.format(self.arg, self.subs)
+        return "{}({})".format(
+            repr(self.arg), ", ".join(f"{k}={repr(v)}" for k, v in self.subs.items()))
+
+    def __str__(self):
+        return "{}({})".format(
+            str(self.arg), ", ".join(f"{k}={str(v)}" for k, v in self.subs.items()))
 
     def _alpha_convert(self, alpha_subs):
         assert set(alpha_subs).issubset(self.bound)
@@ -969,8 +998,13 @@ class Unary(Funsor):
 
     def __repr__(self):
         if self.op in _PREFIX:
-            return '{}{}'.format(_PREFIX[self.op], self.arg)
-        return 'Unary({}, {})'.format(self.op.__name__, self.arg)
+            return "({}{})".format(_PREFIX[self.op], repr(self.arg))
+        return super().__repr__()
+
+    def __str__(self):
+        if self.op in _PREFIX:
+            return "({}{})".format(_PREFIX[self.op], str(self.arg))
+        return super().__str__()
 
 
 @eager.register(Unary, Op, Funsor)
@@ -986,11 +1020,22 @@ def eager_unary(op, arg):
 
 
 _INFIX = {
-    ops.add: '+',
-    ops.sub: '-',
-    ops.mul: '*',
-    ops.truediv: '/',
-    ops.pow: '**',
+    ops.add: "+",
+    ops.sub: "-",
+    ops.mul: "*",
+    ops.matmul: "@",
+    ops.truediv: "/",
+    ops.floordiv: "//",
+    ops.mod: "%",
+    ops.pow: "**",
+    ops.eq: "==",
+    ops.ne: "!=",
+    ops.ge: ">=",
+    ops.gt: ">=",
+    ops.le: "<=",
+    ops.lt: "<",
+    ops.lshift: "<<",
+    ops.rshift: ">>",
 }
 
 
@@ -1016,8 +1061,13 @@ class Binary(Funsor):
 
     def __repr__(self):
         if self.op in _INFIX:
-            return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
-        return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
+            return "({} {} {})".format(repr(self.lhs), _INFIX[self.op], repr(self.rhs))
+        return super().__repr__()
+
+    def __str__(self):
+        if self.op in _INFIX:
+            return "({} {} {})".format(str(self.lhs), _INFIX[self.op], str(self.rhs))
+        return super().__str__()
 
 
 class Reduce(Funsor):
@@ -1045,8 +1095,22 @@ class Reduce(Funsor):
         self.reduced_vars = reduced_vars
 
     def __repr__(self):
-        return 'Reduce({}, {}, {})'.format(
-            self.op.__name__, self.arg, self.reduced_vars)
+        assert self.reduced_vars
+        if self.reduced_vars == self.arg.input_vars:
+            return f"{repr(self.arg)}.reduce({self.op.__name__})"
+        rvars = [f'"{v.name}"' if v in self.arg.input_vars else repr(v)
+                 for v in self.reduced_vars]
+        return "{}.reduce({}, {{{}}})".format(
+            repr(self.arg), self.op.__name__, ", ".join(rvars))
+
+    def __str__(self):
+        assert self.reduced_vars
+        if self.reduced_vars == self.arg.input_vars:
+            return f"{str(self.arg)}.reduce({self.op.__name__})"
+        rvars = [f'"{v.name}"' if v in self.arg.input_vars else repr(v)
+                 for v in self.reduced_vars]
+        return "{}.reduce({}, {{{}}})".format(
+            str(self.arg), self.op.__name__, ", ".join(rvars))
 
     def _alpha_convert(self, alpha_subs):
         alpha_subs = {k: to_funsor(v, self.arg.inputs[k])
@@ -1131,9 +1195,9 @@ class Number(Funsor, metaclass=NumberMeta):
 
     def __repr__(self):
         if self.dtype == "real":
-            return 'Number({}, "real")'.format(repr(self.data))
+            return f"Number({str(self.data)})"
         else:
-            return 'Number({}, {})'.format(repr(self.data), self.dtype)
+            return f"Number({str(self.data)}, {self.dtype})"
 
     def __str__(self):
         return str(self.data)
@@ -1228,9 +1292,6 @@ class Slice(Funsor, metaclass=SliceMeta):
         super().__init__(inputs, output, fresh)
         self.name = name
         self.slice = slice(start, stop, step)
-
-    def __repr__(self):
-        return "Slice({})".format(", ".join(map(repr, self._ast_values)))
 
     def eager_subs(self, subs):
         assert len(subs) == 1 and subs[0][0] == self.name

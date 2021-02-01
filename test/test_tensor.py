@@ -329,10 +329,12 @@ def test_unary(symbol, dims):
 
 
 BINARY_OPS = [
-    '+', '-', '*', '/', '**', '==', '!=', '<', '<=', '>', '>=',
+    '+', '-', '*', '/', '//', '%', '**', "<<", ">>",
+    '==', '!=', '<', '<=', '>', '>=',
     'min', 'max',
 ]
 BOOLEAN_OPS = ['&', '|', '^']
+INTEGER_OPS = ["<<", ">>"]
 
 
 def binary_eval(symbol, x, y):
@@ -359,6 +361,9 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
         dtype = 2
         data1 = ops.astype(data1, 'uint8')
         data2 = ops.astype(data2, 'uint8')
+    elif symbol in INTEGER_OPS:
+        data1 = ops.astype(data1, 'int64')
+        data2 = ops.astype(data2, 'int64')
     x1 = Tensor(data1, inputs1, dtype)
     x2 = Tensor(data2, inputs2, dtype)
     inputs, aligned = align_tensors(x1, x2)
@@ -416,11 +421,16 @@ def test_binary_funsor_scalar(symbol, dims, scalar):
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, Bint[sizes[d]]) for d in dims)
     data1 = rand(shape) + 0.5
+    dtype = "real"
+    if symbol in INTEGER_OPS:
+        data1 = ops.astype(data1, 'int64')
+        scalar = int(scalar)
+        dtype = 1 + scalar
     expected_data = binary_eval(symbol, data1, scalar)
 
-    x1 = Tensor(data1, inputs)
-    actual = binary_eval(symbol, x1, scalar)
-    check_funsor(actual, inputs, Real, expected_data)
+    x1 = Tensor(data1, inputs, dtype)
+    actual = binary_eval(symbol, x1, Number(scalar, dtype))
+    check_funsor(actual, inputs, Array[dtype, ()], expected_data)
 
 
 @pytest.mark.parametrize('scalar', [0.5])
@@ -431,6 +441,8 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, Bint[sizes[d]]) for d in dims)
     data1 = rand(shape) + 0.5
+    if symbol in ("%", "<<", ">>"):
+        pytest.xfail(reason=f"right application of {symbol} is not triggered")
     expected_data = binary_eval(symbol, scalar, data1)
 
     x1 = Tensor(data1, inputs)
