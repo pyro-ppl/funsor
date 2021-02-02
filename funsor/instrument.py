@@ -84,6 +84,7 @@ else:
 
 
 # Allow line_profiler to override profile_timed by adding it to __builtins__.
+# For details see https://github.com/pyutils/line_profiler
 profile = __builtins__.get("profile", debug_logged)
 
 
