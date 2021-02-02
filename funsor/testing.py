@@ -11,17 +11,17 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
-from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.delta import Delta
-from funsor.domains import Domain, Bint, Real
+from funsor.domains import Bint, Domain, Real
 from funsor.gaussian import Gaussian
-from funsor.terms import Funsor, Number
 from funsor.tensor import Tensor
+from funsor.terms import Funsor, Number
 from funsor.util import get_backend
+from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic
 
 
 @contextlib.contextmanager

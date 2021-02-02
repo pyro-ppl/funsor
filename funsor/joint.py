@@ -6,8 +6,6 @@ from collections import OrderedDict
 from functools import reduce
 from typing import Tuple, Union
 
-from multipledispatch import dispatch
-
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
@@ -17,6 +15,7 @@ from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, align_tensor
 from funsor.terms import Funsor, Independent, Number, Reduce, Unary, eager, moment_matching, normalize
 from funsor.typing import Variadic
+from multipledispatch import dispatch
 
 
 @dispatch(str, str, Variadic[(Gaussian, GaussianMixture)])

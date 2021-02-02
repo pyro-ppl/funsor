@@ -11,7 +11,6 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
-from multipledispatch import dispatch
 
 import funsor
 import funsor.ops as ops
@@ -33,8 +32,9 @@ from funsor.terms import (
     to_data,
     to_funsor
 )
-from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
 from funsor.typing import Variadic
+from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
+from multipledispatch import dispatch
 
 
 def get_default_prototype():

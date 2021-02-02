@@ -4,8 +4,8 @@
 from collections import OrderedDict
 
 import torch
-from torch.distributions import constraints
 from pyro.distributions import TorchDistribution
+from torch.distributions import constraints
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta

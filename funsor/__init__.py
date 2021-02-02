@@ -3,7 +3,7 @@
 
 from funsor.domains import Array, Bint, Domain, Real, Reals, bint, find_domain, reals
 from funsor.integrate import Integrate
-from funsor.interpreter import reinterpret, interpretation
+from funsor.interpreter import interpretation, reinterpret
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Tensor, function
 from funsor.terms import (
@@ -41,7 +41,6 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     terms,
     testing
 )
-
 
 __all__ = [
     'Array',

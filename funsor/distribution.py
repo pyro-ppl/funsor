@@ -19,12 +19,18 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Array, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
-from funsor.tensor import (Function, Tensor, align_tensors, dummy_numeric_array, get_default_prototype,
-                           ignore_jit_warnings, numeric_array, stack)
-from funsor.terms import Funsor, FunsorMeta, Independent, Lambda, Number, Variable, \
-    eager, reflect, to_data, to_funsor
+from funsor.tensor import (
+    Function,
+    Tensor,
+    align_tensors,
+    dummy_numeric_array,
+    get_default_prototype,
+    ignore_jit_warnings,
+    numeric_array,
+    stack
+)
+from funsor.terms import Funsor, FunsorMeta, Independent, Lambda, Number, Variable, eager, reflect, to_data, to_funsor
 from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
-
 
 BACKEND_TO_DISTRIBUTIONS_BACKEND = {
     "torch": "funsor.torch.distributions",

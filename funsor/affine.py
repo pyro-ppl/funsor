@@ -8,7 +8,7 @@ import opt_einsum
 
 from funsor.interpreter import gensym
 from funsor.tensor import Einsum, Tensor, get_default_prototype
-from funsor.terms import Binary, Funsor, Lambda, Reduce, Unary, Variable, Bint
+from funsor.terms import Binary, Bint, Funsor, Lambda, Reduce, Unary, Variable
 
 from . import ops
 

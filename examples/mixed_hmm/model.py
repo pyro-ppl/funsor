@@ -7,8 +7,8 @@ import pyro
 import torch
 from torch.distributions import constraints
 
-import funsor.torch.distributions as dist
 import funsor.ops as ops
+import funsor.torch.distributions as dist
 from funsor.domains import Bint, Reals
 from funsor.tensor import Tensor
 from funsor.terms import Stack, Variable, to_funsor

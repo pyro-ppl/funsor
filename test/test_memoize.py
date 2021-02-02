@@ -14,7 +14,6 @@ from funsor.terms import reflect
 from funsor.testing import make_einsum_example, xfail_param
 from funsor.util import get_backend
 
-
 EINSUM_EXAMPLES = [
     ("a,b->", ''),
     ("ab,a->", ''),

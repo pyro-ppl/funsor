@@ -6,8 +6,8 @@ import weakref
 import pytest
 
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.util import get_backend
 from funsor.ops import WrappedTransformOp
+from funsor.util import get_backend
 
 
 @pytest.fixture

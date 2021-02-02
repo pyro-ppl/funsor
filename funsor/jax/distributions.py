@@ -4,12 +4,12 @@
 import functools
 from typing import Tuple, Union
 
+import funsor.ops as ops
 import numpyro.distributions as dist
-
 from funsor.cnf import Contraction
 from funsor.distribution import (  # noqa: F401
-    Bernoulli,
     FUNSOR_DIST_NAMES,
+    Bernoulli,
     LogNormal,
     backenddist_to_funsor,
     eager_beta,
@@ -34,14 +34,12 @@ from funsor.distribution import (  # noqa: F401
     indepdist_to_funsor,
     make_dist,
     maskeddist_to_funsor,
-    transformeddist_to_funsor,
+    transformeddist_to_funsor
 )
 from funsor.domains import Real, Reals
-import funsor.ops as ops
 from funsor.tensor import Tensor
 from funsor.terms import Binary, Funsor, Reduce, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
-
 
 ################################################################################
 # Distribution Wrappers

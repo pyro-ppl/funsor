@@ -6,8 +6,8 @@ from collections import OrderedDict
 import pytest
 import torch
 
-import funsor.torch.distributions as dist
 import funsor.ops as ops
+import funsor.torch.distributions as dist
 from funsor.cnf import Contraction
 from funsor.domains import Bint, Reals
 from funsor.gaussian import Gaussian

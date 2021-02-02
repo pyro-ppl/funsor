@@ -15,8 +15,7 @@ from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
 from funsor.tensor import Einsum, Tensor, numeric_array
 from funsor.terms import Number, Variable
-from funsor.testing import (assert_close, id_from_inputs, ones, randn, random_gaussian,
-                            random_tensor, zeros)
+from funsor.testing import assert_close, id_from_inputs, ones, randn, random_gaussian, random_tensor, zeros
 from funsor.util import get_backend
 
 assert Einsum  # flake8

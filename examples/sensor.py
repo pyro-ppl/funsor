@@ -12,8 +12,8 @@ import torch.nn as nn
 from torch.optim import Adam
 
 import funsor
-import funsor.torch.distributions as f_dist
 import funsor.ops as ops
+import funsor.torch.distributions as f_dist
 from funsor.domains import Reals
 from funsor.pyro.convert import dist_to_funsor, funsor_to_mvn
 from funsor.tensor import Tensor, Variable

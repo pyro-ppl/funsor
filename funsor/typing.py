@@ -3,12 +3,12 @@
 
 import functools
 import typing
-import typing_extensions
 import weakref
 
-from multipledispatch.variadic import isvariadic
-from multipledispatch.variadic import Variadic as _OrigVariadic
+import typing_extensions
 
+from multipledispatch.variadic import Variadic as _OrigVariadic
+from multipledispatch.variadic import isvariadic
 
 #################################
 # Runtime type-checking helpers

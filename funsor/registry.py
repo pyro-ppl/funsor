@@ -3,9 +3,8 @@
 
 from collections import defaultdict
 
-from multipledispatch.dispatcher import Dispatcher, expand_tuples
-
 from funsor.typing import Variadic, deep_type, get_origin, typing_wrap
+from multipledispatch.dispatcher import Dispatcher, expand_tuples
 
 
 class PartialDispatcher(Dispatcher):

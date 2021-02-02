@@ -6,7 +6,7 @@ import pickle
 
 import pytest
 
-from funsor.domains import Bint, Real, Reals, Bint, Reals  # noqa F401
+from funsor.domains import Bint, Real, Reals  # noqa F401
 
 
 @pytest.mark.parametrize('expr', [
