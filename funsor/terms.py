@@ -15,12 +15,12 @@ from weakref import WeakValueDictionary
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic, isvariadic
 
-import funsor.interpreter as interpreter
-import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import get_backend, getargspec, lazy_property, pretty, quote
+
+from . import interpreter, ops
 
 
 def substitute(expr, subs):
