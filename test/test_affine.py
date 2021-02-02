@@ -16,9 +16,10 @@ from funsor.testing import (
     randn,
     random_gaussian,
     random_tensor,
-)  # noqa: F401
+)
 from funsor.tensor import Einsum, Tensor
 
+assert ones  # flake8
 assert random_gaussian  # flake8
 
 SMOKE_TESTS = [

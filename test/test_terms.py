@@ -646,7 +646,8 @@ def test_parametric_subclass(subcls_expr, cls_expr):
         ),
         (
             "Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]",
-            "Reduce[ops.AssociativeOp, (Stack[str, tuple], Reduce[ops.AssociativeOp, (Cat, Stack), frozenset]), frozenset]",
+            "Reduce[ops.AssociativeOp, (Stack[str, tuple], "
+            "Reduce[ops.AssociativeOp, (Cat, Stack), frozenset]), frozenset]",
         ),
     ],
 )

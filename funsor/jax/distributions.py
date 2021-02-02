@@ -42,6 +42,9 @@ from funsor.tensor import Tensor
 from funsor.terms import Binary, Funsor, Reduce, Variable, eager, to_data, to_funsor
 from funsor.util import methodof
 
+assert Bernoulli  # flake8
+assert LogNormal  # flake8
+
 
 ################################################################################
 # Distribution Wrappers
