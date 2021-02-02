@@ -18,6 +18,7 @@ class ArrayType(Domain):
     """
     Base class of array-like domains.
     """
+
     _type_cache = WeakValueDictionary()
 
     def __getitem__(cls, dtype_shape):
@@ -39,7 +40,9 @@ class ArrayType(Domain):
         if result is None:
             if dtype == "real":
                 assert all(isinstance(size, int) and size >= 0 for size in shape)
-                name = "Reals[{}]".format(",".join(map(str, shape))) if shape else "Real"
+                name = (
+                    "Reals[{}]".format(",".join(map(str, shape))) if shape else "Real"
+                )
                 result = RealsType(name, (), {"shape": shape})
             elif isinstance(dtype, int):
                 assert dtype >= 0
@@ -93,6 +96,7 @@ class BintType(ArrayType):
 
     def __iter__(cls):
         from funsor.terms import Number
+
         return (Number(i, cls.size) for i in range(cls.size))
 
 
@@ -132,6 +136,7 @@ class Array(metaclass=ArrayType):
         Arary["real", (3, 3)] = Reals[3, 3]
         Array["real", ()] = Real
     """
+
     dtype = None
     shape = None
 
@@ -143,6 +148,7 @@ class Bint(metaclass=BintType):
         Bint[5]           # integers ranging in {0,1,2,3,4}
         Bint[2, 3, 3]     # 3x3 matrices with entries in {0,1}
     """
+
     dtype = None
     shape = None
 
@@ -155,6 +161,7 @@ class Reals(metaclass=RealsType):
         Reals[8]          # vector of length 8
         Reals[3, 3]       # 3x3 matrix
     """
+
     shape = None
 
 
@@ -163,15 +170,15 @@ Real = Reals[()]
 
 # DEPRECATED
 def reals(*args):
-    warnings.warn("reals(...) is deprecated, use Real or Reals[...] instead",
-                  DeprecationWarning)
+    warnings.warn(
+        "reals(...) is deprecated, use Real or Reals[...] instead", DeprecationWarning
+    )
     return Reals[args]
 
 
 # DEPRECATED
 def bint(size):
-    warnings.warn("bint(...) is deprecated, use Bint[...] instead",
-                  DeprecationWarning)
+    warnings.warn("bint(...) is deprecated, use Bint[...] instead", DeprecationWarning)
     return Bint[size]
 
 
@@ -203,6 +210,7 @@ class ProductDomain(Domain):
 
 class Product(tuple, metaclass=ProductDomain):
     """like typing.Tuple, but works with issubclass"""
+
     __args__ = NotImplemented
 
 
@@ -232,7 +240,7 @@ def _find_domain_pointwise_unary_generic(op, domain):
 @find_domain.register(ops.LogOp)
 @find_domain.register(ops.ExpOp)
 def _find_domain_log_exp(op, domain):
-    return Array['real', domain.shape]
+    return Array["real", domain.shape]
 
 
 @find_domain.register(ops.ReshapeOp)
@@ -244,18 +252,22 @@ def _find_domain_reshape(op, domain):
 def _find_domain_getitem(op, lhs_domain, rhs_domain):
     if isinstance(lhs_domain, ArrayType):
         dtype = lhs_domain.dtype
-        shape = lhs_domain.shape[:op.offset] + lhs_domain.shape[1 + op.offset:]
+        shape = lhs_domain.shape[: op.offset] + lhs_domain.shape[1 + op.offset :]
         return Array[dtype, shape]
     elif isinstance(lhs_domain, ProductDomain):
         # XXX should this return a Union?
-        raise NotImplementedError("Cannot statically infer domain from: "
-                                  f"{lhs_domain}[{rhs_domain}]")
+        raise NotImplementedError(
+            "Cannot statically infer domain from: " f"{lhs_domain}[{rhs_domain}]"
+        )
 
 
 @find_domain.register(ops.BinaryOp)
 def _find_domain_pointwise_binary_generic(op, lhs, rhs):
-    if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType) and \
-            lhs.dtype == rhs.dtype:
+    if (
+        isinstance(lhs, ArrayType)
+        and isinstance(rhs, ArrayType)
+        and lhs.dtype == rhs.dtype
+    ):
         return Array[lhs.dtype, broadcast_shape(lhs.shape, rhs.shape)]
     raise NotImplementedError("TODO")
 
@@ -308,8 +320,8 @@ def _find_domain_associative_generic(op, *domains):
         return Array[domains[0].dtype, ()]
 
     lhs, rhs = domains
-    if lhs.dtype == 'real' or rhs.dtype == 'real':
-        dtype = 'real'
+    if lhs.dtype == "real" or rhs.dtype == "real":
+        dtype = "real"
     elif op in (ops.add, ops.mul, ops.pow, ops.max, ops.min):
         dtype = op(lhs.dtype - 1, rhs.dtype - 1) + 1
     elif op in (ops.and_, ops.or_, ops.xor):
@@ -317,7 +329,7 @@ def _find_domain_associative_generic(op, *domains):
     elif lhs.dtype == rhs.dtype:
         dtype = lhs.dtype
     else:
-        raise NotImplementedError('TODO')
+        raise NotImplementedError("TODO")
 
     shape = broadcast_shape(lhs.shape, rhs.shape)
     return Array[dtype, shape]
@@ -337,13 +349,13 @@ def _transform_log_abs_det_jacobian(op, domain, codomain):
 
 
 __all__ = [
-    'Bint',
-    'BintType',
-    'Domain',
-    'Real',
-    'RealsType',
-    'Reals',
-    'bint',
-    'find_domain',
-    'reals',
+    "Bint",
+    "BintType",
+    "Domain",
+    "Real",
+    "RealsType",
+    "Reals",
+    "bint",
+    "find_domain",
+    "reals",
 ]

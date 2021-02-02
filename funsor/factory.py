@@ -14,6 +14,7 @@ from funsor.terms import Funsor, FunsorMeta, Variable, eager, to_funsor
 def _erase_types(fn):
     def result(*args):
         return fn(*args)
+
     result.__name__ = fn.__name__
     result.__module__ = fn.__module__
     return debug_logged(result)
@@ -40,6 +41,7 @@ class Fresh(metaclass=FreshMeta):
         funsor argument to the decorated function. This lambda should
         compute a desired resulting domain given domains of arguments.
     """
+
     def __init__(self, fn):
         function = type(lambda: None)
         self.fn = fn if isinstance(fn, function) else lambda: fn
@@ -54,6 +56,7 @@ class Bound:
     Type hint for :func:`make_funsor` decorated functions. This provides hints
     for bound variables (names).
     """
+
     pass
 
 
@@ -116,21 +119,27 @@ def make_funsor(fn):
                     args[i] = arg
 
             # Compute domains of fresh variables.
-            dependent_args = {name: arg.output
-                              for name, arg, hint in zip(cls._ast_fields, args, hints)
-                              if hint in (Funsor, Bound)}
+            dependent_args = {
+                name: arg.output
+                for name, arg, hint in zip(cls._ast_fields, args, hints)
+                if hint in (Funsor, Bound)
+            }
             for i, (hint, arg) in enumerate(zip(hints, args)):
                 if isinstance(hint, Fresh):
                     domain = hint(**dependent_args)
                     args[i] = to_funsor(arg, domain)
             return super().__call__(*args)
 
-    @makefun.with_signature("__init__({})".format(", ".join(["self"] + list(input_types))))
+    @makefun.with_signature(
+        "__init__({})".format(", ".join(["self"] + list(input_types)))
+    )
     def __init__(self, **kwargs):
         args = tuple(kwargs[k] for k in self._ast_fields)
-        dependent_args = {name: arg.output
-                          for name, arg, hint in zip(self._ast_fields, args, hints)
-                          if hint in (Funsor, Bound)}
+        dependent_args = {
+            name: arg.output
+            for name, arg, hint in zip(self._ast_fields, args, hints)
+            if hint in (Funsor, Bound)
+        }
         output = output_type(**dependent_args)
         inputs = OrderedDict()
         fresh = set()

@@ -58,8 +58,7 @@ def test_flatten():
         n = to_funsor(j, x.inputs.get(j, None)).output.size
         ij = to_funsor(ij, Bint[m * n])
         ij = x.materialize(ij)
-        return x(**{i.name: ij // Number(n, n + 1),
-                    j.name: ij % Number(n, n + 1)})
+        return x(**{i.name: ij // Number(n, n + 1), j.name: ij % Number(n, n + 1)})
 
     inputs = OrderedDict()
     inputs["a"] = Bint[3]
@@ -87,8 +86,9 @@ def test_unflatten():
     data = random_tensor(inputs, Real)
     x = Unflatten(data, "b", "c", "d")
 
-    check_funsor(x, {"a": Bint[5], "c": Bint[3], "d": Bint[2]}, Real,
-                 data.data.reshape(5, 3, 2))
+    check_funsor(
+        x, {"a": Bint[5], "c": Bint[3], "d": Bint[2]}, Real, data.data.reshape(5, 3, 2)
+    )
 
 
 def test_cat2():

@@ -15,7 +15,7 @@ from .op import (
     TransformOp,
     UnaryOp,
     declare_op_types,
-    make_op
+    make_op,
 )
 
 _builtin_abs = abs
@@ -28,12 +28,12 @@ def sigmoid(x):
 
 
 def softplus(x):
-    return log(1. + exp(x))
+    return log(1.0 + exp(x))
 
 
 def reciprocal(x):
     if isinstance(x, Number):
-        return 1. / x
+        return 1.0 / x
     raise ValueError("No reciprocal for type {}".format(type(x)))
 
 
@@ -44,6 +44,7 @@ class AssociativeOp(Op):
 
 class NullOp(AssociativeOp):
     """Placeholder associative op that unifies with any other op"""
+
     pass
 
 
@@ -56,13 +57,14 @@ class GetitemOp(Op, metaclass=CachedOpMeta):
     """
     Op encoding an index into one dimension, e.g. ``x[:,:,y]`` for offset of 2.
     """
+
     def __init__(self, offset):
         assert isinstance(offset, int)
         assert offset >= 0
         self.offset = offset
         self._prefix = (slice(None),) * offset
         super(GetitemOp, self).__init__(self._default)
-        self.__name__ = 'GetitemOp({})'.format(offset)
+        self.__name__ = "GetitemOp({})".format(offset)
 
     def __reduce__(self):
         return GetitemOp, (self.offset,)
@@ -105,8 +107,9 @@ reciprocal = make_op(reciprocal, UnaryOp)
 softplus = make_op(softplus, UnaryOp)
 
 exp = make_op(math.exp, TransformOp)
-log = make_op(lambda x: math.log(x) if x > 0 else -math.inf,
-              parent=TransformOp, name="log")
+log = make_op(
+    lambda x: math.log(x) if x > 0 else -math.inf, parent=TransformOp, name="log"
+)
 tanh = make_op(math.tanh, TransformOp)
 atanh = make_op(math.atanh, TransformOp)
 sigmoid = make_op(sigmoid, TransformOp)
@@ -147,7 +150,7 @@ atanh.set_inv(tanh)
 
 @tanh.set_log_abs_det_jacobian
 def tanh_log_abs_det_jacobian(x, y):
-    return 2. * (math.log(2.) - x - softplus(-2. * x))
+    return 2.0 * (math.log(2.0) - x - softplus(-2.0 * x))
 
 
 @atanh.set_log_abs_det_jacobian
@@ -171,53 +174,56 @@ DISTRIBUTIVE_OPS.add((min, mul))
 DISTRIBUTIVE_OPS.add((max, add))
 DISTRIBUTIVE_OPS.add((min, add))
 
-UNITS[mul] = 1.
-UNITS[add] = 0.
+UNITS[mul] = 1.0
+UNITS[add] = 0.0
 
 PRODUCT_INVERSES[mul] = truediv
 PRODUCT_INVERSES[add] = sub
 
 __all__ = [
-    'abs',
-    'add',
-    'and_',
-    'atanh',
-    'eq',
-    'exp',
-    'floordiv',
-    'ge',
-    'getitem',
-    'gt',
-    'invert',
-    'le',
-    'lgamma',
-    'log',
-    'log1p',
-    'lshift',
-    'lt',
-    'matmul',
-    'max',
-    'min',
-    'mod',
-    'mul',
-    'ne',
-    'neg',
-    'nullop',
-    'or_',
-    'pow',
-    'reciprocal',
-    'rshift',
-    'safediv',
-    'safesub',
-    'sigmoid',
-    'sqrt',
-    'sub',
-    'tanh',
-    'truediv',
-    'xor',
+    "abs",
+    "add",
+    "and_",
+    "atanh",
+    "eq",
+    "exp",
+    "floordiv",
+    "ge",
+    "getitem",
+    "gt",
+    "invert",
+    "le",
+    "lgamma",
+    "log",
+    "log1p",
+    "lshift",
+    "lt",
+    "matmul",
+    "max",
+    "min",
+    "mod",
+    "mul",
+    "ne",
+    "neg",
+    "nullop",
+    "or_",
+    "pow",
+    "reciprocal",
+    "rshift",
+    "safediv",
+    "safesub",
+    "sigmoid",
+    "sqrt",
+    "sub",
+    "tanh",
+    "truediv",
+    "xor",
 ]
 
 declare_op_types(globals(), __all__, __name__)
 
-__doc__ = "\n".join(".. autodata:: {}\n".format(_name)
-                    for _name in __all__ if isinstance(globals()[_name], Op))
+__doc__ = "\n".join(
+    ".. autodata:: {}\n".format(_name)
+    for _name in __all__
+    if isinstance(globals()[_name], Op)
+)
