@@ -100,7 +100,8 @@ def _(expr):
         result = defaultdict(lambda: SEMIRING.zero)
         for k, v in arg_adj.values():
             result[k] = ops.safediv(
-                v * expr.arg, expr.arg.reduce(ops.mul, expr.reduced_vars))
+                v * expr.arg, expr.arg.reduce(ops.mul, expr.reduced_vars)
+            )
         return result
     raise NotImplementedError
 
@@ -109,7 +110,7 @@ def _(expr):
 def _(expr):
     if expr.bin_op is ops.nullop and expr.red_op is ops.add:
         assert len(expr.terms) == 1
-        term, = expr.terms
+        (term,) = expr.terms
         return transpose(term)
     if expr.bin_op is ops.add and expr.red_op is ops.nullop:
         result = defaultdict(lambda: SEMIRING.zero)

@@ -29,7 +29,7 @@ def test_product_rule(f, g):
         assert actual.input_vars <= expected.input_vars
         assert actual.output == expected.output
         if actual is not expected:
-            for x_, y_ in [(0., 0.1), (-1.3, 0.2), (0.3, 1.5)]:
+            for x_, y_ in [(0.0, 0.1), (-1.3, 0.2), (0.3, 1.5)]:
                 assert_close(actual(x=x_, y=y_), expected(x=x_, y=y_))
 
 
@@ -49,7 +49,7 @@ def test_binary_sum_rule(f, g):
         assert actual.input_vars <= expected.input_vars
         assert actual.output == expected.output
         if actual is not expected:
-            for x_, y_ in [(0., 0.1), (-1.3, 0.2), (0.3, 1.5)]:
+            for x_, y_ in [(0.0, 0.1), (-1.3, 0.2), (0.3, 1.5)]:
                 assert_close(actual(x=x_, y=y_), expected(x=x_, y=y_))
 
 
@@ -67,7 +67,7 @@ def test_reduce_sum_rule():
     assert actual.input_vars <= expected.input_vars
     assert actual.output == expected.output
     if actual is not expected:
-        for x_, y_ in [(0., 0.1), (-1.3, 0.2), (0.3, 1.5)]:
+        for x_, y_ in [(0.0, 0.1), (-1.3, 0.2), (0.3, 1.5)]:
             assert_close(actual(x=x_, y=y_), expected(x=x_, y=y_))
 
 
@@ -84,5 +84,5 @@ def test_reduce_sum_getitem():
     assert actual.input_vars <= expected.input_vars
     assert actual.output == expected.output
     if actual is not expected:
-        for x_, y_ in [(0., 0.1), (-1.3, 0.2), (0.3, 1.5)]:
+        for x_, y_ in [(0.0, 0.1), (-1.3, 0.2), (0.3, 1.5)]:
             assert_close(actual(x=x_, y=y_), expected(x=x_, y=y_))
