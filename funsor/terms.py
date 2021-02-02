@@ -533,6 +533,16 @@ class Funsor(object, metaclass=FunsorMeta):
             return self
         return Reduce(op, self, reduced_vars)
 
+    def argreduce(self, op, reduced_vars):
+        """
+        Adjoint to :meth:`reduce`.
+        """
+        from .transpose import transpose
+
+        with interpreter.interpretation(lazy):
+            y = self.reduce(op, reduced_vars)
+        return transpose(y)[self]
+
     def sample(self, sampled_vars, sample_inputs=None, rng_key=None):
         """
         Create a Monte Carlo approximation to this funsor by replacing
