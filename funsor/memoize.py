@@ -22,12 +22,17 @@ def memoize(cache=None):
         if get_backend() == "jax":
             import jax
 
-            key = tuple(id(arg)
-                        if isinstance(arg, jax.interpreters.xla.DeviceArray)
-                        or not isinstance(arg, Hashable)
-                        else arg for arg in args)
+            key = tuple(
+                id(arg)
+                if isinstance(arg, jax.interpreters.xla.DeviceArray)
+                or not isinstance(arg, Hashable)
+                else arg
+                for arg in args
+            )
         else:
-            key = tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+            key = tuple(
+                id(arg) if not isinstance(arg, Hashable) else arg for arg in args
+            )
         if key not in cache:
             cache[key] = cls(*args)
         return cache[key]

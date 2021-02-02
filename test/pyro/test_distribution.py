@@ -19,7 +19,8 @@ class Categorical(FunsorDistribution):
         funsor_dist = tensor_to_funsor(logits, ("value",))
         dtype = int(logits.size(-1))
         super(Categorical, self).__init__(
-            funsor_dist, batch_shape, event_shape, dtype, validate_args)
+            funsor_dist, batch_shape, event_shape, dtype, validate_args
+        )
 
 
 @pytest.mark.parametrize("cardinality", [2, 3])

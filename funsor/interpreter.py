@@ -1,14 +1,16 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import atexit
 import functools
 import inspect
 import os
 import re
 import types
-from collections import OrderedDict, namedtuple
+from collections import Counter, OrderedDict, defaultdict, namedtuple
 from contextlib import contextmanager
 from functools import singledispatch
+from timeit import default_timer
 
 import numpy as np
 
@@ -19,6 +21,7 @@ from funsor.util import is_nn_module
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
+_PROFILE = int(os.environ.get("FUNSOR_PROFILE", 0))
 _STACK_SIZE = 0
 
 _INTERPRETATION = None  # To be set later in funsor.terms
@@ -28,11 +31,12 @@ _GENSYM_COUNTER = 0
 
 
 def _indent():
-    result = u'    \u2502' * (_STACK_SIZE // 4 + 3)
+    result = "    \u2502" * (_STACK_SIZE // 4 + 3)
     return result[:_STACK_SIZE]
 
 
 if _DEBUG:
+
     class DebugLogged(object):
         def __init__(self, fn):
             self.fn = fn
@@ -59,9 +63,60 @@ if _DEBUG:
         if isinstance(fn, DebugLogged):
             return fn
         return DebugLogged(fn)
+
+
+elif _PROFILE:
+
+    class ProfileLogged(object):
+        def __init__(self, fn):
+            self.fn = fn
+            while isinstance(fn, functools.partial):
+                fn = fn.func
+            path = inspect.getabsfile(fn).split("/funsor/")[-1]
+            lineno = inspect.getsourcelines(fn)[1]
+            self._message = "{} {} {}".format(fn.__name__, path, lineno)
+
+        def __call__(self, *args, **kwargs):
+            start = default_timer()
+            result = self.fn(*args, **kwargs)
+            COUNTERS["time"][self._message] += default_timer() - start
+            COUNTERS["call"][self._message] += 1
+            return result
+
+        @property
+        def register(self):
+            return self.fn.register
+
+    def debug_logged(fn):
+        if isinstance(fn, ProfileLogged):
+            return fn
+        return ProfileLogged(fn)
+
+
 else:
+
     def debug_logged(fn):
         return fn
+
+
+COUNTERS = defaultdict(Counter)
+if _PROFILE:
+    COUNTERS["time"]["total"] -= default_timer()
+
+    @atexit.register
+    def print_counters():
+        COUNTERS["time"]["total"] += default_timer()
+        for name, counter in sorted(COUNTERS.items()):
+            if "total" not in counter and len(counter) > 1:
+                counter["total"] = sum(counter.values())
+            print("-" * 80)
+            print(f"     count {name}")
+            for key, value in counter.most_common(_PROFILE):
+                if isinstance(value, float):
+                    print(f"{value: >10f} {key}")
+                else:
+                    print(f"{value: >10} {key}")
+        print("-" * 80)
 
 
 def _classname(cls):
@@ -81,7 +136,7 @@ def debug_interpret(cls, *args):
         typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
     else:
         typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
-    print(indent + ' '.join(typenames))
+    print(indent + " ".join(typenames))
 
     _STACK_SIZE += 1
     try:
@@ -90,10 +145,10 @@ def debug_interpret(cls, *args):
         _STACK_SIZE -= 1
 
     if _DEBUG > 1:
-        result_str = re.sub('\n', '\n          ' + indent, str(result))
+        result_str = re.sub("\n", "\n          " + indent, str(result))
     else:
         result_str = type(result).__name__
-    print(indent + '-> ' + result_str)
+    print(indent + "-> " + result_str)
     return result
 
 
@@ -161,6 +216,7 @@ _ground_types = (
 
 
 for t in _ground_types:
+
     @recursion_reinterpret.register(t)
     def recursion_reinterpret_ground(x):
         return x
@@ -213,6 +269,7 @@ def _children_tuple(x):
 
 
 for t in _ground_types:
+
     @children.register(t)
     def _children_ground(x):
         return ()
@@ -284,11 +341,11 @@ def stack_reinterpret(x):
         if is_atom(h):
             env[h_name] = h
         elif isinstance(h, (tuple, frozenset)):
-            env[h_name] = type(h)(
-                env[c_name] for c_name in parent_to_children[h_name])
+            env[h_name] = type(h)(env[c_name] for c_name in parent_to_children[h_name])
         else:
             env[h_name] = _INTERPRETATION(
-                type(h), *(env[c_name] for c_name in parent_to_children[h_name]))
+                type(h), *(env[c_name] for c_name in parent_to_children[h_name])
+            )
 
     return env[x_name]
 
@@ -325,11 +382,29 @@ def dispatched_interpretation(fn):
     Decorator to create a dispatched interpretation function.
     """
     registry = KeyedRegistry(default=lambda *args: None)
-    if _DEBUG:
-        fn.register = lambda *args: lambda fn: registry.register(*args)(debug_logged(fn))
+
+    if _DEBUG or _PROFILE:
+        fn.register = lambda *args: lambda fn: registry.register(*args)(
+            debug_logged(fn)
+        )
     else:
         fn.register = registry.register
-    fn.dispatch = registry.dispatch
+
+    if _PROFILE:
+
+        def profiled_dispatch(*args):
+            name = fn.__name__ + ".dispatch"
+            start = default_timer()
+            result = registry.dispatch(*args)
+            COUNTERS["time"][name] += default_timer() - start
+            COUNTERS["call"][name] += 1
+            COUNTERS["interpretation"][fn.__name__] += 1
+            return result
+
+        fn.dispatch = profiled_dispatch
+    else:
+        fn.dispatch = registry.dispatch
+
     return fn
 
 
@@ -364,10 +439,13 @@ class StatefulInterpretation(metaclass=StatefulInterpretationMeta):
         return self.dispatch(cls, *args)(self, *args)
 
     if _DEBUG:
+
         @classmethod
         def register(cls, *args):
             return lambda fn: cls.registry.register(*args)(debug_logged(fn))
+
     else:
+
         @classmethod
         def register(cls, *args):
             return cls.registry.register(*args)
@@ -375,15 +453,17 @@ class StatefulInterpretation(metaclass=StatefulInterpretationMeta):
 
 class PatternMissingError(NotImplementedError):
     def __str__(self):
-        return "{}\nThis is most likely due to a missing pattern.".format(super().__str__())
+        return "{}\nThis is most likely due to a missing pattern.".format(
+            super().__str__()
+        )
 
 
 __all__ = [
-    'PatternMissingError',
-    'StatefulInterpretation',
-    'dispatched_interpretation',
-    'interpret',
-    'interpretation',
-    'reinterpret',
-    'set_interpretation',
+    "PatternMissingError",
+    "StatefulInterpretation",
+    "dispatched_interpretation",
+    "interpret",
+    "interpretation",
+    "reinterpret",
+    "set_interpretation",
 ]
