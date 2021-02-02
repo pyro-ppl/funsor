@@ -12,6 +12,7 @@ class WeakPartial:
     """
     Like ``functools.partial(fn, arg)`` but weakly referencing ``arg``.
     """
+
     def __init__(self, fn, arg):
         self.fn = fn
         self.weak_arg = weakref.ref(arg)
@@ -27,6 +28,7 @@ class CachedOpMeta(type):
     Metaclass for caching op instance construction.
     Caching strategy is to key on ``*args`` and retain values forever.
     """
+
     def __init__(cls, *args, **kwargs):
         super().__init__(*args, **kwargs)
         cls._instance_cache = {}
@@ -45,6 +47,7 @@ class WrappedOpMeta(type):
     Metaclass for ops that wrap temporary backend ops.
     Caching strategy is to key on ``id(backend_op)`` and forget values asap.
     """
+
     def __init__(cls, *args, **kwargs):
         super().__init__(*args, **kwargs)
         cls._instance_cache = weakref.WeakValueDictionary()
@@ -114,6 +117,7 @@ class Op(Dispatcher):
             # Ensure registration with all future instances.
             cls._subclass_registry.append((pattern, fn))
             return fn
+
         return decorator
 
 
@@ -141,8 +145,9 @@ def make_op(fn=None, parent=None, *, name=None, module_name="funsor.ops"):
 
 
 def declare_op_types(locals_, all_, name_):
-    op_types = set(v for v in locals_.values()
-                   if isinstance(v, type) and issubclass(v, Op))
+    op_types = set(
+        v for v in locals_.values() if isinstance(v, type) and issubclass(v, Op)
+    )
     # Adds all op types to __all__, and fix their modules.
     for typ in op_types:
         if typ.__module__ == name_:
@@ -198,6 +203,7 @@ class WrappedTransformOp(TransformOp, metaclass=WrappedOpMeta):
     ``.log_abs_det_jacobian``. This additionally validates shapes on the first
     :meth:`__call__`.
     """
+
     def __init__(self, fn):
         super().__init__(fn, name=type(fn).__name__)
         self._is_validated = False
@@ -217,16 +223,19 @@ class WrappedTransformOp(TransformOp, metaclass=WrappedOpMeta):
             self.fn.forward_shape
         except AttributeError:
             backend = self.fn.__module__.split(".")[0]
-            raise NotImplementedError(f"{self.fn} is missing shape metadata; "
-                                      f"try upgrading backend {backend}")
+            raise NotImplementedError(
+                f"{self.fn} is missing shape metadata; "
+                f"try upgrading backend {backend}"
+            )
 
         if len(x.shape) < self.fn.domain.event_dim:
             raise ValueError(f"Too few dimensions for input, in {self.name}")
-        event_shape = x.shape[len(x.shape) - self.fn.domain.event_dim:]
+        event_shape = x.shape[len(x.shape) - self.fn.domain.event_dim :]
         shape = self.fn.forward_shape(event_shape)
         if len(shape) > self.fn.codomain.event_dim:
-            raise ValueError(f"Cannot treat transform {self.name} as an Op "
-                             "because it is batched")
+            raise ValueError(
+                f"Cannot treat transform {self.name} as an Op " "because it is batched"
+            )
         self._is_validated = True
         return super().__call__(x)
 
@@ -245,20 +254,20 @@ class LogAbsDetJacobianOp(BinaryOp, metaclass=WrappedOpMeta):
 
 # Op registration tables.
 DISTRIBUTIVE_OPS = set()  # (add, mul) pairs
-UNITS = {}                # op -> value
-PRODUCT_INVERSES = {}     # op -> inverse op
+UNITS = {}  # op -> value
+PRODUCT_INVERSES = {}  # op -> inverse op
 
 __all__ = [
-    'BinaryOp',
-    'CachedOpMeta',
-    'DISTRIBUTIVE_OPS',
-    'LogAbsDetJacobianOp',
-    'Op',
-    'PRODUCT_INVERSES',
-    'TransformOp',
-    'UNITS',
-    'UnaryOp',
-    'WrappedTransformOp',
-    'declare_op_types',
-    'make_op',
+    "BinaryOp",
+    "CachedOpMeta",
+    "DISTRIBUTIVE_OPS",
+    "LogAbsDetJacobianOp",
+    "Op",
+    "PRODUCT_INVERSES",
+    "TransformOp",
+    "UNITS",
+    "UnaryOp",
+    "WrappedTransformOp",
+    "declare_op_types",
+    "make_op",
 ]

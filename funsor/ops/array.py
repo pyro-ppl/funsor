@@ -6,7 +6,21 @@ import numbers
 
 import numpy as np
 
-from .builtin import AssociativeOp, add, atanh, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt, tanh
+from .builtin import (
+    AssociativeOp,
+    add,
+    atanh,
+    exp,
+    log,
+    log1p,
+    max,
+    min,
+    reciprocal,
+    safediv,
+    safesub,
+    sqrt,
+    tanh,
+)
 from .op import DISTRIBUTIVE_OPS, CachedOpMeta, Op, declare_op_types, make_op
 
 _builtin_all = all
@@ -40,9 +54,9 @@ atanh.register(array)(np.arctanh)
 
 @log.register(array)
 def _log(x):
-    if x.dtype == 'bool':
-        return np.where(x, 0., -math.inf)
-    with np.errstate(divide='ignore'):  # skip the warning of log(0.)
+    if x.dtype == "bool":
+        return np.where(x, 0.0, -math.inf)
+    with np.errstate(divide="ignore"):  # skip the warning of log(0.)
         return np.log(x)
 
 
@@ -135,8 +149,9 @@ def _einsum(x, *operand):
 def expand(x, shape):
     prepend_dim = len(shape) - np.ndim(x)
     assert prepend_dim >= 0
-    shape = shape[:prepend_dim] + tuple(dx if size == -1 else size
-                                        for dx, size in zip(np.shape(x), shape[prepend_dim:]))
+    shape = shape[:prepend_dim] + tuple(
+        dx if size == -1 else size for dx, size in zip(np.shape(x), shape[prepend_dim:])
+    )
     return np.broadcast_to(x, shape)
 
 
@@ -154,7 +169,7 @@ def is_numeric_array(x):
 def logsumexp(x, dim):
     amax = np.amax(x, axis=dim, keepdims=True)
     # treat the case x = -inf
-    amax = np.where(np.isfinite(amax), amax, 0.)
+    amax = np.where(np.isfinite(amax), amax, 0.0)
     return log(np.sum(np.exp(x - amax), axis=dim)) + amax.squeeze(axis=dim)
 
 
@@ -265,40 +280,43 @@ DISTRIBUTIVE_OPS.add((sample, add))
 
 
 __all__ = [
-    'all',
-    'amax',
-    'amin',
-    'any',
-    'astype',
-    'cat',
-    'cholesky',
-    'cholesky_inverse',
-    'cholesky_solve',
-    'clamp',
-    'detach',
-    'diagonal',
-    'einsum',
-    'expand',
-    'finfo',
-    'full_like',
-    'is_numeric_array',
-    'isnan',
-    'logaddexp',
-    'logsumexp',
-    'new_arange',
-    'new_eye',
-    'new_zeros',
-    'permute',
-    'prod',
-    'sample',
-    'stack',
-    'sum',
-    'transpose',
-    'triangular_solve',
-    'unsqueeze',
+    "all",
+    "amax",
+    "amin",
+    "any",
+    "astype",
+    "cat",
+    "cholesky",
+    "cholesky_inverse",
+    "cholesky_solve",
+    "clamp",
+    "detach",
+    "diagonal",
+    "einsum",
+    "expand",
+    "finfo",
+    "full_like",
+    "is_numeric_array",
+    "isnan",
+    "logaddexp",
+    "logsumexp",
+    "new_arange",
+    "new_eye",
+    "new_zeros",
+    "permute",
+    "prod",
+    "sample",
+    "stack",
+    "sum",
+    "transpose",
+    "triangular_solve",
+    "unsqueeze",
 ]
 
 declare_op_types(globals(), __all__, __name__)
 
-__doc__ = "\n".join(".. autodata:: {}\n".format(_name)
-                    for _name in __all__ if isinstance(globals()[_name], Op))
+__doc__ = "\n".join(
+    ".. autodata:: {}\n".format(_name)
+    for _name in __all__
+    if isinstance(globals()[_name], Op)
+)

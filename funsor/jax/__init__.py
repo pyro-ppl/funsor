@@ -14,7 +14,15 @@ from funsor.terms import Funsor, to_funsor
 from funsor.util import quote
 
 
-@adjoint_ops.register(Tensor, ops.AssociativeOp, ops.AssociativeOp, Funsor, (DeviceArray, Tracer), tuple, object)
+@adjoint_ops.register(
+    Tensor,
+    ops.AssociativeOp,
+    ops.AssociativeOp,
+    Funsor,
+    (DeviceArray, Tracer),
+    tuple,
+    object,
+)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}
 
@@ -40,4 +48,6 @@ def _quote(x, indent, out):
     """
     Work around JAX's DeviceArray not supporting reproducible repr.
     """
-    out.append((indent, "np.array({}, dtype=np.{})".format(repr(x.copy().tolist()), x.dtype)))
+    out.append(
+        (indent, "np.array({}, dtype=np.{})".format(repr(x.copy().tolist()), x.dtype))
+    )

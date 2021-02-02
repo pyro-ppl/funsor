@@ -29,15 +29,24 @@ class FunsorDistribution(TorchDistribution):
         contain extra dims of size 1.
     :param event_shape: The distribution's event shape.
     """
+
     arg_constraints = {}
 
-    def __init__(self, funsor_dist, batch_shape=torch.Size(), event_shape=torch.Size(),
-                 dtype="real", validate_args=None):
+    def __init__(
+        self,
+        funsor_dist,
+        batch_shape=torch.Size(),
+        event_shape=torch.Size(),
+        dtype="real",
+        validate_args=None,
+    ):
         assert isinstance(funsor_dist, Funsor)
         assert isinstance(batch_shape, tuple)
         assert isinstance(event_shape, tuple)
         assert "value" in funsor_dist.inputs
-        super(FunsorDistribution, self).__init__(batch_shape, event_shape, validate_args)
+        super(FunsorDistribution, self).__init__(
+            batch_shape, event_shape, validate_args
+        )
         self.funsor_dist = funsor_dist
         self.dtype = dtype
 
@@ -81,7 +90,9 @@ class FunsorDistribution(TorchDistribution):
 
     def rsample(self, sample_shape=torch.Size()):
         delta = self._sample_delta(sample_shape)
-        assert not delta.log_density.requires_grad, "distribution is not fully reparametrized"
+        assert (
+            not delta.log_density.requires_grad
+        ), "distribution is not fully reparametrized"
         ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
         value = funsor_to_tensor(delta.terms[0][1][0], ndims=ndims)
         return value
@@ -91,8 +102,9 @@ class FunsorDistribution(TorchDistribution):
         batch_shape = torch.Size(batch_shape)
         funsor_dist = self.funsor_dist + tensor_to_funsor(torch.zeros(batch_shape))
         super(type(self), new).__init__(
-            funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False)
-        new.validate_args = self.__dict__.get('_validate_args')
+            funsor_dist, batch_shape, self.event_shape, self.dtype, validate_args=False
+        )
+        new.validate_args = self.__dict__.get("_validate_args")
         return new
 
 

@@ -11,6 +11,7 @@ class PartialDispatcher(Dispatcher):
     """
     Wrapper to avoid appearance in stack traces.
     """
+
     def __init__(self, name, default=None):
         self.default = default if default is None else PartialDefault(default)
         super().__init__(name)
@@ -48,8 +49,9 @@ class PartialDispatcher(Dispatcher):
             func = self.dispatch(*types)
             if func is None:
                 raise NotImplementedError(
-                    'Could not find signature for %s: <%s>' %
-                    (self.name, ', '.join(cls.__name__ for cls in types)))
+                    "Could not find signature for %s: <%s>"
+                    % (self.name, ", ".join(cls.__name__ for cls in types))
+                )
             self._cache[types] = func
         return func
 
@@ -70,11 +72,10 @@ class PartialDefault:
 
 
 class KeyedRegistry(object):
-
     def __init__(self, default=None):
         # TODO make registry a WeakKeyDictionary
         self.default = default if default is None else PartialDefault(default)
-        self.registry = defaultdict(lambda: PartialDispatcher('f', default=default))
+        self.registry = defaultdict(lambda: PartialDispatcher("f", default=default))
 
     def register(self, key, *types):
         register = self.registry[get_origin(key)].register
@@ -105,5 +106,5 @@ class KeyedRegistry(object):
 
 
 __all__ = [
-    'KeyedRegistry',
+    "KeyedRegistry",
 ]

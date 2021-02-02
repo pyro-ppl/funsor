@@ -9,12 +9,15 @@ import pytest
 from funsor.domains import Bint, Real, Reals  # noqa F401
 
 
-@pytest.mark.parametrize('expr', [
-    "Bint[2]",
-    "Real",
-    "Reals[4]",
-    "Reals[3, 2]",
-])
+@pytest.mark.parametrize(
+    "expr",
+    [
+        "Bint[2]",
+        "Real",
+        "Reals[4]",
+        "Reals[3, 2]",
+    ],
+)
 def test_pickle(expr):
     x = eval(expr)
     f = io.BytesIO()

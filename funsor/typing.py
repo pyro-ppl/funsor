@@ -14,6 +14,7 @@ from multipledispatch.variadic import isvariadic
 # Runtime type-checking helpers
 #################################
 
+
 def deep_isinstance(obj, cls):
     """replaces isinstance()"""
     # return pytypes.is_of_type(obj, cls)
@@ -60,8 +61,9 @@ def deep_issubclass(subcls, cls):
         if not get_args(subcls):
             return get_args(cls)[0] is typing.Any
 
-        return len(get_args(subcls)) == len(get_args(cls)) == 1 and \
-            deep_issubclass(get_args(subcls)[0], get_args(cls)[0])
+        return len(get_args(subcls)) == len(get_args(cls)) == 1 and deep_issubclass(
+            get_args(subcls)[0], get_args(cls)[0]
+        )
 
     if issubclass(get_origin(cls), typing.Tuple):
 
@@ -84,8 +86,9 @@ def deep_issubclass(subcls, cls):
             return False
 
         # neither variadic
-        return len(get_args(cls)) == len(get_args(subcls)) and \
-            all(deep_issubclass(a, b) for a, b in zip(get_args(subcls), get_args(cls)))
+        return len(get_args(cls)) == len(get_args(subcls)) and all(
+            deep_issubclass(a, b) for a, b in zip(get_args(subcls), get_args(cls))
+        )
 
     return issubclass(subcls, cls)
 
@@ -99,6 +102,7 @@ def _type_to_typing(tp):
 ##############################################
 # Funsor-compatible typing introspection API
 ##############################################
+
 
 def get_args(tp):
     if isinstance(tp, GenericTypeMeta):
@@ -115,23 +119,27 @@ def get_origin(tp):
 
 
 def get_type_hints(obj, globalns=None, localns=None, include_extras=False):
-    return typing_extensions.get_type_hints(obj, globalns=globalns, localns=localns, include_extras=include_extras)
+    return typing_extensions.get_type_hints(
+        obj, globalns=globalns, localns=localns, include_extras=include_extras
+    )
 
 
 ######################################################################
 # Metaclass for generating parametric types with Tuple-like variance
 ######################################################################
 
+
 class GenericTypeMeta(type):
     """
     Metaclass to support subtyping with parameters for pattern matching, e.g. Number[int, int].
     """
+
     def __init__(cls, name, bases, dct):
         super().__init__(name, bases, dct)
         if not hasattr(cls, "__args__"):
             cls.__args__ = ()
         if cls.__args__:
-            base, = bases
+            (base,) = bases
             cls.__origin__ = base
         else:
             cls._type_cache = weakref.WeakValueDictionary()
@@ -139,10 +147,14 @@ class GenericTypeMeta(type):
     def __getitem__(cls, arg_types):
         if not isinstance(arg_types, tuple):
             arg_types = (arg_types,)
-        assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
+        assert not any(
+            isvariadic(arg_type) for arg_type in arg_types
+        ), "nested variadic types not supported"
         arg_types = tuple(map(_type_to_typing, arg_types))
         if arg_types not in cls._type_cache:
-            assert not get_args(cls), "cannot subscript a subscripted type {}".format(cls)
+            assert not get_args(cls), "cannot subscript a subscripted type {}".format(
+                cls
+            )
             new_dct = cls.__dict__.copy()
             new_dct.update({"__args__": arg_types})
             # type(cls) to handle GenericTypeMeta subclasses
@@ -156,24 +168,31 @@ class GenericTypeMeta(type):
         if not isinstance(subcls, GenericTypeMeta):
             return super(GenericTypeMeta, get_origin(cls)).__subclasscheck__(subcls)
 
-        if not super(GenericTypeMeta, get_origin(cls)).__subclasscheck__(get_origin(subcls)):
+        if not super(GenericTypeMeta, get_origin(cls)).__subclasscheck__(
+            get_origin(subcls)
+        ):
             return False
 
         if len(get_args(cls)) != len(get_args(subcls)):
             return len(get_args(cls)) == 0
 
-        return all(deep_issubclass(_type_to_typing(ps), _type_to_typing(pc))
-                   for ps, pc in zip(get_args(subcls), get_args(cls)))
+        return all(
+            deep_issubclass(_type_to_typing(ps), _type_to_typing(pc))
+            for ps, pc in zip(get_args(subcls), get_args(cls))
+        )
 
     def __repr__(cls):
         return get_origin(cls).__name__ + (
-            "" if not get_args(cls) else
-            "[{}]".format(", ".join(repr(t) for t in get_args(cls))))
+            ""
+            if not get_args(cls)
+            else "[{}]".format(", ".join(repr(t) for t in get_args(cls)))
+        )
 
 
 ##############################################################
 # Tools and overrides for typing-compatible multipledispatch
 ##############################################################
+
 
 class _RuntimeSubclassCheckMeta(GenericTypeMeta):
     def __call__(cls, tp):
@@ -190,11 +209,11 @@ class typing_wrap(metaclass=_RuntimeSubclassCheckMeta):
     """
     Utility callable for overriding the runtime behavior of `typing` objects.
     """
+
     pass
 
 
 class _DeepVariadicSignatureType(type):
-
     def __getitem__(cls, key):
         if not isinstance(key, tuple):
             key = (key,)
@@ -205,4 +224,5 @@ class Variadic(metaclass=_DeepVariadicSignatureType):
     """
     A typing-compatible drop-in replacement for multipledispatch.variadic.Variadic.
     """
+
     pass
