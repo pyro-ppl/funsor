@@ -51,6 +51,7 @@ setup(
         "test": [
             "black",
             "flake8",
+            "isort>=5.0",
             "pandas",
             "pyro-api>=0.1.2",
             "pytest==4.3.1",
@@ -61,6 +62,7 @@ setup(
         "dev": [
             "black",
             "flake8",
+            "isort>=5.0",
             "pandas",
             "pytest==4.3.1",
             "pytest-xdist==1.27.0",
