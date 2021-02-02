@@ -58,4 +58,4 @@ for basename, comment in file_types:
         with open(filename, "w") as f:
             f.write("".join(lines))
 
-        print("updated {}".format(filename[len(root) + 1:]))
+        print("updated {}".format(filename[len(root) + 1 :]))
