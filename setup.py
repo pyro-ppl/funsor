@@ -58,8 +58,8 @@ setup(
             'torchvision',
         ],
         'dev': [
+            'black',
             'flake8',
-            'isort',
             'pandas',
             'pytest==4.3.1',
             'pytest-xdist==1.27.0',
