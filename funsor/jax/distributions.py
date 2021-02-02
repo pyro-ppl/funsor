@@ -6,10 +6,11 @@ from typing import Tuple, Union
 
 import numpyro.distributions as dist
 
+import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.distribution import (
-    Bernoulli,
     FUNSOR_DIST_NAMES,
+    Bernoulli,
     LogNormal,
     backenddist_to_funsor,
     eager_beta,
@@ -37,7 +38,6 @@ from funsor.distribution import (
     transformeddist_to_funsor,
 )
 from funsor.domains import Real, Reals
-import funsor.ops as ops
 from funsor.tensor import Tensor
 from funsor.terms import Binary, Funsor, Reduce, Variable, eager, to_data, to_funsor
 from funsor.util import methodof

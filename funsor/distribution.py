@@ -43,7 +43,6 @@ from funsor.terms import (
 )
 from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
-
 BACKEND_TO_DISTRIBUTIONS_BACKEND = {
     "torch": "funsor.torch.distributions",
     "jax": "funsor.jax.distributions",

@@ -13,6 +13,7 @@ from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
+from funsor.tensor import Tensor
 from funsor.terms import (
     Binary,
     Cat,
@@ -26,7 +27,6 @@ from funsor.terms import (
     substitute,
     to_funsor,
 )
-from funsor.tensor import Tensor
 
 
 def _alpha_unmangle(expr):

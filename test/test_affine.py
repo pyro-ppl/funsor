@@ -8,6 +8,7 @@ import pytest
 from funsor.affine import extract_affine, is_affine
 from funsor.cnf import Contraction
 from funsor.domains import Bint, Real, Reals  # noqa: F401
+from funsor.tensor import Einsum, Tensor
 from funsor.terms import Number, Unary, Variable
 from funsor.testing import (
     assert_close,
@@ -17,7 +18,6 @@ from funsor.testing import (
     random_gaussian,
     random_tensor,
 )
-from funsor.tensor import Einsum, Tensor
 
 assert ones  # flake8
 assert random_gaussian  # flake8

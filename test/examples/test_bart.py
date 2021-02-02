@@ -7,8 +7,8 @@ import pytest
 import torch
 
 import funsor
-import funsor.torch.distributions as dist
 import funsor.ops as ops
+import funsor.torch.distributions as dist
 from funsor.cnf import Contraction
 from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import Gaussian

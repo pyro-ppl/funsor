@@ -12,8 +12,8 @@ from torch.nn import functional as F
 from torchvision import datasets, transforms
 
 import funsor
-import funsor.torch.distributions as dist
 import funsor.ops as ops
+import funsor.torch.distributions as dist
 from funsor.domains import Bint, Reals
 
 REPO_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
