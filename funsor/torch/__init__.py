@@ -14,7 +14,9 @@ from funsor.tensor import Tensor, tensor_to_funsor
 from funsor.util import quote
 
 
-@adjoint_ops.register(Tensor, ops.AssociativeOp, ops.AssociativeOp, Funsor, torch.Tensor, tuple, object)
+@adjoint_ops.register(
+    Tensor, ops.AssociativeOp, ops.AssociativeOp, Funsor, torch.Tensor, tuple, object
+)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}
 

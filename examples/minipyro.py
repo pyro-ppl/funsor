@@ -19,16 +19,17 @@ def main(args):
     # Define a basic model with a single Normal latent random variable `loc`
     # and a batch of Normally distributed observations.
     def model(data):
-        loc = pyro.sample("loc", dist.Normal(0., 1.))
+        loc = pyro.sample("loc", dist.Normal(0.0, 1.0))
         with pyro.plate("data", len(data), dim=-1):
-            pyro.sample("obs", dist.Normal(loc, 1.), obs=data)
+            pyro.sample("obs", dist.Normal(loc, 1.0), obs=data)
 
     # Define a guide (i.e. variational distribution) with a Normal
     # distribution over the latent random variable `loc`.
     def guide(data):
-        guide_loc = pyro.param("guide_loc", torch.tensor(0.))
-        guide_scale = pyro.param("guide_scale", torch.tensor(1.),
-                                 constraint=constraints.positive)
+        guide_loc = pyro.param("guide_loc", torch.tensor(0.0))
+        guide_scale = pyro.param(
+            "guide_scale", torch.tensor(1.0), constraint=constraints.positive
+        )
         pyro.sample("loc", dist.Normal(guide_loc, guide_scale))
 
     # Generate some data.
