@@ -1,13 +1,11 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import atexit
 import functools
-import inspect
 import os
 import re
 import types
-from collections import Counter, OrderedDict, defaultdict, namedtuple
+from collections import OrderedDict, namedtuple
 from contextlib import contextmanager
 from functools import singledispatch
 from timeit import default_timer
@@ -15,108 +13,19 @@ from timeit import default_timer
 import numpy as np
 
 from funsor.domains import ArrayType
+from funsor.instrument import debug_logged
 from funsor.ops import Op, is_numeric_array
 from funsor.registry import KeyedRegistry
 from funsor.util import is_nn_module
 
+from . import instrument
+
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
-_PROFILE = int(os.environ.get("FUNSOR_PROFILE", 0))
-_STACK_SIZE = 0
 
 _INTERPRETATION = None  # To be set later in funsor.terms
 _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
 
 _GENSYM_COUNTER = 0
-
-
-def _indent():
-    result = "    \u2502" * (_STACK_SIZE // 4 + 3)
-    return result[:_STACK_SIZE]
-
-
-if _DEBUG:
-
-    class DebugLogged(object):
-        def __init__(self, fn):
-            self.fn = fn
-            while isinstance(fn, functools.partial):
-                fn = fn.func
-            path = inspect.getabsfile(fn)
-            lineno = inspect.getsourcelines(fn)[1]
-            self._message = "{} file://{} {}".format(fn.__name__, path, lineno)
-
-        def __call__(self, *args, **kwargs):
-            global _STACK_SIZE
-            print(_indent() + self._message)
-            _STACK_SIZE += 1
-            try:
-                return self.fn(*args, **kwargs)
-            finally:
-                _STACK_SIZE -= 1
-
-        @property
-        def register(self):
-            return self.fn.register
-
-    def debug_logged(fn):
-        if isinstance(fn, DebugLogged):
-            return fn
-        return DebugLogged(fn)
-
-
-elif _PROFILE:
-
-    class ProfileLogged(object):
-        def __init__(self, fn):
-            self.fn = fn
-            while isinstance(fn, functools.partial):
-                fn = fn.func
-            path = inspect.getabsfile(fn).split("/funsor/")[-1]
-            lineno = inspect.getsourcelines(fn)[1]
-            self._message = "{} {} {}".format(fn.__name__, path, lineno)
-
-        def __call__(self, *args, **kwargs):
-            start = default_timer()
-            result = self.fn(*args, **kwargs)
-            COUNTERS["time"][self._message] += default_timer() - start
-            COUNTERS["call"][self._message] += 1
-            return result
-
-        @property
-        def register(self):
-            return self.fn.register
-
-    def debug_logged(fn):
-        if isinstance(fn, ProfileLogged):
-            return fn
-        return ProfileLogged(fn)
-
-
-else:
-
-    def debug_logged(fn):
-        return fn
-
-
-COUNTERS = defaultdict(Counter)
-if _PROFILE:
-    COUNTERS["time"]["total"] -= default_timer()
-
-    @atexit.register
-    def print_counters():
-        COUNTERS["time"]["total"] += default_timer()
-        for name, counter in sorted(COUNTERS.items()):
-            if "total" not in counter and len(counter) > 1:
-                counter["total"] = sum(counter.values())
-            print("-" * 80)
-            print(f"     count {name}")
-            for key, value in counter.most_common(_PROFILE):
-                if isinstance(value, float):
-                    print(f"{value: >10f} {key}")
-                else:
-                    print(f"{value: >10} {key}")
-        print("-" * 80)
 
 
 def _classname(cls):
@@ -129,30 +38,32 @@ class Interpreter:
         return _INTERPRETATION
 
 
-def debug_interpret(cls, *args):
-    global _STACK_SIZE
-    indent = _indent()
-    if _DEBUG > 1:
-        typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
-    else:
-        typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
-    print(indent + " ".join(typenames))
+if instrument.DEBUG:
 
-    _STACK_SIZE += 1
-    try:
-        result = _INTERPRETATION(cls, *args)
-    finally:
-        _STACK_SIZE -= 1
+    def interpret(cls, *args):
+        indent = instrument.get_indent()
+        if instrument.DEBUG > 1:
+            typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
+        else:
+            typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
+        print(indent + " ".join(typenames))
 
-    if _DEBUG > 1:
-        result_str = re.sub("\n", "\n          " + indent, str(result))
-    else:
-        result_str = type(result).__name__
-    print(indent + "-> " + result_str)
-    return result
+        instrument.STACK_SIZE += 1
+        try:
+            result = _INTERPRETATION(cls, *args)
+        finally:
+            instrument.STACK_SIZE -= 1
+
+        if instrument.DEBUG > 1:
+            result_str = re.sub("\n", "\n          " + indent, str(result))
+        else:
+            result_str = type(result).__name__
+        print(indent + "-> " + result_str)
+        return result
 
 
-interpret = debug_interpret if _DEBUG else Interpreter()
+else:
+    interpret = Interpreter()
 
 
 def set_interpretation(new):
@@ -383,14 +294,15 @@ def dispatched_interpretation(fn):
     """
     registry = KeyedRegistry(default=lambda *args: None)
 
-    if _DEBUG or _PROFILE:
+    if instrument.DEBUG or instrument.PROFILE:
         fn.register = lambda *args: lambda fn: registry.register(*args)(
             debug_logged(fn)
         )
     else:
         fn.register = registry.register
 
-    if _PROFILE:
+    if instrument.PROFILE:
+        COUNTERS = instrument.COUNTERS
 
         def profiled_dispatch(*args):
             name = fn.__name__ + ".dispatch"
@@ -438,7 +350,7 @@ class StatefulInterpretation(metaclass=StatefulInterpretationMeta):
     def __call__(self, cls, *args):
         return self.dispatch(cls, *args)(self, *args)
 
-    if _DEBUG:
+    if instrument.DEBUG:
 
         @classmethod
         def register(cls, *args):
