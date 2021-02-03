@@ -38,29 +38,32 @@ class Interpreter:
         return _INTERPRETATION
 
 
-def debug_interpret(cls, *args):
-    indent = instrument.get_indent()
-    if instrument.DEBUG > 1:
-        typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
-    else:
-        typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
-    print(indent + " ".join(typenames))
+if instrument.DEBUG:
 
-    instrument.STACK_SIZE += 1
-    try:
-        result = _INTERPRETATION(cls, *args)
-    finally:
-        instrument.STACK_SIZE -= 1
+    def interpret(cls, *args):
+        indent = instrument.get_indent()
+        if instrument.DEBUG > 1:
+            typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
+        else:
+            typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
+        print(indent + " ".join(typenames))
 
-    if instrument.DEBUG > 1:
-        result_str = re.sub("\n", "\n          " + indent, str(result))
-    else:
-        result_str = type(result).__name__
-    print(indent + "-> " + result_str)
-    return result
+        instrument.STACK_SIZE += 1
+        try:
+            result = _INTERPRETATION(cls, *args)
+        finally:
+            instrument.STACK_SIZE -= 1
+
+        if instrument.DEBUG > 1:
+            result_str = re.sub("\n", "\n          " + indent, str(result))
+        else:
+            result_str = type(result).__name__
+        print(indent + "-> " + result_str)
+        return result
 
 
-interpret = debug_interpret if instrument.DEBUG else Interpreter()
+else:
+    interpret = Interpreter()
 
 
 def set_interpretation(new):
