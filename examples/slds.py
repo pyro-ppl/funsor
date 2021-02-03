@@ -6,8 +6,8 @@ import argparse
 import torch
 
 import funsor
-import funsor.torch.distributions as dist
 import funsor.ops as ops
+import funsor.torch.distributions as dist
 
 
 def main(args):

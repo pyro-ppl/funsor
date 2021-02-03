@@ -12,8 +12,8 @@ import torch.nn as nn
 from torch.optim import Adam
 
 import funsor
-import funsor.torch.distributions as f_dist
 import funsor.ops as ops
+import funsor.torch.distributions as f_dist
 from funsor.domains import Reals
 from funsor.pyro.convert import dist_to_funsor, funsor_to_mvn
 from funsor.tensor import Tensor, Variable
@@ -241,8 +241,8 @@ def main(args):
         import matplotlib
 
         matplotlib.use("Agg")
-        from matplotlib import pyplot
         import numpy as np
+        from matplotlib import pyplot
 
         seeds = set(seed for seed, _, _ in results)
         X = args.num_frames

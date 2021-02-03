@@ -17,13 +17,13 @@ from os.path import exists
 from urllib.request import urlopen
 
 import numpy as np
+import pyro
 import torch
 import torch.nn as nn
-import pyro
 
 import funsor
-import funsor.torch.distributions as dist
 import funsor.ops as ops
+import funsor.torch.distributions as dist
 from funsor.pyro.convert import (
     funsor_to_cat_and_mvn,
     funsor_to_mvn,

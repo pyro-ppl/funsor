@@ -4,20 +4,23 @@
 from jax.core import Tracer
 from jax.interpreters.xla import DeviceArray
 
-import funsor.jax.distributions  # noqa: F401
-import funsor.jax.ops  # noqa: F401
-import funsor.ops as ops
 from funsor.adjoint import adjoint_ops
 from funsor.interpreter import children, recursion_reinterpret
-from funsor.terms import Funsor, to_funsor
+from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, tensor_to_funsor
+from funsor.terms import Funsor, to_funsor
 from funsor.util import quote
+
+from . import distributions as _
+from . import ops as _
+
+del _  # flake8
 
 
 @adjoint_ops.register(
     Tensor,
-    ops.AssociativeOp,
-    ops.AssociativeOp,
+    AssociativeOp,
+    AssociativeOp,
     Funsor,
     (DeviceArray, Tracer),
     tuple,

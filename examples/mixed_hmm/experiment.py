@@ -10,6 +10,8 @@ import uuid
 import pyro
 import pyro.poutine as poutine
 import torch
+from model import Guide, Model
+from seal_data import prepare_fake, prepare_seal
 
 import funsor
 import funsor.ops as ops
@@ -17,8 +19,6 @@ from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import MarkovProduct, naive_sequential_sum_product, sum_product
 from funsor.terms import lazy, to_funsor
-from model import Guide, Model
-from seal_data import prepare_fake, prepare_seal
 
 
 def aic_num_parameters(model, guide=None):

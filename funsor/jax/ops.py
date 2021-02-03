@@ -11,7 +11,7 @@ from jax.interpreters.xla import DeviceArray
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, gammaln, logsumexp
 
-import funsor.ops as ops
+from .. import ops
 
 ################################################################################
 # Register Ops

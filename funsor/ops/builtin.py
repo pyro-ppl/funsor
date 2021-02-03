@@ -181,6 +181,9 @@ PRODUCT_INVERSES[mul] = truediv
 PRODUCT_INVERSES[add] = sub
 
 __all__ = [
+    "AssociativeOp",
+    "GetitemOp",
+    "NullOp",
     "abs",
     "add",
     "and_",
