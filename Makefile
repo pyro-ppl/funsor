@@ -12,12 +12,14 @@ docs: FORCE
 lint: FORCE
 	flake8
 	black --check .
+	isort --check .
 
 license: FORCE
 	python scripts/update_headers.py
 
 format: FORCE
 	black .
+	isort .
 
 test: lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)

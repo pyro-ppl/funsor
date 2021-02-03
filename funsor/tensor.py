@@ -11,13 +11,15 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
+from multipledispatch import dispatch
 
 import funsor
-import funsor.ops as ops
-from funsor.delta import Delta
-from funsor.domains import Array, ArrayType, Bint, Product, Real, Reals, find_domain
-from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
-from funsor.terms import (
+
+from . import ops
+from .delta import Delta
+from .domains import Array, ArrayType, Bint, Product, Real, Reals, find_domain
+from .ops import GetitemOp, MatmulOp, Op, ReshapeOp
+from .terms import (
     Binary,
     Funsor,
     FunsorMeta,
@@ -32,9 +34,8 @@ from funsor.terms import (
     to_data,
     to_funsor,
 )
-from funsor.typing import Variadic
-from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
-from multipledispatch import dispatch
+from .typing import Variadic
+from .util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
 
 
 def get_default_prototype():

@@ -4,11 +4,11 @@
 import functools
 from typing import Tuple, Union
 
-import funsor.ops as ops
 import numpyro.distributions as dist
+
+import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.distribution import (
-    Bernoulli,
     FUNSOR_DIST_NAMES,
     Bernoulli,
     LogNormal,

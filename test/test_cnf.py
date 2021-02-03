@@ -9,9 +9,9 @@ import pytest
 
 from funsor import ops
 from funsor.cnf import (
-    Contraction,
     BACKEND_TO_EINSUM_BACKEND,
     BACKEND_TO_LOGSUMEXP_BACKEND,
+    Contraction,
 )
 from funsor.domains import Array, Bint, Reals  # noqa: F401
 from funsor.einsum import einsum, naive_plated_einsum

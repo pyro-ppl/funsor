@@ -241,8 +241,8 @@ def main(args):
         import matplotlib
 
         matplotlib.use("Agg")
-        from matplotlib import pyplot
         import numpy as np
+        from matplotlib import pyplot
 
         seeds = set(seed for seed, _, _ in results)
         X = args.num_frames

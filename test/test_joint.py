@@ -22,8 +22,8 @@ from funsor.testing import (
     randn,
     random_gaussian,
     random_tensor,
-    zeros,
     xfail_if_not_implemented,
+    zeros,
 )
 from funsor.util import get_backend
 

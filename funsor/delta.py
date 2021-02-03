@@ -3,7 +3,6 @@
 
 from collections import OrderedDict
 
-import funsor.ops as ops
 from funsor.domains import Domain, Real
 from funsor.interpreter import debug_logged
 from funsor.ops import AddOp, SubOp, TransformOp
@@ -21,6 +20,8 @@ from funsor.terms import (
     eager,
     to_funsor,
 )
+
+from . import ops
 
 
 def solve(expr, value):
