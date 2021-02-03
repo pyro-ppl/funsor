@@ -13,11 +13,12 @@ lint: FORCE
 	flake8
 	black --check .
 	isort --check .
+	python scripts/update_headers.py --check
 
 license: FORCE
 	python scripts/update_headers.py
 
-format: FORCE
+format: license FORCE
 	black .
 	isort .
 
