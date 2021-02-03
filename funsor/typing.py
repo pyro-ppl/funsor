@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import sys
 import typing
 import weakref
 
@@ -104,22 +105,22 @@ def _type_to_typing(tp):
 
 
 def get_args(tp):
-    if isinstance(tp, GenericTypeMeta):
+    if isinstance(tp, GenericTypeMeta) or sys.version_info[:2] < (3, 7):
         return getattr(tp, "__args__", ())
     result = typing_extensions.get_args(tp)
     return () if result is None else result
 
 
 def get_origin(tp):
-    if isinstance(tp, GenericTypeMeta):
+    if isinstance(tp, GenericTypeMeta) or sys.version_info[:2] < (3, 7):
         return getattr(tp, "__origin__", tp)
     result = typing_extensions.get_origin(tp)
     return tp if result is None else result
 
 
-def get_type_hints(obj, globalns=None, localns=None, include_extras=False):
+def get_type_hints(obj, globalns=None, localns=None, **kwargs):
     return typing_extensions.get_type_hints(
-        obj, globalns=globalns, localns=localns, include_extras=include_extras
+        obj, globalns=globalns, localns=localns, **kwargs
     )
 
 
