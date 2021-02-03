@@ -6,7 +6,6 @@ import typing
 import weakref
 
 import typing_extensions
-
 from multipledispatch.variadic import Variadic as _OrigVariadic
 from multipledispatch.variadic import isvariadic
 

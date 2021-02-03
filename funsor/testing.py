@@ -11,6 +11,8 @@ from functools import reduce
 
 import numpy as np
 import opt_einsum
+from multipledispatch import dispatch
+from multipledispatch.variadic import Variadic
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
@@ -20,8 +22,6 @@ from funsor.gaussian import Gaussian
 from funsor.tensor import Tensor
 from funsor.terms import Funsor, Number
 from funsor.util import get_backend
-from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic
 
 
 @contextlib.contextmanager

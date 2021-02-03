@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
-
 from multipledispatch import dispatch
 
 from funsor.adjoint import adjoint_ops
