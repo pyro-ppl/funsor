@@ -4,14 +4,15 @@
 import torch
 from multipledispatch import dispatch
 
-import funsor.torch.distributions as _
-import funsor.torch.ops as _
 from funsor.adjoint import adjoint_ops
 from funsor.interpreter import children, recursion_reinterpret
 from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, tensor_to_funsor
 from funsor.terms import Funsor, to_funsor
 from funsor.util import quote
+
+from . import distributions as _
+from . import ops as _
 
 del _  # flake8
 
