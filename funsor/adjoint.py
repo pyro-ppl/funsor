@@ -5,14 +5,13 @@ from collections import OrderedDict, defaultdict
 
 import numpy as np
 
-import funsor.interpreter as interpreter
-import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
+from funsor.tensor import Tensor
 from funsor.terms import (
     Binary,
     Cat,
@@ -26,7 +25,8 @@ from funsor.terms import (
     substitute,
     to_funsor,
 )
-from funsor.tensor import Tensor
+
+from . import instrument, interpreter, ops
 
 
 def _alpha_unmangle(expr):
@@ -106,10 +106,10 @@ def _fail_default(*args):
 
 
 adjoint_ops = KeyedRegistry(default=_fail_default)
-if interpreter._DEBUG:
+if instrument.DEBUG:
     adjoint_ops_register = adjoint_ops.register
     adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(
-        interpreter.debug_logged(fn)
+        instrument.debug_logged(fn)
     )
 
 
