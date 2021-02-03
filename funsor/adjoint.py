@@ -25,6 +25,7 @@ from funsor.terms import (
     substitute,
     to_funsor,
 )
+
 from . import instrument, interpreter, ops
 
 
