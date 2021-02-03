@@ -45,3 +45,15 @@ jobs:
               - pip install https://github.com/pyro-ppl/numpyro/archive/master.zip
               - pip install -e .[jax]
               - CI=1 FUNSOR_BACKEND=jax make test
+        - name: numpy37
+          python: 3.7
+          script:
+              - make test
+        - name: numpy38
+          python: 3.8
+          script:
+              - make test
+        - name: numpy39
+          python: 3.9
+          script:
+              - make test
