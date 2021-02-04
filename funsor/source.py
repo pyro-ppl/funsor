@@ -30,12 +30,12 @@ STR_TO_NODE = {v: k for k, v in NODE_TO_STR.items()}
 
 
 class BinOpTransformer(ast.NodeTransformer):
-    def __init__(self, ops_to_vars):
-        assert isinstance(ops_to_vars, dict)
-        for k, v in ops_to_vars.items():
+    def __init__(self, ops_to_fns):
+        assert isinstance(ops_to_fns, dict)
+        for k, v in ops_to_fns.items():
             assert isinstance(k, str), k
             assert isinstance(v, str), v
-        self.types_to_vars = {STR_TO_NODE[k]: v for k, v in ops_to_vars.items()}
+        self.types_to_vars = {STR_TO_NODE[k]: v for k, v in ops_to_fns.items()}
 
     def visit_BinOp(self, node):
         node = self.generic_visit(node)
@@ -54,14 +54,14 @@ class BinOpTransformer(ast.NodeTransformer):
         return node
 
 
-def rewrite_ops_as_vars(ops_to_vars):
+def rewrite_ops(ops_to_fns):
     """
     Decorator to replace infix binary operators in the decorated function's
     code with named binary variables, either globals or function arguments.
 
     For example the following code::
 
-        @rewrite_ops_as_vars({"+": "sum_op", "*": "prod_op"})
+        @rewrite_ops({"+": "sum_op", "*": "prod_op"})
         def product_rule(sum_op, prod_op, lhs, rhs, d):
             return d(lhs) * rhs + lhs * d(rhs)
 
@@ -73,11 +73,11 @@ def rewrite_ops_as_vars(ops_to_vars):
     .. warning:: This must be used as the innermost decorator, and must fit on
         a single line.
 
-    :param dict ops_to_vars: A mapping from operator symbol to variable name.
+    :param dict ops_to_fns: A mapping from operator symbol to variable name.
     :returns: A decorator
     :rtype: callable
     """
-    transformer = BinOpTransformer(ops_to_vars)
+    transformer = BinOpTransformer(ops_to_fns)
 
     def decorator(fn):
         source = inspect.getsource(fn)
@@ -89,7 +89,7 @@ def rewrite_ops_as_vars(ops_to_vars):
         for line in source.split("\n"):
             line = line[indent:]
             if discard:
-                if line.startswith("@rewrite_ops_as_vars"):
+                if line.startswith("@rewrite_ops"):
                     discard = False
                 continue
             lines.append(line)
@@ -103,7 +103,6 @@ def rewrite_ops_as_vars(ops_to_vars):
         result = {}
         exec(source_t, globals(), result)
         fn_t = result[fn.__name__]
-
         functools.update_wrapper(fn_t, fn)
         return fn_t
 
@@ -111,5 +110,5 @@ def rewrite_ops_as_vars(ops_to_vars):
 
 
 __all__ = [
-    "rewrite_ops_as_vars",
+    "rewrite_ops",
 ]

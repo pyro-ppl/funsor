@@ -7,14 +7,14 @@ import sys
 
 import pytest
 
-from funsor.source import rewrite_ops_as_vars
+from funsor.source import rewrite_ops
 
 python_version = tuple(map(int, sys.version.split()[0].split(".")[:2]))
 
 
 @pytest.mark.skipif(python_version < (3, 9), reason="not supported")
-def test_rewrite_ops_as_vars():
-    @rewrite_ops_as_vars({"+": "sum_op", "*": "prod_op"})
+def test_rewrite_ops():
+    @rewrite_ops({"+": "sum_op", "*": "prod_op"})
     def product_rule(sum_op, prod_op, lhs, rhs, d):
         """foo"""
         return d(lhs) * rhs + lhs * d(rhs)
@@ -36,7 +36,7 @@ def test_rewrite_ops_as_vars():
 
 
 @pytest.mark.skipif(python_version < (3, 9), reason="not supported")
-def test_rewrite_ops_as_vars_register():
+def test_rewrite_ops_register():
     registry = set()
 
     def register(fn):
@@ -45,7 +45,7 @@ def test_rewrite_ops_as_vars_register():
         return fn
 
     @register
-    @rewrite_ops_as_vars({"+": "sum_op", "*": "prod_op"})
+    @rewrite_ops({"+": "sum_op", "*": "prod_op"})
     def product_rule(sum_op, prod_op, lhs, rhs, d):
         """foo"""
         return d(lhs) * rhs + lhs * d(rhs)
