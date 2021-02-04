@@ -70,6 +70,9 @@ def rewrite_ops_as_vars(ops_to_vars):
         def product_rule(sum_op, prod_op, lhs, rhs, d):
             return sum_op(prod_op(d(lhs), rhs), prod_op(lhs, d(rhs)))
 
+    .. warning:: This must be used as the innermost decorator, and must fit on
+        a single line.
+
     :param dict ops_to_vars: A mapping from operator symbol to variable name.
     :returns: A decorator
     :rtype: callable
@@ -79,12 +82,19 @@ def rewrite_ops_as_vars(ops_to_vars):
     def decorator(fn):
         source = inspect.getsource(fn)
 
-        # Strip indentation and this decorator.
-        lines = [line for line in source.split("\n")]
-        indent = len(lines[0]) - len(lines[0].strip())
-        lines = [line[indent:] for line in lines]
-        lines = [line for line in lines if not line.startswith("@rewrite_ops_as_vars")]
+        # Strip indentation, this decorator, and all above decorators.
+        indent = len(source) - len(source.lstrip())
+        lines = []
+        discard = True
+        for line in source.split("\n"):
+            line = line[indent:]
+            if discard:
+                if line.startswith("@rewrite_ops_as_vars"):
+                    discard = False
+                continue
+            lines.append(line)
         source = "\n".join(lines)
+        assert source
 
         # Transform the function.
         a = ast.parse(source)
