@@ -111,8 +111,9 @@ class OpTransformer(ast.NodeTransformer):
 
 def rewrite_ops(infix={}, prefix={}, const={}):
     """
-    Decorator to replace infix binary operators in the decorated function's
-    code with named binary variables, either globals or function arguments.
+    Decorator to replace infix binary operators, prefix unary operators, and
+    constants (nullary operators) in the decorated function's code with named
+    variables.
 
     For example the following code::
 
