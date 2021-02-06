@@ -176,12 +176,19 @@ DISTRIBUTIVE_OPS.add((max, mul))
 DISTRIBUTIVE_OPS.add((min, mul))
 DISTRIBUTIVE_OPS.add((max, add))
 DISTRIBUTIVE_OPS.add((min, add))
+DISTRIBUTIVE_OPS.add((or_, and_))
 
 UNITS[mul] = 1.0
 UNITS[add] = 0.0
+UNITS[max] = -math.inf
+UNITS[min] = math.inf
+UNITS[and_] = False
+UNITS[xor_] = False
+UNITS[or_] = True
 
 BINARY_INVERSES[mul] = truediv
 BINARY_INVERSES[add] = sub
+BINARY_INVERSES[xor] = xor
 
 UNARY_INVERSES[mul] = reciprocal
 UNARY_INVERSES[add] = neg

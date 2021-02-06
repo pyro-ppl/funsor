@@ -40,11 +40,20 @@ INFIX_TO_NODE = {k: v for k, _, v in INFIX_OPERATORS}
 
 
 class OpTransformer(ast.NodeTransformer):
-    def __init__(self, infix, prefix):
+    def __init__(self, infix, prefix, const):
         assert isinstance(infix, dict)
         assert isinstance(prefix, dict)
+        assert isinstance(const, dict)
         self.infix = {INFIX_TO_NODE[k]: v for k, v in infix.items()}
         self.prefix = {PREFIX_TO_NODE[k]: v for k, v in prefix.items()}
+        self.const = const
+
+    def visit_Constant(self, node):
+        node = self.generic_visit(node)
+        var = self.const.get(node.value)
+        if var is not None:
+            node = ast.Name(id=var, ctx=ast.Load())
+        return node
 
     def visit_UnaryOp(self, node):
         node = self.generic_visit(node)
@@ -100,7 +109,7 @@ class OpTransformer(ast.NodeTransformer):
         return node
 
 
-def rewrite_ops(infix={}, prefix={}):
+def rewrite_ops(infix={}, prefix={}, const={}):
     """
     Decorator to replace infix binary operators in the decorated function's
     code with named binary variables, either globals or function arguments.
@@ -125,10 +134,12 @@ def rewrite_ops(infix={}, prefix={}):
         variable name.
     :param dict prefix: An optional mapping from prefix operator symbol to
         variable name.
+    :param dict const: An optional mapping from constant literal to variable
+        name.
     :returns: A decorator
     :rtype: callable
     """
-    transformer = OpTransformer(infix, prefix)
+    transformer = OpTransformer(infix, prefix, const)
 
     def decorator(fn):
         source = inspect.getsource(fn)
