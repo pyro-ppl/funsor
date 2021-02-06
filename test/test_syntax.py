@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from funsor.source import rewrite_ops
+from funsor.syntax import rewrite_ops
 
 python_version = tuple(map(int, sys.version.split()[0].split(".")[:2]))
 
