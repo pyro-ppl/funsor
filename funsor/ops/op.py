@@ -255,16 +255,18 @@ class LogAbsDetJacobianOp(BinaryOp, metaclass=WrappedOpMeta):
 # Op registration tables.
 DISTRIBUTIVE_OPS = set()  # (add, mul) pairs
 UNITS = {}  # op -> value
-PRODUCT_INVERSES = {}  # op -> inverse op
+BINARY_INVERSES = {}  # binary op -> inverse binary op
+UNARY_INVERSES = {}  # binary op -> inverse unary op
 
 __all__ = [
+    "BINARY_INVERSES",
     "BinaryOp",
     "CachedOpMeta",
     "DISTRIBUTIVE_OPS",
     "LogAbsDetJacobianOp",
     "Op",
-    "PRODUCT_INVERSES",
     "TransformOp",
+    "UNARY_INVERSES",
     "UNITS",
     "UnaryOp",
     "WrappedTransformOp",

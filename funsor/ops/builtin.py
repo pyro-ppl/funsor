@@ -6,8 +6,9 @@ import operator
 from numbers import Number
 
 from .op import (
+    BINARY_INVERSES,
     DISTRIBUTIVE_OPS,
-    PRODUCT_INVERSES,
+    UNARY_INVERSES,
     UNITS,
     BinaryOp,
     CachedOpMeta,
@@ -82,6 +83,7 @@ invert = make_op(operator.invert, UnaryOp)
 le = make_op(operator.le, BinaryOp)
 lt = make_op(operator.lt, BinaryOp)
 ne = make_op(operator.ne, BinaryOp)
+pos = make_op(operator.pos, UnaryOp)
 neg = make_op(operator.neg, UnaryOp)
 pow = make_op(operator.pow, BinaryOp)
 sub = make_op(operator.sub, BinaryOp)
@@ -94,6 +96,7 @@ matmul = make_op(operator.matmul, BinaryOp)
 mod = make_op(operator.mod, BinaryOp)
 lshift = make_op(operator.lshift, BinaryOp)
 rshift = make_op(operator.rshift, BinaryOp)
+not_ = make_op(operator.not_, UnaryOp)
 or_ = make_op(operator.or_, AssociativeOp)
 xor = make_op(operator.xor, AssociativeOp)
 max = make_op(max, AssociativeOp)
@@ -177,8 +180,11 @@ DISTRIBUTIVE_OPS.add((min, add))
 UNITS[mul] = 1.0
 UNITS[add] = 0.0
 
-PRODUCT_INVERSES[mul] = truediv
-PRODUCT_INVERSES[add] = sub
+BINARY_INVERSES[mul] = truediv
+BINARY_INVERSES[add] = sub
+
+UNARY_INVERSES[mul] = reciprocal
+UNARY_INVERSES[add] = neg
 
 __all__ = [
     "AssociativeOp",
@@ -208,8 +214,10 @@ __all__ = [
     "mul",
     "ne",
     "neg",
+    "not_",
     "nullop",
     "or_",
+    "pos",
     "pow",
     "reciprocal",
     "rshift",
