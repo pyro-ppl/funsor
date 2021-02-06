@@ -183,7 +183,7 @@ UNITS[add] = 0.0
 UNITS[max] = -math.inf
 UNITS[min] = math.inf
 UNITS[and_] = False
-UNITS[xor_] = False
+UNITS[xor] = False
 UNITS[or_] = True
 
 BINARY_INVERSES[mul] = truediv

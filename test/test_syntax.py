@@ -82,7 +82,7 @@ def test_complex():
         sub_op = ops.BINARY_INVERSES[add_op]  # noqa: F841
         div_op = ops.BINARY_INVERSES[mul_op]  # noqa: F841
         neg_op = ops.UNARY_INVERSES[add_op]  # noqa: F841
-        zero = ops.UNITS[mul_op]  # noqa: F841
+        zero = ops.UNITS[add_op]  # noqa: F841
         return (-y) * (x + y * z - 0.0 / x)
 
     actual = foo
@@ -91,7 +91,7 @@ def test_complex():
         sub_op = ops.BINARY_INVERSES[add_op]
         div_op = ops.BINARY_INVERSES[mul_op]
         neg_op = ops.UNARY_INVERSES[add_op]
-        zero = ops.UNITS[mul_op]
+        zero = ops.UNITS[add_op]
         return mul_op(neg_op(y), sub_op(add_op(x, mul_op(y, z)), div_op(zero, x)))
 
     expected = foo
