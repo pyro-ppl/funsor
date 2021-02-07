@@ -5,8 +5,10 @@ from collections import OrderedDict
 
 from funsor.integrate import Integrate
 from funsor.interpreter import StatefulInterpretation
-from funsor.terms import Funsor
+from funsor.terms import Approximate, Funsor
 from funsor.util import get_backend
+
+from . import ops
 
 
 class MonteCarlo(StatefulInterpretation):
@@ -37,6 +39,25 @@ def monte_carlo_integrate(state, log_measure, integrand, reduced_vars):
         v for v in sample.input_vars if v.name in state.sample_inputs
     )
     return Integrate(sample, integrand, reduced_vars)
+
+
+@MonteCarlo.register(Approximate, ops.LogaddexpOp, ops.AddOp, Funsor, Funsor, frozenset)
+def monte_carlo_approximate(state, sum_op, prod_op, model, guide, approx_vars):
+    sample_options = {}
+    if state.rng_key is not None and get_backend() == "jax":
+        import jax
+
+        sample_options["rng_key"], state.rng_key = jax.random.split(state.rng_key)
+
+    log_measure = model + guide
+    sample = log_measure.sample(approx_vars, state.sample_inputs, **sample_options)
+    if sample is log_measure:
+        return model  # cannot progress
+    reduced_vars = frozenset(
+        v for v in sample.input_vars if v.name in state.sample_inputs
+    )
+    result = (sample - guide).reduce(sum_op, reduced_vars)
+    return result
 
 
 __all__ = [

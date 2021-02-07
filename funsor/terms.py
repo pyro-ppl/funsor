@@ -533,6 +533,31 @@ class Funsor(object, metaclass=FunsorMeta):
             return self
         return Reduce(op, self, reduced_vars)
 
+    def approximate(self, sum_op, prod_op, guide, approx_vars=None):
+        """
+        Approximate wrt and all or a subset of inputs.
+
+        :param ~funsor.ops.AssociativeOp sum_op: A reduction operation.
+        :param ~funsor.ops.AssociativeOp prod_op: A reduction operation.
+        :param Funsor guide: A guide funsor (e.g. a proposal distribution).
+        :param approx_vars: An optional input name or set of names to reduce.
+            If unspecified, all inputs will be reduced.
+        :type approx_vars: str, Variable, or set or frozenset thereof.
+        """
+        assert (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
+        inputs = self.inputs.copy()
+        inputs.update(guide.inputs)
+        # Eagerly convert approx_vars to appropriate things.
+        if approx_vars is None:
+            # Empty approx_vars means "reduce over everything".
+            approx_vars = frozenset(Variable(k, v) for k, v in inputs.items())
+        else:
+            approx_vars = _convert_reduced_vars(approx_vars, inputs)
+        assert isinstance(approx_vars, frozenset), approx_vars
+        if not approx_vars:
+            return self
+        return Approximate(sum_op, prod_op, self, guide, approx_vars)
+
     def sample(self, sampled_vars, sample_inputs=None, rng_key=None):
         """
         Create a Monte Carlo approximation to this funsor by replacing
@@ -1249,6 +1274,28 @@ def moment_matching_reduce(op, arg, reduced_vars):
     return instrument.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
 
 
+class Approximate(Funsor):
+    """
+    Function approximation wrt a semiring.
+    """
+
+    def __init__(self, sum_op, prod_op, model, guide, approx_vars):
+        assert (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
+        assert model.output is guide.output
+        assert isinstance(approx_vars, frozenset), approx_vars
+        inputs = model.inputs.copy()
+        inputs.update(guide.inputs)
+        output = model.output
+        fresh = frozenset(v.name for v in approx_vars)
+        bound = {v.name: v.output for v in approx_vars}
+        super().__init__(inputs, output, fresh, bound)
+
+
+@eager.register(Approximate, AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
+def eager_approximate(sum_op, prod_op, model, guide, approx_vars):
+    return model  # exact
+
+
 class NumberMeta(FunsorMeta):
     """
     Wrapper to fill in default ``dtype``.
@@ -1933,6 +1980,7 @@ def binary_funsor_object(op, x, y):
 
 
 __all__ = [
+    "Approximate",
     "Binary",
     "Cat",
     "Funsor",
