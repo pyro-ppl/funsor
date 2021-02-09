@@ -89,8 +89,8 @@ def test_mul():
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
     with interpretation(lazy):
         z = x * y
-    assert_close(transpose(z)[x], y.reduce(ops.add, "k"))
-    assert_close(transpose(z)[y], x.reduce(ops.add, "i"))
+    assert_close(transpose(z)[x], y)
+    assert_close(transpose(z)[y], x)
 
 
 def test_sum():
@@ -108,11 +108,10 @@ def test_matmul_tensor():
         z = xy.reduce(ops.add, "j")
     assert xy in transpose(z)
     assert_close(transpose(z)[xy], Number(1.0))
-    assert_close(transpose(z)[x], y.reduce(ops.add, "k"))
-    assert_close(transpose(z)[y], x.reduce(ops.add, "i"))
+    assert_close(transpose(z)[x], y)
+    assert_close(transpose(z)[y], x)
 
 
-@pytest.mark.xfail(reason="scaling reductions not executing in lazy?")
 def test_matmul_variable():
     x = Variable("x", Real)
     y = Variable("y", Real)
@@ -132,8 +131,8 @@ def test_batched_matmul():
     with interpretation(lazy):
         xy = x * y
         z = xy.reduce(ops.add, "j")
-    assert_close(transpose(z)[x], y.reduce(ops.add, {"k"}))
-    assert_close(transpose(z)[y], x.reduce(ops.add, {"i"}))
+    assert_close(transpose(z)[x], y)
+    assert_close(transpose(z)[y], x)
     assert_close(transpose(z)[xy], Number(1.0))
 
 
@@ -144,8 +143,8 @@ def test_expand_reduce():
     with interpretation(lazy):
         xy = x * y
         z = xy.reduce(ops.add, i)
-    assert_close(transpose(z)[x], y * 3)
-    assert_close(transpose(z)[y], x * 3)
+    assert_close(transpose(z)[x], 3 * y)
+    assert_close(transpose(z)[y], 3 * x)
     assert_close(transpose(z)[xy], Number(1.0))
 
 
@@ -155,8 +154,8 @@ def test_tensor_contract():
     with interpretation(lazy):
         xy = x * y
         z = xy.reduce(ops.add, {"j1", "j2"})
-    assert_close(transpose(z)[x], y.reduce(ops.add, {"k1", "k2"}))
-    assert_close(transpose(z)[y], x.reduce(ops.add, {"i1", "i2"}))
+    assert_close(transpose(z)[x], y)
+    assert_close(transpose(z)[y], x)
     assert_close(transpose(z)[xy], Number(1.0))
 
 
@@ -189,11 +188,12 @@ def test_tower_prod(height):
 
 @pytest.mark.parametrize("f", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
 @pytest.mark.parametrize("g", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
-def test_product_rule(f, g):
+def test_binary_product_rule(f, g):
     x = Variable("x", Real)
     y = Variable("y", Real)
-    f = eval(f)
-    g = eval(g)
+    with interpretation(lazy):
+        f = eval(f)
+        g = eval(g)
 
     for arg in [x, y]:
         actual = transpose(f * g)[arg]
@@ -212,8 +212,9 @@ def test_product_rule(f, g):
 def test_binary_sum_rule(f, g):
     x = Variable("x", Real)
     y = Variable("y", Real)
-    f = eval(f)
-    g = eval(g)
+    with interpretation(lazy):
+        f = eval(f)
+        g = eval(g)
 
     for arg in [x, y]:
         actual = transpose(f + g)[arg]
@@ -227,7 +228,6 @@ def test_binary_sum_rule(f, g):
                 assert_close(actual(x=x_, y=y_), expected(x=x_, y=y_))
 
 
-@pytest.mark.xfail(reason="probably an alpha conversion issue")
 def test_reduce_sum_rule():
     i = Variable("i", Bint[4])
     f = random_tensor(OrderedDict(i=Bint[4]))
@@ -249,9 +249,10 @@ def test_reduce_sum_rule():
 def test_reduce_sum_getitem():
     x = Variable("x", Reals[4])
     i = Variable("i", Bint[4])
-    f = x[i]
-
-    actual = transpose(f.reduce(ops.add, i))[x]
+    with interpretation(lazy):
+        f = x[i]
+        y = f.reduce(ops.add, i)
+    actual = transpose(y)[x]
     expected = transpose(f)[x]
     print(f"actual:\n{str(actual)}")
     print(f"expected:\n{str(expected)}")

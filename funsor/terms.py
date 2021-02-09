@@ -1235,6 +1235,16 @@ def _reduce_unrelated_vars(op, arg, reduced_vars):
     return arg, frozenset(v.name for v in reduced_vars)
 
 
+@lazy.register(Reduce, AssociativeOp, Funsor, frozenset)
+def lazy_reduce(op, arg, reduced_vars):
+    new_arg, new_reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
+    if new_reduced_vars is None:
+        return new_arg
+    if new_arg is arg:
+        return None
+    return new_arg.reduce(op, new_reduced_vars)
+
+
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
     arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)

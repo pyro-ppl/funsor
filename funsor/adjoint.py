@@ -111,8 +111,12 @@ class AdjointTape(object):
                 self._eager_to_lazy[output] = lazy_output
 
             in_adjs = adjoint_ops(fn, sum_op, bin_op, adjoint_values[output], *inputs)
+            out_agg_vars = adjoint_values[output].input_vars - root.input_vars
             for v, adjv in in_adjs:
-                adjoint_values[v] = sum_op(adjoint_values[v], adjv)
+                agg_vars = out_agg_vars & (adjv.input_vars - v.input_vars)
+                adjoint_values[v] = sum_op(
+                    adjoint_values[v], adjv.reduce(sum_op, agg_vars)
+                )
 
         result = defaultdict(lambda: zero)
         for key, value in adjoint_values.items():
@@ -126,6 +130,7 @@ class AdjointTape(object):
 
 def adjoint(sum_op, bin_op, expr):
     with AdjointTape() as tape:
+        # TODO fix traversal order in AdjointTape instead of using stack_reinterpret
         root = stack_reinterpret(expr)
     return tape.adjoint(sum_op, bin_op, root)
 
@@ -148,12 +153,8 @@ if interpreter._DEBUG:
 )
 def adjoint_binary(adj_sum_op, adj_prod_op, out_adj, op, lhs, rhs):
     if op is adj_prod_op:
-        lhs_adj = adj_prod_op(out_adj, rhs).reduce(
-            adj_sum_op, rhs.input_vars - lhs.input_vars
-        )
-        rhs_adj = adj_prod_op(out_adj, lhs).reduce(
-            adj_sum_op, lhs.input_vars - rhs.input_vars
-        )
+        lhs_adj = adj_prod_op(out_adj, rhs)
+        rhs_adj = adj_prod_op(out_adj, lhs)
         return ((lhs, lhs_adj), (rhs, rhs_adj))
     elif op is adj_sum_op:
         return ((lhs, out_adj), (rhs, out_adj))
@@ -169,9 +170,14 @@ def adjoint_reduce(adj_sum_op, adj_prod_op, out_adj, op, arg, reduced_vars):
     if op is adj_sum_op:
         return ((arg, out_adj),)
     elif op is adj_prod_op:  # plate!
-        out = arg.reduce(op, reduced_vars)
+        out = arg.reduce(adj_prod_op, reduced_vars)
         return (
-            (arg, adj_prod_op(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))),
+            (
+                arg,
+                adj_prod_op(
+                    out_adj, Binary(ops.PRODUCT_INVERSES[adj_prod_op], out, arg)
+                ),
+            ),
         )
 
 
@@ -231,24 +237,17 @@ def adjoint_contract_generic(
 def adjoint_contract(
     adj_sum_op, adj_prod_op, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs
 ):
-    assert sum_op is nullop or (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
+    if prod_op is adj_prod_op and sum_op in (nullop, adj_sum_op):
+        lhs_adj = adj_prod_op(out_adj, rhs)
+        rhs_adj = adj_prod_op(lhs, out_adj)
+        return ((lhs, lhs_adj), (rhs, rhs_adj))
 
-    lhs_adj = Contraction(
-        adj_sum_op,
-        adj_prod_op,
-        rhs.input_vars - lhs.input_vars,
-        out_adj,
-        rhs,
-    )
-    rhs_adj = Contraction(
-        adj_sum_op,
-        adj_prod_op,
-        lhs.input_vars - rhs.input_vars,
-        out_adj,
-        lhs,
-    )
+    elif prod_op is adj_sum_op:
+        if reduced_vars:
+            raise NotImplementedError("TODO implement sum Contraction")
+        return ((lhs, out_adj), (rhs, out_adj))
 
-    return ((lhs, lhs_adj), (rhs, rhs_adj))
+    raise ValueError("should not be here!")
 
 
 @adjoint_ops.register(Cat, AssociativeOp, AssociativeOp, Funsor, str, tuple, str)
