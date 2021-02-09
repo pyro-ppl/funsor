@@ -3,14 +3,12 @@
 
 from collections import OrderedDict, defaultdict
 
-import numpy as np
-
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.interpreter import interpretation
+from funsor.interpreter import interpretation, stack_reinterpret
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import (
@@ -43,6 +41,7 @@ class AdjointTape(object):
     def __init__(self):
         self.tape = []
         self._old_interpretation = None
+        self._eager_to_lazy = {}
 
     def __call__(self, cls, *args):
         if cls in adjoint_ops:  # atomic op, don't trace internals
@@ -51,6 +50,8 @@ class AdjointTape(object):
             self.tape.append((result, cls, args))
         else:
             result = self._old_interpretation(cls, *args)
+        lazy_args = [self._eager_to_lazy.get(arg, arg) for arg in args]
+        self._eager_to_lazy[result] = reflect(cls, *lazy_args)
         return result
 
     def __enter__(self):
@@ -63,10 +64,12 @@ class AdjointTape(object):
         interpreter.set_interpretation(self._old_interpretation)
         self._old_interpretation = None
 
-    def adjoint(self, red_op, bin_op, root, targets):
+    def adjoint(self, sum_op, bin_op, root, targets=None):
 
-        bin_unit = to_funsor(ops.UNITS[bin_op])
-        adjoint_values = defaultdict(lambda: bin_unit)
+        zero = to_funsor(ops.UNITS[sum_op])
+        one = to_funsor(ops.UNITS[bin_op])
+        adjoint_values = defaultdict(lambda: zero)
+        adjoint_values[root] = one
 
         reached_root = False
         while self.tape:
@@ -79,6 +82,24 @@ class AdjointTape(object):
 
             # reverse the effects of alpha-renaming
             with interpretation(reflect):
+
+                lazy_output = self._eager_to_lazy[output]
+                lazy_fn = type(lazy_output)
+                lazy_inputs = lazy_output._ast_values
+                # TODO abstract this into a helper function
+                # FIXME make lazy_output linear instead of quadratic in the size of the tape
+                lazy_other_subs = tuple(
+                    (name, to_funsor(name.split("__BOUND")[0], domain))
+                    for name, domain in lazy_output.inputs.items()
+                    if "__BOUND" in name
+                )
+                lazy_inputs = _alpha_unmangle(
+                    substitute(lazy_fn(*lazy_inputs), lazy_other_subs)
+                )
+                lazy_output = type(lazy_output)(
+                    *_alpha_unmangle(substitute(lazy_output, lazy_other_subs))
+                )
+
                 other_subs = tuple(
                     (name, to_funsor(name.split("__BOUND")[0], domain))
                     for name, domain in output.inputs.items()
@@ -87,17 +108,26 @@ class AdjointTape(object):
                 inputs = _alpha_unmangle(substitute(fn(*inputs), other_subs))
                 output = type(output)(*_alpha_unmangle(substitute(output, other_subs)))
 
-            in_adjs = adjoint_ops(fn, red_op, bin_op, adjoint_values[output], *inputs)
-            for v, adjv in in_adjs.items():
-                adjoint_values[v] = bin_op(adjoint_values[v], adjv)
+                self._eager_to_lazy[output] = lazy_output
 
-        target_adjs = {}
-        for v in targets:
-            target_adjs[v] = adjoint_values[v]
-            if not isinstance(v, Variable):
-                target_adjs[v] = bin_op(target_adjs[v], v)
+            in_adjs = adjoint_ops(fn, sum_op, bin_op, adjoint_values[output], *inputs)
+            for v, adjv in in_adjs:
+                adjoint_values[v] = sum_op(adjoint_values[v], adjv)
 
-        return target_adjs
+        result = defaultdict(lambda: zero)
+        for key, value in adjoint_values.items():
+            lazy_key = self._eager_to_lazy.get(key, key)
+            result[lazy_key] = value
+
+        if targets is None:
+            return result
+        return {target: result[target] for target in targets}
+
+
+def adjoint(sum_op, bin_op, expr):
+    with AdjointTape() as tape:
+        root = stack_reinterpret(expr)
+    return tape.adjoint(sum_op, bin_op, root)
 
 
 # logaddexp/add
@@ -114,44 +144,35 @@ if interpreter._DEBUG:
 
 
 @adjoint_ops.register(
-    Tensor,
-    AssociativeOp,
-    AssociativeOp,
-    Funsor,
-    (np.ndarray, np.generic),
-    tuple,
-    object,
-)
-def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
-    return {}
-
-
-@adjoint_ops.register(
     Binary, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, Funsor
 )
-def adjoint_binary(adj_redop, adj_binop, out_adj, op, lhs, rhs):
-    assert (adj_redop, op) in ops.DISTRIBUTIVE_OPS
-
-    lhs_adj = op(out_adj, rhs).reduce(adj_redop, rhs.input_vars - lhs.input_vars)
-    rhs_adj = op(out_adj, lhs).reduce(adj_redop, lhs.input_vars - rhs.input_vars)
-
-    return {lhs: lhs_adj, rhs: rhs_adj}
+def adjoint_binary(adj_sum_op, adj_prod_op, out_adj, op, lhs, rhs):
+    if op is adj_prod_op:
+        lhs_adj = adj_prod_op(out_adj, rhs).reduce(
+            adj_sum_op, rhs.input_vars - lhs.input_vars
+        )
+        rhs_adj = adj_prod_op(out_adj, lhs).reduce(
+            adj_sum_op, lhs.input_vars - rhs.input_vars
+        )
+        return ((lhs, lhs_adj), (rhs, rhs_adj))
+    elif op is adj_sum_op:
+        return ((lhs, out_adj), (rhs, out_adj))
+    raise ValueError("should not be here!")
 
 
 @adjoint_ops.register(
     Reduce, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, frozenset
 )
-def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
-    assert adj_binop is op or (op, adj_binop) in ops.DISTRIBUTIVE_OPS
+def adjoint_reduce(adj_sum_op, adj_prod_op, out_adj, op, arg, reduced_vars):
+    assert adj_prod_op is op or (op, adj_prod_op) in ops.DISTRIBUTIVE_OPS
 
-    if op is adj_redop:
-        # XXX using a hack to simulate "expand"
-        return {
-            arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], arg, arg))
-        }
-    elif op is adj_binop:  # plate!
+    if op is adj_sum_op:
+        return ((arg, out_adj),)
+    elif op is adj_prod_op:  # plate!
         out = arg.reduce(op, reduced_vars)
-        return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
+        return (
+            (arg, adj_prod_op(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))),
+        )
 
 
 @adjoint_ops.register(
@@ -165,9 +186,9 @@ def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
     Funsor,
 )
 def adjoint_contract_unary(
-    adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, arg
+    adj_sum_op, adj_prod_op, out_adj, sum_op, prod_op, reduced_vars, arg
 ):
-    return adjoint_reduce(adj_redop, adj_binop, out_adj, sum_op, arg, reduced_vars)
+    return adjoint_reduce(adj_sum_op, adj_prod_op, out_adj, sum_op, arg, reduced_vars)
 
 
 @adjoint_ops.register(
@@ -181,13 +202,13 @@ def adjoint_contract_unary(
     tuple,
 )
 def adjoint_contract_generic(
-    adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, terms
+    adj_sum_op, adj_prod_op, out_adj, sum_op, prod_op, reduced_vars, terms
 ):
     assert len(terms) == 1 or len(terms) == 2
     return adjoint_ops(
         Contraction,
-        adj_redop,
-        adj_binop,
+        adj_sum_op,
+        adj_prod_op,
         out_adj,
         sum_op,
         prod_op,
@@ -208,54 +229,68 @@ def adjoint_contract_generic(
     Funsor,
 )
 def adjoint_contract(
-    adj_redop, adj_binop, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs
+    adj_sum_op, adj_prod_op, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs
 ):
     assert sum_op is nullop or (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
 
     lhs_adj = Contraction(
-        sum_op if sum_op is not nullop else adj_redop,
-        prod_op,
+        adj_sum_op,
+        adj_prod_op,
         rhs.input_vars - lhs.input_vars,
         out_adj,
         rhs,
     )
     rhs_adj = Contraction(
-        sum_op if sum_op is not nullop else adj_redop,
-        prod_op,
+        adj_sum_op,
+        adj_prod_op,
         lhs.input_vars - rhs.input_vars,
         out_adj,
         lhs,
     )
 
-    return {lhs: lhs_adj, rhs: rhs_adj}
+    return ((lhs, lhs_adj), (rhs, rhs_adj))
 
 
 @adjoint_ops.register(Cat, AssociativeOp, AssociativeOp, Funsor, str, tuple, str)
-def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
-    in_adjs = {}
+def adjoint_cat(adj_sum_op, adj_prod_op, out_adj, name, parts, part_name):
+    in_adjs = []
     start = 0
     size = sum(part.inputs[part_name].dtype for part in parts)
     for i, part in enumerate(parts):
         if part_name in out_adj.inputs:
-            in_adjs[part] = out_adj(
-                **{
-                    name: Slice(
-                        name, start, start + part.inputs[part_name].dtype, 1, size
-                    )
-                }
+            in_adjs.append(
+                (
+                    part,
+                    out_adj(
+                        **{
+                            name: Slice(
+                                name,
+                                start,
+                                start + part.inputs[part_name].dtype,
+                                1,
+                                size,
+                            )
+                        }
+                    ),
+                )
             )
             start += part.inputs[part_name].dtype
         else:
-            in_adjs[part] = adj_binop(
-                out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], part, part)
+            in_adjs.append(
+                (
+                    part,
+                    adj_prod_op(
+                        out_adj, Binary(ops.PRODUCT_INVERSES[adj_prod_op], part, part)
+                    ),
+                )
             )
-    return in_adjs
+    return tuple(in_adjs)
 
 
 @adjoint_ops.register(
     Subs, AssociativeOp, AssociativeOp, (Number, Tensor), Tensor, tuple
 )
-def adjoint_subs_tensor(adj_redop, adj_binop, out_adj, arg, subs):
+def adjoint_subs_tensor(adj_sum_op, adj_prod_op, out_adj, arg, subs):
 
     assert all(isinstance(v, Funsor) for k, v in subs)
 
@@ -270,23 +305,23 @@ def adjoint_subs_tensor(adj_redop, adj_binop, out_adj, arg, subs):
     # ones for things that weren't sliced away
     ones_like_out = Subs(
         Tensor(
-            ops.full_like(arg.data, ops.UNITS[adj_binop]),
+            ops.full_like(arg.data, ops.UNITS[adj_prod_op]),
             arg.inputs.copy(),
             arg.output.dtype,
         ),
         slices,
     )
-    arg_adj = adj_binop(out_adj, ones_like_out)
+    arg_adj = adj_prod_op(out_adj, ones_like_out)
 
     # ones for things that were sliced away
     ones_like_arg = Tensor(
-        ops.full_like(arg.data, ops.UNITS[adj_binop]),
+        ops.full_like(arg.data, ops.UNITS[adj_prod_op]),
         arg.inputs.copy(),
         arg.output.dtype,
     )
     arg_adj = _scatter(arg_adj, ones_like_arg, slices)
 
-    return {arg: arg_adj}
+    return ((arg, arg_adj),)
 
 
 def _scatter(src, res, subs):
@@ -363,7 +398,7 @@ def _scatter(src, res, subs):
     Subs, ops.LogaddexpOp, ops.AddOp, GaussianMixture, GaussianMixture, tuple
 )
 def adjoint_subs_gaussianmixture_gaussianmixture(
-    adj_redop, adj_binop, out_adj, arg, subs
+    adj_sum_op, adj_prod_op, out_adj, arg, subs
 ):
 
     if any(v.dtype == "real" and not isinstance(v, Variable) for k, v in subs):
@@ -381,8 +416,8 @@ def adjoint_subs_gaussianmixture_gaussianmixture(
     assert len(slices + renames) == len(subs)
 
     in_adj_discrete = adjoint_ops(
-        Subs, adj_redop, adj_binop, out_adj.terms[0], arg.terms[0], subs
-    )[arg.terms[0]]
+        Subs, adj_sum_op, adj_prod_op, out_adj.terms[0], arg.terms[0], subs
+    )[0][1]
 
     arg_int_inputs = OrderedDict(
         (k, v) for k, v in arg.inputs.items() if v.dtype != "real"
@@ -401,27 +436,23 @@ def adjoint_subs_gaussianmixture_gaussianmixture(
     align_inputs.update(arg_real_inputs)
     out_adj_info_vec, out_adj_precision = align_gaussian(align_inputs, out_adj.terms[1])
 
-    in_adj_info_vec = list(
-        adjoint_ops(
-            Subs,
-            adj_redop,
-            adj_binop,  # ops.add, ops.mul,
-            Tensor(out_adj_info_vec, out_adj_int_inputs),
-            Tensor(arg.terms[1].info_vec, arg_int_inputs),
-            slices,
-        ).values()
-    )[0]
+    in_adj_info_vec = adjoint_ops(
+        Subs,
+        adj_sum_op,
+        adj_prod_op,  # ops.add, ops.mul,
+        Tensor(out_adj_info_vec, out_adj_int_inputs),
+        Tensor(arg.terms[1].info_vec, arg_int_inputs),
+        slices,
+    )[0][1]
 
-    in_adj_precision = list(
-        adjoint_ops(
-            Subs,
-            adj_redop,
-            adj_binop,  # ops.add, ops.mul,
-            Tensor(out_adj_precision, out_adj_int_inputs),
-            Tensor(arg.terms[1].precision, arg_int_inputs),
-            slices,
-        ).values()
-    )[0]
+    in_adj_precision = adjoint_ops(
+        Subs,
+        adj_sum_op,
+        adj_prod_op,  # ops.add, ops.mul,
+        Tensor(out_adj_precision, out_adj_int_inputs),
+        Tensor(arg.terms[1].precision, arg_int_inputs),
+        slices,
+    )[0][1]
 
     assert isinstance(in_adj_info_vec, Tensor)
     assert isinstance(in_adj_precision, Tensor)
@@ -431,13 +462,13 @@ def adjoint_subs_gaussianmixture_gaussianmixture(
     )
 
     in_adj = in_adj_gaussian + in_adj_discrete
-    return {arg: in_adj}
+    return ((arg, in_adj),)
 
 
 @adjoint_ops.register(
     Subs, ops.LogaddexpOp, ops.AddOp, Gaussian, GaussianMixture, tuple
 )
-def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, subs):
+def adjoint_subs_gaussianmixture_discrete(adj_sum_op, adj_prod_op, out_adj, arg, subs):
 
     if any(v.dtype == "real" and not isinstance(v, Variable) for k, v in subs):
         raise NotImplementedError(
@@ -450,13 +481,13 @@ def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, su
     out_adj_ = out_adj + Tensor(
         out_adj.info_vec.new_zeros(out_adj.info_vec.shape[:-1]), out_adj_int_inputs
     )
-    return {arg: adjoint_ops(Subs, adj_redop, adj_binop, out_adj_, arg, subs)[arg]}
+    return adjoint_ops(Subs, adj_sum_op, adj_prod_op, out_adj_, arg, subs)
 
 
 @adjoint_ops.register(
     Subs, ops.LogaddexpOp, ops.AddOp, (GaussianMixture, Gaussian), Gaussian, tuple
 )
-def adjoint_subs_gaussian_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
+def adjoint_subs_gaussian_gaussian(adj_sum_op, adj_prod_op, out_adj, arg, subs):
 
     if any(v.dtype == "real" and not isinstance(v, Variable) for k, v in subs):
         raise NotImplementedError(
@@ -467,13 +498,15 @@ def adjoint_subs_gaussian_gaussian(adj_redop, adj_binop, out_adj, arg, subs):
         (k, v) for k, v in arg.inputs.items() if v.dtype != "real"
     )
     arg_ = arg + Tensor(arg.info_vec.new_zeros(arg.info_vec.shape[:-1]), arg_int_inputs)
-    return {arg: adjoint_ops(Subs, adj_redop, adj_binop, out_adj, arg_, subs)[arg_]}
+    return (
+        (arg, adjoint_ops(Subs, adj_sum_op, adj_prod_op, out_adj, arg_, subs)[0][1]),
+    )
 
 
 @adjoint_ops.register(
     Subs, ops.LogaddexpOp, ops.AddOp, (Number, Tensor), GaussianMixture, tuple
 )
-def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, subs):
+def adjoint_subs_gaussianmixture_discrete(adj_sum_op, adj_prod_op, out_adj, arg, subs):
 
     if any(v.dtype == "real" and not isinstance(v, Variable) for k, v in subs):
         raise NotImplementedError(
@@ -494,40 +527,36 @@ def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, su
     zeros_like_out = Subs(
         Tensor(
             arg.terms[1].info_vec.new_full(
-                arg.terms[1].info_vec.shape[:-1], ops.UNITS[adj_binop]
+                arg.terms[1].info_vec.shape[:-1], ops.UNITS[adj_prod_op]
             ),
             arg_int_inputs,
         ),
         slices,
     )
-    out_adj = adj_binop(out_adj, zeros_like_out)
+    out_adj = adj_prod_op(out_adj, zeros_like_out)
 
     in_adj_discrete = adjoint_ops(
-        Subs, adj_redop, adj_binop, out_adj, arg.terms[0], subs
-    )[arg.terms[0]]
+        Subs, adj_sum_op, adj_prod_op, out_adj, arg.terms[0], subs
+    )[0][1]
 
     # invert the slicing for the Gaussian term even though the message does not affect the values
-    in_adj_info_vec = list(
-        adjoint_ops(
-            Subs,
-            adj_redop,
-            adj_binop,  # ops.add, ops.mul,
-            zeros_like_out,
-            Tensor(arg.terms[1].info_vec, arg_int_inputs),
-            slices,
-        ).values()
-    )[0]
+    in_adj_info_vec = adjoint_ops(
+        Subs,
+        adj_sum_op,
+        adj_prod_op,  # ops.add, ops.mul,
+        zeros_like_out,
+        Tensor(arg.terms[1].info_vec, arg_int_inputs),
+        slices,
+    )[0][1]
 
-    in_adj_precision = list(
-        adjoint_ops(
-            Subs,
-            adj_redop,
-            adj_binop,  # ops.add, ops.mul,
-            zeros_like_out,
-            Tensor(arg.terms[1].precision, arg_int_inputs),
-            slices,
-        ).values()
-    )[0]
+    in_adj_precision = adjoint_ops(
+        Subs,
+        adj_sum_op,
+        adj_prod_op,  # ops.add, ops.mul,
+        zeros_like_out,
+        Tensor(arg.terms[1].precision, arg_int_inputs),
+        slices,
+    )[0][1]
 
     assert isinstance(in_adj_info_vec, Tensor)
     assert isinstance(in_adj_precision, Tensor)
@@ -537,4 +566,4 @@ def adjoint_subs_gaussianmixture_discrete(adj_redop, adj_binop, out_adj, arg, su
     )
 
     in_adj = in_adj_gaussian + in_adj_discrete
-    return {arg: in_adj}
+    return ((arg, in_adj),)
