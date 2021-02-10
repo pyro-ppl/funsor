@@ -120,9 +120,9 @@ def test_matmul_variable():
         xy = x * y
         z = xy.reduce(ops.add, j)
     assert xy in transpose(z)
-    assert_close(transpose(z)[xy], Number(1.0))
-    assert_close(transpose(z)[x], y)
-    assert_close(transpose(z)[y], x)
+    assert_close(transpose(z)[xy], Number(4))
+    assert_close(transpose(z)[x], 4 * y)
+    assert_close(transpose(z)[y], 4 * x)
 
 
 def test_batched_matmul():
@@ -169,8 +169,7 @@ def test_tower_sum(height):
     assert transpose(top)[x] is Number(2.0 ** height)
 
 
-@pytest.mark.skip(reason="exponential growth? infinite loop?")
-@pytest.mark.parametrize("height", [1, 2, 3, 10, 100, 1000])
+@pytest.mark.parametrize("height", [1, 2, 3, 10])  # , 100, 1000])
 def test_tower_prod(height):
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
     with interpretation(lazy):

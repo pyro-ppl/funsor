@@ -165,8 +165,6 @@ def adjoint_binary(adj_sum_op, adj_prod_op, out_adj, op, lhs, rhs):
     Reduce, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, Funsor, frozenset
 )
 def adjoint_reduce(adj_sum_op, adj_prod_op, out_adj, op, arg, reduced_vars):
-    assert adj_prod_op is op or (op, adj_prod_op) in ops.DISTRIBUTIVE_OPS
-
     if op is adj_sum_op:
         return ((arg, out_adj),)
     elif op is adj_prod_op:  # plate!
@@ -179,6 +177,7 @@ def adjoint_reduce(adj_sum_op, adj_prod_op, out_adj, op, arg, reduced_vars):
                 ),
             ),
         )
+    raise ValueError("should not be here!")
 
 
 @adjoint_ops.register(
