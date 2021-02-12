@@ -15,12 +15,12 @@ from weakref import WeakValueDictionary
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic, isvariadic
 
-import funsor.interpreter as interpreter
-import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
 from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import get_backend, getargspec, lazy_property, pretty, quote
+
+from . import instrument, interpreter, ops
 
 
 def substitute(expr, subs):
@@ -34,9 +34,9 @@ def substitute(expr, subs):
         expr = cls(*args)
         fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
         if fresh_subs:
-            expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
-        if interpreter._PROFILE:
-            interpreter.COUNTERS["interpretation"]["substitute"] += 1
+            expr = instrument.debug_logged(expr.eager_subs)(fresh_subs)
+        if instrument.PROFILE:
+            instrument.COUNTERS["interpretation"]["substitute"] += 1
         return expr
 
     with interpreter.interpretation(subs_interpreter):
@@ -57,7 +57,7 @@ def _alpha_mangle(expr):
     if not alpha_subs:
         return expr
 
-    ast_values = interpreter.debug_logged(expr._alpha_convert)(alpha_subs)
+    ast_values = instrument.debug_logged(expr._alpha_convert)(alpha_subs)
     return reflect(type(expr), *ast_values)
 
 
@@ -104,13 +104,13 @@ def reflect(cls, *args, **kwargs):
     result = super(FunsorMeta, cls_specific).__call__(*args)
     result._ast_values = args
 
-    if interpreter._PROFILE:
+    if instrument.PROFILE:
         size, depth, width = _get_ast_stats(result)
-        interpreter.COUNTERS["ast_size"][size] += 1
-        interpreter.COUNTERS["ast_depth"][depth] += 1
+        instrument.COUNTERS["ast_size"][size] += 1
+        instrument.COUNTERS["ast_depth"][depth] += 1
         classname = getattr(cls, "__origin__", cls).__name__
-        interpreter.COUNTERS["funsor"][classname] += 1
-        interpreter.COUNTERS[classname][width] += 1
+        instrument.COUNTERS["funsor"][classname] += 1
+        instrument.COUNTERS[classname][width] += 1
 
     # alpha-convert eagerly upon binding any variable
     result = _alpha_mangle(result)
@@ -580,7 +580,7 @@ class Funsor(object, metaclass=FunsorMeta):
         if sampled_vars.isdisjoint(self.inputs):
             return self
 
-        result = interpreter.debug_logged(self.unscaled_sample)(
+        result = instrument.debug_logged(self.unscaled_sample)(
             sampled_vars, sample_inputs, rng_key
         )
         if sample_inputs is not None:
@@ -1114,14 +1114,14 @@ class Unary(Funsor):
 
 @eager.register(Unary, Op, Funsor)
 def eager_unary(op, arg):
-    return interpreter.debug_logged(arg.eager_unary)(op)
+    return instrument.debug_logged(arg.eager_unary)(op)
 
 
 @eager.register(Unary, AssociativeOp, Funsor)
 def eager_unary(op, arg):
     if not arg.output.shape:
         return arg
-    return interpreter.debug_logged(arg.eager_unary)(op)
+    return instrument.debug_logged(arg.eager_unary)(op)
 
 
 _INFIX = {
@@ -1270,7 +1270,7 @@ def eager_reduce(op, arg, reduced_vars):
     arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
     if reduced_vars is None:
         return arg
-    return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
+    return instrument.debug_logged(arg.eager_reduce)(op, reduced_vars)
 
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
@@ -1278,7 +1278,7 @@ def sequential_reduce(op, arg, reduced_vars):
     arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
     if reduced_vars is None:
         return arg
-    return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
+    return instrument.debug_logged(arg.sequential_reduce)(op, reduced_vars)
 
 
 @moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
@@ -1286,7 +1286,7 @@ def moment_matching_reduce(op, arg, reduced_vars):
     arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
     if reduced_vars is None:
         return arg
-    return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+    return instrument.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
 
 
 class NumberMeta(FunsorMeta):

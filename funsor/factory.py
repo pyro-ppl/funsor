@@ -7,7 +7,7 @@ from collections import OrderedDict
 
 import makefun
 
-from funsor.interpreter import debug_logged
+from funsor.instrument import debug_logged
 from funsor.terms import Funsor, FunsorMeta, Variable, eager, to_funsor
 
 

@@ -5,7 +5,6 @@ from collections import OrderedDict
 
 import pytest
 
-import funsor
 import funsor.ops as ops
 from funsor.adjoint import adjoint
 from funsor.domains import Bint, Real, Reals
