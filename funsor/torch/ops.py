@@ -230,6 +230,13 @@ def _safesub(x, y):
     return x + (-y).clamp(max=finfo.max)
 
 
+@ops.scatter.register(torch.Tensor, tuple, torch.Tensor)
+def _scatter(dest, indices, src):
+    result = dest.clone()
+    result[indices] = src
+    return result
+
+
 @ops.scatter_add.register(torch.Tensor, tuple, torch.Tensor)
 def _scatter_add(dest, indices, src):
     dim = len(indices)

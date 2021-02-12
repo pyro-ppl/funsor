@@ -1059,6 +1059,26 @@ def eager_subs(arg, subs):
     return substitute(arg, subs)
 
 
+class Scatter(Funsor):
+    """
+    Transpose of linear :class:`Subs`.
+    """
+    def __init__(self, op, subs, source):
+        assert isinstance(op, AssociativeOp)
+        assert isinstance(source, Funsor)
+        assert isinstance(subs, tuple)
+        inputs = source.inputs.copy()
+        for key, value in subs:
+            assert isinstance(key, str)
+            assert isinstance(value, Funsor)
+            inputs.update(value.inputs)
+        output = source.output
+        fresh = frozenset(key for key, value in subs)
+        bound = {}
+        super().__init__(inputs, output, fresh, bound)
+
+
+
 _PREFIX = {
     ops.neg: "-",
     ops.invert: "~",

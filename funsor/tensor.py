@@ -25,6 +25,7 @@ from funsor.terms import (
     FunsorMeta,
     Lambda,
     Number,
+    Scatter,
     Slice,
     Tuple,
     Unary,
@@ -609,6 +610,51 @@ def tensor_to_data(x, name_to_dim=None):
         for dim, size in zip(dims, data.shape):
             batch_shape[dim] = size
         return data.reshape(tuple(batch_shape) + x.output.shape)
+
+
+@eager.register(Scatter, Op, tuple, Tensor)
+def eager_scatter(op, subs, source):
+    if not all(isinstance(v, (Variable, Number, Slice, Tensor)) for k, v in subs):
+        return None
+
+    # TODO avoid materializing here
+    subs = tuple((k, source.materialize(v)) for k, v in subs)
+
+    # Compute shapes.
+    destin_inputs = OrderedDict()
+    tensors = [source]
+    for k, v in subs:
+        destin_inputs[k] = v.output
+        tensors.append(source.materialize(v))
+    output = source.output
+
+    # Convert from funsor.Tensor to backend Tensor.
+    inputs, tensors = align_tensors(*tensors)
+    destin_inputs.update(inputs)
+    source_data = tensors[0]
+    index = list(tensors[1:])
+
+    # Construct a [:] slice for the output.
+    for i, size in enumerate(output.shape):
+        offset_from_right = len(output.shape) - i - 1
+        arange = ops.new_arange(source_data, size)
+        index.append(arange.reshape((-1,) + (1,) * offset_from_right))
+
+    shape = tuple(d.size for d in destin_inputs.values()) + output.shape
+    zero = ops.UNITS[op]
+    destin = ops.full_like(shape, zero)
+    # TODO either add an assertion or support non-injective scattering
+    # via scatter_add etc.
+    data = ops.scatter(destin, index, source_data)
+    return Tensor(data, destin_inputs, output)
+
+
+# analog of torch.diag_embed:
+# i = Variable(...)
+# j = Variable(...)
+# k = Variable(...)
+# assert k in diag_value.input_vars
+# Scatter(ops.add, ((i, k), (j, k)), diag_value)
 
 
 @eager.register(Binary, Op, Tensor, Number)

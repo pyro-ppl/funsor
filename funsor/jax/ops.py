@@ -8,6 +8,7 @@ import numpy as onp
 from jax import lax
 from jax.core import Tracer
 from jax.interpreters.xla import DeviceArray
+from jax.ops import index_update
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, gammaln, logsumexp
 
@@ -225,6 +226,11 @@ def _safesub(x, y):
     except ValueError:
         finfo = np.iinfo(y.dtype)
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
+
+
+@ops.scatter.register(array, tuple, array)
+def _scatter(dest, indices, src):
+    return index_update(dest, indices, src)
 
 
 @ops.stack.register(int, [array + (int, float)])

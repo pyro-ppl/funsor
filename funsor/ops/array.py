@@ -254,6 +254,11 @@ def _safesub(x, y):
 
 
 @Op
+def scatter(dest, indices, src):
+    raise NotImplementedError
+
+
+@Op
 def scatter_add(dest, indices, src):
     raise NotImplementedError
 
@@ -311,6 +316,7 @@ __all__ = [
     "permute",
     "prod",
     "sample",
+    "scatter",
     "scatter_add",
     "stack",
     "sum",

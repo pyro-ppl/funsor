@@ -24,7 +24,7 @@ from funsor.tensor import (
     stack,
     tensordot,
 )
-from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
+from funsor.terms import Cat, Lambda, Number, Slice, Scatter, Stack, Variable, lazy
 from funsor.testing import (
     assert_close,
     assert_equiv,
@@ -1227,3 +1227,13 @@ def test_diagonal_rename():
 
 def test_empty_tensor_possible():
     funsor.to_funsor(randn(3, 0), dim_to_name=OrderedDict([(-1, "a"), (-2, "b")]))
+
+
+@pytest.mark.parametrize("op", [ops.add, ops.mul, ops.max, ops.min])
+def test_scatter(op):
+    source = random_tensor(OrderedDict(k=Bint[5]))
+    actual = Scatter(op, (("i", Number(0, 3)),), source)
+    expected_data = ops.cat(0, source.data, zeros((2, 5)))
+    expected = Tensor(expected_data, OrderedDict(i=Bint[3], k=Bint[5]))
+    assert_close(actual, expected)
+    assert_close(actual(i=0), source)  # Scatter is transpose to Subs
