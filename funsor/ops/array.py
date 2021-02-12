@@ -253,6 +253,11 @@ def _safesub(x, y):
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
 
 
+@Op
+def scatter_add(dest, indices, src):
+    raise NotImplementedError
+
+
 @stack.register(int, [array])
 def _stack(dim, *x):
     return np.stack(x, axis=dim)
@@ -306,6 +311,7 @@ __all__ = [
     "permute",
     "prod",
     "sample",
+    "scatter_add",
     "stack",
     "sum",
     "transpose",

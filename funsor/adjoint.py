@@ -290,34 +290,37 @@ def adjoint_cat(adj_sum_op, adj_prod_op, out_adj, name, parts, part_name):
 )
 def adjoint_subs_tensor(adj_sum_op, adj_prod_op, out_adj, arg, subs):
 
-    assert all(isinstance(v, Funsor) for k, v in subs)
+    assert all(isinstance(v, (Variable, Number, Tensor, Slice)) for k, v in subs), \
+        "only affine substitution can be transposed"
 
     # invert renaming
     renames = tuple((v.name, k) for k, v in subs if isinstance(v, Variable))
-    out_adj = Subs(out_adj, renames)
+    arg_adj = Subs(out_adj, renames)
 
     # inverting advanced indexing
     slices = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
 
     # TODO avoid reifying these zero/one tensors by using symbolic constants
-    # ones for things that weren't sliced away
-    ones_like_out = Subs(
+    # zero for things that weren't sliced away
+    zeros_like_out = Subs(
         Tensor(
-            ops.full_like(arg.data, ops.UNITS[adj_prod_op]),
+            ops.full_like(arg.data, ops.UNITS[adj_sum_op]),
             arg.inputs.copy(),
             arg.output.dtype,
         ),
         slices,
     )
-    arg_adj = adj_prod_op(out_adj, ones_like_out)
+    # FIXME this broadcasting is unnecessary
+    arg_adj = adj_sum_op(arg_adj, zeros_like_out)
 
-    # ones for things that were sliced away
-    ones_like_arg = Tensor(
-        ops.full_like(arg.data, ops.UNITS[adj_prod_op]),
+    # zero for things that were sliced away
+    # TODO is this broadcast also unnecessary?
+    zeros_like_arg = Tensor(
+        ops.full_like(arg.data, ops.UNITS[adj_sum_op]),
         arg.inputs.copy(),
         arg.output.dtype,
     )
-    arg_adj = _scatter(arg_adj, ones_like_arg, slices)
+    arg_adj = _scatter(arg_adj, zeros_like_arg, slices)
 
     return ((arg, arg_adj),)
 
@@ -387,8 +390,13 @@ def _scatter(src, res, subs):
             src_data = src_data.unsqueeze(-1 - len(src.output.shape))
     src = Tensor(src_data, src_inputs, src.output.dtype).align(tuple(res.inputs.keys()))
 
+    # TODO refactor to scatter_add to support non-injective substitution
+    # TODO add and test ops.scatter_add
+    # data = ops.scatter_add(res.data, tuple(index), src.data)
+
     data = res.data
     data[tuple(index)] = src.data
+
     return Tensor(data, inputs, res.dtype)
 
 

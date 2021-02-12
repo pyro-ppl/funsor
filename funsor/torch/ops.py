@@ -230,6 +230,20 @@ def _safesub(x, y):
     return x + (-y).clamp(max=finfo.max)
 
 
+@ops.scatter_add.register(torch.Tensor, tuple, torch.Tensor)
+def _scatter_add(dest, indices, src):
+    dim = len(indices)
+    flat_dest = dest.reshape(-1)
+    flat_src = src.reshape(-1)
+    flat_indices = indices[0]
+    for i in range(dim - 1):
+        flat_indices *= dest.shape[i]
+        flat_indices += indices[i + 1]
+    flat_result = torch.scatter_add(flat_dest, 0, flat_indices, flat_src)
+    result = flat_result.reshape(dest.shape)
+    return result
+
+
 @ops.stack.register(int, [torch.Tensor])
 def _stack(dim, *x):
     return torch.stack(x, dim=dim)

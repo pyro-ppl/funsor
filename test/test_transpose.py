@@ -5,18 +5,28 @@ from collections import OrderedDict
 
 import pytest
 
+import funsor
 import funsor.ops as ops
 from funsor.adjoint import adjoint
 from funsor.domains import Bint, Real, Reals
-from funsor.interpreter import interpretation
-from funsor.terms import Number, Variable, lazy
+from funsor.interpreter import interpretation, reinterpret
+from funsor.tensor import Tensor
+from funsor.terms import Number, Variable, lazy, reflect
 from funsor.testing import assert_close, random_tensor
 
 # from funsor.transpose import transpose
 
+try:
+    import torch
+except ImportError:
+    pytest.skip()
+
 
 def transpose(expr):
-    return adjoint(ops.add, ops.mul, expr)
+    result = adjoint(ops.add, ops.mul, expr)
+    for key, value in result.items():
+        assert value.input_vars <= key.input_vars | expr.input_vars
+    return result
 
 
 def test_identity():
@@ -169,20 +179,20 @@ def test_tower_sum(height):
     assert transpose(top)[x] is Number(2.0 ** height)
 
 
-@pytest.mark.parametrize("height", [1, 2, 3, 10])  # , 100, 1000])
+@pytest.mark.parametrize("height", [0, 1, 2, 3, 10])  # , 100, 1000])
 def test_tower_prod(height):
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
     with interpretation(lazy):
         top = x
-        expected = x
+        expected = Number(1.)
         for _ in range(height):
+            expected = top * expected + expected * top
             top = top * top
-            expected = expected + expected
         # This might be too much to ask:
-        transpose(top)[x] is expected
+        # assert transpose(top)[x] is expected
 
     # This should definitely hold:
-    assert_close(transpose(top)[x], x * 2 ** height)
+    assert_close(transpose(top)[x], reinterpret(expected))
 
 
 @pytest.mark.parametrize("f", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
@@ -244,8 +254,8 @@ def test_reduce_sum_rule():
             assert_close(actual(x=x_, y=y_), expected(x=x_, y=y_))
 
 
-@pytest.mark.xfail(reason="TODO reverse alpha renaming")
-def test_reduce_sum_getitem():
+@pytest.mark.xfail(reason="getitem adjoint not yet implemented")
+def test_reduce_sum_getitem_variable():
     x = Variable("x", Reals[4])
     i = Variable("i", Bint[4])
     with interpretation(lazy):
@@ -260,6 +270,71 @@ def test_reduce_sum_getitem():
     if actual is not expected:
         for x_, y_ in [(0.0, 0.1), (-1.3, 0.2), (0.3, 1.5)]:
             assert_close(actual(x=x_, y=y_), expected(x=x_, y=y_))
+
+
+def test_adjoint_subs_variable():
+
+    w = Variable("w", Real)
+    x = Variable("x", Real)
+    y = Variable("y", Real)
+    with interpretation(reflect):
+        xy = x + y
+        z = xy(x=w)
+
+    # x = Scatter(dest, subs, src) <==> transpose(x)[src] == dest(**subs)
+    # zero(**subs) = out_adj <== notation ==> Scatter(zero, subs, out_adj)
+    # in tensor-land: out = in[indices] <==> transpose(out)[in] == zero[indices] = out_adj
+
+    with interpretation(lazy):
+        assert transpose(z)[y] is Number(1.)
+        # assert transpose(z)[xy] is Scatter(Number(1.), ((x, w),), Number(0.))
+        assert transpose(z)[x] is Number(0.)  # XXX 0 or 1 or w?
+        assert transpose(z)[w] is Number(1.)
+
+
+def test_adjoint_subs_tensor():
+
+    i = Variable("i", Bint[2])
+    j = Variable("j", Bint[2])
+    x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
+    with interpretation(reflect):
+        y = x(i=0)
+
+    # conceptually: expected = Scatter(Number(0), ((i, Number(0, 2)),), Number(1))
+    expected = Tensor(torch.tensor([[1., 1.], [0., 0.]]))['i', 'j']
+
+    assert_close(transpose(y)[x], expected)
+
+
+def test_adjoint_subs_tensor_rename():
+
+    i = Variable("i", Bint[2])
+    j = Variable("j", Bint[2])
+    k = Variable("k", Bint[2])
+    x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
+    with interpretation(reflect):
+        y = x(i=k)
+
+    # conceptually: expected = Scatter(Number(0), ((i, k),), Number(1))
+    expected = Tensor(torch.tensor([[1., 1.], [1., 1.]]))['i', 'j']
+    # or expected = Number(1)?
+
+    assert_close(transpose(y)[x], expected)
+
+
+@pytest.mark.xfail(reason="requires ops.scatter_add")
+def test_adjoint_subs_tensor_expand():
+
+    k = Tensor(torch.tensor([0, 0, 1, 1]), OrderedDict(), 2)
+    x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
+    with interpretation(reflect):
+        y = x(i=k)
+
+    # conceptually: expected = Scatter(ops.add, ((i, k),), Number(1)) = two
+    expected = Tensor(torch.tensor([2., 2.]))['i']
+    # or expected = Number(2)?
+
+    assert_close(transpose(y)[x], expected)
 
 
 """
