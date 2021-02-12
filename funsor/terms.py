@@ -7,7 +7,7 @@ import math
 import numbers
 import typing
 import warnings
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from collections.abc import Hashable
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
@@ -17,15 +17,21 @@ from multipledispatch.variadic import Variadic, isvariadic
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Array, Bint, Domain, Real, find_domain
-from funsor.interpreter import Interpretation, DispatchedInterpretation, PrioritizedInterpretation, \
-    PatternMissingError, dispatched_interpretation, interpret
+from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
+from funsor.interpreter import (
+    DispatchedInterpretation,
+    Interpretation,
+    PatternMissingError,
+    PrioritizedInterpretation,
+    interpret,
+)
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import getargspec, lazy_property, pretty, quote
+from funsor.util import get_backend, getargspec, lazy_property, pretty, quote
+
+from . import instrument, interpreter, ops
 
 
 class SubstituteInterpretation(Interpretation):
-
     @property
     def is_total(self):
         return self.base_interpretation.is_total
@@ -42,7 +48,9 @@ class SubstituteInterpretation(Interpretation):
         expr = self.base_interpretation(cls, *args)
         fresh_subs = tuple((k, v) for k, v in self.subs if k in expr.fresh)
         if fresh_subs:
-            expr = interpreter.debug_logged(expr.eager_subs)(fresh_subs)
+            expr = instrument.debug_logged(expr.eager_subs)(fresh_subs)
+        if instrument.PROFILE:
+            instrument.COUNTERS["interpretation"]["substitute"] += 1
         return expr
 
 
@@ -57,12 +65,15 @@ def _alpha_mangle(expr):
 
     FIXME this does not avoid conflict with other bound variables.
     """
-    alpha_subs = {name: interpreter.gensym(name + "__BOUND")
-                  for name in expr.bound if "__BOUND" not in name}
+    alpha_subs = {
+        name: interpreter.gensym(name + "__BOUND")
+        for name in expr.bound
+        if "__BOUND" not in name
+    }
     if not alpha_subs:
         return expr
 
-    ast_values = expr._alpha_convert(alpha_subs)
+    ast_values = instrument.debug_logged(expr._alpha_convert)(alpha_subs)
     return reflect(type(expr), *ast_values)
 
 
@@ -77,49 +88,67 @@ class ReflectInterpretation(Interpretation):
     def __call__(self, cls, *args, **kwargs):
         if len(args) > len(cls._ast_fields):
             # handle varargs
-            new_args = tuple(args[:len(cls._ast_fields) - 1]) + (args[len(cls._ast_fields) - 1 - len(args):],)
+            new_args = tuple(args[: len(cls._ast_fields) - 1]) + (
+                args[len(cls._ast_fields) - 1 - len(args) :],
+            )
             assert len(new_args) == len(cls._ast_fields)
             _, args = args, new_args
 
         # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
-        cache_key = tuple(id(arg) if type(arg).__name__ == "DeviceArray" or not isinstance(arg, Hashable)
-                          else arg for arg in args)
+        if get_backend() == "jax":
+            import jax
+
+            cache_key = tuple(
+                id(arg)
+                if isinstance(arg, jax.interpreters.xla.DeviceArray)
+                or not isinstance(arg, Hashable)
+                else arg
+                for arg in args
+            )
+        else:
+            cache_key = tuple(
+                id(arg) if not isinstance(arg, Hashable) else arg for arg in args
+            )
         if cache_key in cls._cons_cache:
             return cls._cons_cache[cache_key]
 
-        arg_types = tuple(typing.Tuple[tuple(map(type, arg))]
-                          if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
-                          else typing.Tuple if (type(arg) is tuple and not arg)
-                          else type(arg) for arg in args)
+        arg_types = tuple(
+            typing.Tuple[tuple(map(type, arg))]
+            if (type(arg) is tuple and all(isinstance(a, Funsor) for a in arg))
+            else typing.Tuple
+            if (type(arg) is tuple and not arg)
+            else type(arg)
+            for arg in args
+        )
         cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
         result = super(FunsorMeta, cls_specific).__call__(*args)
         result._ast_values = args
 
+        if instrument.PROFILE:
+            size, depth, width = _get_ast_stats(result)
+            instrument.COUNTERS["ast_size"][size] += 1
+            instrument.COUNTERS["ast_depth"][depth] += 1
+            classname = getattr(cls, "__origin__", cls).__name__
+            instrument.COUNTERS["funsor"][classname] += 1
+            instrument.COUNTERS[classname][width] += 1
+
         # alpha-convert eagerly upon binding any variable
         result = _alpha_mangle(result)
-
-        cls._cons_cache[cache_key] = result
-        return result
 
 
 reflect = ReflectInterpretation()
 
-
 normalize_base = DispatchedInterpretation()
 normalize = PrioritizedInterpretation(normalize_base, reflect)
-
 
 lazy_base = DispatchedInterpretation()
 lazy = PrioritizedInterpretation(lazy_base, reflect)
 
-
 eager_base = DispatchedInterpretation()
 eager = PrioritizedInterpretation(eager_base, normalize_base, reflect)
 
-
 die_base = DispatchedInterpretation()
 eager_or_die = PrioritizedInterpretation(eager_base, die_base, reflect)
-
 
 sequential_base = DispatchedInterpretation()
 # XXX does this work with sphinx/help()?
@@ -127,16 +156,18 @@ sequential_base = DispatchedInterpretation()
 Eagerly execute ops with known implementations; additonally execute
 vectorized ops sequentially if no known vectorized implementation exists.
 """
-sequential = PrioritizedInterpretation(sequential_base, eager_base, normalize_base, reflect)
+sequential = PrioritizedInterpretation(
+    sequential_base, eager_base, normalize_base, reflect
+)
 
-
+moment_matching_base = DispatchedInterpretation()
 """
 A moment matching interpretation of :class:`Reduce` expressions. This falls
 back to :class:`eager` in other cases.
 """
-moment_matching_base = DispatchedInterpretation()
-moment_matching = PrioritizedInterpretation(moment_matching_base, eager_base, normalize_base, reflect)
-
+moment_matching = PrioritizedInterpretation(
+    moment_matching_base, eager_base, normalize_base, reflect
+)
 
 interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
@@ -163,12 +194,13 @@ class FunsorMeta(type):
         it incurs no memory overhead beyond the cons hash dict.
     4.  Support subtyping with parameters for pattern matching, e.g. Number[int, int].
     """
+
     def __init__(cls, name, bases, dct):
         super(FunsorMeta, cls).__init__(name, bases, dct)
         if not hasattr(cls, "__args__"):
             cls.__args__ = ()
         if cls.__args__:
-            base, = bases
+            (base,) = bases
             cls.__origin__ = base
         else:
             cls._ast_fields = getargspec(cls.__init__)[0][1:]
@@ -182,7 +214,7 @@ class FunsorMeta(type):
         # Convert kwargs to args.
         if kwargs:
             args = list(args)
-            for name in cls._ast_fields[len(args):]:
+            for name in cls._ast_fields[len(args) :]:
                 args.append(kwargs.pop(name))
             assert not kwargs, kwargs
             args = tuple(args)
@@ -192,12 +224,20 @@ class FunsorMeta(type):
     def __getitem__(cls, arg_types):
         if not isinstance(arg_types, tuple):
             arg_types = (arg_types,)
-        assert not any(isvariadic(arg_type) for arg_type in arg_types), "nested variadic types not supported"
+        assert not any(
+            isvariadic(arg_type) for arg_type in arg_types
+        ), "nested variadic types not supported"
         # switch tuple to typing.Tuple
-        arg_types = tuple(typing.Tuple if arg_type is tuple else arg_type for arg_type in arg_types)
+        arg_types = tuple(
+            typing.Tuple if arg_type is tuple else arg_type for arg_type in arg_types
+        )
         if arg_types not in cls._type_cache:
-            assert not cls.__args__, "cannot subscript a subscripted type {}".format(cls)
-            assert len(arg_types) == len(cls._ast_fields), "must provide types for all params"
+            assert not cls.__args__, "cannot subscript a subscripted type {}".format(
+                cls
+            )
+            assert len(arg_types) == len(
+                cls._ast_fields
+            ), "must provide types for all params"
             new_dct = cls.__dict__.copy()
             new_dct.update({"__args__": arg_types})
             # type(cls) to handle FunsorMeta subclasses
@@ -208,7 +248,9 @@ class FunsorMeta(type):
         if cls is subcls:
             return True
         if not isinstance(subcls, FunsorMeta):
-            return super(FunsorMeta, getattr(cls, "__origin__", cls)).__subclasscheck__(subcls)
+            return super(FunsorMeta, getattr(cls, "__origin__", cls)).__subclasscheck__(
+                subcls
+            )
 
         cls_origin = getattr(cls, "__origin__", cls)
         subcls_origin = getattr(subcls, "__origin__", subcls)
@@ -227,9 +269,12 @@ class FunsorMeta(type):
 
     @lazy_property
     def classname(cls):
-        return cls.__name__ + "[{}]".format(", ".join(
-            str(getattr(t, "classname", t))  # Tuple doesn't have __name__
-            for t in cls.__args__))
+        return cls.__name__ + "[{}]".format(
+            ", ".join(
+                str(getattr(t, "classname", t))  # Tuple doesn't have __name__
+                for t in cls.__args__
+            )
+        )
 
 
 def _issubclass_tuple(subcls, cls):
@@ -237,18 +282,33 @@ def _issubclass_tuple(subcls, cls):
     utility for pattern matching with tuple subexpressions
     """
     # so much boilerplate...
-    cls_is_union = hasattr(cls, "__origin__") and (cls.__origin__ or cls) is typing.Union
+    cls_is_union = (
+        hasattr(cls, "__origin__") and (cls.__origin__ or cls) is typing.Union
+    )
     if isinstance(cls, tuple) or cls_is_union:
-        return any(_issubclass_tuple(subcls, option)
-                   for option in (getattr(cls, "__args__", []) if cls_is_union else cls))
+        return any(
+            _issubclass_tuple(subcls, option)
+            for option in (getattr(cls, "__args__", []) if cls_is_union else cls)
+        )
 
-    subcls_is_union = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) is typing.Union
+    subcls_is_union = (
+        hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) is typing.Union
+    )
     if isinstance(subcls, tuple) or subcls_is_union:
-        return any(_issubclass_tuple(option, cls)
-                   for option in (getattr(subcls, "__args__", []) if subcls_is_union else subcls))
+        return any(
+            _issubclass_tuple(option, cls)
+            for option in (
+                getattr(subcls, "__args__", []) if subcls_is_union else subcls
+            )
+        )
 
-    subcls_is_tuple = hasattr(subcls, "__origin__") and (subcls.__origin__ or subcls) in (tuple, typing.Tuple)
-    cls_is_tuple = hasattr(cls, "__origin__") and (cls.__origin__ or cls) in (tuple, typing.Tuple)
+    subcls_is_tuple = hasattr(subcls, "__origin__") and (
+        subcls.__origin__ or subcls
+    ) in (tuple, typing.Tuple)
+    cls_is_tuple = hasattr(cls, "__origin__") and (cls.__origin__ or cls) in (
+        tuple,
+        typing.Tuple,
+    )
     if subcls_is_tuple != cls_is_tuple:
         return False
     if not cls_is_tuple:
@@ -261,25 +321,28 @@ def _issubclass_tuple(subcls, cls):
     return all(_issubclass_tuple(a, b) for a, b in zip(subcls.__args__, cls.__args__))
 
 
-def _convert_reduced_vars(reduced_vars):
+def _convert_reduced_vars(reduced_vars, inputs):
     """
     Helper to convert the reduced_vars arg of ``.reduce()`` and friends.
 
     :param reduced_vars:
     :type reduced_vars: str, Variable, or set or frozenset thereof.
-    :rtype: frozenset of str
+    :rtype: frozenset of Variable
     """
     # Avoid copying if arg is of correct type.
-    if (isinstance(reduced_vars, frozenset) and
-            all(isinstance(var, str) for var in reduced_vars)):
+    if isinstance(reduced_vars, frozenset) and all(
+        isinstance(var, Variable) for var in reduced_vars
+    ):
         return reduced_vars
 
     if isinstance(reduced_vars, (str, Variable)):
         reduced_vars = {reduced_vars}
     assert isinstance(reduced_vars, (frozenset, set))
     assert all(isinstance(var, (str, Variable)) for var in reduced_vars)
-    return frozenset(var if isinstance(var, str) else var.name
-                     for var in reduced_vars)
+    return frozenset(
+        Variable(var, inputs[var]) if isinstance(var, str) else var
+        for var in reduced_vars
+    )
 
 
 class Funsor(object, metaclass=FunsorMeta):
@@ -299,16 +362,17 @@ class Funsor(object, metaclass=FunsorMeta):
         free variables to domains.
     :param Domain output: An output domain.
     """
+
     def __init__(self, inputs, output, fresh=None, bound=None):
         fresh = frozenset() if fresh is None else fresh
-        bound = frozenset() if bound is None else bound
+        bound = {} if bound is None else bound
         assert isinstance(inputs, OrderedDict)
         for name, input_ in inputs.items():
             assert isinstance(name, str)
             assert isinstance(input_, Domain)
         assert isinstance(output, Domain)
         assert isinstance(fresh, frozenset)
-        assert isinstance(bound, frozenset)
+        assert isinstance(bound, dict)
         super(Funsor, self).__init__()
         self.inputs = inputs
         self.output = output
@@ -322,6 +386,10 @@ class Funsor(object, metaclass=FunsorMeta):
     @property
     def shape(self):
         return self.output.shape
+
+    @lazy_property
+    def input_vars(self):
+        return frozenset(Variable(k, v) for k, v in self.inputs.items())
 
     def __copy__(self):
         return self
@@ -339,10 +407,14 @@ class Funsor(object, metaclass=FunsorMeta):
         return type_hints
 
     def __repr__(self):
-        return '{}({})'.format(type(self).__name__, ', '.join(map(repr, self._ast_values)))
+        return "{}({})".format(
+            type(self).__name__, ", ".join(map(repr, self._ast_values))
+        )
 
     def __str__(self):
-        return '{}({})'.format(type(self).__name__, ', '.join(map(str, self._ast_values)))
+        return "{}({})".format(
+            type(self).__name__, ", ".join(map(str, self._ast_values))
+        )
 
     def quote(self):
         return quote(self)
@@ -359,7 +431,7 @@ class Funsor(object, metaclass=FunsorMeta):
         """
         # Substitute all funsor values.
         # Subclasses must handle string conversion.
-        assert self.bound.issuperset(alpha_subs)
+        assert set(alpha_subs).issubset(self.bound)
         return tuple(substitute(v, alpha_subs) for v in self._ast_values)
 
     def __call__(self, *args, **kwargs):
@@ -376,7 +448,8 @@ class Funsor(object, metaclass=FunsorMeta):
     def __bool__(self):
         if self.inputs or self.output.shape:
             raise ValueError(
-                "bool value of Funsor with more than one value is ambiguous")
+                "bool value of Funsor with more than one value is ambiguous"
+            )
         raise NotImplementedError
 
     def __nonzero__(self):
@@ -384,7 +457,7 @@ class Funsor(object, metaclass=FunsorMeta):
 
     def __len__(self):
         if not self.output.shape:
-            raise ValueError('Funsor with empty shape has no len()')
+            raise ValueError("Funsor with empty shape has no len()")
         return self.output.shape[0]
 
     def __iter__(self):
@@ -394,7 +467,8 @@ class Funsor(object, metaclass=FunsorMeta):
     def item(self):
         if self.inputs or self.output.shape:
             raise ValueError(
-                "only one element Funsors can be converted to Python scalars")
+                "only one element Funsors can be converted to Python scalars"
+            )
         raise NotImplementedError
 
     @property
@@ -414,13 +488,12 @@ class Funsor(object, metaclass=FunsorMeta):
         # Eagerly convert reduced_vars to appropriate things.
         if reduced_vars is None:
             # Empty reduced_vars means "reduce over everything".
-            reduced_vars = frozenset(self.inputs)
+            reduced_vars = frozenset(Variable(k, v) for k, v in self.inputs.items())
         else:
-            reduced_vars = _convert_reduced_vars(reduced_vars)
+            reduced_vars = _convert_reduced_vars(reduced_vars, self.inputs)
         assert isinstance(reduced_vars, frozenset), reduced_vars
         if not reduced_vars:
             return self
-        assert reduced_vars.issubset(self.inputs)
         return Reduce(op, self, reduced_vars)
 
     def sample(self, sampled_vars, sample_inputs=None, rng_key=None):
@@ -451,7 +524,8 @@ class Funsor(object, metaclass=FunsorMeta):
         :type rng_key: None or JAX's random.PRNGKey
         """
         assert self.output == Real
-        sampled_vars = _convert_reduced_vars(sampled_vars)
+        sampled_vars = _convert_reduced_vars(sampled_vars, self.inputs)
+        sampled_vars = frozenset(v.name for v in sampled_vars)
         assert isinstance(sampled_vars, frozenset)
         if sample_inputs is None:
             sample_inputs = OrderedDict()
@@ -459,7 +533,9 @@ class Funsor(object, metaclass=FunsorMeta):
         if sampled_vars.isdisjoint(self.inputs):
             return self
 
-        result = interpreter.debug_logged(self.unscaled_sample)(sampled_vars, sample_inputs, rng_key)
+        result = instrument.debug_logged(self.unscaled_sample)(
+            sampled_vars, sample_inputs, rng_key
+        )
         if sample_inputs is not None:
             log_scale = 0
             for var, domain in sample_inputs.items():
@@ -510,14 +586,14 @@ class Funsor(object, metaclass=FunsorMeta):
         return None  # defer to default implementation
 
     def eager_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
 
         return None  # defer to default implementation
 
     def sequential_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
 
@@ -542,7 +618,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return None  # defer to default implementation
 
     def moment_matching_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)  # FIXME Is this valid?
+        assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
 
@@ -620,12 +696,6 @@ class Funsor(object, metaclass=FunsorMeta):
     def __rsub__(self, other):
         return Binary(ops.sub, to_funsor(other), self)
 
-    def __logaddexp__(self, other):
-        return Binary(ops.logaddexp, self, to_funsor(other))
-
-    def __rlogaddexp__(self, other):
-        return Binary(ops.logaddexp, to_funsor(other), self)
-
     def __mul__(self, other):
         return Binary(ops.mul, self, to_funsor(other))
 
@@ -638,11 +708,35 @@ class Funsor(object, metaclass=FunsorMeta):
     def __rtruediv__(self, other):
         return Binary(ops.truediv, to_funsor(other), self)
 
+    def __floordiv__(self, other):
+        return Binary(ops.floordiv, self, to_funsor(other))
+
+    def __rfloordiv__(self, other):
+        return Binary(ops.floordiv, to_funsor(other), self)
+
     def __matmul__(self, other):
         return Binary(ops.matmul, self, to_funsor(other))
 
     def __rmatmul__(self, other):
         return Binary(ops.matmul, to_funsor(other), self)
+
+    def __mod__(self, other):
+        return Binary(ops.mod, self, to_funsor(other))
+
+    def __rmod__(self, other):
+        return Binary(ops.mod, to_funsor(other), self)
+
+    def __lshift__(self, other):
+        return Binary(ops.lshift, self, to_funsor(other))
+
+    def __rlshift__(self, other):
+        return Binary(ops.lshift, to_funsor(other), self)
+
+    def __rshift__(self, other):
+        return Binary(ops.rshift, self, to_funsor(other))
+
+    def __rrshift__(self, other):
+        return Binary(ops.rshift, to_funsor(other), self)
 
     def __pow__(self, other):
         return Binary(ops.pow, self, to_funsor(other))
@@ -683,12 +777,6 @@ class Funsor(object, metaclass=FunsorMeta):
     def __ge__(self, other):
         return Binary(ops.ge, self, to_funsor(other))
 
-    def __min__(self, other):
-        return Binary(ops.min, self, to_funsor(other))
-
-    def __max__(self, other):
-        return Binary(ops.max, self, to_funsor(other))
-
     def __getitem__(self, other):
         if type(other) is not tuple:
             other = to_funsor(other, Bint[self.output.shape[0]])
@@ -718,7 +806,7 @@ class Funsor(object, metaclass=FunsorMeta):
         for part in other:
             if isinstance(part, slice):
                 if part != slice(None):
-                    raise NotImplementedError('TODO support nontrivial slicing')
+                    raise NotImplementedError("TODO support nontrivial slicing")
                 offset += 1
             else:
                 part = to_funsor(part, Bint[result.output.shape[offset]])
@@ -729,8 +817,11 @@ class Funsor(object, metaclass=FunsorMeta):
 @quote.register(Funsor)
 def _(arg, indent, out):
     name = type(arg).__name__
-    if type(arg).__module__ in ['funsor.torch.distributions', 'funsor.jax.distributions']:
-        name = 'dist.' + name
+    if type(arg).__module__ in [
+        "funsor.torch.distributions",
+        "funsor.jax.distributions",
+    ]:
+        name = "dist." + name
     out.append((indent, name + "("))
     for value in arg._ast_values[:-1]:
         quote.inplace(value, indent + 1, out)
@@ -767,7 +858,9 @@ def funsor_to_funsor(x, output=None, dim_to_name=None):
     if output is not None and x.output != output:
         raise ValueError("Output mismatch: {} vs {}".format(x.output, output))
     if dim_to_name is not None:
-        bint_names = {name for name, domain in x.inputs.items() if domain.dtype != "real"}
+        bint_names = {
+            name for name, domain in x.inputs.items() if domain.dtype != "real"
+        }
         if not bint_names.issubset(dim_to_name.values()):
             raise ValueError("Inputs mismatch: {} vs {}".format(x.inputs, dim_to_name))
     return x
@@ -792,7 +885,11 @@ def to_data(x, name_to_dim=None, **kwargs):
 @to_data.register(Funsor)
 def _to_data_funsor(x, name_to_dim=None):
     if name_to_dim is None and x.inputs:
-        raise ValueError("cannot convert {} to data due to lazy inputs: {}".format(type(x), set(x.inputs)))
+        raise ValueError(
+            "cannot convert {} to data due to lazy inputs: {}".format(
+                type(x), set(x.inputs)
+            )
+        )
     raise PatternMissingError("cannot convert to a non-Funsor: {}".format(repr(x)))
 
 
@@ -803,6 +900,7 @@ class Variable(Funsor):
     :param str name: A variable name.
     :param funsor.domains.Domain output: A domain.
     """
+
     def __init__(self, name, output):
         inputs = OrderedDict([(name, output)])
         fresh = frozenset({name})
@@ -831,9 +929,11 @@ class SubsMeta(FunsorMeta):
     """
     Wrapper to call :func:`to_funsor` and check types.
     """
+
     def __call__(cls, arg, subs):
-        subs = tuple((k, to_funsor(v, arg.inputs[k]))
-                     for k, v in subs if k in arg.inputs)
+        subs = tuple(
+            (k, to_funsor(v, arg.inputs[k])) for k, v in subs if k in arg.inputs
+        )
         return super().__call__(arg, subs)
 
 
@@ -846,6 +946,7 @@ class Subs(Funsor, metaclass=SubsMeta):
         string and ``value`` can be coerced to a :class:`Funsor` via
         :func:`to_funsor`.
     """
+
     def __init__(self, arg, subs):
         assert isinstance(arg, Funsor)
         assert isinstance(subs, tuple)
@@ -859,18 +960,26 @@ class Subs(Funsor, metaclass=SubsMeta):
         for key, value in subs:
             inputs.update(value.inputs)
         fresh = frozenset()
-        bound = frozenset(key for key, value in subs)
+        bound = {key: value.output for key, value in subs}
         super(Subs, self).__init__(inputs, arg.output, fresh, bound)
         self.arg = arg
         self.subs = OrderedDict(subs)
 
     def __repr__(self):
-        return 'Subs({}, {})'.format(self.arg, self.subs)
+        return "{}({})".format(
+            repr(self.arg), ", ".join(f"{k}={repr(v)}" for k, v in self.subs.items())
+        )
+
+    def __str__(self):
+        return "{}({})".format(
+            str(self.arg), ", ".join(f"{k}={str(v)}" for k, v in self.subs.items())
+        )
 
     def _alpha_convert(self, alpha_subs):
-        assert self.bound.issuperset(alpha_subs)
-        alpha_subs = {k: to_funsor(v, self.subs[k].output)
-                      for k, v in alpha_subs.items()}
+        assert set(alpha_subs).issubset(self.bound)
+        alpha_subs = {
+            k: to_funsor(v, self.subs[k].output) for k, v in alpha_subs.items()
+        }
         arg, subs = self._ast_values
         arg = substitute(arg, alpha_subs)
         subs = tuple((str(alpha_subs.get(k, k)), v) for k, v in subs)
@@ -878,7 +987,7 @@ class Subs(Funsor, metaclass=SubsMeta):
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         if any(k in sample_inputs for k, v in self.subs.items()):
-            raise NotImplementedError('TODO alpha-convert')
+            raise NotImplementedError("TODO alpha-convert")
         subs_sampled_vars = set()
         for name in sampled_vars:
             if name in self.arg.inputs:
@@ -910,8 +1019,8 @@ def die_base_subs(arg, subs):
 
 
 _PREFIX = {
-    ops.neg: '-',
-    ops.invert: '~',
+    ops.neg: "-",
+    ops.invert: "~",
 }
 
 
@@ -922,6 +1031,7 @@ class Unary(Funsor):
     :param ~funsor.ops.Op op: A unary operator.
     :param Funsor arg: An argument.
     """
+
     def __init__(self, op, arg):
         assert callable(op)
         assert isinstance(arg, Funsor)
@@ -932,20 +1042,25 @@ class Unary(Funsor):
 
     def __repr__(self):
         if self.op in _PREFIX:
-            return '{}{}'.format(_PREFIX[self.op], self.arg)
-        return 'Unary({}, {})'.format(self.op.__name__, self.arg)
+            return "({}{})".format(_PREFIX[self.op], repr(self.arg))
+        return super().__repr__()
+
+    def __str__(self):
+        if self.op in _PREFIX:
+            return "({}{})".format(_PREFIX[self.op], str(self.arg))
+        return super().__str__()
 
 
 @eager.register(Unary, Op, Funsor)
 def eager_unary(op, arg):
-    return interpreter.debug_logged(arg.eager_unary)(op)
+    return instrument.debug_logged(arg.eager_unary)(op)
 
 
 @eager.register(Unary, AssociativeOp, Funsor)
 def eager_unary(op, arg):
     if not arg.output.shape:
         return arg
-    return interpreter.debug_logged(arg.eager_unary)(op)
+    return instrument.debug_logged(arg.eager_unary)(op)
 
 
 @die_base.register(Unary, Op, Funsor)
@@ -955,11 +1070,22 @@ def die_base_unary(op, arg):
 
 
 _INFIX = {
-    ops.add: '+',
-    ops.sub: '-',
-    ops.mul: '*',
-    ops.truediv: '/',
-    ops.pow: '**',
+    ops.add: "+",
+    ops.sub: "-",
+    ops.mul: "*",
+    ops.matmul: "@",
+    ops.truediv: "/",
+    ops.floordiv: "//",
+    ops.mod: "%",
+    ops.pow: "**",
+    ops.eq: "==",
+    ops.ne: "!=",
+    ops.ge: ">=",
+    ops.gt: ">=",
+    ops.le: "<=",
+    ops.lt: "<",
+    ops.lshift: "<<",
+    ops.rshift: ">>",
 }
 
 
@@ -971,6 +1097,7 @@ class Binary(Funsor):
     :param Funsor lhs: A left hand side argument.
     :param Funsor rhs: A right hand side argument.
     """
+
     def __init__(self, op, lhs, rhs):
         assert callable(op)
         assert isinstance(lhs, Funsor)
@@ -985,8 +1112,13 @@ class Binary(Funsor):
 
     def __repr__(self):
         if self.op in _INFIX:
-            return '({} {} {})'.format(self.lhs, _INFIX[self.op], self.rhs)
-        return 'Binary({}, {}, {})'.format(self.op.__name__, self.lhs, self.rhs)
+            return "({} {} {})".format(repr(self.lhs), _INFIX[self.op], repr(self.rhs))
+        return super().__repr__()
+
+    def __str__(self):
+        if self.op in _INFIX:
+            return "({} {} {})".format(str(self.lhs), _INFIX[self.op], str(self.rhs))
+        return super().__str__()
 
 
 @die_base.register(Binary, Op, Funsor, Funsor)
@@ -1001,46 +1133,101 @@ class Reduce(Funsor):
 
     :param ~funsor.ops.Op op: A binary operator.
     :param funsor arg: An argument to be reduced.
-    :param frozenset reduced_vars: A set of variable names over which to reduce.
+    :param frozenset reduced_vars: A set of variables over which to reduce.
     """
+
     def __init__(self, op, arg, reduced_vars):
         assert callable(op)
         assert isinstance(arg, Funsor)
         assert isinstance(reduced_vars, frozenset)
-        inputs = OrderedDict((k, v) for k, v in arg.inputs.items() if k not in reduced_vars)
+        assert all(isinstance(v, Variable) for v in reduced_vars)
+        reduced_names = frozenset(v.name for v in reduced_vars)
+        inputs = OrderedDict(
+            (k, v) for k, v in arg.inputs.items() if k not in reduced_names
+        )
         output = arg.output
         fresh = frozenset()
-        bound = reduced_vars
+        bound = {var.name: var.output for var in reduced_vars}
         super(Reduce, self).__init__(inputs, output, fresh, bound)
         self.op = op
         self.arg = arg
         self.reduced_vars = reduced_vars
 
     def __repr__(self):
-        return 'Reduce({}, {}, {})'.format(
-            self.op.__name__, self.arg, self.reduced_vars)
+        assert self.reduced_vars
+        if self.reduced_vars == self.arg.input_vars:
+            return f"{repr(self.arg)}.reduce({self.op.__name__})"
+        rvars = [
+            f'"{v.name}"' if v in self.arg.input_vars else repr(v)
+            for v in self.reduced_vars
+        ]
+        return "{}.reduce({}, {{{}}})".format(
+            repr(self.arg), self.op.__name__, ", ".join(rvars)
+        )
+
+    def __str__(self):
+        assert self.reduced_vars
+        if self.reduced_vars == self.arg.input_vars:
+            return f"{str(self.arg)}.reduce({self.op.__name__})"
+        rvars = [
+            f'"{v.name}"' if v in self.arg.input_vars else repr(v)
+            for v in self.reduced_vars
+        ]
+        return "{}.reduce({}, {{{}}})".format(
+            str(self.arg), self.op.__name__, ", ".join(rvars)
+        )
 
     def _alpha_convert(self, alpha_subs):
-        alpha_subs = {k: to_funsor(v, self.arg.inputs[k])
-                      for k, v in alpha_subs.items()}
+        alpha_subs = {
+            k: to_funsor(v, self.arg.inputs[k]) for k, v in alpha_subs.items()
+        }
         op, arg, reduced_vars = super()._alpha_convert(alpha_subs)
-        reduced_vars = frozenset(str(alpha_subs.get(k, k)) for k in reduced_vars)
+        reduced_vars = frozenset(alpha_subs.get(var.name, var) for var in reduced_vars)
         return op, arg, reduced_vars
+
+
+def _reduce_unrelated_vars(op, arg, reduced_vars):
+    factor_vars = reduced_vars - arg.input_vars
+    if factor_vars:
+        reduced_vars = reduced_vars & arg.input_vars
+        multiplicity = reduce(
+            ops.mul,
+            [
+                v.output.size ** v.output.num_elements
+                for v in factor_vars
+                if v.dtype != "real"
+            ],
+        )
+        for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
+            if add_op is op:
+                arg = mul_op(arg, multiplicity).reduce(op, reduced_vars)
+                return arg, None
+        raise NotImplementedError(f"Cannot reduce {op}")
+    return arg, frozenset(v.name for v in reduced_vars)
 
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)
 def eager_reduce(op, arg, reduced_vars):
-    return interpreter.debug_logged(arg.eager_reduce)(op, reduced_vars)
+    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
+    if reduced_vars is None:
+        return arg
+    return instrument.debug_logged(arg.eager_reduce)(op, reduced_vars)
 
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
-    return interpreter.debug_logged(arg.sequential_reduce)(op, reduced_vars)
+    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
+    if reduced_vars is None:
+        return arg
+    return instrument.debug_logged(arg.sequential_reduce)(op, reduced_vars)
 
 
 @moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
 def moment_matching_reduce(op, arg, reduced_vars):
-    return interpreter.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
+    if reduced_vars is None:
+        return arg
+    return instrument.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
 
 
 @die_base.register(Reduce, Op, Funsor, frozenset)
@@ -1053,6 +1240,7 @@ class NumberMeta(FunsorMeta):
     """
     Wrapper to fill in default ``dtype``.
     """
+
     def __call__(cls, data, dtype=None):
         if dtype is None:
             dtype = "real"
@@ -1066,6 +1254,7 @@ class Number(Funsor, metaclass=NumberMeta):
     :param numbers.Number data: A python number.
     :param dtype: A nonnegative integer or the string "real".
     """
+
     def __init__(self, data, dtype=None):
         assert isinstance(data, numbers.Number)
         if isinstance(dtype, int):
@@ -1082,9 +1271,9 @@ class Number(Funsor, metaclass=NumberMeta):
 
     def __repr__(self):
         if self.dtype == "real":
-            return 'Number({}, "real")'.format(repr(self.data))
+            return f"Number({str(self.data)})"
         else:
-            return 'Number({}, {})'.format(repr(self.data), self.dtype)
+            return f"Number({str(self.data)}, {self.dtype})"
 
     def __str__(self):
         return str(self.data)
@@ -1133,6 +1322,7 @@ class SliceMeta(FunsorMeta):
     Wrapper to fill in ``start``, ``stop``, ``step``, ``dtype`` following
     Python conventions.
     """
+
     def __call__(cls, name, *args, **kwargs):
         start = 0
         step = 1
@@ -1166,6 +1356,7 @@ class Slice(Funsor, metaclass=SliceMeta):
     :param int step: Three args following :py:class:`slice` semantics.
     :param int dtype: An optional bounded integer type of this slice.
     """
+
     def __init__(self, name, start, stop, step, dtype):
         assert isinstance(name, str)
         assert isinstance(start, int) and start >= 0
@@ -1180,16 +1371,15 @@ class Slice(Funsor, metaclass=SliceMeta):
         self.name = name
         self.slice = slice(start, stop, step)
 
-    def __repr__(self):
-        return "Slice({})".format(", ".join(map(repr, self._ast_values)))
-
     def eager_subs(self, subs):
         assert len(subs) == 1 and subs[0][0] == self.name
         index = subs[0][1]
 
         if isinstance(index, Variable):
             name = index.name
-            return Slice(name, self.slice.start, self.slice.stop, self.slice.step, self.dtype)
+            return Slice(
+                name, self.slice.start, self.slice.stop, self.slice.step, self.dtype
+            )
         elif isinstance(index, Number):
             data = self.slice.start + self.slice.step * index.data
             return Number(data, self.output.dtype)
@@ -1202,7 +1392,9 @@ class Slice(Funsor, metaclass=SliceMeta):
             step = self.slice.step * index.slice.step
             return Slice(name, start, self.slice.stop, step, self.dtype)
         else:
-            raise NotImplementedError('TODO support substitution of {} into Slice'.format(type(index)))
+            raise NotImplementedError(
+                "TODO support substitution of {} into Slice".format(type(index))
+            )
 
 
 class Align(Funsor):
@@ -1212,6 +1404,7 @@ class Align(Funsor):
     :param Funsor arg: A funsor to align.
     :param tuple names: A tuple of input names whose order to follow.
     """
+
     def __init__(self, arg, names):
         assert isinstance(arg, Funsor)
         assert isinstance(names, tuple)
@@ -1221,7 +1414,7 @@ class Align(Funsor):
         inputs.update(arg.inputs)
         output = arg.output
         fresh = frozenset()  # TODO get this right
-        bound = frozenset()
+        bound = {}
         super(Align, self).__init__(inputs, output, fresh, bound)
         self.arg = arg
 
@@ -1265,6 +1458,7 @@ class Stack(Funsor):
     :param str name: The name of the new input variable along which to stack.
     :param tuple parts: A tuple of Funsors of homogenous output domain.
     """
+
     def __init__(self, name, parts):
         assert isinstance(name, str)
         assert isinstance(parts, tuple)
@@ -1299,7 +1493,7 @@ class Stack(Funsor):
             parts = self.parts[index.slice]
             return Stack(index.name, parts)
         else:
-            raise NotImplementedError('TODO support advanced indexing in Stack')
+            raise NotImplementedError("TODO support advanced indexing in Stack")
 
     def eager_reduce(self, op, reduced_vars):
         parts = self.parts
@@ -1326,6 +1520,7 @@ class CatMeta(FunsorMeta):
     """
     Wrapper to fill in default value for ``part_name``.
     """
+
     def __call__(cls, name, parts, part_name=None):
         if part_name is None:
             part_name = name
@@ -1339,6 +1534,7 @@ class Cat(Funsor, metaclass=CatMeta):
     :param str name: The name of the input variable along which to concatenate.
     :param tuple parts: A tuple of Funsors of homogenous output domain.
     """
+
     def __init__(self, name, parts, part_name=None):
         assert isinstance(name, str)
         assert isinstance(parts, tuple)
@@ -1355,7 +1551,7 @@ class Cat(Funsor, metaclass=CatMeta):
         del inputs[part_name]
         inputs[name] = Bint[sum(x.inputs[part_name].size for x in parts)]
         fresh = frozenset({name})
-        bound = frozenset({part_name})
+        bound = {part_name: x.inputs[part_name]}
         super().__init__(inputs, output, fresh, bound)
         self.name = name
         self.parts = parts
@@ -1365,9 +1561,11 @@ class Cat(Funsor, metaclass=CatMeta):
         assert len(alpha_subs) == 1
         part_name = alpha_subs[self.part_name]
         parts = tuple(
-            substitute(p, {self.part_name:
-                           to_funsor(part_name, p.inputs[self.part_name])})
-            for p in self.parts)
+            substitute(
+                p, {self.part_name: to_funsor(part_name, p.inputs[self.part_name])}
+            )
+            for p in self.parts
+        )
         return self.name, parts, part_name
 
     def eager_subs(self, subs):
@@ -1385,8 +1583,7 @@ class Cat(Funsor, metaclass=CatMeta):
                 n -= size
             assert False
         elif isinstance(value, Slice):
-            start, stop, step = \
-                value.slice.start, value.slice.stop, value.slice.step
+            start, stop, step = value.slice.start, value.slice.stop, value.slice.step
             new_parts = []
             pos = 0
             for part in self.parts:
@@ -1407,8 +1604,9 @@ class Cat(Funsor, metaclass=CatMeta):
 
             return Cat(self.name, tuple(new_parts), self.part_name)
         else:
-            raise NotImplementedError("TODO implement Cat.eager_subs for {}"
-                                      .format(type(value)))
+            raise NotImplementedError(
+                "TODO implement Cat.eager_subs for {}".format(type(value))
+            )
 
 
 @eager.register(Cat, str, tuple, str)
@@ -1433,6 +1631,7 @@ class Lambda(Funsor):
     :param Variable var: A variable to bind.
     :param funsor expr: A funsor.
     """
+
     def __init__(self, var, expr):
         assert isinstance(var, Variable)
         assert isinstance(var.dtype, int)
@@ -1442,14 +1641,15 @@ class Lambda(Funsor):
         shape = (var.dtype,) + expr.output.shape
         output = Array[expr.dtype, shape]
         fresh = frozenset()
-        bound = frozenset({var.name})
+        bound = {var.name: var.output}
         super(Lambda, self).__init__(inputs, output, fresh, bound)
         self.var = var
         self.expr = expr
 
     def _alpha_convert(self, alpha_subs):
-        alpha_subs = {k: to_funsor(v, self.var.inputs[k])
-                      for k, v in alpha_subs.items()}
+        alpha_subs = {
+            k: to_funsor(v, self.var.inputs[k]) for k, v in alpha_subs.items()
+        }
         return super()._alpha_convert(alpha_subs)
 
 
@@ -1484,6 +1684,7 @@ class Independent(Funsor):
     :param str bint_var: The name of a new batch input of ``fn``.
     :param diag_var: The name of a smaller-shape real input of ``fn``.
     """
+
     def __init__(self, fn, reals_var, bint_var, diag_var):
         assert isinstance(fn, Funsor)
         assert isinstance(reals_var, str)
@@ -1498,7 +1699,7 @@ class Independent(Funsor):
         assert reals_var not in inputs
         inputs[reals_var] = Array[diag_input.dtype, shape]
         fresh = frozenset({reals_var})
-        bound = frozenset({bint_var, diag_var})
+        bound = {bint_var: fn.inputs[bint_var], diag_var: fn.inputs[diag_var]}
         super(Independent, self).__init__(inputs, fn.output, fresh, bound)
         self.fn = fn
         self.reals_var = reals_var
@@ -1506,8 +1707,7 @@ class Independent(Funsor):
         self.diag_var = diag_var
 
     def _alpha_convert(self, alpha_subs):
-        alpha_subs = {k: to_funsor(v, self.fn.inputs[k])
-                      for k, v in alpha_subs.items()}
+        alpha_subs = {k: to_funsor(v, self.fn.inputs[k]) for k, v in alpha_subs.items()}
         fn, reals_var, bint_var, diag_var = super()._alpha_convert(alpha_subs)
         bint_var = str(alpha_subs.get(bint_var, bint_var))
         diag_var = str(alpha_subs.get(diag_var, diag_var))
@@ -1515,9 +1715,10 @@ class Independent(Funsor):
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
-            raise NotImplementedError('TODO alpha-convert')
-        sampled_vars = frozenset(self.diag_var if v == self.reals_var else v
-                                 for v in sampled_vars)
+            raise NotImplementedError("TODO alpha-convert")
+        sampled_vars = frozenset(
+            self.diag_var if v == self.reals_var else v for v in sampled_vars
+        )
         fn = self.fn.unscaled_sample(sampled_vars, sample_inputs, rng_key)
         return Independent(fn, self.reals_var, self.bint_var, self.diag_var)
 
@@ -1552,17 +1753,41 @@ def eager_independent_trivial(fn, reals_var, bint_var, diag_var):
     return None
 
 
+class Tuple(Funsor):
+    """
+    Funsor term representing tuples of other terms of possibly heterogeneous type.
+    """
+
+    def __init__(self, args):
+        assert isinstance(args, tuple)
+        assert all(isinstance(arg, Funsor) for arg in args)
+        inputs = OrderedDict()
+        for arg in args:
+            inputs.update(arg.inputs)
+        output = Product[tuple(arg.output for arg in args)]
+        super().__init__(inputs, output)
+        self.args = args
+
+    def __iter__(self):
+        for i in range(len(self.args)):
+            yield self[i]
+
+
+@lazy.register(Binary, GetitemOp, Tuple, Number)
+@eager.register(Binary, GetitemOp, Tuple, Number)
+def eager_getitem_tuple(op, lhs, rhs):
+    return op(lhs.args, rhs.data)
+
+
 def _symbolic(inputs, output, fn):
     args, vargs, kwargs, defaults = getargspec(fn)
     assert not vargs
     assert not kwargs
     names = tuple(args)
     if isinstance(inputs, dict):
-        args = tuple(Variable(name, inputs[name])
-                     for name in names if name in inputs)
+        args = tuple(Variable(name, inputs[name]) for name in names if name in inputs)
     else:
-        args = tuple(Variable(name, domain)
-                     for (name, domain) in zip(names, inputs))
+        args = tuple(Variable(name, domain) for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
     return to_funsor(fn(*args), output).align(names)
 
@@ -1599,9 +1824,50 @@ def symbolic(*signature):
 
 # DEPRECATED
 def of_shape(*shape):
-    warnings.warn("@of_shape is deprecated, use @symbolic instead",
-                  DeprecationWarning)
+    warnings.warn("@of_shape is deprecated, use @symbolic instead", DeprecationWarning)
     return symbolic(*shape)
+
+
+AstStats = namedtuple("AstStats", ("size", "depth", "width"))
+
+
+# Profiling helpers
+@singledispatch
+def _count_funsors(x):
+    return 0
+
+
+@_count_funsors.register(Funsor)
+def _(x):
+    return 1
+
+
+@_count_funsors.register(tuple)
+def _(x):
+    return sum(map(_count_funsors, x))
+
+
+@singledispatch
+def _get_ast_stats(x):
+    return AstStats(1, 1, 0)
+
+
+@_get_ast_stats.register(Funsor)
+def _(x):
+    result = getattr(x, "_ast_stats", None)
+    if result is None:
+        size, depth, _ = _get_ast_stats(x._ast_values)
+        width = _count_funsors(x._ast_values)
+        result = x._ast_stats = AstStats(size + 1, depth + 1, width)
+    return result
+
+
+@_get_ast_stats.register(tuple)
+def _(x):
+    parts = list(map(_get_ast_stats, x))
+    size = sum(p.size for p in parts)
+    depth = max([0] + [p.depth for p in parts])
+    return AstStats(size, depth, 0)
 
 
 ################################################################################
@@ -1635,76 +1901,44 @@ def quote_inplace_first_arg_on_first_line(arg, indent, out):
         out[-1] = i, line + ")"
 
 
-@ops.abs.register(Funsor)
-def _abs(x):
-    return Unary(ops.abs, x)
+ops.UnaryOp.subclass_register(Funsor)(Unary)
+ops.BinaryOp.subclass_register(Funsor, Funsor)(Binary)
+ops.AssociativeOp.subclass_register(Funsor, Funsor)(Binary)
+ops.AssociativeOp.subclass_register(Funsor)(Unary)  # Reductions.
 
 
-@ops.atanh.register(Funsor)
-def _atanh(x):
-    return Unary(ops.atanh, x)
+@ops.BinaryOp.subclass_register(object, Funsor)
+@ops.AssociativeOp.subclass_register(object, Funsor)
+def binary_object_funsor(op, x, y):
+    return Binary(op, to_funsor(x), y)
 
 
-@ops.sqrt.register(Funsor)
-def _sqrt(x):
-    return Unary(ops.sqrt, x)
-
-
-@ops.exp.register(Funsor)
-def _exp(x):
-    return Unary(ops.exp, x)
-
-
-@ops.lgamma.register(Funsor)
-def _lgamma(x):
-    return Unary(ops.lgamma, x)
-
-
-@ops.log.register(Funsor)
-def _log(x):
-    return Unary(ops.log, x)
-
-
-@ops.log1p.register(Funsor)
-def _log1p(x):
-    return Unary(ops.log1p, x)
-
-
-@ops.reciprocal.register(Funsor)
-def _reciprocal(x):
-    return Unary(ops.reciprocal, x)
-
-
-@ops.sigmoid.register(Funsor)
-def _sigmoid(x):
-    return Unary(ops.sigmoid, x)
-
-
-@ops.tanh.register(Funsor)
-def _tanh(x):
-    return Unary(ops.tanh, x)
+@ops.BinaryOp.subclass_register(Funsor, object)
+@ops.AssociativeOp.subclass_register(Funsor, object)
+def binary_funsor_object(op, x, y):
+    return Binary(op, x, to_funsor(y))
 
 
 __all__ = [
-    'Binary',
-    'Cat',
-    'Funsor',
-    'Independent',
-    'Lambda',
-    'Number',
-    'Reduce',
-    'Stack',
-    'Slice',
-    'Subs',
-    'Unary',
-    'Variable',
-    'eager',
-    'eager_or_die',
-    'lazy',
-    'moment_matching',
-    'of_shape',
-    'reflect',
-    'sequential',
-    'to_data',
-    'to_funsor',
+    "Binary",
+    "Cat",
+    "Funsor",
+    "Independent",
+    "Lambda",
+    "Number",
+    "Reduce",
+    "Stack",
+    "Slice",
+    "Subs",
+    "Unary",
+    "Variable",
+    "eager",
+    "eager_or_die",
+    "lazy",
+    "moment_matching",
+    "of_shape",
+    "reflect",
+    "sequential",
+    "to_data",
+    "to_funsor",
 ]

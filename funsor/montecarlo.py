@@ -16,6 +16,7 @@ class MonteCarlo(StatefulInterpretation):
 
     :param rng_key:
     """
+
     def __init__(self, *, rng_key=None, **sample_inputs):
         self.rng_key = rng_key
         self.sample_inputs = OrderedDict(sample_inputs)
@@ -32,10 +33,12 @@ def monte_carlo_integrate(state, log_measure, integrand, reduced_vars):
     sample = log_measure.sample(reduced_vars, state.sample_inputs, **sample_options)
     if sample is log_measure:
         return None  # cannot progress
-    reduced_vars |= frozenset(state.sample_inputs).intersection(sample.inputs)
+    reduced_vars |= frozenset(
+        v for v in sample.input_vars if v.name in state.sample_inputs
+    )
     return Integrate(sample, integrand, reduced_vars)
 
 
 __all__ = [
-    'MonteCarlo',
+    "MonteCarlo",
 ]

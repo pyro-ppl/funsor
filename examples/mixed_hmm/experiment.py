@@ -10,6 +10,8 @@ import uuid
 import pyro
 import pyro.poutine as poutine
 import torch
+from model import Guide, Model
+from seal_data import prepare_fake, prepare_seal
 
 import funsor
 import funsor.ops as ops
@@ -17,8 +19,6 @@ from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import MarkovProduct, naive_sequential_sum_product, sum_product
 from funsor.terms import lazy, to_funsor
-from model import Guide, Model
-from seal_data import prepare_fake, prepare_seal
 
 
 def aic_num_parameters(model, guide=None):
@@ -41,10 +41,12 @@ def parallel_loss_fn(model, guide, parallel=True):
     if parallel:
         result = MarkovProduct(ops.logaddexp, ops.add, t_term, t, {"y(t=1)": "y"})
     else:
-        result = naive_sequential_sum_product(ops.logaddexp, ops.add, t_term, t, {"y(t=1)": "y"})
+        result = naive_sequential_sum_product(
+            ops.logaddexp, ops.add, t_term, t, {"y(t=1)": "y"}
+        )
     new_factors = [result] + new_factors
 
-    plates = frozenset(['g', 'i'])
+    plates = frozenset(["g", "i"])
     eliminate = frozenset().union(*(f.inputs for f in new_factors))
     with interpretation(lazy):
         loss = sum_product(ops.logaddexp, ops.add, new_factors, eliminate, plates)
@@ -58,7 +60,9 @@ def run_expt(args):
 
     optim = args["optim"]
     lr = args["learnrate"]
-    schedule = [] if not args["schedule"] else [int(i) for i in args["schedule"].split(",")]
+    schedule = (
+        [] if not args["schedule"] else [int(i) for i in args["schedule"].split(",")]
+    )
     # default these to "none" instead of None, which argparse does for some reason
     args["group"] = "none" if args["group"] is None else args["group"]
     args["individual"] = "none" if args["individual"] is None else args["individual"]
@@ -113,7 +117,9 @@ def run_expt(args):
 
     with pyro.poutine.trace(param_only=True) as param_capture:
         loss_fn()
-    params = [site["value"].unconstrained() for site in param_capture.trace.nodes.values()]
+    params = [
+        site["value"].unconstrained() for site in param_capture.trace.nodes.values()
+    ]
     if optim == "sgd":
         optimizer = torch.optim.Adam(params, lr=lr)
     elif optim == "lbfgs":
@@ -122,25 +128,31 @@ def run_expt(args):
         raise ValueError("{} not supported optimizer".format(optim))
 
     if schedule:
-        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=schedule, gamma=0.5)
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=schedule, gamma=0.5
+        )
         schedule_step_loss = False
     else:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
         schedule_step_loss = True
 
     for t in range(args["timesteps"]):
+
         def closure():
             optimizer.zero_grad()
             loss = loss_fn()
             loss.backward()
             return loss
+
         loss = optimizer.step(closure)
         scheduler.step(loss.item() if schedule_step_loss else t)
         losses.append(loss.item())
-        print("Loss: {}, AIC[{}]: ".format(loss.item(), t),
-              2. * loss + 2. * num_parameters)
+        print(
+            "Loss: {}, AIC[{}]: ".format(loss.item(), t),
+            2.0 * loss + 2.0 * num_parameters,
+        )
 
-    aic_final = 2. * losses[-1] + 2. * num_parameters
+    aic_final = 2.0 * losses[-1] + 2.0 * num_parameters
     print("AIC final: {}".format(aic_final))
 
     results = {}
@@ -152,9 +164,23 @@ def run_expt(args):
     results["aic_num_parameters"] = num_parameters
 
     if args["resultsdir"] is not None and os.path.exists(args["resultsdir"]):
-        re_str = "g" + ("n" if args["group"] is None else "d" if args["group"] == "discrete" else "c")
-        re_str += "i" + ("n" if args["individual"] is None else "d" if args["individual"] == "discrete" else "c")
-        results_filename = "expt_{}_{}_{}.json".format(args["dataset"], re_str, str(uuid.uuid4().hex)[0:5])
+        re_str = "g" + (
+            "n"
+            if args["group"] is None
+            else "d"
+            if args["group"] == "discrete"
+            else "c"
+        )
+        re_str += "i" + (
+            "n"
+            if args["individual"] is None
+            else "d"
+            if args["individual"] == "discrete"
+            else "c"
+        )
+        results_filename = "expt_{}_{}_{}.json".format(
+            args["dataset"], re_str, str(uuid.uuid4().hex)[0:5]
+        )
         with open(os.path.join(args["resultsdir"], results_filename), "w") as f:
             json.dump(results, f)
 
@@ -180,7 +206,7 @@ if __name__ == "__main__":
     parser.add_argument("--parallel", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--schedule", default="", type=str)
-    parser.add_argument('--validation', action='store_true')
+    parser.add_argument("--validation", action="store_true")
 
     # sizes for generating fake data
     parser.add_argument("-ss", "--size-state", default=3, type=int)

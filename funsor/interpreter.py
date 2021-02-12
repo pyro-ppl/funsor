@@ -2,66 +2,30 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
-import inspect
 import os
 import re
 import types
 from collections import OrderedDict, namedtuple
 from contextlib import contextmanager
 from functools import singledispatch
+from timeit import default_timer
 
 import numpy as np
 
 from funsor.domains import ArrayType
+from funsor.instrument import debug_logged
 from funsor.ops import Op, is_numeric_array
 from funsor.registry import KeyedRegistry
 from funsor.util import is_nn_module
 
+from . import instrument
+
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DEBUG = int(os.environ.get("FUNSOR_DEBUG", 0))
-_STACK_SIZE = 0
 
 _INTERPRETATION = None  # To be set later in funsor.terms
 _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
 
 _GENSYM_COUNTER = 0
-
-
-def _indent():
-    result = u'    \u2502' * (_STACK_SIZE // 4 + 3)
-    return result[:_STACK_SIZE]
-
-
-if _DEBUG:
-    class DebugLogged(object):
-        def __init__(self, fn):
-            self.fn = fn
-            while isinstance(fn, functools.partial):
-                fn = fn.func
-            path = inspect.getabsfile(fn)
-            lineno = inspect.getsourcelines(fn)[1]
-            self._message = "{} file://{} {}".format(fn.__name__, path, lineno)
-
-        def __call__(self, *args, **kwargs):
-            global _STACK_SIZE
-            print(_indent() + self._message)
-            _STACK_SIZE += 1
-            try:
-                return self.fn(*args, **kwargs)
-            finally:
-                _STACK_SIZE -= 1
-
-        @property
-        def register(self):
-            return self.fn.register
-
-    def debug_logged(fn):
-        if isinstance(fn, DebugLogged):
-            return fn
-        return DebugLogged(fn)
-else:
-    def debug_logged(fn):
-        return fn
 
 
 def _classname(cls):
@@ -74,30 +38,32 @@ class Interpreter:
         return _INTERPRETATION
 
 
-def debug_interpret(cls, *args):
-    global _STACK_SIZE
-    indent = _indent()
-    if _DEBUG > 1:
-        typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
-    else:
-        typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
-    print(indent + ' '.join(typenames))
+if instrument.DEBUG:
 
-    _STACK_SIZE += 1
-    try:
-        result = _INTERPRETATION(cls, *args)
-    finally:
-        _STACK_SIZE -= 1
+    def interpret(cls, *args):
+        indent = instrument.get_indent()
+        if instrument.DEBUG > 1:
+            typenames = [_classname(cls)] + [_classname(type(arg)) for arg in args]
+        else:
+            typenames = [cls.__name__] + [type(arg).__name__ for arg in args]
+        print(indent + " ".join(typenames))
 
-    if _DEBUG > 1:
-        result_str = re.sub('\n', '\n          ' + indent, str(result))
-    else:
-        result_str = type(result).__name__
-    print(indent + '-> ' + result_str)
-    return result
+        instrument.STACK_SIZE += 1
+        try:
+            result = _INTERPRETATION(cls, *args)
+        finally:
+            instrument.STACK_SIZE -= 1
+
+        if instrument.DEBUG > 1:
+            result_str = re.sub("\n", "\n          " + indent, str(result))
+        else:
+            result_str = type(result).__name__
+        print(indent + "-> " + result_str)
+        return result
 
 
-interpret = debug_interpret if _DEBUG else Interpreter()
+else:
+    interpret = Interpreter()
 
 
 def set_interpretation(new):
@@ -168,6 +134,7 @@ _ground_types = (
 
 
 for t in _ground_types:
+
     @recursion_reinterpret.register(t)
     def recursion_reinterpret_ground(x):
         return x
@@ -220,6 +187,7 @@ def _children_tuple(x):
 
 
 for t in _ground_types:
+
     @children.register(t)
     def _children_ground(x):
         return ()
@@ -291,11 +259,11 @@ def stack_reinterpret(x):
         if is_atom(h):
             env[h_name] = h
         elif isinstance(h, (tuple, frozenset)):
-            env[h_name] = type(h)(
-                env[c_name] for c_name in parent_to_children[h_name])
+            env[h_name] = type(h)(env[c_name] for c_name in parent_to_children[h_name])
         else:
             env[h_name] = _INTERPRETATION(
-                type(h), *(env[c_name] for c_name in parent_to_children[h_name]))
+                type(h), *(env[c_name] for c_name in parent_to_children[h_name])
+            )
 
     return env[x_name]
 
@@ -341,11 +309,12 @@ class Interpretation:
 
 
 class DispatchedInterpretation(Interpretation):
-
     def __init__(self, default=lambda *args: None):
         self.registry = KeyedRegistry(default=default)
-        if _DEBUG:
-            self.register = lambda *args: lambda self: self.registry.register(*args)(debug_logged(self))
+        if instrument.DEBUG:
+            self.register = lambda *args: lambda self: self.registry.register(*args)(
+                debug_logged(self)
+            )
         else:
             self.register = self.registry.register
         self.dispatch = self.registry.dispatch
@@ -355,7 +324,6 @@ class DispatchedInterpretation(Interpretation):
 
 
 class PrioritizedInterpretation(Interpretation):
-
     @property
     def base(self):
         return self.subinterpreters[0]
@@ -391,11 +359,30 @@ def dispatched_interpretation(fn):
     Decorator to create a dispatched interpretation function.
     """
     registry = KeyedRegistry(default=lambda *args: None)
-    if _DEBUG:
-        fn.register = lambda *args: lambda fn: registry.register(*args)(debug_logged(fn))
+
+    if instrument.DEBUG or instrument.PROFILE:
+        fn.register = lambda *args: lambda fn: registry.register(*args)(
+            debug_logged(fn)
+        )
     else:
         fn.register = registry.register
-    fn.dispatch = registry.dispatch
+
+    if instrument.PROFILE:
+        COUNTERS = instrument.COUNTERS
+
+        def profiled_dispatch(*args):
+            name = fn.__name__ + ".dispatch"
+            start = default_timer()
+            result = registry.dispatch(*args)
+            COUNTERS["time"][name] += default_timer() - start
+            COUNTERS["call"][name] += 1
+            COUNTERS["interpretation"][fn.__name__] += 1
+            return result
+
+        fn.dispatch = profiled_dispatch
+    else:
+        fn.dispatch = registry.dispatch
+
     return fn
 
 
@@ -443,11 +430,14 @@ class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMet
     def __call__(self, cls, *args):
         return self.dispatch(cls, *args)(self, *args)
 
-    if _DEBUG:
+    if instrument.DEBUG:
+
         @classmethod
         def register(cls, *args):
             return lambda fn: cls.registry.register(*args)(debug_logged(fn))
+
     else:
+
         @classmethod
         def register(cls, *args):
             return cls.registry.register(*args)
@@ -455,15 +445,17 @@ class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMet
 
 class PatternMissingError(NotImplementedError):
     def __str__(self):
-        return "{}\nThis is most likely due to a missing pattern.".format(super().__str__())
+        return "{}\nThis is most likely due to a missing pattern.".format(
+            super().__str__()
+        )
 
 
 __all__ = [
-    'PatternMissingError',
-    'StatefulInterpretation',
-    'dispatched_interpretation',
-    'interpret',
-    'interpretation',
-    'reinterpret',
-    'set_interpretation',
+    "PatternMissingError",
+    "StatefulInterpretation",
+    "dispatched_interpretation",
+    "interpret",
+    "interpretation",
+    "reinterpret",
+    "set_interpretation",
 ]

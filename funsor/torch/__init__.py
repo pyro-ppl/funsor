@@ -4,17 +4,22 @@
 import torch
 from multipledispatch import dispatch
 
-import funsor.torch.distributions  # noqa: F401
-import funsor.torch.ops  # noqa: F401
-import funsor.ops as ops
 from funsor.adjoint import adjoint_ops
 from funsor.interpreter import children, recursion_reinterpret
-from funsor.terms import Funsor, to_funsor
+from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, tensor_to_funsor
+from funsor.terms import Funsor, to_funsor
 from funsor.util import quote
 
+from . import distributions as _
+from . import ops as _
 
-@adjoint_ops.register(Tensor, ops.AssociativeOp, ops.AssociativeOp, Funsor, torch.Tensor, tuple, object)
+del _  # flake8
+
+
+@adjoint_ops.register(
+    Tensor, AssociativeOp, AssociativeOp, Funsor, torch.Tensor, tuple, object
+)
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}
 
