@@ -55,12 +55,12 @@ class AdjointTape(object):
 
     def __enter__(self):
         self.tape = []
-        self._old_interpretation = interpreter._INTERPRETATION
-        interpreter.set_interpretation(self)
+        self._old_interpretation = interpreter.get_interpretation()
+        interpreter.push_interpretation(self)
         return self
 
     def __exit__(self, *args):
-        interpreter.set_interpretation(self._old_interpretation)
+        interpreter.pop_interpretation()
         self._old_interpretation = None
 
     def adjoint(self, red_op, bin_op, root, targets):

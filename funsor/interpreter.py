@@ -5,8 +5,10 @@ import functools
 import os
 import re
 import types
-from collections import OrderedDict, namedtuple
-from contextlib import contextmanager
+import warnings
+from abc import ABC, abstractmethod
+from collections import OrderedDict
+from contextlib import ContextDecorator
 from functools import singledispatch
 from timeit import default_timer
 
@@ -21,24 +23,39 @@ from funsor.util import is_nn_module
 from . import instrument
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-_INTERPRETATION = None  # To be set later in funsor.terms
 _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
-
+_STACK = []  # To be populated later in funsor.terms
 _GENSYM_COUNTER = 0
 
 
-def _classname(cls):
-    return getattr(cls, "classname", cls.__name__)
+class PatternMissingError(NotImplementedError):
+    def __str__(self):
+        return f"{super().__str__()}\nThis is most likely due to a missing pattern."
+
+
+def get_interpretation():
+    return _STACK[-1]
+
+
+def push_interpretation(new):
+    assert callable(new)
+    _STACK.append(new)
+
+
+def pop_interpretation():
+    return _STACK.pop()
 
 
 class Interpreter:
     @property
     def __call__(self):
-        return _INTERPRETATION
+        return _STACK[-1].interpret
 
 
 if instrument.DEBUG:
+
+    def _classname(cls):
+        return getattr(cls, "classname", cls.__name__)
 
     def interpret(cls, *args):
         indent = instrument.get_indent()
@@ -50,7 +67,7 @@ if instrument.DEBUG:
 
         instrument.STACK_SIZE += 1
         try:
-            result = _INTERPRETATION(cls, *args)
+            result = _STACK[-1].interpret(cls, *args)
         finally:
             instrument.STACK_SIZE -= 1
 
@@ -66,30 +83,13 @@ else:
     interpret = Interpreter()
 
 
-def set_interpretation(new):
-    assert callable(new)
-    global _INTERPRETATION
-    _INTERPRETATION = new
-
-
-@contextmanager
 def interpretation(new):
-    assert callable(new)
-    if isinstance(new, Interpretation):
-        try:
-            new.__enter__()
-            yield
-        finally:
-            new.__exit__()
-    else:  # temporary backwards compatibility
-        global _INTERPRETATION
-        old = _INTERPRETATION
-        new = InterpreterStack(new, old)
-        try:
-            _INTERPRETATION = new
-            yield
-        finally:
-            _INTERPRETATION = old
+    warnings.warn(
+        "'with interpretation(x)' should be replaced by 'with x'",
+        DeprecationWarning,
+    )
+    assert isinstance(new, Interpretation)
+    return new
 
 
 @singledispatch
@@ -114,7 +114,8 @@ def recursion_reinterpret(x):
 # reinterpret.register(Funsor)
 @debug_logged
 def reinterpret_funsor(x):
-    return _INTERPRETATION(type(x), *map(recursion_reinterpret, x._ast_values))
+    interpret = _STACK[-1].interpret
+    return interpret(type(x), *map(recursion_reinterpret, x._ast_values))
 
 
 _ground_types = (
@@ -195,7 +196,7 @@ for t in _ground_types:
 
 def is_atom(x):
     if isinstance(x, (tuple, frozenset)):
-        return len(x) == 0 or all(is_atom(c) for c in x)
+        return all(is_atom(c) for c in x)
     return isinstance(x, _ground_types) or is_numeric_array(x) or is_nn_module(x)
 
 
@@ -247,6 +248,7 @@ def stack_reinterpret(x):
 
     children_counts = OrderedDict((k, len(v)) for k, v in parent_to_children.items())
     leaves = [name for name, count in children_counts.items() if count == 0]
+    interpret = _STACK[-1].interpret
     while leaves:
         h_name = leaves.pop(0)
         if h_name in child_to_parents:
@@ -261,7 +263,7 @@ def stack_reinterpret(x):
         elif isinstance(h, (tuple, frozenset)):
             env[h_name] = type(h)(env[c_name] for c_name in parent_to_children[h_name])
         else:
-            env[h_name] = _INTERPRETATION(
+            env[h_name] = interpret(
                 type(h), *(env[c_name] for c_name in parent_to_children[h_name])
             )
 
@@ -287,43 +289,99 @@ def reinterpret(x):
         return recursion_reinterpret(x)
 
 
-class Interpretation:
+################################################################################
+# Interpretation class hierarchy.
+
+
+class Interpretation(ContextDecorator, ABC):
+    """
+    Base class for Funsor interpretations.
+
+    Instances may be used as context managers or decorators.
+    """
 
     is_total = False
 
     def __enter__(self):
-        global _INTERPRETATION  # TODO get rid of this when _INTERPRETATION is list
+        # TODO consider requiring totality:
+        # assert self.is_total
         new = self
         if not self.is_total:
-            new = PrioritizedInterpretation(new, _INTERPRETATION)
-        self.old = _INTERPRETATION  # TODO store in global list instead of self
-        _INTERPRETATION = new  # TODO make a list: _INTERPRETATION.append(new)
-        return new
+            new = PrioritizedInterpretation(new, _STACK[-1])
+        _STACK.append(new)
+        return self
 
     def __exit__(self, *args):
-        global _INTERPRETATION  # TODO get rid of this when _INTERPRETATION is list
-        _INTERPRETATION = self.old  # TODO make a list: _INTERPRETATION.pop()
+        _STACK.pop()
 
-    def __call__(self, cls, *args):
+    @abstractmethod
+    def interpret(self, cls, *args):
+        raise NotImplementedError
+
+
+class SimpleInterpretation(Interpretation):
+    def __init__(self, interpret):
+        assert callable(interpret)
+        super().__init__()
+        self.interpret = interpret
+        self.__name__ = interpret.__name__
+
+    def update(self, interpret):
+        assert callable(interpret)
+        self.interpret = interpret
+        return self
+
+    def interpret(self, cls, *args):
         raise NotImplementedError
 
 
 class DispatchedInterpretation(Interpretation):
-    def __init__(self, default=lambda *args: None):
-        self.registry = KeyedRegistry(default=default)
-        if instrument.DEBUG:
-            self.register = lambda *args: lambda self: self.registry.register(*args)(
-                debug_logged(self)
+    def __init__(self, name="dispatched"):
+        super().__init__()
+        self.__name__ = name
+        self.registry = registry = KeyedRegistry(default=lambda *args: None)
+
+        if instrument.DEBUG or instrument.PROFILE:
+            self.register = lambda *args: lambda fn: registry.register(*args)(
+                debug_logged(fn)
             )
         else:
-            self.register = self.registry.register
-        self.dispatch = self.registry.dispatch
+            self.register = registry.register
 
-    def __call__(self, cls, *args):
+        if instrument.PROFILE:
+            COUNTERS = instrument.COUNTERS
+
+            def profiled_dispatch(*args):
+                name = self.__name__ + ".dispatch"
+                start = default_timer()
+                result = registry.dispatch(*args)
+                COUNTERS["time"][name] += default_timer() - start
+                COUNTERS["call"][name] += 1
+                COUNTERS["interpretation"][self.__name__] += 1
+                return result
+
+            self.dispatch = profiled_dispatch
+        else:
+            self.dispatch = registry.dispatch
+
+    def interpret(self, cls, *args):
         return self.dispatch(cls, *args)(*args)
 
 
 class PrioritizedInterpretation(Interpretation):
+    def __init__(self, *subinterpreters):
+        assert len(subinterpreters) >= 1
+        super().__init__()
+        self.subinterpreters = subinterpreters
+        self.__name__ = "/".join(s.__name__ for s in subinterpreters)
+        if isinstance(self.subinterpreters[0], DispatchedInterpretation):
+            self.register = self.subinterpreters[0].register
+            self.dispatch = self.subinterpreters[0].dispatch
+
+        if __debug__:
+            self._volume = sum(getattr(s, "_volume", 1) for s in subinterpreters)
+            assert self._volume < 10, "suspicious interpreter overflow"
+
     @property
     def base(self):
         return self.subinterpreters[0]
@@ -332,82 +390,23 @@ class PrioritizedInterpretation(Interpretation):
     def is_total(self):
         return any(s.is_total for s in self.subinterpreters)
 
-    def __init__(self, *subinterpreters):
-        assert len(subinterpreters) >= 1
-        self.subinterpreters = tuple(subinterpreters)
-        if isinstance(self.subinterpreters[0], DispatchedInterpretation):
-            self.register = self.subinterpreters[0].register
-            self.dispatch = self.subinterpreters[0].dispatch
-
-    def __call__(self, cls, *args):
+    def interpret(self, cls, *args):
         for subinterpreter in self.subinterpreters:
-            result = subinterpreter(cls, *args)
+            result = subinterpreter.interpret(cls, *args)
             if result is not None:
                 return result
 
 
-class InterpreterStack(namedtuple("InterpreterStack", ["default", "fallback"])):
-    def __call__(self, cls, *args):
-        for interpreter in self:
-            result = interpreter(cls, *args)
-            if result is not None:
-                return result
-
-
-def dispatched_interpretation(fn):
-    """
-    Decorator to create a dispatched interpretation function.
-    """
-    registry = KeyedRegistry(default=lambda *args: None)
-
-    if instrument.DEBUG or instrument.PROFILE:
-        fn.register = lambda *args: lambda fn: registry.register(*args)(
-            debug_logged(fn)
-        )
-    else:
-        fn.register = registry.register
-
-    if instrument.PROFILE:
-        COUNTERS = instrument.COUNTERS
-
-        def profiled_dispatch(*args):
-            name = fn.__name__ + ".dispatch"
-            start = default_timer()
-            result = registry.dispatch(*args)
-            COUNTERS["time"][name] += default_timer() - start
-            COUNTERS["call"][name] += 1
-            COUNTERS["interpretation"][fn.__name__] += 1
-            return result
-
-        fn.dispatch = profiled_dispatch
-    else:
-        fn.dispatch = registry.dispatch
-
-    return fn
-
-
-def _dispatched_interpretation(fn):
-    """
-    New version of dispatched_interpretation decorator using Interpretation classes.
-
-    Syntax::
-
-        @prioritized_interpretation(normalize.base, reflect)
-        @dispatched_interpretation
-        def eager(cls, *args):
-            return None
-    """
-    return DispatchedInterpretation(fn)
-
-
-class StatefulInterpretationMeta(type):
+class StatefulInterpretationMeta(ABC):
     def __init__(cls, name, bases, dct):
         super().__init__(name, bases, dct)
         cls.registry = KeyedRegistry(default=lambda *args: None)
         cls.dispatch = cls.registry.dispatch
 
 
-class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMeta):
+class StatefulInterpretation(
+    DispatchedInterpretation, metaclass=StatefulInterpretationMeta
+):
     """
     Base class for interpreters with instance-dependent state or parameters.
 
@@ -427,7 +426,11 @@ class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMet
             ...
     """
 
-    def __call__(self, cls, *args):
+    def __init__(self, name="stateful"):
+        super().__init__()
+        self.__name__ = name
+
+    def interpret(self, cls, *args):
         return self.dispatch(cls, *args)(self, *args)
 
     if instrument.DEBUG:
@@ -443,19 +446,63 @@ class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMet
             return cls.registry.register(*args)
 
 
-class PatternMissingError(NotImplementedError):
-    def __str__(self):
-        return "{}\nThis is most likely due to a missing pattern.".format(
-            super().__str__()
-        )
+################################################################################
+# Concrete interpretations.
 
+
+@SimpleInterpretation
+def reflect(cls, *args):
+    raise ValueError("Should be overwritten in terms.py")
+
+
+reflect.is_total = True
+
+normalize_base = DispatchedInterpretation("normalize")
+normalize = PrioritizedInterpretation(normalize_base, reflect)
+
+lazy_base = DispatchedInterpretation("lazy")
+lazy = PrioritizedInterpretation(lazy_base, reflect)
+
+eager_base = DispatchedInterpretation("eager")
+eager = PrioritizedInterpretation(eager_base, normalize_base, reflect)
+
+die = DispatchedInterpretation("die")
+eager_or_die = PrioritizedInterpretation(eager_base, die, reflect)
+
+sequential_base = DispatchedInterpretation("sequential")
+# XXX does this work with sphinx/help()?
+"""
+Eagerly execute ops with known implementations; additonally execute
+vectorized ops sequentially if no known vectorized implementation exists.
+"""
+sequential = PrioritizedInterpretation(
+    sequential_base, eager_base, normalize_base, reflect
+)
+
+moment_matching_base = DispatchedInterpretation("moment_matching")
+"""
+A moment matching interpretation of :class:`Reduce` expressions. This falls
+back to :class:`eager` in other cases.
+"""
+moment_matching = PrioritizedInterpretation(
+    moment_matching_base, eager_base, normalize_base, reflect
+)
+
+push_interpretation(eager)  # Use eager interpretation by default.
 
 __all__ = [
     "PatternMissingError",
     "StatefulInterpretation",
-    "dispatched_interpretation",
+    "die",
+    "eager",
     "interpret",
     "interpretation",
+    "lazy",
+    "moment_matching",
+    "normalize",
+    "pop_interpretation",
+    "push_interpretation",
+    "reflect",
     "reinterpret",
-    "set_interpretation",
+    "sequential",
 ]

@@ -63,14 +63,6 @@ def unfold_contraction_variadic(r, b, v, *ts):
     return unfold(Contraction, r, b, v, tuple(ts))
 
 
-@interpreter.dispatched_interpretation
-def optimize(cls, *args):
-    result = optimize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = eager(cls, *args)
-    return result
-
-
 optimize_base = DispatchedInterpretation()
 optimize = PrioritizedInterpretation(optimize_base, eager)
 
@@ -160,19 +152,8 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
 
 
 def apply_optimizer(x):
-    @interpreter.interpretation(interpreter._INTERPRETATION)
-    def nested_optimize_interpreter(cls, *args):
-        result = optimize.dispatch(cls, *args)(*args)
-        if result is None:
-            result = cls(*args)
-        return result
-
-    nested_optimize_interpreter = PrioritizedInterpretation(
-        optimize, interpreter._INTERPRETATION
-    )
-
-    with interpreter.interpretation(unfold):
+    with unfold:
         expr = interpreter.reinterpret(x)
 
-    with interpreter.interpretation(nested_optimize_interpreter):
+    with optimize:
         return interpreter.reinterpret(expr)
