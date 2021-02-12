@@ -1063,6 +1063,7 @@ class Scatter(Funsor):
     """
     Transpose of linear :class:`Subs`.
     """
+
     def __init__(self, op, subs, source):
         assert isinstance(op, AssociativeOp)
         assert isinstance(source, Funsor)
@@ -1076,7 +1077,6 @@ class Scatter(Funsor):
         fresh = frozenset(key for key, value in subs)
         bound = {}
         super().__init__(inputs, output, fresh, bound)
-
 
 
 _PREFIX = {

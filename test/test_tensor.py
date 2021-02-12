@@ -13,7 +13,7 @@ import pytest
 
 import funsor
 import funsor.ops as ops
-from funsor.domains import Array, Bint, Real, Product, Reals, find_domain
+from funsor.domains import Array, Bint, Product, Real, Reals, find_domain
 from funsor.interpreter import interpretation
 from funsor.tensor import (
     REDUCE_OP_TO_NUMERIC,
@@ -24,7 +24,7 @@ from funsor.tensor import (
     stack,
     tensordot,
 )
-from funsor.terms import Cat, Lambda, Number, Slice, Scatter, Stack, Variable, lazy
+from funsor.terms import Cat, Lambda, Number, Scatter, Slice, Stack, Variable, lazy
 from funsor.testing import (
     assert_close,
     assert_equiv,

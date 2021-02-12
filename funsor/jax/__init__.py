@@ -7,8 +7,8 @@ from jax.interpreters.xla import DeviceArray
 import funsor.jax.distributions  # noqa: F401
 import funsor.jax.ops  # noqa: F401
 from funsor.interpreter import children, recursion_reinterpret
-from funsor.terms import to_funsor
 from funsor.tensor import tensor_to_funsor
+from funsor.terms import to_funsor
 from funsor.util import quote
 
 

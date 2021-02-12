@@ -7,8 +7,8 @@ from collections import OrderedDict
 import torch
 
 import funsor
-import funsor.torch.distributions as dist
 import funsor.ops as ops
+import funsor.torch.distributions as dist
 from funsor.interpreter import interpretation, reinterpret
 from funsor.optimizer import apply_optimizer
 from funsor.terms import lazy

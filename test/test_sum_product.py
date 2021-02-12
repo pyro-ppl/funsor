@@ -1,8 +1,8 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import re
 import os
+import re
 from collections import OrderedDict
 from functools import partial, reduce
 
@@ -15,12 +15,12 @@ from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
     _partition,
-    partial_unroll,
     mixed_sequential_sum_product,
+    modified_partial_sum_product,
     naive_sarkka_bilmes_product,
     naive_sequential_sum_product,
     partial_sum_product,
-    modified_partial_sum_product,
+    partial_unroll,
     sarkka_bilmes_product,
     sequential_sum_product,
     sum_product,

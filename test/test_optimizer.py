@@ -33,9 +33,9 @@ pytestmark = pytest.mark.skipif(
 )
 if get_backend() == "torch":
     import torch
-    from funsor.torch.distributions import Categorical
-
     from pyro.ops.contract import einsum as pyro_einsum
+
+    from funsor.torch.distributions import Categorical
 
 OPTIMIZED_EINSUM_EXAMPLES = [make_chain_einsum(t) for t in range(2, 50, 10)] + [
     make_hmm_einsum(t) for t in range(2, 50, 10)

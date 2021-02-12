@@ -7,7 +7,7 @@ from typing import Union
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
-from funsor.gaussian import Gaussian, align_gaussian, _mv, _trace_mm, _vv
+from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian
 from funsor.tensor import Tensor
 from funsor.terms import (
     Funsor,

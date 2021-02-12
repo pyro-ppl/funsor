@@ -178,12 +178,14 @@ def set_backend(backend):
         _FUNSOR_BACKEND = "torch"
 
         import torch  # noqa: F401
+
         import funsor.torch  # noqa: F401
     elif backend == "jax":
         _FUNSOR_BACKEND = "jax"
         _JAX_LOADED = True
 
         import jax  # noqa: F401
+
         import funsor.jax  # noqa: F401
     else:
         raise ValueError(

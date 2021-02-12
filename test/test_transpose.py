@@ -184,7 +184,7 @@ def test_tower_prod(height):
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
     with interpretation(lazy):
         top = x
-        expected = Number(1.)
+        expected = Number(1.0)
         for _ in range(height):
             expected = top * expected + expected * top
             top = top * top
@@ -286,10 +286,10 @@ def test_adjoint_subs_variable():
     # in tensor-land: out = in[indices] <==> transpose(out)[in] == zero[indices] = out_adj
 
     with interpretation(lazy):
-        assert transpose(z)[y] is Number(1.)
+        assert transpose(z)[y] is Number(1.0)
         # assert transpose(z)[xy] is Scatter(Number(1.), ((x, w),), Number(0.))
-        assert transpose(z)[x] is Number(0.)  # XXX 0 or 1 or w?
-        assert transpose(z)[w] is Number(1.)
+        assert transpose(z)[x] is Number(0.0)  # XXX 0 or 1 or w?
+        assert transpose(z)[w] is Number(1.0)
 
 
 def test_adjoint_subs_tensor():
@@ -301,7 +301,7 @@ def test_adjoint_subs_tensor():
         y = x(i=0)
 
     # conceptually: expected = Scatter(Number(0), ((i, Number(0, 2)),), Number(1))
-    expected = Tensor(torch.tensor([[1., 1.], [0., 0.]]))['i', 'j']
+    expected = Tensor(torch.tensor([[1.0, 1.0], [0.0, 0.0]]))["i", "j"]
 
     assert_close(transpose(y)[x], expected)
 
@@ -316,7 +316,7 @@ def test_adjoint_subs_tensor_rename():
         y = x(i=k)
 
     # conceptually: expected = Scatter(Number(0), ((i, k),), Number(1))
-    expected = Tensor(torch.tensor([[1., 1.], [1., 1.]]))['i', 'j']
+    expected = Tensor(torch.tensor([[1.0, 1.0], [1.0, 1.0]]))["i", "j"]
     # or expected = Number(1)?
 
     assert_close(transpose(y)[x], expected)
@@ -331,7 +331,7 @@ def test_adjoint_subs_tensor_expand():
         y = x(i=k)
 
     # conceptually: expected = Scatter(ops.add, ((i, k),), Number(1)) = two
-    expected = Tensor(torch.tensor([2., 2.]))['i']
+    expected = Tensor(torch.tensor([2.0, 2.0]))["i"]
     # or expected = Number(2)?
 
     assert_close(transpose(y)[x], expected)

@@ -11,6 +11,7 @@ from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpreter import interpretation, stack_reinterpret
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
+from funsor.tensor import Tensor
 from funsor.terms import (
     Binary,
     Cat,
@@ -24,7 +25,6 @@ from funsor.terms import (
     substitute,
     to_funsor,
 )
-from funsor.tensor import Tensor
 
 
 def _alpha_unmangle(expr):
@@ -290,8 +290,9 @@ def adjoint_cat(adj_sum_op, adj_prod_op, out_adj, name, parts, part_name):
 )
 def adjoint_subs_tensor(adj_sum_op, adj_prod_op, out_adj, arg, subs):
 
-    assert all(isinstance(v, (Variable, Number, Tensor, Slice)) for k, v in subs), \
-        "only affine substitution can be transposed"
+    assert all(
+        isinstance(v, (Variable, Number, Tensor, Slice)) for k, v in subs
+    ), "only affine substitution can be transposed"
 
     # invert renaming
     renames = tuple((v.name, k) for k, v in subs if isinstance(v, Variable))
