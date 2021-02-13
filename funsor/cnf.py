@@ -271,7 +271,7 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
             unique_vars = reduced_once & term.input_vars
             if unique_vars:
                 result = term.reduce(red_op, unique_vars)
-                if result is not normalize(
+                if result is not normalize.interpret(
                     Contraction, red_op, nullop, unique_vars, (term,)
                 ):
                     terms[i] = result
@@ -289,7 +289,7 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
             j = i + j_ + 1
             unique_vars = reduced_twice.intersection(lhs.input_vars, rhs.input_vars)
             result = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
-            if result is not normalize(
+            if result is not normalize.interpret(
                 Contraction, red_op, bin_op, unique_vars, (lhs, rhs)
             ):  # did we make progress?
                 # pick the first evaluable pair
@@ -419,7 +419,7 @@ def normalize_contraction_commutative_canonical_order(
     )
     if any(v is not vv for v, vv in zip(terms, new_terms)):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
-    return normalize(Contraction, red_op, bin_op, reduced_vars, new_terms)
+    return normalize.interpret(Contraction, red_op, bin_op, reduced_vars, new_terms)
 
 
 @normalize.register(
@@ -450,7 +450,7 @@ def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mix
     Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor]
 )
 def normalize_contraction_generic_args(red_op, bin_op, reduced_vars, *terms):
-    return normalize(Contraction, red_op, bin_op, reduced_vars, tuple(terms))
+    return normalize.interpret(Contraction, red_op, bin_op, reduced_vars, tuple(terms))
 
 
 @normalize.register(Contraction, NullOp, NullOp, frozenset, Funsor)
