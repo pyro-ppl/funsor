@@ -147,11 +147,11 @@ def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
     if op is adj_redop:
         # XXX using a hack to simulate "expand"
         return {
-            arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], arg, arg))
+            arg: adj_binop(out_adj, Binary(ops.BINARY_INVERSES[adj_binop], arg, arg))
         }
     elif op is adj_binop:  # plate!
         out = arg.reduce(op, reduced_vars)
-        return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
+        return {arg: adj_binop(out_adj, Binary(ops.BINARY_INVERSES[op], out, arg))}
 
 
 @adjoint_ops.register(
@@ -247,7 +247,7 @@ def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
             start += part.inputs[part_name].dtype
         else:
             in_adjs[part] = adj_binop(
-                out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], part, part)
+                out_adj, Binary(ops.BINARY_INVERSES[adj_binop], part, part)
             )
     return in_adjs
 
