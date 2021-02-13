@@ -8,9 +8,15 @@ from opt_einsum.paths import greedy
 
 import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, nullop
-from funsor.interpreter import DispatchedInterpretation, PrioritizedInterpretation
+from funsor.interpretations import (
+    DispatchedInterpretation,
+    PrioritizedInterpretation,
+    eager,
+    lazy,
+    normalize_base,
+)
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Funsor, eager, lazy, normalize_base
+from funsor.terms import Funsor
 
 unfold_base = DispatchedInterpretation()
 unfold = PrioritizedInterpretation(unfold_base, normalize_base, lazy)

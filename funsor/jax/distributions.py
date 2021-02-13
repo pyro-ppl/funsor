@@ -38,8 +38,9 @@ from funsor.distribution import (
     transformeddist_to_funsor,
 )
 from funsor.domains import Real, Reals
+from funsor.interpretations import eager
 from funsor.tensor import Tensor
-from funsor.terms import Binary, Funsor, Reduce, Variable, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Variable, to_data, to_funsor
 from funsor.util import methodof
 
 assert Bernoulli  # flake8

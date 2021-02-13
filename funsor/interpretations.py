@@ -114,7 +114,7 @@ class PrioritizedInterpretation(Interpretation):
                 return result
 
 
-class StatefulInterpretationMeta(ABC):
+class StatefulInterpretationMeta(type(ABC)):
     def __init__(cls, name, bases, dct):
         super().__init__(name, bases, dct)
         cls.registry = KeyedRegistry(default=lambda *args: None)

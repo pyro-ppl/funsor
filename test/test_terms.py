@@ -16,6 +16,14 @@ import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import Array, Bint, Product, Real, Reals
+from funsor.interpretations import (
+    eager,
+    eager_or_die,
+    lazy,
+    normalize,
+    reflect,
+    sequential,
+)
 from funsor.interpreter import reinterpret
 from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
@@ -31,12 +39,6 @@ from funsor.terms import (
     Subs,
     Tuple,
     Variable,
-    eager,
-    eager_or_die,
-    lazy,
-    normalize,
-    reflect,
-    sequential,
     to_data,
     to_funsor,
 )

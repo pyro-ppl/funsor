@@ -14,18 +14,10 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
+from funsor.interpretations import eager, moment_matching, normalize
 from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, align_tensor
-from funsor.terms import (
-    Funsor,
-    Independent,
-    Number,
-    Reduce,
-    Unary,
-    eager,
-    moment_matching,
-    normalize,
-)
+from funsor.terms import Funsor, Independent, Number, Reduce, Unary
 
 
 @dispatch(str, str, Variadic[(Gaussian, GaussianMixture)])

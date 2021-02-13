@@ -10,6 +10,7 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
+from funsor.interpretations import eager, eager_or_die, lazy, moment_matching, reflect
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
@@ -25,7 +26,7 @@ from funsor.sum_product import (
     sum_product,
 )
 from funsor.tensor import Tensor, get_default_prototype
-from funsor.terms import Variable, eager, eager_or_die, lazy, moment_matching, reflect
+from funsor.terms import Variable
 from funsor.testing import assert_close, random_gaussian, random_tensor
 from funsor.util import get_backend
 

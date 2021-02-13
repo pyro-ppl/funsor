@@ -80,7 +80,7 @@ def _alpha_mangle(expr):
         return expr
 
     ast_values = instrument.debug_logged(expr._alpha_convert)(alpha_subs)
-    return reflect(type(expr), *ast_values)
+    return reflect.interpret(type(expr), *ast_values)
 
 
 @reflect.update
@@ -982,7 +982,7 @@ def eager_subs(arg, subs):
 
 @die.register(Subs, Funsor, tuple)
 def die_subs(arg, subs):
-    expr = reflect(Subs, arg, subs)
+    expr = reflect.interpret(Subs, arg, subs)
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
@@ -1033,7 +1033,7 @@ def eager_unary(op, arg):
 
 @die.register(Unary, Op, Funsor)
 def die_unary(op, arg):
-    expr = reflect(Unary, op, arg)
+    expr = reflect.interpret(Unary, op, arg)
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
@@ -1091,7 +1091,7 @@ class Binary(Funsor):
 
 @die.register(Binary, Op, Funsor, Funsor)
 def die_binary(op, lhs, rhs):
-    expr = reflect(Binary, op, lhs, rhs)
+    expr = reflect.interpret(Binary, op, lhs, rhs)
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
@@ -1200,7 +1200,7 @@ def moment_matching_reduce(op, arg, reduced_vars):
 
 @die.register(Reduce, Op, Funsor, frozenset)
 def die_reduce(op, arg, reduced_vars):
-    expr = reflect(Reduce, op, arg, reduced_vars)
+    expr = reflect.interpret(Reduce, op, arg, reduced_vars)
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 

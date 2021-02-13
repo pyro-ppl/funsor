@@ -13,10 +13,11 @@ from funsor.einsum import (
     naive_einsum,
     naive_plated_einsum,
 )
+from funsor.interpretations import normalize, reflect
 from funsor.interpreter import reinterpret
 from funsor.optimizer import apply_optimizer
 from funsor.tensor import Tensor
-from funsor.terms import Variable, normalize, reflect
+from funsor.terms import Variable
 from funsor.testing import (
     assert_close,
     make_chain_einsum,

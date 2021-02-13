@@ -3,16 +3,17 @@
 
 from collections.abc import Hashable
 
-import funsor.interpreter as interpreter
+from funsor.interpretations import Interpretation
+from funsor.interpreter import get_interpretation
 from funsor.util import get_backend
 
 
 def memoize(cache=None):
-    base_interpretation = interpreter.get_interpretation()
+    base_interpretation = get_interpretation()
     return MemoizeInterpretation(base_interpretation, cache)
 
 
-class MemoizeInterpretation(interpreter.Interpretation):
+class MemoizeInterpretation(Interpretation):
     """
     Exploit cons-hashing to do implicit common subexpression elimination
     """
@@ -45,3 +46,8 @@ class MemoizeInterpretation(interpreter.Interpretation):
         if value is None:
             self.cache[key] = value = self.base_interpretation.interpret(cls, *args)
         return value
+
+
+__all__ = [
+    "memoize",
+]

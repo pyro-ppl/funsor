@@ -7,6 +7,7 @@ import torch
 
 import funsor.ops as ops
 from funsor.domains import Bint, Reals
+from funsor.interpretations import eager, lazy, moment_matching
 from funsor.pyro.convert import (
     dist_to_funsor,
     funsor_to_cat_and_mvn,
@@ -21,7 +22,7 @@ from funsor.sum_product import (
     naive_sequential_sum_product,
     sequential_sum_product,
 )
-from funsor.terms import Variable, eager, lazy, moment_matching
+from funsor.terms import Variable
 from funsor.util import broadcast_shape
 
 
