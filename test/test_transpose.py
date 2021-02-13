@@ -21,6 +21,13 @@ except ImportError:
     pytest.skip()
 
 
+def assert_close_extensional(actual, expected):
+    zero = actual - expected
+    probe = {k: random_tensor(OrderedDict(), d) for k, d in zero.inputs.items()}
+    zero = zero(**probe)
+    assert_close(zero, zero * 0)
+
+
 def transpose(expr):
     result = adjoint(ops.add, ops.mul, expr)
     for key, value in result.items():
@@ -41,10 +48,18 @@ def test_two():
     assert transpose(y)[y] is Number(1.0)
 
 
-def test_zero():
+def test_zero_minus():
     x = random_tensor(OrderedDict(i=Bint[2]))
     with interpretation(lazy):
         y = x - x
+    assert transpose(y)[x] is Number(0.0)
+    assert transpose(y)[y] is Number(1.0)
+
+
+def test_zero_mul():
+    x = random_tensor(OrderedDict(i=Bint[2]))
+    with interpretation(lazy):
+        y = x * 0
     assert transpose(y)[x] is Number(0.0)
     assert transpose(y)[y] is Number(1.0)
 
@@ -130,8 +145,8 @@ def test_matmul_variable():
         z = xy.reduce(ops.add, j)
     assert xy in transpose(z)
     assert_close(transpose(z)[xy], Number(4))
-    assert_close(transpose(z)[x], 4 * y)
-    assert_close(transpose(z)[y], 4 * x)
+    assert_close_extensional(transpose(z)[x], 4 * y)
+    assert_close_extensional(transpose(z)[y], 4 * x)
 
 
 def test_batched_matmul():
@@ -151,10 +166,10 @@ def test_expand_reduce():
     y = Variable("y", Real)
     with interpretation(lazy):
         xy = x * y
-        z = xy.reduce(ops.add, i)
-    assert_close(transpose(z)[x], 3 * y)
-    assert_close(transpose(z)[y], 3 * x)
-    assert_close(transpose(z)[xy], Number(1.0))
+        z = xy.reduce(ops.add, i)  # note the implicit expand before the .reduce
+    assert_close_extensional(transpose(z)[x], 3 * y)
+    assert_close_extensional(transpose(z)[y], 3 * x)
+    assert_close(transpose(z)[xy], Number(3.0))
 
 
 def test_tensor_contract():
@@ -243,7 +258,7 @@ def test_reduce_sum_rule():
         f_ = f.reduce(ops.add, i)
 
     actual = transpose(f_)[f]
-    expected = f
+    expected = Number(1.0)
     print(f"actual:\n{str(actual)}")
     print(f"expected:\n{str(expected)}")
     assert actual.input_vars <= expected.input_vars
@@ -312,7 +327,7 @@ def test_adjoint_subs_tensor_rename():
         y = x(i=k)
 
     # concretely
-    expected = Tensor(torch.tensor([[1.0, 1.0], [1.0, 1.0]]))["i", "k"]
+    expected = Number(1.0)
     assert_close(transpose(y)[x], expected)
 
     # conceptually
