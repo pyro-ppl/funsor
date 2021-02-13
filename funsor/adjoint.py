@@ -293,6 +293,19 @@ def adjoint_subs(adj_sum_op, adj_prod_op, out_adj, arg, subs):
     return ((arg, Scatter(adj_sum_op, subs, out_adj)),)
 
 
+@adjoint_ops.register(
+    Scatter,
+    AssociativeOp,
+    AssociativeOp,
+    Funsor,
+    AssociativeOp,
+    tuple,
+    Funsor,
+)
+def adjoint_scatter(adj_sum_op, adj_prod_op, out_adj, op, subs, source):
+    return ((source, out_adj(**dict(subs))),)
+
+
 def _scatter(src, res, subs):
     # inverse of advanced indexing
     # TODO check types of subs, in case some logic from eager_subs was accidentally left out?

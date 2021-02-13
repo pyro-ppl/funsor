@@ -353,6 +353,32 @@ def test_adjoint_subs_tensor_expand():
     assert_close(transpose(y)[x], expected)
 
 
+@pytest.mark.xfail(reason="possible bug in inputs")
+def test_adjoint_scatter_tensor():
+    k = Tensor(torch.tensor([0, 2]), OrderedDict(k=Bint[2]), 3)
+    i = Variable("i", Bint[3])
+    x = random_tensor(OrderedDict(i=Bint[3], j=Bint[4]))
+    y = x(i=k)
+    with interpretation(lazy):
+        x = Scatter(ops.add, (("k", i),), y)
+
+    expected = Tensor(torch.tensor([1.0, 0.0, 1.0]))["i"]
+    assert_close(transpose(x)[y], expected)
+
+
+@pytest.mark.xfail(reason="requires ops.scatter_add")
+def test_adjoint_scatter_tensor_expand():
+    k = Tensor(torch.tensor([0, 0, 1, 1]), OrderedDict(k=Bint[4]), 2)
+    i = Variable("i", Bint[3])
+    x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
+    y = x(i=k)
+    with interpretation(lazy):
+        x = Scatter(ops.add, (("k", i),), y)
+
+    expected = Tensor(torch.tensor([2.0, 2.0]))["i"]
+    assert_close(transpose(x)[y], expected)
+
+
 """
 TODO tests the following ideas:
 
