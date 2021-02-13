@@ -615,6 +615,11 @@ def tensor_to_data(x, name_to_dim=None):
 
 @eager.register(Scatter, Op, tuple, Number)
 def eager_scatter_number(op, subs, source):
+    # case: injective renaming
+    if all(isinstance(v, Variable) for k, v in subs):
+        if len({v.name for k, v in subs}) == len(subs):
+            return source
+
     source = Tensor(numeric_array(source.data), dtype=source.dtype)
     return eager_scatter_tensor(op, subs, source)
 

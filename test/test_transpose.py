@@ -272,7 +272,6 @@ def test_reduce_sum_getitem_variable():
 
 
 def test_adjoint_subs_variable():
-
     w = Variable("w", Real)
     x = Variable("x", Real)
     y = Variable("y", Real)
@@ -280,15 +279,10 @@ def test_adjoint_subs_variable():
         xy = x + y
         z = xy(x=w)
 
-    # x = Scatter(dest, subs, src) <==> transpose(x)[src] == dest(**subs)
-    # zero(**subs) = out_adj <== notation ==> Scatter(zero, subs, out_adj)
-    # in tensor-land: out = in[indices] <==> transpose(out)[in] == zero[indices] = out_adj
-
-    with interpretation(lazy):
-        assert transpose(z)[y] is Number(1.0)
-        # assert transpose(z)[xy] is Scatter(Number(1.), ((x, w),), Number(0.))
-        assert transpose(z)[x] is Number(0.0)  # XXX 0 or 1 or w?
-        assert transpose(z)[w] is Number(1.0)
+    assert transpose(z)[y] is Number(1.0)
+    assert transpose(z)[xy] is Scatter(ops.add, (("x", w),), Number(1.0))
+    assert transpose(z)[x] is Number(1.0)  # FIXME is this right?
+    assert transpose(z)[w] is Number(0.0)  # FIXME is this right?
 
 
 def test_adjoint_subs_tensor():

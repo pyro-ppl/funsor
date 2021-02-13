@@ -288,15 +288,8 @@ def adjoint_cat(adj_sum_op, adj_prod_op, out_adj, name, parts, part_name):
     return tuple(in_adjs)
 
 
-@adjoint_ops.register(
-    Subs, AssociativeOp, AssociativeOp, (Number, Tensor), Tensor, tuple
-)
-def adjoint_subs_tensor(adj_sum_op, adj_prod_op, out_adj, arg, subs):
-
-    assert all(
-        isinstance(v, (Variable, Number, Tensor, Slice)) for k, v in subs
-    ), "only affine substitution can be transposed"
-
+@adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Funsor, Funsor, tuple)
+def adjoint_subs(adj_sum_op, adj_prod_op, out_adj, arg, subs):
     return ((arg, Scatter(adj_sum_op, subs, out_adj)),)
 
 
