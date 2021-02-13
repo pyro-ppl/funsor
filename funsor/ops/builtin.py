@@ -96,7 +96,6 @@ matmul = make_op(operator.matmul, BinaryOp)
 mod = make_op(operator.mod, BinaryOp)
 lshift = make_op(operator.lshift, BinaryOp)
 rshift = make_op(operator.rshift, BinaryOp)
-not_ = make_op(operator.not_, UnaryOp)
 or_ = make_op(operator.or_, AssociativeOp)
 xor = make_op(operator.xor, AssociativeOp)
 max = make_op(max, AssociativeOp)
@@ -221,7 +220,6 @@ __all__ = [
     "mul",
     "ne",
     "neg",
-    "not_",
     "nullop",
     "or_",
     "pos",

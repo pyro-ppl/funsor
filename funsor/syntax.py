@@ -7,7 +7,6 @@ from . import ops
 
 PREFIX_OPERATORS = (
     ("~", ops.invert, ast.Invert),
-    ("not", ops.not_, ast.Not),
     ("+", ops.pos, ast.UAdd),
     ("-", ops.neg, ast.USub),
 )
