@@ -18,6 +18,7 @@ from funsor.terms import (
     Funsor,
     Number,
     Reduce,
+    Scatter,
     Slice,
     Subs,
     Variable,
@@ -296,36 +297,7 @@ def adjoint_subs_tensor(adj_sum_op, adj_prod_op, out_adj, arg, subs):
         isinstance(v, (Variable, Number, Tensor, Slice)) for k, v in subs
     ), "only affine substitution can be transposed"
 
-    # invert renaming
-    renames = tuple((v.name, k) for k, v in subs if isinstance(v, Variable))
-    arg_adj = Subs(out_adj, renames)
-
-    # inverting advanced indexing
-    slices = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
-
-    # TODO avoid reifying these zero/one tensors by using symbolic constants
-    # zero for things that weren't sliced away
-    zeros_like_out = Subs(
-        Tensor(
-            ops.full_like(arg.data, ops.UNITS[adj_sum_op]),
-            arg.inputs.copy(),
-            arg.output.dtype,
-        ),
-        slices,
-    )
-    # FIXME this broadcasting is unnecessary
-    arg_adj = adj_sum_op(arg_adj, zeros_like_out)
-
-    # zero for things that were sliced away
-    # TODO is this broadcast also unnecessary?
-    zeros_like_arg = Tensor(
-        ops.full_like(arg.data, ops.UNITS[adj_sum_op]),
-        arg.inputs.copy(),
-        arg.output.dtype,
-    )
-    arg_adj = _scatter(arg_adj, zeros_like_arg, slices)
-
-    return ((arg, arg_adj),)
+    return ((arg, Scatter(adj_sum_op, subs, out_adj)),)
 
 
 def _scatter(src, res, subs):

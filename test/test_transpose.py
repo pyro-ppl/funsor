@@ -10,7 +10,7 @@ from funsor.adjoint import adjoint
 from funsor.domains import Bint, Real, Reals
 from funsor.interpreter import interpretation, reinterpret
 from funsor.tensor import Tensor
-from funsor.terms import Number, Variable, lazy, reflect
+from funsor.terms import Number, Scatter, Variable, lazy, reflect
 from funsor.testing import assert_close, random_tensor
 
 # from funsor.transpose import transpose
@@ -299,9 +299,12 @@ def test_adjoint_subs_tensor():
     with interpretation(reflect):
         y = x(i=0)
 
-    # conceptually: expected = Scatter(Number(0), ((i, Number(0, 2)),), Number(1))
-    expected = Tensor(torch.tensor([[1.0, 1.0], [0.0, 0.0]]))["i", "j"]
+    # concretely
+    expected = Tensor(torch.tensor([1.0, 0.0]))["i"]
+    assert_close(transpose(y)[x], expected)
 
+    # conceptually
+    expected = Scatter(ops.add, (("i", Number(0, 2)),), Number(1.0))
     assert_close(transpose(y)[x], expected)
 
 
@@ -314,25 +317,30 @@ def test_adjoint_subs_tensor_rename():
     with interpretation(reflect):
         y = x(i=k)
 
-    # conceptually: expected = Scatter(Number(0), ((i, k),), Number(1))
-    expected = Tensor(torch.tensor([[1.0, 1.0], [1.0, 1.0]]))["i", "j"]
-    # or expected = Number(1)?
+    # concretely
+    expected = Tensor(torch.tensor([[1.0, 1.0], [1.0, 1.0]]))["i", "k"]
+    assert_close(transpose(y)[x], expected)
 
+    # conceptually
+    expected = Scatter(ops.add, (("i", k),), Number(1.0))
     assert_close(transpose(y)[x], expected)
 
 
 @pytest.mark.xfail(reason="requires ops.scatter_add")
 def test_adjoint_subs_tensor_expand():
 
-    k = Tensor(torch.tensor([0, 0, 1, 1]), OrderedDict(), 2)
+    k = Tensor(torch.tensor([0, 0, 1, 1]), OrderedDict(k=Bint[4]), 2)
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
     with interpretation(reflect):
         y = x(i=k)
 
-    # conceptually: expected = Scatter(ops.add, ((i, k),), Number(1)) = two
+    # conceptually
+    expected = Scatter(ops.add, (("i", k),), Number(1.0))
+    assert_close(transpose(y)[x], expected)
+
+    # concretely
     expected = Tensor(torch.tensor([2.0, 2.0]))["i"]
     # or expected = Number(2)?
-
     assert_close(transpose(y)[x], expected)
 
 

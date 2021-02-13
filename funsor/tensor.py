@@ -613,8 +613,14 @@ def tensor_to_data(x, name_to_dim=None):
         return data.reshape(tuple(batch_shape) + x.output.shape)
 
 
+@eager.register(Scatter, Op, tuple, Number)
+def eager_scatter_number(op, subs, source):
+    source = Tensor(numeric_array(source.data), dtype=source.dtype)
+    return eager_scatter_tensor(op, subs, source)
+
+
 @eager.register(Scatter, Op, tuple, Tensor)
-def eager_scatter(op, subs, source):
+def eager_scatter_tensor(op, subs, source):
     if not all(isinstance(v, (Variable, Number, Slice, Tensor)) for k, v in subs):
         return None
 
