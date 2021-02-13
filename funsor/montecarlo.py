@@ -4,7 +4,7 @@
 from collections import OrderedDict
 
 from funsor.integrate import Integrate
-from funsor.interpreter import StatefulInterpretation
+from funsor.interpretations import StatefulInterpretation
 from funsor.terms import Funsor
 from funsor.util import get_backend
 

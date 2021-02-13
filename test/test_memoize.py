@@ -7,7 +7,7 @@ import pytest
 import funsor.ops as ops
 from funsor.cnf import BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND
 from funsor.einsum import einsum, naive_plated_einsum
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpreter import reinterpret
 from funsor.memoize import memoize
 from funsor.tensor import numeric_array
 from funsor.terms import reflect
@@ -55,7 +55,7 @@ def backend_to_einsum_backends(backend):
 def test_einsum_complete_sharing(equation, plates, backend, einsum_impl, same_lazy):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
-    with interpretation(reflect):
+    with reflect:
         lazy_expr1 = einsum_impl(
             equation, *funsor_operands, backend=backend, plates=plates
         )
@@ -90,7 +90,7 @@ def test_einsum_complete_sharing_reuse_cache(
 ):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
-    with interpretation(reflect):
+    with reflect:
         lazy_expr1 = einsum_impl(
             equation, *funsor_operands, backend=backend, plates=plates
         )
@@ -203,7 +203,7 @@ def test_nested_complete_sharing_direct():
     ab, bc, cd = funsor_operands
 
     # avoids the complicated internal interpreter usage of the nested optimized einsum tests above
-    with interpretation(reflect):
+    with reflect:
         c1 = (ab * bc).reduce(ops.add, frozenset({"a", "b"}))
         d1 = (c1 * cd).reduce(ops.add, frozenset({"c"}))
 

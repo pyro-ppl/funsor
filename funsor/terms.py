@@ -18,17 +18,16 @@ from multipledispatch.variadic import Variadic, isvariadic
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
-from funsor.interpreter import (
+from funsor.interpretations import (
     Interpretation,
-    PatternMissingError,
     die,
     eager,
-    interpret,
     lazy,
     moment_matching,
     reflect,
     sequential,
 )
+from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.util import get_backend, getargspec, lazy_property, pretty, quote
 

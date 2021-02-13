@@ -16,7 +16,7 @@ import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import Array, Bint, Product, Real, Reals
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpreter import reinterpret
 from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
     Binary,
@@ -102,7 +102,7 @@ def check_quote(x):
 
 @pytest.mark.parametrize("interp", [reflect, lazy, normalize, eager])
 def test_quote(interp):
-    with interpretation(interp):
+    with interp:
         x = Variable("x", Bint[8])
         check_quote(x)
 
@@ -185,7 +185,7 @@ def test_type_hints(expr):
     ],
 )
 def test_eager_or_die_ok(expr):
-    with interpretation(eager_or_die):
+    with eager_or_die:
         eval(expr)
 
 
@@ -199,7 +199,7 @@ def test_eager_or_die_ok(expr):
     ],
 )
 def test_eager_or_die_error(expr):
-    with interpretation(eager_or_die):
+    with eager_or_die:
         with pytest.raises(NotImplementedError):
             eval(expr)
 
@@ -318,7 +318,7 @@ def test_binary(symbol, data1, data2):
     x2 = Number(data2, dtype)
     actual = binary_eval(symbol, x1, x2)
     check_funsor(actual, {}, Array[dtype, ()], expected_data)
-    with interpretation(normalize):
+    with normalize:
         actual_reflect = binary_eval(symbol, x1, x2)
     assert actual.output == actual_reflect.output
 
@@ -335,13 +335,13 @@ def test_reduce_all(op):
     if isinstance(op, ops.LogaddexpOp):
         pytest.skip()  # not defined for integers
 
-    with interpretation(sequential):
+    with sequential:
         f = x * y + z
         dtype = f.dtype
         check_funsor(f, {"x": Bint[2], "y": Bint[3], "z": Bint[4]}, Array[dtype, ()])
         actual = f.reduce(op)
 
-    with interpretation(sequential):
+    with sequential:
         values = [
             f(x=i, y=j, z=k) for i in x.output for j in y.output for k in z.output
         ]
@@ -374,7 +374,7 @@ def test_reduce_subset(op, reduced_vars):
     if isinstance(op, ops.LogaddexpOp):
         pytest.skip()  # not defined for integers
 
-    with interpretation(sequential):
+    with sequential:
         actual = f.reduce(op, reduced_vars)
         expected = f
         for v in [x, y, z]:
@@ -678,7 +678,7 @@ def test_cat_slice_tensor(start, stop, step):
     expected = Cat("t", terms)(t=sub)
 
     # lazy - exercise Cat.eager_subs
-    with interpretation(lazy):
+    with lazy:
         actual = Cat("t", terms)(t=sub)
     actual = reinterpret(actual)
 

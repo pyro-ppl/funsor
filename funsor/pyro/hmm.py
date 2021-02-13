@@ -7,7 +7,6 @@ import torch
 
 import funsor.ops as ops
 from funsor.domains import Bint, Reals
-from funsor.interpreter import interpretation
 from funsor.pyro.convert import (
     dist_to_funsor,
     funsor_to_cat_and_mvn,
@@ -98,7 +97,7 @@ class DiscreteHMM(FunsorDistribution):
         dtype = obs.inputs["value"].dtype
 
         # Construct the joint funsor.
-        with interpretation(lazy):
+        with lazy:
             # TODO perform math here once sequential_sum_product has been
             #   implemented as a first-class funsor.
             funsor_dist = Variable("value", obs.inputs["value"])  # a bogus value
@@ -263,7 +262,7 @@ class GaussianHMM(FunsorDistribution):
         dtype = "real"
 
         # Construct the joint funsor.
-        with interpretation(lazy):
+        with lazy:
             value = Variable("value", Reals[time_shape[0], obs_dim])
             result = trans + obs(value=value["time"])
             result = MarkovProduct(
@@ -361,7 +360,7 @@ class GaussianMRF(FunsorDistribution):
 
         # Construct the joint funsor.
         # Compare with pyro.distributions.hmm.GaussianMRF.log_prob().
-        with interpretation(lazy):
+        with lazy:
             time = Variable("time", Bint[time_shape[0]])
             value = Variable("value", Reals[time_shape[0], obs_dim])
             logp_oh = trans + obs(value=value["time"])
@@ -506,7 +505,7 @@ class SwitchingLinearHMM(FunsorDistribution):
         dtype = "real"
 
         # Construct the joint funsor.
-        with interpretation(lazy):
+        with lazy:
             # TODO perform math here once sequential_sum_product has been
             #   implemented as a first-class funsor.
             funsor_dist = Variable("value", obs.inputs["value"])  # a bogus value
@@ -529,7 +528,7 @@ class SwitchingLinearHMM(FunsorDistribution):
         seq_sum_prod = (
             naive_sequential_sum_product if self.exact else sequential_sum_product
         )
-        with interpretation(eager if self.exact else moment_matching):
+        with (eager if self.exact else moment_matching):
             result = self._trans + self._obs(value=value)
             result = seq_sum_prod(
                 ops.logaddexp,
@@ -589,7 +588,7 @@ class SwitchingLinearHMM(FunsorDistribution):
         seq_sum_prod = (
             naive_sequential_sum_product if self.exact else sequential_sum_product
         )
-        with interpretation(eager if self.exact else moment_matching):
+        with (eager if self.exact else moment_matching):
             logp = self._trans + self._obs(value=value)
             logp = seq_sum_prod(
                 ops.logaddexp,

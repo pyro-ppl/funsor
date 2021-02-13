@@ -15,9 +15,10 @@ from funsor.cnf import (
 )
 from funsor.domains import Bint, Reals  # noqa F403
 from funsor.einsum import einsum, naive_plated_einsum
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpretations import eager, normalize, reflect
+from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
-from funsor.terms import Number, eager, normalize, reflect
+from funsor.terms import Number
 from funsor.testing import (
     assert_close,
     check_funsor,
@@ -60,10 +61,10 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
 
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
-    with interpretation(reflect):
+    with reflect:
         expr = einsum_impl(equation, *funsor_operands, backend=backend, plates=plates)
 
-    with interpretation(normalize):
+    with normalize:
         transformed_expr = reinterpret(expr)
 
     assert isinstance(transformed_expr, Contraction)
@@ -73,12 +74,12 @@ def test_normalize_einsum(equation, plates, backend, einsum_impl):
         isinstance(v, (Number, Tensor, Contraction)) for v in transformed_expr.terms
     )
 
-    with interpretation(normalize):
+    with normalize:
         transformed_expr2 = reinterpret(transformed_expr)
 
     assert transformed_expr2 is transformed_expr  # check normalization
 
-    with interpretation(eager):
+    with eager:
         actual = reinterpret(transformed_expr)
         expected = reinterpret(expr)
 

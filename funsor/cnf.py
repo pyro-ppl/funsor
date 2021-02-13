@@ -16,7 +16,7 @@ from funsor.affine import affine_inputs
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
-from funsor.interpreter import interpretation, recursion_reinterpret
+from funsor.interpreter import recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
 from funsor.tensor import Tensor
 from funsor.terms import (
@@ -392,7 +392,7 @@ def eager_contraction_gaussian(red_op, bin_op, reduced_vars, x, y):
 
 @affine_inputs.register(Contraction)
 def _(fn):
-    with interpretation(reflect):
+    with reflect:
         flat = reduce(fn.bin_op, fn.terms).reduce(fn.red_op, fn.reduced_vars)
     return affine_inputs(flat)
 

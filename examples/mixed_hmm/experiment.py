@@ -15,7 +15,6 @@ from seal_data import prepare_fake, prepare_seal
 
 import funsor
 import funsor.ops as ops
-from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import MarkovProduct, naive_sequential_sum_product, sum_product
 from funsor.terms import lazy, to_funsor
@@ -48,7 +47,7 @@ def parallel_loss_fn(model, guide, parallel=True):
 
     plates = frozenset(["g", "i"])
     eliminate = frozenset().union(*(f.inputs for f in new_factors))
-    with interpretation(lazy):
+    with lazy:
         loss = sum_product(ops.logaddexp, ops.add, new_factors, eliminate, plates)
     loss = apply_optimizer(loss)
     assert not loss.inputs

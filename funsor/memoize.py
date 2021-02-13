@@ -43,5 +43,5 @@ class MemoizeInterpretation(interpreter.Interpretation):
             )
         value = self.cache.get(key)
         if value is None:
-            self.cache[key] = value = self.base_interpretation(cls, *args)
+            self.cache[key] = value = self.base_interpretation.interpret(cls, *args)
         return value
