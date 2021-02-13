@@ -619,7 +619,18 @@ def eager_scatter(op, subs, source):
         return None
 
     # TODO avoid materializing here
+    proto = source.data.reshape((-1,))[:1].reshape(())
     subs = tuple((k, source.materialize(v)) for k, v in subs)
+    # TODO materialize numbers as tensors (required only for numpy backend):
+    # subs = tuple(
+    #     (
+    #         k,
+    #         Tensor(ops.new_array(v.data), dtype=v.dtype)
+    #         if isinstance(v, Number)
+    #         else v,
+    #     )
+    #     for k, v in subs
+    # )
 
     # Compute shapes.
     destin_inputs = OrderedDict()
@@ -633,21 +644,22 @@ def eager_scatter(op, subs, source):
     inputs, tensors = align_tensors(*tensors)
     destin_inputs.update(inputs)
     source_data = tensors[0]
-    index = list(tensors[1:])
 
     # Construct a [:] slice for the output.
+    index = list(tensors[1:])
     for i, size in enumerate(output.shape):
         offset_from_right = len(output.shape) - i - 1
         arange = ops.new_arange(source_data, size)
         index.append(arange.reshape((-1,) + (1,) * offset_from_right))
+    index = tuple(index)
 
     shape = tuple(d.size for d in destin_inputs.values()) + output.shape
     zero = ops.UNITS[op]
-    destin = ops.full_like(shape, zero)
+    destin = ops.full_like(ops.expand(proto, shape), zero)
     # TODO either add an assertion or support non-injective scattering
     # via scatter_add etc.
     data = ops.scatter(destin, index, source_data)
-    return Tensor(data, destin_inputs, output)
+    return Tensor(data, destin_inputs, output.dtype)
 
 
 # analog of torch.diag_embed:

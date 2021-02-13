@@ -258,6 +258,13 @@ def scatter(dest, indices, src):
     raise NotImplementedError
 
 
+@scatter.register(array, tuple, array)
+def _scatter(dest, indices, src):
+    result = dest.copy()
+    result[indices] = src
+    return result
+
+
 @Op
 def scatter_add(dest, indices, src):
     raise NotImplementedError

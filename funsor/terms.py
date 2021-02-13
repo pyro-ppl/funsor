@@ -1980,6 +1980,7 @@ __all__ = [
     "Lambda",
     "Number",
     "Reduce",
+    "Scatter",
     "Stack",
     "Slice",
     "Subs",

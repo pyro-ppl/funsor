@@ -1233,7 +1233,11 @@ def test_empty_tensor_possible():
 def test_scatter(op):
     source = random_tensor(OrderedDict(k=Bint[5]))
     actual = Scatter(op, (("i", Number(0, 3)),), source)
-    expected_data = ops.cat(0, source.data, zeros((2, 5)))
+
+    proto = source.data.reshape((-1,))[:1].reshape(())
+    zero = ops.full_like(ops.expand(proto, (2, 5)), ops.UNITS[op])
+    expected_data = ops.cat(0, source.data.reshape((1, 5)), zero)
     expected = Tensor(expected_data, OrderedDict(i=Bint[3], k=Bint[5]))
+
     assert_close(actual, expected)
     assert_close(actual(i=0), source)  # Scatter is transpose to Subs
