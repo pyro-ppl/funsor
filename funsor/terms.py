@@ -29,9 +29,13 @@ from funsor.interpretations import (
 )
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
+from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
 from funsor.util import get_backend, getargspec, lazy_property, pretty, quote
 
 from . import instrument, interpreter, ops
+
+_PREFIX = {k: v for v, k, _ in PREFIX_OPERATORS}
+_INFIX = {k: v for v, k, _ in INFIX_OPERATORS}
 
 
 # FIXME this can lead to linear nesting of interpretations
@@ -597,6 +601,9 @@ class Funsor(object, metaclass=FunsorMeta):
     def __invert__(self):
         return Unary(ops.invert, self)
 
+    def __pos__(self):
+        return Unary(ops.pos, self)
+
     def __neg__(self):
         return Unary(ops.neg, self)
 
@@ -986,12 +993,6 @@ def die_subs(arg, subs):
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
-_PREFIX = {
-    ops.neg: "-",
-    ops.invert: "~",
-}
-
-
 class Unary(Funsor):
     """
     Lazy unary operation.
@@ -1035,26 +1036,6 @@ def eager_unary(op, arg):
 def die_unary(op, arg):
     expr = reflect.interpret(Unary, op, arg)
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
-
-
-_INFIX = {
-    ops.add: "+",
-    ops.sub: "-",
-    ops.mul: "*",
-    ops.matmul: "@",
-    ops.truediv: "/",
-    ops.floordiv: "//",
-    ops.mod: "%",
-    ops.pow: "**",
-    ops.eq: "==",
-    ops.ne: "!=",
-    ops.ge: ">=",
-    ops.gt: ">=",
-    ops.le: "<=",
-    ops.lt: "<",
-    ops.lshift: "<<",
-    ops.rshift: ">>",
-}
 
 
 class Binary(Funsor):
