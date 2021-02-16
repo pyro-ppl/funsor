@@ -728,9 +728,6 @@ class Funsor(object, metaclass=FunsorMeta):
     def max(self):
         return Unary(ops.max, self)
 
-    def __not__(self):
-        return Unary(ops.not_, self)
-
     def __add__(self, other):
         return Binary(ops.add, self, to_funsor(other))
 

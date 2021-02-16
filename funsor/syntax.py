@@ -9,7 +9,6 @@ from . import ops
 
 PREFIX_OPERATORS = (
     ("~", ops.invert, ast.Invert),
-    ("not", ops.not_, ast.Not),
     ("+", ops.pos, ast.UAdd),
     ("-", ops.neg, ast.USub),
 )
@@ -174,5 +173,7 @@ def rewrite_ops(infix={}, prefix={}, const={}):
 
 
 __all__ = [
+    "INFIX_OPERATORS",
+    "PREFIX_OPERATORS",
     "rewrite_ops",
 ]
