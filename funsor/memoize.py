@@ -1,16 +1,17 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-from collections.abc import Hashable
+import contextlib
 
 from funsor.interpretations import Interpretation
 from funsor.interpreter import get_interpretation
-from funsor.util import get_backend
 
 
+@contextlib.contextmanager
 def memoize(cache=None):
     base_interpretation = get_interpretation()
-    return MemoizeInterpretation(base_interpretation, cache)
+    with MemoizeInterpretation(base_interpretation, cache) as interp:
+        yield interp.cache
 
 
 class MemoizeInterpretation(Interpretation):
@@ -19,29 +20,20 @@ class MemoizeInterpretation(Interpretation):
     """
 
     def __init__(self, base_interpretation, cache=None):
+        super().__init__(f"memoize/{base_interpretation.__name__}")
         self.base_interpretation = base_interpretation
-        self.cache = {} if cache is None else cache
+        if cache is None:
+            cache = {}
+        else:
+            assert isinstance(cache, dict)
+        self.cache = cache
 
     @property
     def is_total(self):
         return self.base_interpretation.is_total
 
     def interpret(self, cls, *args):
-        # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
-        if get_backend() == "jax":
-            import jax
-
-            key = tuple(
-                id(arg)
-                if isinstance(arg, jax.interpreters.xla.DeviceArray)
-                or not isinstance(arg, Hashable)
-                else arg
-                for arg in args
-            )
-        else:
-            key = tuple(
-                id(arg) if not isinstance(arg, Hashable) else arg for arg in args
-            )
+        key = self.make_hash_key(cls, *args)
         value = self.cache.get(key)
         if value is None:
             self.cache[key] = value = self.base_interpretation.interpret(cls, *args)

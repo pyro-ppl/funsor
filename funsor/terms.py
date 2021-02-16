@@ -8,7 +8,6 @@ import numbers
 import typing
 import warnings
 from collections import OrderedDict, namedtuple
-from collections.abc import Hashable
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
@@ -30,7 +29,7 @@ from funsor.interpretations import (
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
-from funsor.util import get_backend, getargspec, lazy_property, pretty, quote
+from funsor.util import getargspec, lazy_property, pretty, quote
 
 from . import instrument, interpreter, ops
 
@@ -88,7 +87,7 @@ def _alpha_mangle(expr):
     return reflect.interpret(type(expr), *ast_values)
 
 
-@reflect.update
+@reflect.set_callable
 def reflect(cls, *args, **kwargs):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
@@ -102,21 +101,7 @@ def reflect(cls, *args, **kwargs):
         assert len(new_args) == len(cls._ast_fields)
         _, args = args, new_args
 
-    # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
-    if get_backend() == "jax":
-        import jax
-
-        cache_key = tuple(
-            id(arg)
-            if isinstance(arg, jax.interpreters.xla.DeviceArray)
-            or not isinstance(arg, Hashable)
-            else arg
-            for arg in args
-        )
-    else:
-        cache_key = tuple(
-            id(arg) if not isinstance(arg, Hashable) else arg for arg in args
-        )
+    cache_key = reflect.make_hash_key(cls, *args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 

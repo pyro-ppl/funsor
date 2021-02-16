@@ -8,6 +8,7 @@ import numpy as np
 from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
+from funsor.interpretations import Interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.tensor import Tensor
@@ -38,29 +39,25 @@ def _alpha_unmangle(expr):
     return expr._alpha_convert(alpha_subs)
 
 
-class AdjointTape(object):
+class AdjointTape(Interpretation):
     def __init__(self):
+        super().__init__("adjoint")
         self.tape = []
         self._old_interpretation = None
 
-    def __call__(self, cls, *args):
+    def interpret(self, cls, *args):
         if cls in adjoint_ops:  # atomic op, don't trace internals
             with self._old_interpretation:
                 result = cls(*args)
             self.tape.append((result, cls, args))
         else:
-            result = self._old_interpretation(cls, *args)
+            result = self._old_interpretation.interpret(cls, *args)
         return result
 
     def __enter__(self):
         self.tape = []
         self._old_interpretation = interpreter.get_interpretation()
-        interpreter.push_interpretation(self)
-        return self
-
-    def __exit__(self, *args):
-        interpreter.pop_interpretation()
-        self._old_interpretation = None
+        return super().__enter__()
 
     def adjoint(self, red_op, bin_op, root, targets):
 

@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from abc import ABC, abstractmethod
+from collections.abc import Hashable
 from contextlib import ContextDecorator
 from timeit import default_timer
 
 from . import instrument
 from .interpreter import get_interpretation, pop_interpretation, push_interpretation
 from .registry import KeyedRegistry
+from .util import get_backend
 
 
 class Interpretation(ContextDecorator, ABC):
@@ -16,6 +18,10 @@ class Interpretation(ContextDecorator, ABC):
 
     Instances may be used as context managers or decorators.
     """
+
+    def __init__(self, name):
+        self.__name__ = name
+        super().__init__()
 
     is_total = False
 
@@ -35,27 +41,40 @@ class Interpretation(ContextDecorator, ABC):
     def interpret(self, cls, *args):
         raise NotImplementedError
 
+    @staticmethod
+    def make_hash_key(cls, *args):
+        # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
+        if get_backend() == "jax":
+            import jax
+
+            return tuple(
+                id(arg)
+                if isinstance(arg, jax.interpreters.xla.DeviceArray)
+                or not isinstance(arg, Hashable)
+                else arg
+                for arg in args
+            )
+        return tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
+
 
 class CallableInterpretation(Interpretation):
     def __init__(self, interpret):
         assert callable(interpret)
-        super().__init__()
+        super().__init__(interpret.__name__)
         self.interpret = interpret
-        self.__name__ = interpret.__name__
 
-    def update(self, interpret):
+    def set_callable(self, interpret):
         assert callable(interpret)
         self.interpret = interpret
         return self
 
     def interpret(self, cls, *args):
-        raise NotImplementedError
+        raise ValueError("interpret has not been defined")
 
 
 class DispatchedInterpretation(Interpretation):
     def __init__(self, name="dispatched"):
-        super().__init__()
-        self.__name__ = name
+        super().__init__(name)
         self.registry = registry = KeyedRegistry(default=lambda *args: None)
 
         if instrument.DEBUG or instrument.PROFILE:
@@ -88,9 +107,8 @@ class DispatchedInterpretation(Interpretation):
 class PrioritizedInterpretation(Interpretation):
     def __init__(self, *subinterpreters):
         assert len(subinterpreters) >= 1
-        super().__init__()
+        super().__init__("/".join(s.__name__ for s in subinterpreters))
         self.subinterpreters = subinterpreters
-        self.__name__ = "/".join(s.__name__ for s in subinterpreters)
         if isinstance(self.subinterpreters[0], DispatchedInterpretation):
             self.register = self.subinterpreters[0].register
             self.dispatch = self.subinterpreters[0].dispatch
@@ -144,8 +162,7 @@ class StatefulInterpretation(
     """
 
     def __init__(self, name="stateful"):
-        super().__init__()
-        self.__name__ = name
+        super().__init__(name)
 
     def interpret(self, cls, *args):
         return self.dispatch(cls, *args)(self, *args)

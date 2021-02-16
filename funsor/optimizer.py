@@ -15,6 +15,7 @@ from funsor.interpretations import (
     lazy,
     normalize_base,
 )
+from funsor.interpreter import get_interpretation
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.terms import Funsor
 
@@ -66,7 +67,7 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
 
 @unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
 def unfold_contraction_variadic(r, b, v, *ts):
-    return unfold(Contraction, r, b, v, tuple(ts))
+    return unfold.interpret(Contraction, r, b, v, tuple(ts))
 
 
 optimize_base = DispatchedInterpretation()
@@ -81,7 +82,7 @@ REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimi
     Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor]
 )
 def optimize_contraction_variadic(r, b, v, *ts):
-    return optimize(Contraction, r, b, v, tuple(ts))
+    return optimize.interpret(Contraction, r, b, v, tuple(ts))
 
 
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
@@ -161,5 +162,5 @@ def apply_optimizer(x):
     with unfold:
         expr = interpreter.reinterpret(x)
 
-    with optimize:
+    with PrioritizedInterpretation(optimize_base, get_interpretation()):
         return interpreter.reinterpret(expr)

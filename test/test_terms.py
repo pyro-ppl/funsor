@@ -95,6 +95,17 @@ def test_cons_hash():
     assert Slice("x", 2, 10, 1) is Slice("x", 2, 10)
 
 
+def test_reflect():
+    x = Number(1.0)
+    with reflect:
+        y = x + x
+        assert not isinstance(y, Number)
+        assert isinstance(y, Binary)
+    with eager:
+        z = x + x
+        assert isinstance(z, Number)
+
+
 def check_quote(x):
     s = funsor.quote(x)
     assert isinstance(s, str)
