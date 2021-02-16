@@ -3,8 +3,6 @@
 
 from collections import OrderedDict, defaultdict
 
-import numpy as np
-
 from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
