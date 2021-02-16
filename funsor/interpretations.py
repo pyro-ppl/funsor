@@ -43,14 +43,24 @@ class Interpretation(ContextDecorator, ABC):
 
     @staticmethod
     def make_hash_key(cls, *args):
-        # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
-        if get_backend() == "jax":
-            import jax
+        backend = get_backend()
+        if backend == "jax":
+            # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
+            from jax.interpreters.xla import DeviceArray
 
             return tuple(
                 id(arg)
-                if isinstance(arg, jax.interpreters.xla.DeviceArray)
-                or not isinstance(arg, Hashable)
+                if isinstance(arg, DeviceArray) or not isinstance(arg, Hashable)
+                else arg
+                for arg in args
+            )
+        if backend == "torch":
+            # Avoid "ImportError: sys.meta_path is None" on shutdown.
+            from torch import Tensor
+
+            return tuple(
+                id(arg)
+                if isinstance(arg, Tensor) or not isinstance(arg, Hashable)
                 else arg
                 for arg in args
             )
