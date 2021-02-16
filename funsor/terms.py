@@ -55,13 +55,14 @@ class SubstituteInterpretation(Interpretation):
         return self.base_interpretation.is_total
 
     def interpret(self, cls, *args):
-        expr = self.base_interpretation.interpret(cls, *args)
-        fresh_subs = tuple((k, v) for k, v in self.subs if k in expr.fresh)
-        if fresh_subs:
-            expr = instrument.debug_logged(expr.eager_subs)(fresh_subs)
-        if instrument.PROFILE:
-            instrument.COUNTERS["interpretation"]["substitute"] += 1
-        return expr
+        with self.base_interpretation:
+            expr = cls(*args)
+            fresh_subs = tuple((k, v) for k, v in self.subs if k in expr.fresh)
+            if fresh_subs:
+                expr = instrument.debug_logged(expr.eager_subs)(fresh_subs)
+            if instrument.PROFILE:
+                instrument.COUNTERS["interpretation"]["substitute"] += 1
+            return expr
 
 
 def substitute(expr, subs):
@@ -141,6 +142,8 @@ def reflect(cls, *args, **kwargs):
 
     # alpha-convert eagerly upon binding any variable
     result = _alpha_mangle(result)
+
+    cls._cons_cache[cache_key] = result
     return result
 
 
