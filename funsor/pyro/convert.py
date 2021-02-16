@@ -24,9 +24,10 @@ from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Array, Bint, Real, Reals
 from funsor.gaussian import Gaussian
+from funsor.interpretations import eager
 from funsor.interpreter import gensym
 from funsor.tensor import Tensor, align_tensors
-from funsor.terms import Funsor, Independent, Variable, eager, to_data, to_funsor
+from funsor.terms import Funsor, Independent, Variable, to_data, to_funsor
 from funsor.torch.distributions import Normal
 from funsor.util import broadcast_shape
 

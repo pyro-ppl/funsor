@@ -10,7 +10,7 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
-from funsor.interpreter import interpretation
+from funsor.interpretations import eager, eager_or_die, lazy, moment_matching, reflect
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
@@ -26,7 +26,7 @@ from funsor.sum_product import (
     sum_product,
 )
 from funsor.tensor import Tensor, get_default_prototype
-from funsor.terms import Variable, eager, eager_or_die, lazy, moment_matching, reflect
+from funsor.terms import Variable
 from funsor.testing import assert_close, random_gaussian, random_tensor
 from funsor.util import get_backend
 
@@ -126,7 +126,7 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     expected = sum_product(sum_op, prod_op, factors, vars1 | vars2, frozenset(plates))
     assert_close(actual, expected)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -188,7 +188,7 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2, x_dim, ti
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -272,7 +272,7 @@ def test_modified_partial_sum_product_1(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -362,7 +362,7 @@ def test_modified_partial_sum_product_2(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -454,7 +454,7 @@ def test_modified_partial_sum_product_3(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -582,7 +582,7 @@ def test_modified_partial_sum_product_4(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -731,7 +731,7 @@ def test_modified_partial_sum_product_5(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -860,7 +860,7 @@ def test_modified_partial_sum_product_6(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -1173,7 +1173,7 @@ def test_modified_partial_sum_product_8(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -1354,7 +1354,7 @@ def test_modified_partial_sum_product_9(
         "tones": {},
     }
 
-    with interpretation(lazy if use_lazy else eager):
+    with (lazy if use_lazy else eager):
         factors1 = modified_partial_sum_product(
             sum_op, prod_op, factors, vars1, plate_to_step
         )
@@ -1364,7 +1364,7 @@ def test_modified_partial_sum_product_9(
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -1534,7 +1534,7 @@ def test_modified_partial_sum_product_10(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -1749,7 +1749,7 @@ def test_modified_partial_sum_product_11(
         "tones": {},
     }
 
-    with interpretation(lazy if use_lazy else eager):
+    with (lazy if use_lazy else eager):
         factors1 = modified_partial_sum_product(
             sum_op, prod_op, factors, vars1, plate_to_step
         )
@@ -1759,7 +1759,7 @@ def test_modified_partial_sum_product_11(
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -2097,7 +2097,7 @@ def test_modified_partial_sum_product_13(
         "weeks": frozenset({("y_0", "y_prev", "y_curr")}),
     }
 
-    with interpretation(lazy if use_lazy else eager):
+    with (lazy if use_lazy else eager):
         factors1 = modified_partial_sum_product(
             sum_op, prod_op, factors, vars1, plate_to_step
         )
@@ -2107,7 +2107,7 @@ def test_modified_partial_sum_product_13(
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -2296,7 +2296,7 @@ def test_modified_partial_sum_product_14(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -2391,7 +2391,7 @@ def test_modified_partial_sum_product_16(
     )
     actual = reduce(prod_op, factors2)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -2557,7 +2557,7 @@ def test_modified_partial_sum_product_17(
         "time": frozenset({("x_0", "x_prev", "x_curr")}),
     }
 
-    with interpretation(lazy if use_lazy else eager):
+    with (lazy if use_lazy else eager):
         factors1 = modified_partial_sum_product(
             sum_op, prod_op, factors, vars1, plate_to_step
         )
@@ -2567,7 +2567,7 @@ def test_modified_partial_sum_product_17(
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
-    with interpretation(lazy):
+    with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
             factors, vars1 | vars2, plate_to_step
         )
@@ -2635,7 +2635,7 @@ def test_sequential_sum_product(
         for t in range(num_steps)
     )
     reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
-    with interpretation(reflect):
+    with reflect:
         expected = sum_product(sum_op, prod_op, operands, reduce_vars)
     expected = apply_optimizer(expected)
     expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
@@ -2690,7 +2690,7 @@ def test_sequential_sum_product_multi(
     time = Variable("time", Bint[num_steps])
     step = {"x_prev": "x_curr", "y_prev": "y_curr"}
 
-    with interpretation(moment_matching):
+    with moment_matching:
         actual = impl(sum_op, prod_op, trans, time, step)
         expected_inputs = batch_inputs.copy()
         expected_inputs.update(
@@ -2802,7 +2802,7 @@ def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
         OrderedDict(time=Bint[num_steps]),
         dtype=2,
     )
-    with interpretation(eager_or_die):
+    with eager_or_die:
         factor = trans + obs(bias=bias[sensor_id]) + bias_dist
     assert set(factor.inputs) == {"time", "bias", "x_prev", "x_curr"}
 

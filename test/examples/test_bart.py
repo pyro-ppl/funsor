@@ -13,7 +13,6 @@ from funsor.cnf import Contraction
 from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
-from funsor.interpreter import interpretation
 from funsor.montecarlo import MonteCarlo
 from funsor.pyro.convert import AffineNormal
 from funsor.sum_product import MarkovProduct
@@ -63,7 +62,7 @@ def test_bart(analytic_kl):
     global call_count
     call_count = 0
 
-    with interpretation(reflect):
+    with reflect:
         q = Independent(
             Independent(
                 Contraction(
@@ -553,12 +552,12 @@ def test_bart(analytic_kl):
 
     if analytic_kl:
         exact_part = funsor.Integrate(q, p_prior - q, "gate_rate_t")
-        with interpretation(MonteCarlo()):
+        with MonteCarlo():
             approx_part = funsor.Integrate(q, p_likelihood, "gate_rate_t")
         elbo = exact_part + approx_part
     else:
         p = p_prior + p_likelihood
-        with interpretation(MonteCarlo()):
+        with MonteCarlo():
             elbo = Integrate(q, p - q, "gate_rate_t")
 
     assert isinstance(elbo, Tensor), elbo.pretty()

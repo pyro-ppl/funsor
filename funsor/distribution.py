@@ -183,7 +183,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
     def eager_log_prob(cls, *params):
         params, value = params[:-1], params[-1]
         params = params + (Variable("value", value.output),)
-        instance = reflect(cls, *params)
+        instance = reflect.interpret(cls, *params)
         raw_dist, value_name, value_output, dim_to_name = instance._get_raw_dist()
         assert value.output == value_output
         name_to_dim = {v: k for k, v in dim_to_name.items()}
@@ -899,7 +899,7 @@ def eager_dirichlet_categorical(red_op, bin_op, reduced_vars, x, y):
             concentration=x.concentration, total_count=1, value=identity[y.value]
         )
     else:
-        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+        return eager.interpret(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
 
 def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
@@ -910,7 +910,7 @@ def eager_dirichlet_multinomial(red_op, bin_op, reduced_vars, x, y):
             concentration=x.concentration, total_count=y.total_count, value=y.value
         )
     else:
-        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+        return eager.interpret(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
 
 def eager_plate_multinomial(op, x, reduced_vars):
@@ -948,7 +948,7 @@ def eager_gamma_gamma(red_op, bin_op, reduced_vars, x, y):
         )
         return unnormalized - const
     else:
-        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+        return eager.interpret(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
 
 def eager_gamma_poisson(red_op, bin_op, reduced_vars, x, y):
@@ -959,7 +959,7 @@ def eager_gamma_poisson(red_op, bin_op, reduced_vars, x, y):
             concentration=x.concentration, rate=x.rate, value=y.value
         )
     else:
-        return eager(Contraction, red_op, bin_op, reduced_vars, (x, y))
+        return eager.interpret(Contraction, red_op, bin_op, reduced_vars, (x, y))
 
 
 def eager_dirichlet_posterior(op, c, z):

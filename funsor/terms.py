@@ -8,38 +8,64 @@ import numbers
 import typing
 import warnings
 from collections import OrderedDict, namedtuple
-from collections.abc import Hashable
 from functools import reduce, singledispatch
 from weakref import WeakValueDictionary
 
 from multipledispatch import dispatch
 from multipledispatch.variadic import Variadic, isvariadic
 
+import funsor.interpreter as interpreter
+import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
-from funsor.interpreter import PatternMissingError, dispatched_interpretation, interpret
+from funsor.interpretations import (
+    Interpretation,
+    die,
+    eager,
+    lazy,
+    moment_matching,
+    reflect,
+    sequential,
+)
+from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.util import get_backend, getargspec, lazy_property, pretty, quote
+from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
+from funsor.util import getargspec, lazy_property, pretty, quote
 
 from . import instrument, interpreter, ops
 
+_PREFIX = {k: v for v, k, _ in PREFIX_OPERATORS}
+_INFIX = {k: v for v, k, _ in INFIX_OPERATORS}
+
+
+# FIXME this can lead to linear nesting of interpretations
+# when used in combination with alpha_convert and optimize.
+# See failing example at https://github.com/pyro-ppl/funsor/pull/414
+class SubstituteInterpretation(Interpretation):
+    def __init__(self, subs, base_interpretation):
+        if isinstance(subs, (dict, OrderedDict)):
+            subs = tuple(subs.items())
+        self.subs = subs
+        self.base_interpretation = base_interpretation
+        assert isinstance(subs, tuple)
+        assert all(isinstance(v, Funsor) for k, v in subs)
+
+    @property
+    def is_total(self):
+        return self.base_interpretation.is_total
+
+    def interpret(self, cls, *args):
+        with self.base_interpretation:
+            expr = cls(*args)
+            fresh_subs = tuple((k, v) for k, v in self.subs if k in expr.fresh)
+            if fresh_subs:
+                expr = instrument.debug_logged(expr.eager_subs)(fresh_subs)
+            if instrument.PROFILE:
+                instrument.COUNTERS["interpretation"]["substitute"] += 1
+            return expr
+
 
 def substitute(expr, subs):
-    if isinstance(subs, (dict, OrderedDict)):
-        subs = tuple(subs.items())
-    assert isinstance(subs, tuple)
-    assert all(isinstance(v, Funsor) for k, v in subs)
-
-    @interpreter.interpretation(interpreter._INTERPRETATION)  # use base
-    def subs_interpreter(cls, *args):
-        expr = cls(*args)
-        fresh_subs = tuple((k, v) for k, v in subs if k in expr.fresh)
-        if fresh_subs:
-            expr = instrument.debug_logged(expr.eager_subs)(fresh_subs)
-        if instrument.PROFILE:
-            instrument.COUNTERS["interpretation"]["substitute"] += 1
-        return expr
-
-    with interpreter.interpretation(subs_interpreter):
+    with SubstituteInterpretation(subs, interpreter.get_interpretation()):
         return interpreter.reinterpret(expr)
 
 
@@ -58,9 +84,10 @@ def _alpha_mangle(expr):
         return expr
 
     ast_values = instrument.debug_logged(expr._alpha_convert)(alpha_subs)
-    return reflect(type(expr), *ast_values)
+    return reflect.interpret(type(expr), *ast_values)
 
 
+@reflect.set_callable
 def reflect(cls, *args, **kwargs):
     """
     Construct a funsor, populate ``._ast_values``, and cons hash.
@@ -74,21 +101,7 @@ def reflect(cls, *args, **kwargs):
         assert len(new_args) == len(cls._ast_fields)
         _, args = args, new_args
 
-    # JAX DeviceArray has .__hash__ method but raise the unhashable error there.
-    if get_backend() == "jax":
-        import jax
-
-        cache_key = tuple(
-            id(arg)
-            if isinstance(arg, jax.interpreters.xla.DeviceArray)
-            or not isinstance(arg, Hashable)
-            else arg
-            for arg in args
-        )
-    else:
-        cache_key = tuple(
-            id(arg) if not isinstance(arg, Hashable) else arg for arg in args
-        )
+    cache_key = reflect.make_hash_key(cls, *args)
     if cache_key in cls._cons_cache:
         return cls._cons_cache[cache_key]
 
@@ -117,96 +130,6 @@ def reflect(cls, *args, **kwargs):
 
     cls._cons_cache[cache_key] = result
     return result
-
-
-@dispatched_interpretation
-def normalize(cls, *args):
-
-    result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-
-    return result
-
-
-@dispatched_interpretation
-def lazy(cls, *args):
-    """
-    Substitute eagerly but perform ops lazily.
-    """
-    result = lazy.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
-
-
-@dispatched_interpretation
-def eager(cls, *args):
-    """
-    Eagerly execute ops with known implementations.
-    """
-    result = eager.dispatch(cls, *args)(*args)
-    if result is None:
-        result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
-
-
-@dispatched_interpretation
-def eager_or_die(cls, *args):
-    """
-    Eagerly execute ops with known implementations.
-    Disallows lazy :class:`Subs` , :class:`Unary` , :class:`Binary` , and
-    :class:`Reduce` .
-
-    :raises: :py:class:`NotImplementedError` no pattern is found.
-    """
-    result = eager.dispatch(cls, *args)(*args)
-    if result is None:
-        if cls in (Subs, Unary, Binary, Reduce):
-            raise NotImplementedError(
-                "Missing pattern for {}({})".format(
-                    cls.__name__, ", ".join(map(str, args))
-                )
-            )
-        result = reflect(cls, *args)
-    return result
-
-
-@dispatched_interpretation
-def sequential(cls, *args):
-    """
-    Eagerly execute ops with known implementations; additonally execute
-    vectorized ops sequentially if no known vectorized implementation exists.
-    """
-    result = sequential.dispatch(cls, *args)(*args)
-    if result is None:
-        result = eager.dispatch(cls, *args)(*args)
-    if result is None:
-        result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
-
-
-@dispatched_interpretation
-def moment_matching(cls, *args):
-    """
-    A moment matching interpretation of :class:`Reduce` expressions. This falls
-    back to :class:`eager` in other cases.
-    """
-    result = moment_matching.dispatch(cls, *args)(*args)
-    if result is None:
-        result = eager.dispatch(cls, *args)(*args)
-    if result is None:
-        result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = reflect(cls, *args)
-    return result
-
-
-interpreter.set_interpretation(eager)  # Use eager interpretation by default.
 
 
 class FunsorMeta(type):
@@ -676,6 +599,9 @@ class Funsor(object, metaclass=FunsorMeta):
     def __invert__(self):
         return Unary(ops.invert, self)
 
+    def __pos__(self):
+        return Unary(ops.pos, self)
+
     def __neg__(self):
         return Unary(ops.neg, self)
 
@@ -1079,10 +1005,10 @@ class Scatter(Funsor):
         super().__init__(inputs, output, fresh, bound)
 
 
-_PREFIX = {
-    ops.neg: "-",
-    ops.invert: "~",
-}
+@die.register(Subs, Funsor, tuple)
+def die_subs(arg, subs):
+    expr = reflect.interpret(Subs, arg, subs)
+    raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
 class Unary(Funsor):
@@ -1124,24 +1050,10 @@ def eager_unary(op, arg):
     return instrument.debug_logged(arg.eager_unary)(op)
 
 
-_INFIX = {
-    ops.add: "+",
-    ops.sub: "-",
-    ops.mul: "*",
-    ops.matmul: "@",
-    ops.truediv: "/",
-    ops.floordiv: "//",
-    ops.mod: "%",
-    ops.pow: "**",
-    ops.eq: "==",
-    ops.ne: "!=",
-    ops.ge: ">=",
-    ops.gt: ">=",
-    ops.le: "<=",
-    ops.lt: "<",
-    ops.lshift: "<<",
-    ops.rshift: ">>",
-}
+@die.register(Unary, Op, Funsor)
+def die_unary(op, arg):
+    expr = reflect.interpret(Unary, op, arg)
+    raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
 class Binary(Funsor):
@@ -1174,6 +1086,12 @@ class Binary(Funsor):
         if self.op in _INFIX:
             return "({} {} {})".format(str(self.lhs), _INFIX[self.op], str(self.rhs))
         return super().__str__()
+
+
+@die.register(Binary, Op, Funsor, Funsor)
+def die_binary(op, lhs, rhs):
+    expr = reflect.interpret(Binary, op, lhs, rhs)
+    raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
 class Reduce(Funsor):
@@ -1287,6 +1205,12 @@ def moment_matching_reduce(op, arg, reduced_vars):
     if reduced_vars is None:
         return arg
     return instrument.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+
+
+@die.register(Reduce, Op, Funsor, frozenset)
+def die_reduce(op, arg, reduced_vars):
+    expr = reflect.interpret(Reduce, op, arg, reduced_vars)
+    raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
 class NumberMeta(FunsorMeta):
@@ -1986,13 +1910,7 @@ __all__ = [
     "Subs",
     "Unary",
     "Variable",
-    "eager",
-    "eager_or_die",
-    "lazy",
-    "moment_matching",
     "of_shape",
-    "reflect",
-    "sequential",
     "to_data",
     "to_funsor",
 ]

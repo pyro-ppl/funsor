@@ -13,7 +13,6 @@ from funsor.delta import Delta
 from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
-from funsor.interpreter import interpretation
 from funsor.montecarlo import MonteCarlo
 from funsor.tensor import Tensor, numeric_array
 from funsor.terms import Number, Variable, eager, moment_matching
@@ -259,7 +258,7 @@ def test_reduce_moment_matching_univariate():
     gaussian = Gaussian(info_vec, precision, inputs)
     gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
-    with interpretation(moment_matching):
+    with moment_matching:
         actual = joint.reduce(ops.logaddexp, "i")
     assert_close(actual.reduce(ops.logaddexp), joint.reduce(ops.logaddexp))
 
@@ -296,7 +295,7 @@ def test_reduce_moment_matching_multivariate():
     gaussian = Gaussian(loc, precision, inputs)
     gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
-    with interpretation(moment_matching):
+    with moment_matching:
         actual = joint.reduce(ops.logaddexp, "i")
     assert_close(actual.reduce(ops.logaddexp), joint.reduce(ops.logaddexp))
 
@@ -330,7 +329,7 @@ def test_reduce_moment_matching_shape(interp):
     reduced_vars = frozenset(["i", "k", "l"])
     real_vars = frozenset(k for k, d in gaussian.inputs.items() if d.dtype == "real")
     joint = delta + discrete + gaussian
-    with interpretation(interp):
+    with interp:
         actual = joint.reduce(ops.logaddexp, reduced_vars)
     assert set(actual.inputs) == set(joint.inputs) - reduced_vars
     assert_close(
@@ -345,9 +344,9 @@ def test_reduce_moment_matching_moments():
     gaussian = random_gaussian(
         OrderedDict([("i", Bint[2]), ("j", Bint[3]), ("x", Reals[2])])
     )
-    with interpretation(moment_matching):
+    with moment_matching:
         approx = gaussian.reduce(ops.logaddexp, "j")
-    with interpretation(MonteCarlo(s=Bint[100000])):
+    with MonteCarlo(s=Bint[100000]):
         actual = Integrate(approx, Number(1.0), "x")
         expected = Integrate(gaussian, Number(1.0), {"j", "x"})
         assert_close(actual, expected, atol=1e-3, rtol=1e-3)
@@ -375,5 +374,5 @@ def test_reduce_moment_matching_finite():
 
     reduced_vars = frozenset(["j", "k"])
     joint = delta + discrete + gaussian
-    with interpretation(moment_matching):
+    with moment_matching:
         joint.reduce(ops.logaddexp, reduced_vars)

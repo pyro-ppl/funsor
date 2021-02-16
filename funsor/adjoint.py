@@ -8,7 +8,7 @@ import numpy as np
 from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.interpreter import interpretation, stack_reinterpret
+from funsor.interpreter import Interpretation, stack_reinterpret
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.tensor import Tensor
@@ -40,32 +40,28 @@ def _alpha_unmangle(expr):
     return expr._alpha_convert(alpha_subs)
 
 
-class AdjointTape(object):
+class AdjointTape(Interpretation):
     def __init__(self):
+        super().__init__("adjoint")
         self.tape = []
         self._old_interpretation = None
         self._eager_to_lazy = {}
 
-    def __call__(self, cls, *args):
+    def interpret(self, cls, *args):
         if cls in adjoint_ops:  # atomic op, don't trace internals
-            with interpretation(self._old_interpretation):
+            with self._old_interpretation:
                 result = cls(*args)
             self.tape.append((result, cls, args))
         else:
-            result = self._old_interpretation(cls, *args)
+            result = self._old_interpretation.interpret(cls, *args)
         lazy_args = [self._eager_to_lazy.get(arg, arg) for arg in args]
-        self._eager_to_lazy[result] = reflect(cls, *lazy_args)
+        self._eager_to_lazy[result] = reflect.interpret(cls, *lazy_args)
         return result
 
     def __enter__(self):
         self.tape = []
-        self._old_interpretation = interpreter._INTERPRETATION
-        interpreter.set_interpretation(self)
-        return self
-
-    def __exit__(self, *args):
-        interpreter.set_interpretation(self._old_interpretation)
-        self._old_interpretation = None
+        self._old_interpretation = interpreter.get_interpretation()
+        return super().__enter__()
 
     def adjoint(self, sum_op, bin_op, root, targets=None):
 
@@ -84,7 +80,7 @@ class AdjointTape(object):
                     continue
 
             # reverse the effects of alpha-renaming
-            with interpretation(reflect):
+            with reflect:
 
                 lazy_output = self._eager_to_lazy[output]
                 lazy_fn = type(lazy_output)
