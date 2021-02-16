@@ -302,8 +302,6 @@ def test_adjoint_subs_variable():
 
 def test_adjoint_subs_tensor():
 
-    i = Variable("i", Bint[2])
-    j = Variable("j", Bint[2])
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
     with interpretation(reflect):
         y = x(i=0)
@@ -319,8 +317,6 @@ def test_adjoint_subs_tensor():
 
 def test_adjoint_subs_tensor_rename():
 
-    i = Variable("i", Bint[2])
-    j = Variable("j", Bint[2])
     k = Variable("k", Bint[2])
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
     with interpretation(reflect):

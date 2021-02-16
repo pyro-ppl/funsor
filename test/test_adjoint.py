@@ -81,7 +81,10 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
     expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
-        actual = actuals[fv]
+        # actual = actuals[fv]
+        actual = prod_op(actuals[fv], fv).reduce(
+            sum_op, actuals[fv].input_vars - fv.input_vars
+        )
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))
@@ -129,7 +132,9 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
     expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
-        actual = actuals[fv]
+        actual = prod_op(actuals[fv], fv).reduce(
+            sum_op, actuals[fv].input_vars - fv.input_vars
+        )
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))
@@ -169,7 +174,9 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
-        actual = actuals[fv]
+        actual = prod_op(actuals[fv], fv).reduce(
+            sum_op, actuals[fv].input_vars - fv.input_vars
+        )
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))

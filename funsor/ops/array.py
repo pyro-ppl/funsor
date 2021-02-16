@@ -21,7 +21,7 @@ from .builtin import (
     sqrt,
     tanh,
 )
-from .op import DISTRIBUTIVE_OPS, CachedOpMeta, Op, declare_op_types, make_op
+from .op import DISTRIBUTIVE_OPS, UNITS, CachedOpMeta, Op, declare_op_types, make_op
 
 _builtin_all = all
 _builtin_any = any
@@ -235,6 +235,7 @@ def _reciprocal(x):
     return result
 
 
+@safediv.register(array, array)
 @safediv.register(numbers.Number, array)
 def _safediv(x, y):
     try:
@@ -244,6 +245,7 @@ def _safediv(x, y):
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
+@safesub.register(array, array)
 @safesub.register(numbers.Number, array)
 def _safesub(x, y):
     try:
@@ -295,6 +297,7 @@ def unsqueeze(x, dim):
 DISTRIBUTIVE_OPS.add((logaddexp, add))
 DISTRIBUTIVE_OPS.add((sample, add))
 
+UNITS[logaddexp] = -math.inf
 
 __all__ = [
     "all",

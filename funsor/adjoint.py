@@ -6,7 +6,8 @@ from collections import OrderedDict, defaultdict
 from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.interpreter import Interpretation, stack_reinterpret
+from funsor.interpretations import Interpretation, reflect
+from funsor.interpreter import stack_reinterpret
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.tensor import Tensor
@@ -20,7 +21,6 @@ from funsor.terms import (
     Slice,
     Subs,
     Variable,
-    reflect,
     substitute,
     to_funsor,
 )
@@ -111,9 +111,8 @@ class AdjointTape(Interpretation):
             out_agg_vars = adjoint_values[output].input_vars - root.input_vars
             for v, adjv in in_adjs:
                 agg_vars = out_agg_vars & (adjv.input_vars - v.input_vars)
-                adjoint_values[v] = sum_op(
-                    adjoint_values[v], adjv.reduce(sum_op, agg_vars)
-                )
+                old_value = adjoint_values[v]
+                adjoint_values[v] = sum_op(old_value, adjv.reduce(sum_op, agg_vars))
 
         result = defaultdict(lambda: zero)
         for key, value in adjoint_values.items():
@@ -166,12 +165,11 @@ def adjoint_reduce(adj_sum_op, adj_prod_op, out_adj, op, arg, reduced_vars):
         return ((arg, out_adj),)
     elif op is adj_prod_op:  # plate!
         out = arg.reduce(adj_prod_op, reduced_vars)
+        div_op = ops.SAFE_BINARY_INVERSES[adj_prod_op]
         return (
             (
                 arg,
-                adj_prod_op(
-                    out_adj, Binary(ops.PRODUCT_INVERSES[adj_prod_op], out, arg)
-                ),
+                div_op(adj_prod_op(out_adj, out), arg),
             ),
         )
     raise ValueError("should not be here!")
@@ -271,14 +269,7 @@ def adjoint_cat(adj_sum_op, adj_prod_op, out_adj, name, parts, part_name):
             )
             start += part.inputs[part_name].dtype
         else:
-            in_adjs.append(
-                (
-                    part,
-                    adj_prod_op(
-                        out_adj, Binary(ops.PRODUCT_INVERSES[adj_prod_op], part, part)
-                    ),
-                )
-            )
+            in_adjs.append((part, out_adj))
     return tuple(in_adjs)
 
 
