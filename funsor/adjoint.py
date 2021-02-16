@@ -246,30 +246,16 @@ def adjoint_contract(
 
 @adjoint_ops.register(Cat, AssociativeOp, AssociativeOp, Funsor, str, tuple, str)
 def adjoint_cat(adj_sum_op, adj_prod_op, out_adj, name, parts, part_name):
+    if part_name not in out_adj.inputs:
+        return tuple((part, out_adj) for part in parts)
     in_adjs = []
     start = 0
     size = sum(part.inputs[part_name].dtype for part in parts)
     for i, part in enumerate(parts):
-        if part_name in out_adj.inputs:
-            in_adjs.append(
-                (
-                    part,
-                    out_adj(
-                        **{
-                            name: Slice(
-                                name,
-                                start,
-                                start + part.inputs[part_name].dtype,
-                                1,
-                                size,
-                            )
-                        }
-                    ),
-                )
-            )
-            start += part.inputs[part_name].dtype
-        else:
-            in_adjs.append((part, out_adj))
+        part_slice = Slice(name, start, start + part.inputs[part_name].dtype, 1, size)
+        part_adj = out_adj(**{name: part_slice})
+        in_adjs.append((part, part_adj))
+        start += part.inputs[part_name].dtype
     return tuple(in_adjs)
 
 
