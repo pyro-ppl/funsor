@@ -222,7 +222,8 @@ class Contraction(Funsor):
         alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
         terms = tuple(
             term
-            if isinstance(term, Funsor) and not self.bound.intersection(term.inputs)
+            if isinstance(term, Funsor)
+            and not set(self.bound).intersection(term.inputs)
             else substitute(term, alpha_subs)
             for term in self.terms
         )

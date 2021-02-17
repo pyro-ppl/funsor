@@ -128,7 +128,7 @@ def test_sample_independent():
 
 
 def test_subs_already_bound():
-    with interpretation(reflect):
+    with reflect:
         x = Variable("x", Real)
         y1 = (2 * x)(x=3)
         y2 = y1.arg(4)
