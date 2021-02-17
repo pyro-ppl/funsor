@@ -9,9 +9,8 @@ import torch
 import funsor
 import funsor.ops as ops
 import funsor.torch.distributions as dist
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpreter import reinterpret
 from funsor.optimizer import apply_optimizer
-from funsor.terms import lazy
 
 
 def main(args):
@@ -62,7 +61,7 @@ def main(args):
     for step in range(args.train_steps):
         optim.zero_grad()
         if args.lazy:
-            with interpretation(lazy):
+            with funsor.interpretations.lazy:
                 log_prob = apply_optimizer(model(data))
             log_prob = reinterpret(log_prob)
         else:

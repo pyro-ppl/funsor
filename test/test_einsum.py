@@ -15,10 +15,11 @@ from funsor.cnf import (
 )
 from funsor.domains import Bint
 from funsor.einsum import naive_einsum, naive_plated_einsum
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpretations import reflect
+from funsor.interpreter import reinterpret
 from funsor.optimizer import apply_optimizer
 from funsor.tensor import Tensor
-from funsor.terms import Variable, reflect
+from funsor.terms import Variable
 from funsor.testing import assert_close, make_einsum_example
 from funsor.util import get_backend
 
@@ -49,7 +50,7 @@ def test_einsum(equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     expected = opt_einsum.contract(equation, *operands, backend=backend)
 
-    with interpretation(reflect):
+    with reflect:
         naive_ast = naive_einsum(equation, *funsor_operands, backend=backend)
         optimized_ast = apply_optimizer(naive_ast)
     print("Naive expression: {}".format(naive_ast))
@@ -91,7 +92,7 @@ def test_einsum_categorical(equation):
         equation, *operands, backend=BACKEND_TO_EINSUM_BACKEND[get_backend()]
     )
 
-    with interpretation(reflect):
+    with reflect:
         funsor_operands = [
             Categorical(
                 probs=Tensor(
@@ -155,7 +156,7 @@ def test_plated_einsum(equation, plates, backend):
     expected = pyro_einsum(
         equation, *operands, plates=plates, backend=backend, modulo_total=False
     )[0]
-    with interpretation(reflect):
+    with reflect:
         naive_ast = naive_plated_einsum(
             equation, *funsor_operands, plates=plates, backend=backend
         )

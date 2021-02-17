@@ -45,17 +45,9 @@ from funsor.distribution import (  # noqa: F401
     transformeddist_to_funsor,
 )
 from funsor.domains import Real, Reals
+from funsor.interpretations import eager
 from funsor.tensor import Tensor
-from funsor.terms import (
-    Binary,
-    Funsor,
-    Reduce,
-    Unary,
-    Variable,
-    eager,
-    to_data,
-    to_funsor,
-)
+from funsor.terms import Binary, Funsor, Reduce, Unary, Variable, to_data, to_funsor
 from funsor.util import methodof
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES)

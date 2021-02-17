@@ -4,7 +4,7 @@
 from collections import OrderedDict
 
 from funsor.integrate import Integrate
-from funsor.interpreter import StatefulInterpretation
+from funsor.interpretations import StatefulInterpretation
 from funsor.terms import Funsor
 from funsor.util import get_backend
 
@@ -18,6 +18,7 @@ class MonteCarlo(StatefulInterpretation):
     """
 
     def __init__(self, *, rng_key=None, **sample_inputs):
+        super().__init__("monte_carlo")
         self.rng_key = rng_key
         self.sample_inputs = OrderedDict(sample_inputs)
 

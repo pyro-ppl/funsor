@@ -8,7 +8,7 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
-from funsor.interpreter import gensym, interpretation, reinterpret
+from funsor.interpreter import gensym, reinterpret
 from funsor.terms import (
     Cat,
     Independent,
@@ -25,7 +25,7 @@ from funsor.util import get_backend
 
 def test_sample_subs_smoke():
     x = random_tensor(OrderedDict([("i", Bint[3]), ("j", Bint[2])]), Real)
-    with interpretation(reflect):
+    with reflect:
         z = x(i=1)
     rng_key = None if get_backend() == "torch" else np.array([0, 1], dtype=np.uint32)
     actual = z.sample(frozenset({"j"}), OrderedDict({"i": Bint[4]}), rng_key=rng_key)
@@ -36,7 +36,7 @@ def test_subs_reduce():
     x = random_tensor(OrderedDict([("i", Bint[3]), ("j", Bint[2])]), Real)
     ix = random_tensor(OrderedDict([("i", Bint[3])]), Bint[2])
     ix2 = ix(i="i2")
-    with interpretation(reflect):
+    with reflect:
         actual = x.reduce(ops.add, frozenset({"i"}))
     actual = actual(j=ix)
     expected = x(j=ix2).reduce(ops.add, frozenset({"i"}))(i2="i")
@@ -51,7 +51,7 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
     lhs = random_tensor(OrderedDict([("i", Bint[3]), ("j", Bint[2])]), Real)
     rhs = random_tensor(OrderedDict([("i", Bint[3]), ("j", Bint[2])]), Real)
 
-    with interpretation(reflect):
+    with reflect:
         actual_lhs = lhs.reduce(ops.add, lhs_vars) if lhs_vars else lhs
         actual_rhs = rhs.reduce(ops.add, rhs_vars) if rhs_vars else rhs
 
@@ -67,13 +67,13 @@ def test_distribute_reduce(lhs_vars, rhs_vars):
 
 
 def test_lazy_subs_type_clash():
-    with interpretation(reflect):
+    with reflect:
         Slice("t", 3)(t=Slice("t", 2, dtype=3)).reduce(ops.add)
 
 
 @pytest.mark.parametrize("name", ["s", "t"])
 def test_cat(name):
-    with interpretation(reflect):
+    with reflect:
         x = Stack("t", (Number(1), Number(2)))
         y = Stack("t", (Number(4), Number(8), Number(16)))
         xy = Cat(name, (x, y), "t")
