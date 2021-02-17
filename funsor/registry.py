@@ -34,7 +34,9 @@ class PartialDispatcher(Dispatcher):
             return
 
         # Handle variadic types
-        signature = (Variadic[tp] if isinstance(tp, list) else tp for tp in signature)
+        signature = (
+            Variadic[tuple(tp)] if isinstance(tp, list) else tp for tp in signature
+        )
 
         signature = tuple(map(typing_wrap, signature))
         super().add(signature, func)

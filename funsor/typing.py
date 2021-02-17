@@ -38,6 +38,15 @@ def deep_issubclass(subcls, cls):
     """replaces issubclass()"""
     # return pytypes.is_subtype(subcls, cls)
 
+    # handle unpacking
+    if isinstance(subcls, _RuntimeSubclassCheckMeta):
+        try:
+            return deep_issubclass(subcls.__args__[0], cls)
+        except TypeError as e:
+            if e.args[0] == "issubclass() arg 1 must be a class":
+                return False
+            raise
+
     if get_origin(cls) is typing.Union:
         return any(deep_issubclass(subcls, arg) for arg in get_args(cls))
 
@@ -202,8 +211,6 @@ class _RuntimeSubclassCheckMeta(GenericTypeMeta):
         return tp if isinstance(tp, GenericTypeMeta) or isvariadic(tp) else cls[tp]
 
     def __subclasscheck__(cls, subcls):
-        if isinstance(subcls, _RuntimeSubclassCheckMeta):
-            subcls = subcls.__args__[0]
         return deep_issubclass(subcls, cls.__args__[0])
 
 

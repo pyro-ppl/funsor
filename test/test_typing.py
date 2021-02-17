@@ -210,23 +210,23 @@ def test_get_args():
 
 
 def test_variadic_dispatch_basic():
-    @dispatch
+    @dispatch(Variadic[object])
     def f(*args):
         return 1
 
     @dispatch(int, int)
-    def f(*args):
+    def f(a, b):
         return 2
 
     @dispatch(Variadic[int])
     def f(*args):
         return 3
 
-    @dispatch(typing_wrap(Tuple[int, int]), typing_wrap(Tuple[int, int]))
-    def f(*args):
+    @dispatch(typing_wrap(Tuple), typing_wrap(Tuple))
+    def f(a, b):
         return 4
 
-    @dispatch(Variadic[Tuple[int, int]])
+    @dispatch(Variadic[Tuple])
     def f(*args):
         return 5
 
@@ -244,17 +244,13 @@ def test_variadic_dispatch_basic():
 
 def test_variadic_dispatch_typing():
 
-    f = PartialDispatcher("f", default=lambda *args: 0)
-
-    @f.register
-    def _(a: Any) -> int:
-        return 0
+    f = PartialDispatcher("f", default=lambda *args: 1)
 
     @f.register
     def _(a: int, b: int) -> int:
         return 2
 
-    @f.register(Variadic[int])
+    @f.register([int])
     def _(*args):
         return 3
 
@@ -262,7 +258,7 @@ def test_variadic_dispatch_typing():
     def _(a: Tuple[int, int], b: Tuple[int, int]) -> int:
         return 4
 
-    @f.register(Variadic[Tuple[int, int]])
+    @f.register([Tuple[int, int]])  # list syntax for variadic
     def _(*args):
         return 5
 
@@ -271,7 +267,7 @@ def test_variadic_dispatch_typing():
         return 6
 
     assert f(1.5) == 1
-    assert f(1.5, 1) == 0
+    assert f(1.5, 1) == 1
 
     assert f(1, 1) == 2
     assert f(1) == 3
