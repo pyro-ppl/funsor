@@ -146,12 +146,25 @@ class StatefulInterpretationMeta(type(ABC)):
     def __init__(cls, name, bases, dct):
         super().__init__(name, bases, dct)
         cls.registry = KeyedRegistry(default=lambda *args: None)
-        cls.dispatch = cls.registry.dispatch
+
+        if instrument.PROFILE:
+            COUNTERS = instrument.COUNTERS
+
+            def profiled_dispatch(*args):
+                name = cls.__name__ + ".dispatch"
+                start = default_timer()
+                result = cls.registry.dispatch(*args)
+                COUNTERS["time"][name] += default_timer() - start
+                COUNTERS["call"][name] += 1
+                COUNTERS["interpretation"][cls.__name__] += 1
+                return result
+
+            cls.dispatch = staticmethod(profiled_dispatch)
+        else:
+            cls.dispatch = staticmethod(cls.registry.dispatch)
 
 
-class StatefulInterpretation(
-    DispatchedInterpretation, metaclass=StatefulInterpretationMeta
-):
+class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMeta):
     """
     Base class for interpreters with instance-dependent state or parameters.
 
