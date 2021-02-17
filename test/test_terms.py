@@ -32,6 +32,7 @@ from funsor.terms import (
     Independent,
     Lambda,
     Number,
+    Reduce,
     Slice,
     Stack,
     Subs,
@@ -43,6 +44,7 @@ from funsor.terms import (
 from funsor.testing import assert_close, check_funsor, random_tensor
 
 assert Binary  # flake8
+assert Reduce  # flake8
 assert Subs  # flake8
 assert Contraction  # flake8
 assert Reals  # flake8
