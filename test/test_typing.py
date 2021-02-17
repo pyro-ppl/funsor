@@ -242,6 +242,38 @@ def test_variadic_dispatch_basic():
     assert f((1, 2), (3, 4), (5, 6)) == 5
 
 
+def test_dispatch_typing():
+
+    f = PartialDispatcher("f", default=lambda *args: 1)
+
+    @f.register
+    def _(a: int, b: int) -> int:
+        return 2
+
+    @f.register
+    def _(a: Tuple[int, int], b: Tuple[int, int]) -> int:
+        return 3
+
+    @f.register
+    def _(a: Tuple[int, ...], b: Tuple[int, int]) -> int:
+        return 4
+
+    @f.register
+    def _(a: Tuple[int, float], b: Tuple[int, float]) -> int:
+        return 5
+
+    assert f(1.5) == 1
+    assert f(1.5, 1) == 1
+
+    assert f(1, 1) == 2
+
+    assert f((1, 1), (1, 1)) == 3
+    assert f((1, 2)) == 0
+    assert f((1, 2, 3), (4, 5)) == 4
+
+    assert f((1, 1.5), (2, 2.5)) == 5
+
+
 def test_variadic_dispatch_typing():
 
     f = PartialDispatcher("f", default=lambda *args: 1)
