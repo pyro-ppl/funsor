@@ -69,11 +69,19 @@ def _nameof(fn):
 
 @contextmanager
 def ignore_jit_warnings():
-    with warnings.catch_warnings():
-        if get_backend() == "torch":
-            import torch
+    if get_backend() != "torch":
+        yield
+        return
 
-            warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+    import torch
+
+    if not torch._C._get_tracing_state():
+        yield
+        return
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+        warnings.filterwarnings("ignore", "Iterating over a tensor")
         yield
 
 
@@ -132,6 +140,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         super(Tensor, self).__init__(inputs, output, fresh, bound)
         self.data = data
 
+    @ignore_jit_warnings()
     def __repr__(self):
         if self.output != "real":
             return "Tensor({}, {}, {})".format(self.data, self.inputs, repr(self.dtype))
@@ -140,6 +149,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
         else:
             return "Tensor({})".format(self.data)
 
+    @ignore_jit_warnings()
     def __str__(self):
         if self.dtype != "real":
             return "Tensor({}, {}, {})".format(self.data, self.inputs, repr(self.dtype))
