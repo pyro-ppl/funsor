@@ -8,18 +8,19 @@ from opt_einsum.paths import greedy
 
 import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, nullop
+from funsor.interpretations import (
+    DispatchedInterpretation,
+    PrioritizedInterpretation,
+    eager,
+    lazy,
+    normalize_base,
+)
+from funsor.interpreter import get_interpretation
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Funsor, eager, lazy, normalize
+from funsor.terms import Funsor
 
-
-@interpreter.dispatched_interpretation
-def unfold(cls, *args):
-    result = unfold.dispatch(cls, *args)(*args)
-    if result is None:
-        result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = lazy(cls, *args)
-    return result
+unfold_base = DispatchedInterpretation()
+unfold = PrioritizedInterpretation(unfold_base, normalize_base, lazy)
 
 
 @unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
@@ -66,15 +67,11 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
 
 @unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
 def unfold_contraction_variadic(r, b, v, *ts):
-    return unfold(Contraction, r, b, v, tuple(ts))
+    return unfold.interpret(Contraction, r, b, v, tuple(ts))
 
 
-@interpreter.dispatched_interpretation
-def optimize(cls, *args):
-    result = optimize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = eager(cls, *args)
-    return result
+optimize_base = DispatchedInterpretation()
+optimize = PrioritizedInterpretation(optimize_base, eager)
 
 
 # TODO set a better value for this
@@ -85,7 +82,7 @@ REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimi
     Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor]
 )
 def optimize_contraction_variadic(r, b, v, *ts):
-    return optimize(Contraction, r, b, v, tuple(ts))
+    return optimize.interpret(Contraction, r, b, v, tuple(ts))
 
 
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
@@ -162,15 +159,8 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
 
 
 def apply_optimizer(x):
-    @interpreter.interpretation(interpreter._INTERPRETATION)
-    def nested_optimize_interpreter(cls, *args):
-        result = optimize.dispatch(cls, *args)(*args)
-        if result is None:
-            result = cls(*args)
-        return result
-
-    with interpreter.interpretation(unfold):
+    with unfold:
         expr = interpreter.reinterpret(x)
 
-    with interpreter.interpretation(nested_optimize_interpreter):
+    with PrioritizedInterpretation(optimize_base, get_interpretation()):
         return interpreter.reinterpret(expr)

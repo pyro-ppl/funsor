@@ -10,7 +10,6 @@ import funsor.ops as ops
 from funsor.adjoint import AdjointTape
 from funsor.domains import Bint, Real, Reals
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
-from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
@@ -70,7 +69,7 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
-    with AdjointTape() as tape:  # interpretation(reflect):
+    with AdjointTape() as tape:
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
@@ -116,7 +115,7 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
-    with AdjointTape() as tape:  # interpretation(reflect):
+    with AdjointTape() as tape:
         fwd_expr = einsum_impl(
             equation, *funsor_operands, plates=plates, backend=backend
         )
@@ -158,7 +157,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
-    with AdjointTape() as tape:  # interpretation(reflect):
+    with AdjointTape() as tape:
         fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
@@ -236,7 +235,7 @@ def test_sequential_sum_product_adjoint(
     )
     reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
     with AdjointTape() as expected_tape:
-        with interpretation(reflect):
+        with reflect:
             expected = sum_product(sum_op, prod_op, operands, reduce_vars)
         expected = apply_optimizer(expected)
         expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})

@@ -4,7 +4,7 @@
 from collections import OrderedDict
 
 from funsor.domains import Domain, Real
-from funsor.interpreter import debug_logged
+from funsor.instrument import debug_logged
 from funsor.ops import AddOp, SubOp, TransformOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import (

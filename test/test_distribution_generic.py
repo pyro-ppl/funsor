@@ -11,8 +11,14 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.interpreter import interpretation
-from funsor.terms import eager, lazy, normalize, reflect, to_data, to_funsor
+from funsor.interpretations import (
+    CallableInterpretation,
+    eager,
+    lazy,
+    normalize,
+    reflect,
+)
+from funsor.terms import to_data, to_funsor
 from funsor.testing import (  # noqa: F401
     assert_close,
     check_funsor,
@@ -53,6 +59,7 @@ if get_backend() == "torch":
     )
 
 
+@CallableInterpretation
 def eager_no_dists(cls, *args):
     """
     This interpretation is like eager, except it skips special distribution patterns.
@@ -65,14 +72,14 @@ def eager_no_dists(cls, *args):
     if issubclass(cls, funsor.distribution.Distribution) and not isinstance(
         args[-1], funsor.Tensor
     ):
-        return reflect(cls, *args)
+        return reflect.interpret(cls, *args)
     result = eager.dispatch(cls, *args)(*args)
     if result is None:
         result = normalize.dispatch(cls, *args)(*args)
     if result is None:
         result = lazy.dispatch(cls, *args)(*args)
     if result is None:
-        result = reflect(cls, *args)
+        result = reflect.interpret(cls, *args)
     return result
 
 
@@ -610,7 +617,7 @@ def test_generic_distribution_to_funsor(case):
     expected_value_domain = case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(eager_no_dists):
+    with eager_no_dists:
         with xfail_if_not_implemented(match="try upgrading backend"):
             funsor_dist = to_funsor(
                 raw_dist, output=funsor.Real, dim_to_name=dim_to_name
@@ -656,7 +663,7 @@ def test_generic_log_prob(case, use_lazy):
     expected_value_domain = case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(eager_no_dists if use_lazy else eager):
+    with (eager_no_dists if use_lazy else eager):
         with xfail_if_not_implemented(match="try upgrading backend"):
             # some distributions have nontrivial eager patterns
             funsor_dist = to_funsor(
@@ -689,7 +696,7 @@ def test_generic_enumerate_support(case, expand):
     raw_dist = case.get_dist()
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(eager_no_dists):
+    with eager_no_dists:
         with xfail_if_not_implemented(match="try upgrading backend"):
             funsor_dist = to_funsor(
                 raw_dist, output=funsor.Real, dim_to_name=dim_to_name
@@ -712,7 +719,7 @@ def test_generic_sample(case, sample_shape):
     raw_dist = case.get_dist()
 
     dim_to_name, name_to_dim = _default_dim_to_name(sample_shape + raw_dist.batch_shape)
-    with interpretation(eager_no_dists):
+    with eager_no_dists:
         with xfail_if_not_implemented(match="try upgrading backend"):
             funsor_dist = to_funsor(
                 raw_dist, output=funsor.Real, dim_to_name=dim_to_name
@@ -753,7 +760,7 @@ def test_generic_stats(case, statistic):
     raw_dist = case.get_dist()
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with interpretation(eager_no_dists):
+    with eager_no_dists:
         with xfail_if_not_implemented(match="try upgrading backend"):
             funsor_dist = to_funsor(
                 raw_dist, output=funsor.Real, dim_to_name=dim_to_name

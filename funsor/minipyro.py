@@ -51,7 +51,7 @@ class Distribution(object):
 
     # Draw a sample.
     def __call__(self):
-        with funsor.interpretation(funsor.terms.eager):
+        with funsor.interpretations.eager:
             dist = self.funsor_dist(value="value")
             delta = dist.sample(frozenset(["value"]), sample_inputs=self.sample_inputs)
         if isinstance(delta, funsor.cnf.Contraction):
@@ -533,7 +533,7 @@ class ELBO(object):
 # This is a wrapper for compatibility with full Pyro.
 class Trace_ELBO(ELBO):
     def __call__(self, model, guide, *args, **kwargs):
-        with funsor.interpretation(funsor.montecarlo.MonteCarlo()):
+        with funsor.montecarlo.MonteCarlo():
             return elbo(model, guide, *args, **kwargs)
 
 
@@ -546,7 +546,7 @@ class TraceEnum_ELBO(ELBO):
     # TODO allow mixing of sampling and exact integration
     def __call__(self, model, guide, *args, **kwargs):
         if self.options.get("optimize", None):
-            with funsor.interpretation(funsor.optimizer.optimize):
+            with funsor.optimizer.optimize:
                 elbo_expr = elbo(model, guide, *args, **kwargs)
             return funsor.reinterpret(elbo_expr)
         return elbo(model, guide, *args, **kwargs)
