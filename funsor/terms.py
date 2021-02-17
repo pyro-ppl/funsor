@@ -28,7 +28,7 @@ from funsor.interpretations import (
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
-from funsor.typing import GenericTypeMeta, Variadic, deep_type
+from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_origin
 from funsor.util import getargspec, lazy_property, pretty, quote
 
 from . import instrument, interpreter, ops
@@ -106,7 +106,7 @@ def reflect(cls, *args, **kwargs):
         return cls._cons_cache[cache_key]
 
     arg_types = tuple(map(deep_type, args))
-    cls_specific = (cls.__origin__ if cls.__args__ else cls)[arg_types]
+    cls_specific = get_origin(cls)[arg_types]
     result = super(FunsorMeta, cls_specific).__call__(*args)
     result._ast_values = args
 
@@ -114,7 +114,7 @@ def reflect(cls, *args, **kwargs):
         size, depth, width = _get_ast_stats(result)
         instrument.COUNTERS["ast_size"][size] += 1
         instrument.COUNTERS["ast_depth"][depth] += 1
-        classname = getattr(cls, "__origin__", cls).__name__
+        classname = get_origin(cls).__name__
         instrument.COUNTERS["funsor"][classname] += 1
         instrument.COUNTERS[classname][width] += 1
 
