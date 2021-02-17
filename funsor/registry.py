@@ -91,7 +91,7 @@ class KeyedRegistry(object):
         return decorator
 
     def __contains__(self, key):
-        return key in self.registry
+        return get_origin(key) in self.registry
 
     def __getitem__(self, key):
         key = get_origin(key)
