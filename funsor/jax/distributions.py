@@ -6,10 +6,11 @@ from typing import Tuple, Union
 
 import numpyro.distributions as dist
 
+import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.distribution import (  # noqa: F401
-    Bernoulli,
+from funsor.distribution import (
     FUNSOR_DIST_NAMES,
+    Bernoulli,
     LogNormal,
     backenddist_to_funsor,
     eager_beta,
@@ -30,16 +31,20 @@ from funsor.distribution import (  # noqa: F401
     eager_mvn,
     eager_normal,
     eager_plate_multinomial,
+    expandeddist_to_funsor,
     indepdist_to_funsor,
     make_dist,
     maskeddist_to_funsor,
     transformeddist_to_funsor,
 )
 from funsor.domains import Real, Reals
-import funsor.ops as ops
-from funsor.tensor import Tensor, dummy_numeric_array
-from funsor.terms import Binary, Funsor, Reduce, Variable, eager, to_data, to_funsor
+from funsor.interpretations import eager
+from funsor.tensor import Tensor
+from funsor.terms import Binary, Funsor, Reduce, Variable, to_data, to_funsor
 from funsor.util import methodof
+
+assert Bernoulli  # flake8
+assert LogNormal  # flake8
 
 
 ################################################################################
@@ -80,17 +85,30 @@ class _NumPyroWrapper_NonreparameterizedNormal(dist.Normal):
 
 
 def _get_numpyro_dist(dist_name):
-    if dist_name in ['Binomial', 'Categorical', 'Geometric', 'Multinomial'] or \
-            dist_name.startswith('Nonreparameterized'):
-        return globals().get('_NumPyroWrapper_' + dist_name)
+    if dist_name in ("Binomial", "Categorical", "Geometric", "Multinomial"):
+        return globals().get("_NumPyroWrapper_" + dist_name)
+    elif dist_name.startswith("Nonreparameterized"):
+        return globals().get("_NumPyroWrapper_" + dist_name)
     else:
         return getattr(dist, dist_name, None)
 
 
 NUMPYRO_DIST_NAMES = FUNSOR_DIST_NAMES
 # TODO: remove this after the next NumPyro release
-_HAS_RSAMPLE_DISTS = ['Beta', 'Cauchy', 'Chi2', 'Delta', 'Dirichlet', 'Exponential', 'Gamma',
-                      'MultivariateNormal', 'Normal', 'Pareto', 'StudentT', 'Uniform']
+_HAS_RSAMPLE_DISTS = [
+    "Beta",
+    "Cauchy",
+    "Chi2",
+    "Delta",
+    "Dirichlet",
+    "Exponential",
+    "Gamma",
+    "MultivariateNormal",
+    "Normal",
+    "Pareto",
+    "StudentT",
+    "Uniform",
+]
 
 
 for dist_name, param_names in NUMPYRO_DIST_NAMES:
@@ -109,7 +127,18 @@ for dist_name, param_names in NUMPYRO_DIST_NAMES:
 @methodof(Delta)  # noqa: F821
 @staticmethod
 def _infer_value_domain(**kwargs):
-    return kwargs['v']
+    return kwargs["v"]
+
+
+@methodof(Categorical)  # noqa: F821
+@methodof(CategoricalLogits)  # noqa: F821
+@classmethod
+def _infer_value_dtype(cls, domains):
+    if "logits" in domains:
+        return domains["logits"].shape[-1]
+    if "probs" in domains:
+        return domains["probs"].shape[-1]
+    raise ValueError
 
 
 # Multinomial and related dists have dependent Bint dtypes, so we just make them 'real'
@@ -117,10 +146,8 @@ def _infer_value_domain(**kwargs):
 @methodof(Binomial)  # noqa: F821
 @methodof(Multinomial)  # noqa: F821
 @classmethod
-@functools.lru_cache(maxsize=5000)
-def _infer_value_domain(cls, **kwargs):
-    instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()}, validate_args=False)
-    return Reals[instance.event_shape]
+def _infer_value_dtype(cls, domains):
+    return "real"
 
 
 # TODO fix Delta.arg_constraints["v"] to be a
@@ -150,13 +177,11 @@ def _infer_param_domain(name, raw_shape):
 
 # TODO: remove this `if` for NumPyro > 0.4.0
 if hasattr(dist, "DirichletMultinomial"):
+
     @methodof(DirichletMultinomial)  # noqa: F821
     @classmethod
-    @functools.lru_cache(maxsize=5000)
-    def _infer_value_domain(cls, **kwargs):
-        instance = cls.dist_class(**{k: dummy_numeric_array(domain) for k, domain in kwargs.items()},
-                                  validate_args=False)
-        return Reals[instance.event_shape]
+    def _infer_value_dtype(cls, domains):
+        return "real"
 
     # TODO fix DirichletMultinomial.arg_constraints["concentration"] to be a
     # constraints.independent[constraints.positive]
@@ -205,12 +230,25 @@ if not hasattr(dist.Independent, "has_rsample"):
     dist.Independent.has_rsample = property(lambda self: self.base_dist.has_rsample)
     dist.Independent.rsample = dist.Independent.sample
 if not hasattr(dist.MaskedDistribution, "has_rsample"):
-    dist.MaskedDistribution.has_rsample = property(lambda self: self.base_dist.has_rsample)
+    dist.MaskedDistribution.has_rsample = property(
+        lambda self: self.base_dist.has_rsample
+    )
     dist.MaskedDistribution.rsample = dist.MaskedDistribution.sample
 if not hasattr(dist.TransformedDistribution, "has_rsample"):
-    dist.TransformedDistribution.has_rsample = property(lambda self: self.base_dist.has_rsample)
+    dist.TransformedDistribution.has_rsample = property(
+        lambda self: self.base_dist.has_rsample
+    )
     dist.TransformedDistribution.rsample = dist.TransformedDistribution.sample
 
+
+@to_funsor.register(dist.transforms.Transform)
+def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
+    op = ops.WrappedTransformOp(tfm)
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return op(Variable(name, output))
+
+
+to_funsor.register(dist.ExpandedDistribution)(expandeddist_to_funsor)
 to_funsor.register(dist.Independent)(indepdist_to_funsor)
 if hasattr(dist, "MaskedDistribution"):
     to_funsor.register(dist.MaskedDistribution)(maskeddist_to_funsor)
@@ -220,38 +258,52 @@ to_funsor.register(dist.TransformedDistribution)(transformeddist_to_funsor)
 @to_funsor.register(dist.BinomialProbs)
 @to_funsor.register(dist.BinomialLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
-    new_pyro_dist = _NumPyroWrapper_Binomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
-    return backenddist_to_funsor(Binomial, new_pyro_dist, output, dim_to_name)  # noqa: F821
+    new_pyro_dist = _NumPyroWrapper_Binomial(
+        total_count=numpyro_dist.total_count, probs=numpyro_dist.probs
+    )
+    return backenddist_to_funsor(
+        Binomial, new_pyro_dist, output, dim_to_name
+    )  # noqa: F821
 
 
 @to_funsor.register(dist.CategoricalProbs)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Categorical(probs=numpyro_dist.probs)
-    return backenddist_to_funsor(Categorical, new_pyro_dist, output, dim_to_name)  # noqa: F821
+    return backenddist_to_funsor(
+        Categorical, new_pyro_dist, output, dim_to_name
+    )  # noqa: F821
 
 
 @to_funsor.register(dist.GeometricProbs)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _NumPyroWrapper_Geometric(probs=numpyro_dist.probs)
-    return backenddist_to_funsor(Geometric, new_pyro_dist, output, dim_to_name)  # noqa: F821
+    return backenddist_to_funsor(
+        Geometric, new_pyro_dist, output, dim_to_name
+    )  # noqa: F821
 
 
 @to_funsor.register(dist.MultinomialProbs)
 @to_funsor.register(dist.MultinomialLogits)
 def categorical_to_funsor(numpyro_dist, output=None, dim_to_name=None):
-    new_pyro_dist = _NumPyroWrapper_Multinomial(total_count=numpyro_dist.total_count, probs=numpyro_dist.probs)
-    return backenddist_to_funsor(Multinomial, new_pyro_dist, output, dim_to_name)  # noqa: F821
+    new_pyro_dist = _NumPyroWrapper_Multinomial(
+        total_count=numpyro_dist.total_count, probs=numpyro_dist.probs
+    )
+    return backenddist_to_funsor(
+        Multinomial, new_pyro_dist, output, dim_to_name
+    )  # noqa: F821
 
 
 @to_funsor.register(dist.Delta)  # Delta **distribution**
 def deltadist_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    v = to_funsor(pyro_dist.v, output=Reals[pyro_dist.event_shape], dim_to_name=dim_to_name)
+    v = to_funsor(
+        pyro_dist.v, output=Reals[pyro_dist.event_shape], dim_to_name=dim_to_name
+    )
     log_density = to_funsor(pyro_dist.log_density, output=Real, dim_to_name=dim_to_name)
     return Delta(v, log_density)  # noqa: F821
 
 
 JointDirichletMultinomial = Contraction[
-    Union[ops.LogAddExpOp, ops.NullOp],
+    Union[ops.LogaddexpOp, ops.NullOp],
     ops.AddOp,
     frozenset,
     Tuple[Dirichlet, Multinomial],  # noqa: F821
@@ -264,26 +316,53 @@ eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: 
 eager.register(Categorical, Funsor, Tensor)(eager_categorical_funsor)  # noqa: F821)
 eager.register(Categorical, Tensor, Variable)(eager_categorical_tensor)  # noqa: F821)
 eager.register(Delta, Tensor, Tensor, Tensor)(eager_delta_tensor)  # noqa: F821
-eager.register(Delta, Funsor, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821
-eager.register(Delta, Variable, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821
+eager.register(Delta, Funsor, Funsor, Variable)(
+    eager_delta_funsor_variable
+)  # noqa: F821
+eager.register(Delta, Variable, Funsor, Variable)(
+    eager_delta_funsor_variable
+)  # noqa: F821
 eager.register(Delta, Variable, Funsor, Funsor)(eager_delta_funsor_funsor)  # noqa: F821
-eager.register(Delta, Variable, Variable, Variable)(eager_delta_variable_variable)  # noqa: F821
+eager.register(Delta, Variable, Variable, Variable)(
+    eager_delta_variable_variable
+)  # noqa: F821
 eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
-eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, BernoulliProbs)(  # noqa: F821
-    eager_beta_bernoulli)
-eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Categorical)(  # noqa: F821
-    eager_dirichlet_categorical)
-eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)(  # noqa: F821
-    eager_dirichlet_multinomial)
-eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Gamma, Gamma)(  # noqa: F821
-    eager_gamma_gamma)
-eager.register(Contraction, ops.LogAddExpOp, ops.AddOp, frozenset, Gamma, Poisson)(  # noqa: F821
-    eager_gamma_poisson)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, BernoulliProbs
+)(  # noqa: F821
+    eager_beta_bernoulli
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Categorical
+)(  # noqa: F821
+    eager_dirichlet_categorical
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Multinomial
+)(  # noqa: F821
+    eager_dirichlet_multinomial
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma
+)(  # noqa: F821
+    eager_gamma_gamma
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson
+)(  # noqa: F821
+    eager_gamma_poisson
+)
 if hasattr(dist, "DirichletMultinomial"):
-    eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
-        eager_dirichlet_posterior)
-eager.register(Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset)(  # noqa: F821
-    eager_plate_multinomial)
+    eager.register(
+        Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial
+    )(  # noqa: F821
+        eager_dirichlet_posterior
+    )
+eager.register(
+    Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset
+)(  # noqa: F821
+    eager_plate_multinomial
+)
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES if _get_numpyro_dist(x[0]) is not None)

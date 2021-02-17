@@ -10,9 +10,13 @@ import funsor.ops as ops
 from funsor.adjoint import AdjointTape
 from funsor.domains import Bint, Real, Reals
 from funsor.einsum import BACKEND_ADJOINT_OPS, einsum, naive_einsum, naive_plated_einsum
-from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
-from funsor.sum_product import MarkovProduct, naive_sequential_sum_product, sequential_sum_product, sum_product
+from funsor.sum_product import (
+    MarkovProduct,
+    naive_sequential_sum_product,
+    sequential_sum_product,
+    sum_product,
+)
 from funsor.terms import Variable, reflect
 from funsor.testing import (
     assert_close,
@@ -21,12 +25,14 @@ from funsor.testing import (
     make_plated_hmm_einsum,
     random_gaussian,
     random_tensor,
-    xfail_param
+    xfail_param,
 )
 from funsor.util import get_backend
 
-pytestmark = pytest.mark.skipif(get_backend() != "torch",
-                                reason="numpy/jax backend requires porting pyro.ops.einsum")
+pytestmark = pytest.mark.skipif(
+    get_backend() != "torch",
+    reason="numpy/jax backend requires porting pyro.ops.einsum",
+)
 if get_backend() == "torch":
     import torch
     from pyro.ops.contract import einsum as pyro_einsum
@@ -50,25 +56,28 @@ EINSUM_EXAMPLES = [
 ]
 
 
-@pytest.mark.parametrize('einsum_impl', [naive_einsum, einsum])
-@pytest.mark.parametrize('equation', EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', [
-    'pyro.ops.einsum.torch_marginal',
-    xfail_param('pyro.ops.einsum.torch_map', reason="wrong adjoint"),
-])
+@pytest.mark.parametrize("einsum_impl", [naive_einsum, einsum])
+@pytest.mark.parametrize("equation", EINSUM_EXAMPLES)
+@pytest.mark.parametrize(
+    "backend",
+    [
+        "pyro.ops.einsum.torch_marginal",
+        xfail_param("pyro.ops.einsum.torch_map", reason="wrong adjoint"),
+    ],
+)
 def test_einsum_adjoint(einsum_impl, equation, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
-    with AdjointTape() as tape:  # interpretation(reflect):
+    with AdjointTape() as tape:
         fwd_expr = einsum_impl(equation, *funsor_operands, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
-    expected_out = pyro_einsum(equation, *operands,
-                               modulo_total=True,
-                               backend=backend)[0]
+    expected_out = pyro_einsum(equation, *operands, modulo_total=True, backend=backend)[
+        0
+    ]
     expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
@@ -82,37 +91,41 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
 
 
 PLATED_EINSUM_EXAMPLES = [
-    (',i->', 'i'),
-    ('i->', 'i'),
-    ('ai->', 'i'),
-    (',ai,abij->', 'ij'),
-    ('a,ai,bij->', 'ij'),
-    ('ai,abi,bci,cdi->', 'i'),
-    ('aij,abij,bcij->', 'ij'),
-    ('a,abi,bcij,cdij->', 'ij'),
+    (",i->", "i"),
+    ("i->", "i"),
+    ("ai->", "i"),
+    (",ai,abij->", "ij"),
+    ("a,ai,bij->", "ij"),
+    ("ai,abi,bci,cdi->", "i"),
+    ("aij,abij,bcij->", "ij"),
+    ("a,abi,bcij,cdij->", "ij"),
 ]
 
 
-@pytest.mark.parametrize('einsum_impl', [naive_plated_einsum, einsum])
-@pytest.mark.parametrize('equation,plates', PLATED_EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', [
-    'pyro.ops.einsum.torch_marginal',
-    xfail_param('pyro.ops.einsum.torch_map', reason="wrong adjoint"),
-])
+@pytest.mark.parametrize("einsum_impl", [naive_plated_einsum, einsum])
+@pytest.mark.parametrize("equation,plates", PLATED_EINSUM_EXAMPLES)
+@pytest.mark.parametrize(
+    "backend",
+    [
+        "pyro.ops.einsum.torch_marginal",
+        xfail_param("pyro.ops.einsum.torch_map", reason="wrong adjoint"),
+    ],
+)
 def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
-    with AdjointTape() as tape:  # interpretation(reflect):
-        fwd_expr = einsum_impl(equation, *funsor_operands, plates=plates, backend=backend)
+    with AdjointTape() as tape:
+        fwd_expr = einsum_impl(
+            equation, *funsor_operands, plates=plates, backend=backend
+        )
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
-    expected_out = pyro_einsum(equation, *operands,
-                               modulo_total=False,
-                               plates=plates,
-                               backend=backend)[0]
+    expected_out = pyro_einsum(
+        equation, *operands, modulo_total=False, plates=plates, backend=backend
+    )[0]
     expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
@@ -132,25 +145,27 @@ OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
 ]
 
 
-@pytest.mark.parametrize('equation,plates', OPTIMIZED_PLATED_EINSUM_EXAMPLES)
-@pytest.mark.parametrize('backend', [
-    'pyro.ops.einsum.torch_marginal',
-    xfail_param('pyro.ops.einsum.torch_map', reason="wrong adjoint"),
-])
+@pytest.mark.parametrize("equation,plates", OPTIMIZED_PLATED_EINSUM_EXAMPLES)
+@pytest.mark.parametrize(
+    "backend",
+    [
+        "pyro.ops.einsum.torch_marginal",
+        xfail_param("pyro.ops.einsum.torch_map", reason="wrong adjoint"),
+    ],
+)
 def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
     sum_op, prod_op = BACKEND_ADJOINT_OPS[backend]
 
-    with AdjointTape() as tape:  # interpretation(reflect):
+    with AdjointTape() as tape:
         fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
     actuals = tape.adjoint(sum_op, prod_op, fwd_expr, funsor_operands)
 
     for operand in operands:
         pyro_require_backward(operand)
-    expected_out = pyro_einsum(equation, *operands,
-                               modulo_total=False,
-                               plates=plates,
-                               backend=backend)[0]
+    expected_out = pyro_einsum(
+        equation, *operands, modulo_total=False, plates=plates, backend=backend
+    )[0]
     expected_out._pyro_backward()
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
@@ -163,26 +178,39 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
         assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
-@pytest.mark.parametrize('num_steps', list(range(3, 13)))
-@pytest.mark.parametrize('sum_op,prod_op,state_domain', [
-    (ops.add, ops.mul, Bint[2]),
-    (ops.add, ops.mul, Bint[3]),
-    (ops.logaddexp, ops.add, Bint[2]),
-    (ops.logaddexp, ops.add, Bint[3]),
-    (ops.logaddexp, ops.add, Real),
-    (ops.logaddexp, ops.add, Reals[2]),
-], ids=str)
-@pytest.mark.parametrize('batch_inputs', [
-    OrderedDict(),
-    OrderedDict([("foo", Bint[5])]),
-    OrderedDict([("foo", Bint[2]), ("bar", Bint[4])]),
-], ids=lambda d: ",".join(d.keys()))
-@pytest.mark.parametrize('impl', [
-    sequential_sum_product,
-    naive_sequential_sum_product,
-    MarkovProduct,
-])
-def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, state_domain, num_steps):
+@pytest.mark.parametrize("num_steps", list(range(3, 13)))
+@pytest.mark.parametrize(
+    "sum_op,prod_op,state_domain",
+    [
+        (ops.add, ops.mul, Bint[2]),
+        (ops.add, ops.mul, Bint[3]),
+        (ops.logaddexp, ops.add, Bint[2]),
+        (ops.logaddexp, ops.add, Bint[3]),
+        (ops.logaddexp, ops.add, Real),
+        (ops.logaddexp, ops.add, Reals[2]),
+    ],
+    ids=str,
+)
+@pytest.mark.parametrize(
+    "batch_inputs",
+    [
+        OrderedDict(),
+        OrderedDict([("foo", Bint[5])]),
+        OrderedDict([("foo", Bint[2]), ("bar", Bint[4])]),
+    ],
+    ids=lambda d: ",".join(d.keys()),
+)
+@pytest.mark.parametrize(
+    "impl",
+    [
+        sequential_sum_product,
+        naive_sequential_sum_product,
+        MarkovProduct,
+    ],
+)
+def test_sequential_sum_product_adjoint(
+    impl, sum_op, prod_op, batch_inputs, state_domain, num_steps
+):
     # test mostly copied from test_sum_product.py
     inputs = OrderedDict(batch_inputs)
     inputs.update(prev=state_domain, curr=state_domain)
@@ -201,11 +229,13 @@ def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, sta
     assert dict(actual.inputs) == expected_inputs
 
     # Check against contract.
-    operands = tuple(trans(time=t, prev="t_{}".format(t), curr="t_{}".format(t+1))
-                     for t in range(num_steps))
+    operands = tuple(
+        trans(time=t, prev="t_{}".format(t), curr="t_{}".format(t + 1))
+        for t in range(num_steps)
+    )
     reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
     with AdjointTape() as expected_tape:
-        with interpretation(reflect):
+        with reflect:
             expected = sum_product(sum_op, prod_op, operands, reduce_vars)
         expected = apply_optimizer(expected)
         expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
@@ -220,7 +250,9 @@ def test_sequential_sum_product_adjoint(impl, sum_op, prod_op, batch_inputs, sta
 
     # check backward pass
     for t, operand in enumerate(operands):
-        actual_bwd_t = actual_bwd(time=t, prev="t_{}".format(t), curr="t_{}".format(t+1))
+        actual_bwd_t = actual_bwd(
+            time=t, prev="t_{}".format(t), curr="t_{}".format(t + 1)
+        )
         expected_bwd = expected_bwds[operand].align(tuple(actual_bwd_t.inputs.keys()))
         check_funsor(actual_bwd_t, expected_bwd.inputs, expected_bwd.output)
         assert_close(actual_bwd_t, expected_bwd, rtol=5e-3 * num_steps)

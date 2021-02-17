@@ -30,7 +30,9 @@ def prepare_seal(filename, random_effects):
     for g, (group, group_df) in enumerate(seal_df.groupby("sex")):
         for i, (ind, ind_df) in enumerate(group_df.groupby("ID")):
             for o, obs_key in enumerate(obs_keys):
-                observations[i, g, 0:len(ind_df), o] = torch.tensor(ind_df[obs_key].values)
+                observations[i, g, 0 : len(ind_df), o] = torch.tensor(
+                    ind_df[obs_key].values
+                )
 
     observations[torch.isnan(observations)] = float("-inf")
 
@@ -39,11 +41,11 @@ def prepare_seal(filename, random_effects):
     mask_i = (observations > float("-inf")).any(dim=-1).any(dim=-1)  # time nonempty
 
     # mask_t handles padding for time series of different length
-    mask_t = (observations > float("-inf")).all(dim=-1)   # include non-inf
+    mask_t = (observations > float("-inf")).all(dim=-1)  # include non-inf
 
     # temporary hack to avoid zero-inflation issues
     # observations[observations == 0.] = MISSING
-    observations[(observations == 0.) | (observations == float("-inf"))] = MISSING
+    observations[(observations == 0.0) | (observations == float("-inf"))] = MISSING
     assert not torch.isnan(observations).any()
 
     # observations = observations[..., 5:11, :]  # truncate for testing
@@ -58,7 +60,11 @@ def prepare_seal(filename, random_effects):
             "timesteps": observations.shape[2],
         },
         "group": {"random": random_effects["group"], "fixed": None},
-        "individual": {"random": random_effects["individual"], "fixed": None, "mask": mask_i},
+        "individual": {
+            "random": random_effects["individual"],
+            "fixed": None,
+            "mask": mask_i,
+        },
         "timestep": {"random": None, "fixed": None, "mask": mask_t},
         "observations": {
             "step": observations[..., 0],
@@ -77,21 +83,22 @@ def prepare_fake(sizes, random_effects):
     obs_keys = ["step", "angle", "omega"]
     # data format for z1, z2:
     # single tensor with shape (individual, group, time, coords)
-    observations = torch.randn((
-        sizes["individual"], sizes["group"], sizes["timesteps"], len(obs_keys))).abs()
+    observations = torch.randn(
+        (sizes["individual"], sizes["group"], sizes["timesteps"], len(obs_keys))
+    ).abs()
     observations[torch.isnan(observations)] = float("-inf")
-    observations[observations >= 1.] = 0.5
+    observations[observations >= 1.0] = 0.5
 
     # make masks
     # mask_i should mask out individuals, it applies at all timesteps
     mask_i = (observations > float("-inf")).any(dim=-1).any(dim=-1)  # time nonempty
 
     # mask_t handles padding for time series of different length
-    mask_t = (observations > float("-inf")).all(dim=-1)   # include non-inf
+    mask_t = (observations > float("-inf")).all(dim=-1)  # include non-inf
 
     # temporary hack to avoid zero-inflation issues
     # observations[observations == 0.] = MISSING
-    observations[(observations == 0.) | (observations == float("-inf"))] = MISSING
+    observations[(observations == 0.0) | (observations == float("-inf"))] = MISSING
     assert not torch.isnan(observations).any()
 
     # observations = observations[..., 5:11, :]  # truncate for testing
@@ -100,7 +107,11 @@ def prepare_fake(sizes, random_effects):
         "MISSING": MISSING,
         "sizes": sizes.copy(),
         "group": {"random": random_effects["group"], "fixed": None},
-        "individual": {"random": random_effects["individual"], "fixed": None, "mask": mask_i},
+        "individual": {
+            "random": random_effects["individual"],
+            "fixed": None,
+            "mask": mask_i,
+        },
         "timestep": {"random": None, "fixed": None, "mask": mask_t},
         "observations": {
             "step": observations[..., 0],

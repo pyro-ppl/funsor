@@ -1,10 +1,11 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import numbers
+
 import torch
 
 import funsor.ops as ops
-
 
 ################################################################################
 # Register Ops
@@ -13,9 +14,12 @@ import funsor.ops as ops
 ops.abs.register(torch.Tensor)(torch.abs)
 ops.atanh.register(torch.Tensor)(torch.atanh)
 ops.cholesky_solve.register(torch.Tensor, torch.Tensor)(torch.cholesky_solve)
-ops.clamp.register(torch.Tensor, object, object)(torch.clamp)
+ops.clamp.register(torch.Tensor, numbers.Number, numbers.Number)(torch.clamp)
+ops.clamp.register(torch.Tensor, numbers.Number, type(None))(torch.clamp)
+ops.clamp.register(torch.Tensor, type(None), numbers.Number)(torch.clamp)
+ops.clamp.register(torch.Tensor, type(None), type(None))(torch.clamp)
 ops.exp.register(torch.Tensor)(torch.exp)
-ops.full_like.register(torch.Tensor, object)(torch.full_like)
+ops.full_like.register(torch.Tensor, numbers.Number)(torch.full_like)
 ops.log1p.register(torch.Tensor)(torch.log1p)
 ops.sigmoid.register(torch.Tensor)(torch.sigmoid)
 ops.sqrt.register(torch.Tensor)(torch.sqrt)
@@ -134,12 +138,12 @@ def _max(x, y):
     return torch.max(x, y)
 
 
-@ops.max.register(object, torch.Tensor)
+@ops.max.register(numbers.Number, torch.Tensor)
 def _max(x, y):
     return y.clamp(min=x)
 
 
-@ops.max.register(torch.Tensor, object)
+@ops.max.register(torch.Tensor, numbers.Number)
 def _max(x, y):
     return x.clamp(min=y)
 
@@ -149,12 +153,12 @@ def _min(x, y):
     return torch.min(x, y)
 
 
-@ops.min.register(object, torch.Tensor)
+@ops.min.register(numbers.Number, torch.Tensor)
 def _min(x, y):
     return y.clamp(max=x)
 
 
-@ops.min.register(torch.Tensor, object)
+@ops.min.register(torch.Tensor, numbers.Number)
 def _min(x, y):
     return x.clamp(max=y)
 
@@ -184,14 +188,15 @@ def _permute(x, dims):
     return x.permute(dims)
 
 
-@ops.pow.register(object, torch.Tensor)
+@ops.pow.register(numbers.Number, torch.Tensor)
 def _pow(x, y):
     result = x ** y
     # work around shape bug https://github.com/pytorch/pytorch/issues/16685
     return result.reshape(y.shape)
 
 
-@ops.pow.register(torch.Tensor, (object, torch.Tensor))
+@ops.pow.register(torch.Tensor, numbers.Number)
+@ops.pow.register(torch.Tensor, torch.Tensor)
 def _pow(x, y):
     return x ** y
 
@@ -207,7 +212,7 @@ def _reciprocal(x):
     return result
 
 
-@ops.safediv.register(object, torch.Tensor)
+@ops.safediv.register(numbers.Number, torch.Tensor)
 def _safediv(x, y):
     try:
         finfo = torch.finfo(y.dtype)
@@ -216,7 +221,7 @@ def _safediv(x, y):
     return x * y.reciprocal().clamp(max=finfo.max)
 
 
-@ops.safesub.register(object, torch.Tensor)
+@ops.safesub.register(numbers.Number, torch.Tensor)
 def _safesub(x, y):
     try:
         finfo = torch.finfo(y.dtype)

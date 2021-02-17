@@ -9,6 +9,14 @@ Interpreter
     :show-inheritance:
     :member-order: bysource
 
+Interpretations
+---------------
+.. automodule:: funsor.interpretations
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
+
 Monte Carlo
 -----------
 .. automodule:: funsor.montecarlo
