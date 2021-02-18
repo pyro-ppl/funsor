@@ -655,21 +655,29 @@ def eager_scatter_tensor(op, subs, source):
 
     # Compute shapes.
     destin_inputs = OrderedDict()
-    tensors = [source]
+    reduced_inputs = OrderedDict()
+    slice_shape = []
+    tensors = []
     for k, v in subs:
         destin_inputs[k] = v.output
+        reduced_inputs.update(v.inputs)
         tensors.append(source.materialize(v))
+    for k, d in source.inputs.items():
+        if k not in reduced_inputs:  # warning: this breaks extensionality
+            destin_inputs[k] = d
+            slice_shape.append(d.size)
     output = source.output
+    slice_shape.extend(output.shape)
+    tensors.append(source)
 
     # Convert from funsor.Tensor to backend Tensor.
     inputs, tensors = align_tensors(*tensors)
-    destin_inputs.update(inputs)
-    source_data = tensors[0]
+    source_data = tensors[-1]
 
     # Construct a [:] slice for the output.
-    index = list(tensors[1:])
-    for i, size in enumerate(output.shape):
-        offset_from_right = len(output.shape) - i - 1
+    index = list(tensors[:-1])
+    for i, size in enumerate(slice_shape):
+        offset_from_right = len(slice_shape) - i - 1
         arange = ops.new_arange(source_data, size)
         index.append(arange.reshape((-1,) + (1,) * offset_from_right))
     index = tuple(index)

@@ -1240,3 +1240,57 @@ def test_scatter(op):
 
     assert_close(actual, expected)
     assert_close(actual(i=0), source)  # Scatter is transpose to Subs
+
+
+def test_scatter_2d():
+    # Consider n=5 nonzero entries in a 3x4 image.
+    i = Tensor(numeric_array([0, 0, 1, 2, 2]), dtype=3)["n"]
+    j = Tensor(numeric_array([0, 1, 0, 2, 3]), dtype=4)["n"]
+    source = Tensor(numeric_array([1.0, 2.0, 3.0, 4.0, 5.0]))["n"]
+    actual = Scatter(ops.add, (("i", i), ("j", j)), source)
+    expected = Tensor(
+        numeric_array(
+            [
+                [1.0, 2.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 4.0, 5.0],
+            ]
+        )
+    )["i", "j"]
+
+    assert_close(actual, expected)
+
+
+def test_scatter_3():
+    # b is a batch variable
+    # n,m are reduced variables, and
+    # i is a destin variable
+    source = Tensor(numeric_array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]))["b", "n"]
+    i = Tensor(numeric_array([[0, 1], [3, 4], [5, 6]]), dtype=7)["n", "m"]
+    actual = Scatter(ops.add, (("i", i),), source)
+    expected = Tensor(
+        numeric_array(
+            [
+                [1.0, 4.0],
+                [1.0, 4.0],
+                [0.0, 0.0],
+                [2.0, 5.0],
+                [2.0, 5.0],
+                [3.0, 6.0],
+                [3.0, 6.0],
+            ]
+        )
+    )["i", "b"]
+    assert_close(actual, expected)
+
+
+@pytest.mark.xfail(reason="non-injective")
+def test_scatter_4():
+    source = Number(1.0)
+    i = Tensor(numeric_array([0, 0]), dtype=1)["n"]
+    # By extensionality, i should be equivalent to:
+    #   i = Number(0, dtype=1)
+    # however that would lead to actual = Tensor([1.0])["i"].
+    actual = Scatter(ops.add, (("i", i),), source)
+    expected = Tensor(numeric_array([2.0]))["i"]
+    assert_close(actual, expected)
