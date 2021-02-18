@@ -60,6 +60,26 @@ class Bound:
     pass
 
 
+class ValueMeta(type):
+    def __getitem__(cls, value_type):
+        return Value(value_type)
+
+
+class Value(metaclass=ValueMeta):
+    def __init__(self, value_type):
+        if issubclass(value_type, Funsor):
+            raise TypeError("Types cannot depend on Funsor values")
+        self.value_type = value_type
+
+
+def _get_dependent_args(fields, hints, args):
+    return {
+        name: arg if isinstance(hint, Value) else arg.output
+        for name, arg, hint in zip(fields, args, hints)
+        if hint in (Funsor, Bound) or isinstance(hint, Value)
+    }
+
+
 def make_funsor(fn):
     """
     Decorator to dynamically create a subclass of
@@ -73,6 +93,8 @@ def make_funsor(fn):
     - Bound variable inputs (names) are typed :class:`Bound`.
     - Fresh variable inputs (names) are typed :class:`Fresh` together with
       lambda to compute the dependent domain.
+    - Ground value inputs (e.g. Python ints) are typed :class:`Value` together with
+      their actual data type, e.g. ``Value[int]``.
     - The return value is typed :class:`Fresh` together with a lambda to
       compute the dependent return domain.
 
@@ -94,7 +116,7 @@ def make_funsor(fn):
     """
     input_types = typing.get_type_hints(fn)
     for name, hint in input_types.items():
-        if not (hint in (Funsor, Bound) or isinstance(hint, Fresh)):
+        if not (hint in (Funsor, Bound) or isinstance(hint, (Fresh, Value))):
             raise TypeError(f"Invalid type hint {name}: {hint}")
     output_type = input_types.pop("return")
     hints = tuple(input_types.values())
@@ -117,13 +139,15 @@ def make_funsor(fn):
                     if not isinstance(arg, Variable):
                         raise ValueError(f"Cannot infer domain of {name}={arg}")
                     args[i] = arg
+                elif isinstance(hint, Value):
+                    if not isinstance(arg, hint.value_type):
+                        raise TypeError(
+                            f"invalid dependent value type: {arg}: {hint.value_type}"
+                        )
+                    args[i] = arg
 
             # Compute domains of fresh variables.
-            dependent_args = {
-                name: arg.output
-                for name, arg, hint in zip(cls._ast_fields, args, hints)
-                if hint in (Funsor, Bound)
-            }
+            dependent_args = _get_dependent_args(cls._ast_fields, hints, args)
             for i, (hint, arg) in enumerate(zip(hints, args)):
                 if isinstance(hint, Fresh):
                     domain = hint(**dependent_args)
@@ -135,11 +159,7 @@ def make_funsor(fn):
     )
     def __init__(self, **kwargs):
         args = tuple(kwargs[k] for k in self._ast_fields)
-        dependent_args = {
-            name: arg.output
-            for name, arg, hint in zip(self._ast_fields, args, hints)
-            if hint in (Funsor, Bound)
-        }
+        dependent_args = _get_dependent_args(self._ast_fields, hints, args)
         output = output_type(**dependent_args)
         inputs = OrderedDict()
         fresh = set()
