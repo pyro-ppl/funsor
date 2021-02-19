@@ -24,7 +24,7 @@ class PartialDispatcher(Dispatcher):
         # Handle annotations
         if not signature:
             annotations = get_type_hints(func)
-            annotations.pop("return")
+            annotations.pop("return", None)
             if annotations:
                 signature = tuple(annotations.values())
 
