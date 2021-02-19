@@ -1,7 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import collections
 import functools
 import sys
 import typing
@@ -31,10 +30,15 @@ def _deep_type_frozenset(obj):
     return typing.FrozenSet[next(map(deep_type, obj))] if obj else typing.FrozenSet
 
 
-_subclasscheck_registry = collections.defaultdict(lambda: issubclass)
+_subclasscheck_registry = {}
 
 
 def register_issubclass(cls):
+    """
+    Decorator for registering a custom ``__subclasscheck__`` method for ``cls``,
+    for use in pattern matching with :func:`deep_issubclass`.
+    """
+
     def _fn(fn):
         _subclasscheck_registry[cls] = fn
         return fn
@@ -46,13 +50,13 @@ register_issubclass(typing.Any)(lambda a, b: True)
 
 
 @register_issubclass(typing.Union)
-def _deep_issubclass_union(subcls, cls):
+def _subclasscheck_union(cls, subcls):
     return any(deep_issubclass(arg, cls) for arg in get_args(subcls))
 
 
 @register_issubclass(frozenset)
 @register_issubclass(typing.FrozenSet)
-def _deep_issubclass_frozenset(subcls, cls):
+def _subclasscheck_frozenset(cls, subcls):
 
     if not issubclass(get_origin(subcls), frozenset):
         return False
@@ -72,7 +76,7 @@ def _deep_issubclass_frozenset(subcls, cls):
 
 @register_issubclass(tuple)
 @register_issubclass(typing.Tuple)
-def _deep_issubclass_tuple(subcls, cls):
+def _subclasscheck_tuple(cls, subcls):
 
     if not issubclass(get_origin(subcls), get_origin(cls)):
         return False
@@ -120,7 +124,10 @@ def deep_issubclass(subcls, cls):
     if subcls is typing.Any:
         return cls is typing.Any
 
-    return _subclasscheck_registry[get_origin(cls)](subcls, cls)
+    try:
+        return _subclasscheck_registry[get_origin(cls)](subcls, cls)
+    except KeyError:
+        return issubclass(subcls, cls)
 
 
 def deep_isinstance(obj, cls):
