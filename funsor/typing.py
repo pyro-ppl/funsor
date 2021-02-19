@@ -174,7 +174,7 @@ def get_origin(tp):
 
 
 def get_type_hints(obj, globalns=None, localns=None, **kwargs):
-    return typing_extensions.get_type_hints(
+    return typing.get_type_hints(
         obj, globalns=globalns, localns=localns, **kwargs
     )
 
