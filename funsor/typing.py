@@ -27,7 +27,12 @@ def _deep_type_tuple(obj):
 
 @deep_type.register(frozenset)
 def _deep_type_frozenset(obj):
-    return typing.FrozenSet[next(map(deep_type, obj))] if obj else typing.FrozenSet
+    if not obj:
+        return typing.FrozenSet
+    tp = deep_type(next(iter(obj)))
+    if not all(deep_isinstance(x, tp) for x in obj):
+        raise NotImplementedError(f"TODO handle inhomogeneous frozensets: {str(obj)}")
+    return typing.FrozenSet[tp]
 
 
 _subclasscheck_registry = {}
@@ -115,7 +120,7 @@ def deep_issubclass(subcls, cls):
             return deep_issubclass(subcls.__args__[0], cls)
         except TypeError as e:
             if e.args[0] == "issubclass() arg 1 must be a class":
-                return False
+                return deep_issubclass(get_origin(subcls.__args__[0]), cls)
             raise
 
     if get_origin(subcls) is typing.Union:

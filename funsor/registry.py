@@ -17,7 +17,7 @@ class PartialDispatcher(Dispatcher):
         self.default = default if default is None else PartialDefault(default)
         super().__init__(name)
         if default is not None:
-            self.add((Variadic[object],), self.default)
+            self.add(([object],), self.default)
 
     def add(self, signature, func):
 

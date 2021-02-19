@@ -3,6 +3,7 @@
 
 from typing import Any, FrozenSet, Optional, Tuple, Union
 
+import pytest
 from multipledispatch import dispatch
 
 from funsor.ops import AssociativeOp, Op
@@ -134,6 +135,9 @@ def test_deep_issubclass_tuple_variadic():
     assert deep_issubclass(Tuple[int], Tuple[int, ...])
     assert deep_issubclass(Tuple[int, int], Tuple[int, ...])
 
+    assert not deep_issubclass(Tuple[int, ...], Tuple[int])
+    assert not deep_issubclass(Tuple[int, ...], Tuple[int, int])
+
     assert deep_issubclass(Tuple[Reduce, ...], Tuple[Funsor, ...])
     assert not deep_issubclass(Tuple[Funsor, ...], Tuple[Reduce, ...])
 
@@ -150,6 +154,31 @@ def test_deep_issubclass_tuple_variadic():
     assert deep_issubclass(
         Tuple[Tuple[int, str], Tuple[int, str]], Tuple[Tuple[int, str], ...]
     )
+
+
+def test_deep_type_tuple():
+
+    x1 = (1, 1.5, "a")
+    expected_type1 = Tuple[int, float, str]
+    assert deep_type(x1) is expected_type1
+    assert deep_isinstance(x1, expected_type1)
+
+    x2 = (1, (2, 3))
+    expected_type2 = Tuple[int, Tuple[int, int]]
+    assert deep_type(x2) is expected_type2
+    assert deep_isinstance(x2, expected_type2)
+
+
+def test_deep_type_frozenset():
+
+    x1 = frozenset(["a", "b"])
+    expected_type1 = FrozenSet[str]
+    assert deep_type(x1) is expected_type1
+    assert deep_isinstance(x1, expected_type1)
+
+    with pytest.raises(NotImplementedError):
+        x2 = frozenset(["a", 1])
+        deep_type(x2)
 
 
 def test_generic_type_cons_hash():
@@ -246,20 +275,20 @@ def test_dispatch_typing():
 
     f = PartialDispatcher("f", default=lambda *args: 1)
 
-    @f.register
-    def _(a: int, b: int) -> int:
+    @f.register()
+    def f2(a: int, b: int) -> int:
         return 2
 
-    @f.register
-    def _(a: Tuple[int, int], b: Tuple[int, int]) -> int:
+    @f.register()
+    def f3(a: Tuple[int, int], b: Tuple[int, int]) -> int:
         return 3
 
-    @f.register
-    def _(a: Tuple[int, ...], b: Tuple[int, int]) -> int:
+    @f.register()
+    def f4(a: Tuple[int, ...], b: Tuple[int, int]) -> int:
         return 4
 
-    @f.register
-    def _(a: Tuple[int, float], b: Tuple[int, float]) -> int:
+    @f.register()
+    def f5(a: Tuple[int, float], b: Tuple[int, float]) -> int:
         return 5
 
     assert f(1.5) == 1
@@ -268,7 +297,7 @@ def test_dispatch_typing():
     assert f(1, 1) == 2
 
     assert f((1, 1), (1, 1)) == 3
-    assert f((1, 2)) == 0
+    assert f((1, 2)) == 1
     assert f((1, 2, 3), (4, 5)) == 4
 
     assert f((1, 1.5), (2, 2.5)) == 5
@@ -278,7 +307,7 @@ def test_variadic_dispatch_typing():
 
     f = PartialDispatcher("f", default=lambda *args: 1)
 
-    @f.register
+    @f.register()
     def _(a: int, b: int) -> int:
         return 2
 
@@ -286,7 +315,7 @@ def test_variadic_dispatch_typing():
     def _(*args):
         return 3
 
-    @f.register
+    @f.register()
     def _(a: Tuple[int, int], b: Tuple[int, int]) -> int:
         return 4
 
@@ -294,7 +323,7 @@ def test_variadic_dispatch_typing():
     def _(*args):
         return 5
 
-    @f.register
+    @f.register()
     def _(a: Tuple[int, float], b: Tuple[int, float]) -> int:
         return 6
 
@@ -310,21 +339,3 @@ def test_variadic_dispatch_typing():
     assert f((1, 2), (3, 4), (5, 6)) == 5
 
     assert f((1, 1.5), (2, 2.5)) == 6
-
-
-def test_deep_type_simple():
-
-    x1 = (1, 1.5, "a")
-    expected_type1 = Tuple[int, float, str]
-    assert deep_type(x1) is expected_type1
-    assert deep_isinstance(x1, expected_type1)
-
-    x2 = frozenset(["a", "b"])
-    expected_type2 = FrozenSet[str]
-    assert deep_type(x2) is expected_type2
-    assert deep_isinstance(x2, expected_type2)
-
-    x3 = (1, (2, 3))
-    expected_type3 = Tuple[int, Tuple[int, int]]
-    assert deep_type(x3) is expected_type3
-    assert deep_isinstance(x3, expected_type3)
