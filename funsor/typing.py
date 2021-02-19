@@ -18,7 +18,14 @@ from multipledispatch.variadic import isvariadic
 @functools.singledispatch
 def deep_type(obj):
     """
-    An enhanced version of :func:`type`.
+    An enhanced version of :func:`type` that reconstructs structured ``typing`` types
+    for a limited set of immutable data structures, notably ``tuple`` and ``frozenset``.
+    Mostly intended for internal use in Funsor interpretation pattern-matching.
+
+    Example::
+
+        assert deep_type((1, ("a",))) is typing.Tuple[int, typing.Tuple[str]]
+        assert deep_type(frozenset(["a"])) is typing.FrozenSet[str]
     """
     # compare to pytypes.deep_type(obj)
     return type(obj)
