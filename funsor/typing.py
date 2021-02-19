@@ -174,9 +174,7 @@ def get_origin(tp):
 
 
 def get_type_hints(obj, globalns=None, localns=None, **kwargs):
-    return typing.get_type_hints(
-        obj, globalns=globalns, localns=localns, **kwargs
-    )
+    return typing.get_type_hints(obj, globalns=globalns, localns=localns, **kwargs)
 
 
 ######################################################################
@@ -202,38 +200,41 @@ class GenericTypeMeta(type):
     def __getitem__(cls, arg_types):
         if not isinstance(arg_types, tuple):
             arg_types = (arg_types,)
-        assert not any(
-            isvariadic(arg_type) for arg_type in arg_types
-        ), "nested variadic types not supported"
         arg_types = tuple(map(_type_to_typing, arg_types))
-        if arg_types not in cls._type_cache:
+        try:
+            return cls._type_cache[arg_types]
+        except KeyError:
             assert not get_args(cls), "cannot subscript a subscripted type {}".format(
                 cls
             )
+            assert not any(
+                isvariadic(arg_type) for arg_type in arg_types
+            ), "nested variadic types not supported"
             new_dct = cls.__dict__.copy()
             new_dct.update({"__args__": arg_types})
             # type(cls) to handle GenericTypeMeta subclasses
-            cls._type_cache[arg_types] = type(cls)(cls.__name__, (cls,), new_dct)
-        return cls._type_cache[arg_types]
+            result = type(cls)(cls.__name__, (cls,), new_dct)
+            cls._type_cache[arg_types] = result
+            return result
 
     def __subclasscheck__(cls, subcls):  # issubclass(subcls, cls)
         if cls is subcls:
             return True
 
+        cls_origin = get_origin(cls)
         if not isinstance(subcls, GenericTypeMeta):
-            return super(GenericTypeMeta, get_origin(cls)).__subclasscheck__(subcls)
+            return super(GenericTypeMeta, cls_origin).__subclasscheck__(subcls)
 
-        if not super(GenericTypeMeta, get_origin(cls)).__subclasscheck__(
-            get_origin(subcls)
-        ):
+        if not super(GenericTypeMeta, cls_origin).__subclasscheck__(get_origin(subcls)):
             return False
 
-        if len(get_args(cls)) != len(get_args(subcls)):
-            return len(get_args(cls)) == 0
+        cls_args, subcls_args = get_args(cls), get_args(subcls)
+        if len(cls_args) != len(subcls_args):
+            return len(cls_args) == 0
 
         return all(
             deep_issubclass(_type_to_typing(ps), _type_to_typing(pc))
-            for ps, pc in zip(get_args(subcls), get_args(cls))
+            for ps, pc in zip(subcls_args, cls_args)
         )
 
     def __repr__(cls):
