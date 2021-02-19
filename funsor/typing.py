@@ -125,7 +125,7 @@ def deep_issubclass(subcls, cls):
         return cls is typing.Any
 
     try:
-        return _subclasscheck_registry[get_origin(cls)](subcls, cls)
+        return _subclasscheck_registry[get_origin(cls)](cls, subcls)
     except KeyError:
         return issubclass(subcls, cls)
 
