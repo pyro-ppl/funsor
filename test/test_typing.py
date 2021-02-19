@@ -22,7 +22,7 @@ from funsor.typing import (
 )
 
 
-def test_deep_issubclass_identity():
+def test_deep_issubclass_generic_identity():
     assert deep_issubclass(Reduce, Reduce)
     assert deep_issubclass(
         Reduce[AssociativeOp, Funsor, frozenset],
@@ -58,7 +58,7 @@ def test_deep_issubclass_generic_neither():
     )
 
 
-def test_deep_issubclass_tuple_internal():
+def test_deep_issubclass_generic_tuple_internal():
     assert deep_issubclass(Stack[str, Tuple[Number, Number, Number]], Stack)
     assert deep_issubclass(Stack[str, Tuple[Number, Number, Number]], Stack[str, tuple])
     assert not deep_issubclass(Stack, Stack[str, Tuple[Number, Number, Number]])
@@ -71,7 +71,7 @@ def test_deep_issubclass_tuple_internal():
     )
 
 
-def test_deep_issubclass_union_internal():
+def test_deep_issubclass_generic_union_internal():
 
     assert deep_issubclass(
         Reduce[AssociativeOp, Union[Number, Funsor], frozenset], Funsor
@@ -107,7 +107,7 @@ def test_deep_issubclass_union_internal():
     )
 
 
-def test_deep_issubclass_union_internal_multiple():
+def test_deep_issubclass_generic_union_internal_multiple():
     assert not deep_issubclass(
         Reduce[Union[Op, AssociativeOp], Stack, frozenset],
         Reduce[
