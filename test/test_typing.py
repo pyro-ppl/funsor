@@ -310,3 +310,21 @@ def test_variadic_dispatch_typing():
     assert f((1, 2), (3, 4), (5, 6)) == 5
 
     assert f((1, 1.5), (2, 2.5)) == 6
+
+
+def test_deep_type_simple():
+
+    x1 = (1, 1.5, "a")
+    expected_type1 = Tuple[int, float, str]
+    assert deep_type(x1) is expected_type1
+    assert deep_isinstance(x1, expected_type1)
+
+    x2 = frozenset(["a", "b"])
+    expected_type2 = FrozenSet[str]
+    assert deep_type(x2) is expected_type2
+    assert deep_isinstance(x2, expected_type2)
+
+    x3 = (1, (2, 3))
+    expected_type3 = Tuple[int, Tuple[int, int]]
+    assert deep_type(x3) is expected_type3
+    assert deep_isinstance(x3, expected_type3)

@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import collections
 import functools
 import sys
 import typing
@@ -15,22 +16,88 @@ from multipledispatch.variadic import isvariadic
 #################################
 
 
-def deep_isinstance(obj, cls):
-    """replaces isinstance()"""
-    # return pytypes.is_of_type(obj, cls)
-    return deep_issubclass(deep_type(obj), cls)
-
-
+@functools.singledispatch
 def deep_type(obj):
-    """replaces type()"""
-    # return pytypes.deep_type(obj)
-    if isinstance(obj, tuple):
-        return typing.Tuple[tuple(map(deep_type, obj))] if obj else typing.Tuple
-
-    if isinstance(obj, frozenset):
-        return typing.FrozenSet[next(map(deep_type, obj))] if obj else typing.FrozenSet
-
     return type(obj)
+
+
+@deep_type.register(tuple)
+def _deep_type_tuple(obj):
+    return typing.Tuple[tuple(map(deep_type, obj))] if obj else typing.Tuple
+
+
+@deep_type.register(frozenset)
+def _deep_type_frozenset(obj):
+    return typing.FrozenSet[next(map(deep_type, obj))] if obj else typing.FrozenSet
+
+
+_subclasscheck_registry = collections.defaultdict(lambda: issubclass)
+
+
+def register_issubclass(cls):
+    def _fn(fn):
+        _subclasscheck_registry[cls] = fn
+        return fn
+
+    return _fn
+
+
+register_issubclass(typing.Any)(lambda a, b: True)
+
+
+@register_issubclass(typing.Union)
+def _deep_issubclass_union(subcls, cls):
+    return any(deep_issubclass(arg, cls) for arg in get_args(subcls))
+
+
+@register_issubclass(frozenset)
+@register_issubclass(typing.FrozenSet)
+def _deep_issubclass_frozenset(subcls, cls):
+
+    if not issubclass(get_origin(subcls), frozenset):
+        return False
+
+    cls_args, subcls_args = get_args(cls), get_args(subcls)
+
+    if not cls_args:
+        return True
+
+    if not subcls_args:
+        return cls_args[0] is typing.Any
+
+    return len(subcls_args) == len(cls_args) == 1 and all(
+        deep_issubclass(a, b) for a, b in zip(subcls_args, cls_args)
+    )
+
+
+@register_issubclass(tuple)
+@register_issubclass(typing.Tuple)
+def _deep_issubclass_tuple(subcls, cls):
+
+    if not issubclass(get_origin(subcls), get_origin(cls)):
+        return False
+
+    cls_args, subcls_args = get_args(cls), get_args(subcls)
+
+    if not cls_args:  # cls is base Tuple
+        return True
+
+    if not subcls_args:
+        return cls_args[0] is typing.Any
+
+    if cls_args[-1] is Ellipsis:  # cls variadic
+        if subcls_args[-1] is Ellipsis:  # both variadic
+            return deep_issubclass(subcls_args[0], cls_args[0])
+        return all(deep_issubclass(a, cls_args[0]) for a in subcls_args)
+
+    if subcls_args[-1] is Ellipsis:  # only subcls variadic
+        # issubclass(Tuple[A, ...], Tuple[X, Y]) == False
+        return False
+
+    # neither variadic
+    return len(cls_args) == len(subcls_args) and all(
+        deep_issubclass(a, b) for a, b in zip(subcls_args, cls_args)
+    )
 
 
 @functools.lru_cache(maxsize=None)
@@ -47,59 +114,19 @@ def deep_issubclass(subcls, cls):
                 return False
             raise
 
-    if get_origin(cls) is typing.Union:
-        return any(deep_issubclass(subcls, arg) for arg in get_args(cls))
-
     if get_origin(subcls) is typing.Union:
         return all(deep_issubclass(arg, cls) for arg in get_args(subcls))
 
-    if cls is typing.Any:
-        return True
-
     if subcls is typing.Any:
-        return False
+        return cls is typing.Any
 
-    if issubclass(get_origin(cls), typing.FrozenSet):
+    return _subclasscheck_registry[get_origin(cls)](subcls, cls)
 
-        if not issubclass(get_origin(subcls), get_origin(cls)):
-            return False
 
-        if not get_args(cls):
-            return True
-
-        if not get_args(subcls):
-            return get_args(cls)[0] is typing.Any
-
-        return len(get_args(subcls)) == len(get_args(cls)) == 1 and deep_issubclass(
-            get_args(subcls)[0], get_args(cls)[0]
-        )
-
-    if issubclass(get_origin(cls), typing.Tuple):
-
-        if not issubclass(get_origin(subcls), get_origin(cls)):
-            return False
-
-        if not get_args(cls):  # cls is base Tuple
-            return True
-
-        if not get_args(subcls):
-            return get_args(cls)[0] is typing.Any
-
-        if get_args(cls)[-1] is Ellipsis:  # cls variadic
-            if get_args(subcls)[-1] is Ellipsis:  # both variadic
-                return deep_issubclass(get_args(subcls)[0], get_args(cls)[0])
-            return all(deep_issubclass(a, get_args(cls)[0]) for a in get_args(subcls))
-
-        if get_args(subcls)[-1] is Ellipsis:  # only subcls variadic
-            # issubclass(Tuple[A, ...], Tuple[X, Y]) == False
-            return False
-
-        # neither variadic
-        return len(get_args(cls)) == len(get_args(subcls)) and all(
-            deep_issubclass(a, b) for a, b in zip(get_args(subcls), get_args(cls))
-        )
-
-    return issubclass(subcls, cls)
+def deep_isinstance(obj, cls):
+    """replaces isinstance()"""
+    # return pytypes.is_of_type(obj, cls)
+    return deep_issubclass(deep_type(obj), cls)
 
 
 def _type_to_typing(tp):
