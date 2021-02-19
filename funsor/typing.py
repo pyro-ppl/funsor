@@ -30,8 +30,13 @@ def _deep_type_frozenset(obj):
     if not obj:
         return typing.FrozenSet
     tp = deep_type(next(iter(obj)))
-    if not all(deep_isinstance(x, tp) for x in obj):
-        raise NotImplementedError(f"TODO handle inhomogeneous frozensets: {str(obj)}")
+    for x in obj:
+        if not deep_isinstance(x, tp):
+            tp = get_origin(tp)
+        if not deep_isinstance(x, tp):
+            raise NotImplementedError(
+                f"TODO handle inhomogeneous frozensets: {str(obj)}"
+            )
     return typing.FrozenSet[tp]
 
 
@@ -56,7 +61,7 @@ register_subclasscheck(typing.Any)(lambda a, b: True)
 
 @register_subclasscheck(typing.Union)
 def _subclasscheck_union(cls, subcls):
-    return any(deep_issubclass(arg, cls) for arg in get_args(subcls))
+    return any(deep_issubclass(subcls, arg) for arg in get_args(cls))
 
 
 @register_subclasscheck(frozenset)
