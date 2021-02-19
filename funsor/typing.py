@@ -136,7 +136,29 @@ def _subclasscheck_tuple(cls, subcls):
 
 @functools.lru_cache(maxsize=None)
 def deep_issubclass(subcls, cls):
-    """replaces issubclass()"""
+    """
+    Enhanced version of :func:`issubclass` that can handle structured types,
+    including Funsor terms, :class:`typing.Tuple`s, and :class:`typing.FrozenSet`s.
+
+    Does not support :class:`typing.TypeVar`s, arbitrary :class:`typing.Generic`s,
+    forward references, or mutable collection types like :class:`typing.List`.
+    Will attempt to fall back to :func:`issubclass` when it encounters a type in
+    ``subcls`` or ``cls`` that it does not understand.
+
+    Usage::
+
+        class A: pass
+        class B(A): pass
+
+        assert deep_issubclass(typing.Tuple[int, B], typing.Tuple[int, A])
+        assert not deep_issubclass(typing.Tuple[int, A], typing.Tuple[int, B])
+
+        assert deep_issubclass(typing.Tuple[A, A], typing.Tuple[A, ...])
+        assert not deep_issubclass(typing.Tuple[B], typing.Tuple[A, ...])
+
+    :param subcls: A class that may be a subclass of ``cls``.
+    :param cls: A class that may be a parent class of ``subcls``.
+    """
     # compare to pytypes.is_subtype(subcls, cls)
 
     # handle unpacking
@@ -161,9 +183,31 @@ def deep_issubclass(subcls, cls):
 
 
 def deep_isinstance(obj, cls):
-    """replaces isinstance()"""
+    """
+    Enhanced version of :func:`isinstance` that can handle basic structured ``typing`` types,
+    including Funsor terms and other :class:`GenericTypeMeta` instances,
+    :class:`typing.Union`s, :class:`typing.Tuple`s, and :class:`typing.FrozenSet`s.
+
+    Does not support :class:`typing.TypeVar`s, arbitrary :class:`typing.Generic`s,
+    forward references, or mutable generic collection types like :class:`typing.List`.
+    Will attempt to fall back to :func:`isinstance` when it encounters
+    an unsupported type in ``obj`` or ``cls``.
+
+    Usage::
+
+        x = (1, ("a", "b"))
+        assert deep_isinstance(x, typing.Tuple[int, tuple])
+        assert deep_isinstance(x, typing.Tuple[typing.Any, typing.Tuple[str, ...]])
+
+    :param obj: An object that may be an instance of ``cls``.
+    :param cls: A class that may be a parent class of ``obj``.
+    """
+
     # compare to pytypes.is_of_type(obj, cls)
-    return deep_issubclass(deep_type(obj), cls)
+    try:
+        return deep_issubclass(deep_type(obj), cls)
+    except TypeError:
+        return isinstance(obj, cls)
 
 
 def _type_to_typing(tp):
