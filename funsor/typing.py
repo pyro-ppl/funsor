@@ -33,7 +33,7 @@ def _deep_type_frozenset(obj):
 _subclasscheck_registry = {}
 
 
-def register_issubclass(cls):
+def register_subclasscheck(cls):
     """
     Decorator for registering a custom ``__subclasscheck__`` method for ``cls``,
     for use in pattern matching with :func:`deep_issubclass`.
@@ -46,16 +46,16 @@ def register_issubclass(cls):
     return _fn
 
 
-register_issubclass(typing.Any)(lambda a, b: True)
+register_subclasscheck(typing.Any)(lambda a, b: True)
 
 
-@register_issubclass(typing.Union)
+@register_subclasscheck(typing.Union)
 def _subclasscheck_union(cls, subcls):
     return any(deep_issubclass(arg, cls) for arg in get_args(subcls))
 
 
-@register_issubclass(frozenset)
-@register_issubclass(typing.FrozenSet)
+@register_subclasscheck(frozenset)
+@register_subclasscheck(typing.FrozenSet)
 def _subclasscheck_frozenset(cls, subcls):
 
     if not issubclass(get_origin(subcls), frozenset):
@@ -74,8 +74,8 @@ def _subclasscheck_frozenset(cls, subcls):
     )
 
 
-@register_issubclass(tuple)
-@register_issubclass(typing.Tuple)
+@register_subclasscheck(tuple)
+@register_subclasscheck(typing.Tuple)
 def _subclasscheck_tuple(cls, subcls):
 
     if not issubclass(get_origin(subcls), get_origin(cls)):
