@@ -17,6 +17,7 @@ from funsor.typing import (
     deep_type,
     get_args,
     get_origin,
+    get_type_hints,
     typing_wrap,
 )
 
@@ -236,6 +237,21 @@ def test_get_args():
         frozenset,
     )
     assert not get_args(Reduce)
+
+
+def test_get_type_hints():
+    def f(a: Tuple[int, ...], b: Reduce[AssociativeOp, Funsor, frozenset]) -> int:
+        return 0
+
+    hints = get_type_hints(f)
+    assert hints == {
+        "a": Tuple[int, ...],
+        "b": Reduce[AssociativeOp, Funsor, frozenset],
+        "return": int,
+    }
+
+    hints.pop("return")
+    assert "return" in get_type_hints(f)
 
 
 def test_variadic_dispatch_basic():

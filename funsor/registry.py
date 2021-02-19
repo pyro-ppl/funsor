@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from multipledispatch.dispatcher import Dispatcher, expand_tuples
 
-from funsor.typing import Variadic, deep_type, get_origin, typing_wrap
+from funsor.typing import Variadic, deep_type, get_origin, get_type_hints, typing_wrap
 
 
 class PartialDispatcher(Dispatcher):
@@ -23,9 +23,10 @@ class PartialDispatcher(Dispatcher):
 
         # Handle annotations
         if not signature:
-            annotations = self.get_func_annotations(func)
+            annotations = get_type_hints(func)
+            annotations.pop("return")
             if annotations:
-                signature = annotations
+                signature = tuple(annotations.values())
 
         # Handle some union types by expanding at registration time
         if any(isinstance(typ, tuple) for typ in signature):
