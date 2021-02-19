@@ -17,6 +17,10 @@ from multipledispatch.variadic import isvariadic
 
 @functools.singledispatch
 def deep_type(obj):
+    """
+    An enhanced version of :func:`type`.
+    """
+    # compare to pytypes.deep_type(obj)
     return type(obj)
 
 
@@ -45,8 +49,12 @@ _subclasscheck_registry = {}
 
 def register_subclasscheck(cls):
     """
-    Decorator for registering a custom ``__subclasscheck__`` method for ``cls``,
-    for use in pattern matching with :func:`deep_issubclass`.
+    Decorator for registering a custom ``__subclasscheck__`` method for ``cls``
+    which is only ever invoked in :func:`deep_issubclass`.
+
+    This is primarily intended for working with the `typing` library at runtime.
+    Prefer overriding ``__subclasscheck__`` in the usual way with a metaclass
+    where possible.
     """
 
     def _fn(fn):
@@ -56,17 +64,21 @@ def register_subclasscheck(cls):
     return _fn
 
 
-register_subclasscheck(typing.Any)(lambda a, b: True)
+@register_subclasscheck(typing.Any)
+def _subclasscheck_any(cls, subcls):
+    return True
 
 
 @register_subclasscheck(typing.Union)
 def _subclasscheck_union(cls, subcls):
+    """A basic ``__subclasscheck__`` method for :class:`typing.Union`."""
     return any(deep_issubclass(subcls, arg) for arg in get_args(cls))
 
 
 @register_subclasscheck(frozenset)
 @register_subclasscheck(typing.FrozenSet)
 def _subclasscheck_frozenset(cls, subcls):
+    """A basic ``__subclasscheck__`` method for :class:`typing.FrozenSet`."""
 
     if not issubclass(get_origin(subcls), frozenset):
         return False
@@ -87,6 +99,7 @@ def _subclasscheck_frozenset(cls, subcls):
 @register_subclasscheck(tuple)
 @register_subclasscheck(typing.Tuple)
 def _subclasscheck_tuple(cls, subcls):
+    """A basic ``__subclasscheck__`` method for :class:`typing.Tuple`."""
 
     if not issubclass(get_origin(subcls), get_origin(cls)):
         return False
@@ -117,7 +130,7 @@ def _subclasscheck_tuple(cls, subcls):
 @functools.lru_cache(maxsize=None)
 def deep_issubclass(subcls, cls):
     """replaces issubclass()"""
-    # return pytypes.is_subtype(subcls, cls)
+    # compare to pytypes.is_subtype(subcls, cls)
 
     # handle unpacking
     if isinstance(subcls, _RuntimeSubclassCheckMeta):
@@ -142,7 +155,7 @@ def deep_issubclass(subcls, cls):
 
 def deep_isinstance(obj, cls):
     """replaces isinstance()"""
-    # return pytypes.is_of_type(obj, cls)
+    # compare to pytypes.is_of_type(obj, cls)
     return deep_issubclass(deep_type(obj), cls)
 
 
@@ -173,6 +186,12 @@ def get_origin(tp):
     return tp if result is None else result
 
 
+if sys.version_info[:2] >= (3, 7):  # reuse upstream documentation if possible
+    get_args = functools.wraps(typing_extensions.get_args)(get_args)
+    get_origin = functools.wraps(typing_extensions.get_origin)(get_origin)
+
+
+@functools.wraps(typing.get_type_hints)
 def get_type_hints(obj, globalns=None, localns=None, **kwargs):
     return typing.get_type_hints(obj, globalns=globalns, localns=localns, **kwargs)
 
@@ -276,7 +295,21 @@ class _DeepVariadicSignatureType(type):
 
 class Variadic(metaclass=_DeepVariadicSignatureType):
     """
-    A typing-compatible drop-in replacement for multipledispatch.variadic.Variadic.
+    A typing-compatible drop-in replacement for :class:`multipledispatch.variadic.Variadic`.
     """
 
     pass
+
+
+__all__ = [
+    "GenericTypeMeta",
+    "Variadic",
+    "deep_isinstance",
+    "deep_issubclass",
+    "deep_type",
+    "get_args",
+    "get_origin",
+    "get_type_hints",
+    "register_subclasscheck",
+    "typing_wrap",
+]
