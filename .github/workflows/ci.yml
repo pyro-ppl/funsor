@@ -83,8 +83,7 @@ jobs:
         # Keep track of NumPyro master branch
         pip install https://github.com/pyro-ppl/numpyro/archive/master.zip
         pip install .[test,jax]
-        CI=1 FUNSOR_BACKEND=jax make test
         pip freeze
     - name: Run test
       run: |
-        make test
+        CI=1 FUNSOR_BACKEND=jax make test
