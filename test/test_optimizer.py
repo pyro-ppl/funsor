@@ -45,18 +45,10 @@ OPTIMIZED_EINSUM_EXAMPLES = [make_chain_einsum(t) for t in range(2, 50, 10)] + [
 
 @pytest.mark.parametrize("equation", OPTIMIZED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize(
-    "backend",
-    [
-        "pyro.ops.einsum.torch_log",
-        "pyro.ops.einsum.torch_map",
-    ],
+    "backend", ["pyro.ops.einsum.torch_log", "pyro.ops.einsum.torch_map",],
 )
 @pytest.mark.parametrize(
-    "einsum_impl",
-    [
-        naive_einsum,
-        naive_contract_einsum,
-    ],
+    "einsum_impl", [naive_einsum, naive_contract_einsum,],
 )
 def test_optimized_einsum(equation, backend, einsum_impl):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
@@ -79,11 +71,7 @@ def test_optimized_einsum(equation, backend, einsum_impl):
 
 
 @pytest.mark.parametrize(
-    "eqn1,eqn2",
-    [
-        ("a,ab->b", "bc->"),
-        ("ab,bc,cd->d", "de,ef,fg->"),
-    ],
+    "eqn1,eqn2", [("a,ab->b", "bc->"), ("ab,bc,cd->d", "de,ef,fg->"),],
 )
 @pytest.mark.parametrize("optimize1", [False, True])
 @pytest.mark.parametrize("optimize2", [False, True])
@@ -151,11 +139,7 @@ PLATED_EINSUM_EXAMPLES = [
 
 @pytest.mark.parametrize("equation,plates", PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize(
-    "backend",
-    [
-        "pyro.ops.einsum.torch_log",
-        "pyro.ops.einsum.torch_map",
-    ],
+    "backend", ["pyro.ops.einsum.torch_log", "pyro.ops.einsum.torch_map",],
 )
 def test_optimized_plated_einsum(equation, plates, backend):
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)

@@ -101,11 +101,7 @@ def test_partition(inputs, dims, expected_num_components):
     ],
 )
 @pytest.mark.parametrize(
-    "impl",
-    [
-        partial_sum_product,
-        modified_partial_sum_product,
-    ],
+    "impl", [partial_sum_product, modified_partial_sum_product,],
 )
 def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2):
     inputs = inputs.split(",")
@@ -145,12 +141,7 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     ],
 )
 @pytest.mark.parametrize(
-    "x_dim,time",
-    [
-        (3, 1),
-        (1, 5),
-        (3, 5),
-    ],
+    "x_dim,time", [(3, 1), (1, 5), (3, 5),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -159,22 +150,10 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2, x_dim, ti
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[time],
-                "x_prev": Bint[x_dim],
-                "x_curr": Bint[x_dim],
-            }
-        )
+        OrderedDict({"time": Bint[time], "x_prev": Bint[x_dim], "x_curr": Bint[x_dim],})
     )
 
     factors = [f1, f2, f3]
@@ -207,13 +186,7 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2, x_dim, ti
     ],
 )
 @pytest.mark.parametrize(
-    "x_dim,y_dim,time",
-    [
-        (2, 3, 5),
-        (1, 3, 5),
-        (2, 1, 5),
-        (2, 3, 1),
-    ],
+    "x_dim,y_dim,time", [(2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -224,41 +197,16 @@ def test_modified_partial_sum_product_1(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[time],
-                "x_prev": Bint[x_dim],
-                "x_curr": Bint[x_dim],
-            }
-        )
+        OrderedDict({"time": Bint[time], "x_prev": Bint[x_dim], "x_curr": Bint[x_dim],})
     )
 
-    f4 = random_tensor(
-        OrderedDict(
-            {
-                "x_0": Bint[x_dim],
-                "y_0": Bint[y_dim],
-            }
-        )
-    )
+    f4 = random_tensor(OrderedDict({"x_0": Bint[x_dim], "y_0": Bint[y_dim],}))
 
     f5 = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[time],
-                "x_curr": Bint[x_dim],
-                "y_curr": Bint[y_dim],
-            }
-        )
+        OrderedDict({"time": Bint[time], "x_curr": Bint[x_dim], "y_curr": Bint[y_dim],})
     )
 
     factors = [f1, f2, f3, f4, f5]
@@ -296,13 +244,7 @@ def test_modified_partial_sum_product_1(
     ],
 )
 @pytest.mark.parametrize(
-    "x_dim,y_dim,time",
-    [
-        (2, 3, 5),
-        (1, 3, 5),
-        (2, 1, 5),
-        (2, 3, 1),
-    ],
+    "x_dim,y_dim,time", [(2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -313,40 +255,16 @@ def test_modified_partial_sum_product_2(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[time],
-                "x_prev": Bint[x_dim],
-                "x_curr": Bint[x_dim],
-            }
-        )
+        OrderedDict({"time": Bint[time], "x_prev": Bint[x_dim], "x_curr": Bint[x_dim],})
     )
 
-    f4 = random_tensor(
-        OrderedDict(
-            {
-                "y_0": Bint[y_dim],
-            }
-        )
-    )
+    f4 = random_tensor(OrderedDict({"y_0": Bint[y_dim],}))
 
     f5 = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[time],
-                "y_prev": Bint[y_dim],
-                "y_curr": Bint[y_dim],
-            }
-        )
+        OrderedDict({"time": Bint[time], "y_prev": Bint[y_dim], "y_curr": Bint[y_dim],})
     )
 
     factors = [f1, f2, f3, f4, f5]
@@ -386,13 +304,7 @@ def test_modified_partial_sum_product_2(
     ],
 )
 @pytest.mark.parametrize(
-    "x_dim,y_dim,time",
-    [
-        (2, 3, 5),
-        (1, 3, 5),
-        (2, 1, 5),
-        (2, 3, 1),
-    ],
+    "x_dim,y_dim,time", [(2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -403,32 +315,13 @@ def test_modified_partial_sum_product_3(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[time],
-                "x_prev": Bint[x_dim],
-                "x_curr": Bint[x_dim],
-            }
-        )
+        OrderedDict({"time": Bint[time], "x_prev": Bint[x_dim], "x_curr": Bint[x_dim],})
     )
 
-    f4 = random_tensor(
-        OrderedDict(
-            {
-                "x_0": Bint[x_dim],
-                "y_0": Bint[y_dim],
-            }
-        )
-    )
+    f4 = random_tensor(OrderedDict({"x_0": Bint[x_dim], "y_0": Bint[y_dim],}))
 
     f5 = random_tensor(
         OrderedDict(
@@ -509,12 +402,7 @@ def test_modified_partial_sum_product_3(
 )
 @pytest.mark.parametrize(
     "x_dim,y_dim,sequences,time,tones",
-    [
-        (2, 3, 2, 5, 4),
-        (1, 3, 2, 5, 4),
-        (2, 1, 2, 5, 4),
-        (2, 3, 2, 1, 4),
-    ],
+    [(2, 3, 2, 5, 4), (1, 3, 2, 5, 4), (2, 1, 2, 5, 4), (2, 3, 2, 1, 4),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -525,14 +413,7 @@ def test_modified_partial_sum_product_4(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
         OrderedDict(
@@ -547,11 +428,7 @@ def test_modified_partial_sum_product_4(
 
     f4 = random_tensor(
         OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "tones": Bint[tones],
-                "y_0": Bint[y_dim],
-            }
+            {"sequences": Bint[sequences], "tones": Bint[tones], "y_0": Bint[y_dim],}
         )
     )
 
@@ -657,12 +534,7 @@ def test_modified_partial_sum_product_4(
 )
 @pytest.mark.parametrize(
     "x_dim,y_dim,sequences,days,weeks,tones",
-    [
-        (2, 3, 2, 5, 4, 3),
-        (1, 3, 2, 5, 4, 3),
-        (2, 1, 2, 5, 4, 3),
-        (2, 3, 2, 1, 4, 3),
-    ],
+    [(2, 3, 2, 5, 4, 3), (1, 3, 2, 5, 4, 3), (2, 1, 2, 5, 4, 3), (2, 3, 2, 1, 4, 3),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -675,11 +547,7 @@ def test_modified_partial_sum_product_5(
 
     f2 = random_tensor(
         OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "tones": Bint[tones],
-                "x_0": Bint[x_dim],
-            }
+            {"sequences": Bint[sequences], "tones": Bint[tones], "x_0": Bint[x_dim],}
         )
     )
 
@@ -695,14 +563,7 @@ def test_modified_partial_sum_product_5(
         )
     )
 
-    f4 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "y_0": Bint[y_dim],
-            }
-        )
-    )
+    f4 = random_tensor(OrderedDict({"sequences": Bint[sequences], "y_0": Bint[y_dim],}))
 
     f5 = random_tensor(
         OrderedDict(
@@ -786,12 +647,7 @@ def test_modified_partial_sum_product_5(
 )
 @pytest.mark.parametrize(
     "x_dim,y_dim,sequences,time,tones",
-    [
-        (2, 3, 2, 5, 4),
-        (1, 3, 2, 5, 4),
-        (2, 1, 2, 5, 4),
-        (2, 3, 2, 1, 4),
-    ],
+    [(2, 3, 2, 5, 4), (1, 3, 2, 5, 4), (2, 1, 2, 5, 4), (2, 3, 2, 1, 4),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -802,14 +658,7 @@ def test_modified_partial_sum_product_6(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
         OrderedDict(
@@ -915,12 +764,7 @@ def test_modified_partial_sum_product_6(
 )
 @pytest.mark.parametrize(
     "x_dim,y_dim,sequences,time,tones",
-    [
-        (2, 3, 2, 5, 4),
-        (1, 3, 2, 5, 4),
-        (2, 1, 2, 5, 4),
-        (2, 3, 2, 1, 4),
-    ],
+    [(2, 3, 2, 5, 4), (1, 3, 2, 5, 4), (2, 1, 2, 5, 4), (2, 3, 2, 1, 4),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -931,14 +775,7 @@ def test_modified_partial_sum_product_7(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
         OrderedDict(
@@ -978,12 +815,7 @@ def test_modified_partial_sum_product_7(
     factors = [f1, f2, f3, f4, f5]
     plate_to_step = {
         "sequences": {},
-        "time": frozenset(
-            {
-                ("x_0", "x_prev", "x_curr"),
-                ("y_0", "y_prev", "y_curr"),
-            }
-        ),
+        "time": frozenset({("x_0", "x_prev", "x_curr"), ("y_0", "y_prev", "y_curr"),}),
         "tones": {},
     }
 
@@ -1072,12 +904,7 @@ def test_modified_partial_sum_product_7(
 )
 @pytest.mark.parametrize(
     "w_dim,x_dim,y_dim,sequences,time,tones",
-    [
-        (3, 2, 3, 2, 5, 4),
-        (3, 1, 3, 2, 5, 4),
-        (3, 2, 1, 2, 5, 4),
-        (3, 2, 3, 2, 1, 4),
-    ],
+    [(3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -1088,14 +915,7 @@ def test_modified_partial_sum_product_8(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "w_0": Bint[w_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "w_0": Bint[w_dim],}))
 
     f3 = random_tensor(
         OrderedDict(
@@ -1108,14 +928,7 @@ def test_modified_partial_sum_product_8(
         )
     )
 
-    f4 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f4 = random_tensor(OrderedDict({"sequences": Bint[sequences], "x_0": Bint[x_dim],}))
 
     f5 = random_tensor(
         OrderedDict(
@@ -1156,12 +969,7 @@ def test_modified_partial_sum_product_8(
     factors = [f1, f2, f3, f4, f5, f6, f7]
     plate_to_step = {
         "sequences": {},
-        "time": frozenset(
-            {
-                ("x_0", "x_prev", "x_curr"),
-                ("w_0", "w_prev", "w_curr"),
-            }
-        ),
+        "time": frozenset({("x_0", "x_prev", "x_curr"), ("w_0", "w_prev", "w_curr"),}),
         "tones": {},
     }
 
@@ -1259,12 +1067,7 @@ def test_modified_partial_sum_product_8(
 )
 @pytest.mark.parametrize(
     "w_dim,x_dim,y_dim,sequences,time,tones",
-    [
-        (3, 2, 3, 2, 5, 4),
-        (3, 1, 3, 2, 5, 4),
-        (3, 2, 1, 2, 5, 4),
-        (3, 2, 3, 2, 1, 4),
-    ],
+    [(3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -1275,14 +1078,7 @@ def test_modified_partial_sum_product_9(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "w_0": Bint[w_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "w_0": Bint[w_dim],}))
 
     f3 = random_tensor(
         OrderedDict(
@@ -1297,11 +1093,7 @@ def test_modified_partial_sum_product_9(
 
     f4 = random_tensor(
         OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "w_0": Bint[w_dim],
-                "x_0": Bint[x_dim],
-            }
+            {"sequences": Bint[sequences], "w_0": Bint[w_dim], "x_0": Bint[x_dim],}
         )
     )
 
@@ -1345,12 +1137,7 @@ def test_modified_partial_sum_product_9(
     factors = [f1, f2, f3, f4, f5, f6, f7]
     plate_to_step = {
         "sequences": {},
-        "time": frozenset(
-            {
-                ("x_0", "x_prev", "x_curr"),
-                ("w_0", "w_prev", "w_curr"),
-            }
-        ),
+        "time": frozenset({("x_0", "x_prev", "x_curr"), ("w_0", "w_prev", "w_curr"),}),
         "tones": {},
     }
 
@@ -1437,12 +1224,7 @@ def test_modified_partial_sum_product_9(
 )
 @pytest.mark.parametrize(
     "w_dim,x_dim,y_dim,sequences,time,tones",
-    [
-        (3, 2, 3, 2, 5, 4),
-        (3, 1, 3, 2, 5, 4),
-        (3, 2, 1, 2, 5, 4),
-        (3, 2, 3, 2, 1, 4),
-    ],
+    [(3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -1453,32 +1235,17 @@ def test_modified_partial_sum_product_10(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "w_0": Bint[w_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "w_0": Bint[w_dim],}))
 
     f3 = random_tensor(
         OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "time": Bint[time],
-                "w_curr": Bint[w_dim],
-            }
+            {"sequences": Bint[sequences], "time": Bint[time], "w_curr": Bint[w_dim],}
         )
     )
 
     f4 = random_tensor(
         OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "w_0": Bint[w_dim],
-                "x_0": Bint[x_dim],
-            }
+            {"sequences": Bint[sequences], "w_0": Bint[w_dim], "x_0": Bint[x_dim],}
         )
     )
 
@@ -1654,30 +1421,13 @@ def test_modified_partial_sum_product_11(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "a": Bint[a_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"a": Bint[a_dim],}))
 
-    f3 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "b": Bint[b_dim],
-            }
-        )
-    )
+    f3 = random_tensor(OrderedDict({"sequences": Bint[sequences], "b": Bint[b_dim],}))
 
     f4 = random_tensor(
         OrderedDict(
-            {
-                "a": Bint[a_dim],
-                "sequences": Bint[sequences],
-                "w_0": Bint[w_dim],
-            }
+            {"a": Bint[a_dim], "sequences": Bint[sequences], "w_0": Bint[w_dim],}
         )
     )
 
@@ -1829,12 +1579,7 @@ def test_modified_partial_sum_product_11(
 )
 @pytest.mark.parametrize(
     "w_dim,x_dim,y_dim,sequences,time,tones",
-    [
-        (3, 2, 3, 2, 5, 4),
-        (3, 1, 3, 2, 5, 4),
-        (3, 2, 1, 2, 5, 4),
-        (3, 2, 3, 2, 1, 4),
-    ],
+    [(3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -1845,22 +1590,11 @@ def test_modified_partial_sum_product_12(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "w_0": Bint[w_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "w_0": Bint[w_dim],}))
 
     f3 = random_tensor(
         OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "time": Bint[time],
-                "w_curr": Bint[w_dim],
-            }
+            {"sequences": Bint[sequences], "time": Bint[time], "w_curr": Bint[w_dim],}
         )
     )
 
@@ -2069,11 +1803,7 @@ def test_modified_partial_sum_product_13(
 
     f4 = random_tensor(
         OrderedDict(
-            {
-                "w": Bint[w_dim],
-                "sequences": Bint[sequences],
-                "y_0": Bint[y_dim],
-            }
+            {"w": Bint[w_dim], "sequences": Bint[sequences], "y_0": Bint[y_dim],}
         )
     )
 
@@ -2194,12 +1924,7 @@ def test_modified_partial_sum_product_13(
 )
 @pytest.mark.parametrize(
     "x_dim,y_dim,sequences,time,tones",
-    [
-        (2, 3, 2, 3, 2),
-        (1, 3, 2, 3, 2),
-        (2, 1, 2, 3, 2),
-        (2, 3, 2, 1, 2),
-    ],
+    [(2, 3, 2, 3, 2), (1, 3, 2, 3, 2), (2, 1, 2, 3, 2), (2, 3, 2, 1, 2),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -2210,14 +1935,7 @@ def test_modified_partial_sum_product_14(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
         OrderedDict(
@@ -2232,11 +1950,7 @@ def test_modified_partial_sum_product_14(
 
     f4 = random_tensor(
         OrderedDict(
-            {
-                "sequences": Bint[sequences],
-                "x_0": Bint[x_dim],
-                "y0_0": Bint[y_dim],
-            }
+            {"sequences": Bint[sequences], "x_0": Bint[x_dim], "y0_0": Bint[y_dim],}
         )
     )
 
@@ -2281,10 +1995,7 @@ def test_modified_partial_sum_product_14(
         "sequences": {},
         "time": frozenset({("x_0", "x_prev", "x_curr")}),
         "tones": frozenset(
-            {
-                ("y0_0", "y0_prev", "y0_curr"),
-                ("ycurr_0", "ycurr_prev", "ycurr_curr"),
-            }
+            {("y0_0", "y0_prev", "y0_curr"), ("ycurr_0", "ycurr_prev", "ycurr_curr"),}
         ),
     }
 
@@ -2320,13 +2031,7 @@ def test_modified_partial_sum_product_14(
     ],
 )
 @pytest.mark.parametrize(
-    "x_dim,y_dim,time",
-    [
-        (2, 3, 5),
-        (1, 3, 5),
-        (2, 1, 5),
-        (2, 3, 1),
-    ],
+    "x_dim,y_dim,time", [(2, 3, 5), (1, 3, 5), (2, 1, 5), (2, 3, 1),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -2337,50 +2042,21 @@ def test_modified_partial_sum_product_16(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[time],
-                "y_prev": Bint[y_dim],
-                "x_curr": Bint[x_dim],
-            }
-        )
+        OrderedDict({"time": Bint[time], "y_prev": Bint[y_dim], "x_curr": Bint[x_dim],})
     )
 
-    f4 = random_tensor(
-        OrderedDict(
-            {
-                "y_0": Bint[y_dim],
-            }
-        )
-    )
+    f4 = random_tensor(OrderedDict({"y_0": Bint[y_dim],}))
 
     f5 = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[time],
-                "x_prev": Bint[x_dim],
-                "y_curr": Bint[y_dim],
-            }
-        )
+        OrderedDict({"time": Bint[time], "x_prev": Bint[x_dim], "y_curr": Bint[y_dim],})
     )
 
     factors = [f1, f2, f3, f4, f5]
     plate_to_step = {
-        "time": frozenset(
-            {
-                ("x_0", "x_prev", "x_curr"),
-                ("y_0", "y_prev", "y_curr"),
-            }
-        ),
+        "time": frozenset({("x_0", "x_prev", "x_curr"), ("y_0", "y_prev", "y_curr"),}),
     }
 
     factors1 = modified_partial_sum_product(
@@ -2450,13 +2126,7 @@ def test_modified_partial_sum_product_16(
     ],
 )
 @pytest.mark.parametrize(
-    "x_dim,y_dim,z_dim,time",
-    [
-        (2, 3, 2, 5),
-        (1, 3, 2, 5),
-        (2, 1, 2, 5),
-        (2, 3, 2, 1),
-    ],
+    "x_dim,y_dim,z_dim,time", [(2, 3, 2, 5), (1, 3, 2, 5), (2, 1, 2, 5), (2, 3, 2, 1),],
 )
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
@@ -2467,22 +2137,10 @@ def test_modified_partial_sum_product_17(
 
     f1 = random_tensor(OrderedDict({}))
 
-    f2 = random_tensor(
-        OrderedDict(
-            {
-                "x_0": Bint[x_dim],
-            }
-        )
-    )
+    f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim],}))
 
     f3 = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[time],
-                "x_prev": Bint[x_dim],
-                "x_curr": Bint[x_dim],
-            }
-        )
+        OrderedDict({"time": Bint[time], "x_prev": Bint[x_dim], "x_curr": Bint[x_dim],})
     )
 
     f4 = random_tensor(
@@ -2532,13 +2190,7 @@ def test_modified_partial_sum_product_17(
     )
 
     f8 = random_tensor(
-        OrderedDict(
-            {
-                "x_0": Bint[x_dim],
-                "y_0": Bint[y_dim],
-                "z2_0": Bint[z_dim],
-            }
-        )
+        OrderedDict({"x_0": Bint[x_dim], "y_0": Bint[y_dim], "z2_0": Bint[z_dim],})
     )
 
     f9 = random_tensor(
@@ -2655,11 +2307,7 @@ def test_sequential_sum_product(
 )
 @pytest.mark.parametrize(
     "x_domain,y_domain",
-    [
-        (Bint[2], Bint[3]),
-        (Real, Reals[2, 2]),
-        (Bint[2], Reals[2]),
-    ],
+    [(Bint[2], Bint[3]), (Real, Reals[2, 2]), (Bint[2], Reals[2]),],
     ids=str,
 )
 @pytest.mark.parametrize(
@@ -2728,29 +2376,15 @@ def test_sequential_sum_product_multi(
 @pytest.mark.parametrize("dim", [1, 2, 3])
 def test_sequential_sum_product_bias_1(num_steps, dim):
     time = Variable("time", Bint[num_steps])
-    bias_dist = random_gaussian(
-        OrderedDict(
-            [
-                ("bias", Reals[dim]),
-            ]
-        )
-    )
+    bias_dist = random_gaussian(OrderedDict([("bias", Reals[dim]),]))
     trans = random_gaussian(
         OrderedDict(
-            [
-                ("time", Bint[num_steps]),
-                ("x_prev", Reals[dim]),
-                ("x_curr", Reals[dim]),
-            ]
+            [("time", Bint[num_steps]), ("x_prev", Reals[dim]), ("x_curr", Reals[dim]),]
         )
     )
     obs = random_gaussian(
         OrderedDict(
-            [
-                ("time", Bint[num_steps]),
-                ("x_curr", Reals[dim]),
-                ("bias", Reals[dim]),
-            ]
+            [("time", Bint[num_steps]), ("x_curr", Reals[dim]), ("bias", Reals[dim]),]
         )
     )
     factor = trans + obs + bias_dist
@@ -2769,29 +2403,15 @@ def test_sequential_sum_product_bias_1(num_steps, dim):
 def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
     time = Variable("time", Bint[num_steps])
     bias = Variable("bias", Reals[num_sensors, dim])
-    bias_dist = random_gaussian(
-        OrderedDict(
-            [
-                ("bias", Reals[num_sensors, dim]),
-            ]
-        )
-    )
+    bias_dist = random_gaussian(OrderedDict([("bias", Reals[num_sensors, dim]),]))
     trans = random_gaussian(
         OrderedDict(
-            [
-                ("time", Bint[num_steps]),
-                ("x_prev", Reals[dim]),
-                ("x_curr", Reals[dim]),
-            ]
+            [("time", Bint[num_steps]), ("x_prev", Reals[dim]), ("x_curr", Reals[dim]),]
         )
     )
     obs = random_gaussian(
         OrderedDict(
-            [
-                ("time", Bint[num_steps]),
-                ("x_curr", Reals[dim]),
-                ("bias", Reals[dim]),
-            ]
+            [("time", Bint[num_steps]), ("x_curr", Reals[dim]), ("bias", Reals[dim]),]
         )
     )
 
@@ -2837,14 +2457,7 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
 def test_sarkka_bilmes_example_0(duration):
 
-    trans = random_tensor(
-        OrderedDict(
-            {
-                "time": Bint[duration],
-                "a": Bint[3],
-            }
-        )
-    )
+    trans = random_tensor(OrderedDict({"time": Bint[duration], "a": Bint[3],}))
 
     expected_inputs = {
         "a": Bint[3],
@@ -2858,12 +2471,7 @@ def test_sarkka_bilmes_example_1(duration):
 
     trans = random_tensor(
         OrderedDict(
-            {
-                "time": Bint[duration],
-                "a": Bint[3],
-                "b": Bint[2],
-                "_PREV_b": Bint[2],
-            }
+            {"time": Bint[duration], "a": Bint[3], "b": Bint[2], "_PREV_b": Bint[2],}
         )
     )
 
@@ -2957,12 +2565,7 @@ def test_sarkka_bilmes_example_5(duration):
 
     trans = random_tensor(
         OrderedDict(
-            {
-                "time": Bint[duration],
-                "a": Bint[3],
-                "_PREV_a": Bint[3],
-                "x": Bint[2],
-            }
+            {"time": Bint[duration], "a": Bint[3], "_PREV_a": Bint[3], "x": Bint[2],}
         )
     )
 
@@ -3007,11 +2610,7 @@ def test_sarkka_bilmes_example_6(duration):
 
 @pytest.mark.parametrize("time_input", [("time", Bint[t]) for t in range(6, 11)])
 @pytest.mark.parametrize(
-    "global_inputs",
-    [
-        (),
-        (("x", Bint[2]),),
-    ],
+    "global_inputs", [(), (("x", Bint[2]),),],
 )
 @pytest.mark.parametrize(
     "local_inputs",

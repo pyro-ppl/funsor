@@ -104,9 +104,7 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
     discrete += gaussian.log_normalizer
     new_discrete = discrete.reduce(ops.logaddexp, approx_vars & discrete.input_vars)
     num_elements = reduce(
-        ops.mul,
-        [v.output.num_elements for v in approx_vars - discrete.input_vars],
-        1,
+        ops.mul, [v.output.num_elements for v in approx_vars - discrete.input_vars], 1,
     )
     if num_elements != 1:
         new_discrete -= math.log(num_elements)

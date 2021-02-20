@@ -1,6 +1,12 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Example: Mini Pyro
+==================
+
+"""
+
 import argparse
 
 import torch

@@ -19,9 +19,7 @@ from funsor.testing import assert_close, check_funsor, random_tensor
 def test_lambda_lambda():
     @make_funsor
     def LambdaLambda(
-        i: Bound,
-        j: Bound,
-        x: Funsor,
+        i: Bound, j: Bound, x: Funsor,
     ) -> Fresh[lambda i, j, x: Array[x.dtype, (i.size, j.size) + x.shape]]:
         assert i in x.inputs
         assert j in x.inputs
@@ -51,10 +49,7 @@ def test_getitem_getitem(num_inputs):
 def test_flatten():
     @make_funsor
     def Flatten21(
-        x: Funsor,
-        i: Bound,
-        j: Bound,
-        ij: Fresh[lambda i, j: Bint[i.size * j.size]],
+        x: Funsor, i: Bound, j: Bound, ij: Fresh[lambda i, j: Bint[i.size * j.size]],
     ) -> Fresh[lambda x: x.dtype]:
         m = to_funsor(i, x.inputs.get(i, None)).output.size
         n = to_funsor(j, x.inputs.get(j, None)).output.size
@@ -120,9 +115,7 @@ def test_cat2():
 def test_normal():
     @make_funsor
     def Normal(
-        loc: Funsor,
-        scale: Funsor,
-        value: Fresh[lambda loc: loc],
+        loc: Funsor, scale: Funsor, value: Fresh[lambda loc: loc],
     ) -> Fresh[Real]:
         return None
 
@@ -147,11 +140,7 @@ def test_normal():
 
 def test_matmul():
     @make_funsor
-    def MatMul(
-        x: Funsor,
-        y: Funsor,
-        i: Bound,
-    ) -> Fresh[lambda x: x]:
+    def MatMul(x: Funsor, y: Funsor, i: Bound,) -> Fresh[lambda x: x]:
         return (x * y).reduce(ops.add, i)
 
     x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
@@ -182,8 +171,7 @@ def test_scatter1():
 def test_value_dependence():
     @make_funsor
     def Sum(
-        x: Funsor,
-        dim: Value[int],
+        x: Funsor, dim: Value[int],
     ) -> Fresh[lambda x, dim: Array[x.dtype, x.shape[:dim] + x.shape[dim + 1 :]]]:
         return None
 

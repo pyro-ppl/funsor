@@ -164,12 +164,7 @@ class Model(object):
             params["e_i"]["probs"] = Tensor(
                 pyro.param(
                     "probs_e_i",
-                    lambda: torch.randn(
-                        (
-                            N_c,
-                            N_v,
-                        )
-                    ).abs(),
+                    lambda: torch.randn((N_c, N_v,)).abs(),
                     constraint=constraints.simplex,
                 ),
                 OrderedDict([("g", Bint[N_c])]),  # different value per group
@@ -329,8 +324,7 @@ class Model(object):
 
         # initialize gamma to uniform
         gamma = Tensor(
-            torch.zeros((N_state, N_state)),
-            OrderedDict([("y_prev", Bint[N_state])]),
+            torch.zeros((N_state, N_state)), OrderedDict([("y_prev", Bint[N_state])]),
         )
 
         N_v = self.config["sizes"]["random"]

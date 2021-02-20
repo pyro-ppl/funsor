@@ -1,7 +1,9 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import glob
 import os
+import shutil
 import sys
 
 import sphinx_rtd_theme
@@ -46,11 +48,13 @@ release = u"0.0"
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "nbsphinx",
     "sphinx.ext.autodoc",
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx.ext.viewcode",
+    "sphinx_gallery.gen_gallery",
 ]
 
 # Disable documentation inheritance so as to avoid inheriting
@@ -76,7 +80,13 @@ templates_path = ["_templates"]
 # You can specify multiple suffix as a list of string:
 #
 # source_suffix = ['.rst', '.md']
-source_suffix = ".rst"
+source_suffix = [".rst", ".ipynb"]
+
+# do not execute cells
+nbsphinx_execute = "never"
+
+# Don't add .txt suffix to source files:
+html_sourcelink_suffix = ""
 
 # The master toctree document.
 master_doc = "index"
@@ -91,7 +101,11 @@ language = None
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path .
-exclude_patterns = []
+exclude_patterns = [
+    ".ipynb_checkpoints",
+    "examples/*ipynb",
+    "examples/*py",
+]
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "sphinx"
@@ -99,6 +113,61 @@ pygments_style = "sphinx"
 
 # do not prepend module name to functions
 add_module_names = False
+
+
+# This is processed by Jinja2 and inserted before each notebook
+nbsphinx_prolog = r"""
+{% set docname = 'tutorials/' + env.doc2path(env.docname, base=None).split('/')[-1] %}
+:github_url: https://github.com/pyro-ppl/funsor/blob/master/{{ docname }}
+.. raw:: html
+    <div class="admonition note">
+      Interactive online version:
+      <span style="white-space: nowrap;">
+        <a href="https://colab.research.google.com/github/pyro-ppl/funsor/blob/{{ env.config.html_context.github_version }}/{{ docname }}">
+          <img alt="Open In Colab" src="https://colab.research.google.com/assets/colab-badge.svg"
+            style="vertical-align:text-bottom">
+        </a>
+      </span>
+    </div>
+"""  # noqa: E501
+
+
+# -- Copy notebook files
+
+if not os.path.exists("tutorials"):
+    os.makedirs("tutorials")
+
+for src_file in glob.glob("../../tutorials/*.ipynb"):
+    dst_file = os.path.join("tutorials", src_file.split("/")[-1])
+    shutil.copy(src_file, "tutorials/")
+
+
+# -- Convert scripts to notebooks
+
+sphinx_gallery_conf = {
+    "examples_dirs": ["../../examples"],
+    "gallery_dirs": ["examples"],
+    # only execute files beginning with plot_
+    "filename_pattern": "/plot_",
+    # 'ignore_pattern': '(minipyro|__init__)',
+    # not display Total running time of the script because we do not execute it
+    "min_reported_time": 1,
+}
+
+
+# -- Add thumbnails images
+
+nbsphinx_thumbnails = {}
+
+for src_file in glob.glob("../../tutorials/*.ipynb") + glob.glob("../../examples/*.py"):
+    toctree_path = "tutorials/" if src_file.endswith("ipynb") else "examples/"
+    filename = os.path.splitext(src_file.split("/")[-1])[0]
+    png_path = "_static/img/" + toctree_path + filename + ".png"
+    # use Pyro logo if not exist png file
+    if not os.path.exists(png_path):
+        png_path = "_static/img/pyro_logo_wide.png"
+    nbsphinx_thumbnails[toctree_path + filename] = png_path
+
 
 # -- Options for HTML output -------------------------------------------------
 

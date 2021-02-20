@@ -260,18 +260,7 @@ def unary_eval(symbol, x):
 @pytest.mark.parametrize("data", [0, 0.5, 1])
 @pytest.mark.parametrize(
     "symbol",
-    [
-        "~",
-        "-",
-        "atanh",
-        "abs",
-        "sqrt",
-        "exp",
-        "log",
-        "log1p",
-        "sigmoid",
-        "tanh",
-    ],
+    ["~", "-", "atanh", "abs", "sqrt", "exp", "log", "log1p", "sigmoid", "tanh",],
 )
 def test_unary(symbol, data):
     dtype = "real"
