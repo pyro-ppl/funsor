@@ -3,12 +3,15 @@
 
 from collections import OrderedDict
 
+import pytest
+
 from funsor import ops
-from funsor.domains import Real
+from funsor.domains import Bint, Real
 from funsor.integrate import Integrate
 from funsor.interpretations import normalize
 from funsor.interpreter import reinterpret
-from funsor.jensen import JensenInterpretation
+from funsor.jensen import Jensen
+from funsor.montecarlo import MonteCarlo
 from funsor.terms import Variable
 from funsor.testing import assert_close, random_gaussian
 
@@ -16,15 +19,28 @@ from funsor.testing import assert_close, random_gaussian
 def test_simple():
     model = random_gaussian(OrderedDict(x=Real))
     guide = random_gaussian(OrderedDict(x=Real))
-
     approx_vars = frozenset({Variable("x", Real)})
 
     expected = Integrate(guide, model - guide, approx_vars)
 
-    with JensenInterpretation(guide, approx_vars):
+    with Jensen(guide, approx_vars):
         actual = model.reduce(ops.logaddexp, approx_vars)
 
     assert_close(actual, expected)
+
+
+@pytest.mark.xfail(reason="interpreter stack overflow")
+def test_monte_carlo():
+    model = random_gaussian(OrderedDict(x=Real))
+    guide = random_gaussian(OrderedDict(x=Real))
+    approx_vars = frozenset({Variable("x", Real)})
+
+    with Jensen(guide, approx_vars):
+        expected = model.reduce(ops.logaddexp, approx_vars)
+    with MonteCarlo(particles=Bint[10000]), Jensen(guide, approx_vars):
+        actual = model.reduce(ops.logaddexp, approx_vars)
+
+    assert_close(actual, expected, atol=0.1)
 
 
 def test_complex():
@@ -48,7 +64,7 @@ def test_complex():
 
     expected = Integrate(guide, model - guide, approx_vars)
 
-    with JensenInterpretation(guide, approx_vars):
+    with Jensen(guide, approx_vars):
         actual = model.reduce(ops.logaddexp, approx_vars)
 
     # Reinterpret to ensure Integrate is evaluated.

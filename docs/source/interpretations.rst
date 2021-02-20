@@ -25,6 +25,14 @@ Monte Carlo
     :show-inheritance:
     :member-order: bysource
 
+Jensen's Inequality
+-------------------
+.. automodule:: funsor.jensen
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
+
 Memoize
 -----------
 .. automodule:: funsor.memoize
