@@ -4,13 +4,18 @@
 from collections import defaultdict
 
 from multipledispatch import Dispatcher
-from multipledispatch.conflict import supercedes
+from multipledispatch.variadic import Variadic
 
 
 class PartialDispatcher(Dispatcher):
     """
     Wrapper to avoid appearance in stack traces.
     """
+
+    def __init__(self, default):
+        super().__init__("f")
+        if default is not None:
+            self.register(Variadic[object])(default)
 
     def partial_call(self, *args):
         """
@@ -46,18 +51,11 @@ class KeyedRegistry(object):
     def __init__(self, default=None):
         self.default = default if default is None else PartialDefault(default)
         # TODO make registry a WeakKeyDictionary
-        self.registry = defaultdict(lambda: PartialDispatcher("f"))
+        self.registry = defaultdict(lambda: PartialDispatcher(self.default))
 
     def register(self, key, *types):
         key = getattr(key, "__origin__", key)
         register = self.registry[key].register
-        if self.default:
-            objects = (object,) * len(types)
-            try:
-                if objects != types and supercedes(types, objects):
-                    register(*objects)(self.default)
-            except TypeError:
-                pass  # mysterious source of ambiguity in Python 3.5 breaks this
 
         # This decorator supports stacking multiple decorators, which is not
         # supported by multipledipatch (which returns a Dispatch object rather
