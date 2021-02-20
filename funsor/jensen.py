@@ -14,6 +14,7 @@ from funsor.terms import Funsor, Reduce
 from . import ops
 
 
+# TODO refactor this once Approximate is merged
 class Jensen(StatefulInterpretation):
     """
     Given an approximating ``guide`` funsor, approximates::
