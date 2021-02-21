@@ -289,7 +289,7 @@ def test_variadic_dispatch_basic():
 
 def test_dispatch_typing():
 
-    f = PartialDispatcher("f", default=lambda *args: 1)
+    f = PartialDispatcher(lambda *args: 1)
 
     @f.register()
     def f2(a: int, b: int) -> int:
@@ -321,7 +321,7 @@ def test_dispatch_typing():
 
 def test_variadic_dispatch_typing():
 
-    f = PartialDispatcher("f", default=lambda *args: 1)
+    f = PartialDispatcher(lambda *args: 1)
 
     @f.register()
     def _(a: int, b: int) -> int:
