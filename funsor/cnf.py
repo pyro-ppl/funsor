@@ -224,7 +224,7 @@ class Contraction(Funsor):
             term
             if isinstance(term, Funsor)
             and not set(self.bound).intersection(term.inputs)
-            else reflect(substitute)(term, alpha_subs)
+            else substitute(term, alpha_subs)
             for term in self.terms
         )
         return self.red_op, self.bin_op, reduced_vars, terms

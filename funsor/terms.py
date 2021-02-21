@@ -108,7 +108,7 @@ def reflect(cls, *args, **kwargs):
     # is the string literal of hash() of the type and cons-hashing key:
     if result.bound:
         alpha_subs = _alpha_mangle(result.bound)
-        alpha_mangled_args = result._alpha_convert(alpha_subs)
+        alpha_mangled_args = reflect(result._alpha_convert)(alpha_subs)
 
         # TODO eliminate code duplication below
         # this is currently necessary because .bound is computed in __init__().
@@ -303,7 +303,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return tuple(
             v
             if isinstance(v, Funsor) and not set(self.bound).intersection(v.inputs)
-            else reflect(substitute)(v, alpha_subs)
+            else substitute(v, alpha_subs)
             for v in self._ast_values
         )
 
