@@ -2,6 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
+Example: Switching Linear Dynamical System EEG
+==============================================
+
 We use a switching linear dynamical system [1] to model a EEG time series dataset.
 For inference we use a moment-matching approximation enabled by
 `funsor.interpretation(funsor.terms.moment_matching)`.
@@ -10,6 +13,7 @@ References
 
 [1] Anderson, B., and J. Moore. "Optimal filtering. Prentice-Hall, Englewood Cliffs." New Jersey (1979).
 """
+
 import argparse
 import time
 from collections import OrderedDict

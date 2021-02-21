@@ -27,9 +27,7 @@ setup(
     description="A tensor-like library for functions and distributions",
     packages=find_packages(include=["funsor", "funsor.*"]),
     url="https://github.com/pyro-ppl/funsor",
-    project_urls={
-        "Documentation": "https://funsor.pyro.ai",
-    },
+    project_urls={"Documentation": "https://funsor.pyro.ai"},
     author="Uber AI Labs",
     python_requires=">=3.6",
     install_requires=[
@@ -40,15 +38,8 @@ setup(
         "typing_extensions",
     ],
     extras_require={
-        "torch": [
-            "pyro-ppl>=1.5.2",
-            "torch>=1.7.0",
-        ],
-        "jax": [
-            "numpyro>=0.2.4",
-            "jax>=0.1.57",
-            "jaxlib>=0.1.37",
-        ],
+        "torch": ["pyro-ppl>=1.5.2", "torch>=1.7.0"],
+        "jax": ["numpyro>=0.2.4", "jax>=0.1.57", "jaxlib>=0.1.37"],
         "test": [
             "black",
             "flake8",
@@ -64,11 +55,13 @@ setup(
             "black",
             "flake8",
             "isort>=5.0",
+            "nbsphinx",
             "pandas",
             "pytest==4.3.1",
             "pytest-xdist==1.27.0",
             "scipy",
             "sphinx>=2.0",
+            "sphinx-gallery",
             "sphinx_rtd_theme",
             "torchvision",
         ],
