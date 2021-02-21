@@ -3,7 +3,7 @@
 
 """
 Example: Switching Linear Dynamical System EEG
-=================================================
+==============================================
 
 We use a switching linear dynamical system [1] to model a EEG time series dataset.
 For inference we use a moment-matching approximation enabled by
@@ -155,7 +155,7 @@ class SLDS(nn.Module):
             self.observation_matrix, obs_mvn, event_dims, "x", "y"
         )
 
-        return (trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist)
+        return trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist
 
     # compute the marginal log probability of the observed data using a moment-matching approximation
     @funsor.interpretation(funsor.terms.moment_matching)
