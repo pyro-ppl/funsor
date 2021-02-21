@@ -1,7 +1,9 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import glob
 import os
+import shutil
 import sys
 
 import sphinx_rtd_theme
@@ -32,8 +34,17 @@ author = u"Uber AI Labs"
 
 # The short X.Y version
 version = u"0.0"
+
+if "READTHEDOCS" not in os.environ:
+    # if developing locally, use funsor.__version__ as version
+    from funsor import __version__  # noqaE402
+
+    version = __version__
+
+    html_context = {"github_version": "master"}
+
 # The full version, including alpha/beta/rc tags
-release = u"0.0"
+release = version
 
 
 # -- General configuration ---------------------------------------------------
@@ -46,11 +57,13 @@ release = u"0.0"
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
+    "nbsphinx",
     "sphinx.ext.autodoc",
     "sphinx.ext.doctest",
     "sphinx.ext.intersphinx",
     "sphinx.ext.mathjax",
     "sphinx.ext.viewcode",
+    "sphinx_gallery.gen_gallery",
 ]
 
 # Disable documentation inheritance so as to avoid inheriting
@@ -76,7 +89,13 @@ templates_path = ["_templates"]
 # You can specify multiple suffix as a list of string:
 #
 # source_suffix = ['.rst', '.md']
-source_suffix = ".rst"
+source_suffix = [".rst", ".ipynb"]
+
+# do not execute cells
+nbsphinx_execute = "never"
+
+# Don't add .txt suffix to source files:
+html_sourcelink_suffix = ""
 
 # The master toctree document.
 master_doc = "index"
@@ -91,7 +110,7 @@ language = None
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path .
-exclude_patterns = []
+exclude_patterns = [".ipynb_checkpoints", "examples/*ipynb", "examples/*py"]
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "sphinx"
@@ -99,6 +118,73 @@ pygments_style = "sphinx"
 
 # do not prepend module name to functions
 add_module_names = False
+
+
+# This is processed by Jinja2 and inserted before each notebook
+nbsphinx_prolog = r"""
+{% set docname = 'tutorials/' + env.doc2path(env.docname, base=None).split('/')[-1] %}
+:github_url: https://github.com/pyro-ppl/funsor/blob/master/{{ docname }}
+
+.. raw:: html
+
+    <div class="admonition note">
+      Interactive online version:
+      <span style="white-space: nowrap;">
+        <a href="https://colab.research.google.com/github/pyro-ppl/funsor/blob/{{ env.config.html_context.github_version }}/{{ docname }}">
+          <img alt="Open In Colab" src="https://colab.research.google.com/assets/colab-badge.svg"
+            style="vertical-align:text-bottom">
+        </a>
+      </span>
+    </div>
+"""  # noqa: E501
+
+
+# -- Copy notebook files
+# NB: tutorials and examples can be added to `index.rst` file using the paths
+#     tutorials/foo
+#     examples/foo
+# without extensions .ipynb or .py
+# TODO: find a solution for an example subfolder, e.g. examples/mixed_hmm folder
+#
+# To add thumbnail images for tutorials/examples in funsor docs, using
+# .. nbgallery:: instead of .. toctree:: and add png thumnail images
+# with corresponding names in _static/img/tutorials or _static/img/examples folders.
+# For example, we can add minipyro.png to _static/img/examples/ folder.
+
+if not os.path.exists("tutorials"):
+    os.makedirs("tutorials")
+
+for src_file in glob.glob("../../tutorials/*.ipynb"):
+    dst_file = os.path.join("tutorials", src_file.split("/")[-1])
+    shutil.copy(src_file, "tutorials/")
+
+
+# -- Convert scripts to notebooks
+
+sphinx_gallery_conf = {
+    "examples_dirs": ["../../examples"],
+    "gallery_dirs": ["examples"],
+    # only execute files beginning with plot_
+    "filename_pattern": "/plot_",
+    # 'ignore_pattern': '(minipyro|__init__)',
+    # not display Total running time of the script because we do not execute it
+    "min_reported_time": 1,
+}
+
+
+# -- Add thumbnails images
+
+nbsphinx_thumbnails = {}
+
+for src_file in glob.glob("../../tutorials/*.ipynb") + glob.glob("../../examples/*.py"):
+    toctree_path = "tutorials/" if src_file.endswith("ipynb") else "examples/"
+    filename = os.path.splitext(src_file.split("/")[-1])[0]
+    png_path = "_static/img/" + toctree_path + filename + ".png"
+    # use Pyro logo if not exist png file
+    if not os.path.exists(png_path):
+        png_path = "_static/img/pyro_logo_wide.png"
+    nbsphinx_thumbnails[toctree_path + filename] = png_path
+
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -157,7 +243,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, "Funsor.tex", u"Funsor Documentation", u"Uber AI Labs", "manual"),
+    (master_doc, "Funsor.tex", u"Funsor Documentation", u"Uber AI Labs", "manual")
 ]
 
 # -- Options for manual page output ------------------------------------------
@@ -180,7 +266,7 @@ texinfo_documents = [
         "Funsor",
         "Functional analysis + tensors + symbolic algebra.",
         "Miscellaneous",
-    ),
+    )
 ]
 
 

@@ -3,7 +3,6 @@
 
 import collections
 
-from multipledispatch.variadic import Variadic
 from opt_einsum.paths import greedy
 
 import funsor.interpreter as interpreter
@@ -18,6 +17,7 @@ from funsor.interpretations import (
 from funsor.interpreter import get_interpretation
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.terms import Funsor
+from funsor.typing import Variadic
 
 unfold_base = DispatchedInterpretation()
 unfold = PrioritizedInterpretation(unfold_base, normalize_base, lazy)

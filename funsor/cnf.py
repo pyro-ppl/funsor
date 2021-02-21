@@ -8,7 +8,6 @@ from functools import reduce
 from typing import Tuple, Union
 
 import opt_einsum
-from multipledispatch.variadic import Variadic
 
 import funsor
 import funsor.ops as ops
@@ -33,6 +32,7 @@ from funsor.terms import (
     substitute,
     to_funsor,
 )
+from funsor.typing import Variadic
 from funsor.util import broadcast_shape, get_backend, quote
 
 

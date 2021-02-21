@@ -12,7 +12,6 @@ from functools import reduce
 import numpy as np
 import opt_einsum
 from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic
 
 import funsor
 
@@ -35,6 +34,7 @@ from .terms import (
     to_data,
     to_funsor,
 )
+from .typing import Variadic
 from .util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
 
 
