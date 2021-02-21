@@ -1040,8 +1040,8 @@ def _find_domain_einsum(op, *operands):
     size_dict = {}
     for ein_input, x in zip(ein_inputs, operands):
         assert x.dtype == "real"
-        assert len(ein_input) == len(x.output.shape)
-        for name, size in zip(ein_input, x.output.shape):
+        assert len(ein_input) == len(x.shape)
+        for name, size in zip(ein_input, x.shape):
             other_size = size_dict.setdefault(name, size)
             if other_size != size:
                 raise ValueError(
@@ -1064,39 +1064,36 @@ def Einsum(equation, operands):
     return Finitary(EinsumOp(equation), tuple(operands))
 
 
-@eager.register(Finitary, EinsumOp, tuple)
+@eager.register(Finitary, EinsumOp, typing.Tuple[Tensor, ...])
 def eager_einsum(op, operands):
-    if all(isinstance(x, Tensor) for x in operands):
-        # Make new symbols for inputs of operands.
-        equation = op.equation
-        inputs = OrderedDict()
-        for x in operands:
-            inputs.update(x.inputs)
-        symbols = set(equation)
-        get_symbol = iter(map(opt_einsum.get_symbol, itertools.count()))
-        new_symbols = {}
-        for k in inputs:
+    # Make new symbols for inputs of operands.
+    equation = op.equation
+    inputs = OrderedDict()
+    for x in operands:
+        inputs.update(x.inputs)
+    symbols = set(equation)
+    get_symbol = iter(map(opt_einsum.get_symbol, itertools.count()))
+    new_symbols = {}
+    for k in inputs:
+        symbol = next(get_symbol)
+        while symbol in symbols:
             symbol = next(get_symbol)
-            while symbol in symbols:
-                symbol = next(get_symbol)
-            symbols.add(symbol)
-            new_symbols[k] = symbol
+        symbols.add(symbol)
+        new_symbols[k] = symbol
 
-        # Manually broadcast using einsum symbols.
-        assert "." not in equation
-        ins, out = equation.split("->")
-        ins = ins.split(",")
-        ins = [
-            "".join(new_symbols[k] for k in x.inputs) + x_out
-            for x, x_out in zip(operands, ins)
-        ]
-        out = "".join(new_symbols[k] for k in inputs) + out
-        equation = ",".join(ins) + "->" + out
+    # Manually broadcast using einsum symbols.
+    assert "." not in equation
+    ins, out = equation.split("->")
+    ins = ins.split(",")
+    ins = [
+        "".join(new_symbols[k] for k in x.inputs) + x_out
+        for x, x_out in zip(operands, ins)
+    ]
+    out = "".join(new_symbols[k] for k in inputs) + out
+    equation = ",".join(ins) + "->" + out
 
-        data = ops.einsum(equation, *[x.data for x in operands])
-        return Tensor(data, inputs)
-
-    return None  # defer to default implementation
+    data = ops.einsum(equation, *[x.data for x in operands])
+    return Tensor(data, inputs)
 
 
 def tensordot(x, y, dims):

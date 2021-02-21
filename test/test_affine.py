@@ -9,7 +9,7 @@ from funsor.affine import extract_affine, is_affine
 from funsor.cnf import Contraction
 from funsor.domains import Bint, Real, Reals  # noqa: F401
 from funsor.tensor import Einsum, Tensor
-from funsor.terms import Number, Unary, Variable
+from funsor.terms import Finitary, Number, Unary, Variable
 from funsor.testing import (
     assert_close,
     check_funsor,
@@ -117,7 +117,7 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 def test_extract_affine(expr):
     x = eval(expr)
     assert is_affine(x)
-    assert isinstance(x, (Unary, Contraction, Einsum))
+    assert isinstance(x, (Unary, Contraction, Finitary))
     real_inputs = OrderedDict((k, d) for k, d in x.inputs.items() if d.dtype == "real")
 
     const, coeffs = extract_affine(x)
