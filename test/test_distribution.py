@@ -639,7 +639,7 @@ def test_mvn_affine_einsum():
     data = dict(x=Tensor(randn(2, 2)), y=Tensor(randn(())))
     with lazy:
         d = to_funsor(random_mvn((), 3), Real)
-        d = d(value=Einsum("abc,bc->a", c, x) + y)
+        d = d(value=Einsum("abc,bc->a", (c, x)) + y)
     _check_mvn_affine(d, data)
 
 
