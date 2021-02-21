@@ -108,4 +108,11 @@ if PROFILE:
         print("-" * 80)
 
 
-__all__ = ["DEBUG", "PROFILE", "STACK_SIZE", "debug_logged", "get_indent", "profile"]
+__all__ = [
+    "DEBUG",
+    "PROFILE",
+    "STACK_SIZE",
+    "debug_logged",
+    "get_indent",
+    "profile",
+]

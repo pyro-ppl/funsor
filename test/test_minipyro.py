@@ -36,9 +36,8 @@ def Vindex(x):
 
 def _check_loss_and_grads(expected_loss, actual_loss, atol=1e-4, rtol=1e-4):
     # copied from pyro
-    expected_loss, actual_loss = (
-        funsor.to_data(expected_loss),
-        funsor.to_data(actual_loss),
+    expected_loss, actual_loss = funsor.to_data(expected_loss), funsor.to_data(
+        actual_loss
     )
     assert ops.allclose(actual_loss, expected_loss, atol=atol, rtol=rtol)
     names = pyro.get_param_store().keys()
@@ -302,7 +301,11 @@ def test_constraints(backend, jit):
 
 
 @pytest.mark.parametrize(
-    "backend", ["pyro", xfail_param("funsor", reason="missing patterns")]
+    "backend",
+    [
+        "pyro",
+        xfail_param("funsor", reason="missing patterns"),
+    ],
 )
 def test_mean_field_ok(backend):
     def model():
@@ -320,7 +323,11 @@ def test_mean_field_ok(backend):
 
 
 @pytest.mark.parametrize(
-    "backend", ["pyro", xfail_param("funsor", reason="missing patterns")]
+    "backend",
+    [
+        "pyro",
+        xfail_param("funsor", reason="missing patterns"),
+    ],
 )
 def test_mean_field_warn(backend):
     def model():

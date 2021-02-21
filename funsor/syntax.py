@@ -59,7 +59,12 @@ class OpTransformer(ast.NodeTransformer):
         var = self.prefix.get(type(node.op))
         if var is not None:
             node = ast.Call(
-                func=ast.Name(id=var, ctx=ast.Load()), args=[node.operand], keywords=[]
+                func=ast.Name(
+                    id=var,
+                    ctx=ast.Load(),
+                ),
+                args=[node.operand],
+                keywords=[],
             )
         return node
 
@@ -68,7 +73,10 @@ class OpTransformer(ast.NodeTransformer):
         var = self.infix.get(type(node.op))
         if var is not None:
             node = ast.Call(
-                func=ast.Name(id=var, ctx=ast.Load()),
+                func=ast.Name(
+                    id=var,
+                    ctx=ast.Load(),
+                ),
                 args=[node.left, node.right],
                 keywords=[],
             )
@@ -90,7 +98,10 @@ class OpTransformer(ast.NodeTransformer):
         var = self.infix.get(type(node_op))
         if var is not None:
             node = ast.Call(
-                func=ast.Name(id=var, ctx=ast.Load()),
+                func=ast.Name(
+                    id=var,
+                    ctx=ast.Load(),
+                ),
                 args=[node.left, node_right],
                 keywords=[],
             )
@@ -161,4 +172,8 @@ def rewrite_ops(infix={}, prefix={}, const={}):
     return decorator
 
 
-__all__ = ["INFIX_OPERATORS", "PREFIX_OPERATORS", "rewrite_ops"]
+__all__ = [
+    "INFIX_OPERATORS",
+    "PREFIX_OPERATORS",
+    "rewrite_ops",
+]

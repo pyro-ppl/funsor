@@ -114,9 +114,9 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             n for n, p in expected.terms
         )
         actual = actual.align(tuple(n for n, p in expected.terms))
-        for (
-            (actual_name, (actual_point, actual_log_density)),
-            (expected_name, (expected_point, expected_log_density)),
+        for (actual_name, (actual_point, actual_log_density)), (
+            expected_name,
+            (expected_point, expected_log_density),
         ) in zip(actual.terms, expected.terms):
             assert actual_name == expected_name
             assert_close(actual_point, expected_point, atol=atol, rtol=rtol)

@@ -40,4 +40,6 @@ class MemoizeInterpretation(Interpretation):
         return value
 
 
-__all__ = ["memoize"]
+__all__ = [
+    "memoize",
+]

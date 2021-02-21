@@ -52,7 +52,10 @@ unpack_gate_rate_1 = unpack_gate_rate[1].fn
 
 @pytest.mark.parametrize(
     "analytic_kl",
-    [False, xfail_param(True, reason="missing pattern")],
+    [
+        False,
+        xfail_param(True, reason="missing pattern"),
+    ],
     ids=["monte-carlo-kl", "analytic-kl"],
 )
 def test_bart(analytic_kl):
@@ -93,7 +96,16 @@ def test_bart(analytic_kl):
                                 ],
                                 dtype=torch.float32,
                             ),  # noqa
-                            (("time_b4", Bint[2]), ("_event_1_b2", Bint[8])),
+                            (
+                                (
+                                    "time_b4",
+                                    Bint[2],
+                                ),
+                                (
+                                    "_event_1_b2",
+                                    Bint[8],
+                                ),
+                            ),
                             "real",
                         ),
                         Gaussian(
@@ -148,9 +160,18 @@ def test_bart(analytic_kl):
                                 dtype=torch.float32,
                             ),  # noqa
                             (
-                                ("time_b4", Bint[2]),
-                                ("_event_1_b2", Bint[8]),
-                                ("value_b1", Real),
+                                (
+                                    "time_b4",
+                                    Bint[2],
+                                ),
+                                (
+                                    "_event_1_b2",
+                                    Bint[8],
+                                ),
+                                (
+                                    "value_b1",
+                                    Real,
+                                ),
                             ),
                         ),
                     ),
@@ -220,8 +241,14 @@ def test_bart(analytic_kl):
                                     dtype=torch.float32,
                                 ),  # noqa
                                 (
-                                    ("state_b7", Reals[2]),
-                                    ("state(time=1)_b8", Reals[2]),
+                                    (
+                                        "state_b7",
+                                        Reals[2],
+                                    ),
+                                    (
+                                        "state(time=1)_b8",
+                                        Reals[2],
+                                    ),
                                 ),
                             ),
                             Subs(
@@ -281,7 +308,12 @@ def test_bart(analytic_kl):
                                             ],
                                             dtype=torch.float32,
                                         ),  # noqa
-                                        (("time_b9", Bint[2]),),
+                                        (
+                                            (
+                                                "time_b9",
+                                                Bint[2],
+                                            ),
+                                        ),
                                         "real",
                                     ),
                                     Tensor(
@@ -310,7 +342,12 @@ def test_bart(analytic_kl):
                                             ],
                                             dtype=torch.float32,
                                         ),  # noqa
-                                        (("time_b9", Bint[2]),),
+                                        (
+                                            (
+                                                "time_b9",
+                                                Bint[2],
+                                            ),
+                                        ),
                                         "real",
                                     ),
                                     Variable("state(time=1)_b8", Reals[2]),
@@ -352,7 +389,12 @@ def test_bart(analytic_kl):
                         ),
                         Variable("value_b5", Reals[2]),
                     ),
-                    (("value_b5", Variable("state_b10", Reals[2])),),
+                    (
+                        (
+                            "value_b5",
+                            Variable("state_b10", Reals[2]),
+                        ),
+                    ),
                 ),
             ),
         )
@@ -449,9 +491,18 @@ def test_bart(analytic_kl):
                                             dtype=torch.float32,
                                         ),  # noqa
                                         (
-                                            ("time_b17", Bint[2]),
-                                            ("origin_b15", Bint[2]),
-                                            ("destin_b16", Bint[2]),
+                                            (
+                                                "time_b17",
+                                                Bint[2],
+                                            ),
+                                            (
+                                                "origin_b15",
+                                                Bint[2],
+                                            ),
+                                            (
+                                                "destin_b16",
+                                                Bint[2],
+                                            ),
                                         ),
                                         "real",
                                     ),
@@ -476,9 +527,18 @@ def test_bart(analytic_kl):
                                             dtype=torch.float32,
                                         ),  # noqa
                                         (
-                                            ("time_b17", Bint[2]),
-                                            ("origin_b15", Bint[2]),
-                                            ("destin_b16", Bint[2]),
+                                            (
+                                                "time_b17",
+                                                Bint[2],
+                                            ),
+                                            (
+                                                "origin_b15",
+                                                Bint[2],
+                                            ),
+                                            (
+                                                "destin_b16",
+                                                Bint[2],
+                                            ),
                                         ),
                                         "real",
                                     ),
