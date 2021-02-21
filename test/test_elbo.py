@@ -7,10 +7,10 @@ import pytest
 
 from funsor import ops
 from funsor.domains import Bint, Real
+from funsor.elbo import Elbo
 from funsor.integrate import Integrate
 from funsor.interpretations import normalize
 from funsor.interpreter import reinterpret
-from funsor.jensen import Jensen
 from funsor.montecarlo import MonteCarlo
 from funsor.terms import Variable
 from funsor.testing import assert_close, random_gaussian
@@ -23,7 +23,7 @@ def test_simple():
 
     expected = Integrate(guide, model - guide, approx_vars)
 
-    with Jensen(guide, approx_vars):
+    with Elbo(guide, approx_vars):
         actual = model.reduce(ops.logaddexp, approx_vars)
 
     assert_close(actual, expected)
@@ -35,9 +35,9 @@ def test_monte_carlo():
     guide = random_gaussian(OrderedDict(x=Real))
     approx_vars = frozenset({Variable("x", Real)})
 
-    with Jensen(guide, approx_vars):
+    with Elbo(guide, approx_vars):
         expected = model.reduce(ops.logaddexp, approx_vars)
-    with MonteCarlo(particles=Bint[10000]), Jensen(guide, approx_vars):
+    with MonteCarlo(particles=Bint[10000]), Elbo(guide, approx_vars):
         actual = model.reduce(ops.logaddexp, approx_vars)
 
     assert_close(actual, expected, atol=0.1)
@@ -64,7 +64,7 @@ def test_complex():
 
     expected = Integrate(guide, model - guide, approx_vars)
 
-    with Jensen(guide, approx_vars):
+    with Elbo(guide, approx_vars):
         actual = model.reduce(ops.logaddexp, approx_vars)
 
     # Reinterpret to ensure Integrate is evaluated.

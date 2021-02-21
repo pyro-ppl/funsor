@@ -25,9 +25,9 @@ Monte Carlo
     :show-inheritance:
     :member-order: bysource
 
-Jensen's Inequality
--------------------
-.. automodule:: funsor.jensen
+Evidence Lower Bound
+--------------------
+.. automodule:: funsor.elbo
     :members:
     :undoc-members:
     :show-inheritance:
