@@ -184,7 +184,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         params, value = params[:-1], params[-1]
         params = params + (Variable("value", value.output),)
         instance = reflect.interpret(cls, *params)
-        raw_dist, value_name, value_output, dim_to_name = instance._get_raw_dist()
+        (raw_dist, value_name, value_output, dim_to_name) = instance._get_raw_dist()
         assert value.output == value_output
         name_to_dim = {v: k for k, v in dim_to_name.items()}
         dim_to_name.update(
@@ -379,7 +379,7 @@ def make_dist(
     dist_class = DistributionMeta(
         backend_dist_class.__name__.split("Wrapper_")[-1],
         (Distribution,),
-        {"dist_class": backend_dist_class, "__init__": dist_init,},
+        {"dist_class": backend_dist_class, "__init__": dist_init},
     )
 
     if generate_eager:

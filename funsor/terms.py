@@ -1520,7 +1520,7 @@ class Cat(Funsor, metaclass=CatMeta):
                 n -= size
             assert False
         elif isinstance(value, Slice):
-            start, stop, step = value.slice.start, value.slice.stop, value.slice.step
+            start, stop, step = (value.slice.start, value.slice.stop, value.slice.step)
             new_parts = []
             pos = 0
             for part in self.parts:

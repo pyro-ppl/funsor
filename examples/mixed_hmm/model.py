@@ -24,10 +24,7 @@ class Guide(object):
     def initialize_params(self):
 
         # dictionary of guide random effect parameters
-        params = {
-            "eps_g": {},
-            "eps_i": {},
-        }
+        params = {"eps_g": {}, "eps_i": {}}
 
         N_state = self.config["sizes"]["state"]
 
@@ -153,8 +150,7 @@ class Model(object):
             )
 
             params["eps_g"]["scale"] = Tensor(
-                torch.ones((N_state, N_state)),
-                OrderedDict([("y_prev", Bint[N_state])]),
+                torch.ones((N_state, N_state)), OrderedDict([("y_prev", Bint[N_state])])
             )
 
         # initialize individual-level random effect parameters
@@ -164,7 +160,7 @@ class Model(object):
             params["e_i"]["probs"] = Tensor(
                 pyro.param(
                     "probs_e_i",
-                    lambda: torch.randn((N_c, N_v,)).abs(),
+                    lambda: torch.randn((N_c, N_v)).abs(),
                     constraint=constraints.simplex,
                 ),
                 OrderedDict([("g", Bint[N_c])]),  # different value per group
@@ -324,7 +320,7 @@ class Model(object):
 
         # initialize gamma to uniform
         gamma = Tensor(
-            torch.zeros((N_state, N_state)), OrderedDict([("y_prev", Bint[N_state])]),
+            torch.zeros((N_state, N_state)), OrderedDict([("y_prev", Bint[N_state])])
         )
 
         N_v = self.config["sizes"]["random"]

@@ -25,7 +25,7 @@ def main(args):
     )
     trans_noise = funsor.Tensor(
         torch.tensor(
-            [0.1, 1.0,],  # low noise component  # high noisy component
+            [0.1, 1.0],  # low noise component  # high noisy component
             requires_grad=True,
         )
     )

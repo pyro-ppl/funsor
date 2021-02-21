@@ -779,9 +779,4 @@ def eager_neg(op, arg):
     return Gaussian(info_vec, precision, arg.inputs)
 
 
-__all__ = [
-    "BlockMatrix",
-    "BlockVector",
-    "Gaussian",
-    "align_gaussian",
-]
+__all__ = ["BlockMatrix", "BlockVector", "Gaussian", "align_gaussian"]

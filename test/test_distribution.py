@@ -1459,7 +1459,7 @@ def test_power_transform(shape):
 @pytest.mark.parametrize("shape", [(10,), (4, 3)], ids=str)
 @pytest.mark.parametrize(
     "to_event",
-    [True, xfail_param(False, reason="bug in to_funsor(TransformedDistribution)"),],
+    [True, xfail_param(False, reason="bug in to_funsor(TransformedDistribution)")],
 )
 def test_haar_transform(shape, to_event):
     try:

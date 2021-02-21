@@ -40,6 +40,4 @@ def monte_carlo_integrate(state, log_measure, integrand, reduced_vars):
     return Integrate(sample, integrand, reduced_vars)
 
 
-__all__ = [
-    "MonteCarlo",
-]
+__all__ = ["MonteCarlo"]

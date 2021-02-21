@@ -576,12 +576,10 @@ def test_reduce_logsumexp(int_inputs, real_inputs):
     )
 
 
-@pytest.mark.parametrize(
-    "int_inputs", [{}, {"i": Bint[2]},], ids=id_from_inputs,
-)
+@pytest.mark.parametrize("int_inputs", [{}, {"i": Bint[2]}], ids=id_from_inputs)
 @pytest.mark.parametrize(
     "real_inputs",
-    [{"x": Real}, {"x": Reals[4]}, {"x": Reals[2, 3]},],
+    [{"x": Real}, {"x": Reals[4]}, {"x": Reals[2, 3]}],
     ids=id_from_inputs,
 )
 def test_integrate_variable(int_inputs, real_inputs):

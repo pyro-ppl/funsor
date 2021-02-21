@@ -18,7 +18,7 @@ del _  # flake8
 
 
 @adjoint_ops.register(
-    Tensor, AssociativeOp, AssociativeOp, Funsor, (DeviceArray, Tracer), tuple, object,
+    Tensor, AssociativeOp, AssociativeOp, Funsor, (DeviceArray, Tracer), tuple, object
 )
 def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
     return {}

@@ -302,7 +302,7 @@ def test_constraints(backend, jit):
 
 
 @pytest.mark.parametrize(
-    "backend", ["pyro", xfail_param("funsor", reason="missing patterns"),],
+    "backend", ["pyro", xfail_param("funsor", reason="missing patterns")]
 )
 def test_mean_field_ok(backend):
     def model():
@@ -320,7 +320,7 @@ def test_mean_field_ok(backend):
 
 
 @pytest.mark.parametrize(
-    "backend", ["pyro", xfail_param("funsor", reason="missing patterns"),],
+    "backend", ["pyro", xfail_param("funsor", reason="missing patterns")]
 )
 def test_mean_field_warn(backend):
     def model():

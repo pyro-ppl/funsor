@@ -186,7 +186,7 @@ for batch_shape in [(), (5,), (2, 3)]:
 
     # Chi2
     DistTestCase(
-        "dist.Chi2(df=case.df)", (("df", f"rand({batch_shape})"),), funsor.Real,
+        "dist.Chi2(df=case.df)", (("df", f"rand({batch_shape})"),), funsor.Real
     )
 
     # ContinuousBernoulli
@@ -368,9 +368,7 @@ for batch_shape in [(), (5,), (2, 3)]:
 
     # Poisson
     DistTestCase(
-        "dist.Poisson(rate=case.rate)",
-        (("rate", f"rand({batch_shape})"),),
-        funsor.Real,
+        "dist.Poisson(rate=case.rate)", (("rate", f"rand({batch_shape})"),), funsor.Real
     )
 
     # RelaxedBernoulli

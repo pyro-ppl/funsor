@@ -142,7 +142,7 @@ def test_affine_subs():
                 ],
                 dtype=torch.float32,
             ),  # noqa
-            (("state_1_b6", Reals[3],), ("obs_b2", Reals[2],),),
+            (("state_1_b6", Reals[3]), ("obs_b2", Reals[2])),
         ),
         (
             (

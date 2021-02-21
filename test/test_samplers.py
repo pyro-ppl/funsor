@@ -37,17 +37,17 @@ if get_backend() != "numpy":
 
 @pytest.mark.parametrize(
     "sample_inputs",
-    [(), (("s", Bint[6]),), (("s", Bint[6]), ("t", Bint[7])),],
+    [(), (("s", Bint[6]),), (("s", Bint[6]), ("t", Bint[7]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
     "batch_inputs",
-    [(), (("b", Bint[4]),), (("b", Bint[4]), ("c", Bint[5])),],
+    [(), (("b", Bint[4]),), (("b", Bint[4]), ("c", Bint[5]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
     "event_inputs",
-    [(("e", Bint[2]),), (("e", Bint[2]), ("f", Bint[3])),],
+    [(("e", Bint[2]),), (("e", Bint[2]), ("f", Bint[3]))],
     ids=id_from_inputs,
 )
 def test_tensor_shape(sample_inputs, batch_inputs, event_inputs):
@@ -81,18 +81,16 @@ def test_tensor_shape(sample_inputs, batch_inputs, event_inputs):
 
 @pytest.mark.parametrize(
     "sample_inputs",
-    [(), (("s", Bint[3]),), (("s", Bint[3]), ("t", Bint[4])),],
+    [(), (("s", Bint[3]),), (("s", Bint[3]), ("t", Bint[4]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
     "batch_inputs",
-    [(), (("b", Bint[2]),), (("c", Real),), (("b", Bint[2]), ("c", Real)),],
+    [(), (("b", Bint[2]),), (("c", Real),), (("b", Bint[2]), ("c", Real))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
-    "event_inputs",
-    [(("e", Real),), (("e", Real), ("f", Reals[2])),],
-    ids=id_from_inputs,
+    "event_inputs", [(("e", Real),), (("e", Real), ("f", Reals[2]))], ids=id_from_inputs
 )
 def test_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
     be_inputs = OrderedDict(batch_inputs + event_inputs)
@@ -132,18 +130,16 @@ def test_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
 
 @pytest.mark.parametrize(
     "sample_inputs",
-    [(), (("s", Bint[3]),), (("s", Bint[3]), ("t", Bint[4])),],
+    [(), (("s", Bint[3]),), (("s", Bint[3]), ("t", Bint[4]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
     "batch_inputs",
-    [(), (("b", Bint[2]),), (("c", Real),), (("b", Bint[2]), ("c", Real)),],
+    [(), (("b", Bint[2]),), (("c", Real),), (("b", Bint[2]), ("c", Real))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
-    "event_inputs",
-    [(("e", Real),), (("e", Real), ("f", Reals[2])),],
-    ids=id_from_inputs,
+    "event_inputs", [(("e", Real),), (("e", Real), ("f", Reals[2]))], ids=id_from_inputs
 )
 def test_transformed_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
     be_inputs = OrderedDict(batch_inputs + event_inputs)
@@ -191,17 +187,17 @@ def test_transformed_gaussian_shape(sample_inputs, batch_inputs, event_inputs):
 
 @pytest.mark.parametrize(
     "sample_inputs",
-    [(), (("s", Bint[6]),), (("s", Bint[6]), ("t", Bint[7])),],
+    [(), (("s", Bint[6]),), (("s", Bint[6]), ("t", Bint[7]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
     "int_event_inputs",
-    [(), (("d", Bint[2]),), (("d", Bint[2]), ("e", Bint[3])),],
+    [(), (("d", Bint[2]),), (("d", Bint[2]), ("e", Bint[3]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
     "real_event_inputs",
-    [(("g", Real),), (("g", Real), ("h", Reals[4])),],
+    [(("g", Real),), (("g", Real), ("h", Reals[4]))],
     ids=id_from_inputs,
 )
 def test_joint_shape(sample_inputs, int_event_inputs, real_event_inputs):
@@ -243,12 +239,12 @@ def test_joint_shape(sample_inputs, int_event_inputs, real_event_inputs):
 
 @pytest.mark.parametrize(
     "batch_inputs",
-    [(), (("b", Bint[4]),), (("b", Bint[2]), ("c", Bint[2])),],
+    [(), (("b", Bint[4]),), (("b", Bint[2]), ("c", Bint[2]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
     "event_inputs",
-    [(("e", Bint[3]),), (("e", Bint[2]), ("f", Bint[2])),],
+    [(("e", Bint[3]),), (("e", Bint[2]), ("f", Bint[2]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize("test_grad", [False, True], ids=["value", "grad"])
@@ -271,7 +267,7 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
 
         _, (p_data, mq_data) = align_tensors(p, mq)
         assert p_data.shape == mq_data.shape
-        return (ops.exp(mq_data) * probe).sum() - (ops.exp(p_data) * probe).sum(), mq
+        return ((ops.exp(mq_data) * probe).sum() - (ops.exp(p_data) * probe).sum(), mq)
 
     if test_grad:
         if get_backend() == "jax":
@@ -294,13 +290,11 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
 
 @pytest.mark.parametrize(
     "batch_inputs",
-    [(), (("b", Bint[3]),), (("b", Bint[3]), ("c", Bint[4])),],
+    [(), (("b", Bint[3]),), (("b", Bint[3]), ("c", Bint[4]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
-    "event_inputs",
-    [(("e", Real),), (("e", Real), ("f", Reals[2])),],
-    ids=id_from_inputs,
+    "event_inputs", [(("e", Real),), (("e", Real), ("f", Reals[2]))], ids=id_from_inputs
 )
 def test_gaussian_distribution(event_inputs, batch_inputs):
     num_samples = 100000
@@ -336,12 +330,12 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
 
 @pytest.mark.parametrize(
     "batch_inputs",
-    [(), (("b", Bint[3]),), (("b", Bint[3]), ("c", Bint[2])),],
+    [(), (("b", Bint[3]),), (("b", Bint[3]), ("c", Bint[2]))],
     ids=id_from_inputs,
 )
 @pytest.mark.parametrize(
     "event_inputs",
-    [(("e", Real), ("f", Bint[3])), (("e", Reals[2]), ("f", Bint[2])),],
+    [(("e", Real), ("f", Bint[3])), (("e", Reals[2]), ("f", Bint[2]))],
     ids=id_from_inputs,
 )
 def test_gaussian_mixture_distribution(batch_inputs, event_inputs):

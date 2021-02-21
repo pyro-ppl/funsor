@@ -201,7 +201,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     ids=lambda d: ",".join(d.keys()),
 )
 @pytest.mark.parametrize(
-    "impl", [sequential_sum_product, naive_sequential_sum_product, MarkovProduct,],
+    "impl", [sequential_sum_product, naive_sequential_sum_product, MarkovProduct]
 )
 def test_sequential_sum_product_adjoint(
     impl, sum_op, prod_op, batch_inputs, state_domain, num_steps

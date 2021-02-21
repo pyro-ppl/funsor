@@ -169,10 +169,10 @@ def test_nested_einsum_complete_sharing(
     eqn1, eqn2, einsum_impl1, einsum_impl2, backend1, backend2
 ):
 
-    inputs1, outputs1, sizes1, operands1, funsor_operands1 = make_einsum_example(
+    (inputs1, outputs1, sizes1, operands1, funsor_operands1) = make_einsum_example(
         eqn1, sizes=(3,)
     )
-    inputs2, outputs2, sizes2, operands2, funsor_operands2 = make_einsum_example(
+    (inputs2, outputs2, sizes2, operands2, funsor_operands2) = make_einsum_example(
         eqn2, sizes=(3,)
     )
 
