@@ -18,7 +18,7 @@ from multipledispatch.variadic import isvariadic
 @functools.singledispatch
 def deep_type(obj):
     """
-    An enhanced version of :func:`type` that reconstructs structured ``typing`` types
+    An enhanced version of :func:`type` that reconstructs structured :mod:`typing`` types
     for a limited set of immutable data structures, notably ``tuple`` and ``frozenset``.
     Mostly intended for internal use in Funsor interpretation pattern-matching.
 
@@ -59,7 +59,7 @@ def register_subclasscheck(cls):
     Decorator for registering a custom ``__subclasscheck__`` method for ``cls``
     which is only ever invoked in :func:`deep_issubclass`.
 
-    This is primarily intended for working with the `typing` library at runtime.
+    This is primarily intended for working with the :mod:`typing` library at runtime.
     Prefer overriding ``__subclasscheck__`` in the usual way with a metaclass
     where possible.
     """
@@ -78,14 +78,14 @@ def _subclasscheck_any(cls, subcls):
 
 @register_subclasscheck(typing.Union)
 def _subclasscheck_union(cls, subcls):
-    """A basic ``__subclasscheck__`` method for :class:`typing.Union`."""
+    """A basic ``__subclasscheck__`` method for :class:`~typing.Union`."""
     return any(deep_issubclass(subcls, arg) for arg in get_args(cls))
 
 
 @register_subclasscheck(frozenset)
 @register_subclasscheck(typing.FrozenSet)
 def _subclasscheck_frozenset(cls, subcls):
-    """A basic ``__subclasscheck__`` method for :class:`typing.FrozenSet`."""
+    """A basic ``__subclasscheck__`` method for :class:`~typing.FrozenSet`."""
 
     if not issubclass(get_origin(subcls), frozenset):
         return False
@@ -106,7 +106,7 @@ def _subclasscheck_frozenset(cls, subcls):
 @register_subclasscheck(tuple)
 @register_subclasscheck(typing.Tuple)
 def _subclasscheck_tuple(cls, subcls):
-    """A basic ``__subclasscheck__`` method for :class:`typing.Tuple`."""
+    """A basic ``__subclasscheck__`` method for :class:`~typing.Tuple`."""
 
     if not issubclass(get_origin(subcls), get_origin(cls)):
         return False
@@ -138,10 +138,11 @@ def _subclasscheck_tuple(cls, subcls):
 def deep_issubclass(subcls, cls):
     """
     Enhanced version of :func:`issubclass` that can handle structured types,
-    including Funsor terms, :class:`typing.Tuple`s, and :class:`typing.FrozenSet`s.
+    including Funsor terms, :class:`~typing.Tuple`, and :class:`~typing.FrozenSet`.
 
-    Does not support :class:`typing.TypeVar`s, arbitrary :class:`typing.Generic`s,
-    forward references, or mutable collection types like :class:`typing.List`.
+    Does not support more advanced :mod:`typing` features such as
+    :class:`~typing.TypeVar`, arbitrary :class:`~typing.Generic` subtypes,
+    forward references, or mutable collection types like :class:`~typing.List`.
     Will attempt to fall back to :func:`issubclass` when it encounters a type in
     ``subcls`` or ``cls`` that it does not understand.
 
@@ -184,12 +185,12 @@ def deep_issubclass(subcls, cls):
 
 def deep_isinstance(obj, cls):
     """
-    Enhanced version of :func:`isinstance` that can handle basic structured ``typing`` types,
-    including Funsor terms and other :class:`GenericTypeMeta` instances,
-    :class:`typing.Union`s, :class:`typing.Tuple`s, and :class:`typing.FrozenSet`s.
+    Enhanced version of :func:`isinstance` that can handle basic structured :mod:`typing` types,
+    including Funsor terms and other :class:`~funsor.typing.GenericTypeMeta` instances,
+    :class:`~typing.Union`, :class:`~typing.Tuple`, and :class:`~typing.FrozenSet`.
 
-    Does not support :class:`typing.TypeVar`s, arbitrary :class:`typing.Generic`s,
-    forward references, or mutable generic collection types like :class:`typing.List`.
+    Does not support :class:`~typing.TypeVar`, arbitrary :class:`~typing.Generic`,
+    forward references, or mutable generic collection types like :class:`~typing.List`.
     Will attempt to fall back to :func:`isinstance` when it encounters
     an unsupported type in ``obj`` or ``cls``.
 
@@ -254,7 +255,7 @@ def get_type_hints(obj, globalns=None, localns=None, **kwargs):
 
 class GenericTypeMeta(type):
     """
-    Metaclass to support subtyping with parameters for pattern matching, e.g. Number[int, int].
+    Metaclass to support subtyping with parameters for pattern matching, e.g. ``Number[int, int]``.
     """
 
     def __init__(cls, name, bases, dct):
@@ -331,7 +332,7 @@ class _RuntimeSubclassCheckMeta(GenericTypeMeta):
 
 class typing_wrap(metaclass=_RuntimeSubclassCheckMeta):
     """
-    Utility callable for overriding the runtime behavior of `typing` objects.
+    Utility callable for overriding the runtime behavior of :mod:`typing` objects.
     """
 
     pass
@@ -346,7 +347,7 @@ class _DeepVariadicSignatureType(type):
 
 class Variadic(metaclass=_DeepVariadicSignatureType):
     """
-    A typing-compatible drop-in replacement for :class:`multipledispatch.variadic.Variadic`.
+    A typing-compatible drop-in replacement for :class:`~multipledispatch.variadic.Variadic`.
     """
 
     pass
