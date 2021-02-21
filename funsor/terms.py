@@ -303,7 +303,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return tuple(
             v
             if isinstance(v, Funsor) and not set(self.bound).intersection(v.inputs)
-            else substitute(v, alpha_subs)
+            else reflect(substitute)(v, alpha_subs)
             for v in self._ast_values
         )
 
