@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/pyro-ppl/funsor.svg?branch=master)](https://travis-ci.com/pyro-ppl/funsor)
+[![Build Status](https://github.com/pyro-ppl/funsor/workflows/CI/badge.svg)](https://github.com/pyro-ppl/funsor/actions)
 [![Latest Version](https://badge.fury.io/py/funsor.svg)](https://pypi.python.org/pypi/funsor)
 [![Documentation Status](https://readthedocs.org/projects/funsor/badge)](http://funsor.readthedocs.io)
 

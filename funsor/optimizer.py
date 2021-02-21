@@ -3,23 +3,24 @@
 
 import collections
 
-from multipledispatch.variadic import Variadic
 from opt_einsum.paths import greedy
 
 import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, nullop
+from funsor.interpretations import (
+    DispatchedInterpretation,
+    PrioritizedInterpretation,
+    eager,
+    lazy,
+    normalize_base,
+)
+from funsor.interpreter import get_interpretation
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
-from funsor.terms import Funsor, eager, lazy, normalize
+from funsor.terms import Funsor
+from funsor.typing import Variadic
 
-
-@interpreter.dispatched_interpretation
-def unfold(cls, *args):
-    result = unfold.dispatch(cls, *args)(*args)
-    if result is None:
-        result = normalize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = lazy(cls, *args)
-    return result
+unfold_base = DispatchedInterpretation()
+unfold = PrioritizedInterpretation(unfold_base, normalize_base, lazy)
 
 
 @unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
@@ -33,41 +34,55 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
         if v.red_op is nullop and (v.bin_op, bin_op) in DISTRIBUTIVE_OPS:
             # a * e * (b + c + d) -> (a * e * b) + (a * e * c) + (a * e * d)
             new_terms = tuple(
-                Contraction(v.red_op, bin_op, v.reduced_vars, *(terms[:i] + (vt,) + terms[i+1:]))
-                for vt in v.terms)
+                Contraction(
+                    v.red_op,
+                    bin_op,
+                    v.reduced_vars,
+                    *(terms[:i] + (vt,) + terms[i + 1 :])
+                )
+                for vt in v.terms
+            )
             return Contraction(red_op, v.bin_op, reduced_vars, *new_terms)
 
         if red_op in (v.red_op, nullop) and (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
-            new_terms = terms[:i] + (Contraction(v.red_op, v.bin_op, frozenset(), *v.terms),) + terms[i+1:]
-            return Contraction(v.red_op, bin_op, v.reduced_vars, *new_terms).reduce(red_op, reduced_vars)
+            new_terms = (
+                terms[:i]
+                + (Contraction(v.red_op, v.bin_op, frozenset(), *v.terms),)
+                + terms[i + 1 :]
+            )
+            return Contraction(v.red_op, bin_op, v.reduced_vars, *new_terms).reduce(
+                red_op, reduced_vars
+            )
 
         if v.red_op in (red_op, nullop) and bin_op in (v.bin_op, nullop):
             red_op = v.red_op if red_op is nullop else red_op
             bin_op = v.bin_op if bin_op is nullop else bin_op
-            new_terms = terms[:i] + v.terms + terms[i+1:]
-            return Contraction(red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms)
+            new_terms = terms[:i] + v.terms + terms[i + 1 :]
+            return Contraction(
+                red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms
+            )
 
     return None
 
 
-unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])(
-    lambda r, b, v, *ts: unfold(Contraction, r, b, v, tuple(ts)))
+@unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+def unfold_contraction_variadic(r, b, v, *ts):
+    return unfold.interpret(Contraction, r, b, v, tuple(ts))
 
 
-@interpreter.dispatched_interpretation
-def optimize(cls, *args):
-    result = optimize.dispatch(cls, *args)(*args)
-    if result is None:
-        result = eager(cls, *args)
-    return result
+optimize_base = DispatchedInterpretation()
+optimize = PrioritizedInterpretation(optimize_base, eager)
 
 
 # TODO set a better value for this
 REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimizer
 
 
-optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])(
-    lambda r, b, v, *ts: optimize(Contraction, r, b, v, tuple(ts)))
+@optimize.register(
+    Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor]
+)
+def optimize_contraction_variadic(r, b, v, *ts):
+    return optimize.interpret(Contraction, r, b, v, tuple(ts))
 
 
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
@@ -84,8 +99,11 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
 
     # build opt_einsum optimizer IR
     inputs = [term.input_vars for term in terms]
-    size_dict = {k: ((REAL_SIZE * v.num_elements) if v.dtype == 'real' else v.dtype)
-                 for term in terms for k, v in term.inputs.items()}
+    size_dict = {
+        k: ((REAL_SIZE * v.num_elements) if v.dtype == "real" else v.dtype)
+        for term in terms
+        for k, v in term.inputs.items()
+    }
     outputs = frozenset().union(*inputs) - reduced_vars
 
     # optimize path with greedy opt_einsum optimizer
@@ -112,35 +130,37 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
 
         # reduce variables that don't appear in other terms
         both_vars = ta.input_vars | tb.input_vars
-        path_end_reduced_vars = frozenset(d for d in reduced_vars & both_vars
-                                          if reduce_dim_counter[d] == 0)
+        path_end_reduced_vars = frozenset(
+            d for d in reduced_vars & both_vars if reduce_dim_counter[d] == 0
+        )
 
         # count new appearance of variables that aren't reduced
-        reduce_dim_counter.update({d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)})
+        reduce_dim_counter.update(
+            {d: 1 for d in reduced_vars & (both_vars - path_end_reduced_vars)}
+        )
 
-        path_end = Contraction(red_op if path_end_reduced_vars else nullop,
-                               bin_op, path_end_reduced_vars, ta, tb)
+        path_end = Contraction(
+            red_op if path_end_reduced_vars else nullop,
+            bin_op,
+            path_end_reduced_vars,
+            ta,
+            tb,
+        )
         operands.append(path_end)
 
     # reduce any remaining dims, if necessary
-    final_reduced_vars = frozenset(d for (d, count) in reduce_dim_counter.items()
-                                   if count > 0) & reduced_vars
+    final_reduced_vars = (
+        frozenset(d for (d, count) in reduce_dim_counter.items() if count > 0)
+        & reduced_vars
+    )
     if final_reduced_vars:
         path_end = path_end.reduce(red_op, final_reduced_vars)
     return path_end
 
 
 def apply_optimizer(x):
-
-    @interpreter.interpretation(interpreter._INTERPRETATION)
-    def nested_optimize_interpreter(cls, *args):
-        result = optimize.dispatch(cls, *args)(*args)
-        if result is None:
-            result = cls(*args)
-        return result
-
-    with interpreter.interpretation(unfold):
+    with unfold:
         expr = interpreter.reinterpret(x)
 
-    with interpreter.interpretation(nested_optimize_interpreter):
+    with PrioritizedInterpretation(optimize_base, get_interpretation()):
         return interpreter.reinterpret(expr)

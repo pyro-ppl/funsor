@@ -24,9 +24,10 @@ from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Array, Bint, Real, Reals
 from funsor.gaussian import Gaussian
+from funsor.interpretations import eager
 from funsor.interpreter import gensym
 from funsor.tensor import Tensor, align_tensors
-from funsor.terms import Funsor, Independent, Variable, eager, to_data, to_funsor
+from funsor.terms import Funsor, Independent, Variable, to_data, to_funsor
 from funsor.torch.distributions import Normal
 from funsor.util import broadcast_shape
 
@@ -38,9 +39,12 @@ NAME_TO_DIM = dict(zip(DIM_TO_NAME, range(-100, 0)))
 
 def default_dim_to_name(inputs_shape, event_inputs):
     dim_to_name_list = DIM_TO_NAME + event_inputs if event_inputs else DIM_TO_NAME
-    return OrderedDict(zip(
-        range(-len(inputs_shape), 0),
-        dim_to_name_list[len(dim_to_name_list) - len(inputs_shape):]))
+    return OrderedDict(
+        zip(
+            range(-len(inputs_shape), 0),
+            dim_to_name_list[len(dim_to_name_list) - len(inputs_shape) :],
+        )
+    )
 
 
 def default_name_to_dim(event_inputs):
@@ -70,8 +74,8 @@ def tensor_to_funsor(tensor, event_inputs=(), event_output=0, dtype="real"):
     assert isinstance(tensor, torch.Tensor)
     assert isinstance(event_inputs, tuple)
     assert isinstance(event_output, int) and event_output >= 0
-    inputs_shape = tensor.shape[:tensor.dim() - event_output]
-    output = Array[dtype, tensor.shape[tensor.dim() - event_output:]]
+    inputs_shape = tensor.shape[: tensor.dim() - event_output]
+    output = Array[dtype, tensor.shape[tensor.dim() - event_output :]]
     dim_to_name = default_dim_to_name(inputs_shape, event_inputs)
     return to_funsor(tensor, output, dim_to_name)
 
@@ -110,7 +114,9 @@ def dist_to_funsor(pyro_dist, event_inputs=()):
     """
     assert isinstance(pyro_dist, torch.distributions.Distribution)
     assert isinstance(event_inputs, tuple)
-    return to_funsor(pyro_dist, Real, default_dim_to_name(pyro_dist.batch_shape, event_inputs))
+    return to_funsor(
+        pyro_dist, Real, default_dim_to_name(pyro_dist.batch_shape, event_inputs)
+    )
 
 
 def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
@@ -144,7 +150,9 @@ def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
     if len(real_inputs) == 0:
         return funsor_dist
     discrete, gaussian = funsor_dist(value="value").terms
-    inputs = OrderedDict((k, v) for k, v in gaussian.inputs.items() if v.dtype != 'real')
+    inputs = OrderedDict(
+        (k, v) for k, v in gaussian.inputs.items() if v.dtype != "real"
+    )
     inputs.update(real_inputs)
     return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
 
@@ -169,7 +177,9 @@ def funsor_to_mvn(gaussian, ndims, event_inputs=()):
     assert isinstance(gaussian, Gaussian)
     result = to_data(gaussian, name_to_dim=default_name_to_dim(event_inputs))
     if ndims != len(result.batch_shape):
-        result = result.expand((1,) * (ndims - len(result.batch_shape)) + result.batch_shape)
+        result = result.expand(
+            (1,) * (ndims - len(result.batch_shape)) + result.batch_shape
+        )
     return result
 
 
@@ -218,6 +228,7 @@ class AffineNormal(Funsor):
     :param ~funsor.terms.Funsor value_x: A value ``X``.
     :param ~funsor.terms.Funsor value_y: A value ``Y``.
     """
+
     def __init__(self, matrix, loc, scale, value_x, value_y):
         assert len(matrix.output.shape) == 2
         assert value_x.output == Reals[matrix.output.shape[0]]
@@ -266,8 +277,11 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     precision = prec_sqrt.matmul(prec_sqrt.transpose(-1, -2))
     delta = (value_y - loc) / scale
     info_vec = prec_sqrt.matmul(delta.unsqueeze(-1)).squeeze(-1)
-    log_normalizer = (-0.5 * loc.size(-1) * math.log(2 * math.pi)
-                      - 0.5 * delta.pow(2).sum(-1) - scale.log().sum(-1))
+    log_normalizer = (
+        -0.5 * loc.size(-1) * math.log(2 * math.pi)
+        - 0.5 * delta.pow(2).sum(-1)
+        - scale.log().sum(-1)
+    )
     precision = precision.expand(info_vec.shape + (-1,))
     log_normalizer = log_normalizer.expand(info_vec.shape[:-1])
     inputs = int_inputs.copy()
@@ -277,7 +291,9 @@ def eager_affine_normal(matrix, loc, scale, value_x, value_y):
     return x_dist(**{x_name: value_x})
 
 
-def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_name="value_y"):
+def matrix_and_mvn_to_funsor(
+    matrix, mvn, event_dims=(), x_name="value_x", y_name="value_y"
+):
     """
     Convert a noisy affine function to a Gaussian. The noisy affine function is
     defined as::
@@ -301,25 +317,30 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
         Bint inputs.
     :rtype: funsor.terms.Funsor
     """
-    assert (isinstance(mvn, torch.distributions.MultivariateNormal) or
-            (isinstance(mvn, torch.distributions.Independent) and
-             isinstance(mvn.base_dist, torch.distributions.Normal)))
+    assert isinstance(mvn, torch.distributions.MultivariateNormal) or (
+        isinstance(mvn, torch.distributions.Independent)
+        and isinstance(mvn.base_dist, torch.distributions.Normal)
+    )
     assert isinstance(matrix, torch.Tensor)
     x_size, y_size = matrix.shape[-2:]
     assert mvn.event_shape == (y_size,)
 
     # Handle diagonal normal distributions as an efficient special case.
     if isinstance(mvn, torch.distributions.Independent):
-        return AffineNormal(tensor_to_funsor(matrix, event_dims, 2),
-                            tensor_to_funsor(mvn.base_dist.loc, event_dims, 1),
-                            tensor_to_funsor(mvn.base_dist.scale, event_dims, 1),
-                            Variable(x_name, Reals[x_size]),
-                            Variable(y_name, Reals[y_size]))
+        return AffineNormal(
+            tensor_to_funsor(matrix, event_dims, 2),
+            tensor_to_funsor(mvn.base_dist.loc, event_dims, 1),
+            tensor_to_funsor(mvn.base_dist.scale, event_dims, 1),
+            Variable(x_name, Reals[x_size]),
+            Variable(y_name, Reals[y_size]),
+        )
 
     info_vec = mvn.loc.unsqueeze(-1).cholesky_solve(mvn.scale_tril).squeeze(-1)
-    log_prob = (-0.5 * y_size * math.log(2 * math.pi)
-                - mvn.scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
-                - 0.5 * (info_vec * mvn.loc).sum(-1))
+    log_prob = (
+        -0.5 * y_size * math.log(2 * math.pi)
+        - mvn.scale_tril.diagonal(dim1=-1, dim2=-2).log().sum(-1)
+        - 0.5 * (info_vec * mvn.loc).sum(-1)
+    )
 
     batch_shape = broadcast_shape(matrix.shape[:-2], mvn.batch_shape)
     P_yy = mvn.precision_matrix.expand(batch_shape + (y_size, y_size))
@@ -327,8 +348,9 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
     P_xy = -neg_P_xy
     P_yx = P_xy.transpose(-1, -2)
     P_xx = neg_P_xy.matmul(matrix.transpose(-1, -2))
-    precision = torch.cat([torch.cat([P_xx, P_xy], -1),
-                           torch.cat([P_yx, P_yy], -1)], -2)
+    precision = torch.cat(
+        [torch.cat([P_xx, P_xy], -1), torch.cat([P_yx, P_yy], -1)], -2
+    )
     info_y = info_vec.expand(batch_shape + (y_size,))
     info_x = -matrix.matmul(info_y.unsqueeze(-1)).squeeze(-1)
     info_vec = torch.cat([info_x, info_y], -1)
@@ -338,4 +360,6 @@ def matrix_and_mvn_to_funsor(matrix, mvn, event_dims=(), x_name="value_x", y_nam
     inputs = info_vec.inputs.copy()
     inputs[x_name] = Reals[x_size]
     inputs[y_name] = Reals[y_size]
-    return tensor_to_funsor(log_prob, event_dims) + Gaussian(info_vec.data, precision.data, inputs)
+    return tensor_to_funsor(log_prob, event_dims) + Gaussian(
+        info_vec.data, precision.data, inputs
+    )

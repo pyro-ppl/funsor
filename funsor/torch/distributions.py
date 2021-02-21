@@ -7,13 +7,17 @@ from typing import Tuple, Union
 
 import pyro.distributions as dist
 import pyro.distributions.testing.fakes as fakes
-from pyro.distributions.torch_distribution import ExpandedDistribution, MaskedDistribution
 import torch
+from pyro.distributions.torch_distribution import (
+    ExpandedDistribution,
+    MaskedDistribution,
+)
 
+import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.distribution import (  # noqa: F401
-    Bernoulli,
     FUNSOR_DIST_NAMES,
+    Bernoulli,
     LogNormal,
     backenddist_to_funsor,
     eager_beta,
@@ -24,10 +28,10 @@ from funsor.distribution import (  # noqa: F401
     eager_delta_funsor_funsor,
     eager_delta_funsor_variable,
     eager_delta_tensor,
+    eager_delta_variable_variable,
     eager_dirichlet_categorical,
     eager_dirichlet_multinomial,
     eager_dirichlet_posterior,
-    eager_delta_variable_variable,
     eager_gamma_gamma,
     eager_gamma_poisson,
     eager_multinomial,
@@ -41,11 +45,10 @@ from funsor.distribution import (  # noqa: F401
     transformeddist_to_funsor,
 )
 from funsor.domains import Real, Reals
-import funsor.ops as ops
+from funsor.interpretations import eager
 from funsor.tensor import Tensor
-from funsor.terms import Binary, Funsor, Reduce, Unary, Variable, eager, to_data, to_funsor
+from funsor.terms import Binary, Funsor, Reduce, Unary, Variable, to_data, to_funsor
 from funsor.util import methodof
-
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES)
 
@@ -85,9 +88,9 @@ class _PyroWrapper_CategoricalLogits(dist.Categorical):
 
 
 def _get_pyro_dist(dist_name):
-    if dist_name in ['BernoulliProbs', 'BernoulliLogits', 'CategoricalLogits']:
-        return globals().get('_PyroWrapper_' + dist_name)
-    elif dist_name.startswith('Nonreparameterized'):
+    if dist_name in ["BernoulliProbs", "BernoulliLogits", "CategoricalLogits"]:
+        return globals().get("_PyroWrapper_" + dist_name)
+    elif dist_name.startswith("Nonreparameterized"):
         return getattr(fakes, dist_name)
     else:
         return getattr(dist, dist_name)
@@ -112,7 +115,7 @@ for dist_name, param_names in PYRO_DIST_NAMES:
 @methodof(Delta)  # noqa: F821
 @staticmethod
 def _infer_value_domain(**kwargs):
-    return kwargs['v']
+    return kwargs["v"]
 
 
 @methodof(Categorical)  # noqa: F821
@@ -201,6 +204,7 @@ def _infer_param_domain(cls, name, raw_shape):
 # Converting distribution funsors to PyTorch distributions
 ###########################################################
 
+
 @to_data.register(Multinomial)  # noqa: F821
 def multinomial_to_data(funsor_dist, name_to_dim=None):
     probs = to_data(funsor_dist.probs, name_to_dim)
@@ -226,6 +230,11 @@ def op_to_torch_transform(op, name_to_dim=None):
 @op_to_torch_transform.register(ops.TransformOp)
 def transform_to_torch_transform(op, name_to_dim=None):
     raise NotImplementedError("{} is not a currently supported transform".format(op))
+
+
+@op_to_torch_transform.register(ops.WrappedTransformOp)
+def transform_to_torch_transform(op, name_to_dim=None):
+    return op.fn
 
 
 @op_to_torch_transform.register(ops.ExpOp)
@@ -258,7 +267,9 @@ def transform_to_data(expr, name_to_dim=None):
     if isinstance(expr.op, ops.TransformOp):
         tfm = op_to_torch_transform(expr.op, name_to_dim=name_to_dim)
         if isinstance(expr.arg, Unary):
-            tfm = torch.distributions.transforms.ComposeTransform([to_data(expr.arg, name_to_dim=name_to_dim), tfm])
+            tfm = torch.distributions.transforms.ComposeTransform(
+                [to_data(expr.arg, name_to_dim=name_to_dim), tfm]
+            )
         return tfm
     raise NotImplementedError("cannot convert to data: {}".format(expr))
 
@@ -267,9 +278,12 @@ def transform_to_data(expr, name_to_dim=None):
 # Converting PyTorch Distributions to funsors
 ###############################################
 
+
 @to_funsor.register(torch.distributions.Transform)
 def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    raise NotImplementedError("{} is not a currently supported transform".format(tfm))
+    op = ops.WrappedTransformOp(tfm)
+    name = next(real_inputs.keys()) if real_inputs else "value"
+    return op(Variable(name, output))
 
 
 @to_funsor.register(torch.distributions.transforms.ExpTransform)
@@ -292,7 +306,9 @@ def exptransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None)
 
 @to_funsor.register(torch.distributions.transforms._InverseTransform)
 def inversetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    expr = to_funsor(tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)
+    expr = to_funsor(
+        tfm._inv, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs
+    )
     assert isinstance(expr, Unary)
     return expr.op.inv(expr.arg)
 
@@ -302,25 +318,33 @@ def composetransform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=N
     name = next(real_inputs.keys()) if real_inputs else "value"
     expr = Variable(name, output)
     for part in tfm.parts:
-        expr = to_funsor(part, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs)(**{name: expr})
+        expr = to_funsor(
+            part, output=output, dim_to_name=dim_to_name, real_inputs=real_inputs
+        )(**{name: expr})
     return expr
 
 
 to_funsor.register(ExpandedDistribution)(expandeddist_to_funsor)
 to_funsor.register(torch.distributions.Independent)(indepdist_to_funsor)
 to_funsor.register(MaskedDistribution)(maskeddist_to_funsor)
-to_funsor.register(torch.distributions.TransformedDistribution)(transformeddist_to_funsor)
+to_funsor.register(torch.distributions.TransformedDistribution)(
+    transformeddist_to_funsor
+)
 
 
 @to_funsor.register(torch.distributions.Bernoulli)
 def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _PyroWrapper_BernoulliLogits(logits=pyro_dist.logits)
-    return backenddist_to_funsor(BernoulliLogits, new_pyro_dist, output, dim_to_name)  # noqa: F821
+    return backenddist_to_funsor(
+        BernoulliLogits, new_pyro_dist, output, dim_to_name
+    )  # noqa: F821
 
 
 @to_funsor.register(dist.Delta)  # Delta **distribution**
 def deltadist_to_funsor(pyro_dist, output=None, dim_to_name=None):
-    v = to_funsor(pyro_dist.v, output=Reals[pyro_dist.event_shape], dim_to_name=dim_to_name)
+    v = to_funsor(
+        pyro_dist.v, output=Reals[pyro_dist.event_shape], dim_to_name=dim_to_name
+    )
     log_density = to_funsor(pyro_dist.log_density, output=Real, dim_to_name=dim_to_name)
     return Delta(v, log_density)  # noqa: F821
 
@@ -339,23 +363,50 @@ eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: 
 eager.register(Categorical, Funsor, Tensor)(eager_categorical_funsor)  # noqa: F821)
 eager.register(Categorical, Tensor, Variable)(eager_categorical_tensor)  # noqa: F821)
 eager.register(Delta, Tensor, Tensor, Tensor)(eager_delta_tensor)  # noqa: F821
-eager.register(Delta, Funsor, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821
-eager.register(Delta, Variable, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821
+eager.register(Delta, Funsor, Funsor, Variable)(
+    eager_delta_funsor_variable
+)  # noqa: F821
+eager.register(Delta, Variable, Funsor, Variable)(
+    eager_delta_funsor_variable
+)  # noqa: F821
 eager.register(Delta, Variable, Funsor, Funsor)(eager_delta_funsor_funsor)  # noqa: F821
-eager.register(Delta, Variable, Variable, Variable)(eager_delta_variable_variable)  # noqa: F821
+eager.register(Delta, Variable, Variable, Variable)(
+    eager_delta_variable_variable
+)  # noqa: F821
 eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, BernoulliProbs)(  # noqa: F821
-    eager_beta_bernoulli)
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Categorical)(  # noqa: F821
-    eager_dirichlet_categorical)
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Multinomial)(  # noqa: F821
-    eager_dirichlet_multinomial)
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma)(  # noqa: F821
-    eager_gamma_gamma)
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson)(  # noqa: F821
-    eager_gamma_poisson)
-eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
-    eager_dirichlet_posterior)
-eager.register(Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset)(  # noqa: F821
-    eager_plate_multinomial)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, BernoulliProbs
+)(  # noqa: F821
+    eager_beta_bernoulli
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Categorical
+)(  # noqa: F821
+    eager_dirichlet_categorical
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Multinomial
+)(  # noqa: F821
+    eager_dirichlet_multinomial
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma
+)(  # noqa: F821
+    eager_gamma_gamma
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson
+)(  # noqa: F821
+    eager_gamma_poisson
+)
+eager.register(
+    Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial
+)(  # noqa: F821
+    eager_dirichlet_posterior
+)
+eager.register(
+    Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset
+)(  # noqa: F821
+    eager_plate_multinomial
+)

@@ -3,9 +3,8 @@
 
 from collections import OrderedDict
 
-import funsor.ops as ops
 from funsor.domains import Domain, Real
-from funsor.interpreter import debug_logged
+from funsor.instrument import debug_logged
 from funsor.ops import AddOp, SubOp, TransformOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import (
@@ -19,8 +18,10 @@ from funsor.terms import (
     Unary,
     Variable,
     eager,
-    to_funsor
+    to_funsor,
 )
+
+from . import ops
 
 
 def solve(expr, value):
@@ -69,11 +70,12 @@ class DeltaMeta(FunsorMeta):
     """
     Makes Delta less of a pain to use by supporting Delta(name, point, log_density)
     """
+
     def __call__(cls, *args):
         if len(args) > 1:
             assert len(args) == 2 or len(args) == 3
             assert isinstance(args[0], str) and isinstance(args[1], Funsor)
-            args = args + (Number(0.),) if len(args) == 2 else args
+            args = args + (Number(0.0),) if len(args) == 2 else args
             args = (((args[0], (to_funsor(args[1]), to_funsor(args[2]))),),)
         assert isinstance(args[0], tuple)
         return super().__call__(args[0])
@@ -83,6 +85,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
     """
     Normalized delta distribution binding multiple variables.
     """
+
     def __init__(self, terms):
         assert isinstance(terms, tuple) and len(terms) > 0
         inputs = OrderedDict()
@@ -120,8 +123,11 @@ class Delta(Funsor, metaclass=DeltaMeta):
                 new_terms[value.name] = new_terms.pop(name)
                 continue
 
-            if not any(d.dtype == 'real' for side in (value, terms[name][0])
-                       for d in side.inputs.values()):
+            if not any(
+                d.dtype == "real"
+                for side in (value, terms[name][0])
+                for d in side.inputs.values()
+            ):
                 point, point_log_density = new_terms.pop(name)
                 log_density += (value == point).all().log() + point_log_density
                 continue
@@ -134,7 +140,9 @@ class Delta(Funsor, metaclass=DeltaMeta):
             old_point, old_point_density = new_terms.pop(name)
             new_terms[new_name] = (new_point, old_point_density + point_log_density)
 
-        return Delta(tuple(new_terms.items())) + log_density if new_terms else log_density
+        return (
+            Delta(tuple(new_terms.items())) + log_density if new_terms else log_density
+        )
 
     def eager_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)
@@ -150,8 +158,11 @@ class Delta(Funsor, metaclass=DeltaMeta):
                                 return result
                 return None
 
-            result_terms = [(name, (point, log_density)) for name, (point, log_density) in self.terms
-                            if name not in reduced_vars]
+            result_terms = [
+                (name, (point, log_density))
+                for name, (point, log_density) in self.terms
+                if name not in reduced_vars
+            ]
 
             result_terms, scale = [], Number(0)
             for name, (point, log_density) in self.terms:
@@ -160,7 +171,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
                     if point.inputs:
                         scale += (point == point).all().log()
                     if log_density.inputs:
-                        scale += log_density * 0.
+                        scale += log_density * 0.0
                 else:
                     result_terms.append((name, (point, log_density)))
 
@@ -190,7 +201,13 @@ def eager_add_multidelta(op, lhs, rhs):
 @eager.register(Binary, (AddOp, SubOp), Delta, (Funsor, Align))
 def eager_add_delta_funsor(op, lhs, rhs):
     if lhs.fresh.intersection(rhs.inputs):
-        rhs = rhs(**{name: point for name, (point, log_density) in lhs.terms if name in rhs.inputs})
+        rhs = rhs(
+            **{
+                name: point
+                for name, (point, log_density) in lhs.terms
+                if name in rhs.inputs
+            }
+        )
         return op(lhs, rhs)
 
     return None  # defer to default implementation
@@ -199,7 +216,13 @@ def eager_add_delta_funsor(op, lhs, rhs):
 @eager.register(Binary, AddOp, (Funsor, Align), Delta)
 def eager_add_funsor_delta(op, lhs, rhs):
     if rhs.fresh.intersection(lhs.inputs):
-        lhs = lhs(**{name: point for name, (point, log_density) in rhs.terms if name in lhs.inputs})
+        lhs = lhs(
+            **{
+                name: point
+                for name, (point, log_density) in rhs.terms
+                if name in lhs.inputs
+            }
+        )
         return op(lhs, rhs)
 
     return None
@@ -215,13 +238,17 @@ def eager_independent_delta(delta, reals_var, bint_var, diag_var):
                 log_density = log_density.reduce(ops.add, bint_var)
             else:
                 log_density = log_density * delta.inputs[bint_var].dtype
-            new_terms = delta.terms[:i] + ((reals_var, (point, log_density)),) + delta.terms[i+1:]
+            new_terms = (
+                delta.terms[:i]
+                + ((reals_var, (point, log_density)),)
+                + delta.terms[i + 1 :]
+            )
             return Delta(new_terms)
 
     return None
 
 
 __all__ = [
-    'Delta',
-    'solve',
+    "Delta",
+    "solve",
 ]

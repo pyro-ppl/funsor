@@ -11,17 +11,22 @@ docs: FORCE
 
 lint: FORCE
 	flake8
+	black --check .
+	isort --check .
+	python scripts/update_headers.py --check
 
 license: FORCE
 	python scripts/update_headers.py
 
-format: FORCE
-	isort -y
+format: license FORCE
+	black .
+	isort .
 
 test: lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)
 	pytest -v -n auto test/
 	FUNSOR_DEBUG=1 pytest -v test/test_gaussian.py
+	FUNSOR_PROFILE=99 pytest -v test/test_einsum.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
 	python examples/discrete_hmm.py -n 2

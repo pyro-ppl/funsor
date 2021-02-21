@@ -11,7 +11,7 @@ from jax.interpreters.xla import DeviceArray
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, gammaln, logsumexp
 
-import funsor.ops as ops
+from .. import ops
 
 ################################################################################
 # Register Ops
@@ -110,8 +110,9 @@ def _einsum(equation, *operands):
 def _expand(x, shape):
     prepend_dim = len(shape) - np.ndim(x)
     assert prepend_dim >= 0
-    shape = shape[:prepend_dim] + tuple(dx if size == -1 else size
-                                        for dx, size in zip(np.shape(x), shape[prepend_dim:]))
+    shape = shape[:prepend_dim] + tuple(
+        dx if size == -1 else size for dx, size in zip(np.shape(x), shape[prepend_dim:])
+    )
     return np.broadcast_to(x, shape)
 
 
@@ -256,15 +257,20 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     x_new_shape = batch_shape[:prepend_ndim]
     for (sy, sx) in zip(y.shape[:-2], batch_shape[prepend_ndim:]):
         x_new_shape += (sx // sy, sy)
-    x_new_shape += (n, m,)
+    x_new_shape += (
+        n,
+        m,
+    )
     x = np.reshape(x, x_new_shape)
     # Permute y to make it have shape (..., 1, j, m, i, 1, n)
     batch_ndim = x.ndim - 2
-    permute_dims = (tuple(range(prepend_ndim))
-                    + tuple(range(prepend_ndim, batch_ndim, 2))
-                    + (batch_ndim + 1,)
-                    + tuple(range(prepend_ndim + 1, batch_ndim, 2))
-                    + (batch_ndim,))
+    permute_dims = (
+        tuple(range(prepend_ndim))
+        + tuple(range(prepend_ndim, batch_ndim, 2))
+        + (batch_ndim + 1,)
+        + tuple(range(prepend_ndim + 1, batch_ndim, 2))
+        + (batch_ndim,)
+    )
     x = np.transpose(x, permute_dims)
     x_permute_shape = x.shape
 
@@ -273,7 +279,9 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     # permute to (i, 1, n, -1)
     x = np.moveaxis(x, 0, -1)
 
-    sol = solve_triangular(y, x, trans=int(transpose), lower=not upper)  # shape: (i, 1, n, -1)
+    sol = solve_triangular(
+        y, x, trans=int(transpose), lower=not upper
+    )  # shape: (i, 1, n, -1)
     sol = np.moveaxis(sol, -1, 0)  # shape: (-1, i, 1, n)
     sol = np.reshape(sol, x_permute_shape)  # shape: (..., 1, j, m, i, 1, n)
 

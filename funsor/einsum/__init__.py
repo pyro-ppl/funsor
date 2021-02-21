@@ -5,7 +5,6 @@ from functools import reduce
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.interpreter import interpretation
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import sum_product
 from funsor.terms import Funsor, Variable, lazy
@@ -35,7 +34,7 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
     """
     assert "plates" not in kwargs
 
-    backend = kwargs.pop('backend', 'torch')
+    backend = kwargs.pop("backend", "torch")
     if backend in BACKEND_OPS:
         sum_op, prod_op = BACKEND_OPS[backend]
     else:
@@ -43,15 +42,16 @@ def naive_contract_einsum(eqn, *terms, **kwargs):
 
     assert isinstance(eqn, str)
     assert all(isinstance(term, Funsor) for term in terms)
-    inputs, output = eqn.split('->')
-    inputs = inputs.split(',')
+    inputs, output = eqn.split("->")
+    inputs = inputs.split(",")
     assert len(inputs) == len(terms)
-    assert len(output.split(',')) == 1
+    assert len(output.split(",")) == 1
     input_dims = frozenset(d for inp in inputs for d in inp)
     output_dims = frozenset(d for d in output)
     all_inputs = {k: v for term in terms for k, v in term.inputs.items()}
-    reduced_vars = frozenset(Variable(k, all_inputs[k])
-                             for k in input_dims - output_dims)
+    reduced_vars = frozenset(
+        Variable(k, all_inputs[k]) for k in input_dims - output_dims
+    )
     return Contraction(sum_op, prod_op, reduced_vars, *terms)
 
 
@@ -59,7 +59,7 @@ def naive_einsum(eqn, *terms, **kwargs):
     """
     Implements standard variable elimination.
     """
-    backend = kwargs.pop('backend', 'torch')
+    backend = kwargs.pop("backend", "torch")
     if backend in BACKEND_OPS:
         sum_op, prod_op = BACKEND_OPS[backend]
     else:
@@ -67,9 +67,9 @@ def naive_einsum(eqn, *terms, **kwargs):
 
     assert isinstance(eqn, str)
     assert all(isinstance(term, Funsor) for term in terms)
-    inputs, output = eqn.split('->')
-    assert len(output.split(',')) == 1
-    input_dims = frozenset(d for inp in inputs.split(',') for d in inp)
+    inputs, output = eqn.split("->")
+    assert len(output.split(",")) == 1
+    input_dims = frozenset(d for inp in inputs.split(",") for d in inp)
     output_dims = frozenset(output)
     reduce_dims = input_dims - output_dims
     return reduce(prod_op, terms).reduce(sum_op, reduce_dims)
@@ -83,11 +83,11 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
         Pradhan, N., Rush, A., and Goodman, N.  Tensor Variable Elimination for
         Plated Factor Graphs, 2019
     """
-    plates = kwargs.pop('plates', '')
+    plates = kwargs.pop("plates", "")
     if not plates:
         return naive_einsum(eqn, *terms, **kwargs)
 
-    backend = kwargs.pop('backend', 'torch')
+    backend = kwargs.pop("backend", "torch")
     if backend in BACKEND_OPS:
         sum_op, prod_op = BACKEND_OPS[backend]
     else:
@@ -95,10 +95,10 @@ def naive_plated_einsum(eqn, *terms, **kwargs):
 
     assert isinstance(eqn, str)
     assert all(isinstance(term, Funsor) for term in terms)
-    inputs, output = eqn.split('->')
-    inputs = inputs.split(',')
+    inputs, output = eqn.split("->")
+    inputs = inputs.split(",")
     assert len(inputs) == len(terms)
-    assert len(output.split(',')) == 1
+    assert len(output.split(",")) == 1
     input_dims = frozenset(d for inp in inputs for d in inp)
     output_dims = frozenset(d for d in output)
     plate_dims = frozenset(plates) - output_dims
@@ -123,6 +123,6 @@ def einsum(eqn, *terms, **kwargs):
         terms): dimensions in plates but not in outputs are product-reduced;
         dimensions in neither plates nor outputs are sum-reduced.
     """
-    with interpretation(lazy):
+    with lazy:
         naive_ast = naive_plated_einsum(eqn, *terms, **kwargs)
     return apply_optimizer(naive_ast)

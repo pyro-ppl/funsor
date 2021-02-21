@@ -8,17 +8,62 @@ import weakref
 from multipledispatch import Dispatcher
 
 
+class WeakPartial:
+    """
+    Like ``functools.partial(fn, arg)`` but weakly referencing ``arg``.
+    """
+
+    def __init__(self, fn, arg):
+        self.fn = fn
+        self.weak_arg = weakref.ref(arg)
+        functools.update_wrapper(self, fn)
+
+    def __call__(self, *args):
+        arg = self.weak_arg()
+        return self.fn(arg, *args)
+
+
 class CachedOpMeta(type):
     """
     Metaclass for caching op instance construction.
+    Caching strategy is to key on ``*args`` and retain values forever.
     """
+
+    def __init__(cls, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        cls._instance_cache = {}
+
     def __call__(cls, *args, **kwargs):
         try:
-            return cls._cache[args]
+            return cls._instance_cache[args]
         except KeyError:
             instance = super(CachedOpMeta, cls).__call__(*args, **kwargs)
-            cls._cache[args] = instance
+            cls._instance_cache[args] = instance
             return instance
+
+
+class WrappedOpMeta(type):
+    """
+    Metaclass for ops that wrap temporary backend ops.
+    Caching strategy is to key on ``id(backend_op)`` and forget values asap.
+    """
+
+    def __init__(cls, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        cls._instance_cache = weakref.WeakValueDictionary()
+
+    def __call__(cls, fn):
+        if inspect.ismethod(fn):
+            key = id(fn.__self__), fn.__func__  # e.g. t.log_abs_det_jacobian
+        else:
+            key = id(fn)  # e.g. t.inv
+        try:
+            return cls._instance_cache[key]
+        except KeyError:
+            op = super().__call__(fn)
+            op.fn = fn  # Ensures the key id(fn) is not reused.
+            cls._instance_cache[key] = op
+            return op
 
 
 class Op(Dispatcher):
@@ -26,7 +71,6 @@ class Op(Dispatcher):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        cls._cache = {}
         cls._subclass_registry = []
 
     def __init__(self, fn, *, name=None):
@@ -44,7 +88,7 @@ class Op(Dispatcher):
         # Register all existing patterns.
         for supercls in reversed(inspect.getmro(type(self))):
             for pattern, fn in getattr(supercls, "_subclass_registry", ()):
-                self.register(*pattern)(functools.partial(fn, self))
+                self.add(pattern, WeakPartial(fn, self))
         # Save self for registering future patterns.
         Op._all_instances.add(self)
 
@@ -69,14 +113,18 @@ class Op(Dispatcher):
             # Register with all existing instances.
             for op in Op._all_instances:
                 if isinstance(op, cls):
-                    op.register(*pattern)(functools.partial(fn, op))
+                    op.add(pattern, WeakPartial(fn, op))
             # Ensure registration with all future instances.
             cls._subclass_registry.append((pattern, fn))
             return fn
+
         return decorator
 
 
 def make_op(fn=None, parent=None, *, name=None, module_name="funsor.ops"):
+    """
+    Factory to create a new :class:`Op` subclass and a new instance of that class.
+    """
     # Support use as decorator.
     if fn is None:
         return lambda fn: make_op(fn, parent, name=name, module_name=module_name)
@@ -89,15 +137,17 @@ def make_op(fn=None, parent=None, *, name=None, module_name="funsor.ops"):
         name = fn if isinstance(fn, str) else fn.__name__
     assert isinstance(name, str)
 
-    classname = name[0].upper() + name[1:].rstrip("_") + "Op"  # e.g. add -> AddOp
-    new_type = CachedOpMeta(classname, (parent,), {})
-    new_type.__module__ = module_name
-    return new_type(fn, name=name)
+    classname = name.capitalize().rstrip("_") + "Op"  # e.g. add -> AddOp
+    cls = type(classname, (parent,), {})
+    cls.__module__ = module_name
+    op = cls(fn, name=name)
+    return op
 
 
 def declare_op_types(locals_, all_, name_):
-    op_types = set(v for v in locals_.values()
-                   if isinstance(v, type) and issubclass(v, Op))
+    op_types = set(
+        v for v in locals_.values() if isinstance(v, type) and issubclass(v, Op)
+    )
     # Adds all op types to __all__, and fix their modules.
     for typ in op_types:
         if typ.__module__ == name_:
@@ -112,6 +162,10 @@ def declare_op_types(locals_, all_, name_):
 
 
 class UnaryOp(Op):
+    pass
+
+
+class BinaryOp(Op):
     pass
 
 
@@ -143,19 +197,79 @@ class TransformOp(UnaryOp):
         raise NotImplementedError
 
 
+class WrappedTransformOp(TransformOp, metaclass=WrappedOpMeta):
+    """
+    Wrapper for a backend ``Transform`` object that provides ``.inv`` and
+    ``.log_abs_det_jacobian``. This additionally validates shapes on the first
+    :meth:`__call__`.
+    """
+
+    def __init__(self, fn):
+        super().__init__(fn, name=type(fn).__name__)
+        self._is_validated = False
+
+    def __call__(self, x):
+        if self._is_validated:
+            return super().__call__(x)
+
+        try:
+            # Check for shape metadata available after
+            # https://github.com/pytorch/pytorch/pull/50547
+            # https://github.com/pytorch/pytorch/pull/50581
+            # https://github.com/pyro-ppl/pyro/pull/2739
+            # https://github.com/pyro-ppl/numpyro/pull/876
+            self.fn.domain.event_dim
+            self.fn.codomain.event_dim
+            self.fn.forward_shape
+        except AttributeError:
+            backend = self.fn.__module__.split(".")[0]
+            raise NotImplementedError(
+                f"{self.fn} is missing shape metadata; "
+                f"try upgrading backend {backend}"
+            )
+
+        if len(x.shape) < self.fn.domain.event_dim:
+            raise ValueError(f"Too few dimensions for input, in {self.name}")
+        event_shape = x.shape[len(x.shape) - self.fn.domain.event_dim :]
+        shape = self.fn.forward_shape(event_shape)
+        if len(shape) > self.fn.codomain.event_dim:
+            raise ValueError(
+                f"Cannot treat transform {self.name} as an Op " "because it is batched"
+            )
+        self._is_validated = True
+        return super().__call__(x)
+
+    @property
+    def inv(self):
+        return WrappedTransformOp(self.fn.inv)
+
+    @property
+    def log_abs_det_jacobian(self):
+        return LogAbsDetJacobianOp(self.fn.log_abs_det_jacobian)
+
+
+class LogAbsDetJacobianOp(BinaryOp, metaclass=WrappedOpMeta):
+    pass
+
+
 # Op registration tables.
 DISTRIBUTIVE_OPS = set()  # (add, mul) pairs
-UNITS = {}                # op -> value
-PRODUCT_INVERSES = {}     # op -> inverse op
+UNITS = {}  # op -> value
+BINARY_INVERSES = {}  # binary op -> inverse binary op
+UNARY_INVERSES = {}  # binary op -> inverse unary op
 
 __all__ = [
-    'CachedOpMeta',
-    'DISTRIBUTIVE_OPS',
-    'Op',
-    'PRODUCT_INVERSES',
-    'TransformOp',
-    'UNITS',
-    'UnaryOp',
-    'declare_op_types',
-    'make_op',
+    "BINARY_INVERSES",
+    "BinaryOp",
+    "CachedOpMeta",
+    "DISTRIBUTIVE_OPS",
+    "LogAbsDetJacobianOp",
+    "Op",
+    "TransformOp",
+    "UNARY_INVERSES",
+    "UNITS",
+    "UnaryOp",
+    "WrappedTransformOp",
+    "declare_op_types",
+    "make_op",
 ]

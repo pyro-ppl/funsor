@@ -6,9 +6,10 @@ from functools import reduce, singledispatch
 
 import opt_einsum
 
+from funsor.domains import Bint
 from funsor.interpreter import gensym
 from funsor.tensor import EinsumOp, Tensor, get_default_prototype
-from funsor.terms import Binary, Finitary, Funsor, Lambda, Reduce, Unary, Variable, Bint
+from funsor.terms import Binary, Finitary, Funsor, Lambda, Reduce, Unary, Variable
 
 from . import ops
 
@@ -37,7 +38,7 @@ def affine_inputs(fn):
     :return: A set of input names wrt which ``fn`` is affine.
     :rtype: frozenset
     """
-    result = getattr(fn, '_affine_inputs', None)
+    result = getattr(fn, "_affine_inputs", None)
     if result is None:
         result = fn._affine_inputs = _affine_inputs(fn)
     return result
@@ -96,7 +97,7 @@ def _(fn):
     # This is simply a multiary version of the above Binary(ops.mul, ...) case.
     results = []
     for i, x in enumerate(fn.args):
-        others = fn.args[:i] + fn.args[i+1:]
+        others = fn.args[:i] + fn.args[i + 1:]
         other_inputs = reduce(ops.or_, map(_real_inputs, others), frozenset())
         results.append(affine_inputs(x) - other_inputs)
     # This multilinear case introduces incompleteness, since some vars
@@ -143,7 +144,7 @@ def extract_affine(fn):
     const = fn(**zeros)
 
     # Determine linear coefficients by evaluating fn on basis vectors.
-    name = gensym('probe')
+    name = gensym("probe")
     coeffs = OrderedDict()
     for k, v in inputs.items():
         dim = v.num_elements
@@ -151,10 +152,10 @@ def extract_affine(fn):
         subs = zeros.copy()
         subs[k] = Tensor(ops.new_eye(prototype, (dim,)).reshape((dim,) + v.shape))[var]
         coeff = Lambda(var, fn(**subs) - const).reshape(v.shape + const.shape)
-        inputs1 = ''.join(map(opt_einsum.get_symbol, range(len(coeff.shape))))
-        inputs2 = inputs1[:len(v.shape)]
-        output = inputs1[len(v.shape):]
-        eqn = '{},{}->{}'.format(inputs1, inputs2, output)
+        inputs1 = "".join(map(opt_einsum.get_symbol, range(len(coeff.shape))))
+        inputs2 = inputs1[: len(v.shape)]
+        output = inputs1[len(v.shape) :]
+        eqn = "{},{}->{}".format(inputs1, inputs2, output)
         coeffs[k] = coeff, eqn
     return const, coeffs
 
