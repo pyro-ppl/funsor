@@ -13,9 +13,9 @@ class PartialDispatcher(Dispatcher):
     Wrapper to avoid appearance in stack traces.
     """
 
-    def __init__(self, name, default=None):
+    def __init__(self, default=None):
         self.default = default if default is None else PartialDefault(default)
-        super().__init__(name)
+        super().__init__("PartialDispatcher")
         if default is not None:
             self.add(([object],), self.default)
 
@@ -79,7 +79,7 @@ class KeyedRegistry(object):
     def __init__(self, default=None):
         # TODO make registry a WeakKeyDictionary
         self.default = default if default is None else PartialDefault(default)
-        self.registry = defaultdict(lambda: PartialDispatcher("f", default=default))
+        self.registry = defaultdict(lambda: PartialDispatcher(default=default))
 
     def register(self, key, *types):
         register = self.registry[get_origin(key)].register
