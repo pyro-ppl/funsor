@@ -8,10 +8,12 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Real, Reals
-from funsor.factory import Bound, Fresh, make_funsor, to_funsor
+from funsor.factory import Bound, Fresh, Value, make_funsor, to_funsor
+from funsor.interpretations import reflect
+from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
 from funsor.terms import Cat, Funsor, Lambda, Number, eager
-from funsor.testing import check_funsor, random_tensor
+from funsor.testing import assert_close, check_funsor, random_tensor
 
 
 def test_lambda_lambda():
@@ -175,3 +177,49 @@ def test_scatter1():
     value = Number(4, 9)
     x = Scatter1(destin, "a", "a", value, source)
     check_funsor(x, {"a": Bint[9], "b": Bint[3]}, Real)
+
+
+def test_value_dependence():
+    @make_funsor
+    def Sum(
+        x: Funsor,
+        dim: Value[int],
+    ) -> Fresh[lambda x, dim: Array[x.dtype, x.shape[:dim] + x.shape[dim + 1 :]]]:
+        return None
+
+    @eager.register(Sum, Tensor, int)
+    def eager_sum(x, dim):
+        data = x.data.sum(len(x.data.shape) - len(x.shape) + dim)
+        return Tensor(data, x.inputs, x.dtype)
+
+    x = random_tensor(OrderedDict(a=Bint[3]), Reals[2, 4, 5])
+
+    with reflect:
+        y0 = Sum(x, 0)
+        check_funsor(y0, x.inputs, Reals[4, 5])
+        y1 = Sum(x, 1)
+        check_funsor(y1, x.inputs, Reals[2, 5])
+        y2 = Sum(x, 2)
+        check_funsor(y2, x.inputs, Reals[2, 4])
+
+    z0 = reinterpret(y0)
+    check_funsor(z0, x.inputs, Reals[4, 5])
+    assert_close(z0.data, x.data.sum(1 + 0))
+    z1 = reinterpret(y1)
+    check_funsor(z1, x.inputs, Reals[2, 5])
+    assert_close(z1.data, x.data.sum(1 + 1))
+    z2 = reinterpret(y2)
+    check_funsor(z2, x.inputs, Reals[2, 4])
+    assert_close(z2.data, x.data.sum(1 + 2))
+
+    with pytest.raises(TypeError):
+        with reflect:
+            Sum(x, 1.5)
+
+    with pytest.raises(TypeError):
+
+        @make_funsor
+        def Sum(
+            x: Funsor, dim: Value[Number]
+        ) -> Fresh[lambda x, dim: Array[x.dtype, x.shape[:dim] + x.shape[dim + 1 :]]]:
+            return None
