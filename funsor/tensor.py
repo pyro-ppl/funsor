@@ -771,12 +771,7 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
-# TODO handle variable length Tuple
-@eager.register(Finitary, Op, typing.Tuple[Tensor])
-@eager.register(Finitary, Op, typing.Tuple[Tensor, Tensor])
-@eager.register(Finitary, Op, typing.Tuple[Tensor, Tensor, Tensor])
-@eager.register(Finitary, Op, typing.Tuple[Tensor, Tensor, Tensor, Tensor])
-@eager.register(Finitary, Op, typing.Tuple[Tensor, Tensor, Tensor, Tensor, Tensor])
+@eager.register(Finitary, Op, typing.Tuple[Tensor, ...])
 def eager_finitary_generic_tensors(op, args):
     inputs, raw_args = align_tensors(*args)
     raw_result = op(*raw_args)
