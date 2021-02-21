@@ -97,7 +97,7 @@ def _(fn):
     # This is simply a multiary version of the above Binary(ops.mul, ...) case.
     results = []
     for i, x in enumerate(fn.args):
-        others = fn.args[:i] + fn.args[i + 1:]
+        others = fn.args[:i] + fn.args[i + 1 :]
         other_inputs = reduce(ops.or_, map(_real_inputs, others), frozenset())
         results.append(affine_inputs(x) - other_inputs)
     # This multilinear case introduces incompleteness, since some vars

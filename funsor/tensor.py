@@ -1040,17 +1040,18 @@ class EinsumOp(ops.Op, metaclass=ops.CachedOpMeta):
 @find_domain.register(EinsumOp)
 def _find_domain_einsum(op, *operands):
     equation = op.equation
-    ein_inputs, ein_output = equation.split('->')
-    ein_inputs = ein_inputs.split(',')
+    ein_inputs, ein_output = equation.split("->")
+    ein_inputs = ein_inputs.split(",")
     size_dict = {}
     for ein_input, x in zip(ein_inputs, operands):
-        assert x.dtype == 'real'
+        assert x.dtype == "real"
         assert len(ein_input) == len(x.output.shape)
         for name, size in zip(ein_input, x.output.shape):
             other_size = size_dict.setdefault(name, size)
             if other_size != size:
-                raise ValueError("Size mismatch at {}: {} vs {}"
-                                 .format(name, size, other_size))
+                raise ValueError(
+                    "Size mismatch at {}: {} vs {}".format(name, size, other_size)
+                )
     return Reals[tuple(size_dict[d] for d in ein_output)]
 
 

@@ -1289,7 +1289,6 @@ def eager_binary_align_align(op, lhs, rhs):
 
 
 class Finitary(Funsor):
-
     def __init__(self, op, args):
         assert isinstance(op, ops.Op)
         assert isinstance(args, tuple)
