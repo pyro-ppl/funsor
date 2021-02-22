@@ -43,7 +43,10 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     testing,
 )
 
+__version__ = "0.4.0"
+
 __all__ = [
+    "__version__",
     "Array",
     "Bint",
     "Cat",

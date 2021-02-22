@@ -34,8 +34,16 @@ author = u"Uber AI Labs"
 
 # The short X.Y version
 version = u"0.0"
+
+if 'READTHEDOCS' not in os.environ:
+    # if developing locally, use funsor.__version__ as version
+    from funsor import __version__  # noqaE402
+    version = __version__
+
+    html_context = {'github_version': 'master'}
+
 # The full version, including alpha/beta/rc tags
-release = u"0.0"
+release = version
 
 
 # -- General configuration ---------------------------------------------------
@@ -115,7 +123,9 @@ add_module_names = False
 nbsphinx_prolog = r"""
 {% set docname = 'tutorials/' + env.doc2path(env.docname, base=None).split('/')[-1] %}
 :github_url: https://github.com/pyro-ppl/funsor/blob/master/{{ docname }}
+
 .. raw:: html
+
     <div class="admonition note">
       Interactive online version:
       <span style="white-space: nowrap;">
@@ -129,6 +139,16 @@ nbsphinx_prolog = r"""
 
 
 # -- Copy notebook files
+# NB: tutorials and examples can be added to `index.rst` file using the paths
+#     tutorials/foo
+#     examples/foo
+# without extensions .ipynb or .py
+# TODO: find a solution for an example subfolder, e.g. examples/mixed_hmm folder
+#
+# To add thumbnail images for tutorials/examples in funsor docs, using
+# .. nbgallery:: instead of .. toctree:: and add png thumnail images
+# with corresponding names in _static/img/tutorials or _static/img/examples folders.
+# For example, we can add minipyro.png to _static/img/examples/ folder.
 
 if not os.path.exists("tutorials"):
     os.makedirs("tutorials")

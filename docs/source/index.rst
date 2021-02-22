@@ -32,7 +32,7 @@ Funsor is a tensor-like library for functions and distributions
    minipyro
    einsum
 
-.. nbgallery::
+.. toctree::
    :maxdepth: 1
    :caption: Tutorials and Examples
    :name: tutorials-and-examples
