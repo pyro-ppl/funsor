@@ -115,7 +115,7 @@ def extract_affine(fn):
 
         x = ...
         const, coeffs = extract_affine(x)
-        y = sum(Einsum(eqn, (coeff, Variable(var, coeff.output)))
+        y = sum(Einsum(eqn, coeff, Variable(var, coeff.output))
                 for var, (coeff, eqn) in coeffs.items())
         assert_close(y, x)
         assert frozenset(coeffs) == affine_inputs(x)

@@ -1050,7 +1050,7 @@ def _find_domain_einsum(op, *operands):
     return Reals[tuple(size_dict[d] for d in ein_output)]
 
 
-def Einsum(equation, operands):
+def Einsum(equation, *operands):
     """
     Wrapper around :func:`torch.einsum` or :func:`np.einsum` to operate on real-valued Funsors.
 
@@ -1129,7 +1129,7 @@ def tensordot(x, y, dims):
         symbols[y_start:y_end],
         symbols[x_start:y_start] + symbols[x_end:y_end],
     )
-    return Einsum(equation, (x, y))
+    return Einsum(equation, x, y)
 
 
 def stack(parts, dim=0):
