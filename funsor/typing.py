@@ -238,7 +238,8 @@ def get_origin(tp):
     return tp if result is None else result
 
 
-if sys.version_info[:2] >= (3, 7):  # reuse upstream documentation if possible
+reuse_upstream_documentation = False  # upstream docs are not sphinx compatible
+if reuse_upstream_documentation and sys.version_info[:2] >= (3, 7):
     get_args = functools.wraps(typing_extensions.get_args)(get_args)
     get_origin = functools.wraps(typing_extensions.get_origin)(get_origin)
 
