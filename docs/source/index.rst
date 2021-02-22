@@ -21,6 +21,7 @@ Funsor is a tensor-like library for functions and distributions
    affine
    factory
    testing
+   typing
 
 .. toctree::
    :glob:

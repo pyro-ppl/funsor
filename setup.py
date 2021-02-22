@@ -30,7 +30,13 @@ setup(
     project_urls={"Documentation": "https://funsor.pyro.ai"},
     author="Uber AI Labs",
     python_requires=">=3.6",
-    install_requires=["makefun", "multipledispatch", "numpy>=1.7", "opt_einsum>=2.3.2"],
+    install_requires=[
+        "makefun",
+        "multipledispatch",
+        "numpy>=1.7",
+        "opt_einsum>=2.3.2",
+        "typing_extensions",
+    ],
     extras_require={
         "torch": ["pyro-ppl>=1.5.2", "torch>=1.7.0"],
         "jax": ["numpyro>=0.2.4", "jax>=0.1.57", "jaxlib>=0.1.37"],
