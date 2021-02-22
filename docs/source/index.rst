@@ -37,7 +37,6 @@ Funsor is a tensor-like library for functions and distributions
    :caption: Tutorials and Examples
    :name: tutorials-and-examples
 
-   tutorials/sum_product_network
    examples/discrete_hmm
    examples/eeg_slds
    examples/kalman_filter
