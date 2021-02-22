@@ -103,6 +103,7 @@ def normalize_expadd(op, arg):
 )
 def simplify_integrate_contraction(log_measure, integrand, reduced_vars):
     # TODO ensure this rule fires - delta points must be substituted correctly
+    # TODO should this be part of normalize or simplify?
     reduced_names = frozenset(v.name for v in reduced_vars)
     delta_terms = [
         t
