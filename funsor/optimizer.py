@@ -9,6 +9,7 @@ import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, nullop
 from funsor.interpretations import (
     DispatchedInterpretation,
+    NormalizedInterpretation,
     PrioritizedInterpretation,
     eager,
     lazy,
@@ -19,12 +20,12 @@ from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.terms import Funsor
 from funsor.typing import Variadic
 
-unfold_base = DispatchedInterpretation()
+unfold_base = NormalizedInterpretation(DispatchedInterpretation("unfold"))
 unfold = PrioritizedInterpretation(unfold_base, normalize_base, lazy)
 
 
-@unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
-def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
+@unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, *terms):
 
     for i, v in enumerate(terms):
 
@@ -65,24 +66,12 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
     return None
 
 
-@unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
-def unfold_contraction_variadic(r, b, v, *ts):
-    return unfold.interpret(Contraction, r, b, v, tuple(ts))
-
-
-optimize_base = DispatchedInterpretation()
+optimize_base = NormalizedInterpretation(DispatchedInterpretation("optimize"))
 optimize = PrioritizedInterpretation(optimize_base, eager)
 
 
 # TODO set a better value for this
 REAL_SIZE = 3  # the "size" of a real-valued dimension passed to the path optimizer
-
-
-@optimize.register(
-    Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor]
-)
-def optimize_contraction_variadic(r, b, v, *ts):
-    return optimize.interpret(Contraction, r, b, v, tuple(ts))
 
 
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
@@ -91,8 +80,10 @@ def eager_contract_base(red_op, bin_op, reduced_vars, *terms):
     return None
 
 
-@optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
-def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
+@optimize.register(
+    Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor]
+)
+def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, *terms):
 
     if red_op is nullop or bin_op is nullop or not (red_op, bin_op) in DISTRIBUTIVE_OPS:
         return None

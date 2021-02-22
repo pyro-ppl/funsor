@@ -15,7 +15,7 @@ from funsor.affine import affine_inputs
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
-from funsor.interpretations import eager, normalize, reflect
+from funsor.interpretations import denormalize, eager, normalize, reflect
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
 from funsor.tensor import Tensor
@@ -250,12 +250,13 @@ def recursion_reinterpret_contraction(x):
     )
 
 
-@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+@denormalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
 def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
-    return eager.interpret(Contraction, red_op, bin_op, reduced_vars, terms)
+    return Contraction(red_op, bin_op, reduced_vars, terms)
+    # return eager.interpret(Contraction, red_op, bin_op, reduced_vars, terms)
 
 
-@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
+@denormalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     # Count the number of terms in which each variable is reduced.
     counts = Counter()
@@ -271,9 +272,7 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
             unique_vars = reduced_once & term.input_vars
             if unique_vars:
                 result = term.reduce(red_op, unique_vars)
-                if result is not normalize.interpret(
-                    Contraction, red_op, nullop, unique_vars, (term,)
-                ):
+                if result is not normalize(term.reduce)(red_op, unique_vars):
                     terms[i] = result
                     reduced_vars -= unique_vars
                     leaf_reduced = True
@@ -289,9 +288,9 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
             j = i + j_ + 1
             unique_vars = reduced_twice.intersection(lhs.input_vars, rhs.input_vars)
             result = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
-            if result is not normalize.interpret(
-                Contraction, red_op, bin_op, unique_vars, (lhs, rhs)
-            ):  # did we make progress?
+            with normalize:
+                nr = Contraction(red_op, bin_op, unique_vars, lhs, rhs)
+            if result is not nr:
                 # pick the first evaluable pair
                 reduced_vars -= unique_vars
                 new_terms = terms[:i] + (result,) + terms[i + 1 : j] + terms[j + 1 :]
@@ -300,27 +299,31 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
     return None
 
 
-@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor)
+@denormalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor)
 def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
-    args = red_op, term, reduced_vars
-    return eager.dispatch(Reduce, *args)(*args)
+    return term.reduce(red_op, reduced_vars)
 
 
-@eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
+@denormalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
-
-    if not reduced_vars.issubset(lhs.input_vars & rhs.input_vars):
-        args = red_op, bin_op, reduced_vars, (lhs, rhs)
-        result = eager.dispatch(Contraction, *args)(*args)
-        if result is not None:
-            return result
-
-    args = bin_op, lhs, rhs
-    result = eager.dispatch(Binary, *args)(*args)
-    if result is not None and reduced_vars:
-        args = red_op, result, reduced_vars
-        result = eager.dispatch(Reduce, *args)(*args)
+    result = bin_op(lhs, rhs)
+    if reduced_vars:
+        result = result.reduce(red_op, reduced_vars)
     return result
+
+
+@denormalize.register(Binary, AssociativeOp, (Number, Funsor), Number)
+def eager_eliminate_unit(op, lhs, rhs):
+    if op in ops.UNITS and rhs.data == ops.UNITS[op]:
+        return lhs
+    return None
+
+
+@denormalize.register(Binary, AssociativeOp, Number, Funsor)
+def eager_eliminate_unit(op, lhs, rhs):
+    if op in ops.UNITS and lhs.data == ops.UNITS[op]:
+        return rhs
+    return None
 
 
 @eager.register(Contraction, ops.AddOp, ops.MulOp, frozenset, Tensor, Tensor)
@@ -453,7 +456,7 @@ def normalize_contraction_generic_args(red_op, bin_op, reduced_vars, *terms):
     return normalize.interpret(Contraction, red_op, bin_op, reduced_vars, tuple(terms))
 
 
-@normalize.register(Contraction, NullOp, NullOp, frozenset, Funsor)
+@denormalize.register(Contraction, NullOp, NullOp, frozenset, Funsor)
 def normalize_trivial(red_op, bin_op, reduced_vars, term):
     assert not reduced_vars
     return term
@@ -474,18 +477,6 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
     if red_op is bin_op:
         new_terms = tuple(v.reduce(red_op, reduced_vars) for v in terms)
         return Contraction(red_op, bin_op, frozenset(), *new_terms)
-
-    if bin_op in ops.UNITS and any(
-        isinstance(t, Number) and t.data == ops.UNITS[bin_op] for t in terms
-    ):
-        new_terms = tuple(
-            t
-            for t in terms
-            if not (isinstance(t, Number) and t.data == ops.UNITS[bin_op])
-        )
-        if not new_terms:  # everything was a unit
-            new_terms = (terms[0],)
-        return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     for i, v in enumerate(terms):
 
@@ -576,10 +567,10 @@ def binary_divide(op, lhs, rhs):
     return lhs * Unary(ops.reciprocal, rhs)
 
 
-@normalize.register(Unary, ops.ExpOp, Unary[ops.LogOp, Funsor])
-@normalize.register(Unary, ops.LogOp, Unary[ops.ExpOp, Funsor])
-@normalize.register(Unary, ops.NegOp, Unary[ops.NegOp, Funsor])
-@normalize.register(Unary, ops.ReciprocalOp, Unary[ops.ReciprocalOp, Funsor])
+@denormalize.register(Unary, ops.ExpOp, Unary[ops.LogOp, Funsor])
+@denormalize.register(Unary, ops.LogOp, Unary[ops.ExpOp, Funsor])
+@denormalize.register(Unary, ops.NegOp, Unary[ops.NegOp, Funsor])
+@denormalize.register(Unary, ops.ReciprocalOp, Unary[ops.ReciprocalOp, Funsor])
 def unary_log_exp(op, arg):
     return arg.arg
 

@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import OrderedDict
+from functools import reduce
 from typing import Union
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian
-from funsor.interpretations import eager, normalize
+from funsor.interpretations import denormalize, eager, normalize
 from funsor.tensor import Tensor
 from funsor.terms import (
     Funsor,
@@ -87,13 +88,13 @@ def normalize_integrate(log_measure, integrand, reduced_vars):
     return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
 
 
-@normalize.register(
+@denormalize.register(
     Integrate,
     Contraction[Union[ops.NullOp, ops.LogaddexpOp], ops.AddOp, frozenset, tuple],
     Funsor,
     frozenset,
 )
-def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
+def denormalize_integrate_contraction(log_measure, integrand, reduced_vars):
     reduced_names = frozenset(v.name for v in reduced_vars)
     delta_terms = [
         t
@@ -109,10 +110,10 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
                 if name in reduced_names.intersection(integrand.inputs)
             }
         )
-    return normalize_integrate(log_measure, integrand, reduced_vars)
+    return Integrate(log_measure, integrand, reduced_vars)
 
 
-@eager.register(
+@denormalize.register(
     Contraction,
     ops.AddOp,
     ops.MulOp,
@@ -121,22 +122,10 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
     (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture),
 )
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
-    reduced_names = frozenset(v.name for v in reduced_vars)
-    if not (reduced_names.issubset(lhs.inputs) and reduced_names.issubset(rhs.inputs)):
-        args = red_op, bin_op, reduced_vars, (lhs, rhs)
-        result = eager.dispatch(Contraction, *args)(*args)
-        if result is not None:
-            return result
-
-    args = lhs.log(), rhs, reduced_vars
-    result = eager.dispatch(Integrate, *args)(*args)
-    if result is not None:
-        return result
-
-    return None
+    return Integrate(lhs.log(), rhs, reduced_vars)
 
 
-@eager.register(Integrate, GaussianMixture, Funsor, frozenset)
+@denormalize.register(Integrate, GaussianMixture, Funsor, frozenset)
 def eager_integrate_gaussianmixture(log_measure, integrand, reduced_vars):
     real_vars = frozenset(v for v in reduced_vars if v.dtype == "real")
     if reduced_vars <= real_vars:

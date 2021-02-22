@@ -13,7 +13,7 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.interpretations import eager, moment_matching, normalize
+from funsor.interpretations import denormalize, eager, moment_matching, normalize
 from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, align_tensor
 from funsor.terms import Funsor, Independent, Number, Reduce, Unary
@@ -77,13 +77,6 @@ def eager_cat_homogeneous(name, part_name, *parts):
 #################################
 # patterns for moment-matching
 #################################
-
-
-@moment_matching.register(
-    Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[object]
-)
-def moment_matching_contract_default(*args):
-    return None
 
 
 @moment_matching.register(
@@ -156,18 +149,13 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
 ####################################################
 
 
-@eager.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Funsor], frozenset)
+@denormalize.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Funsor], frozenset)
 def eager_reduce_exp(op, arg, reduced_vars):
     # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
-    log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
-    if log_result is not normalize.interpret(
-        Reduce, ops.logaddexp, arg.arg, reduced_vars
-    ):
-        return log_result.exp()
-    return None
+    return arg.arg.reduce(ops.logaddexp, reduced_vars)
 
 
-@eager.register(
+@denormalize.register(
     Independent,
     (
         Contraction[

@@ -7,7 +7,7 @@ from contextlib import ContextDecorator
 from timeit import default_timer
 
 from . import instrument
-from .interpreter import get_interpretation, pop_interpretation, push_interpretation
+from .interpreter import get_interpretation, pop_interpretation, push_interpretation, reinterpret
 from .registry import KeyedRegistry
 from .util import get_backend
 
@@ -119,7 +119,7 @@ class PrioritizedInterpretation(Interpretation):
         assert len(subinterpreters) >= 1
         super().__init__("/".join(s.__name__ for s in subinterpreters))
         self.subinterpreters = subinterpreters
-        if isinstance(self.subinterpreters[0], DispatchedInterpretation):
+        if isinstance(self.subinterpreters[0], (NormalizedInterpretation, DispatchedInterpretation)):
             self.register = self.subinterpreters[0].register
             self.dispatch = self.subinterpreters[0].dispatch
 
@@ -203,10 +203,13 @@ class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMet
             return cls.registry.register(*args)
 
 
-class Normalize(StatefulInterpretation):
+class NormalizedInterpretation(Interpretation):
     def __init__(self, subinterpretation):
-        super().__init__(f"Normalize({subinterpretation.__name__})")
+        super().__init__(f"Normalized({subinterpretation.__name__})")
         self.subinterpretation = subinterpretation
+        self.register = self.subinterpretation.register
+        self.dispatch = self.subinterpretation.dispatch
+        self._cache = {}  # weakref.WeakKeyDictionary()  # TODO make this work
 
     @property
     def subinterpret(self):
@@ -222,20 +225,43 @@ class Normalize(StatefulInterpretation):
         # Note eager_contraction_generic_recursive() effectively fuses this
         # step with step 3 below to short-circuit some logic.
         with normalize:
-            normal_form = cls(*map(reinterpret, args))
+            normalized_args = []
+            for arg in args:
+                try:
+                    normalized_args.append(self._cache[arg])
+                except KeyError:
+                    normalized_arg = reinterpret(arg)
+                    self._cache[arg] = normalized_arg
+                    normalized_args.append(normalized_arg)
+            normal_form = cls(*normalized_args)
 
-        # 3. try evaluating that normal form; if that fails
-        with normal_form_evaluator(self.subinterpretation):
+        # 3. try evaluating that normal form
+        with PrioritizedInterpretation(self.subinterpretation, denormalize):
+            # TODO use .interpret instead of reinterpret here to avoid traversal
             result = reinterpret(normal_form)
         if result is not normal_form:  # I.e. was progress made?
             return result
 
-        # 4. fall back to base interpretation of cls(*args)
+        # 4. if that fails, fall back to base interpretation of cls(*args)
         return None
 
 
 ################################################################################
 # Concrete interpretations.
+
+
+class Denormalize(DispatchedInterpretation):
+
+    @property
+    def is_total(self):
+        return normalize.is_total
+
+    def interpret(self, cls, *args):
+        result = super().interpret(cls, *args)
+        if result is None:
+            with normalize:
+                result = cls(*args)
+        return result
 
 
 @CallableInterpretation
@@ -248,33 +274,31 @@ reflect.is_total = True
 normalize_base = DispatchedInterpretation("normalize")
 normalize = PrioritizedInterpretation(normalize_base, reflect)
 
+denormalize = Denormalize("denormalize")
+
 lazy_base = DispatchedInterpretation("lazy")
 lazy = PrioritizedInterpretation(lazy_base, reflect)
 
-eager_base = DispatchedInterpretation("eager")
-eager = PrioritizedInterpretation(eager_base, normalize_base, reflect)
+eager_base = NormalizedInterpretation(DispatchedInterpretation("eager"))
+eager = PrioritizedInterpretation(eager_base, reflect)
 
 die = DispatchedInterpretation("die")
-eager_or_die = PrioritizedInterpretation(eager_base, die, reflect)
+eager_or_die = PrioritizedInterpretation(eager_base.subinterpretation, die, reflect)
 
-sequential_base = DispatchedInterpretation("sequential")
+sequential_base = NormalizedInterpretation(DispatchedInterpretation("sequential"))
 # XXX does this work with sphinx/help()?
 """
 Eagerly execute ops with known implementations; additonally execute
 vectorized ops sequentially if no known vectorized implementation exists.
 """
-sequential = PrioritizedInterpretation(
-    sequential_base, eager_base, normalize_base, reflect
-)
+sequential = PrioritizedInterpretation(sequential_base, eager)
 
-moment_matching_base = DispatchedInterpretation("moment_matching")
+moment_matching_base = NormalizedInterpretation(DispatchedInterpretation("moment_matching"))
 """
 A moment matching interpretation of :class:`Reduce` expressions. This falls
 back to :class:`eager` in other cases.
 """
-moment_matching = PrioritizedInterpretation(
-    moment_matching_base, eager_base, normalize_base, reflect
-)
+moment_matching = PrioritizedInterpretation(moment_matching_base, eager)
 
 push_interpretation(eager)  # Use eager interpretation by default.
 
