@@ -87,6 +87,14 @@ def normalize_integrate(log_measure, integrand, reduced_vars):
     return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
 
 
+@normalize.register(
+    Unary, ops.ExpOp, Contraction[ops.NullOp, ops.AddOp, frozenset, tuple]
+)
+def normalize_expadd(op, arg):
+    # TODO guarantee this is lazy - want no direct exponentiation of ground values
+    return Contraction(arg.red_op, ops.mul, arg.reduced_vars, *map(op, arg.terms))
+
+
 @simplify.register(
     Integrate,
     Contraction[Union[ops.NullOp, ops.LogaddexpOp], ops.AddOp, frozenset, tuple],
@@ -94,6 +102,7 @@ def normalize_integrate(log_measure, integrand, reduced_vars):
     frozenset,
 )
 def simplify_integrate_contraction(log_measure, integrand, reduced_vars):
+    # TODO ensure this rule fires - delta points must be substituted correctly
     reduced_names = frozenset(v.name for v in reduced_vars)
     delta_terms = [
         t
@@ -118,7 +127,7 @@ def simplify_integrate_contraction(log_measure, integrand, reduced_vars):
     ops.MulOp,
     frozenset,
     Unary[ops.ExpOp, Union[GaussianMixture, Delta, Gaussian, Number, Tensor]],
-    (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture),
+    Funsor,  # TODO is this too broad?
 )
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
     return Integrate(lhs.log(), rhs, reduced_vars)
