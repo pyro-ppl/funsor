@@ -24,6 +24,7 @@ from funsor.interpretations import (
     moment_matching,
     reflect,
     sequential,
+    simplify,
 )
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
@@ -1023,7 +1024,8 @@ class Reduce(Funsor):
         return op, arg, reduced_vars
 
 
-def _reduce_unrelated_vars(op, arg, reduced_vars):
+@simplify.register(Reduce, AssociativeOp, Funsor, frozenset)
+def simplify_reduce_unrelated_vars(op, arg, reduced_vars):
     factor_vars = reduced_vars - arg.input_vars
     if factor_vars:
         reduced_vars = reduced_vars & arg.input_vars
@@ -1037,34 +1039,9 @@ def _reduce_unrelated_vars(op, arg, reduced_vars):
         )
         for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
             if add_op is op:
-                arg = mul_op(arg, multiplicity).reduce(op, reduced_vars)
-                return arg, None
+                return mul_op(arg, multiplicity).reduce(op, reduced_vars)
         raise NotImplementedError(f"Cannot reduce {op}")
-    return arg, frozenset(v.name for v in reduced_vars)
-
-
-@eager.register(Reduce, AssociativeOp, Funsor, frozenset)
-def eager_reduce(op, arg, reduced_vars):
-    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
-    if reduced_vars is None:
-        return arg
-    return instrument.debug_logged(arg.eager_reduce)(op, reduced_vars)
-
-
-@sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
-def sequential_reduce(op, arg, reduced_vars):
-    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
-    if reduced_vars is None:
-        return arg
-    return instrument.debug_logged(arg.sequential_reduce)(op, reduced_vars)
-
-
-@moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
-def moment_matching_reduce(op, arg, reduced_vars):
-    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
-    if reduced_vars is None:
-        return arg
-    return instrument.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+    return None
 
 
 @die.register(Reduce, Op, Funsor, frozenset)
