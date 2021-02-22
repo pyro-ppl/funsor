@@ -30,12 +30,21 @@ class Interpretation(ContextDecorator, ABC):
         # assert self.is_total
         new = self
         if not self.is_total:
-            new = PrioritizedInterpretation(new, get_interpretation())
+            new = new.stack(get_interpretation())
         push_interpretation(new)
         return self
 
     def __exit__(self, *args):
         pop_interpretation()
+
+    def get_subinterpreters(self):
+        yield self
+
+    def stack(self, other):
+        return PrioritizedInterpretation(
+            *self.get_subinterpreters(),
+            *other.get_subinterpreters(),
+        )
 
     @abstractmethod
     def interpret(self, cls, *args):
@@ -126,6 +135,10 @@ class PrioritizedInterpretation(Interpretation):
         if __debug__:
             self._volume = sum(getattr(s, "_volume", 1) for s in subinterpreters)
             assert self._volume < 10, "suspicious interpreter overflow"
+
+    def get_subinterpreters(self):
+        for i in self.subinterpreters:
+            yield from i.get_subinterpreters()
 
     @property
     def base(self):
