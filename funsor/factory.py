@@ -8,7 +8,8 @@ from collections import OrderedDict
 import makefun
 
 from funsor.instrument import debug_logged
-from funsor.terms import Funsor, FunsorMeta, Variable, eager, to_funsor
+from funsor.interpretations import simplify
+from funsor.terms import Funsor, FunsorMeta, Variable, to_funsor
 
 
 def _erase_types(fn):
@@ -182,5 +183,5 @@ def make_funsor(fn):
     ResultMeta.__name__ = f"{fn.__name__}Meta"
     Result = ResultMeta(fn.__name__, (Funsor,), {"__init__": __init__})
     pattern = (Result,) + (Funsor,) * len(input_types)
-    eager.register(*pattern)(_erase_types(fn))
+    simplify.register(*pattern)(_erase_types(fn))
     return Result

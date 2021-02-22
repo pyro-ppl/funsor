@@ -16,14 +16,7 @@ from multipledispatch import dispatch
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
-from funsor.interpretations import (
-    Interpretation,
-    die,
-    eager,
-    lazy,
-    reflect,
-    simplify,
-)
+from funsor.interpretations import Interpretation, die, eager, lazy, reflect, simplify
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
