@@ -35,12 +35,13 @@ author = u"Uber AI Labs"
 # The short X.Y version
 version = u"0.0"
 
-if 'READTHEDOCS' not in os.environ:
+if "READTHEDOCS" not in os.environ:
     # if developing locally, use funsor.__version__ as version
     from funsor import __version__  # noqaE402
+
     version = __version__
 
-    html_context = {'github_version': 'master'}
+    html_context = {"github_version": "master"}
 
 # The full version, including alpha/beta/rc tags
 release = version
