@@ -20,7 +20,7 @@ from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.terms import Funsor
 from funsor.typing import Variadic
 
-unfold_base = NormalizedInterpretation(DispatchedInterpretation("unfold"))
+unfold_base = DispatchedInterpretation("unfold")
 unfold = PrioritizedInterpretation(unfold_base, normalize_base, lazy)
 
 
@@ -66,7 +66,7 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, *terms):
     return None
 
 
-optimize_base = NormalizedInterpretation(DispatchedInterpretation("optimize"))
+optimize_base = DispatchedInterpretation("optimize")
 optimize = PrioritizedInterpretation(optimize_base, eager)
 
 
