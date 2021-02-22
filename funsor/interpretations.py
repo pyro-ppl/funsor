@@ -7,7 +7,12 @@ from contextlib import ContextDecorator
 from timeit import default_timer
 
 from . import instrument
-from .interpreter import get_interpretation, pop_interpretation, push_interpretation, reinterpret
+from .interpreter import (
+    get_interpretation,
+    pop_interpretation,
+    push_interpretation,
+    reinterpret,
+)
 from .registry import KeyedRegistry
 from .util import get_backend
 
@@ -119,7 +124,10 @@ class PrioritizedInterpretation(Interpretation):
         assert len(subinterpreters) >= 1
         super().__init__("/".join(s.__name__ for s in subinterpreters))
         self.subinterpreters = subinterpreters
-        if isinstance(self.subinterpreters[0], (NormalizedInterpretation, DispatchedInterpretation)):
+        if isinstance(
+            self.subinterpreters[0],
+            (NormalizedInterpretation, DispatchedInterpretation),
+        ):
             self.register = self.subinterpreters[0].register
             self.dispatch = self.subinterpreters[0].dispatch
 
@@ -287,7 +295,9 @@ vectorized ops sequentially if no known vectorized implementation exists.
 """
 sequential = PrioritizedInterpretation(sequential_base, eager)
 
-moment_matching_base = NormalizedInterpretation(DispatchedInterpretation("moment_matching"))
+moment_matching_base = NormalizedInterpretation(
+    DispatchedInterpretation("moment_matching")
+)
 """
 A moment matching interpretation of :class:`Reduce` expressions. This falls
 back to :class:`eager` in other cases.

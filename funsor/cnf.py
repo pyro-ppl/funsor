@@ -15,7 +15,7 @@ from funsor.affine import affine_inputs
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
-from funsor.interpretations import simplify, eager, normalize, reflect
+from funsor.interpretations import eager, normalize, reflect, simplify
 from funsor.interpreter import recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
 from funsor.tensor import Tensor
@@ -250,7 +250,9 @@ def recursion_reinterpret_contraction(x):
     )
 
 
-@simplify.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
+@simplify.register(
+    Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor]
+)
 def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
     return Contraction(red_op, bin_op, reduced_vars, terms)
     # return eager.interpret(Contraction, red_op, bin_op, reduced_vars, terms)

@@ -13,8 +13,7 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.interpretations import simplify, eager, moment_matching, normalize
-from funsor.ops import AssociativeOp
+from funsor.interpretations import moment_matching, simplify
 from funsor.tensor import Tensor, align_tensor
 from funsor.terms import Funsor, Independent, Number, Reduce, Unary
 from funsor.typing import Variadic
