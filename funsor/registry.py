@@ -4,7 +4,9 @@
 from collections import defaultdict
 
 from multipledispatch import Dispatcher
-from multipledispatch.variadic import Variadic
+from multipledispatch.dispatcher import Dispatcher, expand_tuples
+
+from funsor.typing import Variadic, deep_type, get_origin, get_type_hints, typing_wrap
 
 
 class PartialDispatcher(Dispatcher):
@@ -12,16 +14,40 @@ class PartialDispatcher(Dispatcher):
     Wrapper to avoid appearance in stack traces.
     """
 
-    def __init__(self, default):
-        super().__init__("f")
+    def __init__(self, default=None):
+        self.default = default if default is None else PartialDefault(default)
+        super().__init__("PartialDispatcher")
         if default is not None:
-            self.register(Variadic[object])(default)
+            self.add(([object],), self.default)
+
+    def add(self, signature, func):
+
+        # Handle annotations
+        if not signature:
+            annotations = get_type_hints(func)
+            annotations.pop("return", None)
+            if annotations:
+                signature = tuple(annotations.values())
+
+        # Handle some union types by expanding at registration time
+        if any(isinstance(typ, tuple) for typ in signature):
+            for typs in expand_tuples(signature):
+                self.add(typs, func)
+            return
+
+        # Handle variadic types
+        signature = (
+            Variadic[tuple(tp)] if isinstance(tp, list) else tp for tp in signature
+        )
+
+        signature = tuple(map(typing_wrap, signature))
+        super().add(signature, func)
 
     def partial_call(self, *args):
         """
         Likde :meth:`__call__` but avoids calling ``func()``.
         """
-        types = tuple(map(type, args))
+        types = tuple(map(typing_wrap, map(deep_type, args)))
         try:
             func = self._cache[types]
         except KeyError:
@@ -33,6 +59,9 @@ class PartialDispatcher(Dispatcher):
                 )
             self._cache[types] = func
         return func
+
+    def __call__(self, *args):
+        return self.partial_call(*args)(*args)
 
 
 class PartialDefault:
@@ -49,13 +78,12 @@ class PartialDefault:
 
 class KeyedRegistry(object):
     def __init__(self, default=None):
-        self.default = default if default is None else PartialDefault(default)
         # TODO make registry a WeakKeyDictionary
-        self.registry = defaultdict(lambda: PartialDispatcher(self.default))
+        self.default = default if default is None else PartialDefault(default)
+        self.registry = defaultdict(lambda: PartialDispatcher(default=default))
 
     def register(self, key, *types):
-        key = getattr(key, "__origin__", key)
-        register = self.registry[key].register
+        register = self.registry[get_origin(key)].register
 
         # This decorator supports stacking multiple decorators, which is not
         # supported by multipledipatch (which returns a Dispatch object rather
@@ -67,10 +95,10 @@ class KeyedRegistry(object):
         return decorator
 
     def __contains__(self, key):
-        return key in self.registry
+        return get_origin(key) in self.registry
 
     def __getitem__(self, key):
-        key = getattr(key, "__origin__", key)
+        key = get_origin(key)
         if self.default is None:
             return self.registry[key]
         return self.registry.get(key, self.default)
