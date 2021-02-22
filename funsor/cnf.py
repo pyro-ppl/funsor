@@ -314,14 +314,14 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     return result
 
 
-@simplify.register(Binary, AssociativeOp, (Number, Funsor), Number)
+@simplify.register(Binary, AssociativeOp, (Number, Funsor, Align), Number)
 def eager_eliminate_unit(op, lhs, rhs):
     if op in ops.UNITS and rhs.data == ops.UNITS[op]:
         return lhs
     return None
 
 
-@simplify.register(Binary, AssociativeOp, Number, Funsor)
+@simplify.register(Binary, AssociativeOp, Number, (Align, Funsor))
 def eager_eliminate_unit(op, lhs, rhs):
     if op in ops.UNITS and lhs.data == ops.UNITS[op]:
         return rhs
