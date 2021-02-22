@@ -13,7 +13,7 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.interpretations import denormalize, eager, moment_matching, normalize
+from funsor.interpretations import simplify, eager, moment_matching, normalize
 from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, align_tensor
 from funsor.terms import Funsor, Independent, Number, Reduce, Unary
@@ -149,13 +149,13 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
 ####################################################
 
 
-@denormalize.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Funsor], frozenset)
+@simplify.register(Reduce, ops.AddOp, Unary[ops.ExpOp, Funsor], frozenset)
 def eager_reduce_exp(op, arg, reduced_vars):
     # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
     return arg.arg.reduce(ops.logaddexp, reduced_vars)
 
 
-@denormalize.register(
+@simplify.register(
     Independent,
     (
         Contraction[

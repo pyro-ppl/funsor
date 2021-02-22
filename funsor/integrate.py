@@ -2,14 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import OrderedDict
-from functools import reduce
 from typing import Union
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian
-from funsor.interpretations import denormalize, eager, normalize
+from funsor.interpretations import simplify, eager, normalize
 from funsor.tensor import Tensor
 from funsor.terms import (
     Funsor,
@@ -88,13 +87,13 @@ def normalize_integrate(log_measure, integrand, reduced_vars):
     return Contraction(ops.add, ops.mul, reduced_vars, log_measure.exp(), integrand)
 
 
-@denormalize.register(
+@simplify.register(
     Integrate,
     Contraction[Union[ops.NullOp, ops.LogaddexpOp], ops.AddOp, frozenset, tuple],
     Funsor,
     frozenset,
 )
-def denormalize_integrate_contraction(log_measure, integrand, reduced_vars):
+def simplify_integrate_contraction(log_measure, integrand, reduced_vars):
     reduced_names = frozenset(v.name for v in reduced_vars)
     delta_terms = [
         t
@@ -113,7 +112,7 @@ def denormalize_integrate_contraction(log_measure, integrand, reduced_vars):
     return Integrate(log_measure, integrand, reduced_vars)
 
 
-@denormalize.register(
+@simplify.register(
     Contraction,
     ops.AddOp,
     ops.MulOp,
@@ -125,7 +124,7 @@ def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs
     return Integrate(lhs.log(), rhs, reduced_vars)
 
 
-@denormalize.register(Integrate, GaussianMixture, Funsor, frozenset)
+@simplify.register(Integrate, GaussianMixture, Funsor, frozenset)
 def eager_integrate_gaussianmixture(log_measure, integrand, reduced_vars):
     real_vars = frozenset(v for v in reduced_vars if v.dtype == "real")
     if reduced_vars <= real_vars:

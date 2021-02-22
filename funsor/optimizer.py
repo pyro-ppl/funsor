@@ -9,7 +9,6 @@ import funsor.interpreter as interpreter
 from funsor.cnf import Contraction, nullop
 from funsor.interpretations import (
     DispatchedInterpretation,
-    NormalizedInterpretation,
     PrioritizedInterpretation,
     eager,
     lazy,

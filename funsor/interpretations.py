@@ -211,13 +211,9 @@ class NormalizedInterpretation(Interpretation):
         self.dispatch = self.subinterpretation.dispatch
         self._cache = {}  # weakref.WeakKeyDictionary()  # TODO make this work
 
-    @property
-    def subinterpret(self):
-        return self.subinterpretation.interpret
-
     def interpret(self, cls, *args):
         # 1. try self.subinterpret.
-        result = self.subinterpret(cls, *args)
+        result = self.subinterpretation.interpret(cls, *args)
         if result is not None:
             return result
 
@@ -236,7 +232,7 @@ class NormalizedInterpretation(Interpretation):
             normal_form = cls(*normalized_args)
 
         # 3. try evaluating that normal form
-        with PrioritizedInterpretation(self.subinterpretation, denormalize):
+        with PrioritizedInterpretation(self.subinterpretation, simplify):
             # TODO use .interpret instead of reinterpret here to avoid traversal
             result = reinterpret(normal_form)
         if result is not normal_form:  # I.e. was progress made?
@@ -250,11 +246,9 @@ class NormalizedInterpretation(Interpretation):
 # Concrete interpretations.
 
 
-class Denormalize(DispatchedInterpretation):
+class Simplify(DispatchedInterpretation):
 
-    @property
-    def is_total(self):
-        return normalize.is_total
+    is_total = True  # because it always ends with normalize
 
     def interpret(self, cls, *args):
         result = super().interpret(cls, *args)
@@ -274,7 +268,7 @@ reflect.is_total = True
 normalize_base = DispatchedInterpretation("normalize")
 normalize = PrioritizedInterpretation(normalize_base, reflect)
 
-denormalize = Denormalize("denormalize")
+simplify = Simplify("simplify")
 
 lazy_base = DispatchedInterpretation("lazy")
 lazy = PrioritizedInterpretation(lazy_base, reflect)
@@ -304,9 +298,11 @@ push_interpretation(eager)  # Use eager interpretation by default.
 
 
 __all__ = [
-    "Interpretation",
-    "DispatchedInterpretation",
     "CallableInterpretation",
+    "DispatchedInterpretation",
+    "Interpretation",
+    "NormalizedInterpretation",
+    "PrioritizedInterpretation",
     "StatefulInterpretation",
     "die",
     "eager",
@@ -315,4 +311,5 @@ __all__ = [
     "normalize",
     "reflect",
     "sequential",
+    "simplify",
 ]
