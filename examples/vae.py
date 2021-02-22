@@ -1,6 +1,12 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Example: VAE MNIST
+==================
+
+"""
+
 import argparse
 import os
 from collections import OrderedDict
