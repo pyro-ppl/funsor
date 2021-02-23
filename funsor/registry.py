@@ -3,7 +3,6 @@
 
 from collections import defaultdict
 
-from multipledispatch import Dispatcher
 from multipledispatch.dispatcher import Dispatcher, expand_tuples
 
 from funsor.typing import Variadic, deep_type, get_origin, get_type_hints, typing_wrap
