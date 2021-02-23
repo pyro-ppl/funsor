@@ -765,6 +765,7 @@ class Variable(Funsor):
     """
 
     def __init__(self, name, output):
+        assert getattr(output, "is_concrete", True), ("invalid output", output)
         inputs = OrderedDict([(name, output)])
         fresh = frozenset({name})
         super(Variable, self).__init__(inputs, output, fresh)
