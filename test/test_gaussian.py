@@ -368,7 +368,7 @@ def test_eager_subs_variable():
         (
             (
                 "y",
-                'Einsum("abc,bc->a", (Tensor(randn((4, 3, 5))), Variable("v", Reals[3, 5])))',
+                'Einsum("abc,bc->a", Tensor(randn((4, 3, 5))), Variable("v", Reals[3, 5]))',
             ),
         ),
     ],
