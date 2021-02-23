@@ -203,6 +203,37 @@ class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMet
             return cls.registry.register(*args)
 
 
+class Normalize(StatefulInterpretation):
+    def __init__(self, subinterpretation):
+        super().__init__(f"Normalize({subinterpretation.__name__})")
+        self.subinterpretation = subinterpretation
+
+    @property
+    def subinterpret(self):
+        return self.subinterpretation.interpret
+
+    def interpret(self, cls, *args):
+        # 1. try self.subinterpret.
+        result = self.subinterpret(cls, *args)
+        if result is not None:
+            return result
+
+        # 2. normalize to a Contraction normal form (will succeed)
+        # Note eager_contraction_generic_recursive() effectively fuses this
+        # step with step 3 below to short-circuit some logic.
+        with normalize:
+            normal_form = cls(*map(reinterpret, args))
+
+        # 3. try evaluating that normal form; if that fails
+        with normal_form_evaluator(self.subinterpretation):
+            result = reinterpret(normal_form)
+        if result is not normal_form:  # I.e. was progress made?
+            return result
+
+        # 4. fall back to base interpretation of cls(*args)
+        return None
+
+
 ################################################################################
 # Concrete interpretations.
 
