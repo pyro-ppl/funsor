@@ -71,6 +71,7 @@ extensions = [
 # is a PyTorch class.
 
 autodoc_inherit_docstrings = False
+autodoc_member_order = "bysource"
 
 # FIXME the sphinx version on readthedocs does not
 # support this option. These must be manually added.
