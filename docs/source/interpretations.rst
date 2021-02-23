@@ -24,3 +24,11 @@ Monte Carlo
     :undoc-members:
     :show-inheritance:
     :member-order: bysource
+
+Evidence lower bound
+--------------------
+.. automodule:: funsor.elbo
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
