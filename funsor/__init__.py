@@ -30,11 +30,12 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     distribution,
     domains,
     einsum,
+    elbo,
     gaussian,
     integrate,
+    interpretations,
     interpreter,
     joint,
-    memoize,
     montecarlo,
     ops,
     sum_product,
@@ -42,7 +43,10 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     testing,
 )
 
+__version__ = "0.4.0"
+
 __all__ = [
+    "__version__",
     "Array",
     "Bint",
     "Cat",
@@ -68,15 +72,16 @@ __all__ = [
     "distribution",
     "domains",
     "einsum",
+    "elbo",
     "find_domain",
     "function",
     "gaussian",
     "get_backend",
     "integrate",
     "interpretation",
+    "interpretations",
     "interpreter",
     "joint",
-    "memoize",
     # 'minipyro',  # TODO: enable when minipyro is backend-agnostic
     "montecarlo",
     "of_shape",

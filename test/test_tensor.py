@@ -14,7 +14,6 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Product, Real, Reals, find_domain
-from funsor.interpreter import interpretation
 from funsor.tensor import (
     REDUCE_OP_TO_NUMERIC,
     Einsum,
@@ -314,7 +313,7 @@ def test_advanced_indexing_lazy(output_shape):
     )
     u = Variable("u", Bint[2])
     v = Variable("v", Bint[3])
-    with interpretation(lazy):
+    with lazy:
         i = Number(1, 2) - u
         j = Number(2, 3) - v
         k = u + v

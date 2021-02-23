@@ -9,6 +9,14 @@ Interpreter
     :show-inheritance:
     :member-order: bysource
 
+Interpretations
+---------------
+.. automodule:: funsor.interpretations
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
+
 Monte Carlo
 -----------
 .. automodule:: funsor.montecarlo
@@ -17,9 +25,9 @@ Monte Carlo
     :show-inheritance:
     :member-order: bysource
 
-Memoize
------------
-.. automodule:: funsor.memoize
+Evidence lower bound
+--------------------
+.. automodule:: funsor.elbo
     :members:
     :undoc-members:
     :show-inheritance:

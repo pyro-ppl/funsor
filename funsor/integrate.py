@@ -8,6 +8,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian
+from funsor.interpretations import eager, normalize
 from funsor.tensor import Tensor
 from funsor.terms import (
     Funsor,
@@ -17,8 +18,6 @@ from funsor.terms import (
     Unary,
     Variable,
     _convert_reduced_vars,
-    eager,
-    normalize,
     substitute,
     to_funsor,
 )

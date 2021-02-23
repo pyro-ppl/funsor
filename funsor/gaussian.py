@@ -390,7 +390,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             return self._eager_subs_real(real_subs, affine_subs + lazy_subs)
         if affine_subs:
             return self._eager_subs_affine(affine_subs, lazy_subs)
-        return reflect(Subs, self, lazy_subs)
+        return reflect.interpret(Subs, self, lazy_subs)
 
     def _eager_subs_var(self, subs, remaining_subs):
         # Perform variable substitution, i.e. renaming of inputs.
@@ -516,7 +516,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             else:
                 remaining_subs += ((k, v),)
         if not affine:
-            return reflect(Subs, self, remaining_subs)
+            return reflect.interpret(Subs, self, remaining_subs)
 
         # Align integer dimensions.
         old_int_inputs = OrderedDict(

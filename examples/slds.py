@@ -1,6 +1,12 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Example: Switching Linear Dynamical System
+==========================================
+
+"""
+
 import argparse
 
 import torch
@@ -19,10 +25,7 @@ def main(args):
     )
     trans_noise = funsor.Tensor(
         torch.tensor(
-            [
-                0.1,  # low noise component
-                1.0,  # high noisy component
-            ],
+            [0.1, 1.0],  # low noise component  # high noisy component
             requires_grad=True,
         )
     )

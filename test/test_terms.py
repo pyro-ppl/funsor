@@ -16,12 +16,19 @@ import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import Array, Bint, Product, Real, Reals
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpretations import (
+    eager,
+    eager_or_die,
+    lazy,
+    normalize,
+    reflect,
+    sequential,
+)
+from funsor.interpreter import reinterpret
 from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
     Binary,
     Cat,
-    Funsor,
     Independent,
     Lambda,
     Number,
@@ -31,18 +38,13 @@ from funsor.terms import (
     Subs,
     Tuple,
     Variable,
-    eager,
-    eager_or_die,
-    lazy,
-    normalize,
-    reflect,
-    sequential,
     to_data,
     to_funsor,
 )
 from funsor.testing import assert_close, check_funsor, random_tensor
 
 assert Binary  # flake8
+assert Reduce  # flake8
 assert Subs  # flake8
 assert Contraction  # flake8
 assert Reals  # flake8
@@ -93,6 +95,17 @@ def test_cons_hash():
     assert Slice("x", 2, 10, 1) is Slice("x", 2, 10)
 
 
+def test_reflect():
+    x = Number(1.0)
+    with reflect:
+        y = x + x
+        assert not isinstance(y, Number)
+        assert isinstance(y, Binary)
+    with eager:
+        z = x + x
+        assert isinstance(z, Number)
+
+
 def check_quote(x):
     s = funsor.quote(x)
     assert isinstance(s, str)
@@ -100,11 +113,9 @@ def check_quote(x):
     assert x is y
 
 
-@pytest.mark.parametrize(
-    "interp", [reflect, lazy, normalize, eager], ids=lambda i: i.__name__
-)
+@pytest.mark.parametrize("interp", [reflect, lazy, normalize, eager])
 def test_quote(interp):
-    with interpretation(interp):
+    with interp:
         x = Variable("x", Bint[8])
         check_quote(x)
 
@@ -187,7 +198,7 @@ def test_type_hints(expr):
     ],
 )
 def test_eager_or_die_ok(expr):
-    with interpretation(eager_or_die):
+    with eager_or_die:
         eval(expr)
 
 
@@ -201,7 +212,7 @@ def test_eager_or_die_ok(expr):
     ],
 )
 def test_eager_or_die_error(expr):
-    with interpretation(eager_or_die):
+    with eager_or_die:
         with pytest.raises(NotImplementedError):
             eval(expr)
 
@@ -320,7 +331,7 @@ def test_binary(symbol, data1, data2):
     x2 = Number(data2, dtype)
     actual = binary_eval(symbol, x1, x2)
     check_funsor(actual, {}, Array[dtype, ()], expected_data)
-    with interpretation(normalize):
+    with normalize:
         actual_reflect = binary_eval(symbol, x1, x2)
     assert actual.output == actual_reflect.output
 
@@ -337,13 +348,13 @@ def test_reduce_all(op):
     if isinstance(op, ops.LogaddexpOp):
         pytest.skip()  # not defined for integers
 
-    with interpretation(sequential):
+    with sequential:
         f = x * y + z
         dtype = f.dtype
         check_funsor(f, {"x": Bint[2], "y": Bint[3], "z": Bint[4]}, Array[dtype, ()])
         actual = f.reduce(op)
 
-    with interpretation(sequential):
+    with sequential:
         values = [
             f(x=i, y=j, z=k) for i in x.output for j in y.output for k in z.output
         ]
@@ -376,7 +387,7 @@ def test_reduce_subset(op, reduced_vars):
     if isinstance(op, ops.LogaddexpOp):
         pytest.skip()  # not defined for integers
 
-    with interpretation(sequential):
+    with sequential:
         actual = f.reduce(op, reduced_vars)
         expected = f
         for v in [x, y, z]:
@@ -566,103 +577,6 @@ def test_align_simple():
 
 
 @pytest.mark.parametrize(
-    "subcls_expr,cls_expr",
-    [
-        ("Reduce", "Reduce"),
-        ("Reduce[ops.AssociativeOp, Funsor, frozenset]", "Funsor"),
-        ("Reduce[ops.AssociativeOp, Funsor, frozenset]", "Reduce"),
-        (
-            "Reduce[ops.AssociativeOp, Funsor, frozenset]",
-            "Reduce[ops.Op, Funsor, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
-            "Reduce[ops.Op, Funsor, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
-            "Reduce[ops.AssociativeOp, Reduce, frozenset]",
-        ),
-        ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack"),
-        ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack[str, tuple]"),
-        # Unions
-        (
-            "Reduce[ops.AssociativeOp, (Number, Stack[str, (tuple, typing.Tuple[Number, Number])]), frozenset]",
-            "Funsor",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, (Number, Stack), frozenset]",
-            "Reduce[ops.Op, Funsor, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, (Stack, Reduce[ops.AssociativeOp, (Number, Stack), frozenset]), frozenset]",
-            "Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]",
-        ),
-    ],
-)
-def test_parametric_subclass(subcls_expr, cls_expr):
-    subcls = eval(subcls_expr)
-    cls = eval(cls_expr)
-    print(subcls.classname)
-    print(cls.classname)
-    assert issubclass(cls, (Funsor, Reduce)) and not issubclass(
-        subcls, typing.Tuple
-    )  # appease flake8
-    assert issubclass(subcls, cls)
-
-
-@pytest.mark.parametrize(
-    "subcls_expr,cls_expr",
-    [
-        ("Funsor", "Reduce[ops.AssociativeOp, Funsor, frozenset]"),
-        ("Reduce", "Reduce[ops.AssociativeOp, Funsor, frozenset]"),
-        (
-            "Reduce[ops.Op, Funsor, frozenset]",
-            "Reduce[ops.AssociativeOp, Funsor, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
-            "Reduce[ops.Op, Variable, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
-            "Reduce[ops.AssociativeOp, Reduce[ops.AddOp, Funsor, frozenset], frozenset]",
-        ),
-        ("Stack", "Stack[str, typing.Tuple[Number, Number, Number]]"),
-        ("Stack[str, tuple]", "Stack[str, typing.Tuple[Number, Number, Number]]"),
-        (
-            "Stack[str, typing.Tuple[Number, Number]]",
-            "Stack[str, typing.Tuple[Number, Reduce]]",
-        ),
-        (
-            "Stack[str, typing.Tuple[Number, Reduce]]",
-            "Stack[str, typing.Tuple[Number, Number]]",
-        ),
-        # Unions
-        ("Funsor", "Reduce[ops.AssociativeOp, (Number, Funsor), frozenset]"),
-        (
-            "Reduce[ops.Op, Funsor, frozenset]",
-            "Reduce[ops.AssociativeOp, (Number, Stack), frozenset]",
-        ),
-        (
-            "Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]",
-            "Reduce[ops.AssociativeOp, (Stack[str, tuple], "
-            "Reduce[ops.AssociativeOp, (Cat, Stack), frozenset]), frozenset]",
-        ),
-    ],
-)
-def test_not_parametric_subclass(subcls_expr, cls_expr):
-    subcls = eval(subcls_expr)
-    cls = eval(cls_expr)
-    print(subcls.classname)
-    print(cls.classname)
-    assert issubclass(cls, (Funsor, Reduce)) and not issubclass(
-        subcls, typing.Tuple
-    )  # appease flake8
-    assert not issubclass(subcls, cls)
-
-
-@pytest.mark.parametrize(
     "start,stop",
     [(1, 3), (0, 1), (3, 7), (4, 8), (0, 2), (0, 10), (1, 2), (1, 10), (2, 10)],
 )
@@ -680,7 +594,7 @@ def test_cat_slice_tensor(start, stop, step):
     expected = Cat("t", terms)(t=sub)
 
     # lazy - exercise Cat.eager_subs
-    with interpretation(lazy):
+    with lazy:
         actual = Cat("t", terms)(t=sub)
     actual = reinterpret(actual)
 

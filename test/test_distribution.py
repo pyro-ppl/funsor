@@ -16,9 +16,10 @@ from funsor.delta import Delta
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
 from funsor.domains import Array, Bint, Real, Reals
 from funsor.integrate import Integrate
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpretations import eager, lazy
+from funsor.interpreter import reinterpret
 from funsor.tensor import Einsum, Tensor, numeric_array, stack
-from funsor.terms import Independent, Variable, eager, lazy, to_funsor
+from funsor.terms import Independent, Variable, to_funsor
 from funsor.testing import (
     assert_close,
     check_funsor,
@@ -359,7 +360,7 @@ def test_multinomial_density(batch_shape, event_shape):
         total_count: Real, probs: Reals[event_shape], value: Reals[event_shape]
     ) -> Real:
         if get_backend() == "torch":
-            total_count = total_count.max().item()
+            total_count = int(total_count.max())
         return backend_dist.Multinomial(total_count, probs).log_prob(value)
 
     check_funsor(
@@ -593,7 +594,7 @@ def _check_mvn_affine(d1, data):
 def test_mvn_affine_one_var():
     x = Variable("x", Reals[2])
     data = dict(x=Tensor(randn(2)))
-    with interpretation(lazy):
+    with lazy:
         d = to_funsor(random_mvn((), 2), Real)
         d = d(value=2 * x + 1)
     _check_mvn_affine(d, data)
@@ -603,7 +604,7 @@ def test_mvn_affine_two_vars():
     x = Variable("x", Reals[2])
     y = Variable("y", Reals[2])
     data = dict(x=Tensor(randn(2)), y=Tensor(randn(2)))
-    with interpretation(lazy):
+    with lazy:
         d = to_funsor(random_mvn((), 2), Real)
         d = d(value=x - y)
     _check_mvn_affine(d, data)
@@ -614,7 +615,7 @@ def test_mvn_affine_matmul():
     y = Variable("y", Reals[3])
     m = Tensor(randn(2, 3))
     data = dict(x=Tensor(randn(2)), y=Tensor(randn(3)))
-    with interpretation(lazy):
+    with lazy:
         d = random_mvn((), 3)
         d = dist.MultivariateNormal(loc=y, scale_tril=d.scale_tril, value=x @ m)
     _check_mvn_affine(d, data)
@@ -625,7 +626,7 @@ def test_mvn_affine_matmul_sub():
     y = Variable("y", Reals[3])
     m = Tensor(randn(2, 3))
     data = dict(x=Tensor(randn(2)), y=Tensor(randn(3)))
-    with interpretation(lazy):
+    with lazy:
         d = to_funsor(random_mvn((), 3), Real)
         d = d(value=x @ m - y)
     _check_mvn_affine(d, data)
@@ -636,7 +637,7 @@ def test_mvn_affine_einsum():
     x = Variable("x", Reals[2, 2])
     y = Variable("y", Real)
     data = dict(x=Tensor(randn(2, 2)), y=Tensor(randn(())))
-    with interpretation(lazy):
+    with lazy:
         d = to_funsor(random_mvn((), 3), Real)
         d = d(value=Einsum("abc,bc->a", c, x) + y)
     _check_mvn_affine(d, data)
@@ -645,7 +646,7 @@ def test_mvn_affine_einsum():
 def test_mvn_affine_getitem():
     x = Variable("x", Reals[2, 2])
     data = dict(x=Tensor(randn(2, 2)))
-    with interpretation(lazy):
+    with lazy:
         d = to_funsor(random_mvn((), 2), Real)
         d = d(value=x[0] - x[1])
     _check_mvn_affine(d, data)
@@ -655,7 +656,7 @@ def test_mvn_affine_reshape():
     x = Variable("x", Reals[2, 2])
     y = Variable("y", Reals[4])
     data = dict(x=Tensor(randn(2, 2)), y=Tensor(randn(4)))
-    with interpretation(lazy):
+    with lazy:
         d = to_funsor(random_mvn((), 4), Real)
         d = d(value=x.reshape((4,)) - y)
     _check_mvn_affine(d, data)
@@ -748,7 +749,7 @@ def _get_stat_diff(
 ):
     params = [Tensor(p, inputs) for p in params]
     if isinstance(with_lazy, bool):
-        with interpretation(lazy if with_lazy else eager):
+        with (lazy if with_lazy else eager):
             funsor_dist = funsor_dist_class(*params)
     else:
         funsor_dist = funsor_dist_class(*params)
@@ -1097,7 +1098,7 @@ def test_categoricallogits_enumerate_support(expand, batch_shape):
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     logits = funsor.Tensor(rand(batch_shape + (3,)), inputs, "real")
-    with interpretation(lazy):
+    with lazy:
         d = dist.CategoricalLogits(logits)
     x = d.enumerate_support(expand=expand)
     actual_log_prob = d(value=x).reduce(ops.logaddexp, "value")
@@ -1123,7 +1124,7 @@ def test_categoricalprobs_enumerate_support(expand, batch_shape):
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     probs = funsor.Tensor(rand(batch_shape + (3,)), inputs, "real")
-    with interpretation(lazy):
+    with lazy:
         d = dist.Categorical(probs=probs)
     x = d.enumerate_support(expand=expand)
     actual_log_prob = d(value=x).reduce(ops.logaddexp, "value")
@@ -1149,7 +1150,7 @@ def test_bernoullilogits_enumerate_support(expand, batch_shape):
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
     logits = funsor.Tensor(rand(batch_shape), inputs, "real")
-    with interpretation(lazy):
+    with lazy:
         d = dist.BernoulliLogits(logits)
     x = d.enumerate_support(expand=expand)
     actual_log_prob = d(value="value2")(value2=x).reduce(ops.logaddexp, "value")
@@ -1209,7 +1210,7 @@ def test_beta_bernoulli_conjugate(batch_shape):
     assert_close(reduced.total_count, Tensor(numeric_array(1.0)))
 
     # we need lazy expression for Beta to draw samples from it
-    with interpretation(funsor.terms.lazy):
+    with funsor.interpretations.lazy:
         lazy_latent = dist.Beta(concentration1, concentration0, value=prior)
     obs = Tensor(rand(batch_shape).round(), inputs)
     _assert_conjugate_density_ok(latent, conditional, obs, lazy_latent=lazy_latent)
@@ -1350,7 +1351,7 @@ def test_normal_event_dim_conversion(batch_shape, event_shape, use_raw_scale):
             pytest.xfail(reason="raw scale is underspecified for nonempty batch_shape")
         scale = scale.data
 
-    with interpretation(lazy):
+    with lazy:
         actual = dist.Normal(loc=loc, scale=scale, value=value)
 
     expected_inputs = inputs.copy()
@@ -1384,7 +1385,7 @@ def test_mvnormal_event_dim_conversion(batch_shape, event_shape):
         random_scale_tril(batch_shape + event_shape + event_shape[-1:]), inputs
     )
 
-    with interpretation(lazy):
+    with lazy:
         actual = dist.MultivariateNormal(loc=loc, scale_tril=scale_tril, value=value)
 
     expected_inputs = inputs.copy()
@@ -1416,7 +1417,7 @@ def test_categorical_event_dim_conversion(batch_shape, event_shape):
     value = Variable("value", Array[dtype, event_shape])
     probs = Tensor(rand(batch_shape + event_shape + (6,)), inputs)
 
-    with interpretation(lazy):
+    with lazy:
         actual = dist.Categorical(probs=probs, value=value)
 
     expected_inputs = inputs.copy()

@@ -125,7 +125,7 @@ def extract_affine(fn):
 
     The affine approximation is computed by ev evaluating ``fn`` at
     zero and each basis vector. To improve performance, users may want to run
-    under the :func:`~funsor.memoize.memoize` interpretation.
+    under the :func:`~funsor.interpretations.Memoize` interpretation.
 
     :param Funsor fn: A funsor that is affine wrt the (add,mul) semiring in
         some subset of its inputs.

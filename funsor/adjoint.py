@@ -8,7 +8,7 @@ import numpy as np
 from funsor.cnf import Contraction, GaussianMixture, nullop
 from funsor.domains import Bint
 from funsor.gaussian import Gaussian, align_gaussian
-from funsor.interpreter import interpretation
+from funsor.interpretations import Interpretation
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.tensor import Tensor
@@ -39,29 +39,25 @@ def _alpha_unmangle(expr):
     return expr._alpha_convert(alpha_subs)
 
 
-class AdjointTape(object):
+class AdjointTape(Interpretation):
     def __init__(self):
+        super().__init__("adjoint")
         self.tape = []
         self._old_interpretation = None
 
-    def __call__(self, cls, *args):
+    def interpret(self, cls, *args):
         if cls in adjoint_ops:  # atomic op, don't trace internals
-            with interpretation(self._old_interpretation):
+            with self._old_interpretation:
                 result = cls(*args)
             self.tape.append((result, cls, args))
         else:
-            result = self._old_interpretation(cls, *args)
+            result = self._old_interpretation.interpret(cls, *args)
         return result
 
     def __enter__(self):
         self.tape = []
-        self._old_interpretation = interpreter._INTERPRETATION
-        interpreter.set_interpretation(self)
-        return self
-
-    def __exit__(self, *args):
-        interpreter.set_interpretation(self._old_interpretation)
-        self._old_interpretation = None
+        self._old_interpretation = interpreter.get_interpretation()
+        return super().__enter__()
 
     def adjoint(self, red_op, bin_op, root, targets):
 
@@ -78,7 +74,7 @@ class AdjointTape(object):
                     continue
 
             # reverse the effects of alpha-renaming
-            with interpretation(reflect):
+            with reflect:
                 other_subs = tuple(
                     (name, to_funsor(name.split("__BOUND")[0], domain))
                     for name, domain in output.inputs.items()
@@ -147,11 +143,11 @@ def adjoint_reduce(adj_redop, adj_binop, out_adj, op, arg, reduced_vars):
     if op is adj_redop:
         # XXX using a hack to simulate "expand"
         return {
-            arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], arg, arg))
+            arg: adj_binop(out_adj, Binary(ops.BINARY_INVERSES[adj_binop], arg, arg))
         }
     elif op is adj_binop:  # plate!
         out = arg.reduce(op, reduced_vars)
-        return {arg: adj_binop(out_adj, Binary(ops.PRODUCT_INVERSES[op], out, arg))}
+        return {arg: adj_binop(out_adj, Binary(ops.BINARY_INVERSES[op], out, arg))}
 
 
 @adjoint_ops.register(
@@ -247,7 +243,7 @@ def adjoint_cat(adj_redop, adj_binop, out_adj, name, parts, part_name):
             start += part.inputs[part_name].dtype
         else:
             in_adjs[part] = adj_binop(
-                out_adj, Binary(ops.PRODUCT_INVERSES[adj_binop], part, part)
+                out_adj, Binary(ops.BINARY_INVERSES[adj_binop], part, part)
             )
     return in_adjs
 
