@@ -950,7 +950,7 @@ def test_einsum(equation):
     tensors = [randn(tuple(sizes[d] for d in dims)) for dims in inputs]
     funsors = [Tensor(x) for x in tensors]
     expected = Tensor(ops.einsum(equation, *tensors))
-    actual = Einsum(equation, tuple(funsors))
+    actual = Einsum(equation, *funsors)
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
@@ -968,7 +968,7 @@ def test_batched_einsum(equation, batch1, batch2):
         random_tensor(batch, Reals[tuple(sizes[d] for d in dims)])
         for batch, dims in zip([batch1, batch2], inputs)
     ]
-    actual = Einsum(equation, tuple(funsors))
+    actual = Einsum(equation, *funsors)
 
     _equation = ",".join("..." + i for i in inputs) + "->..." + output
     inputs, tensors = align_tensors(*funsors)

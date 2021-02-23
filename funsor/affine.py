@@ -6,9 +6,10 @@ from functools import reduce, singledispatch
 
 import opt_einsum
 
+from funsor.domains import Bint
 from funsor.interpreter import gensym
-from funsor.tensor import Einsum, Tensor, get_default_prototype
-from funsor.terms import Binary, Bint, Funsor, Lambda, Reduce, Unary, Variable
+from funsor.tensor import EinsumOp, Tensor, get_default_prototype
+from funsor.terms import Binary, Finitary, Funsor, Lambda, Reduce, Unary, Variable
 
 from . import ops
 
@@ -91,12 +92,12 @@ def _(fn):
     return affine_inputs(fn.arg) - fn.reduced_vars
 
 
-@affine_inputs.register(Einsum)
+@affine_inputs.register(Finitary[EinsumOp, tuple])
 def _(fn):
     # This is simply a multiary version of the above Binary(ops.mul, ...) case.
     results = []
-    for i, x in enumerate(fn.operands):
-        others = fn.operands[:i] + fn.operands[i + 1 :]
+    for i, x in enumerate(fn.args):
+        others = fn.args[:i] + fn.args[i + 1 :]
         other_inputs = reduce(ops.or_, map(_real_inputs, others), frozenset())
         results.append(affine_inputs(x) - other_inputs)
     # This multilinear case introduces incompleteness, since some vars
@@ -114,7 +115,7 @@ def extract_affine(fn):
 
         x = ...
         const, coeffs = extract_affine(x)
-        y = sum(Einsum(eqn, (coeff, Variable(var, coeff.output)))
+        y = sum(Einsum(eqn, coeff, Variable(var, coeff.output))
                 for var, (coeff, eqn) in coeffs.items())
         assert_close(y, x)
         assert frozenset(coeffs) == affine_inputs(x)
