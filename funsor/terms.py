@@ -231,6 +231,7 @@ class Funsor(object, metaclass=FunsorMeta):
             assert isinstance(name, str)
             assert isinstance(input_, Domain)
         assert isinstance(output, Domain)
+        assert getattr(output, "is_concrete", True)
         assert isinstance(fresh, frozenset)
         assert isinstance(bound, dict)
         super(Funsor, self).__init__()
@@ -765,7 +766,6 @@ class Variable(Funsor):
     """
 
     def __init__(self, name, output):
-        assert getattr(output, "is_concrete", True), ("invalid output", output)
         inputs = OrderedDict([(name, output)])
         fresh = frozenset({name})
         super(Variable, self).__init__(inputs, output, fresh)
