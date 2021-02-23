@@ -17,6 +17,8 @@ class Interpretation(ContextDecorator, ABC):
     Base class for Funsor interpretations.
 
     Instances may be used as context managers or decorators.
+
+    :param str name: A name used for printing and debugging (required).
     """
 
     def __init__(self, name):
@@ -36,6 +38,10 @@ class Interpretation(ContextDecorator, ABC):
 
     def __exit__(self, *args):
         pop_interpretation()
+
+    @property
+    def subinterpretations(self):
+        return (self,)
 
     @abstractmethod
     def interpret(self, cls, *args):
@@ -68,12 +74,27 @@ class Interpretation(ContextDecorator, ABC):
 
 
 class CallableInterpretation(Interpretation):
+    """
+    A simple callable interpretation.
+
+    Example usage::
+
+        @CallableInterpretation
+        def my_interpretation(cls, *args):
+            return ...
+
+    :param callable interpret: A function implementing interpretation.
+    """
+
     def __init__(self, interpret):
         assert callable(interpret)
         super().__init__(interpret.__name__)
         self.interpret = interpret
 
     def set_callable(self, interpret):
+        """
+        Resets the callable ``.interpret`` attribute.
+        """
         assert callable(interpret)
         self.interpret = interpret
         return self
@@ -83,6 +104,23 @@ class CallableInterpretation(Interpretation):
 
 
 class DispatchedInterpretation(Interpretation):
+    """
+    An interpretation based on pattern matching.
+
+    Example usage::
+
+        my_interpretation = DispatchedInterpretation("my_interpretation")
+
+        # Register a funsor pattern and rule.
+        @my_interpretation.register(...)
+        def my_impl(cls, *args):
+            ...
+
+        # Use the new interpretation.
+        with my_interpretation:
+            ...
+    """
+
     def __init__(self, name="dispatched"):
         super().__init__(name)
         self.registry = registry = KeyedRegistry(default=lambda *args: None)
@@ -115,29 +153,44 @@ class DispatchedInterpretation(Interpretation):
 
 
 class PrioritizedInterpretation(Interpretation):
-    def __init__(self, *subinterpreters):
-        assert len(subinterpreters) >= 1
-        super().__init__("/".join(s.__name__ for s in subinterpreters))
-        self.subinterpreters = subinterpreters
-        if isinstance(self.subinterpreters[0], DispatchedInterpretation):
-            self.register = self.subinterpreters[0].register
-            self.dispatch = self.subinterpreters[0].dispatch
+    r"""
+    A prioritized sequence of subinterpretations.
 
-        if __debug__:
-            self._volume = sum(getattr(s, "_volume", 1) for s in subinterpreters)
-            assert self._volume < 10, "suspicious interpreter overflow"
+    To interpret ``cls(*args)``, each subinterpretation is tried until one returns
+    a value other than None.
+
+    :param \*subinterpretations: A sequence of :class:`Interpretation` s.
+    """
+
+    def __init__(self, *subinterpretations):
+        subinterpretations = tuple(
+            ss for s in subinterpretations for ss in s.subinterpretations
+        )
+        assert subinterpretations
+        assert len(subinterpretations) < 10, "suspicious interpretation overflow"
+        assert not any(s.is_total for s in subinterpretations[:-1])
+        super().__init__("/".join(s.__name__ for s in subinterpretations))
+        self._subinterpretations = subinterpretations
 
     @property
-    def base(self):
-        return self.subinterpreters[0]
+    def subinterpretations(self):
+        return self._subinterpretations
 
     @property
     def is_total(self):
-        return any(s.is_total for s in self.subinterpreters)
+        return any(s.is_total for s in self._subinterpretations)
+
+    @property
+    def register(self):
+        return self._subinterpretations[0].register
+
+    @property
+    def dispatch(self):
+        return self._subinterpretations[0].dispatch
 
     def interpret(self, cls, *args):
-        for subinterpreter in self.subinterpreters:
-            result = subinterpreter.interpret(cls, *args)
+        for s in self._subinterpretations:
+            result = s.interpret(cls, *args)
             if result is not None:
                 return result
 
@@ -166,7 +219,7 @@ class StatefulInterpretationMeta(type(ABC)):
 
 class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMeta):
     """
-    Base class for interpreters with instance-dependent state or parameters.
+    Base class for interpretations with instance-dependent state or parameters.
 
     Example usage::
 
@@ -176,8 +229,8 @@ class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMet
                 self.my_param = my_param
 
         @MyInterpretation.register(...)
-        def my_impl(interpreter_state, cls, *args):
-            my_param = interpreter_state.my_param
+        def my_impl(interpretation_state, cls, *args):
+            my_param = interpretation_state.my_param
             ...
 
         with MyInterpretation(my_param=0.1):
