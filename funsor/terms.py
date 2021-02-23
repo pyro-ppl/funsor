@@ -231,6 +231,7 @@ class Funsor(object, metaclass=FunsorMeta):
             assert isinstance(name, str)
             assert isinstance(input_, Domain)
         assert isinstance(output, Domain)
+        assert getattr(output, "is_concrete", True)
         assert isinstance(fresh, frozenset)
         assert isinstance(bound, dict)
         super(Funsor, self).__init__()

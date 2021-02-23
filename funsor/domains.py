@@ -72,6 +72,11 @@ class ArrayType(Domain):
     def num_elements(cls):
         return reduce(operator.mul, cls.shape, 1)
 
+    @property
+    def is_concrete(cls):
+        # FIXME this should simply be isinstance(cls, Domain)
+        return cls.dtype is not None and cls.shape is not None
+
 
 class BintType(ArrayType):
     def __getitem__(cls, size_shape):
