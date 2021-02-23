@@ -3,7 +3,7 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import Hashable
-from contextlib import ContextDecorator
+from contextlib import ContextDecorator, contextmanager
 from timeit import default_timer
 
 from . import instrument
@@ -14,7 +14,7 @@ from .util import get_backend
 
 class Interpretation(ContextDecorator, ABC):
     """
-    Base class for Funsor interpretations.
+    Abstract base class for Funsor interpretations.
 
     Instances may be used as context managers or decorators.
 
@@ -256,6 +256,46 @@ class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMet
             return cls.registry.register(*args)
 
 
+class Memoize(Interpretation):
+    """
+    Exploits cons-hashing to do implicit common subexpression elimination.
+
+    :param Interpretation base_interpretation: The interpretation to memoize.
+    :param dict cache: An optional temporary cache where results will be
+        memoized.
+    """
+
+    def __init__(self, base_interpretation, cache=None):
+        super().__init__(f"Memoize({base_interpretation.__name__})")
+        self.base_interpretation = base_interpretation
+        if cache is None:
+            cache = {}
+        else:
+            assert isinstance(cache, dict)
+        self.cache = cache
+
+    @property
+    def is_total(self):
+        return self.base_interpretation.is_total
+
+    def interpret(self, cls, *args):
+        key = self.make_hash_key(cls, *args)
+        value = self.cache.get(key)
+        if value is None:
+            self.cache[key] = value = self.base_interpretation.interpret(cls, *args)
+        return value
+
+
+@contextmanager
+def memoize(cache=None):
+    """
+    Context manager wrapping :class:`Memoize` and yielding the ``cache`` dict.
+    """
+    base_interpretation = get_interpretation()
+    with Memoize(base_interpretation, cache) as interp:
+        yield interp.cache
+
+
 ################################################################################
 # Concrete interpretations.
 
@@ -302,13 +342,15 @@ push_interpretation(eager)  # Use eager interpretation by default.
 
 
 __all__ = [
-    "Interpretation",
-    "DispatchedInterpretation",
     "CallableInterpretation",
+    "DispatchedInterpretation",
+    "Interpretation",
+    "Memoize",
     "StatefulInterpretation",
     "die",
     "eager",
     "lazy",
+    "memoize",
     "moment_matching",
     "normalize",
     "reflect",

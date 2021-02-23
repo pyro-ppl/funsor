@@ -35,7 +35,6 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     interpretations,
     interpreter,
     joint,
-    memoize,
     montecarlo,
     ops,
     sum_product,
@@ -81,7 +80,6 @@ __all__ = [
     "interpretations",
     "interpreter",
     "joint",
-    "memoize",
     # 'minipyro',  # TODO: enable when minipyro is backend-agnostic
     "montecarlo",
     "of_shape",
