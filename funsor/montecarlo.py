@@ -42,8 +42,8 @@ def monte_carlo_integrate(state, log_measure, integrand, reduced_vars):
     return Integrate(sample, integrand, reduced_vars)
 
 
-@MonteCarlo.register(Approximate, ops.LogaddexpOp, ops.AddOp, Funsor, Funsor, frozenset)
-def monte_carlo_approximate(state, sum_op, prod_op, model, guide, approx_vars):
+@MonteCarlo.register(Approximate, ops.LogaddexpOp, Funsor, Funsor, frozenset)
+def monte_carlo_approximate(state, op, model, guide, approx_vars):
     sample_options = {}
     if state.rng_key is not None and get_backend() == "jax":
         import jax
@@ -57,7 +57,7 @@ def monte_carlo_approximate(state, sum_op, prod_op, model, guide, approx_vars):
     reduced_vars = frozenset(
         v for v in sample.input_vars if v.name in state.sample_inputs
     )
-    result = (sample - guide).reduce(sum_op, reduced_vars)
+    result = (sample - guide).reduce(op, reduced_vars)
     return result
 
 

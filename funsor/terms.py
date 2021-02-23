@@ -994,13 +994,13 @@ class Reduce(Funsor):
     """
     Lazy reduction over multiple variables.
 
-    :param ~funsor.ops.Op op: A binary operator.
+    :param ~funsor.ops.AssociativeOp op: An associative operator.
     :param funsor arg: An argument to be reduced.
     :param frozenset reduced_vars: A set of variables over which to reduce.
     """
 
     def __init__(self, op, arg, reduced_vars):
-        assert callable(op)
+        assert isinstance(op, AssociativeOp)
         assert isinstance(arg, Funsor)
         assert isinstance(reduced_vars, frozenset)
         assert all(isinstance(v, Variable) for v in reduced_vars)
@@ -1101,11 +1101,18 @@ def die_reduce(op, arg, reduced_vars):
 
 class Approximate(Funsor):
     """
-    Function approximation wrt a semiring.
+    Function approximation wrt a set of variables.
+
+    :param ~funsor.ops.AssociativeOp op: An associative operator.
+    :param Funsor model: An exact funsor depending on ``reduced_vars``.
+    :param Funsor guide: A proposal funsor guiding optional approximation.
+    :param frozenset approx_vars: A set of variables over which to approximate.
     """
 
-    def __init__(self, sum_op, prod_op, model, guide, approx_vars):
-        assert (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
+    def __init__(self, op, model, guide, approx_vars):
+        assert isinstance(op, AssociativeOp)
+        assert isinstance(model, Funsor)
+        assert isinstance(guide, Funsor)
         assert model.output is guide.output
         assert isinstance(approx_vars, frozenset), approx_vars
         inputs = model.inputs.copy()
@@ -1116,8 +1123,8 @@ class Approximate(Funsor):
         super().__init__(inputs, output, fresh, bound)
 
 
-@eager.register(Approximate, AssociativeOp, AssociativeOp, Funsor, Funsor, frozenset)
-def eager_approximate(sum_op, prod_op, model, guide, approx_vars):
+@eager.register(Approximate, AssociativeOp, Funsor, Funsor, frozenset)
+def eager_approximate(op, model, guide, approx_vars):
     return model  # exact
 
 
