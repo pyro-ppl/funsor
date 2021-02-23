@@ -360,7 +360,7 @@ def test_multinomial_density(batch_shape, event_shape):
         total_count: Real, probs: Reals[event_shape], value: Reals[event_shape]
     ) -> Real:
         if get_backend() == "torch":
-            total_count = total_count.max().item()
+            total_count = int(total_count.max())
         return backend_dist.Multinomial(total_count, probs).log_prob(value)
 
     check_funsor(
