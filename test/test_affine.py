@@ -9,7 +9,7 @@ from funsor.affine import extract_affine, is_affine
 from funsor.cnf import Contraction
 from funsor.domains import Bint, Real, Reals  # noqa: F401
 from funsor.tensor import Einsum, Tensor
-from funsor.terms import Number, Unary, Variable
+from funsor.terms import Finitary, Number, Unary, Variable
 from funsor.testing import (
     assert_close,
     check_funsor,
@@ -107,9 +107,9 @@ def test_affine_subs(expr, expected_type, expected_inputs):
         "Variable('x', Reals[2]) * randn(2) + ones(2)",
         "Variable('x', Reals[2]) + Tensor(randn(3, 2), OrderedDict(i=Bint[3]))",
         "Einsum('abcd,ac->bd',"
-        " (Tensor(randn(2, 3, 4, 5)), Variable('x', Reals[2, 4])))",
+        " Tensor(randn(2, 3, 4, 5)), Variable('x', Reals[2, 4]))",
         "Tensor(randn(3, 5)) + Einsum('abcd,ac->bd',"
-        " (Tensor(randn(2, 3, 4, 5)), Variable('x', Reals[2, 4])))",
+        " Tensor(randn(2, 3, 4, 5)), Variable('x', Reals[2, 4]))",
         "Variable('x', Reals[2, 8])[0] + randn(8)",
         "Variable('x', Reals[2, 8])[Variable('i', Bint[2])] / 4 - 3.5",
     ],
@@ -117,7 +117,7 @@ def test_affine_subs(expr, expected_type, expected_inputs):
 def test_extract_affine(expr):
     x = eval(expr)
     assert is_affine(x)
-    assert isinstance(x, (Unary, Contraction, Einsum))
+    assert isinstance(x, (Unary, Contraction, Finitary))
     real_inputs = OrderedDict((k, d) for k, d in x.inputs.items() if d.dtype == "real")
 
     const, coeffs = extract_affine(x)
@@ -134,7 +134,7 @@ def test_extract_affine(expr):
     assert isinstance(expected, Tensor)
 
     actual = const + sum(
-        Einsum(eqn, (coeff, subs[k])) for k, (coeff, eqn) in coeffs.items()
+        Einsum(eqn, coeff, subs[k]) for k, (coeff, eqn) in coeffs.items()
     )
     assert isinstance(actual, Tensor)
     assert_close(actual, expected)
@@ -157,7 +157,7 @@ def test_extract_affine(expr):
         "Variable('x', Reals[2,3]) @ Variable('y', Reals[3,4])",
         "random_gaussian(OrderedDict(x=Real))",
         "Einsum('abcd,ac->bd',"
-        " (Variable('y', Reals[2, 3, 4, 5]), Variable('x', Reals[2, 4])))",
+        " Variable('y', Reals[2, 3, 4, 5]), Variable('x', Reals[2, 4]))",
     ],
 )
 def test_not_is_affine(expr):

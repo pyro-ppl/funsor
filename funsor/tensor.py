@@ -12,7 +12,6 @@ from functools import reduce
 import numpy as np
 import opt_einsum
 from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic
 
 import funsor
 
@@ -22,6 +21,7 @@ from .domains import Array, ArrayType, Bint, Product, Real, Reals, find_domain
 from .ops import GetitemOp, MatmulOp, Op, ReshapeOp
 from .terms import (
     Binary,
+    Finitary,
     Funsor,
     FunsorMeta,
     Lambda,
@@ -36,6 +36,7 @@ from .terms import (
     to_data,
     to_funsor,
 )
+from .typing import Variadic
 from .util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
 
 
@@ -847,6 +848,13 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
+@eager.register(Finitary, Op, typing.Tuple[Tensor, ...])
+def eager_finitary_generic_tensors(op, args):
+    inputs, raw_args = align_tensors(*args)
+    raw_result = op(*raw_args)
+    return Tensor(raw_result, inputs, args[0].dtype)
+
+
 @eager.register(Lambda, Variable, Tensor)
 def eager_lambda(var, expr):
     inputs = expr.inputs.copy()
@@ -1096,7 +1104,30 @@ def function(*signature):
     return functools.partial(_function, inputs, output)
 
 
-class Einsum(Funsor):
+class EinsumOp(ops.Op, metaclass=ops.CachedOpMeta):
+    def __init__(self, equation):
+        self.equation = equation
+
+
+@find_domain.register(EinsumOp)
+def _find_domain_einsum(op, *operands):
+    equation = op.equation
+    ein_inputs, ein_output = equation.split("->")
+    ein_inputs = ein_inputs.split(",")
+    size_dict = {}
+    for ein_input, x in zip(ein_inputs, operands):
+        assert x.dtype == "real"
+        assert len(ein_input) == len(x.shape)
+        for name, size in zip(ein_input, x.shape):
+            other_size = size_dict.setdefault(name, size)
+            if other_size != size:
+                raise ValueError(
+                    "Size mismatch at {}: {} vs {}".format(name, size, other_size)
+                )
+    return Reals[tuple(size_dict[d] for d in ein_output)]
+
+
+def Einsum(equation, *operands):
     """
     Wrapper around :func:`torch.einsum` or :func:`np.einsum` to operate on real-valued Funsors.
 
@@ -1107,70 +1138,39 @@ class Einsum(Funsor):
     :param str equation: An :func:`torch.einsum` or :func:`np.einsum` equation.
     :param tuple operands: A tuple of input funsors.
     """
-
-    def __init__(self, equation, operands):
-        assert isinstance(equation, str)
-        assert isinstance(operands, tuple)
-        assert all(isinstance(x, Funsor) for x in operands)
-        ein_inputs, ein_output = equation.split("->")
-        ein_inputs = ein_inputs.split(",")
-        size_dict = {}
-        inputs = OrderedDict()
-        assert len(ein_inputs) == len(operands)
-        for ein_input, x in zip(ein_inputs, operands):
-            assert x.dtype == "real"
-            inputs.update(x.inputs)
-            assert len(ein_input) == len(x.output.shape)
-            for name, size in zip(ein_input, x.output.shape):
-                other_size = size_dict.setdefault(name, size)
-                if other_size != size:
-                    raise ValueError(
-                        "Size mismatch at {}: {} vs {}".format(name, size, other_size)
-                    )
-        output = Reals[tuple(size_dict[d] for d in ein_output)]
-        super(Einsum, self).__init__(inputs, output)
-        self.equation = equation
-        self.operands = operands
-
-    def __repr__(self):
-        return "Einsum({}, {})".format(repr(self.equation), repr(self.operands))
-
-    def __str__(self):
-        return "Einsum({}, {})".format(repr(self.equation), str(self.operands))
+    return Finitary(EinsumOp(equation), tuple(operands))
 
 
-@eager.register(Einsum, str, tuple)
-def eager_einsum(equation, operands):
-    if all(isinstance(x, Tensor) for x in operands):
-        # Make new symbols for inputs of operands.
-        inputs = OrderedDict()
-        for x in operands:
-            inputs.update(x.inputs)
-        symbols = set(equation)
-        get_symbol = iter(map(opt_einsum.get_symbol, itertools.count()))
-        new_symbols = {}
-        for k in inputs:
+@eager.register(Finitary, EinsumOp, typing.Tuple[Tensor, ...])
+def eager_einsum(op, operands):
+    # Make new symbols for inputs of operands.
+    equation = op.equation
+    inputs = OrderedDict()
+    for x in operands:
+        inputs.update(x.inputs)
+    symbols = set(equation)
+    get_symbol = iter(map(opt_einsum.get_symbol, itertools.count()))
+    new_symbols = {}
+    for k in inputs:
+        symbol = next(get_symbol)
+        while symbol in symbols:
             symbol = next(get_symbol)
-            while symbol in symbols:
-                symbol = next(get_symbol)
-            symbols.add(symbol)
-            new_symbols[k] = symbol
+        symbols.add(symbol)
+        new_symbols[k] = symbol
 
-        # Manually broadcast using einsum symbols.
-        assert "." not in equation
-        ins, out = equation.split("->")
-        ins = ins.split(",")
-        ins = [
-            "".join(new_symbols[k] for k in x.inputs) + x_out
-            for x, x_out in zip(operands, ins)
-        ]
-        out = "".join(new_symbols[k] for k in inputs) + out
-        equation = ",".join(ins) + "->" + out
+    # Manually broadcast using einsum symbols.
+    assert "." not in equation
+    ins, out = equation.split("->")
+    ins = ins.split(",")
+    ins = [
+        "".join(new_symbols[k] for k in x.inputs) + x_out
+        for x, x_out in zip(operands, ins)
+    ]
+    out = "".join(new_symbols[k] for k in inputs) + out
+    equation = ",".join(ins) + "->" + out
 
-        data = ops.einsum(equation, *[x.data for x in operands])
-        return Tensor(data, inputs)
-
-    return None  # defer to default implementation
+    data = ops.einsum(equation, *[x.data for x in operands])
+    return Tensor(data, inputs)
 
 
 def tensordot(x, y, dims):
@@ -1206,7 +1206,7 @@ def tensordot(x, y, dims):
         symbols[y_start:y_end],
         symbols[x_start:y_start] + symbols[x_end:y_end],
     )
-    return Einsum(equation, (x, y))
+    return Einsum(equation, x, y)
 
 
 def stack(parts, dim=0):

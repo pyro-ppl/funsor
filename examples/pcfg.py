@@ -1,6 +1,12 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Example: PCFG
+=============
+
+"""
+
 import argparse
 import math
 from collections import OrderedDict

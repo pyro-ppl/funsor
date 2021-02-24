@@ -29,7 +29,6 @@ from funsor.tensor import REDUCE_OP_TO_NUMERIC
 from funsor.terms import (
     Binary,
     Cat,
-    Funsor,
     Independent,
     Lambda,
     Number,
@@ -45,6 +44,7 @@ from funsor.terms import (
 from funsor.testing import assert_close, check_funsor, random_tensor
 
 assert Binary  # flake8
+assert Reduce  # flake8
 assert Subs  # flake8
 assert Contraction  # flake8
 assert Reals  # flake8
@@ -574,103 +574,6 @@ def test_align_simple():
     for k, v in f.inputs.items():
         assert g.inputs[k] == v
     assert f(x=1, y=2, z=3) == g(x=1, y=2, z=3)
-
-
-@pytest.mark.parametrize(
-    "subcls_expr,cls_expr",
-    [
-        ("Reduce", "Reduce"),
-        ("Reduce[ops.AssociativeOp, Funsor, frozenset]", "Funsor"),
-        ("Reduce[ops.AssociativeOp, Funsor, frozenset]", "Reduce"),
-        (
-            "Reduce[ops.AssociativeOp, Funsor, frozenset]",
-            "Reduce[ops.Op, Funsor, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
-            "Reduce[ops.Op, Funsor, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
-            "Reduce[ops.AssociativeOp, Reduce, frozenset]",
-        ),
-        ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack"),
-        ("Stack[str, typing.Tuple[Number, Number, Number]]", "Stack[str, tuple]"),
-        # Unions
-        (
-            "Reduce[ops.AssociativeOp, (Number, Stack[str, (tuple, typing.Tuple[Number, Number])]), frozenset]",
-            "Funsor",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, (Number, Stack), frozenset]",
-            "Reduce[ops.Op, Funsor, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, (Stack, Reduce[ops.AssociativeOp, (Number, Stack), frozenset]), frozenset]",
-            "Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]",
-        ),
-    ],
-)
-def test_parametric_subclass(subcls_expr, cls_expr):
-    subcls = eval(subcls_expr)
-    cls = eval(cls_expr)
-    print(subcls.classname)
-    print(cls.classname)
-    assert issubclass(cls, (Funsor, Reduce)) and not issubclass(
-        subcls, typing.Tuple
-    )  # appease flake8
-    assert issubclass(subcls, cls)
-
-
-@pytest.mark.parametrize(
-    "subcls_expr,cls_expr",
-    [
-        ("Funsor", "Reduce[ops.AssociativeOp, Funsor, frozenset]"),
-        ("Reduce", "Reduce[ops.AssociativeOp, Funsor, frozenset]"),
-        (
-            "Reduce[ops.Op, Funsor, frozenset]",
-            "Reduce[ops.AssociativeOp, Funsor, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
-            "Reduce[ops.Op, Variable, frozenset]",
-        ),
-        (
-            "Reduce[ops.AssociativeOp, Reduce[ops.AssociativeOp, Funsor, frozenset], frozenset]",
-            "Reduce[ops.AssociativeOp, Reduce[ops.AddOp, Funsor, frozenset], frozenset]",
-        ),
-        ("Stack", "Stack[str, typing.Tuple[Number, Number, Number]]"),
-        ("Stack[str, tuple]", "Stack[str, typing.Tuple[Number, Number, Number]]"),
-        (
-            "Stack[str, typing.Tuple[Number, Number]]",
-            "Stack[str, typing.Tuple[Number, Reduce]]",
-        ),
-        (
-            "Stack[str, typing.Tuple[Number, Reduce]]",
-            "Stack[str, typing.Tuple[Number, Number]]",
-        ),
-        # Unions
-        ("Funsor", "Reduce[ops.AssociativeOp, (Number, Funsor), frozenset]"),
-        (
-            "Reduce[ops.Op, Funsor, frozenset]",
-            "Reduce[ops.AssociativeOp, (Number, Stack), frozenset]",
-        ),
-        (
-            "Reduce[(ops.Op, ops.AssociativeOp), Stack, frozenset]",
-            "Reduce[ops.AssociativeOp, (Stack[str, tuple], "
-            "Reduce[ops.AssociativeOp, (Cat, Stack), frozenset]), frozenset]",
-        ),
-    ],
-)
-def test_not_parametric_subclass(subcls_expr, cls_expr):
-    subcls = eval(subcls_expr)
-    cls = eval(cls_expr)
-    print(subcls.classname)
-    print(cls.classname)
-    assert issubclass(cls, (Funsor, Reduce)) and not issubclass(
-        subcls, typing.Tuple
-    )  # appease flake8
-    assert not issubclass(subcls, cls)
 
 
 @pytest.mark.parametrize(

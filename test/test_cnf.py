@@ -13,7 +13,7 @@ from funsor.cnf import (
     BACKEND_TO_LOGSUMEXP_BACKEND,
     Contraction,
 )
-from funsor.domains import Bint, Reals  # noqa F403
+from funsor.domains import Array, Bint, Reals  # noqa: F401
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpretations import eager, normalize, reflect
 from funsor.interpreter import reinterpret
