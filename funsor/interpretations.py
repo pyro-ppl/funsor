@@ -25,6 +25,9 @@ class Interpretation(ContextDecorator, ABC):
         self.__name__ = name
         super().__init__()
 
+    def __repr__(self):
+        return self.__name__
+
     is_total = False
 
     def __enter__(self):

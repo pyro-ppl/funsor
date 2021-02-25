@@ -42,6 +42,7 @@ _INFIX = {k: v for v, k, _ in INFIX_OPERATORS}
 # See failing example at https://github.com/pyro-ppl/funsor/pull/414
 class SubstituteInterpretation(Interpretation):
     def __init__(self, subs, base_interpretation):
+        super().__init__("subs")
         if isinstance(subs, (dict, OrderedDict)):
             subs = tuple(subs.items())
         self.subs = subs
@@ -886,26 +887,6 @@ def eager_subs(arg, subs):
     return substitute(arg, subs)
 
 
-class Scatter(Funsor):
-    """
-    Transpose of linear :class:`Subs`.
-    """
-
-    def __init__(self, op, subs, source):
-        assert isinstance(op, AssociativeOp)
-        assert isinstance(source, Funsor)
-        assert isinstance(subs, tuple)
-        inputs = source.inputs.copy()
-        for key, value in subs:
-            assert isinstance(key, str)
-            assert isinstance(value, Funsor)
-            inputs.update(value.inputs)
-        output = source.output
-        fresh = frozenset(key for key, value in subs)
-        bound = {}
-        super().__init__(inputs, output, fresh, bound)
-
-
 @die.register(Subs, Funsor, tuple)
 def die_subs(arg, subs):
     expr = reflect.interpret(Subs, arg, subs)
@@ -1112,6 +1093,52 @@ def moment_matching_reduce(op, arg, reduced_vars):
 def die_reduce(op, arg, reduced_vars):
     expr = reflect.interpret(Reduce, op, arg, reduced_vars)
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
+
+
+class Scatter(Funsor):
+    """
+    Transpose of linear :class:`Subs`, combined with :class:`Reduce`.
+
+    .. warning:: This works only for injective scatter operations. In
+        particular, this does not allow accumulation behavior like scatter-add.
+
+    :param AssociativeOp op: An op. The unit of this op will be used as
+        default value.
+    :param tuple subs: A substitution.
+    :param Funsor source: A source for data to be scattered from.
+    :param frozenset reduced_vars: A set of variables over which to reduce.
+    """
+
+    def __init__(self, op, subs, source, reduced_vars):
+        assert isinstance(op, AssociativeOp)
+        assert isinstance(source, Funsor)
+        assert isinstance(subs, tuple)
+        assert isinstance(reduced_vars, frozenset)
+        assert all(isinstance(v, Variable) for v in reduced_vars)
+        inputs = source.inputs.copy()
+        for key, value in subs:
+            inputs[key] = value.output
+        for key, value in subs:
+            assert isinstance(key, str)
+            assert isinstance(value, Funsor)
+            for k2, v2 in value.inputs.items():
+                v3 = inputs.setdefault(k2, v2)
+                assert v3 == v2
+        inputs = OrderedDict((k, v) for k, v in inputs.items() if k not in reduced_vars)
+        output = source.output
+        fresh = frozenset(key for key, value in subs)
+        bound = {v.name: v.output for v in reduced_vars}
+        super().__init__(inputs, output, fresh, bound)
+        self.op = op
+        self.subs = subs
+        self.source = source
+        self.reduced_vars = reduced_vars
+
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
+        op, subs, source, reduced_vars = super()._alpha_convert(alpha_subs)
+        reduced_vars = frozenset(alpha_subs.get(var.name, var) for var in reduced_vars)
+        return op, subs, source, reduced_vars
 
 
 class NumberMeta(FunsorMeta):

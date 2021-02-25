@@ -6,6 +6,7 @@ import io
 import itertools
 import pickle
 from collections import OrderedDict
+from functools import reduce
 from typing import get_type_hints
 
 import numpy as np
@@ -14,6 +15,7 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Product, Real, Reals, find_domain
+from funsor.interpretations import eager, lazy
 from funsor.tensor import (
     REDUCE_OP_TO_NUMERIC,
     Einsum,
@@ -23,7 +25,7 @@ from funsor.tensor import (
     stack,
     tensordot,
 )
-from funsor.terms import Cat, Lambda, Number, Scatter, Slice, Stack, Variable, lazy
+from funsor.terms import Cat, Lambda, Number, Scatter, Slice, Stack, Variable
 from funsor.testing import (
     assert_close,
     assert_equiv,
@@ -1229,9 +1231,9 @@ def test_empty_tensor_possible():
 
 
 @pytest.mark.parametrize("op", [ops.add, ops.mul, ops.max, ops.min])
-def test_scatter(op):
+def test_scatter_number(op):
     source = random_tensor(OrderedDict(k=Bint[5]))
-    actual = Scatter(op, (("i", Number(0, 3)),), source)
+    actual = Scatter(op, (("i", Number(0, 3)),), source, frozenset())
 
     proto = source.data.reshape((-1,))[:1].reshape(())
     zero = ops.full_like(ops.expand(proto, (2, 5)), ops.UNITS[op])
@@ -1247,7 +1249,8 @@ def test_scatter_2d():
     i = Tensor(numeric_array([0, 0, 1, 2, 2]), dtype=3)["n"]
     j = Tensor(numeric_array([0, 1, 0, 2, 3]), dtype=4)["n"]
     source = Tensor(numeric_array([1.0, 2.0, 3.0, 4.0, 5.0]))["n"]
-    actual = Scatter(ops.add, (("i", i), ("j", j)), source)
+    reduced_vars = frozenset({Variable("n", Bint[5])})
+    actual = Scatter(ops.add, (("i", i), ("j", j)), source, reduced_vars)
     expected = Tensor(
         numeric_array(
             [
@@ -1265,19 +1268,24 @@ def test_scatter_3():
     # b is a batch variable
     # n,m are reduced variables, and
     # i is a destin variable
-    source = Tensor(numeric_array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]))["b", "n"]
+    source = Tensor(
+        numeric_array(
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5], [4.5, 5.5, 6.5]]
+        )
+    )["b", "n"]
     i = Tensor(numeric_array([[0, 1], [3, 4], [5, 6]]), dtype=7)["n", "m"]
-    actual = Scatter(ops.add, (("i", i),), source)
+    reduced_vars = frozenset({Variable("n", Bint[3]), Variable("m", Bint[2])})
+    actual = Scatter(ops.add, (("i", i),), source, reduced_vars)
     expected = Tensor(
         numeric_array(
             [
-                [1.0, 4.0],
-                [1.0, 4.0],
-                [0.0, 0.0],
-                [2.0, 5.0],
-                [2.0, 5.0],
-                [3.0, 6.0],
-                [3.0, 6.0],
+                [1.0, 4.0, 1.5, 4.5],
+                [1.0, 4.0, 1.5, 4.5],
+                [0.0, 0.0, 0.0, 0.0],
+                [2.0, 5.0, 2.5, 5.5],
+                [2.0, 5.0, 2.5, 5.5],
+                [3.0, 6.0, 3.5, 6.5],
+                [3.0, 6.0, 3.5, 6.5],
             ]
         )
     )["i", "b"]
@@ -1288,9 +1296,91 @@ def test_scatter_3():
 def test_scatter_4():
     source = Number(1.0)
     i = Tensor(numeric_array([0, 0]), dtype=1)["n"]
+    reduced_vars = frozenset({Variable("n", Bint[2])})
     # By extensionality, i should be equivalent to:
     #   i = Number(0, dtype=1)
     # however that would lead to actual = Tensor([1.0])["i"].
-    actual = Scatter(ops.add, (("i", i),), source)
+    actual = Scatter(ops.add, (("i", i),), source, reduced_vars)
     expected = Tensor(numeric_array([2.0]))["i"]
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "source_inputs, i_inputs, reduced_vars",
+    [
+        ("", "", ""),
+        ("a", "", ""),
+        ("a", "a", ""),
+        ("a", "a", "a"),
+        ("ab", "a", ""),
+        ("ab", "a", "a"),
+        ("ab", "ab", ""),
+        ("ab", "ab", "a"),
+        ("ab", "ab", "ab"),
+        ("ab", "ab", "b"),
+        ("ab", "b", ""),
+        ("ab", "b", "b"),
+        ("abc", "ab", ""),
+        ("abc", "ab", "a"),
+        ("abc", "ab", "ab"),
+        ("abc", "ab", "b"),
+        ("abc", "abc", ""),
+        ("abc", "abc", "a"),
+        ("abc", "abc", "abc"),
+        ("abc", "abc", "ac"),
+        ("abc", "abc", "b"),
+        ("abc", "abc", "c"),
+        ("abc", "ac", ""),
+        ("abc", "ac", "a"),
+        ("abc", "ac", "ac"),
+        ("abc", "ac", "c"),
+        ("abc", "b", ""),
+        ("abc", "b", "b"),
+        ("abc", "bc", ""),
+        ("abc", "bc", "b"),
+        ("abc", "bc", "bc"),
+        ("abc", "bc", "c"),
+    ],
+)
+@pytest.mark.parametrize("output_shape", [()], ids=str)
+def test_scatter_i(source_inputs, i_inputs, output_shape, reduced_vars):
+    inputs = OrderedDict(a=Bint[2], b=Bint[3], c=Bint[4])
+    reduced_names = set(reduced_vars)
+    reduced_vars = frozenset(Variable(k, inputs[k]) for k in reduced_vars)
+
+    source_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in source_inputs)
+    source = random_tensor(source_inputs, Reals[output_shape])
+
+    # Sample an injective set of indices.
+    i_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in i_inputs)
+    i_shape = tuple(v.size for v in i_inputs.values())
+    i_numel = reduce(ops.mul, i_shape, 1)
+    i_size = i_numel * 2  # give a little headroom
+    i_data = np.random.permutation(i_size)[:i_numel]
+    i_data = numeric_array(i_data.reshape(i_shape))
+    i = Tensor(i_data, i_inputs, dtype=i_size)
+    subs = (("i", i),)
+
+    for interp in [lazy, eager]:
+        with interp:
+            destin = Scatter(ops.add, subs, source, reduced_vars)
+
+        # Check shape.
+        assert destin.inputs.get("i") == Bint[i_size]
+        for k, v in source_inputs.items():
+            if k in reduced_names:
+                assert k not in destin.inputs
+            else:
+                assert destin.inputs.get(k) == v
+        assert destin.output == source.output
+
+    # Check that Scatter is a pseudoinverse of Subs.
+    source2 = destin(**dict(subs))
+    source2 = source2.align(tuple(source.inputs))
+    assert_close(source2, source)
+
+    # Check total.
+    actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
+    expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
+    assert set(expected.inputs).issubset(actual.inputs)
+    assert (ops.abs(actual - expected) < 1e-6).data.all()

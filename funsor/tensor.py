@@ -37,7 +37,14 @@ from .terms import (
     to_funsor,
 )
 from .typing import Variadic
-from .util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
+from .util import (
+    broadcast_shape,
+    get_backend,
+    get_tracing_state,
+    getargspec,
+    is_nn_module,
+    quote,
+)
 
 
 def get_default_prototype():
@@ -635,8 +642,8 @@ def eager_scatter_number(op, subs, source):
     return eager_scatter_tensor(op, subs, source)
 
 
-@eager.register(Scatter, Op, tuple, Tensor)
-def eager_scatter_tensor(op, subs, source):
+@eager.register(Scatter, Op, tuple, Tensor, frozenset)
+def eager_scatter_tensor(op, subs, source, reduced_vars):
     if not all(isinstance(v, (Variable, Number, Slice, Tensor)) for k, v in subs):
         return None
 
@@ -655,30 +662,44 @@ def eager_scatter_tensor(op, subs, source):
     # )
 
     # Compute shapes.
+    reduced_names = frozenset(v.name for v in reduced_vars)
     destin_inputs = OrderedDict()
-    reduced_inputs = OrderedDict()
-    slice_shape = []
     tensors = []
     for k, v in subs:
         destin_inputs[k] = v.output
-        reduced_inputs.update(v.inputs)
+        for k2, v2 in v.inputs.items():
+            if k2 not in reduced_names:
+                destin_inputs[k2] = v2
         tensors.append(source.materialize(v))
+    slice_shape = []
     for k, d in source.inputs.items():
-        if k not in reduced_inputs:  # warning: this breaks extensionality
+        if k not in reduced_names:
             destin_inputs[k] = d
+    for k, d in destin_inputs.items():
+        if k in source.inputs:
             slice_shape.append(d.size)
     output = source.output
     slice_shape.extend(output.shape)
     tensors.append(source)
 
     # Convert from funsor.Tensor to backend Tensor.
-    inputs, tensors = align_tensors(*tensors)
+    inputs = destin_inputs.copy()
+    assert reduced_names.isdisjoint(destin_inputs)
+    for v in reduced_vars:
+        inputs[v.name] = v.output
+    tensors = [align_tensor(inputs, x) for x in tensors]
     source_data = tensors[-1]
 
     # Construct a [:] slice for the output.
-    index = list(tensors[:-1])
+    index = [
+        ops.expand(x, broadcast_shape(x.shape, source_data.shape))
+        if ops.is_numeric_array(x)
+        else x
+        for x in tensors[:-1]
+    ]
+    base_offset = len(slice_shape) + len(reduced_vars)
     for i, size in enumerate(slice_shape):
-        offset_from_right = len(slice_shape) - i - 1
+        offset_from_right = base_offset - i - 1
         arange = ops.new_arange(source_data, size)
         index.append(arange.reshape((-1,) + (1,) * offset_from_right))
     index = tuple(index)
