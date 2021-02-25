@@ -671,16 +671,16 @@ def eager_scatter_tensor(op, subs, source, reduced_vars):
             if k2 not in reduced_names:
                 destin_inputs[k2] = v2
         tensors.append(source.materialize(v))
-    slice_shape = []
     for k, d in source.inputs.items():
         if k not in reduced_names:
             destin_inputs[k] = d
+    tensors.append(source)
+    slice_shape = []
     for k, d in destin_inputs.items():
         if k in source.inputs:
             slice_shape.append(d.size)
     output = source.output
     slice_shape.extend(output.shape)
-    tensors.append(source)
 
     # Convert from funsor.Tensor to backend Tensor.
     inputs = destin_inputs.copy()

@@ -1125,10 +1125,9 @@ class Scatter(Funsor):
                 v3 = inputs.setdefault(k2, v2)
                 assert v3 == v2
         inputs = OrderedDict((k, v) for k, v in inputs.items() if k not in reduced_vars)
-        output = source.output
         fresh = frozenset(key for key, value in subs)
         bound = {v.name: v.output for v in reduced_vars}
-        super().__init__(inputs, output, fresh, bound)
+        super().__init__(inputs, source.output, fresh, bound)
         self.op = op
         self.subs = subs
         self.source = source

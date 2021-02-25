@@ -31,6 +31,7 @@ from funsor.testing import (
     assert_equiv,
     check_funsor,
     empty,
+    iter_subsets,
     rand,
     randn,
     random_tensor,
@@ -1305,43 +1306,16 @@ def test_scatter_4():
     assert_close(actual, expected)
 
 
-@pytest.mark.parametrize(
-    "source_inputs, i_inputs, reduced_vars",
-    [
-        ("", "", ""),
-        ("a", "", ""),
-        ("a", "a", ""),
-        ("a", "a", "a"),
-        ("ab", "a", ""),
-        ("ab", "a", "a"),
-        ("ab", "ab", ""),
-        ("ab", "ab", "a"),
-        ("ab", "ab", "ab"),
-        ("ab", "ab", "b"),
-        ("ab", "b", ""),
-        ("ab", "b", "b"),
-        ("abc", "ab", ""),
-        ("abc", "ab", "a"),
-        ("abc", "ab", "ab"),
-        ("abc", "ab", "b"),
-        ("abc", "abc", ""),
-        ("abc", "abc", "a"),
-        ("abc", "abc", "abc"),
-        ("abc", "abc", "ac"),
-        ("abc", "abc", "b"),
-        ("abc", "abc", "c"),
-        ("abc", "ac", ""),
-        ("abc", "ac", "a"),
-        ("abc", "ac", "ac"),
-        ("abc", "ac", "c"),
-        ("abc", "b", ""),
-        ("abc", "b", "b"),
-        ("abc", "bc", ""),
-        ("abc", "bc", "b"),
-        ("abc", "bc", "bc"),
-        ("abc", "bc", "c"),
-    ],
-)
+def _scatter_i_examples():
+    result = []
+    for source_inputs in ["", "a", "ab", "abc"]:
+        sets = ["".join(s) for s in iter_subsets(source_inputs)]
+        for i_inputs, reduced_vars in itertools.product(sets, sets):
+            result.append((source_inputs, i_inputs, reduced_vars))
+    return result
+
+
+@pytest.mark.parametrize("source_inputs, i_inputs, reduced_vars", _scatter_i_examples())
 @pytest.mark.parametrize("output_shape", [()], ids=str)
 def test_scatter_i(source_inputs, i_inputs, output_shape, reduced_vars):
     inputs = OrderedDict(a=Bint[2], b=Bint[3], c=Bint[4])
@@ -1367,6 +1341,74 @@ def test_scatter_i(source_inputs, i_inputs, output_shape, reduced_vars):
 
         # Check shape.
         assert destin.inputs.get("i") == Bint[i_size]
+        for k, v in source_inputs.items():
+            if k in reduced_names:
+                assert k not in destin.inputs
+            else:
+                assert destin.inputs.get(k) == v
+        assert destin.output == source.output
+
+    # Check that Scatter is a pseudoinverse of Subs.
+    source2 = destin(**dict(subs))
+    source2 = source2.align(tuple(source.inputs))
+    assert_close(source2, source)
+
+    # Check total.
+    actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
+    expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
+    assert set(expected.inputs).issubset(actual.inputs)
+    assert (ops.abs(actual - expected) < 1e-6).data.all()
+
+
+def _scatter_ji_examples():
+    result = []
+    for source_inputs in ["", "a", "ab", "abc"]:
+        sets = ["".join(s) for s in iter_subsets(source_inputs)]
+        for i_inputs, j_inputs, reduced_vars in itertools.product(sets, sets, sets):
+            result.append((source_inputs, i_inputs, j_inputs, reduced_vars))
+    return result
+
+
+@pytest.mark.parametrize(
+    "source_inputs, i_inputs, j_inputs, reduced_vars",
+    _scatter_ji_examples(),
+)
+@pytest.mark.parametrize("output_shape", [()], ids=str)
+def test_scatter_ji(source_inputs, i_inputs, j_inputs, output_shape, reduced_vars):
+    inputs = OrderedDict(a=Bint[2], b=Bint[3], c=Bint[4])
+    reduced_names = set(reduced_vars)
+    reduced_vars = frozenset(Variable(k, inputs[k]) for k in reduced_vars)
+
+    source_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in source_inputs)
+    source = random_tensor(source_inputs, Reals[output_shape])
+
+    # Sample an injective set of indices.
+    i_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in i_inputs)
+    i_shape = tuple(v.size for v in i_inputs.values())
+    i_numel = reduce(ops.mul, i_shape, 1)
+    i_size = i_numel * 2  # give a little headroom
+    i_data = np.random.permutation(i_size)[:i_numel]
+    i_data = numeric_array(i_data.reshape(i_shape))
+    i = Tensor(i_data, i_inputs, dtype=i_size)
+
+    # Sample another injective set of indices.
+    j_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in j_inputs)
+    j_shape = tuple(v.size for v in j_inputs.values())
+    j_numel = reduce(ops.mul, j_shape, 1)
+    j_size = j_numel * 2  # give a little headroom
+    j_data = np.random.permutation(j_size)[:j_numel]
+    j_data = numeric_array(j_data.reshape(j_shape))
+    j = Tensor(j_data, j_inputs, dtype=j_size)
+
+    subs = (("i", i), ("j", j))
+
+    for interp in [lazy, eager]:
+        with interp:
+            destin = Scatter(ops.add, subs, source, reduced_vars)
+
+        # Check shape.
+        assert destin.inputs.get("i") == Bint[i_size]
+        assert destin.inputs.get("j") == Bint[j_size]
         for k, v in source_inputs.items():
             if k in reduced_names:
                 assert k not in destin.inputs
