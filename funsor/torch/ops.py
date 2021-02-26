@@ -183,6 +183,11 @@ def _new_zeros(x, shape):
     return x.new_zeros(shape)
 
 
+@ops.new_full.register(torch.Tensor, tuple, numbers.Number)
+def _new_full(x, shape, value):
+    return x.new_full(shape, value)
+
+
 @ops.permute.register(torch.Tensor, (tuple, list))
 def _permute(x, dims):
     return x.permute(dims)
@@ -228,6 +233,19 @@ def _safesub(x, y):
     except TypeError:
         finfo = torch.iinfo(y.dtype)
     return x + (-y).clamp(max=finfo.max)
+
+
+@ops.scatter.register(torch.Tensor, tuple, torch.Tensor)
+def _scatter(destin, indices, source):
+    result = destin.clone()
+    result[indices] = source
+    return result
+
+
+@ops.scatter_add.register(torch.Tensor, tuple, torch.Tensor)
+def _scatter_add(destin, indices, source):
+    result = destin.clone()
+    return result.index_put(indices, source, accumulate=True)
 
 
 @ops.stack.register(int, [torch.Tensor])

@@ -81,7 +81,7 @@ class Op(Dispatcher):
         super(Op, self).__init__(name)
         if fn is not None:
             # register as default operation
-            for nargs in (1, 2):
+            for nargs in (1, 2, 3):
                 default_signature = (object,) * nargs
                 self.add(default_signature, fn)
 

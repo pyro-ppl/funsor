@@ -277,12 +277,13 @@ texinfo_documents = [
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
-    "python": ("https://docs.python.org/3/", None),
-    "numpy": ("http://docs.scipy.org/doc/numpy/", None),
-    "torch": ("http://pytorch.org/docs/master/", None),
-    "pyro": ("http://docs.pyro.ai/en/stable/", None),
-    "opt_einsum": ("https://optimized-einsum.readthedocs.io/en/stable/", None),
+    "jax": ("https://jax.readthedocs.io/en/latest/", None),
     "multipledispatch": ("https://multiple-dispatch.readthedocs.io/en/latest/", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "opt_einsum": ("https://optimized-einsum.readthedocs.io/en/stable/", None),
+    "pyro": ("http://docs.pyro.ai/en/stable/", None),
+    "python": ("https://docs.python.org/3/", None),
+    "torch": ("http://pytorch.org/docs/master/", None),
 }
 
 # @jpchen's hack to get rtd builder to install latest pytorch
