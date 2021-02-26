@@ -3,13 +3,53 @@
 
 import funsor.ops as ops
 from funsor.ops import AssociativeOp, LogOp
-from funsor.terms import Binary, Reduce, Tuple, Unary, eager
+from funsor.terms import Binary, Reduce, Tuple, Unary, eager, lazy, Variable, Number
+from funsor.interpreter import interpretation
+from funsor.domains import Bint, Real
+from collections import defaultdict
 
 
 class Tangent(Tuple):
     pass
 
 
+class JVP:
+    def __init__(self, primal, tangent=defaultdict(lambda: Number(0.0))):
+        self.primal = primal
+        self.tangent = tangent.copy()
+        self.tangent[str(id(primal))] = Variable(str(id(primal)), Real)
+
+    def __add__(self, other):
+        primal = self.primal + other.primal
+        tangent = defaultdict(lambda: Number(0.0))
+        for key, value in self.tangent.items():
+            tangent[key] += value
+        for key, value in other.tangent.items():
+            tangent[key] += value
+        tangent[str(id(self.primal))] += other.primal - other.primal
+        tangent[str(id(other.primal))] += self.primal - self.primal
+        return JVP(primal, tangent)
+
+    def __mul__(self, other):
+        primal = self.primal * other.primal
+        tangent = defaultdict(lambda: Number(0.0))
+        for key, value in self.tangent.items():
+            tangent[key] += value
+        for key, value in other.tangent.items():
+            tangent[key] += value
+        tangent[str(id(self.primal))] *= other.primal
+        tangent[str(id(other.primal))] *= self.primal
+        return JVP(primal, tangent)
+
+    def log(self):
+        primal = self.primal.log()
+        tangent = self.tangent
+        tangent[str(id(self.primal))] /= self.primal
+        return JVP(primal, tangent)
+
+
+
+@lazy.register(Binary, AssociativeOp, Tangent, Tangent)
 @eager.register(Binary, AssociativeOp, Tangent, Tangent)
 def jvp_binary(op, lhs, rhs):
     lhs_primal, lhs_tangent = lhs
@@ -24,6 +64,7 @@ def jvp_binary(op, lhs, rhs):
     return Tangent(primal, tangent)
 
 
+@lazy.register(Reduce, AssociativeOp, Tangent, frozenset)
 @eager.register(Reduce, AssociativeOp, Tangent, frozenset)
 def jvp_reduce(op, arg, reduced_vars):
     arg_primal, arg_tangent = arg
@@ -37,6 +78,7 @@ def jvp_reduce(op, arg, reduced_vars):
     return Tangent(primal, tangent)
 
 
+@lazy.register(Unary, LogOp, Tangent)
 @eager.register(Unary, LogOp, Tangent)
 def jvp_log(op, arg):
     arg_primal, arg_tangent = arg
