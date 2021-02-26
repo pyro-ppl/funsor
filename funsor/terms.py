@@ -16,8 +16,16 @@ from multipledispatch import dispatch
 import funsor.interpreter as interpreter
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
-from funsor.interpretations import Interpretation, die, eager, lazy, reflect, simplify
-from funsor.interpreter import PatternMissingError, interpret
+from funsor.interpretations import (
+    Interpretation,
+    die,
+    eager,
+    lazy,
+    normalize,
+    reflect,
+    simplify,
+)
+from funsor.interpreter import PatternMissingError, interpret, reinterpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
 from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_origin
@@ -407,6 +415,11 @@ class Funsor(object, metaclass=FunsorMeta):
         assert isinstance(sample_inputs, OrderedDict)
         if sampled_vars.isdisjoint(self.inputs):
             return self
+        normalized_self = normalize(reinterpret)(self)
+        if normalized_self is not self:
+            return normalized_self.unscaled_sample(
+                sampled_vars, sample_inputs, rng_key=rng_key
+            )
         raise ValueError("Cannot sample from a {}".format(type(self).__name__))
 
     def align(self, names):
@@ -1036,6 +1049,14 @@ def simplify_reduce_unrelated_vars(op, arg, reduced_vars):
             if add_op is op:
                 return mul_op(arg, multiplicity).reduce(op, reduced_vars)
         raise NotImplementedError(f"Cannot reduce {op}")
+    return None
+
+
+@eager.register(Reduce, AssociativeOp, Funsor, frozenset)
+def eager_reduce(op, arg, reduced_vars):
+    if reduced_vars <= arg.input_vars:
+        reduced_vars = frozenset(v.name for v in reduced_vars)
+        return instrument.debug_logged(arg.eager_reduce)(op, reduced_vars)
     return None
 
 
