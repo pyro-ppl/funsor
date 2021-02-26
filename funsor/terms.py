@@ -1097,10 +1097,26 @@ def die_reduce(op, arg, reduced_vars):
 
 class Scatter(Funsor):
     """
-    Transpose of linear :class:`Subs`, combined with :class:`Reduce`.
+    Transpose of structurally linear :class:`Subs`, followed by
+    :class:`Reduce`.
 
-    .. warning:: This works only for injective scatter operations. In
-        particular, this does not allow accumulation behavior like scatter-add.
+    For injective scatter operations this should satisfy the equation::
+
+        if destin = Scatter(op, subs, source, frozenset())
+        then source = Subs(destin, subs)
+
+    .. warning:: This is currently implemented only for injective scatter
+        operations. In particular, this does not allow accumulation behavior
+        like scatter-add.
+
+    .. note:: ``Scatter(ops.add, ...)`` is the funsor analog of
+        ``numpy.add.at()`` or :func:`torch.scatter_add` or
+        :func:`jax.lax.scatter_add`. For injective substitutions,
+        ``Scatter(ops.add, ...)`` is roughly equivalent to the tensor
+        operation::
+
+            result = zeros(...)
+            result[subs] = source
 
     :param AssociativeOp op: An op. The unit of this op will be used as
         default value.
