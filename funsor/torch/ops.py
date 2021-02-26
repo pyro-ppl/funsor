@@ -202,6 +202,11 @@ def _new_zeros(x, shape):
     return x.new_zeros(shape)
 
 
+@ops.new_full.register(torch.Tensor, tuple, numbers.Number)
+def _new_full(x, shape, value):
+    return x.new_full(shape, value)
+
+
 @ops.permute.register(torch.Tensor, (tuple, list))
 def _permute(x, dims):
     return x.permute(dims)
@@ -252,24 +257,16 @@ def _safesub(x, y):
 
 
 @ops.scatter.register(torch.Tensor, tuple, torch.Tensor)
-def _scatter(dest, indices, src):
-    result = dest.clone()
-    result[indices] = src
+def _scatter(destin, indices, source):
+    result = destin.clone()
+    result[indices] = source
     return result
 
 
 @ops.scatter_add.register(torch.Tensor, tuple, torch.Tensor)
-def _scatter_add(dest, indices, src):
-    dim = len(indices)
-    flat_dest = dest.reshape(-1)
-    flat_src = src.reshape(-1)
-    flat_indices = indices[0]
-    for i in range(dim - 1):
-        flat_indices *= dest.shape[i]
-        flat_indices += indices[i + 1]
-    flat_result = torch.scatter_add(flat_dest, 0, flat_indices, flat_src)
-    result = flat_result.reshape(dest.shape)
-    return result
+def _scatter_add(destin, indices, source):
+    result = destin.clone()
+    return result.index_put(indices, source, accumulate=True)
 
 
 @ops.stack.register(int, [torch.Tensor])

@@ -37,14 +37,7 @@ from .terms import (
     to_funsor,
 )
 from .typing import Variadic
-from .util import (
-    broadcast_shape,
-    get_backend,
-    get_tracing_state,
-    getargspec,
-    is_nn_module,
-    quote,
-)
+from .util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
 
 
 def get_default_prototype():
@@ -647,78 +640,46 @@ def eager_scatter_tensor(op, subs, source, reduced_vars):
     if not all(isinstance(v, (Variable, Number, Slice, Tensor)) for k, v in subs):
         return None
 
-    # TODO avoid materializing here
-    proto = source.data.reshape((-1,))[:1].reshape(())
-    subs = tuple((k, source.materialize(v)) for k, v in subs)
-    # TODO materialize numbers as tensors (required only for numpy backend):
-    # subs = tuple(
-    #     (
-    #         k,
-    #         Tensor(ops.new_array(v.data), dtype=v.dtype)
-    #         if isinstance(v, Number)
-    #         else v,
-    #     )
-    #     for k, v in subs
-    # )
-
     # Compute shapes.
     reduced_names = frozenset(v.name for v in reduced_vars)
     destin_inputs = OrderedDict()
-    tensors = []
-    for k, v in subs:
-        destin_inputs[k] = v.output
-        for k2, v2 in v.inputs.items():
-            if k2 not in reduced_names:
-                destin_inputs[k2] = v2
-        tensors.append(source.materialize(v))
+    tensor_inputs = OrderedDict()
+    for key, value in subs:
+        for k, d in value.inputs.items():
+            # These are "batch" inputs and should be left of subs keys.
+            if k not in reduced_names:
+                destin_inputs[k] = d
+            tensor_inputs[k] = d
     for k, d in source.inputs.items():
+        # These are "batch" inputs and should be left of subs keys.
         if k not in reduced_names:
             destin_inputs[k] = d
-    tensors.append(source)
-    slice_shape = []
-    for k, d in destin_inputs.items():
-        if k in source.inputs:
-            slice_shape.append(d.size)
-    output = source.output
-    slice_shape.extend(output.shape)
+        tensor_inputs[k] = d
+    for key, value in subs:
+        # These are "event" inputs and should be right of "batch" inputs.
+        destin_inputs[key] = value.output
 
-    # Convert from funsor.Tensor to backend Tensor.
-    inputs = destin_inputs.copy()
-    assert reduced_names.isdisjoint(destin_inputs)
-    for v in reduced_vars:
-        inputs[v.name] = v.output
-    tensors = [align_tensor(inputs, x) for x in tensors]
+    # Construct aligned backend tensors.
+    tensors = []
+    for k, d in tensor_inputs.items():
+        if k not in reduced_names:
+            tensors.append(Variable(k, d))  # effectively a slice
+    for key, value in subs:
+        tensors.append(value)
+    tensors = [source.materialize(x) for x in tensors]
+    tensors.append(source)
+    tensors = [align_tensor(tensor_inputs, x, expand=True) for x in tensors]
+    indices = tuple(tensors[:-1])
     source_data = tensors[-1]
 
-    # Construct a [:] slice for the output.
-    index = [
-        ops.expand(x, broadcast_shape(x.shape, source_data.shape))
-        if ops.is_numeric_array(x)
-        else x
-        for x in tensors[:-1]
-    ]
-    base_offset = len(slice_shape) + len(reduced_vars)
-    for i, size in enumerate(slice_shape):
-        offset_from_right = base_offset - i - 1
-        arange = ops.new_arange(source_data, size)
-        index.append(arange.reshape((-1,) + (1,) * offset_from_right))
-    index = tuple(index)
-
+    # Construct a destination backend tensor.
+    output = source.output
     shape = tuple(d.size for d in destin_inputs.values()) + output.shape
-    zero = ops.UNITS[op]
-    destin = ops.full_like(ops.expand(proto, shape), zero)
-    # TODO either add an assertion or support non-injective scattering
-    # via scatter_add etc.
-    data = ops.scatter(destin, index, source_data)
+    destin = ops.new_full(source.data, shape, ops.UNITS[op])
+
+    # TODO Add a check for injectivity and dispatch to scatter_add etc.
+    data = ops.scatter(destin, indices, source_data)
     return Tensor(data, destin_inputs, output.dtype)
-
-
-# analog of torch.diag_embed:
-# i = Variable(...)
-# j = Variable(...)
-# k = Variable(...)
-# assert k in diag_value.input_vars
-# Scatter(ops.add, ((i, k), (j, k)), diag_value)
 
 
 @eager.register(Binary, Op, Tensor, Number)

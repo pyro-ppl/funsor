@@ -219,6 +219,11 @@ def new_zeros(x, shape):
 
 
 @Op
+def new_full(x, shape, value):
+    return np.full(shape, value, dtype=x.dtype)
+
+
+@Op
 def new_eye(x, shape):
     n = shape[-1]
     return np.broadcast_to(np.eye(n), shape + (n,))
@@ -256,20 +261,27 @@ def _safesub(x, y):
 
 
 @Op
-def scatter(dest, indices, src):
+def scatter(destin, indices, source):
     raise NotImplementedError
 
 
 @scatter.register(array, tuple, array)
-def _scatter(dest, indices, src):
-    result = dest.copy()
-    result[indices] = src
+def _scatter(destin, indices, source):
+    result = destin.copy()
+    result[indices] = source
     return result
 
 
 @Op
-def scatter_add(dest, indices, src):
+def scatter_add(destin, indices, source):
     raise NotImplementedError
+
+
+@scatter_add.register(array, tuple, array)
+def _scatter_add(destin, indices, source):
+    result = destin.copy()
+    np.add.at(result, indices, source)
+    return result
 
 
 @stack.register(int, [array])
@@ -322,6 +334,7 @@ __all__ = [
     "logsumexp",
     "new_arange",
     "new_eye",
+    "new_full",
     "new_zeros",
     "permute",
     "prod",

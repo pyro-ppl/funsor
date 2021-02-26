@@ -1110,12 +1110,12 @@ class Scatter(Funsor):
         like scatter-add.
 
     .. note:: ``Scatter(ops.add, ...)`` is the funsor analog of
-        ``numpy.add.at()`` or :func:`torch.scatter_add` or
+        ``numpy.add.at()`` or :func:`torch.index_put` or
         :func:`jax.lax.scatter_add`. For injective substitutions,
         ``Scatter(ops.add, ...)`` is roughly equivalent to the tensor
         operation::
 
-            result = zeros(...)
+            result = zeros(...)  # since zero is the additive unit
             result[subs] = source
 
     :param AssociativeOp op: An op. The unit of this op will be used as
@@ -1127,20 +1127,37 @@ class Scatter(Funsor):
 
     def __init__(self, op, subs, source, reduced_vars):
         assert isinstance(op, AssociativeOp)
-        assert isinstance(source, Funsor)
         assert isinstance(subs, tuple)
+        assert len(subs) == len(set(key for key, value in subs))
+        assert isinstance(source, Funsor)
         assert isinstance(reduced_vars, frozenset)
         assert all(isinstance(v, Variable) for v in reduced_vars)
-        inputs = source.inputs.copy()
-        for key, value in subs:
-            inputs[key] = value.output
+        reduced_names = frozenset(v.name for v in reduced_vars)
+
+        # First compute inputs of the pure-scatter op with no reduction.
+        inputs = OrderedDict()
         for key, value in subs:
             assert isinstance(key, str)
             assert isinstance(value, Funsor)
-            for k2, v2 in value.inputs.items():
-                v3 = inputs.setdefault(k2, v2)
-                assert v3 == v2
-        inputs = OrderedDict((k, v) for k, v in inputs.items() if k not in reduced_vars)
+            assert key not in source.inputs
+            assert key not in reduced_names
+            for k, d in value.inputs.items():
+                # These are "batch" inputs and should be left of subs keys.
+                d2 = inputs.setdefault(k, d)
+                assert d2 == d
+        for k, d in source.inputs.items():
+            # These are "batch" inputs and should be left of subs keys.
+            d2 = inputs.setdefault(k, d)
+            assert d2 == d
+        for key, value in subs:
+            assert key not in inputs
+            # These are "event" inputs and should be right of "batch" inputs.
+            inputs[key] = value.output
+
+        # Then narrow these down to the fused scatter-reduce op.
+        inputs = OrderedDict(
+            (k, d) for k, d in inputs.items() if k not in reduced_names
+        )
         fresh = frozenset(key for key, value in subs)
         bound = {v.name: v.output for v in reduced_vars}
         super().__init__(inputs, source.output, fresh, bound)

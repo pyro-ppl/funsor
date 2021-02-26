@@ -1237,9 +1237,9 @@ def test_scatter_number(op):
     actual = Scatter(op, (("i", Number(0, 3)),), source, frozenset())
 
     proto = source.data.reshape((-1,))[:1].reshape(())
-    zero = ops.full_like(ops.expand(proto, (2, 5)), ops.UNITS[op])
-    expected_data = ops.cat(0, source.data.reshape((1, 5)), zero)
-    expected = Tensor(expected_data, OrderedDict(i=Bint[3], k=Bint[5]))
+    zero = ops.full_like(ops.expand(proto, (5, 2)), ops.UNITS[op])
+    expected_data = ops.cat(1, source.data.reshape((5, 1)), zero)
+    expected = Tensor(expected_data, OrderedDict(k=Bint[5], i=Bint[3]))
 
     assert_close(actual, expected)
     assert_close(actual(i=0), source)  # Scatter is transpose to Subs
@@ -1288,8 +1288,8 @@ def test_scatter_3():
                 [3.0, 6.0, 3.5, 6.5],
                 [3.0, 6.0, 3.5, 6.5],
             ]
-        )
-    )["i", "b"]
+        ).T
+    )["b", "i"]
     assert_close(actual, expected)
 
 
@@ -1306,6 +1306,23 @@ def test_scatter_4():
     assert_close(actual, expected)
 
 
+def test_scatter_diag_embed():
+    source = random_tensor(OrderedDict(k=Bint[3]))
+    k = Variable("k", Bint[3])
+    actual = Scatter(ops.add, (("i", k), ("j", k)), source, frozenset({k}))
+    assert set(actual.inputs) == {"i", "j"}
+
+    expected_data = numeric_array(
+        [
+            [float(source.data[0]), 0, 0],
+            [0, float(source.data[1]), 0],
+            [0, 0, float(source.data[2])],
+        ]
+    )
+    expected = Tensor(expected_data)["i", "j"]
+    assert_close(actual, expected)
+
+
 def _scatter_i_examples():
     result = []
     for source_inputs in ["", "a", "ab", "abc"]:
@@ -1316,7 +1333,7 @@ def _scatter_i_examples():
 
 
 @pytest.mark.parametrize("source_inputs, i_inputs, reduced_vars", _scatter_i_examples())
-@pytest.mark.parametrize("output_shape", [()], ids=str)
+@pytest.mark.parametrize("output_shape", [(), (5,)], ids=str)
 def test_scatter_i(source_inputs, i_inputs, output_shape, reduced_vars):
     inputs = OrderedDict(a=Bint[2], b=Bint[3], c=Bint[4])
     reduced_names = set(reduced_vars)
@@ -1348,16 +1365,17 @@ def test_scatter_i(source_inputs, i_inputs, output_shape, reduced_vars):
                 assert destin.inputs.get(k) == v
         assert destin.output == source.output
 
-    # Check that Scatter is a pseudoinverse of Subs.
-    source2 = destin(**dict(subs))
-    source2 = source2.align(tuple(source.inputs))
-    assert_close(source2, source)
+    if reduced_vars <= i.input_vars:
+        # Check that Scatter is a pseudoinverse of Subs.
+        source2 = destin(**dict(subs))
+        assert source2.input_vars == source.input_vars
+        assert ((source2 - source).abs() < 1e-6).data.all()
 
-    # Check total.
-    actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
-    expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
-    assert set(expected.inputs).issubset(actual.inputs)
-    assert (ops.abs(actual - expected) < 1e-6).data.all()
+        # Check total.
+        actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
+        expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
+        assert expected.input_vars <= actual.input_vars
+        assert ((actual - expected).abs() < 1e-6).data.all()
 
 
 def _scatter_ji_examples():
@@ -1416,13 +1434,14 @@ def test_scatter_ji(source_inputs, i_inputs, j_inputs, output_shape, reduced_var
                 assert destin.inputs.get(k) == v
         assert destin.output == source.output
 
-    # Check that Scatter is a pseudoinverse of Subs.
-    source2 = destin(**dict(subs))
-    source2 = source2.align(tuple(source.inputs))
-    assert_close(source2, source)
+    if reduced_vars <= i.input_vars | j.input_vars:
+        # Check that Scatter is a pseudoinverse of Subs.
+        source2 = destin(**dict(subs))
+        source2 = source2.align(tuple(source.inputs))
+        assert_close(source2, source)
 
-    # Check total.
-    actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
-    expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
-    assert set(expected.inputs).issubset(actual.inputs)
-    assert (ops.abs(actual - expected) < 1e-6).data.all()
+        # Check total.
+        actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
+        expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
+        assert set(expected.inputs).issubset(actual.inputs)
+        assert (ops.abs(actual - expected) < 1e-6).data.all()
