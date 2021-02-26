@@ -255,7 +255,6 @@ def recursion_reinterpret_contraction(x):
 )
 def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
     return Contraction(red_op, bin_op, reduced_vars, terms)
-    # return eager.interpret(Contraction, red_op, bin_op, reduced_vars, terms)
 
 
 @simplify.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
@@ -308,10 +307,7 @@ def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
 
 @simplify.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
-    result = bin_op(lhs, rhs)
-    if reduced_vars:
-        result = result.reduce(red_op, reduced_vars)
-    return result
+    return bin_op(lhs, rhs).reduce(red_op, reduced_vars)
 
 
 @simplify.register(Binary, AssociativeOp, (Number, Funsor, Align), Number)
@@ -527,15 +523,6 @@ def unary_neg_variable(op, arg):
 #######################################################################
 # Distributing Unary transformations (Subs, log, exp, neg, reciprocal)
 #######################################################################
-
-
-@normalize.register(Subs, Funsor, tuple)
-def do_fresh_subs(arg, subs):
-    if not subs:
-        return arg
-    if all(name in arg.fresh for name, sub in subs):
-        return arg.eager_subs(subs)
-    return None
 
 
 @normalize.register(Subs, Contraction, tuple)
