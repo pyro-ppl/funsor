@@ -1375,7 +1375,7 @@ def test_scatter_i(source_inputs, i_inputs, output_shape, reduced_vars):
         actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
         expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
         assert expected.input_vars <= actual.input_vars
-        assert ((actual - expected).abs() < 1e-6).data.all()
+        assert ((actual - expected).abs() < 1e-5).data.all()
 
 
 def _scatter_ji_examples():
@@ -1444,4 +1444,4 @@ def test_scatter_ji(source_inputs, i_inputs, j_inputs, output_shape, reduced_var
         actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
         expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
         assert set(expected.inputs).issubset(actual.inputs)
-        assert (ops.abs(actual - expected) < 1e-6).data.all()
+        assert ((actual - expected).abs() < 1e-4).data.all()
