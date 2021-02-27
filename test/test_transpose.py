@@ -118,13 +118,24 @@ def test_mul():
     assert_close(transpose(z)[y], x)
 
 
-def test_mul_variable():
+def test_mul_variable_2():
     x = Variable("x", Real)
     y = Variable("y", Real)
     with lazy:
         z = x * y
     assert transpose(z)[x] is y
     assert transpose(z)[y] is x
+
+
+def test_mul_variable_3():
+    w = Variable("w", Real)
+    x = Variable("x", Real)
+    y = Variable("y", Real)
+    with lazy:
+        z = w * x * y
+    assert_close_extensional(transpose(z)[w], x * y)
+    assert_close_extensional(transpose(z)[x], w * y)
+    assert_close_extensional(transpose(z)[y], w * x)
 
 
 def test_sum():
