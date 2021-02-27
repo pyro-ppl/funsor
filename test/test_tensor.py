@@ -1445,3 +1445,20 @@ def test_scatter_ji(source_inputs, i_inputs, j_inputs, output_shape, reduced_var
         expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
         assert set(expected.inputs).issubset(actual.inputs)
         assert ((actual - expected).abs() < 1e-4).data.all()
+
+
+def test_scatter_pure_renaming():
+
+    x = random_tensor(OrderedDict(time=Bint[4], prev=Bint[2], curr=Bint[2]))
+    drop = Variable("drop", x.inputs["prev"])
+    subs = (("prev", drop),)
+
+    source = x(**dict(subs))
+
+    reduced_vars = frozenset([drop])
+
+    actual = Scatter(ops.add, subs, source, reduced_vars)
+    expected = x
+
+    assert actual.input_vars == expected.input_vars
+    assert ((actual - expected).abs() < 1e-4).data.all()

@@ -117,6 +117,15 @@ def test_mul():
     assert_close(transpose(z)[y], x)
 
 
+def test_mul_variable():
+    x = Variable("x", Real)
+    y = Variable("y", Real)
+    with interpretation(lazy):
+        z = x * y
+    assert_close(transpose(z)[x], y)
+    assert_close(transpose(z)[y], x)
+
+
 def test_sum():
     x = random_tensor(OrderedDict(i=Bint[3], j=Bint[4]))
     with interpretation(lazy):
@@ -295,7 +304,7 @@ def test_adjoint_subs_variable():
         z = xy(x=w)
 
     assert transpose(z)[y] is Number(1.0)
-    assert transpose(z)[xy] is Scatter(ops.add, (("x", w),), Number(1.0))
+    assert transpose(z)[xy] is Scatter(ops.add, (("x", w),), Number(1.0), frozenset())
     assert transpose(z)[x] is Number(1.0)  # FIXME is this right?
     assert transpose(z)[w] is Number(0.0)  # FIXME is this right?
 
@@ -311,7 +320,7 @@ def test_adjoint_subs_tensor():
     assert_close(transpose(y)[x], expected)
 
     # conceptually
-    expected = Scatter(ops.add, (("i", Number(0, 2)),), Number(1.0))
+    expected = Scatter(ops.add, (("i", Number(0, 2)),), Number(1.0), frozenset())
     assert_close(transpose(y)[x], expected)
 
 
@@ -327,8 +336,52 @@ def test_adjoint_subs_tensor_rename():
     assert_close(transpose(y)[x], expected)
 
     # conceptually
-    expected = Scatter(ops.add, (("i", k),), Number(1.0))
+    expected = Scatter(ops.add, (("i", k),), Number(1.0), frozenset())
     assert_close(transpose(y)[x], expected)
+
+
+def test_adjoint_subs_binary():
+
+    x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
+    y = random_tensor(OrderedDict(i=Bint[4], j=Bint[2]))
+    k = Variable("k", Bint[2])
+
+    with reflect:
+        xk = x(i=k)
+        yk = y(j=k)
+        z = xk * yk
+
+    assert_close(transpose(z)[xk], y(j=k))
+    assert_close(transpose(z)[yk], x(i=k))
+
+    expected_x = y(j=k).reduce(ops.add, "i")(k="i")
+    actual_x = transpose(z)[x]
+    assert_close(actual_x, expected_x)
+
+    expected_y = x(i=k).reduce(ops.add, "j")(k="j")
+    actual_y = transpose(z)[y]
+    assert_close(actual_y, expected_y)
+
+
+def test_adjoint_subs_binary_reduce():
+
+    x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
+    y = random_tensor(OrderedDict(i=Bint[4], j=Bint[2]))
+    k = Variable("k", Bint[2])
+
+    with reflect:
+        xk = x(i=k)
+        yk = y(j=k)
+        zk = xk * yk
+        z = zk.reduce(ops.add, {"i", "j", "k"})
+
+    expected_x = y(j=k).reduce(ops.add, "i")(k="i")
+    actual_x = transpose(z)[x]
+    assert_close(actual_x, expected_x)
+
+    expected_y = x(i=k).reduce(ops.add, "j")(k="j")
+    actual_y = transpose(z)[y]
+    assert_close(actual_y, expected_y)
 
 
 @pytest.mark.xfail(reason="requires ops.scatter_add")
@@ -340,7 +393,7 @@ def test_adjoint_subs_tensor_expand():
         y = x(i=k)
 
     # conceptually
-    expected = Scatter(ops.add, (("i", k),), Number(1.0))
+    expected = Scatter(ops.add, (("i", k),), Number(1.0), frozenset())
     assert_close(transpose(y)[x], expected)
 
     # concretely

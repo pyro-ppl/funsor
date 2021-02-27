@@ -243,13 +243,14 @@ def test_sequential_sum_product_adjoint(
     reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
     with AdjointTape() as expected_tape:
         with reflect:
-            expected = sum_product(sum_op, prod_op, operands, reduce_vars)
-        expected = apply_optimizer(expected)
+            lazy_expected = sum_product(sum_op, prod_op, operands, reduce_vars)
+        expected = apply_optimizer(lazy_expected)
         expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
-        expected = expected.align(tuple(actual.inputs.keys()))
 
     # check forward pass (sanity check)
-    assert_close(actual, expected, rtol=5e-3 * num_steps)
+    assert_close(
+        actual, expected.align(tuple(actual.inputs.keys())), rtol=5e-3 * num_steps
+    )
 
     # perform backward passes only after the sanity check
     expected_bwds = expected_tape.adjoint(sum_op, prod_op, expected, operands)

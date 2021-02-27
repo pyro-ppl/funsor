@@ -261,7 +261,19 @@ def adjoint_cat(adj_sum_op, adj_prod_op, out_adj, name, parts, part_name):
 
 @adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Funsor, Funsor, tuple)
 def adjoint_subs(adj_sum_op, adj_prod_op, out_adj, arg, subs):
-    return ((arg, Scatter(adj_sum_op, subs, out_adj)),)
+
+    # detect fresh variable collisions that should be relabeled and reduced
+    relabel = {k: interpreter.gensym(k) for k, v in subs}
+    relabeled_subs = tuple((relabel[k], v) for k, v in subs)
+    relabeled_arg = arg(**relabel)
+
+    reduced_vars = out_adj.input_vars - relabeled_arg.input_vars
+    for k, v in subs:
+        reduced_vars |= v.input_vars - relabeled_arg.input_vars
+
+    relabeled_arg_adj = Scatter(adj_sum_op, relabeled_subs, out_adj, reduced_vars)
+    arg_adj = relabeled_arg_adj(**{v: k for k, v in relabel.items()})
+    return ((arg, arg_adj),)
 
 
 @adjoint_ops.register(
