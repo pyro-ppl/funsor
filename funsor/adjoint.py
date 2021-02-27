@@ -108,7 +108,7 @@ class AdjointTape(Interpretation):
                 self._eager_to_lazy[output] = lazy_output
 
             in_adjs = adjoint_ops(fn, sum_op, bin_op, adjoint_values[output], *inputs)
-            out_agg_vars = adjoint_values[output].input_vars - root.input_vars
+            out_agg_vars = adjoint_values[output].input_vars - output.input_vars
             for v, adjv in in_adjs:
                 agg_vars = out_agg_vars & (adjv.input_vars - v.input_vars)
                 old_value = adjoint_values[v]

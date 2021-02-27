@@ -8,9 +8,10 @@ import pytest
 import funsor.ops as ops
 from funsor.adjoint import adjoint
 from funsor.domains import Bint, Real, Reals
-from funsor.interpreter import interpretation, reinterpret
+from funsor.interpretations import lazy, reflect
+from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
-from funsor.terms import Number, Scatter, Variable, lazy, reflect
+from funsor.terms import Number, Scatter, Variable
 from funsor.testing import assert_close, random_tensor
 
 # from funsor.transpose import transpose
@@ -42,7 +43,7 @@ def test_identity():
 
 def test_two():
     x = random_tensor(OrderedDict(i=Bint[2]))
-    with interpretation(lazy):
+    with lazy:
         y = x + x
     assert transpose(y)[x] is Number(2.0)
     assert transpose(y)[y] is Number(1.0)
@@ -50,7 +51,7 @@ def test_two():
 
 def test_zero_minus():
     x = random_tensor(OrderedDict(i=Bint[2]))
-    with interpretation(lazy):
+    with lazy:
         y = x - x
     assert transpose(y)[x] is Number(0.0)
     assert transpose(y)[y] is Number(1.0)
@@ -58,7 +59,7 @@ def test_zero_minus():
 
 def test_zero_mul():
     x = random_tensor(OrderedDict(i=Bint[2]))
-    with interpretation(lazy):
+    with lazy:
         y = x * 0
     assert transpose(y)[x] is Number(0.0)
     assert transpose(y)[y] is Number(1.0)
@@ -66,7 +67,7 @@ def test_zero_mul():
 
 def test_four():
     x = random_tensor(OrderedDict(i=Bint[2]))
-    with interpretation(lazy):
+    with lazy:
         y = x + x
         z = y + y
     assert transpose(z)[x] is Number(4.0)
@@ -76,7 +77,7 @@ def test_four():
 
 def test_four_variable():
     x = Variable("x", Real)
-    with interpretation(lazy):
+    with lazy:
         y = x + x
         z = y + y
     assert transpose(z)[x] is Number(4.0)
@@ -86,7 +87,7 @@ def test_four_variable():
 
 def test_eight_tensor():
     w = random_tensor(OrderedDict(i=Bint[2]))
-    with interpretation(lazy):
+    with lazy:
         x = w + w
         y = x + x
         z = y + y
@@ -98,7 +99,7 @@ def test_eight_tensor():
 
 def test_eight_variable():
     w = Variable("w", Real)
-    with interpretation(lazy):
+    with lazy:
         x = w + w
         y = x + x
         z = y + y
@@ -111,7 +112,7 @@ def test_eight_variable():
 def test_mul():
     x = random_tensor(OrderedDict(i=Bint[3], j=Bint[4]))
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    with interpretation(lazy):
+    with lazy:
         z = x * y
     assert_close(transpose(z)[x], y)
     assert_close(transpose(z)[y], x)
@@ -120,15 +121,15 @@ def test_mul():
 def test_mul_variable():
     x = Variable("x", Real)
     y = Variable("y", Real)
-    with interpretation(lazy):
+    with lazy:
         z = x * y
-    assert_close(transpose(z)[x], y)
-    assert_close(transpose(z)[y], x)
+    assert transpose(z)[x] is y
+    assert transpose(z)[y] is x
 
 
 def test_sum():
     x = random_tensor(OrderedDict(i=Bint[3], j=Bint[4]))
-    with interpretation(lazy):
+    with lazy:
         z = x.reduce(ops.add, "j")
     assert_close(transpose(z)[x], Number(1.0))
 
@@ -136,7 +137,7 @@ def test_sum():
 def test_matmul_tensor():
     x = random_tensor(OrderedDict(i=Bint[3], j=Bint[4]))
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    with interpretation(lazy):
+    with lazy:
         xy = x * y
         z = xy.reduce(ops.add, "j")
     assert xy in transpose(z)
@@ -149,7 +150,7 @@ def test_matmul_variable():
     x = Variable("x", Real)
     y = Variable("y", Real)
     j = Variable("j", Bint[4])
-    with interpretation(lazy):
+    with lazy:
         xy = x * y
         z = xy.reduce(ops.add, j)
     assert xy in transpose(z)
@@ -161,7 +162,7 @@ def test_matmul_variable():
 def test_batched_matmul():
     x = random_tensor(OrderedDict(i=Bint[3], j=Bint[4], b=Bint[2]))
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5], b=Bint[2]))
-    with interpretation(lazy):
+    with lazy:
         xy = x * y
         z = xy.reduce(ops.add, "j")
     assert_close(transpose(z)[x], y)
@@ -173,7 +174,7 @@ def test_expand_reduce():
     i = Variable("i", Bint[3])
     x = Variable("x", Real)
     y = Variable("y", Real)
-    with interpretation(lazy):
+    with lazy:
         xy = x * y
         z = xy.reduce(ops.add, i)  # note the implicit expand before the .reduce
     assert_close_extensional(transpose(z)[x], 3 * y)
@@ -184,7 +185,7 @@ def test_expand_reduce():
 def test_tensor_contract():
     x = random_tensor(OrderedDict(i1=Bint[2], i2=Bint[3], j1=Bint[4], j2=Bint[5]))
     y = random_tensor(OrderedDict(j1=Bint[4], j2=Bint[5], k1=Bint[6], k2=Bint[7]))
-    with interpretation(lazy):
+    with lazy:
         xy = x * y
         z = xy.reduce(ops.add, {"j1", "j2"})
     assert_close(transpose(z)[x], y)
@@ -195,7 +196,7 @@ def test_tensor_contract():
 @pytest.mark.parametrize("height", [1, 2, 3, 10])  # , 100, 1000])
 def test_tower_sum(height):
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
-    with interpretation(lazy):
+    with lazy:
         top = x
         for _ in range(height):
             top = top + top
@@ -205,7 +206,7 @@ def test_tower_sum(height):
 @pytest.mark.parametrize("height", [0, 1, 2, 3, 10])  # , 100, 1000])
 def test_tower_prod(height):
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
-    with interpretation(lazy):
+    with lazy:
         top = x
         expected = Number(1.0)
         for _ in range(height):
@@ -223,7 +224,7 @@ def test_tower_prod(height):
 def test_binary_product_rule(f, g):
     x = Variable("x", Real)
     y = Variable("y", Real)
-    with interpretation(lazy):
+    with lazy:
         f = eval(f)
         g = eval(g)
 
@@ -244,7 +245,7 @@ def test_binary_product_rule(f, g):
 def test_binary_sum_rule(f, g):
     x = Variable("x", Real)
     y = Variable("y", Real)
-    with interpretation(lazy):
+    with lazy:
         f = eval(f)
         g = eval(g)
 
@@ -263,7 +264,7 @@ def test_binary_sum_rule(f, g):
 def test_reduce_sum_rule():
     i = Variable("i", Bint[4])
     f = random_tensor(OrderedDict(i=Bint[4]))
-    with interpretation(lazy):
+    with lazy:
         f_ = f.reduce(ops.add, i)
 
     actual = transpose(f_)[f]
@@ -281,7 +282,7 @@ def test_reduce_sum_rule():
 def test_reduce_sum_getitem_variable():
     x = Variable("x", Reals[4])
     i = Variable("i", Bint[4])
-    with interpretation(lazy):
+    with lazy:
         f = x[i]
         y = f.reduce(ops.add, i)
     actual = transpose(y)[x]
@@ -299,7 +300,7 @@ def test_adjoint_subs_variable():
     w = Variable("w", Real)
     x = Variable("x", Real)
     y = Variable("y", Real)
-    with interpretation(reflect):
+    with reflect:
         xy = x + y
         z = xy(x=w)
 
@@ -312,7 +313,7 @@ def test_adjoint_subs_variable():
 def test_adjoint_subs_tensor():
 
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
-    with interpretation(reflect):
+    with reflect:
         y = x(i=0)
 
     # concretely
@@ -328,7 +329,7 @@ def test_adjoint_subs_tensor_rename():
 
     k = Variable("k", Bint[2])
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
-    with interpretation(reflect):
+    with reflect:
         y = x(i=k)
 
     # concretely
@@ -389,7 +390,7 @@ def test_adjoint_subs_tensor_expand():
 
     k = Tensor(torch.tensor([0, 0, 1, 1]), OrderedDict(k=Bint[4]), 2)
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
-    with interpretation(reflect):
+    with reflect:
         y = x(i=k)
 
     # conceptually
