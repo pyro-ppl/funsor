@@ -11,7 +11,7 @@ from funsor.domains import Bint, Real, Reals
 from funsor.interpretations import lazy, reflect
 from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
-from funsor.terms import Number, Scatter, Variable
+from funsor.terms import Number, Scatter, Slice, Variable
 from funsor.testing import assert_close, random_tensor
 
 # from funsor.transpose import transpose
@@ -49,6 +49,7 @@ def test_two():
     assert transpose(y)[y] is Number(1.0)
 
 
+@pytest.mark.xfail(reason="missing pattern for subtraction")
 def test_zero_minus():
     x = random_tensor(OrderedDict(i=Bint[2]))
     with lazy:
@@ -233,6 +234,10 @@ def test_tower_prod(height):
 @pytest.mark.parametrize("f", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
 @pytest.mark.parametrize("g", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
 def test_binary_product_rule(f, g):
+
+    if "-" in f or "-" in g:
+        pytest.xfail(reason="missing pattern for subtraction")
+
     x = Variable("x", Real)
     y = Variable("y", Real)
     with lazy:
@@ -254,6 +259,10 @@ def test_binary_product_rule(f, g):
 @pytest.mark.parametrize("f", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
 @pytest.mark.parametrize("g", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
 def test_binary_sum_rule(f, g):
+
+    if "-" in f or "-" in g:
+        pytest.xfail(reason="missing pattern for subtraction")
+
     x = Variable("x", Real)
     y = Variable("y", Real)
     with lazy:
@@ -352,6 +361,7 @@ def test_adjoint_subs_tensor_rename():
     assert_close(transpose(y)[x], expected)
 
 
+@pytest.mark.xfail(reason="not meaningful without a final reduce?")
 def test_adjoint_subs_binary():
 
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
@@ -394,6 +404,82 @@ def test_adjoint_subs_binary_reduce():
     expected_y = x(i=k).reduce(ops.add, "j")(k="j")
     actual_y = transpose(z)[y]
     assert_close(actual_y, expected_y)
+
+
+def test_adjoint_subs_binary_reduce_simple_1():
+
+    x = random_tensor(OrderedDict(i=Bint[2]))
+    y = random_tensor(OrderedDict(i=Bint[2]))
+    k = Variable("k", Bint[2])
+
+    with reflect:
+        xk = x(i=k)
+        yk = y(i=k)
+        zk = xk * yk
+        z = zk.reduce(ops.add)
+
+    expected_x = y(i=k)(k="i")
+    actual_x = transpose(z)[x]
+    assert_close(actual_x, expected_x)
+
+
+def test_adjoint_subs_binary_reduce_simple_2():
+
+    x = random_tensor(OrderedDict(i=Bint[3], j=Bint[2]))
+    y = random_tensor(OrderedDict(i=Bint[2]))
+    k = Variable("k", Bint[2])
+
+    with reflect:
+        xk = x(j=k)
+        yk = y(i=k)
+        zk = xk * yk
+        z = zk.reduce(ops.add)
+
+    expected_x = y(i=k)(k="j")
+    actual_x = transpose(z)[x]
+    assert_close(actual_x, expected_x)
+
+    expected_y = x(j=k).reduce(ops.add, "i")(k="i")
+    actual_y = transpose(z)[y]
+    assert_close(actual_y, expected_y)
+
+
+def test_adjoint_binary_reduce_simple_2():
+
+    x = random_tensor(OrderedDict(i=Bint[3], k=Bint[2]))
+    y = random_tensor(OrderedDict(k=Bint[2]))
+
+    with reflect:
+        zk = x * y
+        z = zk.reduce(ops.add)
+
+    expected_x = y
+    actual_x = transpose(z)[x]
+    assert_close(actual_x, expected_x)
+
+    expected_y = x.reduce(ops.add, "i")
+    actual_y = transpose(z)[y]
+    assert_close(actual_y, expected_y)
+
+
+def test_adjoint_subs_binary_reduce_slices():
+
+    x = random_tensor(OrderedDict(t=Bint[2], i=Bint[2], j=Bint[2]))
+    k = Variable("k", Bint[2])
+
+    with reflect:
+        xik = x(i=k)
+        xjk = x(j=k)
+        xk = xik(t=Slice("t", 0, 2, 2, 2))
+        yk = xjk(t=Slice("t", 1, 2, 2, 2))
+        zk = xk * yk
+        z = zk.reduce(ops.add, {"k"}).reduce(ops.mul, "t")
+        z = z(i="i", j="j")
+        z = z.reduce(ops.add, {"i", "j"})
+
+    expected_x = transpose(z)[xik](k="i") + transpose(z)[xjk](k="j")
+    actual_x = transpose(z)[x]
+    assert_close(actual_x, expected_x.align(tuple(actual_x.inputs)))
 
 
 @pytest.mark.xfail(reason="requires ops.scatter_add")
