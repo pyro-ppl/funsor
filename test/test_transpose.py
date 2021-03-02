@@ -10,16 +10,9 @@ from funsor.adjoint import adjoint
 from funsor.domains import Bint, Real, Reals
 from funsor.interpretations import lazy, reflect
 from funsor.interpreter import reinterpret
-from funsor.tensor import Tensor
+from funsor.tensor import Tensor, numeric_array
 from funsor.terms import Number, Scatter, Slice, Variable
 from funsor.testing import assert_close, random_tensor
-
-# from funsor.transpose import transpose
-
-try:
-    import torch
-except ImportError:
-    pytest.skip()
 
 
 def assert_close_extensional(actual, expected):
@@ -337,7 +330,7 @@ def test_adjoint_subs_tensor():
         y = x(i=0)
 
     # concretely
-    expected = Tensor(torch.tensor([1.0, 0.0]))["i"]
+    expected = Tensor(numeric_array([1.0, 0.0]))["i"]
     assert_close(transpose(y)[x], expected)
 
     # conceptually
@@ -485,7 +478,7 @@ def test_adjoint_subs_binary_reduce_slices():
 @pytest.mark.xfail(reason="requires ops.scatter_add")
 def test_adjoint_subs_tensor_expand():
 
-    k = Tensor(torch.tensor([0, 0, 1, 1]), OrderedDict(k=Bint[4]), 2)
+    k = Tensor(numeric_array([0, 0, 1, 1]), OrderedDict(k=Bint[4]), 2)
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
     with reflect:
         y = x(i=k)
@@ -495,7 +488,7 @@ def test_adjoint_subs_tensor_expand():
     assert_close(transpose(y)[x], expected)
 
     # concretely
-    expected = Tensor(torch.tensor([2.0, 2.0]))["i"]
+    expected = Tensor(numeric_array([2.0, 2.0]))["i"]
     # or expected = Number(2)?
     assert_close(transpose(y)[x], expected)
 
