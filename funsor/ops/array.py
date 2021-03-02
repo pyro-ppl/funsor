@@ -21,7 +21,7 @@ from .builtin import (
     sqrt,
     tanh,
 )
-from .op import DISTRIBUTIVE_OPS, CachedOpMeta, Op, declare_op_types, make_op
+from .op import DISTRIBUTIVE_OPS, UNITS, CachedOpMeta, Op, declare_op_types, make_op
 
 _builtin_all = all
 _builtin_any = any
@@ -219,6 +219,11 @@ def new_zeros(x, shape):
 
 
 @Op
+def new_full(x, shape, value):
+    return np.full(shape, value, dtype=x.dtype)
+
+
+@Op
 def new_eye(x, shape):
     n = shape[-1]
     return np.broadcast_to(np.eye(n), shape + (n,))
@@ -253,6 +258,30 @@ def _safesub(x, y):
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
 
 
+@Op
+def scatter(destin, indices, source):
+    raise NotImplementedError
+
+
+@scatter.register(array, tuple, array)
+def _scatter(destin, indices, source):
+    result = destin.copy()
+    result[indices] = source
+    return result
+
+
+@Op
+def scatter_add(destin, indices, source):
+    raise NotImplementedError
+
+
+@scatter_add.register(array, tuple, array)
+def _scatter_add(destin, indices, source):
+    result = destin.copy()
+    np.add.at(result, indices, source)
+    return result
+
+
 @stack.register(int, [array])
 def _stack(dim, *x):
     return np.stack(x, axis=dim)
@@ -278,6 +307,7 @@ def unsqueeze(x, dim):
 DISTRIBUTIVE_OPS.add((logaddexp, add))
 DISTRIBUTIVE_OPS.add((sample, add))
 
+UNITS[logaddexp] = -math.inf
 
 __all__ = [
     "all",
@@ -302,10 +332,13 @@ __all__ = [
     "logsumexp",
     "new_arange",
     "new_eye",
+    "new_full",
     "new_zeros",
     "permute",
     "prod",
     "sample",
+    "scatter",
+    "scatter_add",
     "stack",
     "sum",
     "transpose",

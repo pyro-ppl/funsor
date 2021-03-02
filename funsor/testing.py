@@ -454,3 +454,12 @@ def make_hmm_einsum(num_steps):
         inputs.append(str(opt_einsum.get_symbol(t + 1)))
     equation = ",".join(inputs) + "->"
     return equation
+
+
+def iter_subsets(iterable, *, min_size=None, max_size=None):
+    if min_size is None:
+        min_size = 0
+    if max_size is None:
+        max_size = len(iterable)
+    for size in range(min_size, max_size + 1):
+        yield from itertools.combinations(iterable, size)

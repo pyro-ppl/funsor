@@ -1099,6 +1099,84 @@ def die_reduce(op, arg, reduced_vars):
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
 
 
+class Scatter(Funsor):
+    """
+    Transpose of structurally linear :class:`Subs`, followed by
+    :class:`Reduce`.
+
+    For injective scatter operations this should satisfy the equation::
+
+        if destin = Scatter(op, subs, source, frozenset())
+        then source = Subs(destin, subs)
+
+    .. warning:: This is currently implemented only for injective scatter
+        operations. In particular, this does not allow accumulation behavior
+        like scatter-add.
+
+    .. note:: ``Scatter(ops.add, ...)`` is the funsor analog of
+        ``numpy.add.at()`` or :func:`torch.index_put` or
+        :func:`jax.lax.scatter_add`. For injective substitutions,
+        ``Scatter(ops.add, ...)`` is roughly equivalent to the tensor
+        operation::
+
+            result = zeros(...)  # since zero is the additive unit
+            result[subs] = source
+
+    :param AssociativeOp op: An op. The unit of this op will be used as
+        default value.
+    :param tuple subs: A substitution.
+    :param Funsor source: A source for data to be scattered from.
+    :param frozenset reduced_vars: A set of variables over which to reduce.
+    """
+
+    def __init__(self, op, subs, source, reduced_vars):
+        assert isinstance(op, AssociativeOp)
+        assert isinstance(subs, tuple)
+        assert len(subs) == len(set(key for key, value in subs))
+        assert isinstance(source, Funsor)
+        assert isinstance(reduced_vars, frozenset)
+        assert all(isinstance(v, Variable) for v in reduced_vars)
+        reduced_names = frozenset(v.name for v in reduced_vars)
+
+        # First compute inputs of the pure-scatter op with no reduction.
+        inputs = OrderedDict()
+        for key, value in subs:
+            assert isinstance(key, str)
+            assert isinstance(value, Funsor)
+            assert key not in source.inputs
+            assert key not in reduced_names
+            for k, d in value.inputs.items():
+                # These are "batch" inputs and should be left of subs keys.
+                d2 = inputs.setdefault(k, d)
+                assert d2 == d
+        for k, d in source.inputs.items():
+            # These are "batch" inputs and should be left of subs keys.
+            d2 = inputs.setdefault(k, d)
+            assert d2 == d
+        for key, value in subs:
+            assert key not in inputs
+            # These are "event" inputs and should be right of "batch" inputs.
+            inputs[key] = value.output
+
+        # Then narrow these down to the fused scatter-reduce op.
+        inputs = OrderedDict(
+            (k, d) for k, d in inputs.items() if k not in reduced_names
+        )
+        fresh = frozenset(key for key, value in subs)
+        bound = {v.name: v.output for v in reduced_vars}
+        super().__init__(inputs, source.output, fresh, bound)
+        self.op = op
+        self.subs = subs
+        self.source = source
+        self.reduced_vars = reduced_vars
+
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
+        op, subs, source, reduced_vars = super()._alpha_convert(alpha_subs)
+        reduced_vars = frozenset(alpha_subs.get(var.name, var) for var in reduced_vars)
+        return op, subs, source, reduced_vars
+
+
 class Approximate(Funsor):
     """
     Function approximation wrt a set of variables.
@@ -1834,6 +1912,7 @@ __all__ = [
     "Lambda",
     "Number",
     "Reduce",
+    "Scatter",
     "Stack",
     "Slice",
     "Subs",
