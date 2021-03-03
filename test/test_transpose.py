@@ -533,7 +533,7 @@ def test_einsum_adjoint_vs_forward(equation, plates):
         expected = einsum(
             eqn_expected, *operands_expected, plates=plates, backend=backend
         )
-        assert_close(actual, expected.align(tuple(actual.inputs)), atol=1e-3)
+        assert_close(actual, expected.align(tuple(actual.inputs)), atol=1e-4, rtol=None)
 
 
 """
