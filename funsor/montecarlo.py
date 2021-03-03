@@ -50,14 +50,13 @@ def monte_carlo_approximate(state, op, model, guide, approx_vars):
 
         sample_options["rng_key"], state.rng_key = jax.random.split(state.rng_key)
 
-    log_measure = model + guide
-    sample = log_measure.sample(approx_vars, state.sample_inputs, **sample_options)
-    if sample is log_measure:
+    sample = guide.sample(approx_vars, state.sample_inputs, **sample_options)
+    if sample is guide:
         return model  # cannot progress
     reduced_vars = frozenset(
         v for v in sample.input_vars if v.name in state.sample_inputs
     )
-    result = (sample - guide).reduce(op, reduced_vars)
+    result = (sample + model - guide).reduce(op, reduced_vars)
     return result
 
 
