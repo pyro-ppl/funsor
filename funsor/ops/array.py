@@ -204,6 +204,16 @@ def _min(x, y):
 
 
 @Op
+def argmax(x, dim):
+    raise NotImplementedError
+
+
+@argmax.register(array, int)
+def _argmax(x, dim):
+    return np.argmax(x, dim)
+
+
+@Op
 def new_arange(x, stop):
     return np.arange(stop)
 
@@ -314,6 +324,7 @@ __all__ = [
     "amax",
     "amin",
     "any",
+    "argmax",
     "astype",
     "cat",
     "cholesky",

@@ -187,13 +187,13 @@ def _convert_reduced_vars(reduced_vars, inputs):
 
     :param reduced_vars:
     :type reduced_vars: str, Variable, or set or frozenset thereof.
-    :rtype: frozenset of Variable
+    :returns: A frozenset of reduced variables.
+    :rtype: frozenset of :class:`Variable`
     """
     # Avoid copying if arg is of correct type.
-    if isinstance(reduced_vars, frozenset) and all(
-        isinstance(var, Variable) for var in reduced_vars
-    ):
-        return reduced_vars
+    if isinstance(reduced_vars, frozenset):
+        if all(isinstance(var, Variable) for var in reduced_vars):
+            return reduced_vars
 
     if isinstance(reduced_vars, (str, Variable)):
         reduced_vars = {reduced_vars}
@@ -340,7 +340,8 @@ class Funsor(object, metaclass=FunsorMeta):
         """
         Reduce along all or a subset of inputs.
 
-        :param callable op: A reduction operation.
+        :param op: A reduction operation.
+        :type op: ~funsor.ops.AssociativeOp
         :param reduced_vars: An optional input name or set of names to reduce.
             If unspecified, all inputs will be reduced.
         :type reduced_vars: str, Variable, or set or frozenset thereof.
@@ -357,30 +358,31 @@ class Funsor(object, metaclass=FunsorMeta):
             return self
         return Reduce(op, self, reduced_vars)
 
-    def approximate(self, sum_op, prod_op, guide, approx_vars=None):
+    def approximate(self, guide, approx_vars=None):
         """
         Approximate wrt and all or a subset of inputs.
 
-        :param ~funsor.ops.AssociativeOp sum_op: A reduction operation.
-        :param ~funsor.ops.AssociativeOp prod_op: A reduction operation.
+        :param op: A reduction operation.
         :param Funsor guide: A guide funsor (e.g. a proposal distribution).
         :param approx_vars: An optional input name or set of names to reduce.
             If unspecified, all inputs will be reduced.
         :type approx_vars: str, Variable, or set or frozenset thereof.
         """
-        assert (sum_op, prod_op) in ops.DISTRIBUTIVE_OPS
+        assert self.output == Real
+        assert guide.output == self.output
+        # Eagerly convert approx_vars to appropriate things.
         inputs = self.inputs.copy()
         inputs.update(guide.inputs)
-        # Eagerly convert approx_vars to appropriate things.
+        input_vars = self.input_vars | guide.input_vars
         if approx_vars is None:
-            # Empty approx_vars means "reduce over everything".
-            approx_vars = frozenset(Variable(k, v) for k, v in inputs.items())
+            # Empty approx_vars means "approximate everything".
+            approx_vars = input_vars
         else:
             approx_vars = _convert_reduced_vars(approx_vars, inputs)
-        assert isinstance(approx_vars, frozenset), approx_vars
+            approx_vars &= input_vars  # Drop unrelated vars.
         if not approx_vars:
-            return self
-        return Approximate(sum_op, prod_op, self, guide, approx_vars)
+            return self  # exact
+        return Approximate(self, guide, approx_vars)
 
     def sample(self, sampled_vars, sample_inputs=None, rng_key=None):
         """
@@ -994,7 +996,10 @@ class Reduce(Funsor):
     """
     Lazy reduction over multiple variables.
 
-    :param ~funsor.ops.AssociativeOp op: An associative operator.
+    The user-facing interface is the :meth:`Funsor.reduce` method.
+
+    :param op: An associative operator.
+    :type op: ~funsor.ops.AssociativeOp
     :param funsor arg: An argument to be reduced.
     :param frozenset reduced_vars: A set of variables over which to reduce.
     """
@@ -1179,9 +1184,13 @@ class Scatter(Funsor):
 
 class Approximate(Funsor):
     """
-    Function approximation wrt a set of variables.
+    Interpretation-specific approximation wrt a set of variables.
 
-    :param ~funsor.ops.AssociativeOp op: An associative operator.
+    The default eager interpretation should be exact.
+    The user-facing interface is the :meth:`Funsor.approximate` method.
+
+    :param op: An associative operator.
+    :type op: ~funsor.ops.AssociativeOp
     :param Funsor model: An exact funsor depending on ``reduced_vars``.
     :param Funsor guide: A proposal funsor guiding optional approximation.
     :param frozenset approx_vars: A set of variables over which to approximate.
@@ -1199,6 +1208,10 @@ class Approximate(Funsor):
         fresh = frozenset(v.name for v in approx_vars)
         bound = {v.name: v.output for v in approx_vars}
         super().__init__(inputs, output, fresh, bound)
+        self.op = op
+        self.model = model
+        self.guide = guide
+        self.approx_vars = approx_vars
 
 
 @eager.register(Approximate, AssociativeOp, Funsor, Funsor, frozenset)

@@ -25,6 +25,14 @@ Monte Carlo
     :show-inheritance:
     :member-order: bysource
 
+Approximations
+--------------
+.. automodule:: funsor.approximations
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
+
 Evidence lower bound
 --------------------
 .. automodule:: funsor.elbo
