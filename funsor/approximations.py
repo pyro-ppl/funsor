@@ -17,6 +17,9 @@ from funsor.typing import deep_isinstance
 from . import ops
 
 argmax_approximate = DispatchedInterpretation("argmax_approximate")
+"""
+Point-approximate at the argmax of the provided guide.
+"""
 
 
 @argmax_approximate.register(Approximate, ops.LogaddexpOp, Funsor, Funsor, frozenset)
@@ -29,6 +32,9 @@ def argmax_approximate_logaddexp(op, model, guide, approx_vars):
 
 
 mean_approximate = DispatchedInterpretation("mean_approximate")
+"""
+Point-approximate at the mean of the provided guide.
+"""
 
 
 @mean_approximate.register(Approximate, ops.LogaddexpOp, Funsor, Funsor, frozenset)
@@ -41,6 +47,10 @@ def mean_approximate_logaddexp(op, model, guide, approx_vars):
 
 
 laplace_approximate = DispatchedInterpretation("laplace_approximate")
+"""
+Gaussian approximate using the value and Hessian of the model, evaluated at the
+mode of the guide.
+"""
 
 
 @laplace_approximate.register(Approximate, ops.LogaddexpOp, Funsor, Funsor, frozenset)
@@ -67,6 +77,8 @@ def compute_hessian(model, approx_vars):
 @singledispatch
 def compute_argmax(model, approx_vars):
     """
+    Computes argmax of a funsor.
+
     :param Funsor model: A function of the approximated vars.
     :param frozenset approx_vars: A frozenset of
         :class:`~funsor.terms.Variable` s to maximize.

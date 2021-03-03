@@ -309,34 +309,44 @@ reflect.is_total = True
 
 normalize_base = DispatchedInterpretation("normalize")
 normalize = PrioritizedInterpretation(normalize_base, reflect)
+"""
+Normalize modulo associativity and commutativity, but do not evaluate any
+numerical operations.
+"""
 
 lazy_base = DispatchedInterpretation("lazy")
 lazy = PrioritizedInterpretation(lazy_base, reflect)
+"""
+Performs substitutions eagerly, but construct lazy funsors for everything else.
+"""
 
 eager_base = DispatchedInterpretation("eager")
 eager = PrioritizedInterpretation(eager_base, normalize_base, reflect)
+"""
+Eager exact naive interpretation wherever possible.
+"""
 
 die = DispatchedInterpretation("die")
 eager_or_die = PrioritizedInterpretation(eager_base, die, reflect)
 
 sequential_base = DispatchedInterpretation("sequential")
 # XXX does this work with sphinx/help()?
+sequential = PrioritizedInterpretation(
+    sequential_base, eager_base, normalize_base, reflect
+)
 """
 Eagerly execute ops with known implementations; additonally execute
 vectorized ops sequentially if no known vectorized implementation exists.
 """
-sequential = PrioritizedInterpretation(
-    sequential_base, eager_base, normalize_base, reflect
-)
 
 moment_matching_base = DispatchedInterpretation("moment_matching")
+moment_matching = PrioritizedInterpretation(
+    moment_matching_base, eager_base, normalize_base, reflect
+)
 """
 A moment matching interpretation of :class:`Reduce` expressions. This falls
 back to :class:`eager` in other cases.
 """
-moment_matching = PrioritizedInterpretation(
-    moment_matching_base, eager_base, normalize_base, reflect
-)
 
 push_interpretation(eager)  # Use eager interpretation by default.
 
