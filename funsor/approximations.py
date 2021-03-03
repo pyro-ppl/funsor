@@ -6,6 +6,7 @@ from functools import reduce, singledispatch
 
 from funsor.cnf import GaussianMixture
 from funsor.delta import Delta
+from funsor.gaussian import Gaussian, _compute_offsets
 from funsor.instrument import debug_logged
 from funsor.integrate import Integrate
 from funsor.interpretations import DispatchedInterpretation
@@ -15,10 +16,6 @@ from funsor.typing import deep_isinstance
 
 from . import ops
 
-"""
-Point interpretation of :class:`~funsor.integrate.Integrate`
-expressions. This falls back to the previous interpreter in other cases.
-"""
 argmax_approximate = DispatchedInterpretation("argmax_approximate")
 
 
@@ -49,48 +46,56 @@ laplace_approximate = DispatchedInterpretation("laplace_approximate")
 @laplace_approximate.register(Approximate, ops.LogaddexpOp, Funsor, Funsor, frozenset)
 def laplace_approximate_logaddexp(op, model, guide, approx_vars):
     point = compute_argmax(guide, approx_vars)
-    hessian = compute_hessian(guide, approx_vars)
+    hessian = compute_hessian(model, approx_vars)
     assert deep_isinstance(hessian, GaussianMixture)
-    total = (point + model).reduce(ops.LogaddexpOp, approx_vars)
-    return total + (hessian - guide)
+    total = model(**point).reduce(ops.logaddexp, approx_vars)
+    return total + hessian
 
 
 ################################################################################
 # Computations.
-
-
-# TODO Consider either making this a Funsor method or making .sample() and
+# TODO Consider either making these Funsor methods or making .sample() and
 # .unscaled_sample() singledispatch functions.
+
+
 @singledispatch
-def compute_hessian(guide, approx_vars):
+def compute_hessian(model, approx_vars):
+    # TODO adapt from moment_matching
     raise NotImplementedError
 
 
-# TODO Consider either making this a Funsor method or making .sample() and
-# .unscaled_sample() singledispatch functions.
 @singledispatch
-def compute_argmax(guide, approx_vars):
+def compute_argmax(model, approx_vars):
     """
-    :returns: A dict mapping
+    :param Funsor model: A function of the approximated vars.
+    :param frozenset approx_vars: A frozenset of
+        :class:`~funsor.terms.Variable` s to maximize.
+    :returns: A dict mapping name (str) to point estimate (Funsor), for each
+        variable name in ``approx_vars``.
+    :rtype: str
     """
     raise NotImplementedError
 
 
 @compute_argmax.register(Tensor)
 @debug_logged
-def compute_argmax_tensor(guide, approx_vars):
+def compute_argmax_tensor(model, approx_vars):
+    approx_vars = approx_vars.intersection(model.input_vars)
+    if not approx_vars:
+        return {}
+
     # Partition inputs into batch_inputs + event_inputs.
     approx_names = frozenset(v.name for v in approx_vars)
     batch_inputs = OrderedDict()
     event_inputs = OrderedDict()
-    for k, d in guide.inputs.items():
+    for k, d in model.inputs.items():
         if k in approx_names:
             event_inputs[k] = d
         else:
             batch_inputs[k] = d
     inputs = batch_inputs.copy()
     inputs.update(event_inputs)
-    data = align_tensor(inputs, guide)
+    data = align_tensor(inputs, model)
 
     # Flatten and compute single argmax.
     batch_shape = data.shape[: len(batch_inputs)]
@@ -103,9 +108,75 @@ def compute_argmax_tensor(guide, approx_vars):
     mod_point = flat_point
     for name, domain in reversed(list(event_inputs.items())):
         size = domain.dtype
-        point = Tensor(mod_point % size, batch_inputs, size)
+        result[name] = Tensor(mod_point % size, batch_inputs, size)
         mod_point = mod_point // size
-        result[name] = point
+    return result
+
+
+@compute_argmax.register(Gaussian)
+@debug_logged
+def compute_argmax_gaussian(model, approx_vars):
+    approx_vars = approx_vars.intersection(model.input_vars)
+    if not approx_vars:
+        return {}
+    if any(v.dtype != "real" for v in approx_vars):
+        raise ValueError(
+            "Argmax of non-normalized Gaussian mixtures is intentionally "
+            "not implemented. You probably want to normalize. To work around, "
+            "add a zero Tensor/Array with given inputs."
+        )
+
+    # Partition inputs into int_inputs + real_inputs.
+    int_inputs = OrderedDict()
+    real_inputs = OrderedDict()
+    for k, d in model.inputs.items():
+        if d.dtype == "real":
+            real_inputs[k] = d
+        else:
+            int_inputs[k] = d
+
+    approx_names = frozenset(v.name for v in approx_vars)
+    if approx_names == frozenset(real_inputs):
+        x = model.info_vec[..., None]
+        x = ops.triangular_solve(x, model._precision_chol)
+        x = ops.triangular_solve(x, model._precision_chol, transpose=True)
+        mode = x[..., 0]
+        offsets, _ = _compute_offsets(real_inputs)
+        result = {}
+        for key, domain in real_inputs.items():
+            data = mode[..., offsets[key] : offsets[key] + domain.num_elements]
+            data = data.reshape(mode.shape[:-1] + domain.shape)
+            result[key] = Tensor(data, int_inputs)
+        return result
+
+    raise NotImplementedError("TODO implement partial argmax of real variables")
+
+
+@compute_argmax.register(GaussianMixture)
+@debug_logged
+def compute_argmax_gaussian_mixture(model, approx_vars):
+    approx_vars = approx_vars.intersection(model.input_vars)
+    if not approx_vars:
+        return {}
+    if any(model.reduced_vars):
+        raise NotImplementedError
+    discrete, gaussian = model.terms
+    result = {}
+
+    # Compute real argmax.
+    real_vars = frozenset(v for v in gaussian.input_vars if v.dtype == "real")
+    real_approx_vars = real_vars & approx_vars
+    if real_approx_vars:
+        result.update(compute_argmax(gaussian, real_approx_vars))
+
+    # Compute int argmax.
+    int_approx_vars = frozenset(
+        v for v in model.input_vars & approx_vars if v.dtype != "real"
+    )
+    if int_approx_vars:
+        discrete = discrete + gaussian.reduce(ops.logaddexp, real_vars)
+        result.update(compute_argmax(discrete, int_approx_vars))
+
     return result
 
 

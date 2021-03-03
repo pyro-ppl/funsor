@@ -358,16 +358,17 @@ class Funsor(object, metaclass=FunsorMeta):
             return self
         return Reduce(op, self, reduced_vars)
 
-    def approximate(self, guide, approx_vars=None):
+    def approximate(self, op, guide, approx_vars=None):
         """
         Approximate wrt and all or a subset of inputs.
 
-        :param op: A reduction operation.
+        :param AssociativeOp op: A reduction operation.
         :param Funsor guide: A guide funsor (e.g. a proposal distribution).
         :param approx_vars: An optional input name or set of names to reduce.
             If unspecified, all inputs will be reduced.
         :type approx_vars: str, Variable, or set or frozenset thereof.
         """
+        assert isinstance(op, AssociativeOp)
         assert self.output == Real
         assert guide.output == self.output
         # Eagerly convert approx_vars to appropriate things.
@@ -382,7 +383,7 @@ class Funsor(object, metaclass=FunsorMeta):
             approx_vars &= input_vars  # Drop unrelated vars.
         if not approx_vars:
             return self  # exact
-        return Approximate(self, guide, approx_vars)
+        return Approximate(op, self, guide, approx_vars)
 
     def sample(self, sampled_vars, sample_inputs=None, rng_key=None):
         """
@@ -1212,6 +1213,12 @@ class Approximate(Funsor):
         self.model = model
         self.guide = guide
         self.approx_vars = approx_vars
+
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
+        op, model, guide, approx_vars = super()._alpha_convert(alpha_subs)
+        approx_vars = frozenset(alpha_subs.get(var.name, var) for var in approx_vars)
+        return op, model, guide, approx_vars
 
 
 @eager.register(Approximate, AssociativeOp, Funsor, Funsor, frozenset)
