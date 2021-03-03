@@ -13,7 +13,7 @@ from funsor.interpretations import lazy, reflect
 from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor, numeric_array
 from funsor.terms import Number, Scatter, Slice, Variable
-from funsor.testing import assert_close, make_einsum_example, random_tensor, xfail_param
+from funsor.testing import assert_close, make_einsum_example, random_tensor
 from funsor.util import get_backend
 
 
@@ -496,35 +496,44 @@ def test_adjoint_subs_tensor_expand():
 
 
 @pytest.mark.parametrize(
-    "equation",
+    "equation,plates",
     [
-        ",->",
-        xfail_param(",,->", reason="causing missing length-3 contraction pattern?"),
-        "a,b->",
-        "ab,a->",
-        "a,b,c->",
-        "a,a->",
-        "a,a,a,ab->",
-        "abc,bcd,cde->",
-        "abc,cbd,edc->",
-        "ab,bc,cd->",
-        "ab,b,bc,c,cd,d->",
+        (",->", ""),
+        ("a,b->", ""),
+        ("ab,a->", ""),
+        ("a,b,c->", ""),
+        ("a,a->", ""),
+        ("a,a,a,ab->", ""),
+        ("abc,bcd,cde->", ""),
+        ("abc,cbd,edc->", ""),
+        ("ab,bc,cd->", ""),
+        ("ab,b,bc,c,cd,d->", ""),
+        (",i->", "i"),
+        (",ai,abij->", "ij"),
+        ("a,ai,bij->", "ij"),
+        ("ai,abi,bci,cdi->", "i"),
+        ("aij,abij,bcij->", "ij"),
+        ("a,abi,bcij,cdij->", "ij"),
     ],
 )
-def test_einsum_adjoint_vs_forward(equation):
+def test_einsum_adjoint_vs_forward(equation, plates):
     backend = "jax.numpy" if get_backend() == "jax" else get_backend()
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
 
     with reflect:
-        fwd_expr = einsum(equation, *funsor_operands, backend=backend)
+        fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
     actuals = transpose(fwd_expr)
 
     for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
+        if set(plates) & set(inp):
+            continue  # skip this term - can't write its adjoint as an einsum
         actual = actuals[fv]
         eqn_expected = ",".join(inputs[:i] + inputs[i + 1 :]) + "->" + inp
         operands_expected = funsor_operands[:i] + funsor_operands[i + 1 :]
-        expected = einsum(eqn_expected, *operands_expected, backend=backend)
-        assert_close(actual, expected.align(tuple(actual.inputs)), atol=1e-4)
+        expected = einsum(
+            eqn_expected, *operands_expected, plates=plates, backend=backend
+        )
+        assert_close(actual, expected.align(tuple(actual.inputs)), atol=1e-3)
 
 
 """
