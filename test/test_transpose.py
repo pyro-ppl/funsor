@@ -8,11 +8,13 @@ import pytest
 import funsor.ops as ops
 from funsor.adjoint import adjoint
 from funsor.domains import Bint, Real, Reals
+from funsor.einsum import einsum
 from funsor.interpretations import lazy, reflect
 from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor, numeric_array
 from funsor.terms import Number, Scatter, Slice, Variable
-from funsor.testing import assert_close, random_tensor
+from funsor.testing import assert_close, make_einsum_example, random_tensor, xfail_param
+from funsor.util import get_backend
 
 
 def assert_close_extensional(actual, expected):
@@ -491,6 +493,38 @@ def test_adjoint_subs_tensor_expand():
     expected = Tensor(numeric_array([2.0, 2.0]))["i"]
     # or expected = Number(2)?
     assert_close(transpose(y)[x], expected)
+
+
+@pytest.mark.parametrize(
+    "equation",
+    [
+        ",->",
+        xfail_param(",,->", reason="causing missing length-3 contraction pattern?"),
+        "a,b->",
+        "ab,a->",
+        "a,b,c->",
+        "a,a->",
+        "a,a,a,ab->",
+        "abc,bcd,cde->",
+        "abc,cbd,edc->",
+        "ab,bc,cd->",
+        "ab,b,bc,c,cd,d->",
+    ],
+)
+def test_einsum_adjoint_vs_forward(equation):
+    backend = "jax.numpy" if get_backend() == "jax" else get_backend()
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+
+    with reflect:
+        fwd_expr = einsum(equation, *funsor_operands, backend=backend)
+    actuals = transpose(fwd_expr)
+
+    for i, (inp, tv, fv) in enumerate(zip(inputs, operands, funsor_operands)):
+        actual = actuals[fv]
+        eqn_expected = ",".join(inputs[:i] + inputs[i + 1 :]) + "->" + inp
+        operands_expected = funsor_operands[:i] + funsor_operands[i + 1 :]
+        expected = einsum(eqn_expected, *operands_expected, backend=backend)
+        assert_close(actual, expected.align(tuple(actual.inputs)), atol=1e-4)
 
 
 """
