@@ -511,8 +511,8 @@ def test_adjoint_subs_tensor_expand():
         (",i->", "i"),
         (",ai,abij->", "ij"),
         ("a,ai,bij->", "ij"),
-        ("ai,abi,bci,cdi->", "i"),
-        ("aij,abij,bcij->", "ij"),
+        ("a,ai,abi,bci,cdi->", "i"),
+        ("a,aij,abij,bcij->", "ij"),
         ("a,abi,bcij,cdij->", "ij"),
     ],
 )
