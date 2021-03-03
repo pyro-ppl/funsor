@@ -3,6 +3,7 @@
 
 from collections import OrderedDict
 
+import numpy as np
 import pytest
 
 from funsor import ops
@@ -23,13 +24,15 @@ from funsor.testing import (
     xfail_param,
 )
 
+monte_carlo = MonteCarlo(rng_key=np.array([0, 0], dtype=np.uint32))
+
 
 @pytest.mark.parametrize(
     "approximate",
     [
         eager,
         argmax_approximate,
-        MonteCarlo(),
+        monte_carlo,
     ],
 )
 def test_tensor_smoke(approximate):
@@ -50,7 +53,7 @@ def test_tensor_smoke(approximate):
         argmax_approximate,
         laplace_approximate,
         xfail_param(mean_approximate, reason="alpha conversion bug"),
-        MonteCarlo(),
+        monte_carlo,
     ],
 )
 def test_gaussian_smoke(approximate):
@@ -69,7 +72,7 @@ def test_gaussian_smoke(approximate):
     [
         eager,
         argmax_approximate,
-        xfail_param(MonteCarlo(), reason="only true in expectation"),
+        xfail_param(monte_carlo, reason="only true in expectation"),
     ],
 )
 def test_tensor_linear(approximate):
@@ -92,7 +95,7 @@ def test_tensor_linear(approximate):
         argmax_approximate,
         laplace_approximate,
         mean_approximate,
-        xfail_param(MonteCarlo(), reason="only true in expectation"),
+        xfail_param(monte_carlo, reason="only true in expectation"),
     ],
 )
 def test_gaussian_linear(approximate):
