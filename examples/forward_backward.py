@@ -97,7 +97,9 @@ def forward_backward_algorithm(
     # p(y[0], x[0])
     alpha = factors[0]
     # p(x[0] | Y)
-    marginal = ops.PRODUCT_INVERSES[prod_op](prod_op(alpha, betas[0](**{"x_prev": "x_curr"})), Z)
+    marginal = ops.PRODUCT_INVERSES[prod_op](
+        prod_op(alpha, betas[0](**{"x_prev": "x_curr"})), Z
+    )
     marginals = [marginal]
     # inductive steps
     for trans, beta in zip(factors[1:], betas[1:]):
@@ -106,7 +108,9 @@ def forward_backward_algorithm(
         # p(y[0:t], x[t])
         alpha = new_term.reduce(sum_op, frozenset({"x_prev"}))
         # p(x[t-1], x[t] | Y)
-        marginal = ops.PRODUCT_INVERSES[prod_op](prod_op(new_term, beta(**{"x_prev": "x_curr"})), Z)
+        marginal = ops.PRODUCT_INVERSES[prod_op](
+            prod_op(new_term, beta(**{"x_prev": "x_curr"})), Z
+        )
         marginals.append(marginal)
 
     return marginals
@@ -175,7 +179,9 @@ def main(args):
     for expected, adj, f in zip(marginals, adjoint_terms, factors):
         # adjoint returns Z * dZ / df = Z * alpha[t-1] * beta[t]
         # marginal = adj * f / Z / Z
-        actual = ops.PRODUCT_INVERSES[prod_op](ops.PRODUCT_INVERSES[prod_op](prod_op(adj, f), Z), Z)
+        actual = ops.PRODUCT_INVERSES[prod_op](
+            ops.PRODUCT_INVERSES[prod_op](prod_op(adj, f), Z), Z
+        )
         assert_close(expected, actual, rtol=1e-4)
         print("")
         print(f"p(x[{t}], x[{t-1}] | Y)")
