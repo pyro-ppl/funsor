@@ -170,9 +170,6 @@ def main(args):
     result = tape.adjoint(sum_op, prod_op, Z, factors)
     adjoint_terms = list(result.values())
 
-    print("Marginal term")
-    print("Forward-backward algorithm")
-    print("Differentiating forward algorithm")
     t = 0
     for expected, adj, trans in zip(marginals, adjoint_terms, factors):
         # adjoint returns dZ / dtrans = alpha[t-1] * beta[t]
