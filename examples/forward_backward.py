@@ -22,7 +22,7 @@ def forward_algorithm(
 ) -> Tuple[Funsor, List[Funsor]]:
     """
     Calculate log marginal probability using the forward algorithm:
-    log_Z = log p(y[0:T])
+    Z = p(y[0:T])
 
     Transition and emission probabilities are given by init and trans:
     init = p(y[0], x[0])
@@ -62,7 +62,6 @@ def forward_backward_algorithm(
     """
     Calculate marginal probabilities:
     p(x[t], x[t-1] | Y)
-    beta[t] = p(y[t+1:T]|x[t])
     """
     step = OrderedDict(sorted(step.items()))
     drop = tuple("_drop_{}".format(i) for i in range(len(step)))
@@ -71,6 +70,7 @@ def forward_backward_algorithm(
     reduce_vars = frozenset(drop)
 
     # Backward algorithm
+    # beta[t] = p(y[t+1:T]|x[t])
     # beta[T] = 1
     inputs = factors[0](**{"x_curr": "x_prev"}).inputs.copy()
     data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
@@ -97,19 +97,19 @@ def forward_backward_algorithm(
     # p(y[0], x[0])
     alpha = factors[0]
     # p(x[0] | Y)
-    marginal = ops.PRODUCT_INVERSES[prod_op](
+    marginal = ops.BINARY_INVERSES[prod_op](
         prod_op(alpha, betas[0](**{"x_prev": "x_curr"})), Z
     )
     marginals = [marginal]
     # inductive steps
     for trans, beta in zip(factors[1:], betas[1:]):
         # p(y[0:t], x[t-1], x[t])
-        new_term = prod_op(alpha(**{"x_curr": "x_prev"}), trans)
+        alpha_trans = prod_op(alpha(**{"x_curr": "x_prev"}), trans)
         # p(y[0:t], x[t])
-        alpha = new_term.reduce(sum_op, frozenset({"x_prev"}))
+        alpha = alpha_trans.reduce(sum_op, frozenset({"x_prev"}))
         # p(x[t-1], x[t] | Y)
-        marginal = ops.PRODUCT_INVERSES[prod_op](
-            prod_op(new_term, beta(**{"x_prev": "x_curr"})), Z
+        marginal = ops.BINARY_INVERSES[prod_op](
+            prod_op(alpha_trans, beta(**{"x_prev": "x_curr"})), Z
         )
         marginals.append(marginal)
 
@@ -125,12 +125,14 @@ def main(args):
      v              v         v             v
     y[0]           y[t-1]    y[t]           y[T]
 
+    Z = p(y[0:T])
     alpha[t] = p(y[0:t], x[t])
     beta[t] = p(y[t+1:T] | x[t])
+    trans[t] = p(y[t], x[t] | x[t-1])
 
-    dlog_Z / dlog_p(y[t], x[t] | x[t-1]) =
-    alpha[t-1] * beta[t] * p(y[t], x[t] | x[t-1]) / Z =
-    p(x[t], x[t-1] | Y)
+    p(x[t], x[t-1] | Y) = alpha[t-1] * beta[t] * trans[t] / Z
+
+    d Z / d trans[t] = alpha[t-1] * beta[t]
 
     **References:**
 
@@ -144,8 +146,8 @@ def main(args):
         http://www.cs.jhu.edu/~zfli/pubs/semiring_translation_zhifei_emnlp09.pdf
     """
     funsor.set_backend("torch")
-    sum_op = ops.add
-    prod_op = ops.mul
+    sum_op = ops.logaddexp  # ops.add
+    prod_op = ops.add  # ops.mul
 
     # transition and emission probabilities
     init = random_tensor(OrderedDict([("x_curr", Bint[args.hidden_dim])]))
@@ -172,21 +174,19 @@ def main(args):
     result = tape.adjoint(sum_op, prod_op, Z, factors)
     adjoint_terms = list(result.values())
 
-    print("Marginal probabilities")
+    print("Marginal term")
     print("Forward-backward algorithm")
-    print("Differentiating backward algorithm")
+    print("Differentiating forward algorithm")
     t = 0
-    for expected, adj, f in zip(marginals, adjoint_terms, factors):
-        # adjoint returns Z * dZ / df = Z * alpha[t-1] * beta[t]
-        # marginal = adj * f / Z / Z
-        actual = ops.PRODUCT_INVERSES[prod_op](
-            ops.PRODUCT_INVERSES[prod_op](prod_op(adj, f), Z), Z
-        )
-        assert_close(expected, actual, rtol=1e-4)
+    for expected, adj, trans in zip(marginals, adjoint_terms, factors):
+        # adjoint returns dZ / dtrans = alpha[t-1] * beta[t]
+        # marginal = alpha[t-1] * beta[t] * trans / Z
+        actual = ops.BINARY_INVERSES[prod_op](prod_op(adj, trans), Z)
+        assert_close(expected, actual.align(tuple(expected.inputs)), rtol=1e-4)
         print("")
-        print(f"p(x[{t}], x[{t-1}] | Y)")
-        print(expected.data)
-        print(actual.data)
+        print(f"Marginal term: p(x[{t}], x[{t-1}] | Y)")
+        print("Forward-backward algorithm:\n", expected.data)
+        print("Differentiating forward algorithm:\n", actual.data)
         t += 1
 
 
