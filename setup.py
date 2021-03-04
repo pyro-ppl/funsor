@@ -38,7 +38,7 @@ setup(
         "typing_extensions",
     ],
     extras_require={
-        "torch": ["pyro-ppl>=1.5.2", "torch>=1.7.0"],
+        "torch": ["pyro-ppl>=1.6.0", "torch>=1.8.0"],
         "jax": ["numpyro>=0.2.4", "jax>=0.1.57", "jaxlib>=0.1.37"],
         "test": [
             "black",
