@@ -63,7 +63,7 @@ setup(
             "sphinx>=2.0",
             "sphinx-gallery",
             "sphinx_rtd_theme",
-            "torchvision",
+            "torchvision>=0.9.0",
         ],
     },
     long_description=long_description,
