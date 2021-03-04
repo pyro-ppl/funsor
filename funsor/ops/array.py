@@ -165,6 +165,25 @@ def is_numeric_array(x):
     return True if isinstance(x, array) else False
 
 
+@logaddexp.register(array, array)
+def _safe_logaddexp_tensor_tensor(x, y):
+    finfo = np.finfo(x.dtype)
+    shift = np.clip(max(detach(x), detach(y)), a_max=None, a_min=finfo.min)
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@logaddexp.register(numbers.Number, array)
+def _safe_logaddexp_number_tensor(x, y):
+    finfo = np.finfo(y.dtype)
+    shift = np.clip(detach(y), a_max=None, a_min=max(x, finfo.min))
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@logaddexp.register(array, numbers.Number)
+def _safe_logaddexp_tensor_number(x, y):
+    return _safe_logaddexp_number_tensor(y, x)
+
+
 @Op
 def logsumexp(x, dim):
     amax = np.amax(x, axis=dim, keepdims=True)
@@ -240,6 +259,7 @@ def _reciprocal(x):
     return result
 
 
+@safediv.register(array, array)
 @safediv.register(numbers.Number, array)
 def _safediv(x, y):
     try:
@@ -249,6 +269,7 @@ def _safediv(x, y):
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
+@safesub.register(array, array)
 @safesub.register(numbers.Number, array)
 def _safesub(x, y):
     try:

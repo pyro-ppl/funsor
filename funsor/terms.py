@@ -42,6 +42,7 @@ _INFIX = {k: v for v, k, _ in INFIX_OPERATORS}
 # See failing example at https://github.com/pyro-ppl/funsor/pull/414
 class SubstituteInterpretation(Interpretation):
     def __init__(self, subs, base_interpretation):
+        super().__init__("subs")
         if isinstance(subs, (dict, OrderedDict)):
             subs = tuple(subs.items())
         self.subs = subs
@@ -1042,6 +1043,16 @@ def _reduce_unrelated_vars(op, arg, reduced_vars):
                 return arg, None
         raise NotImplementedError(f"Cannot reduce {op}")
     return arg, frozenset(v.name for v in reduced_vars)
+
+
+@lazy.register(Reduce, AssociativeOp, Funsor, frozenset)
+def lazy_reduce(op, arg, reduced_vars):
+    new_arg, new_reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
+    if new_reduced_vars is None:
+        return new_arg
+    if new_arg is arg:
+        return None
+    return new_arg.reduce(op, new_reduced_vars)
 
 
 @eager.register(Reduce, AssociativeOp, Funsor, frozenset)

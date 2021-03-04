@@ -256,6 +256,7 @@ class LogAbsDetJacobianOp(BinaryOp, metaclass=WrappedOpMeta):
 DISTRIBUTIVE_OPS = set()  # (add, mul) pairs
 UNITS = {}  # op -> value
 BINARY_INVERSES = {}  # binary op -> inverse binary op
+SAFE_BINARY_INVERSES = {}  # binary op -> numerically safe inverse binary op
 UNARY_INVERSES = {}  # binary op -> inverse unary op
 
 __all__ = [
@@ -265,6 +266,7 @@ __all__ = [
     "DISTRIBUTIVE_OPS",
     "LogAbsDetJacobianOp",
     "Op",
+    "SAFE_BINARY_INVERSES",
     "TransformOp",
     "UNARY_INVERSES",
     "UNITS",
