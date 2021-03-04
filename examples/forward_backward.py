@@ -72,12 +72,8 @@ def forward_backward_algorithm(
     # Backward algorithm
     # beta[t] = p(y[t+1:T]|x[t])
     # beta[T] = 1
-    inputs = factors[0](**{"x_curr": "x_prev"}).inputs.copy()
-    data = funsor.ops.new_zeros(funsor.tensor.get_default_prototype(), ()).expand(
-        tuple(v.size for v in inputs.values())
-    )
-    data = data + UNITS[prod_op]  # this kinda looks ugly
-    beta = Tensor(data, inputs, factors[-1].dtype)
+    data = ops.full_like(factors[0].data, UNITS[prod_op])
+    beta = Tensor(data, factors[0](x_curr="x_prev").inputs, factors[0].dtype)
     betas = [beta]
     # inductive steps
     # beta[t] = trans[t+1] @ beta[t+1]
