@@ -42,8 +42,8 @@ EINSUM_EXAMPLES = [
     "ab->",
     ",->",
     ",,->",
-    xfail_param("a,a->a", reason="incorrect in Pyro?"),
-    xfail_param("a,a,a->a", reason="incorrect in Pyro?"),
+    "a,a->a",
+    "a,a,a->a",
     "a,b->",
     "ab,a->",
     "a,b,c->",
@@ -87,9 +87,9 @@ def test_einsum_adjoint(einsum_impl, equation, backend):
         expected = tv._pyro_backward_result
         if inp:
             actual = actual.align(tuple(inp))
-        assert isinstance(actual, (funsor.Number, funsor.Tensor))
-        assert expected.shape == getattr(actual.data, "shape", ())
-        assert torch.allclose(expected, torch.as_tensor(actual.data), atol=1e-5)
+        assert isinstance(actual, funsor.Tensor)
+        assert expected.shape == actual.data.shape
+        assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
 PLATED_EINSUM_EXAMPLES = [
@@ -135,10 +135,11 @@ def test_plated_einsum_adjoint(einsum_impl, equation, plates, backend):
             sum_op, actuals[fv].input_vars - fv.input_vars
         )
         expected = tv._pyro_backward_result
-        expected_funsor = to_funsor(expected, dim_to_name={
-            dim - len(expected.shape): name for dim, name in enumerate(tv._pyro_dims)})
-        # assert_close(actual, expected_funsor, atol=1e-4, rtol=1e-4)
-        assert (actual - expected_funsor).data.abs().max() < 1e-4
+        if inp:
+            actual = actual.align(tuple(inp))
+        assert isinstance(actual, funsor.Tensor)
+        assert expected.shape == actual.data.shape
+        assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
 OPTIMIZED_PLATED_EINSUM_EXAMPLES = [
@@ -176,10 +177,11 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
             sum_op, actuals[fv].input_vars - fv.input_vars
         )
         expected = tv._pyro_backward_result
-        expected_funsor = to_funsor(expected, dim_to_name={
-            dim - len(expected.shape): name for dim, name in enumerate(tv._pyro_dims)})
-        # assert_close(actual, expected_funsor, atol=1e-4, rtol=1e-4)
-        assert (actual - expected_funsor).data.abs().max() < 1e-4
+        if inp:
+            actual = actual.align(tuple(inp))
+        assert isinstance(actual, funsor.Tensor)
+        assert expected.shape == actual.data.shape
+        assert torch.allclose(expected, actual.data, atol=1e-7)
 
 
 @pytest.mark.parametrize("num_steps", list(range(3, 13)))

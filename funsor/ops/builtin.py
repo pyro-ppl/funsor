@@ -122,14 +122,12 @@ sigmoid = make_op(sigmoid, TransformOp)
 def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
-    raise NotImplementedError
 
 
 @make_op(parent=type(truediv))
 def safediv(x, y):
     if isinstance(y, Number):
         return operator.truediv(x, y)
-    raise NotImplementedError
 
 
 @add.register(object)
