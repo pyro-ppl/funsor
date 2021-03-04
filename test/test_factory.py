@@ -8,7 +8,7 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Real, Reals
-from funsor.factory import Bound, Fresh, Value, make_funsor, to_funsor
+from funsor.factory import Bound, Fresh, Has, Value, make_funsor, to_funsor
 from funsor.interpretations import reflect
 from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
@@ -223,3 +223,28 @@ def test_value_dependence():
             x: Funsor, dim: Value[Number]
         ) -> Fresh[lambda x, dim: Array[x.dtype, x.shape[:dim] + x.shape[dim + 1 :]]]:
             return None
+
+
+def test_matmul_has():
+    @make_funsor
+    def MatMul(
+        x: Has[{"i"}],  # noqa: F821
+        y: Has[{"i"}],  # noqa: F821
+        i: Bound,
+    ) -> Fresh[lambda x: x]:
+        return (x * y).reduce(ops.add, i)
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    y = random_tensor(OrderedDict(b=Bint[4], c=Bint[3]))
+    with reflect:
+        xy = MatMul(x, y, "b")
+    check_funsor(xy, {"a": Bint[3], "c": Bint[3]}, Real)
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    y = random_tensor(OrderedDict(c=Bint[4], d=Bint[3]))
+    with pytest.warns(SyntaxWarning):
+        with reflect:
+            xy = MatMul(x, y, "b")
+    # To preserve extensionality, should only error on reflect
+    xy = MatMul(x, y, "b")
+    check_funsor(xy, {"a": Bint[3], "c": Bint[4], "d": Bint[3]}, Real)
