@@ -52,6 +52,11 @@ def _amin(x, dim, keepdims=False):
     return np.amin(x, axis=dim, keepdims=keepdims)
 
 
+@ops.argmax.register(array, int)
+def _argmax(x, dim):
+    return np.argmax(x, dim)
+
+
 @ops.any.register(array, (int, type(None)))
 def _any(x, dim):
     return np.any(x, axis=dim)

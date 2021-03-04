@@ -43,6 +43,11 @@ def _amin(x, dim, keepdims=False):
     return x.min() if dim is None else x.min(dim, keepdims)[0]
 
 
+@ops.argmax.register(torch.Tensor, int)
+def _argmax(x, dim):
+    return x.max(dim).indices
+
+
 @ops.any.register(torch.Tensor, (int, type(None)))
 def _any(x, dim):
     return x.any() if dim is None else x.any(dim=dim)
