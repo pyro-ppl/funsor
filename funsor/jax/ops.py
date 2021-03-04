@@ -52,6 +52,11 @@ def _amin(x, dim, keepdims=False):
     return np.amin(x, axis=dim, keepdims=keepdims)
 
 
+@ops.argmax.register(array, int)
+def _argmax(x, dim):
+    return np.argmax(x, dim)
+
+
 @ops.any.register(array, (int, type(None)))
 def _any(x, dim):
     return np.any(x, axis=dim)
@@ -142,6 +147,25 @@ def _log(x):
     return np.log(x)
 
 
+@ops.logaddexp.register(array, array)
+def _safe_logaddexp_tensor_tensor(x, y):
+    finfo = np.finfo(x.dtype)
+    shift = np.clip(ops.max(ops.detach(x), ops.detach(y)), a_max=None, a_min=finfo.min)
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(numbers.Number, array)
+def _safe_logaddexp_number_tensor(x, y):
+    finfo = np.finfo(y.dtype)
+    shift = np.clip(ops.detach(y), a_max=None, a_min=max(x, finfo.min))
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(array, numbers.Number)
+def _safe_logaddexp_tensor_number(x, y):
+    return _safe_logaddexp_number_tensor(y, x)
+
+
 @ops.logsumexp.register(array, (int, type(None)))
 def _logsumexp(x, dim):
     return logsumexp(x, axis=dim)
@@ -210,6 +234,7 @@ def _reciprocal(x):
     return result
 
 
+@ops.safediv.register(array, array)
 @ops.safediv.register((int, float), array)
 def _safediv(x, y):
     try:
@@ -219,6 +244,7 @@ def _safediv(x, y):
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
+@ops.safesub.register(array, array)
 @ops.safesub.register((int, float), array)
 def _safesub(x, y):
     try:

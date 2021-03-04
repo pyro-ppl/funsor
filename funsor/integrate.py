@@ -174,8 +174,11 @@ def eager_integrate(delta, integrand, reduced_vars):
 
 @eager.register(Integrate, Gaussian, Variable, frozenset)
 def eager_integrate(log_measure, integrand, reduced_vars):
-    real_vars = frozenset(v for v in reduced_vars if v.dtype == "real")
+    real_input_vars = frozenset(v for v in log_measure.input_vars if v.dtype == "real")
+    real_vars = reduced_vars & real_input_vars
     if real_vars == frozenset([integrand]):
+        if real_vars != real_input_vars:
+            return None  # TODO implement this
         loc = ops.cholesky_solve(
             ops.unsqueeze(log_measure.info_vec, -1), log_measure._precision_chol
         ).squeeze(-1)

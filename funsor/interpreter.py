@@ -7,6 +7,7 @@ import re
 import types
 import warnings
 from collections import OrderedDict
+from collections.abc import Hashable
 from functools import singledispatch
 
 import numpy as np
@@ -219,6 +220,10 @@ def stack_reinterpret(x):
     :return: A reinterpreted version of the input.
     :raises: ValueError
     """
+
+    def _key(x):
+        return id(x) if is_numeric_array(x) or not isinstance(x, Hashable) else x
+
     x_name = gensym(x)
     node_vars = {x_name: x}
     node_names = {x: x_name}
@@ -230,11 +235,11 @@ def stack_reinterpret(x):
         h_name, h = stack.pop(0)
         parent_to_children[h_name] = []
         for c in children(h):
-            if c in node_names:
-                c_name = node_names[c]
+            if _key(c) in node_names:
+                c_name = node_names[_key(c)]
             else:
-                c_name = gensym(c)
-                node_names[c] = c_name
+                c_name = gensym("__NAME")
+                node_names[_key(c)] = c_name
                 node_vars[c_name] = c
                 stack.append((c_name, c))
             parent_to_children.setdefault(h_name, []).append(c_name)

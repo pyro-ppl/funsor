@@ -43,6 +43,11 @@ def _amin(x, dim, keepdims=False):
     return x.min() if dim is None else x.min(dim, keepdims)[0]
 
 
+@ops.argmax.register(torch.Tensor, int)
+def _argmax(x, dim):
+    return x.max(dim).indices
+
+
 @ops.any.register(torch.Tensor, (int, type(None)))
 def _any(x, dim):
     return x.any() if dim is None else x.any(dim=dim)
@@ -126,6 +131,25 @@ def _log(x):
     if x.dtype in (torch.bool, torch.uint8, torch.long):
         x = x.to(dtype=torch.get_default_dtype())
     return x.log()
+
+
+@ops.logaddexp.register(torch.Tensor, torch.Tensor)
+def _safe_logaddexp_tensor_tensor(x, y):
+    finfo = torch.finfo(x.dtype)
+    shift = torch.max(x.detach(), y.detach()).clamp(min=finfo.min)
+    return torch.log(torch.exp(x - shift) + torch.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(numbers.Number, torch.Tensor)
+def _safe_logaddexp_number_tensor(x, y):
+    finfo = torch.finfo(y.dtype)
+    shift = y.detach().clamp(min=max(x, finfo.min))
+    return torch.log(torch.exp(x - shift) + torch.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(torch.Tensor, numbers.Number)
+def _safe_logaddexp_tensor_number(x, y):
+    return _safe_logaddexp_number_tensor(y, x)
 
 
 @ops.logsumexp.register(torch.Tensor, (int, type(None)))
@@ -217,6 +241,7 @@ def _reciprocal(x):
     return result
 
 
+@ops.safediv.register(torch.Tensor, torch.Tensor)
 @ops.safediv.register(numbers.Number, torch.Tensor)
 def _safediv(x, y):
     try:
@@ -226,6 +251,7 @@ def _safediv(x, y):
     return x * y.reciprocal().clamp(max=finfo.max)
 
 
+@ops.safesub.register(torch.Tensor, torch.Tensor)
 @ops.safesub.register(numbers.Number, torch.Tensor)
 def _safesub(x, y):
     try:
