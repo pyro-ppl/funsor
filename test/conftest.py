@@ -4,6 +4,9 @@
 import os
 
 import numpy as np
+import pytest
+
+pytest.register_assert_rewrite("funsor.testing")  # noqa: E402
 
 import funsor.util
 
@@ -25,6 +28,6 @@ def pytest_runtest_setup(item):
     elif _BACKEND == "jax":
         from jax.config import config
 
-        config.update('jax_platform_name', 'cpu')
+        config.update("jax_platform_name", "cpu")
 
     funsor.util.set_backend = _disallow_set_backend

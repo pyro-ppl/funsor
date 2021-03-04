@@ -3,17 +3,19 @@
 
 import inspect
 import typing
+import warnings
 from collections import OrderedDict
 
 import makefun
 
-from funsor.interpreter import debug_logged
+from funsor.instrument import debug_logged
 from funsor.terms import Funsor, FunsorMeta, Variable, eager, to_funsor
 
 
 def _erase_types(fn):
     def result(*args):
         return fn(*args)
+
     result.__name__ = fn.__name__
     result.__module__ = fn.__module__
     return debug_logged(result)
@@ -40,6 +42,7 @@ class Fresh(metaclass=FreshMeta):
         funsor argument to the decorated function. This lambda should
         compute a desired resulting domain given domains of arguments.
     """
+
     def __init__(self, fn):
         function = type(lambda: None)
         self.fn = fn if isinstance(fn, function) else lambda: fn
@@ -54,7 +57,82 @@ class Bound:
     Type hint for :func:`make_funsor` decorated functions. This provides hints
     for bound variables (names).
     """
+
     pass
+
+
+class ValueMeta(type):
+    def __getitem__(cls, value_type):
+        return Value(value_type)
+
+
+class Value(metaclass=ValueMeta):
+    def __init__(self, value_type):
+        if issubclass(value_type, Funsor):
+            raise TypeError("Types cannot depend on Funsor values")
+        self.value_type = value_type
+
+
+class HasMeta(type):
+    def __getitem__(cls, bound):
+        return Has(bound)
+
+
+class Has(metaclass=HasMeta):
+    """
+    Type hint for :func:`make_funsor` decorated functions.
+
+    This hint asserts that a set of :class:`Bound` variables
+    always appear in the ``.inputs`` of the annotated argument.
+
+    For example, we could write a named ``matmul`` function that
+    asserts that both arguments always contain the reduced input,
+    and cannot be constant with respect to that input::
+
+        @make_funsor
+        def MatMul(
+            x: Has[{"i"}],
+            y: Has[{"i"}],
+            i: Bound,
+        ) -> Fresh[lambda x: x]:
+            return (x * y).reduce(ops.add, i)
+
+    Here the string ``"i"`` in the annotations for ``x`` and ``y``
+    refer to the argument ``i`` of our ``MatMul`` function,
+    which is known to be ``Bound`` (i.e it does not appear in the
+    ``.inputs`` of evaluating ``Matmul(x, y, "i")``.
+
+    .. warning ::
+
+        This annotation is experimental and may be removed in the future.
+
+        Note that because Funsor is inherently extensional,
+        violating a `Has` constraint only raises a :class:`SyntaxWarning`
+        rather than a full :class:`TypeError`  and even then only under
+        the :func:`~funsor.interpretations.reflect`  interpretation.
+
+        As such, :class:`Has` annotations should be used sparingly,
+        reserved for cases where the programmer has complete control
+        over the inputs to a function and knows that an argument
+        will always depend on a bound variable, e.g. when writing one-off
+        Funsor terms to describe custom layers in a neural network.
+
+    :param set bound: A :class:`~builtins.set` of strings of names of
+        :class:`Bound` arguments of a :func:`make_funsor` -decorated function.
+    """
+
+    def __init__(self, bound):
+        assert isinstance(bound, set)
+        assert all(isinstance(v, str) for v in bound)
+        self.bound = bound
+
+
+def _get_dependent_args(fields, hints, args):
+    return {
+        name: arg if isinstance(hint, Value) else arg.output
+        for name, arg, hint in zip(fields, args, hints)
+        if hint in (Funsor, Bound) or isinstance(hint, (Has, Value))
+    }
 
 
 def make_funsor(fn):
@@ -70,6 +148,8 @@ def make_funsor(fn):
     - Bound variable inputs (names) are typed :class:`Bound`.
     - Fresh variable inputs (names) are typed :class:`Fresh` together with
       lambda to compute the dependent domain.
+    - Ground value inputs (e.g. Python ints) are typed :class:`Value` together with
+      their actual data type, e.g. ``Value[int]``.
     - The return value is typed :class:`Fresh` together with a lambda to
       compute the dependent return domain.
 
@@ -91,7 +171,7 @@ def make_funsor(fn):
     """
     input_types = typing.get_type_hints(fn)
     for name, hint in input_types.items():
-        if not (hint in (Funsor, Bound) or isinstance(hint, Fresh)):
+        if not (hint in (Funsor, Bound) or isinstance(hint, (Fresh, Value, Has))):
             raise TypeError(f"Invalid type hint {name}: {hint}")
     output_type = input_types.pop("return")
     hints = tuple(input_types.values())
@@ -103,7 +183,7 @@ def make_funsor(fn):
             # Compute domains of bound variables.
             for i, (name, arg) in enumerate(zip(cls._ast_fields, args)):
                 hint = input_types[name]
-                if hint is Funsor:  # TODO support domains
+                if hint is Funsor or isinstance(hint, Has):  # TODO support domains
                     args[i] = to_funsor(arg)
                 elif hint is Bound:
                     for other in args:
@@ -114,30 +194,45 @@ def make_funsor(fn):
                     if not isinstance(arg, Variable):
                         raise ValueError(f"Cannot infer domain of {name}={arg}")
                     args[i] = arg
+                elif isinstance(hint, Value):
+                    if not isinstance(arg, hint.value_type):
+                        raise TypeError(
+                            f"invalid dependent value type: {arg}: {hint.value_type}"
+                        )
+                    args[i] = arg
 
             # Compute domains of fresh variables.
-            dependent_args = {name: arg.output
-                              for name, arg, hint in zip(cls._ast_fields, args, hints)
-                              if hint in (Funsor, Bound)}
+            dependent_args = _get_dependent_args(cls._ast_fields, hints, args)
             for i, (hint, arg) in enumerate(zip(hints, args)):
                 if isinstance(hint, Fresh):
                     domain = hint(**dependent_args)
                     args[i] = to_funsor(arg, domain)
             return super().__call__(*args)
 
-    @makefun.with_signature("__init__({})".format(", ".join(["self"] + list(input_types))))
+    @makefun.with_signature(
+        "__init__({})".format(", ".join(["self"] + list(input_types)))
+    )
     def __init__(self, **kwargs):
         args = tuple(kwargs[k] for k in self._ast_fields)
-        dependent_args = {name: arg.output
-                          for name, arg, hint in zip(self._ast_fields, args, hints)
-                          if hint in (Funsor, Bound)}
+        dependent_args = _get_dependent_args(self._ast_fields, hints, args)
         output = output_type(**dependent_args)
         inputs = OrderedDict()
         fresh = set()
         bound = {}
-        for hint, arg in zip(hints, args):
+        for hint, arg, arg_name in zip(hints, args, self._ast_fields):
             if hint is Funsor:
+                assert isinstance(arg, Funsor)
                 inputs.update(arg.inputs)
+            elif isinstance(hint, Has):
+                assert isinstance(arg, Funsor)
+                inputs.update(arg.inputs)
+                for name in hint.bound:
+                    if kwargs[name] not in arg.input_vars:
+                        warnings.warn(
+                            f"Argument {arg_name} is missing bound variable {kwargs[name]} from argument {name}."
+                            f"Are you sure {name} will always appear in {arg_name}?",
+                            SyntaxWarning,
+                        )
         for hint, arg in zip(hints, args):
             if hint is Bound:
                 bound[arg.name] = inputs.pop(arg.name)
@@ -150,8 +245,14 @@ def make_funsor(fn):
         for name, arg in zip(self._ast_fields, args):
             setattr(self, name, arg)
 
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
+        return Funsor._alpha_convert(self, alpha_subs)
+
     ResultMeta.__name__ = f"{fn.__name__}Meta"
-    Result = ResultMeta(fn.__name__, (Funsor,), {"__init__": __init__})
+    Result = ResultMeta(
+        fn.__name__, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
+    )
     pattern = (Result,) + (Funsor,) * len(input_types)
     eager.register(*pattern)(_erase_types(fn))
     return Result

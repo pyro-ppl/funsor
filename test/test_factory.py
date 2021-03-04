@@ -8,10 +8,12 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Real, Reals
-from funsor.factory import Bound, Fresh, make_funsor, to_funsor
+from funsor.factory import Bound, Fresh, Has, Value, make_funsor, to_funsor
+from funsor.interpretations import reflect
+from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
 from funsor.terms import Cat, Funsor, Lambda, Number, eager
-from funsor.testing import check_funsor, random_tensor
+from funsor.testing import assert_close, check_funsor, random_tensor
 
 
 def test_lambda_lambda():
@@ -46,7 +48,6 @@ def test_getitem_getitem(num_inputs):
     check_funsor(actual, expected.inputs, expected.output, expected.data)
 
 
-@pytest.mark.xfail(reason="missing pattern Variable //,% Number")
 def test_flatten():
     @make_funsor
     def Flatten21(
@@ -59,8 +60,7 @@ def test_flatten():
         n = to_funsor(j, x.inputs.get(j, None)).output.size
         ij = to_funsor(ij, Bint[m * n])
         ij = x.materialize(ij)
-        return x(**{i.name: ij // Number(n, m * n),
-                    j.name: ij % Number(n, m * n)})
+        return x(**{i.name: ij // Number(n, n + 1), j.name: ij % Number(n, n + 1)})
 
     inputs = OrderedDict()
     inputs["a"] = Bint[3]
@@ -88,8 +88,9 @@ def test_unflatten():
     data = random_tensor(inputs, Real)
     x = Unflatten(data, "b", "c", "d")
 
-    check_funsor(x, {"a": Bint[5], "c": Bint[3], "d": Bint[2]}, Real,
-                 data.data.reshape(5, 3, 2))
+    check_funsor(
+        x, {"a": Bint[5], "c": Bint[3], "d": Bint[2]}, Real, data.data.reshape(5, 3, 2)
+    )
 
 
 def test_cat2():
@@ -176,3 +177,74 @@ def test_scatter1():
     value = Number(4, 9)
     x = Scatter1(destin, "a", "a", value, source)
     check_funsor(x, {"a": Bint[9], "b": Bint[3]}, Real)
+
+
+def test_value_dependence():
+    @make_funsor
+    def Sum(
+        x: Funsor,
+        dim: Value[int],
+    ) -> Fresh[lambda x, dim: Array[x.dtype, x.shape[:dim] + x.shape[dim + 1 :]]]:
+        return None
+
+    @eager.register(Sum, Tensor, int)
+    def eager_sum(x, dim):
+        data = x.data.sum(len(x.data.shape) - len(x.shape) + dim)
+        return Tensor(data, x.inputs, x.dtype)
+
+    x = random_tensor(OrderedDict(a=Bint[3]), Reals[2, 4, 5])
+
+    with reflect:
+        y0 = Sum(x, 0)
+        check_funsor(y0, x.inputs, Reals[4, 5])
+        y1 = Sum(x, 1)
+        check_funsor(y1, x.inputs, Reals[2, 5])
+        y2 = Sum(x, 2)
+        check_funsor(y2, x.inputs, Reals[2, 4])
+
+    z0 = reinterpret(y0)
+    check_funsor(z0, x.inputs, Reals[4, 5])
+    assert_close(z0.data, x.data.sum(1 + 0))
+    z1 = reinterpret(y1)
+    check_funsor(z1, x.inputs, Reals[2, 5])
+    assert_close(z1.data, x.data.sum(1 + 1))
+    z2 = reinterpret(y2)
+    check_funsor(z2, x.inputs, Reals[2, 4])
+    assert_close(z2.data, x.data.sum(1 + 2))
+
+    with pytest.raises(TypeError):
+        with reflect:
+            Sum(x, 1.5)
+
+    with pytest.raises(TypeError):
+
+        @make_funsor
+        def Sum(
+            x: Funsor, dim: Value[Number]
+        ) -> Fresh[lambda x, dim: Array[x.dtype, x.shape[:dim] + x.shape[dim + 1 :]]]:
+            return None
+
+
+def test_matmul_has():
+    @make_funsor
+    def MatMul(
+        x: Has[{"i"}],  # noqa: F821
+        y: Has[{"i"}],  # noqa: F821
+        i: Bound,
+    ) -> Fresh[lambda x: x]:
+        return (x * y).reduce(ops.add, i)
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    y = random_tensor(OrderedDict(b=Bint[4], c=Bint[3]))
+    with reflect:
+        xy = MatMul(x, y, "b")
+    check_funsor(xy, {"a": Bint[3], "c": Bint[3]}, Real)
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    y = random_tensor(OrderedDict(c=Bint[4], d=Bint[3]))
+    with pytest.warns(SyntaxWarning):
+        with reflect:
+            xy = MatMul(x, y, "b")
+    # To preserve extensionality, should only error on reflect
+    xy = MatMul(x, y, "b")
+    check_funsor(xy, {"a": Bint[3], "c": Bint[4], "d": Bint[3]}, Real)

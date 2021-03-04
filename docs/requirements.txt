@@ -1,6 +1,8 @@
+makefun
 multipledispatch
+nbsphinx
 numpy>=1.7
 opt_einsum>=2.3.2
-unification
 pytest>=4.1
-makefun
+sphinx-gallery
+typing_extensions

@@ -6,8 +6,22 @@ import numbers
 
 import numpy as np
 
-from .builtin import AssociativeOp, add, atanh, exp, log, log1p, max, min, reciprocal, safediv, safesub, sqrt, tanh
-from .op import DISTRIBUTIVE_OPS, CachedOpMeta, Op, declare_op_types, make_op
+from .builtin import (
+    AssociativeOp,
+    add,
+    atanh,
+    exp,
+    log,
+    log1p,
+    max,
+    min,
+    reciprocal,
+    safediv,
+    safesub,
+    sqrt,
+    tanh,
+)
+from .op import DISTRIBUTIVE_OPS, UNITS, CachedOpMeta, Op, declare_op_types, make_op
 
 _builtin_all = all
 _builtin_any = any
@@ -40,9 +54,9 @@ atanh.register(array)(np.arctanh)
 
 @log.register(array)
 def _log(x):
-    if x.dtype == 'bool':
-        return np.where(x, 0., -math.inf)
-    with np.errstate(divide='ignore'):  # skip the warning of log(0.)
+    if x.dtype == "bool":
+        return np.where(x, 0.0, -math.inf)
+    with np.errstate(divide="ignore"):  # skip the warning of log(0.)
         return np.log(x)
 
 
@@ -135,8 +149,9 @@ def _einsum(x, *operand):
 def expand(x, shape):
     prepend_dim = len(shape) - np.ndim(x)
     assert prepend_dim >= 0
-    shape = shape[:prepend_dim] + tuple(dx if size == -1 else size
-                                        for dx, size in zip(np.shape(x), shape[prepend_dim:]))
+    shape = shape[:prepend_dim] + tuple(
+        dx if size == -1 else size for dx, size in zip(np.shape(x), shape[prepend_dim:])
+    )
     return np.broadcast_to(x, shape)
 
 
@@ -150,11 +165,30 @@ def is_numeric_array(x):
     return True if isinstance(x, array) else False
 
 
+@logaddexp.register(array, array)
+def _safe_logaddexp_tensor_tensor(x, y):
+    finfo = np.finfo(x.dtype)
+    shift = np.clip(max(detach(x), detach(y)), a_max=None, a_min=finfo.min)
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@logaddexp.register(numbers.Number, array)
+def _safe_logaddexp_number_tensor(x, y):
+    finfo = np.finfo(y.dtype)
+    shift = np.clip(detach(y), a_max=None, a_min=max(x, finfo.min))
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@logaddexp.register(array, numbers.Number)
+def _safe_logaddexp_tensor_number(x, y):
+    return _safe_logaddexp_number_tensor(y, x)
+
+
 @Op
 def logsumexp(x, dim):
     amax = np.amax(x, axis=dim, keepdims=True)
     # treat the case x = -inf
-    amax = np.where(np.isfinite(amax), amax, 0.)
+    amax = np.where(np.isfinite(amax), amax, 0.0)
     return log(np.sum(np.exp(x - amax), axis=dim)) + amax.squeeze(axis=dim)
 
 
@@ -189,6 +223,16 @@ def _min(x, y):
 
 
 @Op
+def argmax(x, dim):
+    raise NotImplementedError
+
+
+@argmax.register(array, int)
+def _argmax(x, dim):
+    return np.argmax(x, dim)
+
+
+@Op
 def new_arange(x, stop):
     return np.arange(stop)
 
@@ -201,6 +245,11 @@ def _new_arange(x, start, stop, step):
 @Op
 def new_zeros(x, shape):
     return np.zeros(shape, dtype=x.dtype)
+
+
+@Op
+def new_full(x, shape, value):
+    return np.full(shape, value, dtype=x.dtype)
 
 
 @Op
@@ -220,6 +269,7 @@ def _reciprocal(x):
     return result
 
 
+@safediv.register(array, array)
 @safediv.register(numbers.Number, array)
 def _safediv(x, y):
     try:
@@ -229,13 +279,38 @@ def _safediv(x, y):
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
-@safesub.register((array, numbers.Number), array)
+@safesub.register(array, array)
+@safesub.register(numbers.Number, array)
 def _safesub(x, y):
     try:
         finfo = np.finfo(y.dtype)
     except ValueError:
         finfo = np.iinfo(y.dtype)
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
+
+
+@Op
+def scatter(destin, indices, source):
+    raise NotImplementedError
+
+
+@scatter.register(array, tuple, array)
+def _scatter(destin, indices, source):
+    result = destin.copy()
+    result[indices] = source
+    return result
+
+
+@Op
+def scatter_add(destin, indices, source):
+    raise NotImplementedError
+
+
+@scatter_add.register(array, tuple, array)
+def _scatter_add(destin, indices, source):
+    result = destin.copy()
+    np.add.at(result, indices, source)
+    return result
 
 
 @stack.register(int, [array])
@@ -263,42 +338,50 @@ def unsqueeze(x, dim):
 DISTRIBUTIVE_OPS.add((logaddexp, add))
 DISTRIBUTIVE_OPS.add((sample, add))
 
+UNITS[logaddexp] = -math.inf
 
 __all__ = [
-    'all',
-    'amax',
-    'amin',
-    'any',
-    'astype',
-    'cat',
-    'cholesky',
-    'cholesky_inverse',
-    'cholesky_solve',
-    'clamp',
-    'detach',
-    'diagonal',
-    'einsum',
-    'expand',
-    'finfo',
-    'full_like',
-    'is_numeric_array',
-    'isnan',
-    'logaddexp',
-    'logsumexp',
-    'new_arange',
-    'new_eye',
-    'new_zeros',
-    'permute',
-    'prod',
-    'sample',
-    'stack',
-    'sum',
-    'transpose',
-    'triangular_solve',
-    'unsqueeze',
+    "all",
+    "amax",
+    "amin",
+    "any",
+    "argmax",
+    "astype",
+    "cat",
+    "cholesky",
+    "cholesky_inverse",
+    "cholesky_solve",
+    "clamp",
+    "detach",
+    "diagonal",
+    "einsum",
+    "expand",
+    "finfo",
+    "full_like",
+    "is_numeric_array",
+    "isnan",
+    "logaddexp",
+    "logsumexp",
+    "new_arange",
+    "new_eye",
+    "new_full",
+    "new_zeros",
+    "permute",
+    "prod",
+    "sample",
+    "scatter",
+    "scatter_add",
+    "stack",
+    "sum",
+    "transpose",
+    "triangular_solve",
+    "unsqueeze",
 ]
 
 declare_op_types(globals(), __all__, __name__)
 
-__doc__ = "\n".join(".. autodata:: {}\n".format(_name)
-                    for _name in __all__ if isinstance(globals()[_name], Op))
+__doc__ = "\n".join(
+    ".. autodata:: {}\n".format(_name)
+    for _name in __all__
+    if isinstance(globals()[_name], Op)
+)
