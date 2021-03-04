@@ -49,7 +49,7 @@ setup(
             "pytest==4.3.1",
             "pytest-xdist==1.27.0",
             "scipy",
-            "torchvision",
+            "torchvision>=0.9.0",
         ],
         "dev": [
             "black",
