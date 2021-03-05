@@ -46,6 +46,17 @@ def mean_approximate_logaddexp(op, model, guide, approx_vars):
     return reduce(ops.add, results)
 
 
+elbo_approximate = DispatchedInterpretation("elbo_approximate")
+"""
+Evidence lower bound approximation using Jensen's inequality.
+"""
+
+
+@elbo_approximate.register(Approximate, ops.LogaddexpOp, Funsor, Funsor, frozenset)
+def elbo_approximate_logaddexp(op, model, guide, approx_vars):
+    return guide * ops.exp(model - guide)
+
+
 laplace_approximate = DispatchedInterpretation("laplace_approximate")
 """
 Gaussian approximate using the value and Hessian of the model, evaluated at the
@@ -195,6 +206,7 @@ def compute_argmax_gaussian_mixture(model, approx_vars):
 __all__ = [
     "argmax_approximate",
     "compute_argmax",
+    "elbo_approximate",
     "laplace_approximate",
     "mean_approximate",
 ]

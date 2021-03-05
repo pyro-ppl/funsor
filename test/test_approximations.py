@@ -9,6 +9,7 @@ import pytest
 from funsor import ops
 from funsor.approximations import (
     argmax_approximate,
+    elbo_approximate,
     laplace_approximate,
     mean_approximate,
 )
@@ -32,6 +33,7 @@ monte_carlo = MonteCarlo(rng_key=np.array([0, 0], dtype=np.uint32))
     [
         eager,
         argmax_approximate,
+        elbo_approximate,
         monte_carlo,
     ],
 )
@@ -51,6 +53,7 @@ def test_tensor_smoke(approximate):
     [
         eager,
         argmax_approximate,
+        elbo_approximate,
         laplace_approximate,
         xfail_param(mean_approximate, reason="alpha conversion bug"),
         monte_carlo,
