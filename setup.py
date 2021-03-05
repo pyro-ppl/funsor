@@ -48,6 +48,7 @@ setup(
             "pyro-api>=0.1.2",
             "pytest==4.3.1",
             "pytest-xdist==1.27.0",
+            "requests",
             "scipy",
             "torchvision>=0.9.0",
         ],
