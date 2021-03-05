@@ -20,6 +20,7 @@ from . import instrument
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
+_TYPECHECK = int(os.environ.get("FUNSOR_TYPECHECK", 0))
 _STACK = []  # To be populated later in funsor.terms
 _GENSYM_COUNTER = 0
 
@@ -73,6 +74,16 @@ if instrument.DEBUG:
             result_str = type(result).__name__
         print(indent + "-> " + result_str)
         return result
+
+
+elif _TYPECHECK:
+
+    def interpret(cls, *args):
+        reflect = _STACK[0]
+        interpretation = _STACK[-1]
+        if interpretation is not reflect:
+            reflect.interpret(cls, *args)  # for checking only
+        return interpretation.interpret(cls, *args)
 
 
 else:

@@ -5,6 +5,7 @@ import inspect
 import typing
 import warnings
 from collections import OrderedDict
+from functools import singledispatch
 
 import makefun
 
@@ -217,7 +218,6 @@ def make_funsor(fn):
         dependent_args = _get_dependent_args(self._ast_fields, hints, args)
         output = output_type(**dependent_args)
         inputs = OrderedDict()
-        fresh = set()
         bound = {}
         for hint, arg, arg_name in zip(hints, args, self._ast_fields):
             if hint is Funsor:
@@ -238,9 +238,10 @@ def make_funsor(fn):
                 bound[arg.name] = inputs.pop(arg.name)
         for hint, arg in zip(hints, args):
             if isinstance(hint, Fresh):
-                fresh.add(arg.name)
-                inputs[arg.name] = arg.output
-        fresh = frozenset(fresh)
+                for k, d in arg.inputs.items():
+                    if k not in bound:
+                        inputs[k] = d
+        fresh = frozenset()
         Funsor.__init__(self, inputs, output, fresh, bound)
         for name, arg in zip(self._ast_fields, args):
             setattr(self, name, arg)
@@ -253,6 +254,18 @@ def make_funsor(fn):
     Result = ResultMeta(
         fn.__name__, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
     )
-    pattern = (Result,) + (Funsor,) * len(input_types)
+    pattern = (Result,) + tuple(
+        _hint_to_pattern(input_types[k]) for k in Result._ast_fields
+    )
     eager.register(*pattern)(_erase_types(fn))
     return Result
+
+
+@singledispatch
+def _hint_to_pattern(t):
+    return Funsor
+
+
+@_hint_to_pattern.register(Value)
+def _(t):
+    return t.value_type

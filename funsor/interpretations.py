@@ -351,6 +351,7 @@ A moment matching interpretation of :class:`Reduce` expressions. This falls
 back to :class:`eager` in other cases.
 """
 
+push_interpretation(reflect)  # Set for optional type checking.
 push_interpretation(eager)  # Use eager interpretation by default.
 
 
