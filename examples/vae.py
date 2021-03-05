@@ -15,7 +15,7 @@ import torch
 import torch.utils.data
 from torch import nn, optim
 from torch.nn import functional as F
-from torchvision import datasets, transforms
+from torchvision import transforms
 
 import funsor
 import funsor.ops as ops
@@ -59,6 +59,9 @@ def main(args):
     # XXX Temporary fix after https://github.com/pyro-ppl/pyro/pull/2701
     import pyro
 
+    # XXX Temporarily use Pyro's MNIST https://github.com/pyro-ppl/pyro/pull/2775
+    from pyro.contrib.examples.util import MNIST
+
     pyro.enable_validation(False)
 
     encoder = Encoder()
@@ -87,9 +90,7 @@ def main(args):
         return loss
 
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            DATA_PATH, train=True, download=True, transform=transforms.ToTensor()
-        ),
+        MNIST(DATA_PATH, train=True, download=True, transform=transforms.ToTensor()),
         batch_size=args.batch_size,
         shuffle=True,
     )
