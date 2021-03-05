@@ -67,6 +67,7 @@ def test_flatten():
     inputs["b"] = Bint[4]
     data = random_tensor(inputs, Real)
     x = Flatten21(data, "a", "b", "ab")
+    assert isinstance(x, Tensor)
 
     check_funsor(x, {"ab": Bint[12]}, Real, data.data.reshape(-1))
 
@@ -87,6 +88,31 @@ def test_unflatten():
     inputs["b"] = Bint[6]
     data = random_tensor(inputs, Real)
     x = Unflatten(data, "b", "c", "d")
+    assert isinstance(x, Tensor)
+
+    check_funsor(
+        x, {"a": Bint[5], "c": Bint[3], "d": Bint[2]}, Real, data.data.reshape(5, 3, 2)
+    )
+
+
+def test_unflatten_dependent():
+    @make_funsor
+    def Unflatten(
+        k: Value[int],
+        x: Funsor,
+        i: Bound,
+        i_over_k: Fresh[lambda k, i: Bint[i.size // k]],
+        i_mod_k: Fresh[lambda k: Bint[k]],
+    ) -> Fresh[lambda x: x]:
+        assert i.output.size % k == 0
+        return x(**{i.name: i_over_k * Number(k, k + 1) + i_mod_k})
+
+    inputs = OrderedDict()
+    inputs["a"] = Bint[5]
+    inputs["b"] = Bint[6]
+    data = random_tensor(inputs, Real)
+    x = Unflatten(2, data, "b", "c", "d")
+    assert isinstance(x, Tensor)
 
     check_funsor(
         x, {"a": Bint[5], "c": Bint[3], "d": Bint[2]}, Real, data.data.reshape(5, 3, 2)
