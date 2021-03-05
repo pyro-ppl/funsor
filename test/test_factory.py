@@ -55,7 +55,7 @@ def test_flatten():
         i: Bound,
         j: Bound,
         ij: Fresh[lambda i, j: Bint[i.size * j.size]],
-    ) -> Fresh[lambda x: x.dtype]:
+    ) -> Fresh[lambda x: x]:
         m = to_funsor(i, x.inputs.get(i, None)).output.size
         n = to_funsor(j, x.inputs.get(j, None)).output.size
         ij = to_funsor(ij, Bint[m * n])
@@ -138,9 +138,10 @@ def test_cat2():
     inputs["b"] = Bint[4]
     x = random_tensor(inputs, Real)
     y = random_tensor(inputs, Real)
-    xy = Cat2(x, y, "a", "a", "aa")
+    y = y(a="c")  # to avoid bound variable clash
+    xy = Cat2(x, y, "a", "c", "ac")
 
-    check_funsor(xy, {"aa": Bint[6], "b": Bint[4]}, Real)
+    check_funsor(xy, {"ac": Bint[6], "b": Bint[4]}, Real)
 
 
 def test_normal():

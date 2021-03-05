@@ -218,7 +218,6 @@ def make_funsor(fn):
         dependent_args = _get_dependent_args(self._ast_fields, hints, args)
         output = output_type(**dependent_args)
         inputs = OrderedDict()
-        fresh = set()
         bound = {}
         for hint, arg, arg_name in zip(hints, args, self._ast_fields):
             if hint is Funsor:
@@ -239,9 +238,10 @@ def make_funsor(fn):
                 bound[arg.name] = inputs.pop(arg.name)
         for hint, arg in zip(hints, args):
             if isinstance(hint, Fresh):
-                fresh.add(arg.name)
-                inputs[arg.name] = arg.output
-        fresh = frozenset(fresh)
+                for k, d in arg.inputs.items():
+                    if k not in bound:
+                        inputs[k] = d
+        fresh = frozenset()
         Funsor.__init__(self, inputs, output, fresh, bound)
         for name, arg in zip(self._ast_fields, args):
             setattr(self, name, arg)
