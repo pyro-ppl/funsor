@@ -70,7 +70,7 @@ def main(args):
     encode = funsor.function(Reals[28, 28], (Reals[20], Reals[20]))(encoder)
     decode = funsor.function(Reals[20], Reals[28, 28])(decoder)
 
-    @funsor.interpretation(funsor.montecarlo.MonteCarlo())
+    @funsor.montecarlo.MonteCarlo()
     def loss_function(data, subsample_scale):
         # Lazily sample from the guide.
         loc, scale = encode(data)
@@ -114,10 +114,10 @@ def main(args):
             train_loss += loss.item()
             optimizer.step()
             if batch_idx % 50 == 0:
-                print("  loss = {}".format(loss.item()))
+                print(f"  loss = {loss.item()}")
                 if batch_idx and args.smoke_test:
                     return
-        print("epoch {} train_loss = {}".format(epoch, train_loss))
+        print(f"epoch {epoch} train_loss = {train_loss}")
 
 
 if __name__ == "__main__":

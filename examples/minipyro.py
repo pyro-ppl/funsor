@@ -15,7 +15,6 @@ from pyroapi import infer, optim, pyro, pyro_backend
 from torch.distributions import constraints
 
 import funsor
-from funsor.interpreter import interpretation
 from funsor.montecarlo import MonteCarlo
 
 
@@ -44,7 +43,7 @@ def main(args):
 
     # Because the API in minipyro matches that of Pyro proper,
     # training code works with generic Pyro implementations.
-    with pyro_backend(args.backend), interpretation(MonteCarlo()):
+    with pyro_backend(args.backend), MonteCarlo():
         # Construct an SVI object so we can do variational inference on our
         # model/guide pair.
         Elbo = infer.JitTrace_ELBO if args.jit else infer.Trace_ELBO
@@ -57,14 +56,14 @@ def main(args):
         for step in range(args.num_steps):
             loss = svi.step(data)
             if args.verbose and step % 100 == 0:
-                print("step {} loss = {}".format(step, loss))
+                print(f"step {step} loss = {loss}")
 
         # Report the final values of the variational parameters
         # in the guide after training.
         if args.verbose:
             for name in pyro.get_param_store():
                 value = pyro.param(name).data
-                print("{} = {}".format(name, value.detach().cpu().numpy()))
+                print(f"{name} = {value.detach().cpu().numpy()}")
 
         # For this simple (conjugate) model we know the exact posterior. In
         # particular we know that the variational distribution should be
