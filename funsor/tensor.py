@@ -302,6 +302,10 @@ class Tensor(Funsor, metaclass=TensorMeta):
             data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
             data = REDUCE_OP_TO_NUMERIC[op](data, -1)
             return Tensor(data, self.inputs, dtype)
+        if op in OP_TO_NUMERIC:
+            batch_dim = len(self.data.shape) - len(self.output.shape)
+            data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
+            return Tensor(op(data, -1), self.inputs, dtype)
         return Tensor(op(self.data), self.inputs, dtype)
 
     def eager_reduce(self, op, reduced_vars):
@@ -1225,6 +1229,10 @@ REDUCE_OP_TO_NUMERIC = {
     ops.sample: ops.logsumexp,
     ops.min: ops.amin,
     ops.max: ops.amax,
+}
+
+
+OP_TO_NUMERIC = {
     ops.mean: ops.mean,
     ops.std: ops.std,
     ops.var: ops.var,
@@ -1235,6 +1243,7 @@ __all__ = [
     "Einsum",
     "Function",
     "REDUCE_OP_TO_NUMERIC",
+    "OP_TO_NUMERIC",
     "Tensor",
     "align_tensor",
     "align_tensors",

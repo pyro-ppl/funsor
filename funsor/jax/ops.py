@@ -147,6 +147,11 @@ def _log(x):
     return np.log(x)
 
 
+@ops.mean.register(array, (int, type(None)))
+def _mean(x, dim):
+    return x.mean() if dim is None else x.mean(dim)
+
+
 @ops.logaddexp.register(array, array)
 def _safe_logaddexp_tensor_tensor(x, y):
     finfo = np.finfo(x.dtype)
@@ -164,6 +169,11 @@ def _safe_logaddexp_number_tensor(x, y):
 @ops.logaddexp.register(array, numbers.Number)
 def _safe_logaddexp_tensor_number(x, y):
     return _safe_logaddexp_number_tensor(y, x)
+
+
+@ops.std.register(array, (int, type(None)))
+def _std(x, dim):
+    return x.std() if dim is None else x.std(dim)
 
 
 @ops.logsumexp.register(array, (int, type(None)))
@@ -324,3 +334,8 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     permute_inv_dims += (sol.ndim - 1, prepend_ndim + y.ndim - 2)
     sol = np.transpose(sol, permute_inv_dims)
     return sol.reshape(batch_shape + (n, m))
+
+
+@ops.var.register(array, (int, type(None)))
+def _var(x, dim):
+    return x.var() if dim is None else x.var(dim)

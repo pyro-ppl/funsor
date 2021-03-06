@@ -287,6 +287,29 @@ def test_unary(symbol, data):
     check_funsor(actual, {}, Array[dtype, ()], expected_data)
 
 
+@pytest.mark.parametrize("event_shape", [(4,), (3, 2)], ids=str)
+@pytest.mark.parametrize(
+    "name",
+    [
+        "all",
+        "any",
+        "logsumexp",
+        "max",
+        "mean",
+        "min",
+        "prod",
+        "std",
+        "sum",
+        "var",
+    ],
+)
+def test_reduce_event(name, event_shape):
+    dtype = 2 if name in ("any", "all") else "real"
+    x = random_tensor(OrderedDict(i=Bint[5]), output=Array[dtype, event_shape])
+    actual = getattr(x, name)()
+    check_funsor(actual, x.inputs, Array[dtype, ()])
+
+
 BINARY_OPS = [
     "+",
     "-",
