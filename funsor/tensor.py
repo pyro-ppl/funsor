@@ -302,7 +302,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
             data = REDUCE_OP_TO_NUMERIC[op](data, -1)
             return Tensor(data, self.inputs, dtype)
-        if op in OP_TO_NUMERIC:
+        if op in NUMERIC_OPS:
             batch_dim = len(self.data.shape) - len(self.output.shape)
             data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
             return Tensor(op(data, -1), self.inputs, dtype)
@@ -1243,7 +1243,7 @@ __all__ = [
     "Einsum",
     "Function",
     "REDUCE_OP_TO_NUMERIC",
-    "OP_TO_NUMERIC",
+    "NUMERIC_OPS",
     "Tensor",
     "align_tensor",
     "align_tensors",
