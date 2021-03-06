@@ -19,7 +19,7 @@ from funsor.interpretations import (
     reflect,
 )
 from funsor.terms import to_data, to_funsor
-from funsor.testing import (
+from funsor.testing import (  # noqa: F401
     assert_close,
     check_funsor,
     rand,
@@ -29,7 +29,7 @@ from funsor.testing import (
     xfail_if_not_found,
     xfail_if_not_implemented,
     xfail_param,
-)  # noqa: F401
+)
 from funsor.util import get_backend
 
 pytestmark = pytest.mark.skipif(
@@ -103,9 +103,9 @@ class DistTestCase:
     def get_dist(self):
         dist = backend_dist  # noqa: F841
         Case = namedtuple("Case", tuple(name for name, _ in self.raw_params))
-        case = Case(
+        case = Case(  # noqa: F841
             **{name: eval(raw_param) for name, raw_param in self.raw_params}
-        )  # noqa: F841
+        )
         with xfail_if_not_found():
             return eval(self.raw_dist)
 
@@ -186,7 +186,9 @@ for batch_shape in [(), (5,), (2, 3)]:
 
     # Chi2
     DistTestCase(
-        "dist.Chi2(df=case.df)", (("df", f"rand({batch_shape})"),), funsor.Real
+        "dist.Chi2(df=case.df)",
+        (("df", f"rand({batch_shape})"),),
+        funsor.Real,
     )
 
     # ContinuousBernoulli
@@ -356,8 +358,8 @@ for batch_shape in [(), (5,), (2, 3)]:
         DistTestCase(
             "dist.OneHotCategorical(probs=case.probs)",
             (("probs", f"rand({batch_shape + (size,)})"),),
-            funsor.Reals[size],
-        )  # funsor.Bint[size],
+            funsor.Reals[size],  # funsor.Bint[size],
+        )
 
     # Pareto
     DistTestCase(
@@ -368,7 +370,9 @@ for batch_shape in [(), (5,), (2, 3)]:
 
     # Poisson
     DistTestCase(
-        "dist.Poisson(rate=case.rate)", (("rate", f"rand({batch_shape})"),), funsor.Real
+        "dist.Poisson(rate=case.rate)",
+        (("rate", f"rand({batch_shape})"),),
+        funsor.Real,
     )
 
     # RelaxedBernoulli
