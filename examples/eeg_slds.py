@@ -47,15 +47,15 @@ def download_data():
 class SLDS(nn.Module):
     def __init__(
         self,
-        num_components,
-        hidden_dim,
-        obs_dim,
-        fine_transition_matrix=True,
-        fine_transition_noise=False,
-        fine_observation_matrix=False,
-        fine_observation_noise=False,
+        num_components,  # the number of switching states K
+        hidden_dim,  # the dimension of the continuous latent space
+        obs_dim,  # the dimension of the continuous outputs
+        fine_transition_matrix=True,  # controls whether the transition matrix depends on s_t
+        fine_transition_noise=False,  # controls whether the transition noise depends on s_t
+        fine_observation_matrix=False,  # controls whether the observation matrix depends on s_t
+        fine_observation_noise=False,  # controls whether the observation noise depends on s_t
         moment_matching_lag=1,
-    ):  # the number of switching states K  # the dimension of the continuous latent space  # the dimension of the continuous outputs  # controls whether the transition matrix depends on s_t  # controls whether the transition noise depends on s_t  # controls whether the observation matrix depends on s_t  # controls whether the observation noise depends on s_t  # controls the expense of the moment matching approximation
+    ):
 
         self.num_components = num_components
         self.hidden_dim = hidden_dim

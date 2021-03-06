@@ -109,4 +109,6 @@ class KeyedRegistry(object):
         return self[key].partial_call(*args)
 
 
-__all__ = ["KeyedRegistry"]
+__all__ = [
+    "KeyedRegistry",
+]

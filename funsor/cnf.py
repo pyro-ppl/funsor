@@ -594,7 +594,11 @@ def unary_contract(op, arg):
     )
 
 
-BACKEND_TO_EINSUM_BACKEND = {"numpy": "numpy", "torch": "torch", "jax": "jax.numpy"}
+BACKEND_TO_EINSUM_BACKEND = {
+    "numpy": "numpy",
+    "torch": "torch",
+    "jax": "jax.numpy",
+}
 # NB: numpy_log, numpy_map is backend-agnostic so they also work for torch backend;
 # however, we might need to profile to make a switch
 BACKEND_TO_LOGSUMEXP_BACKEND = {

@@ -60,4 +60,6 @@ def monte_carlo_approximate(state, op, model, guide, approx_vars):
     return result
 
 
-__all__ = ["MonteCarlo"]
+__all__ = [
+    "MonteCarlo",
+]

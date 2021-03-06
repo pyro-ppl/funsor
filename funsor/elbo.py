@@ -58,4 +58,6 @@ def elbo_reduce(state, sum_op, arg, reduced_vars):
     return elbo_contract(state, sum_op, ops.add, reduced_vars, (arg,))
 
 
-__all__ = ["Elbo"]
+__all__ = [
+    "Elbo",
+]

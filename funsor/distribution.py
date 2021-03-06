@@ -160,11 +160,9 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         """
         value_name = [
             name
-            for name, domain in self.value.inputs.items()
+            for name, domain in self.value.inputs.items()  # TODO is this right?
             if domain == self.value.output
-        ][
-            0
-        ]  # TODO is this right?
+        ][0]
         # arbitrary name-dim mapping, since we're converting back to a funsor anyway
         name_to_dim = {
             name: -dim - 1

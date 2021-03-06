@@ -15,7 +15,7 @@ from pyro.distributions.torch_distribution import (
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.distribution import (
+from funsor.distribution import (  # noqa: F401
     FUNSOR_DIST_NAMES,
     Bernoulli,
     LogNormal,
@@ -43,7 +43,7 @@ from funsor.distribution import (
     make_dist,
     maskeddist_to_funsor,
     transformeddist_to_funsor,
-)  # noqa: F401
+)
 from funsor.domains import Real, Reals
 from funsor.interpretations import eager
 from funsor.tensor import Tensor
@@ -353,8 +353,8 @@ JointDirichletMultinomial = Contraction[
     Union[ops.LogaddexpOp, ops.NullOp],
     ops.AddOp,
     frozenset,
-    Tuple[Dirichlet, Multinomial],
-]  # noqa: F821
+    Tuple[Dirichlet, Multinomial],  # noqa: F821
+]
 
 
 eager.register(Beta, Funsor, Funsor, Funsor)(eager_beta)  # noqa: F821)
@@ -377,28 +377,36 @@ eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
 eager.register(
     Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, BernoulliProbs
-)(
+)(  # noqa: F821
     eager_beta_bernoulli
-)  # noqa: F821
+)
 eager.register(
     Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Categorical
-)(
+)(  # noqa: F821
     eager_dirichlet_categorical
-)  # noqa: F821
+)
 eager.register(
     Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Multinomial
-)(
+)(  # noqa: F821
     eager_dirichlet_multinomial
-)  # noqa: F821
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma)(
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma
+)(  # noqa: F821
     eager_gamma_gamma
-)  # noqa: F821
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson)(
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson
+)(  # noqa: F821
     eager_gamma_poisson
-)  # noqa: F821
-eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(
+)
+eager.register(
+    Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial
+)(  # noqa: F821
     eager_dirichlet_posterior
-)  # noqa: F821
-eager.register(Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset)(
+)
+eager.register(
+    Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset
+)(  # noqa: F821
     eager_plate_multinomial
-)  # noqa: F821
+)

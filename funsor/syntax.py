@@ -161,4 +161,8 @@ def rewrite_ops(infix={}, prefix={}, const={}):
     return decorator
 
 
-__all__ = ["INFIX_OPERATORS", "PREFIX_OPERATORS", "rewrite_ops"]
+__all__ = [
+    "INFIX_OPERATORS",
+    "PREFIX_OPERATORS",
+    "rewrite_ops",
+]

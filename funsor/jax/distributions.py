@@ -306,8 +306,8 @@ JointDirichletMultinomial = Contraction[
     Union[ops.LogaddexpOp, ops.NullOp],
     ops.AddOp,
     frozenset,
-    Tuple[Dirichlet, Multinomial],
-]  # noqa: F821
+    Tuple[Dirichlet, Multinomial],  # noqa: F821
+]
 
 
 eager.register(Beta, Funsor, Funsor, Funsor)(eager_beta)  # noqa: F821)
@@ -330,31 +330,39 @@ eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
 eager.register(
     Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, BernoulliProbs
-)(
+)(  # noqa: F821
     eager_beta_bernoulli
-)  # noqa: F821
+)
 eager.register(
     Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Categorical
-)(
+)(  # noqa: F821
     eager_dirichlet_categorical
-)  # noqa: F821
+)
 eager.register(
     Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Dirichlet, Multinomial
-)(
+)(  # noqa: F821
     eager_dirichlet_multinomial
-)  # noqa: F821
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma)(
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma
+)(  # noqa: F821
     eager_gamma_gamma
-)  # noqa: F821
-eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson)(
+)
+eager.register(
+    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson
+)(  # noqa: F821
     eager_gamma_poisson
-)  # noqa: F821
+)
 if hasattr(dist, "DirichletMultinomial"):
-    eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(
+    eager.register(
+        Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial
+    )(  # noqa: F821
         eager_dirichlet_posterior
-    )  # noqa: F821
-eager.register(Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset)(
+    )
+eager.register(
+    Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset
+)(  # noqa: F821
     eager_plate_multinomial
-)  # noqa: F821
+)
 
 __all__ = list(x[0] for x in FUNSOR_DIST_NAMES if _get_numpyro_dist(x[0]) is not None)

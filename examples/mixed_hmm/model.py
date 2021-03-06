@@ -163,8 +163,8 @@ class Model(object):
                     lambda: torch.randn((N_c, N_v)).abs(),
                     constraint=constraints.simplex,
                 ),
-                OrderedDict([("g", Bint[N_c])]),
-            )  # different value per group
+                OrderedDict([("g", Bint[N_c])]),  # different value per group
+            )
 
             params["eps_i"]["theta"] = Tensor(
                 pyro.param(

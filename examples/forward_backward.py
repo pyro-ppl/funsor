@@ -13,7 +13,8 @@ from funsor.testing import assert_close, random_tensor
 
 
 def forward_algorithm(
-    factors: List[Funsor], step: Dict[str, str]
+    factors: List[Funsor],
+    step: Dict[str, str],
 ) -> Tuple[Funsor, List[Funsor]]:
     """
     Calculate log marginal probability using the forward algorithm:
@@ -49,7 +50,8 @@ def forward_algorithm(
 
 
 def forward_backward_algorithm(
-    factors: List[Funsor], step: Dict[str, str]
+    factors: List[Funsor],
+    step: Dict[str, str],
 ) -> List[Tensor]:
     """
     Calculate marginal probabilities:

@@ -160,4 +160,8 @@ def extract_affine(fn):
     return const, coeffs
 
 
-__all__ = ["affine_inputs", "extract_affine", "is_affine"]
+__all__ = [
+    "affine_inputs",
+    "extract_affine",
+    "is_affine",
+]
