@@ -24,11 +24,8 @@ def main(args):
         torch.tensor([[0.9, 0.1], [0.1, 0.9]], requires_grad=True)
     )
     trans_noise = funsor.Tensor(
-        torch.tensor(
-            [0.1, 1.0],  # low noise component  # high noisy component
-            requires_grad=True,
-        )
-    )
+        torch.tensor([0.1, 1.0], requires_grad=True)
+    )  # low noise component  # high noisy component
     emit_noise = funsor.Tensor(torch.tensor(0.5, requires_grad=True))
     params = [trans_probs.data, trans_noise.data, emit_noise.data]
 

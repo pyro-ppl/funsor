@@ -233,6 +233,4 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     return None  # defer to default implementation
 
 
-__all__ = [
-    "Integrate",
-]
+__all__ = ["Integrate"]

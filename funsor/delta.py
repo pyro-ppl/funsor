@@ -248,7 +248,4 @@ def eager_independent_delta(delta, reals_var, bint_var, diag_var):
     return None
 
 
-__all__ = [
-    "Delta",
-    "solve",
-]
+__all__ = ["Delta", "solve"]

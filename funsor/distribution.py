@@ -160,9 +160,11 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         """
         value_name = [
             name
-            for name, domain in self.value.inputs.items()  # TODO is this right?
+            for name, domain in self.value.inputs.items()
             if domain == self.value.output
-        ][0]
+        ][
+            0
+        ]  # TODO is this right?
         # arbitrary name-dim mapping, since we're converting back to a funsor anyway
         name_to_dim = {
             name: -dim - 1
@@ -379,10 +381,7 @@ def make_dist(
     dist_class = DistributionMeta(
         backend_dist_class.__name__.split("Wrapper_")[-1],
         (Distribution,),
-        {
-            "dist_class": backend_dist_class,
-            "__init__": dist_init,
-        },
+        {"dist_class": backend_dist_class, "__init__": dist_init},
     )
 
     if generate_eager:

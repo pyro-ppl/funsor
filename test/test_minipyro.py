@@ -301,11 +301,7 @@ def test_constraints(backend, jit):
 
 
 @pytest.mark.parametrize(
-    "backend",
-    [
-        "pyro",
-        xfail_param("funsor", reason="missing patterns"),
-    ],
+    "backend", ["pyro", xfail_param("funsor", reason="missing patterns")]
 )
 def test_mean_field_ok(backend):
     def model():
@@ -323,11 +319,7 @@ def test_mean_field_ok(backend):
 
 
 @pytest.mark.parametrize(
-    "backend",
-    [
-        "pyro",
-        xfail_param("funsor", reason="missing patterns"),
-    ],
+    "backend", ["pyro", xfail_param("funsor", reason="missing patterns")]
 )
 def test_mean_field_warn(backend):
     def model():
@@ -522,9 +514,9 @@ def test_elbo_enumerate_plate_7(backend):
         )
         pyro.param(
             "guide_probs_c",
-            torch.tensor([[0.0, 1.0], [1.0, 0.0]]),  # deterministic
+            torch.tensor([[0.0, 1.0], [1.0, 0.0]]),
             constraint=constraints.simplex,
-        )
+        )  # deterministic
 
         def auto_model(data):
             probs_a = pyro.param("model_probs_a")

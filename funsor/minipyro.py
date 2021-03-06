@@ -286,10 +286,10 @@ def sample(name, fn, obs=None, infer=None):
         "fn": fn,
         "args": (),
         "value": obs,
-        "cond_indep_stack": {},  # maps dim to CondIndepStackFrame
+        "cond_indep_stack": {},
         "output": fn.output,
         "infer": {} if infer is None else infer,
-    }
+    }  # maps dim to CondIndepStackFrame
 
     # ...and use apply_stack to send it to the Messengers
     msg = apply_stack(initial_msg)
@@ -347,9 +347,9 @@ def param(
         "fn": fn,
         "args": (init_value, constraint),
         "value": None,
-        "cond_indep_stack": cond_indep_stack,  # maps dim to CondIndepStackFrame
+        "cond_indep_stack": cond_indep_stack,
         "output": output,
-    }
+    }  # maps dim to CondIndepStackFrame
 
     # ...and use apply_stack to send it to the Messengers
     msg = apply_stack(initial_msg)

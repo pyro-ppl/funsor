@@ -22,7 +22,7 @@ from funsor.terms import (
 )
 from funsor.util import get_backend, pretty, quote, set_backend
 
-from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
+from . import (
     adjoint,
     affine,
     approximations,
@@ -42,7 +42,7 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     sum_product,
     terms,
     testing,
-)
+)  # minipyro,  # TODO: enable when minipyro is backend-agnostic
 
 __version__ = "0.4.0"
 

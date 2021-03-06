@@ -92,8 +92,7 @@ else:
 
 def interpretation(new):
     warnings.warn(
-        "'with interpretation(x)' should be replaced by 'with x'",
-        DeprecationWarning,
+        "'with interpretation(x)' should be replaced by 'with x'", DeprecationWarning
     )
     return new
 
