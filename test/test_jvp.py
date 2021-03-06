@@ -165,13 +165,16 @@ def test_matmul_tensor():
     dx = random_tensor(OrderedDict(j=Bint[4]))
     dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
     # Tx = Variable("dx", Real)
-    # Ty = Variable("dy", Real)
+    Ty = Variable("dy", Reals[4, 5])["j", "k"]
     x_ = Tangent((x, dx))
-    y_ = Tangent((y, dy))
+    y_ = Tangent((y, Ty))
     with lazy:
-        x @ y
         xy_ = x_ * y_
         z, dz = xy_.reduce(ops.add, "j")
+
+    dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    dy = funsor.terms.Lambda("k", funsor.terms.Lambda("j", dy))
+    dz(dy=dy)
     assert_close(apply_optimizer(z), (x * y).reduce(ops.add, "j"))
     assert_close(apply_optimizer(dz), (y * dx + x * dy).reduce(ops.add, "j"))
 
