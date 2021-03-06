@@ -1232,11 +1232,11 @@ REDUCE_OP_TO_NUMERIC = {
 }
 
 
-OP_TO_NUMERIC = {
-    ops.mean: ops.mean,
-    ops.std: ops.std,
-    ops.var: ops.var,
-}
+NUMERIC_OPS = [
+    ops.mean,
+    ops.std,
+    ops.var,
+]
 
 
 __all__ = [
