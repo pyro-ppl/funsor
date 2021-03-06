@@ -172,8 +172,8 @@ def _safe_logaddexp_tensor_number(x, y):
 
 
 @ops.std.register(array, (int, type(None)))
-def _std(x, dim):
-    return x.std() if dim is None else x.std(dim)
+def _std(x, dim, ddof=0):
+    return x.std(ddof=ddof) if dim is None else x.std(dim, ddof=ddof)
 
 
 @ops.logsumexp.register(array, (int, type(None)))
@@ -337,5 +337,5 @@ def _triangular_solve(x, y, upper=False, transpose=False):
 
 
 @ops.var.register(array, (int, type(None)))
-def _var(x, dim):
-    return x.var() if dim is None else x.var(dim)
+def _var(x, dim, ddof=0):
+    return x.var(ddof=ddof) if dim is None else x.var(dim, ddof=ddof)

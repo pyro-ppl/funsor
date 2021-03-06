@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import math
 import numbers
 
 import torch
@@ -285,8 +286,14 @@ def _stack(dim, *x):
 
 
 @ops.std.register(torch.Tensor, (int, type(None)))
-def _std(x, dim):
-    return x.std() if dim is None else x.std(dim)
+def _std(x, dim, ddof=0):
+    if ddof == 0:
+        return x.std(unbiased=False) if dim is None else x.std(dim, unbiased=False)
+    if ddof == 1:
+        return x.std() if dim is None else x.std(dim)
+    N = x.numel() if dim is None else x.shape[dim]
+    correction = math.sqrt((N - 1) / (N - ddof))
+    return x.std() * correction if dim is None else x.std(dim) * correction
 
 
 @ops.sum.register(torch.Tensor, (int, type(None)))
@@ -300,5 +307,11 @@ def _triangular_solve(x, y, upper=False, transpose=False):
 
 
 @ops.var.register(torch.Tensor, (int, type(None)))
-def _var(x, dim):
-    return x.var() if dim is None else x.var(dim)
+def _var(x, dim, ddof=0):
+    if ddof == 0:
+        return x.var(unbiased=False) if dim is None else x.var(dim, unbiased=False)
+    if ddof == 1:
+        return x.var() if dim is None else x.var(dim)
+    N = x.numel() if dim is None else x.shape[dim]
+    correction = (N - 1) / (N - ddof)
+    return x.var() * correction if dim is None else x.var(dim) * correction
