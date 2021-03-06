@@ -291,6 +291,7 @@ def test_unary(symbol, data):
 @pytest.mark.parametrize(
     "name",
     [
+        "var",
         "all",
         "any",
         "logsumexp",
@@ -300,7 +301,6 @@ def test_unary(symbol, data):
         "prod",
         "std",
         "sum",
-        "var",
     ],
 )
 def test_reduce_event(name, event_shape):
