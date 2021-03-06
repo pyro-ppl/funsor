@@ -93,7 +93,7 @@ def forward_backward_algorithm(
         # alpha[t-1] * trans[t] = p(y[0:t], x[t-1], x[t])
         alpha_trans = alpha(**{"x_curr": "x_prev"}) + trans
         # alpha[t] = p(y[0:t], x[t])
-        alpha = alpha_trans.reduce(ops.logaddexp, frozenset({"x_prev"}))
+        alpha = alpha_trans.reduce(ops.logaddexp, "x_prev")
         # alpha[t-1] * trans[t] * beta[t] / Z = p(x[t-1], x[t] | Y)
         marginal = alpha_trans + beta(**{"x_prev": "x_curr"}) - Z
         marginals.append(marginal)
@@ -137,12 +137,7 @@ def main(args):
     for t in range(args.time_steps - 1):
         factors.append(
             random_tensor(
-                OrderedDict(
-                    [
-                        ("x_prev", Bint[args.hidden_dim]),
-                        ("x_curr", Bint[args.hidden_dim]),
-                    ]
-                )
+                OrderedDict(x_prev=Bint[args.hidden_dim], x_curr=Bint[args.hidden_dim])
             )
         )
 

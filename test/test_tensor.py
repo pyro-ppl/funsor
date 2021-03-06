@@ -129,15 +129,7 @@ def test_indexing():
 
 def test_advanced_indexing_shape():
     I, J, M, N = 4, 4, 2, 3
-    x = Tensor(
-        randn((I, J)),
-        OrderedDict(
-            [
-                ("i", Bint[I]),
-                ("j", Bint[J]),
-            ]
-        ),
-    )
+    x = Tensor(randn((I, J)), OrderedDict(i=Bint[I], j=Bint[J]))
     m = Tensor(numeric_array([2, 3]), OrderedDict([("m", Bint[M])]), I)
     n = Tensor(numeric_array([0, 1, 1]), OrderedDict([("n", Bint[N])]), J)
     assert x.data.shape == (I, J)
@@ -233,55 +225,16 @@ def test_advanced_indexing_tensor(output_shape):
     #      \ | /
     #        x
     output = Reals[output_shape]
-    x = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-                ("j", Bint[3]),
-                ("k", Bint[4]),
-            ]
-        ),
-        output,
-    )
-    i = random_tensor(
-        OrderedDict(
-            [
-                ("u", Bint[5]),
-            ]
-        ),
-        Bint[2],
-    )
-    j = random_tensor(
-        OrderedDict(
-            [
-                ("v", Bint[6]),
-                ("u", Bint[5]),
-            ]
-        ),
-        Bint[3],
-    )
-    k = random_tensor(
-        OrderedDict(
-            [
-                ("v", Bint[6]),
-            ]
-        ),
-        Bint[4],
-    )
+    x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3], k=Bint[4]), output)
+    i = random_tensor(OrderedDict(u=Bint[5]), Bint[2])
+    j = random_tensor(OrderedDict(v=Bint[6], u=Bint[5]), Bint[3])
+    k = random_tensor(OrderedDict(v=Bint[6]), Bint[4])
 
     expected_data = empty((5, 6) + output_shape)
     for u in range(5):
         for v in range(6):
             expected_data[u, v] = x.data[i.data[u], j.data[v, u], k.data[v]]
-    expected = Tensor(
-        expected_data,
-        OrderedDict(
-            [
-                ("u", Bint[5]),
-                ("v", Bint[6]),
-            ]
-        ),
-    )
+    expected = Tensor(expected_data, OrderedDict(u=Bint[5], v=Bint[6]))
 
     assert_equiv(expected, x(i, j, k))
     assert_equiv(expected, x(i=i, j=j, k=k))
@@ -305,14 +258,7 @@ def test_advanced_indexing_tensor(output_shape):
 @pytest.mark.parametrize("output_shape", [(), (7,), (3, 2)])
 def test_advanced_indexing_lazy(output_shape):
     x = Tensor(
-        randn((2, 3, 4) + output_shape),
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-                ("j", Bint[3]),
-                ("k", Bint[4]),
-            ]
-        ),
+        randn((2, 3, 4) + output_shape), OrderedDict(i=Bint[2], j=Bint[3], k=Bint[4])
     )
     u = Variable("u", Bint[2])
     v = Variable("v", Bint[3])
@@ -328,15 +274,7 @@ def test_advanced_indexing_lazy(output_shape):
     for u in range(2):
         for v in range(3):
             expected_data[u, v] = x.data[i_data[u], j_data[v], k_data[u, v]]
-    expected = Tensor(
-        expected_data,
-        OrderedDict(
-            [
-                ("u", Bint[2]),
-                ("v", Bint[3]),
-            ]
-        ),
-    )
+    expected = Tensor(expected_data, OrderedDict(u=Bint[2], v=Bint[3]))
 
     assert_equiv(expected, x(i, j, k))
     assert_equiv(expected, x(i=i, j=j, k=k))
@@ -366,18 +304,7 @@ def unary_eval(symbol, x):
 @pytest.mark.parametrize("dims", [(), ("a",), ("a", "b")])
 @pytest.mark.parametrize(
     "symbol",
-    [
-        "~",
-        "-",
-        "abs",
-        "atanh",
-        "sqrt",
-        "exp",
-        "log",
-        "log1p",
-        "sigmoid",
-        "tanh",
-    ],
+    ["~", "-", "abs", "atanh", "sqrt", "exp", "log", "log1p", "sigmoid", "tanh"],
 )
 def test_unary(symbol, dims):
     sizes = {"a": 3, "b": 4}
@@ -909,16 +836,7 @@ def test_function_of_numeric_array():
 
 
 def test_align():
-    x = Tensor(
-        randn((2, 3, 4)),
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-                ("j", Bint[3]),
-                ("k", Bint[4]),
-            ]
-        ),
-    )
+    x = Tensor(randn((2, 3, 4)), OrderedDict(i=Bint[2], j=Bint[3], k=Bint[4]))
     y = x.align(("j", "k", "i"))
     assert isinstance(y, Tensor)
     assert tuple(y.inputs) == ("j", "k", "i")
@@ -1030,41 +948,13 @@ def test_tensor_stack(n, shape, dim):
 
 @pytest.mark.parametrize("output", [Bint[2], Real, Reals[4], Reals[2, 3]], ids=str)
 def test_funsor_stack(output):
-    x = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-            ]
-        ),
-        output,
-    )
-    y = random_tensor(
-        OrderedDict(
-            [
-                ("j", Bint[3]),
-            ]
-        ),
-        output,
-    )
-    z = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-                ("k", Bint[4]),
-            ]
-        ),
-        output,
-    )
+    x = random_tensor(OrderedDict(i=Bint[2]), output)
+    y = random_tensor(OrderedDict(j=Bint[3]), output)
+    z = random_tensor(OrderedDict(i=Bint[2], k=Bint[4]), output)
 
     xy = Stack("t", (x, y))
     assert isinstance(xy, Tensor)
-    assert xy.inputs == OrderedDict(
-        [
-            ("t", Bint[2]),
-            ("i", Bint[2]),
-            ("j", Bint[3]),
-        ]
-    )
+    assert xy.inputs == OrderedDict(t=Bint[2], i=Bint[2], j=Bint[3])
     assert xy.output == output
     for j in range(3):
         assert_close(xy(t=0, j=j), x)
@@ -1073,14 +963,7 @@ def test_funsor_stack(output):
 
     xyz = Stack("t", (x, y, z))
     assert isinstance(xyz, Tensor)
-    assert xyz.inputs == OrderedDict(
-        [
-            ("t", Bint[3]),
-            ("i", Bint[2]),
-            ("j", Bint[3]),
-            ("k", Bint[4]),
-        ]
-    )
+    assert xyz.inputs == OrderedDict(t=Bint[3], i=Bint[2], j=Bint[3], k=Bint[4])
     assert xy.output == output
     for j in range(3):
         for k in range(4):
@@ -1094,32 +977,9 @@ def test_funsor_stack(output):
 
 @pytest.mark.parametrize("output", [Bint[2], Real, Reals[4], Reals[2, 3]], ids=str)
 def test_cat_simple(output):
-    x = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-            ]
-        ),
-        output,
-    )
-    y = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[3]),
-                ("j", Bint[4]),
-            ]
-        ),
-        output,
-    )
-    z = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[5]),
-                ("k", Bint[6]),
-            ]
-        ),
-        output,
-    )
+    x = random_tensor(OrderedDict(i=Bint[2]), output)
+    y = random_tensor(OrderedDict(i=Bint[3], j=Bint[4]), output)
+    z = random_tensor(OrderedDict(i=Bint[5], k=Bint[6]), output)
 
     assert Cat("i", (x,)) is x
     assert Cat("i", (y,)) is y
@@ -1127,23 +987,12 @@ def test_cat_simple(output):
 
     xy = Cat("i", (x, y))
     assert isinstance(xy, Tensor)
-    assert xy.inputs == OrderedDict(
-        [
-            ("i", Bint[2 + 3]),
-            ("j", Bint[4]),
-        ]
-    )
+    assert xy.inputs == OrderedDict(i=Bint[2 + 3], j=Bint[4])
     assert xy.output == output
 
     xyz = Cat("i", (x, y, z))
     assert isinstance(xyz, Tensor)
-    assert xyz.inputs == OrderedDict(
-        [
-            ("i", Bint[2 + 3 + 5]),
-            ("j", Bint[4]),
-            ("k", Bint[6]),
-        ]
-    )
+    assert xyz.inputs == OrderedDict(i=Bint[2 + 3 + 5], j=Bint[4], k=Bint[6])
     assert xy.output == output
 
 
@@ -1254,11 +1103,7 @@ def test_scatter_2d():
     actual = Scatter(ops.add, (("i", i), ("j", j)), source, reduced_vars)
     expected = Tensor(
         numeric_array(
-            [
-                [1.0, 2.0, 0.0, 0.0],
-                [3.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 4.0, 5.0],
-            ]
+            [[1.0, 2.0, 0.0, 0.0], [3.0, 0.0, 0.0, 0.0], [0.0, 0.0, 4.0, 5.0]]
         )
     )["i", "j"]
 
@@ -1388,8 +1233,7 @@ def _scatter_ji_examples():
 
 
 @pytest.mark.parametrize(
-    "source_inputs, i_inputs, j_inputs, reduced_vars",
-    _scatter_ji_examples(),
+    "source_inputs, i_inputs, j_inputs, reduced_vars", _scatter_ji_examples()
 )
 @pytest.mark.parametrize("output_shape", [()], ids=str)
 def test_scatter_ji(source_inputs, i_inputs, j_inputs, output_shape, reduced_vars):

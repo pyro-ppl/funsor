@@ -55,11 +55,7 @@ def test_complex():
         guide = x + y + z
 
     approx_vars = frozenset(
-        {
-            Variable("x", Real),
-            Variable("y", Real),
-            Variable("z", Real),
-        }
+        {Variable("x", Real), Variable("y", Real), Variable("z", Real)}
     )
 
     expected = Integrate(guide, model - guide, approx_vars)
