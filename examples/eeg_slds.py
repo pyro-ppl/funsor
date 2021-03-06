@@ -55,7 +55,7 @@ class SLDS(nn.Module):
         fine_observation_matrix=False,  # controls whether the observation matrix depends on s_t
         fine_observation_noise=False,  # controls whether the observation noise depends on s_t
         moment_matching_lag=1,
-    ):
+    ):  # controls the expense of the moment matching approximation
 
         self.num_components = num_components
         self.hidden_dim = hidden_dim

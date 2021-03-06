@@ -95,7 +95,7 @@ def test_bart(analytic_kl):
                             ),
                             (("time_b4", Bint[2]), ("_event_1_b2", Bint[8])),
                             "real",
-                        ),  # noqa
+                        ),
                         Gaussian(
                             torch.tensor(
                                 [
@@ -152,7 +152,7 @@ def test_bart(analytic_kl):
                                 ("_event_1_b2", Bint[8]),
                                 ("value_b1", Real),
                             ),
-                        ),  # noqa  # noqa
+                        ),
                     ),
                 ),
                 "gate_rate_b3",
@@ -223,7 +223,7 @@ def test_bart(analytic_kl):
                                     ("state_b7", Reals[2]),
                                     ("state(time=1)_b8", Reals[2]),
                                 ),
-                            ),  # noqa
+                            ),
                             Subs(
                                 AffineNormal(
                                     Tensor(
@@ -254,7 +254,7 @@ def test_bart(analytic_kl):
                                         ),
                                         (),
                                         "real",
-                                    ),  # noqa
+                                    ),
                                     Tensor(
                                         torch.tensor(
                                             [
@@ -283,7 +283,7 @@ def test_bart(analytic_kl):
                                         ),
                                         (("time_b9", Bint[2]),),
                                         "real",
-                                    ),  # noqa
+                                    ),
                                     Tensor(
                                         torch.tensor(
                                             [
@@ -312,7 +312,7 @@ def test_bart(analytic_kl):
                                         ),
                                         (("time_b9", Bint[2]),),
                                         "real",
-                                    ),  # noqa
+                                    ),
                                     Variable("state(time=1)_b8", Reals[2]),
                                     Variable("gate_rate_b6", Reals[8]),
                                 ),
@@ -337,7 +337,7 @@ def test_bart(analytic_kl):
                             ("state_b7", "state_b10"),
                         }
                     ),
-                ),  # noqa
+                ),
                 Subs(
                     dist.MultivariateNormal(
                         Tensor(
@@ -484,7 +484,7 @@ def test_bart(analytic_kl):
                                     ),
                                 ),
                             ),
-                        ),  # noqa  # noqa
+                        ),
                     ),
                 ),
             ),
