@@ -353,6 +353,13 @@ def _transform_log_abs_det_jacobian(op, domain, codomain):
     return Real
 
 
+@find_domain.register(ops.MeanOp)
+@find_domain.register(ops.StdOp)
+@find_domain.register(ops.VarOp)
+def _find_domain_mean_std_var(op, domain):
+    return Array["real", ()]
+
+
 __all__ = [
     "Bint",
     "BintType",

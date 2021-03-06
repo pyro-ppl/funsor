@@ -577,6 +577,15 @@ class Funsor(object, metaclass=FunsorMeta):
     def max(self):
         return Unary(ops.max, self)
 
+    def mean(self):
+        return Unary(ops.mean, self)
+
+    def std(self):
+        return Unary(ops.std, self)
+
+    def var(self):
+        return Unary(ops.var, self)
+
     def __add__(self, other):
         return Binary(ops.add, self, to_funsor(other))
 

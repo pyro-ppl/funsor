@@ -172,6 +172,11 @@ def _max(x, y):
     return x.clamp(min=y)
 
 
+@ops.mean.register(torch.Tensor, (int, type(None)))
+def _mean(x, dim):
+    return x.mean() if dim is None else x.mean(dim)
+
+
 @ops.min.register(torch.Tensor, torch.Tensor)
 def _min(x, y):
     return torch.min(x, y)
@@ -279,6 +284,11 @@ def _stack(dim, *x):
     return torch.stack(x, dim=dim)
 
 
+@ops.std.register(torch.Tensor, (int, type(None)))
+def _std(x, dim):
+    return x.std() if dim is None else x.std(dim)
+
+
 @ops.sum.register(torch.Tensor, (int, type(None)))
 def _sum(x, dim):
     return x.sum() if dim is None else x.sum(dim)
@@ -287,3 +297,8 @@ def _sum(x, dim):
 @ops.triangular_solve.register(torch.Tensor, torch.Tensor)
 def _triangular_solve(x, y, upper=False, transpose=False):
     return x.triangular_solve(y, upper, transpose).solution
+
+
+@ops.var.register(torch.Tensor, (int, type(None)))
+def _var(x, dim):
+    return x.var() if dim is None else x.var(dim)

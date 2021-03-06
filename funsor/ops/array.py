@@ -40,10 +40,13 @@ diagonal = make_op("diagonal")
 einsum = make_op("einsum")
 full_like = make_op(np.full_like)
 isnan = make_op(np.isnan)
+mean = make_op(np.mean)
 prod = make_op(np.prod)
 stack = make_op("stack")
+std = make_op(np.std)
 sum = make_op(np.sum)
 transpose = make_op("transpose")
+var = make_op(np.var)
 
 sqrt.register(array)(np.sqrt)
 exp.register(array)(np.exp)
@@ -362,6 +365,7 @@ __all__ = [
     "isnan",
     "logaddexp",
     "logsumexp",
+    "mean",
     "new_arange",
     "new_eye",
     "new_full",
@@ -372,10 +376,12 @@ __all__ = [
     "scatter",
     "scatter_add",
     "stack",
+    "std",
     "sum",
     "transpose",
     "triangular_solve",
     "unsqueeze",
+    "var",
 ]
 
 declare_op_types(globals(), __all__, __name__)

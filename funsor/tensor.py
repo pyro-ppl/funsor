@@ -1225,6 +1225,9 @@ REDUCE_OP_TO_NUMERIC = {
     ops.sample: ops.logsumexp,
     ops.min: ops.amin,
     ops.max: ops.amax,
+    ops.mean: ops.mean,
+    ops.std: ops.std,
+    ops.var: ops.var,
 }
 
 
