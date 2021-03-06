@@ -193,12 +193,10 @@ class SLDS(nn.Module):
             if t > self.moment_matching_lag - 1:
                 log_prob = log_prob.reduce(
                     ops.logaddexp,
-                    frozenset(
-                        [
-                            s_vars[t - self.moment_matching_lag].name,
-                            x_vars[t - self.moment_matching_lag].name,
-                        ]
-                    ),
+                    {
+                        s_vars[t - self.moment_matching_lag],
+                        x_vars[t - self.moment_matching_lag],
+                    },
                 )
 
             # incorporate the observation p(y_t | x_t, s_t)
@@ -209,12 +207,10 @@ class SLDS(nn.Module):
         for t in range(self.moment_matching_lag):
             log_prob = log_prob.reduce(
                 ops.logaddexp,
-                frozenset(
-                    [
-                        s_vars[T - self.moment_matching_lag + t].name,
-                        x_vars[T - self.moment_matching_lag + t].name,
-                    ]
-                ),
+                {
+                    s_vars[T - self.moment_matching_lag + t],
+                    x_vars[T - self.moment_matching_lag + t],
+                },
             )
 
         # assert that we've reduced all the free variables in log_prob
@@ -259,7 +255,7 @@ class SLDS(nn.Module):
 
             if t > 0:
                 log_prob = log_prob.reduce(
-                    ops.logaddexp, frozenset([s_vars[t - 1].name, x_vars[t - 1].name])
+                    ops.logaddexp, {s_vars[t - 1], x_vars[t - 1]}
                 )
 
             # do 1-step prediction and compute test LL
@@ -311,7 +307,7 @@ class SLDS(nn.Module):
                 )
                 integral += x_trans_dist(s=s_vars[t], x=x_vars[t], y=x_vars[t + 1])
                 integral = integral.reduce(
-                    ops.logaddexp, frozenset([s_vars[t + 1].name, x_vars[t + 1].name])
+                    ops.logaddexp, {s_vars[t + 1], x_vars[t + 1]}
                 )
                 smoothing_dists.append(filtering_dists[t] + integral)
 
