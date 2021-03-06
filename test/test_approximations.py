@@ -27,14 +27,7 @@ from funsor.testing import (
 monte_carlo = MonteCarlo(rng_key=np.array([0, 0], dtype=np.uint32))
 
 
-@pytest.mark.parametrize(
-    "approximate",
-    [
-        eager,
-        argmax_approximate,
-        monte_carlo,
-    ],
-)
+@pytest.mark.parametrize("approximate", [eager, argmax_approximate, monte_carlo])
 def test_tensor_smoke(approximate):
     with normalize:
         model = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))

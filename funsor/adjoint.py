@@ -169,12 +169,7 @@ def adjoint_reduce(adj_sum_op, adj_prod_op, out_adj, op, arg, reduced_vars):
     elif op is adj_prod_op:  # plate!
         out = arg.reduce(adj_prod_op, reduced_vars)
         div_op = ops.SAFE_BINARY_INVERSES[adj_prod_op]
-        return (
-            (
-                arg,
-                div_op(adj_prod_op(out_adj, out), arg),
-            ),
-        )
+        return ((arg, div_op(adj_prod_op(out_adj, out), arg)),)
     raise ValueError("should not be here!")
 
 
