@@ -172,8 +172,10 @@ def _max(x, y):
     return x.clamp(min=y)
 
 
-@ops.mean.register(torch.Tensor, (tuple, int, type(None)), bool)
+# @ops.mean.register(torch.Tensor, (tuple, int, type(None)), bool)
+@ops.mean.register(torch.Tensor)
 def _mean(x, dim, keepdim):
+    breakpoint()
     return x.flatten().mean(dim, keepdim=keepdim)
 
 

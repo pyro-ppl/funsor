@@ -379,11 +379,6 @@ def _stack(dim, *x):
     return np.stack(x, axis=dim)
 
 
-@std.register(array, (int, type(None)))
-def _std(x, dim, ddof=0):
-    return x.std(ddof=ddof) if dim is None else x.std(dim, ddof=ddof)
-
-
 @transpose.register(array, int, int)
 def _transpose(x, dim1, dim2):
     return np.swapaxes(x, dim1, dim2)
@@ -399,11 +394,6 @@ def triangular_solve(x, y, upper=False, transpose=False):
 @Op
 def unsqueeze(x, dim):
     return np.expand_dims(x, axis=dim)
-
-
-@var.register(array, (int, type(None)))
-def _var(x, dim, ddof=0):
-    return x.var(ddof=ddof) if dim is None else x.var(dim, ddof=ddof)
 
 
 DISTRIBUTIVE_OPS.add((logaddexp, add))
