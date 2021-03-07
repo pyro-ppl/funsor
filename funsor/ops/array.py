@@ -40,13 +40,10 @@ diagonal = make_op("diagonal")
 einsum = make_op("einsum")
 full_like = make_op(np.full_like)
 isnan = make_op(np.isnan)
-mean = make_op(np.mean)
 prod = make_op(np.prod)
 stack = make_op("stack")
-std = make_op("std")
 sum = make_op(np.sum)
 transpose = make_op("transpose")
-var = make_op("var")
 
 sqrt.register(array)(np.sqrt)
 exp.register(array)(np.exp)
@@ -70,6 +67,67 @@ def _logaddexp(x, y):
 
 logaddexp = make_op(_logaddexp, AssociativeOp, name="logaddexp")
 sample = make_op(_logaddexp, type(logaddexp), name="sample")
+
+
+class MeanOpMeta(CachedOpMeta):
+    def __call__(cls, axis=None, keepdims=False):
+        return super().__call__(axis, keepdims)
+
+
+class MeanOp(Op, metaclass=MeanOpMeta):
+    def __init__(self, axis, keepdims):
+        self.axis = axis
+        self.keepdims = keepdims
+        super().__init__(self._default)
+
+    def _reduce(self):
+        return MeanOp, (self.axis, self.keepdims)
+
+    def _default(self, x):
+        return x.mean(self.axis, keepdims=self.keepdims)
+
+
+class StdOpMeta(CachedOpMeta):
+    def __call__(cls, axis=None, ddof=0, keepdims=False):
+        return super().__call__(axis, ddof, keepdims)
+
+
+class StdOp(Op, metaclass=StdOpMeta):
+    def __init__(self, axis, ddof, keepdims):
+        self.axis = axis
+        self.ddof = ddof
+        self.keepdims = keepdims
+        super().__init__(self._default)
+
+    def _reduce(self):
+        return StdOp, (self.axis, self.ddof, self.keepdims)
+
+    def _default(self, x):
+        return x.std(self.axis, ddof=self.ddof, keepdims=self.keepdims)
+
+
+class VarOpMeta(CachedOpMeta):
+    def __call__(cls, axis=None, ddof=0, keepdims=False):
+        return super().__call__(axis, ddof, keepdims)
+
+
+class VarOp(Op, metaclass=VarOpMeta):
+    def __init__(self, axis, ddof, keepdims):
+        self.axis = axis
+        self.ddof = ddof
+        self.keepdims = keepdims
+        super().__init__(self._default)
+
+    def _reduce(self):
+        return VarOp, (self.axis, self.ddof, self.keepdims)
+
+    def _default(self, x):
+        return x.var(self.axis, ddof=self.ddof, keepdims=self.keepdims)
+
+
+mean = MeanOp()
+std = StdOp()
+var = VarOp()
 
 
 class ReshapeMeta(CachedOpMeta):

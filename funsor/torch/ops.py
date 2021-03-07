@@ -1,7 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import math
 import numbers
 
 import torch
@@ -173,9 +172,9 @@ def _max(x, y):
     return x.clamp(min=y)
 
 
-@ops.mean.register(torch.Tensor, (int, type(None)))
-def _mean(x, dim):
-    return x.mean() if dim is None else x.mean(dim)
+@ops.mean.register(torch.Tensor, (tuple, int, type(None)), bool)
+def _mean(x, dim, keepdim):
+    return x.flatten().mean(dim, keepdim=keepdim)
 
 
 @ops.min.register(torch.Tensor, torch.Tensor)
@@ -285,15 +284,14 @@ def _stack(dim, *x):
     return torch.stack(x, dim=dim)
 
 
-@ops.std.register(torch.Tensor, (int, type(None)))
-def _std(x, dim, ddof=0):
+@ops.std.register(torch.Tensor, (tuple, int, type(None)), int, bool)
+def _std(x, dim, ddof, keepdim):
+    dim = tuple(x.shape) if dim is None else dim
     if ddof == 0:
-        return x.std(unbiased=False) if dim is None else x.std(dim, unbiased=False)
+        return x.std(dim, unbiased=False, keepdim=keepdim)
     if ddof == 1:
-        return x.std() if dim is None else x.std(dim)
-    N = x.numel() if dim is None else x.shape[dim]
-    correction = math.sqrt((N - 1) / (N - ddof))
-    return x.std() * correction if dim is None else x.std(dim) * correction
+        return x.std(dim, keepdim=keepdim)
+    raise NotImplementedError
 
 
 @ops.sum.register(torch.Tensor, (int, type(None)))
@@ -306,12 +304,11 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     return x.triangular_solve(y, upper, transpose).solution
 
 
-@ops.var.register(torch.Tensor, (int, type(None)))
-def _var(x, dim, ddof=0):
+@ops.var.register(torch.Tensor, (tuple, int, type(None)), int, bool)
+def _var(x, dim, ddof, keepdim):
+    dim = tuple(x.shape) if dim is None else dim
     if ddof == 0:
-        return x.var(unbiased=False) if dim is None else x.var(dim, unbiased=False)
+        return x.var(dim, unbiased=False, keepdim=keepdim)
     if ddof == 1:
-        return x.var() if dim is None else x.var(dim)
-    N = x.numel() if dim is None else x.shape[dim]
-    correction = (N - 1) / (N - ddof)
-    return x.var() * correction if dim is None else x.var(dim) * correction
+        return x.var(dim, keepdim=keepdim)
+    raise NotImplementedError

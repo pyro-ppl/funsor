@@ -276,7 +276,7 @@ def test_unary(symbol, data):
     check_funsor(actual, {}, Array[dtype, ()], expected_data)
 
 
-@pytest.mark.parametrize("event_shape", [(4,), (3, 2)], ids=str)
+@pytest.mark.parametrize("event_shape", [(3, 2)], ids=str)
 @pytest.mark.parametrize(
     "name",
     [

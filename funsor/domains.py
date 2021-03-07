@@ -357,7 +357,16 @@ def _transform_log_abs_det_jacobian(op, domain, codomain):
 @find_domain.register(ops.StdOp)
 @find_domain.register(ops.VarOp)
 def _find_domain_mean_std_var(op, domain):
-    return Array["real", ()]
+    event_dim = len(domain.shape)
+    if op.axis is None:
+        shape = ()
+    elif isinstance(op.axis, int):
+        shape = tuple(domain[i] for i in range(event_dim) if i != op.axis)
+    elif isinstance(op.axis, tuple):
+        shape = tuple(domain[i] for i in range(event_dim) if i not in op.axis)
+    else:
+        raise ValueError
+    return Array["real", shape]
 
 
 __all__ = [

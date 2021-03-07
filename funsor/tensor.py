@@ -304,8 +304,16 @@ class Tensor(Funsor, metaclass=TensorMeta):
             return Tensor(data, self.inputs, dtype)
         if op in NUMERIC_OPS:
             batch_dim = len(self.data.shape) - len(self.output.shape)
-            data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
-            return Tensor(op(data, -1), self.inputs, dtype)
+            event_dim = len(self.output.shape)
+            if op.axis is None:
+                op.axis = tuple(batch_dim + i for i in range(event_dim))
+            elif isinstance(op.axis, int):
+                op.axis = batch_dim + op.axis % event_dim
+            elif isinstance(op.axis, tuple):
+                op.axis = tuple(batch_dim + i % event_dim for i in op.axis)
+            else:
+                raise ValueError
+            return Tensor(op(self.data), self.inputs, dtype)
         return Tensor(op(self.data), self.inputs, dtype)
 
     def eager_reduce(self, op, reduced_vars):
