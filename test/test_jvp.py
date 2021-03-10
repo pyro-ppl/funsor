@@ -4,14 +4,14 @@
 from collections import OrderedDict
 
 import funsor.ops as ops
-from funsor.domains import Bint, Real
+from funsor.domains import Bint, Real, Reals
 from funsor.jvp import Tangent, JVP
-from funsor.vjp import transpose
 from funsor.testing import assert_close, random_tensor
-from funsor.terms import Variable, Number, lazy
+from funsor.terms import Variable, Number, lazy, Lambda, Binary, Funsor
 from funsor.tensor import Tensor
 from funsor.optimizer import apply_optimizer
 from funsor.interpreter import interpretation
+from funsor.factory import make_funsor, Bound, Fresh, Has
 
 
 import torch
@@ -159,24 +159,46 @@ def test_reduce_jacfwd():
     assert_close(df, (f * dx / x).reduce(ops.add, "j"))
 
 
+@make_funsor
+def MatMul(
+        a: Has[{"i"}],
+        b: Has[{"i"}],
+        i: Bound
+    ) -> Fresh[lambda a: a]:
+    return Prod(a, b).reduce(ops.add, i)
+
+@make_funsor
+def Prod(
+        x: Funsor,
+        y: Funsor
+    ) -> Fresh[lambda x: x]:
+    return x * y
+
+
+
 def test_matmul_tensor():
     x = random_tensor(OrderedDict(j=Bint[4]))
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
     dx = random_tensor(OrderedDict(j=Bint[4]))
     dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    # Tx = Variable("dx", Real)
-    Ty = Variable("dy", Reals[4, 5])["j", "k"]
-    x_ = Tangent((x, dx))
+    Tx = Variable("dx", Reals[4])["j"]
+    Ty = Variable("dy", Reals[4])["j"]
+    Dx = Lambda(Variable("j", Bint[4]), dx)
+    Dy = Lambda(Variable("j", Bint[4]), dy)
+    x_ = Tangent((x, Tx))
     y_ = Tangent((y, Ty))
-    with lazy:
-        xy_ = x_ * y_
-        z, dz = xy_.reduce(ops.add, "j")
 
-    dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    dy = funsor.terms.Lambda("k", funsor.terms.Lambda("j", dy))
-    dz(dy=dy)
-    assert_close(apply_optimizer(z), (x * y).reduce(ops.add, "j"))
-    assert_close(apply_optimizer(dz), (y * dx + x * dy).reduce(ops.add, "j"))
+    with funsor.terms.eager:
+        z, dz = MatMul(x_, y_, "j")
+    breakpoint()
+
+    actual_z = apply_optimizer(z)
+    actual_dz = dz(dx=Dx, dy=Dy)
+    expected_z = (x * y).reduce(ops.add, "j")
+    expected_dz = (y * dx + x * dy).reduce(ops.add, "j")
+    
+    assert_close(actual_z, expected_z)
+    assert_close(actual_dz, expected_dz)
 
 
 def test_matmul_jacfwd():

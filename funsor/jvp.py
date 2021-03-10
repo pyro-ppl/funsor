@@ -49,7 +49,7 @@ class JVP:
 
 
 
-@lazy.register(Binary, AssociativeOp, Tangent, Tangent)
+# @lazy.register(Binary, AssociativeOp, Tangent, Tangent)
 @eager.register(Binary, AssociativeOp, Tangent, Tangent)
 def jvp_binary(op, lhs, rhs):
     lhs_primal, lhs_tangent = lhs
@@ -64,7 +64,7 @@ def jvp_binary(op, lhs, rhs):
     return Tangent(primal, tangent)
 
 
-@lazy.register(Reduce, AssociativeOp, Tangent, frozenset)
+# @lazy.register(Reduce, AssociativeOp, Tangent, frozenset)
 @eager.register(Reduce, AssociativeOp, Tangent, frozenset)
 def jvp_reduce(op, arg, reduced_vars):
     arg_primal, arg_tangent = arg
