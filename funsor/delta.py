@@ -111,7 +111,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
         if not names or names == tuple(n for n, p in self.terms):
             return self
 
-        new_terms = sorted(self.terms, key=lambda t: names.index(t[0]))
+        new_terms = tuple(sorted(self.terms, key=lambda t: names.index(t[0])))
         return Delta(new_terms)
 
     def eager_subs(self, subs):

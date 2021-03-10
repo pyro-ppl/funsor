@@ -2,20 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import OrderedDict
+from functools import reduce
 
 import numpy as np
 import pytest
 
 from funsor import ops
+from funsor.adjoint import adjoint
 from funsor.approximations import (
     argmax_approximate,
     laplace_approximate,
     mean_approximate,
 )
+from funsor.cnf import Contraction
+from funsor.delta import Delta
 from funsor.domains import Bint, Real, Reals
-from funsor.interpretations import eager, normalize
+from funsor.interpretations import eager, normalize, reflect
 from funsor.interpreter import reinterpret
 from funsor.montecarlo import MonteCarlo
+from funsor.tensor import Tensor
+from funsor.terms import Approximate
 from funsor.testing import (
     assert_close,
     random_gaussian,
@@ -101,4 +107,77 @@ def test_gaussian_linear(approximate):
         q1 = m1.approximate(ops.logaddexp, guide, "x")
         q2 = m2.approximate(ops.logaddexp, guide, "x")
     actual = q1 + s * q2
+    assert_close(actual, expected)
+
+
+def test_backward_argmax_simple_reduce():
+
+    x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
+
+    with reflect:
+        y = x.reduce(ops.logaddexp, "i")
+
+    with argmax_approximate:
+        actual = adjoint(ops.logaddexp, ops.add, y)[x]
+        actual = actual + x  # TODO do we expect this +x or not?
+
+    assert actual.inputs == x.inputs
+    assert actual.output == x.output
+
+    expected_point = Tensor(ops.argmax(x.data, -2), dtype=2)["j"]
+    expected_value = x.reduce(ops.max, "i")
+    expected = expected_value + Delta("i", expected_point)
+
+    assert_close(actual, expected)
+
+
+def test_backward_argmax_simple_binary():
+
+    x1 = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
+    x2 = random_tensor(OrderedDict(j=Bint[3], k=Bint[4]))
+    approx_vars = x1.input_vars | x2.input_vars
+
+    with reflect:
+        y = (x1 + x2).reduce(ops.logaddexp, approx_vars)
+
+    with argmax_approximate:
+        expected = Approximate(ops.logaddexp, x1 + x2, x1 + x2, approx_vars)
+        actuals = adjoint(ops.logaddexp, ops.add, y)
+
+    actual = reduce(ops.add, [actuals[x] for x in (x1, x2)])
+    assert actual.input_vars == expected.input_vars
+    assert actual.output == expected.output
+
+    assert isinstance(expected, Contraction)
+    assert not expected.reduced_vars
+    points, tensor = expected.terms
+    assert isinstance(points, Delta)
+    expected = points.align(tuple(actual.inputs)) + tensor
+
+    assert_close(actual, expected)
+
+
+def test_backward_argmax_simple_contraction():
+
+    x1 = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
+    x2 = random_tensor(OrderedDict(j=Bint[3], k=Bint[4]))
+    approx_vars = x1.input_vars | x2.input_vars
+
+    with reflect:
+        y = Contraction(ops.logaddexp, ops.add, approx_vars, (x1, x2))
+
+    with argmax_approximate:
+        expected = Approximate(ops.logaddexp, x1 + x2, x1 + x2, approx_vars)
+        actuals = adjoint(ops.logaddexp, ops.add, y)
+
+    actual = reduce(ops.add, [actuals[x] for x in (x1, x2)])
+    assert actual.input_vars == expected.input_vars
+    assert actual.output == expected.output
+
+    assert isinstance(expected, Contraction)
+    assert not expected.reduced_vars
+    points, tensor = expected.terms
+    assert isinstance(points, Delta)
+    expected = points.align(tuple(actual.inputs)) + tensor
+
     assert_close(actual, expected)
