@@ -8,6 +8,7 @@ import numpy as onp
 from jax import lax
 from jax.core import Tracer
 from jax.interpreters.xla import DeviceArray
+from jax.ops import index_update
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, gammaln, logsumexp
 
@@ -49,6 +50,11 @@ def _amax(x, dim, keepdims=False):
 @ops.amin.register(array, (int, type(None)))
 def _amin(x, dim, keepdims=False):
     return np.amin(x, axis=dim, keepdims=keepdims)
+
+
+@ops.argmax.register(array, int)
+def _argmax(x, dim):
+    return np.argmax(x, dim)
 
 
 @ops.any.register(array, (int, type(None)))
@@ -141,6 +147,25 @@ def _log(x):
     return np.log(x)
 
 
+@ops.logaddexp.register(array, array)
+def _safe_logaddexp_tensor_tensor(x, y):
+    finfo = np.finfo(x.dtype)
+    shift = np.clip(ops.max(ops.detach(x), ops.detach(y)), a_max=None, a_min=finfo.min)
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(numbers.Number, array)
+def _safe_logaddexp_number_tensor(x, y):
+    finfo = np.finfo(y.dtype)
+    shift = np.clip(ops.detach(y), a_max=None, a_min=max(x, finfo.min))
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(array, numbers.Number)
+def _safe_logaddexp_tensor_number(x, y):
+    return _safe_logaddexp_number_tensor(y, x)
+
+
 @ops.logsumexp.register(array, (int, type(None)))
 def _logsumexp(x, dim):
     return logsumexp(x, axis=dim)
@@ -209,6 +234,7 @@ def _reciprocal(x):
     return result
 
 
+@ops.safediv.register(array, array)
 @ops.safediv.register((int, float), array)
 def _safediv(x, y):
     try:
@@ -218,6 +244,7 @@ def _safediv(x, y):
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
+@ops.safesub.register(array, array)
 @ops.safesub.register((int, float), array)
 def _safesub(x, y):
     try:
@@ -225,6 +252,11 @@ def _safesub(x, y):
     except ValueError:
         finfo = np.iinfo(y.dtype)
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
+
+
+@ops.scatter.register(array, tuple, array)
+def _scatter(dest, indices, src):
+    return index_update(dest, indices, src)
 
 
 @ops.stack.register(int, [array + (int, float)])
@@ -257,10 +289,7 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     x_new_shape = batch_shape[:prepend_ndim]
     for (sy, sx) in zip(y.shape[:-2], batch_shape[prepend_ndim:]):
         x_new_shape += (sx // sy, sy)
-    x_new_shape += (
-        n,
-        m,
-    )
+    x_new_shape += (n, m)
     x = np.reshape(x, x_new_shape)
     # Permute y to make it have shape (..., 1, j, m, i, 1, n)
     batch_ndim = x.ndim - 2

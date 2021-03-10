@@ -95,7 +95,7 @@ class Contraction(Funsor):
     def __str__(self):
         if self.bin_op in _INFIX:
             bin_op = " " + _INFIX[self.bin_op] + " "
-            return "{}.reduce({}, {})".format(
+            return "({}).reduce({}, {})".format(
                 bin_op.join(map(str, self.terms)),
                 self.red_op,
                 str(set(map(str, self.reduced_vars))),

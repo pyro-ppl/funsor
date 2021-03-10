@@ -33,7 +33,7 @@ def main(args):
     params = [trans_probs.data, trans_noise.data, emit_noise.data]
 
     # A Gaussian HMM model.
-    @funsor.interpretation(funsor.terms.moment_matching)
+    @funsor.interpretations.moment_matching
     def model(data):
         log_prob = funsor.Number(0.0)
 
@@ -47,11 +47,11 @@ def main(args):
             x_prev = x_curr
 
             # A delayed sample statement.
-            s_curr = funsor.Variable("s_{}".format(t), funsor.Bint[2])
+            s_curr = funsor.Variable(f"s_{t}", funsor.Bint[2])
             log_prob += dist.Categorical(trans_probs[s_prev], value=s_curr)
 
             # A delayed sample statement.
-            x_curr = funsor.Variable("x_{}".format(t), funsor.Real)
+            x_curr = funsor.Variable(f"x_{t}", funsor.Real)
             log_prob += dist.Normal(x_prev, trans_noise[s_curr], value=x_curr)
 
             # Marginalize out previous delayed sample statements.
@@ -76,7 +76,7 @@ def main(args):
         loss.backward()
         optim.step()
         if args.verbose and step % 10 == 0:
-            print("step {} loss = {}".format(step, loss.item()))
+            print(f"step {step} loss = {loss.item()}")
 
 
 if __name__ == "__main__":

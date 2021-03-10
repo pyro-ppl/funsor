@@ -26,6 +26,7 @@ from .terms import (
     FunsorMeta,
     Lambda,
     Number,
+    Scatter,
     Slice,
     Tuple,
     Unary,
@@ -621,6 +622,64 @@ def tensor_to_data(x, name_to_dim=None):
         for dim, size in zip(dims, data.shape):
             batch_shape[dim] = size
         return data.reshape(tuple(batch_shape) + x.output.shape)
+
+
+@eager.register(Scatter, Op, tuple, Number, frozenset)
+def eager_scatter_number(op, subs, source, reduced_vars):
+    # case: injective renaming
+    if all(isinstance(v, Variable) for k, v in subs):
+        if len({v.name for k, v in subs}) == len(subs):
+            return source
+
+    source = Tensor(numeric_array(source.data), dtype=source.dtype)
+    return eager_scatter_tensor(op, subs, source, reduced_vars)
+
+
+@eager.register(Scatter, Op, tuple, Tensor, frozenset)
+def eager_scatter_tensor(op, subs, source, reduced_vars):
+    if not all(isinstance(v, (Variable, Number, Slice, Tensor)) for k, v in subs):
+        return None
+
+    # Compute shapes.
+    reduced_names = frozenset(v.name for v in reduced_vars)
+    destin_inputs = OrderedDict()
+    tensor_inputs = OrderedDict()
+    for key, value in subs:
+        for k, d in value.inputs.items():
+            # These are "batch" inputs and should be left of subs keys.
+            if k not in reduced_names:
+                destin_inputs[k] = d
+            tensor_inputs[k] = d
+    for k, d in source.inputs.items():
+        # These are "batch" inputs and should be left of subs keys.
+        if k not in reduced_names:
+            destin_inputs[k] = d
+        tensor_inputs[k] = d
+    for key, value in subs:
+        # These are "event" inputs and should be right of "batch" inputs.
+        destin_inputs[key] = value.output
+
+    # Construct aligned backend tensors.
+    tensors = []
+    for k, d in tensor_inputs.items():
+        if k not in reduced_names:
+            tensors.append(Variable(k, d))  # effectively a slice
+    for key, value in subs:
+        tensors.append(value)
+    tensors = [source.materialize(x) for x in tensors]
+    tensors.append(source)
+    tensors = [align_tensor(tensor_inputs, x, expand=True) for x in tensors]
+    indices = tuple(tensors[:-1])
+    source_data = tensors[-1]
+
+    # Construct a destination backend tensor.
+    output = source.output
+    shape = tuple(d.size for d in destin_inputs.values()) + output.shape
+    destin = ops.new_full(source.data, shape, ops.UNITS[op])
+
+    # TODO Add a check for injectivity and dispatch to scatter_add etc.
+    data = ops.scatter(destin, indices, source_data)
+    return Tensor(data, destin_inputs, output.dtype)
 
 
 @eager.register(Binary, Op, Tensor, Number)

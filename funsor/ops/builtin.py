@@ -8,6 +8,7 @@ from numbers import Number
 from .op import (
     BINARY_INVERSES,
     DISTRIBUTIVE_OPS,
+    SAFE_BINARY_INVERSES,
     UNARY_INVERSES,
     UNITS,
     BinaryOp,
@@ -188,6 +189,9 @@ UNITS[or_] = True
 BINARY_INVERSES[mul] = truediv
 BINARY_INVERSES[add] = sub
 BINARY_INVERSES[xor] = xor
+
+SAFE_BINARY_INVERSES[mul] = safediv
+SAFE_BINARY_INVERSES[add] = safesub
 
 UNARY_INVERSES[mul] = reciprocal
 UNARY_INVERSES[add] = neg

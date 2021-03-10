@@ -7,6 +7,7 @@ import re
 import types
 import warnings
 from collections import OrderedDict
+from collections.abc import Hashable
 from functools import singledispatch
 
 import numpy as np
@@ -19,6 +20,7 @@ from . import instrument
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _USE_TCO = int(os.environ.get("FUNSOR_USE_TCO", 0))
+_TYPECHECK = int(os.environ.get("FUNSOR_TYPECHECK", 0))
 _STACK = []  # To be populated later in funsor.terms
 _GENSYM_COUNTER = 0
 
@@ -74,14 +76,23 @@ if instrument.DEBUG:
         return result
 
 
+elif _TYPECHECK:
+
+    def interpret(cls, *args):
+        reflect = _STACK[0]
+        interpretation = _STACK[-1]
+        if interpretation is not reflect:
+            reflect.interpret(cls, *args)  # for checking only
+        return interpretation.interpret(cls, *args)
+
+
 else:
     interpret = Interpreter()
 
 
 def interpretation(new):
     warnings.warn(
-        "'with interpretation(x)' should be replaced by 'with x'",
-        DeprecationWarning,
+        "'with interpretation(x)' should be replaced by 'with x'", DeprecationWarning
     )
     return new
 
@@ -219,6 +230,10 @@ def stack_reinterpret(x):
     :return: A reinterpreted version of the input.
     :raises: ValueError
     """
+
+    def _key(x):
+        return id(x) if is_numeric_array(x) or not isinstance(x, Hashable) else x
+
     x_name = gensym(x)
     node_vars = {x_name: x}
     node_names = {x: x_name}
@@ -230,11 +245,11 @@ def stack_reinterpret(x):
         h_name, h = stack.pop(0)
         parent_to_children[h_name] = []
         for c in children(h):
-            if c in node_names:
-                c_name = node_names[c]
+            if _key(c) in node_names:
+                c_name = node_names[_key(c)]
             else:
-                c_name = gensym(c)
-                node_names[c] = c_name
+                c_name = gensym("__NAME")
+                node_names[_key(c)] = c_name
                 node_vars[c_name] = c
                 stack.append((c_name, c))
             parent_to_children.setdefault(h_name, []).append(c_name)
