@@ -17,6 +17,7 @@ from funsor.approximations import (
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Bint, Real, Reals
+from funsor.einsum import einsum
 from funsor.interpretations import eager, normalize, reflect
 from funsor.interpreter import reinterpret
 from funsor.montecarlo import MonteCarlo
@@ -24,11 +25,13 @@ from funsor.tensor import Tensor
 from funsor.terms import Approximate
 from funsor.testing import (
     assert_close,
+    make_einsum_example,
     random_gaussian,
     random_tensor,
     xfail_if_not_implemented,
     xfail_param,
 )
+from funsor.util import get_backend
 
 monte_carlo = MonteCarlo(rng_key=np.array([0, 0], dtype=np.uint32))
 
@@ -181,3 +184,39 @@ def test_backward_argmax_simple_contraction():
     expected = points.align(tuple(actual.inputs)) + tensor
 
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "equation,plates",
+    [
+        (",->", ""),
+        ("a,b->", ""),
+        ("ab,a->", ""),
+        ("a,b,c->", ""),
+        ("a,a->", ""),
+        ("a,a,a,ab->", ""),
+        ("abc,bcd,cde->", ""),
+        ("abc,cbd,edc->", ""),
+        ("ab,bc,cd->", ""),
+        ("ab,b,bc,c,cd,d->", ""),
+    ],
+)
+def test_einsum_adjoint_argmax(equation, plates):
+    if get_backend() == "torch":
+        backend = "pyro.ops.einsum.torch_map"
+    elif get_backend() == "jax" or get_backend() == "numpy":
+        backend = "funsor.einsum.numpy_map"
+
+    inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(equation)
+
+    with reflect:
+        fwd_expr = einsum(equation, *funsor_operands, plates=plates, backend=backend)
+
+    expected = einsum(equation, *funsor_operands, plates=plates, backend=backend)
+
+    with argmax_approximate:
+        actuals = adjoint(ops.max, ops.add, fwd_expr)
+
+    for fv in funsor_operands:
+        actual = (actuals[fv] + fv).reduce(ops.max, fv.input_vars)
+        assert_close(actual, expected)

@@ -146,7 +146,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
 
     def eager_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)
-        if op is ops.logaddexp:
+        if op in (ops.max, ops.logaddexp):
             if reduced_vars - self.fresh and self.fresh - reduced_vars:
                 result = self
                 if not reduced_vars.isdisjoint(self.fresh):
