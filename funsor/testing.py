@@ -223,7 +223,7 @@ def make_einsum_example(equation, fill=None, sizes=(2, 3)):
         x = randn(shape)
         operand = x if fill is None else (x - x + fill)
         # no need to use pyro_dims for numpy backend
-        if not isinstance(operand, np.ndarray):
+        if get_backend() == "torch":
             operand._pyro_dims = dims
         operands.append(operand)
     funsor_operands = [
@@ -256,6 +256,10 @@ def rand(*args):
         import torch
 
         return torch.rand(shape)
+    elif backend == "jax":
+        import jax.numpy as jnp
+
+        return jnp.array(np.random.rand(*shape))
     else:
         # work around numpy random returns float object instead of np.ndarray object when shape == ()
         return np.array(np.random.rand(*shape))
@@ -267,6 +271,10 @@ def randint(low, high, size):
         import torch
 
         return torch.randint(low, high, size=size)
+    elif backend == "jax":
+        import jax.numpy as jnp
+
+        return jnp.array(np.random.randint(low, high, size=size))
     else:
         return np.random.randint(low, high, size=size)
 
@@ -283,6 +291,10 @@ def randn(*args):
         import torch
 
         return torch.randn(shape)
+    elif backend == "jax":
+        import jax.numpy as jnp
+
+        return jnp.array(np.random.randn(*shape))
     else:
         # work around numpy random returns float object instead of np.ndarray object when shape == ()
         return np.array(np.random.randn(*shape))
