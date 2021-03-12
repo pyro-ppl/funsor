@@ -48,9 +48,9 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/sensor.py --seed=0 --num-frames=2 -n 1
 	@echo PASS
 else ifeq (${FUNSOR_BACKEND}, jax)
-	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi --ignore=test/test_distribution.py --ignore=test/test_distribution_generic.py
-	pytest -v -n auto test/test_distribution.py
-	pytest -v -n auto test/test_distribution_generic.py
+	JAX_ENABLE_X64=1 pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi --ignore=test/test_distribution.py --ignore=test/test_distribution_generic.py
+	JAX_ENABLE_X64=1 pytest -v -n auto test/test_distribution.py
+	JAX_ENABLE_X64=1 pytest -v -n auto test/test_distribution_generic.py
 	@echo PASS
 else
 	# default backend
