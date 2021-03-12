@@ -95,7 +95,9 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         and isinstance(actual.terms[0], Tensor)
         and is_array(actual.terms[0].data)
     ):
-        assert isinstance(expected, Contraction) and is_array(expected.terms[0].data), msg
+        assert isinstance(expected, Contraction) and is_array(
+            expected.terms[0].data
+        ), msg
     elif isinstance(actual, Contraction) and isinstance(actual.terms[0], Delta):
         assert isinstance(expected, Contraction) and isinstance(
             expected.terms[0], Delta
