@@ -64,7 +64,7 @@ def _any(x, dim):
 
 @ops.astype.register(array, str)
 def _astype(x, dtype):
-    return x.astype(dtype)
+    return x.astype(np.result_type(dtype))
 
 
 @ops.cat.register(int, [array])
