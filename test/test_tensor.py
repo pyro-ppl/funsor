@@ -258,8 +258,7 @@ def test_advanced_indexing_tensor(output_shape):
 @pytest.mark.parametrize("output_shape", [(), (7,), (3, 2)])
 def test_advanced_indexing_lazy(output_shape):
     x = Tensor(
-        randn((2, 3, 4) + output_shape),
-        OrderedDict(i=Bint[2], j=Bint[3], k=Bint[4]),
+        randn((2, 3, 4) + output_shape), OrderedDict(i=Bint[2], j=Bint[3], k=Bint[4])
     )
     u = Variable("u", Bint[2])
     v = Variable("v", Bint[3])
@@ -305,18 +304,7 @@ def unary_eval(symbol, x):
 @pytest.mark.parametrize("dims", [(), ("a",), ("a", "b")])
 @pytest.mark.parametrize(
     "symbol",
-    [
-        "~",
-        "-",
-        "abs",
-        "atanh",
-        "sqrt",
-        "exp",
-        "log",
-        "log1p",
-        "sigmoid",
-        "tanh",
-    ],
+    ["~", "-", "abs", "atanh", "sqrt", "exp", "log", "log1p", "sigmoid", "tanh"],
 )
 def test_unary(symbol, dims):
     sizes = {"a": 3, "b": 4}
@@ -1115,11 +1103,7 @@ def test_scatter_2d():
     actual = Scatter(ops.add, (("i", i), ("j", j)), source, reduced_vars)
     expected = Tensor(
         numeric_array(
-            [
-                [1.0, 2.0, 0.0, 0.0],
-                [3.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 4.0, 5.0],
-            ]
+            [[1.0, 2.0, 0.0, 0.0], [3.0, 0.0, 0.0, 0.0], [0.0, 0.0, 4.0, 5.0]]
         )
     )["i", "j"]
 
@@ -1249,8 +1233,7 @@ def _scatter_ji_examples():
 
 
 @pytest.mark.parametrize(
-    "source_inputs, i_inputs, j_inputs, reduced_vars",
-    _scatter_ji_examples(),
+    "source_inputs, i_inputs, j_inputs, reduced_vars", _scatter_ji_examples()
 )
 @pytest.mark.parametrize("output_shape", [()], ids=str)
 def test_scatter_ji(source_inputs, i_inputs, j_inputs, output_shape, reduced_vars):

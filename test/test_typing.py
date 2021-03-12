@@ -49,12 +49,10 @@ def test_deep_issubclass_generic_neither():
     )
 
     assert not deep_issubclass(
-        Stack[str, Tuple[Number, Number]],
-        Stack[str, Tuple[Number, Reduce]],
+        Stack[str, Tuple[Number, Number]], Stack[str, Tuple[Number, Reduce]]
     )
     assert not deep_issubclass(
-        Stack[str, Tuple[Number, Reduce]],
-        Stack[str, Tuple[Number, Number]],
+        Stack[str, Tuple[Number, Reduce]], Stack[str, Tuple[Number, Number]]
     )
 
 
@@ -66,8 +64,7 @@ def test_deep_issubclass_generic_tuple_internal():
         Stack[str, tuple], Stack[str, Tuple[Number, Number, Number]]
     )
     assert not deep_issubclass(
-        Stack[str, Tuple[Number, Number]],
-        Stack[str, Tuple[Number, Reduce]],
+        Stack[str, Tuple[Number, Number]], Stack[str, Tuple[Number, Reduce]]
     )
 
 

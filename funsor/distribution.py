@@ -379,10 +379,7 @@ def make_dist(
     dist_class = DistributionMeta(
         backend_dist_class.__name__.split("Wrapper_")[-1],
         (Distribution,),
-        {
-            "dist_class": backend_dist_class,
-            "__init__": dist_init,
-        },
+        {"dist_class": backend_dist_class, "__init__": dist_init},
     )
 
     if generate_eager:
