@@ -33,6 +33,7 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/discrete_hmm.py -n 2 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 500 --lazy
+	python examples/forward_backward.py -t 3
 	python examples/kalman_filter.py -n 2
 	python examples/kalman_filter.py -n 2 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/kalman_filter.py -n 1 -t 50 --lazy
@@ -41,7 +42,7 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/minipyro.py --jit
 	python examples/slds.py -n 2 -t 50
 	python examples/pcfg.py --size 3
-	# python examples/vae.py --smoke-test
+	python examples/vae.py --smoke-test
 	python examples/eeg_slds.py --num-steps 2 --fon --test
 	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --smoke
 	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --parallel --smoke
