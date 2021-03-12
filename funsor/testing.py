@@ -89,25 +89,24 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     if is_array(actual):
         assert is_array(expected), msg
     elif isinstance(actual, Tensor) and is_array(actual.data):
-        assert isinstance(expected, Tensor) and is_array(expected.data)
+        assert isinstance(expected, Tensor) and is_array(expected.data), msg
     elif (
         isinstance(actual, Contraction)
         and isinstance(actual.terms[0], Tensor)
         and is_array(actual.terms[0].data)
     ):
-        assert isinstance(expected, Contraction) and is_array(expected.terms[0].data)
+        assert isinstance(expected, Contraction) and is_array(expected.terms[0].data), msg
     elif isinstance(actual, Contraction) and isinstance(actual.terms[0], Delta):
         assert isinstance(expected, Contraction) and isinstance(
             expected.terms[0], Delta
-        )
+        ), msg
     elif isinstance(actual, Gaussian) and is_array(actual.info_vec):
-        assert isinstance(expected, Gaussian) and is_array(expected.info_vec)
+        assert isinstance(expected, Gaussian) and is_array(expected.info_vec), msg
     else:
         assert type(actual) == type(expected), msg
 
     if isinstance(actual, Funsor):
-        assert isinstance(actual, Funsor)
-        assert isinstance(expected, Funsor)
+        assert isinstance(expected, Funsor), msg
         assert actual.inputs == expected.inputs, (actual.inputs, expected.inputs)
         assert actual.output == expected.output, (actual.output, expected.output)
 
