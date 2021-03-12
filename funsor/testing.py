@@ -96,6 +96,10 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         and is_array(actual.terms[0].data)
     ):
         assert isinstance(expected, Contraction) and is_array(expected.terms[0].data)
+    elif isinstance(actual, Contraction) and isinstance(actual.terms[0], Delta):
+        assert isinstance(expected, Contraction) and isinstance(
+            expected.terms[0], Delta
+        )
     elif isinstance(actual, Gaussian) and is_array(actual.info_vec):
         assert isinstance(expected, Gaussian) and is_array(expected.info_vec)
     else:
@@ -152,13 +156,14 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             elif atol is not None:
                 assert diff.max() < atol, msg
     elif is_array(actual):
-        if isinstance(actual, (np.ndarray, np.generic)):
-            assert actual.dtype == expected.dtype, msg
-        else:
-            assert get_backend() == "jax"
+        if get_backend() == "jax":
             import jax
 
-            assert actual.dtype == jax.dtypes.canonicalize_dtype(expected.dtype), msg
+            assert jax.numpy.result_type(actual.dtype) == jax.numpy.result_type(
+                expected.dtype
+            ), msg
+        else:
+            assert actual.dtype == expected.dtype, msg
 
         assert actual.shape == expected.shape, msg
         if actual.dtype in (np.int32, np.int64, np.uint8, np.bool):

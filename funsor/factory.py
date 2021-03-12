@@ -47,7 +47,7 @@ class Fresh(metaclass=FreshMeta):
     def __init__(self, fn):
         function = type(lambda: None)
         self.fn = fn if isinstance(fn, function) else lambda: fn
-        self.args = inspect.getargspec(fn)[0]
+        self.args = inspect.getfullargspec(fn)[0]
 
     def __call__(self, **kwargs):
         return self.fn(*map(kwargs.__getitem__, self.args))
