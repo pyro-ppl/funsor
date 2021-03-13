@@ -121,25 +121,42 @@ class Op(Dispatcher):
         return decorator
 
 
-def make_op(fn=None, parent=None, *, name=None, module_name="funsor.ops"):
+class ParametrizedOp(Op, metaclass=CachedOpMeta):
+    def __call__(self, *args, **kwargs):
+        params = tuple(kwargs.get(k, v) for k, v in self._params.items())
+        op = type(self)()  # The canonical dispatcher.
+        return super(ParametrizedOp, op).__call__(*args, *params)
+
+
+def make_op(fn=None, parent=None, *, name=None, params=None, module_name="funsor.ops"):
     """
     Factory to create a new :class:`Op` subclass and a new instance of that class.
     """
     # Support use as decorator.
     if fn is None:
-        return lambda fn: make_op(fn, parent, name=name, module_name=module_name)
-
-    if parent is None:
-        parent = Op
-    assert issubclass(parent, Op)
+        return lambda fn: make_op(
+            fn,
+            parent,
+            name=name,
+            params=params,
+            module_name=module_name,
+        )
 
     if name is None:
         name = fn if isinstance(fn, str) else fn.__name__
     assert isinstance(name, str)
 
+    if params is not None:
+        parent = ParametrizedOp
+    if parent is None:
+        parent = Op
+    assert issubclass(parent, Op)
+
     classname = name.capitalize().rstrip("_") + "Op"  # e.g. add -> AddOp
     cls = type(classname, (parent,), {})
     cls.__module__ = module_name
+    if params is not None:
+        cls._params = params
     op = cls(fn, name=name)
     return op
 

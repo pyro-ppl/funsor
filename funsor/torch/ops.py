@@ -279,9 +279,22 @@ def _stack(dim, *x):
     return torch.stack(x, dim=dim)
 
 
+# OLD
 @ops.sum.register(torch.Tensor, (int, type(None)))
 def _sum(x, dim):
     return x.sum() if dim is None else x.sum(dim)
+
+
+# NEW
+@ops.sum.register(torch.Tensor)
+@ops.sum.register(torch.Tensor, type(None), bool)
+def _sum_int(x, axis=None, keepdims=False):
+    return x.sum(keepdim=keepdims)
+
+
+@ops.sum.register(torch.Tensor, int, bool)
+def _sum_int(x, axis, keepdims):
+    return x.sum(axis, keepdim=keepdims)
 
 
 @ops.triangular_solve.register(torch.Tensor, torch.Tensor)

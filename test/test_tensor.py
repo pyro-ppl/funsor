@@ -1306,3 +1306,34 @@ def test_scatter_pure_renaming():
 
     assert actual.input_vars == expected.input_vars
     assert ((actual - expected).abs() < 1e-4).data.all()
+
+
+# TODO add a test with batch dimensions
+@pytest.mark.parametrize("shape", [(2, 3, 4)], ids=str)
+def test_sum_parameters(shape):
+    data = randn(*shape)
+    AXES = [None, 0, 1, 2, -1, -2, -3, [0, 2]]
+    KEEPDIMS = [False, True]
+
+    assert_close(Tensor(ops.sum(data)), ops.sum(Tensor(data)))
+    for axis in AXES:
+        assert_close(Tensor(ops.sum(data, axis)), ops.sum(Tensor(data), axis))
+        assert_close(Tensor(ops.sum(data, axis=axis)), ops.sum(Tensor(data), axis=axis))
+    for keepdim in KEEPDIMS:
+        assert_close(
+            Tensor(ops.sum(data, keepdim=keepdim)),
+            ops.sum(Tensor(data), keepdim=keepdim),
+        )
+        for axis in AXES:
+            assert_close(
+                Tensor(ops.sum(data, axis, keepdim)),
+                ops.sum(Tensor(data), axis, keepdim),
+            )
+            assert_close(
+                Tensor(ops.sum(data, axis, keepdim=keepdim)),
+                ops.sum(Tensor(data), axis, keepdim=keepdim),
+            )
+            assert_close(
+                Tensor(ops.sum(data, axis=axis, keepdim=keepdim)),
+                ops.sum(Tensor(data), axis=axis, keepdim=keepdim),
+            )
