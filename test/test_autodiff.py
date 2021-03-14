@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
-from funsor.jvp import JVP, to_var, to_arg, fjit, linearize, transpose
+from funsor.autodiff import JVP, to_var, to_arg, fjit, linearize, transpose
 from funsor.testing import assert_close, random_tensor
 from funsor.terms import Variable, Number, lazy, Lambda, Binary, Funsor
 from funsor.tensor import Tensor
