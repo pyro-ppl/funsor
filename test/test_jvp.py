@@ -5,13 +5,14 @@ from collections import OrderedDict
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
-from funsor.jvp import Tangent, JVP
+from funsor.jvp import JVP, to_var, to_arg, fjit, linearize, transpose
 from funsor.testing import assert_close, random_tensor
 from funsor.terms import Variable, Number, lazy, Lambda, Binary, Funsor
 from funsor.tensor import Tensor
 from funsor.optimizer import apply_optimizer
 from funsor.interpreter import interpretation
 from funsor.factory import make_funsor, Bound, Fresh, Has
+from funsor.sum_product import MarkovProduct
 
 
 import torch
@@ -132,7 +133,7 @@ def test_reduce_sum():
     x = random_tensor(OrderedDict(j=Bint[4]))
     dx = random_tensor(OrderedDict(j=Bint[4]))
     Tx = Variable("dx", Real)
-    x_ = Tangent((x, Tx))
+    x_ = JVP((x, Tx))
     with lazy:
         f, df = x_.reduce(ops.add, "j")
     breakpoint()
@@ -143,7 +144,7 @@ def test_reduce_sum():
 def test_reduce_prod():
     x = random_tensor(OrderedDict(j=Bint[4]))
     dx = random_tensor(OrderedDict(j=Bint[4]))
-    x_ = Tangent((x, dx))
+    x_ = JVP((x, dx))
     f, df = x_.reduce(ops.mul, "j")
     assert_close(f, x.reduce(ops.mul, "j"))
     assert_close(df, (f * dx / x).reduce(ops.add, "j"))
@@ -153,7 +154,7 @@ def test_reduce_jacfwd():
     x = random_tensor(OrderedDict(j=Bint[4]))
     # dx = Tensor(torch.tensor([1, 0, 0, 0]), OrderedDict(j=Bint[4]))
     dx = Tensor(torch.eye(4), OrderedDict(j=Bint[4], l=Bint[4]))
-    x_ = Tangent((x, dx))
+    x_ = JVP((x, dx))
     f, df = x_.reduce(ops.mul, "j")
     assert_close(f, x.reduce(ops.mul, "j"))
     assert_close(df, (f * dx / x).reduce(ops.add, "j"))
@@ -175,66 +176,73 @@ def Prod(
     return x * y
 
 
-
-def test_matmul_tensor():
+def test_fjit():
+    # Product
     x = random_tensor(OrderedDict(j=Bint[4]))
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    cProd = fjit(Prod, x, y)
+
+    x2 = random_tensor(OrderedDict(j=Bint[4]))
+    y2 = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    expected = Prod(x2, y2)
+    actual = cProd(x=to_arg(x2), y=to_arg(y2))
+    assert_close(actual, expected)
+
+    # MarkovProduct
+    trans = random_tensor(OrderedDict(time=Bint[5], prev=Bint[3], curr=Bint[3]))
+    cMarkovProduct = fjit(MarkovProduct, ops.logaddexp, ops.add, trans, "time", {"prev": "curr"})
+
+    trans2 = random_tensor(OrderedDict(time=Bint[5], prev=Bint[3], curr=Bint[3]))
+    expected = MarkovProduct(ops.logaddexp, ops.add, trans2, "time", {"prev": "curr"})
+    actual = cMarkovProduct(trans=to_arg(trans2))
+    assert_close(actual, expected)
+
+
+def test_linearize():
+    # Add
+    x = random_tensor(OrderedDict(j=Bint[4]))
+    y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    z, linearAdd = linearize(Binary, ops.add, x, y, log=False)
+
     dx = random_tensor(OrderedDict(j=Bint[4]))
     dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    Tx = Variable("dx", Reals[4])["j"]
-    Ty = Variable("dy", Reals[4])["j"]
-    Dx = Lambda(Variable("j", Bint[4]), dx)
-    Dy = Lambda(Variable("j", Bint[4]), dy)
-    x_ = Tangent((x, Tx))
-    y_ = Tangent((y, Ty))
+    expected = dx + dy
+    actual = linearAdd(dlhs=to_arg(dx), drhs=to_arg(dy))
+    assert_close(actual, expected)
+    assert_close(z, x + y)
 
-    with funsor.terms.eager:
-        z, dz = MatMul(x_, y_, "j")
-    breakpoint()
-
-    actual_z = apply_optimizer(z)
-    actual_dz = dz(dx=Dx, dy=Dy)
-    expected_z = (x * y).reduce(ops.add, "j")
-    expected_dz = (y * dx + x * dy).reduce(ops.add, "j")
-    
-    assert_close(actual_z, expected_z)
-    assert_close(actual_dz, expected_dz)
-
-
-def test_matmul_jacfwd():
+    # Add in a LogFunctor
     x = random_tensor(OrderedDict(j=Bint[4]))
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    dx = Tensor(torch.eye(4), OrderedDict(j=Bint[4], l=Bint[4]))
-    dy = Number(0.0)
-    x_ = Tangent((x, dx))
-    y_ = Tangent((y, dy))
-    with lazy:
-        xy_ = x_ * y_
-        z, dz = xy_.reduce(ops.add, "j")
-    assert_close(apply_optimizer(z), (x * y).reduce(ops.add, "j"))
-    assert_close(apply_optimizer(dz), (y * dx).reduce(ops.add, "j"))
-    assert_close(apply_optimizer(dz), y(j="l").align(tuple(dz.inputs.keys())))
+    z, linearAdd = linearize(Binary, ops.add, x, y, log=True)
 
-
-def test_compose():
-    x = random_tensor(OrderedDict(j=Bint[4]))
-    y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
     dx = random_tensor(OrderedDict(j=Bint[4]))
     dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    Tx = Variable("dx", Real)
-    Ty = Variable("dy", Real)
-    x_ = Tangent((x, Tx))
-    y_ = Tangent((y, Ty))
-    with lazy:
-        logx_ = x_.log()
-        logxy_ = logx_ * y_
-        z, dz = logxy_.reduce(ops.add, "j")
+    expected = ops.logaddexp(ops.add(y, dx), ops.add(x, dy))
+    actual = linearAdd(dlhs=to_arg(dx), drhs=to_arg(dy))
+    assert_close(actual, expected)
 
+    # MarkovProduct in a LogFunctor
+    trans = random_tensor(OrderedDict(time=Bint[5], prev=Bint[3], curr=Bint[3]))
+    z, linearMP = linearize(MarkovProduct, ops.logaddexp, ops.add, trans, "time", {"prev": "curr"}, log=True)
+
+    dtrans = random_tensor(OrderedDict(time=Bint[5], prev=Bint[3], curr=Bint[3]))
+    # expected = MarkovProduct(ops.logaddexp, ops.add, trans2, "time", {"prev": "curr"})
+    actual = linearMP(dtrans=to_arg(dtrans))
     breakpoint()
-    actual_z = apply_optimizer(z)
-    expected_z = (x.log() * y).reduce(ops.add, "j")
-    assert_close(actual_z, expected_z)
-    actual_dz = apply_optimizer(dz(**{"dx": dx, "dy": dy}))
-    expected_dz = (y * dx / x + x.log() * dy).reduce(ops.add, "j")
-    breakpoint()
-    assert_close(actual_dz, expected_dz)
+    assert_close(actual, expected)
+
+
+def test_transpose():
+    # Add
+    x = random_tensor(OrderedDict(j=Bint[4]))
+    y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    z, linearAdd = linearize(Binary, ops.add, x, y, log=False)
+    transpose(linearAdd, {"dlhs", "drhs"})
+
+    dx = random_tensor(OrderedDict(j=Bint[4]))
+    dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    expected = dx + dy
+    actual = linearAdd(dlhs=to_arg(dx), drhs=to_arg(dy))
+    assert_close(actual, expected)
+    assert_close(z, x + y)
