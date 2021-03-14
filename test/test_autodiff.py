@@ -5,7 +5,7 @@ from collections import OrderedDict
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
-from funsor.autodiff import JVP, to_var, to_arg, fjit, linearize, transpose
+from funsor.autodiff import JVP, to_var, to_arg, fjit, linearize, grad
 from funsor.testing import assert_close, random_tensor
 from funsor.terms import Variable, Number, lazy, Lambda, Binary, Funsor
 from funsor.tensor import Tensor
@@ -198,47 +198,70 @@ def test_fjit():
     assert_close(actual, expected)
 
 
-def test_linearize():
+def test_grad():
     # Add
     x = random_tensor(OrderedDict(j=Bint[4]))
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    z, linearAdd = linearize(Binary, ops.add, x, y, log=False)
+    result = grad(Binary, ops.add, x, y, log=False)
+    breakpoint()
 
     dx = random_tensor(OrderedDict(j=Bint[4]))
     dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
     expected = dx + dy
-    actual = linearAdd(dlhs=to_arg(dx), drhs=to_arg(dy))
+    actual = linearAdd(lhs=to_arg(dx), rhs=to_arg(dy))
+    assert_close(actual, expected)
+    assert_close(z, x + y)
+
+
+def test_linearize():
+    # Add
+    x = random_tensor(OrderedDict(j=Bint[4]))
+    y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    (z, linearAdd), linear_vars = linearize(Binary, ops.add, x, y, log=False)
+
+    dx = random_tensor(OrderedDict(j=Bint[4]))
+    dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    expected = dx + dy
+    actual = linearAdd(lhs=to_arg(dx), rhs=to_arg(dy))
     assert_close(actual, expected)
     assert_close(z, x + y)
 
     # Add in a LogFunctor
     x = random_tensor(OrderedDict(j=Bint[4]))
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    z, linearAdd = linearize(Binary, ops.add, x, y, log=True)
+    with funsor.terms.lazy:
+        z, linearAdd = linearize(Binary, ops.add, x, y, log=True)
 
     dx = random_tensor(OrderedDict(j=Bint[4]))
     dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
     expected = ops.logaddexp(ops.add(y, dx), ops.add(x, dy))
-    actual = linearAdd(dlhs=to_arg(dx), drhs=to_arg(dy))
+    breakpoint()
+    actual = linearAdd(lhs=to_arg(dx), rhs=to_arg(dy))
     assert_close(actual, expected)
 
     # MarkovProduct in a LogFunctor
     trans = random_tensor(OrderedDict(time=Bint[5], prev=Bint[3], curr=Bint[3]))
-    z, linearMP = linearize(MarkovProduct, ops.logaddexp, ops.add, trans, "time", {"prev": "curr"}, log=True)
+    with funsor.terms.lazy:
+        z, linearMP = linearize(MarkovProduct, ops.logaddexp, ops.add, trans, "time", {"prev": "curr"}, log=True)
 
     dtrans = random_tensor(OrderedDict(time=Bint[5], prev=Bint[3], curr=Bint[3]))
     # expected = MarkovProduct(ops.logaddexp, ops.add, trans2, "time", {"prev": "curr"})
-    actual = linearMP(dtrans=to_arg(dtrans))
-    breakpoint()
-    assert_close(actual, expected)
+    actual = linearMP(trans=to_arg(dtrans))
+    # assert_close(actual, expected)
 
 
 def test_transpose():
+    # Mul
+    x = random_tensor(OrderedDict(j=Bint[4]))
+    y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    z, linearAdd = linearize(Binary, ops.mul, x, y, log=False)
+    linear_transpose(linearAdd, {"lhs", "rhs"}, log=False)
+
     # Add
     x = random_tensor(OrderedDict(j=Bint[4]))
     y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
     z, linearAdd = linearize(Binary, ops.add, x, y, log=False)
-    transpose(linearAdd, {"dlhs", "drhs"})
+    linear_transpose(linearAdd, {"lhs", "rhs"}, log=False)
 
     dx = random_tensor(OrderedDict(j=Bint[4]))
     dy = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))

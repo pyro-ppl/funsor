@@ -9,6 +9,7 @@ from funsor.domains import Bint, Real, Array, Reals
 from collections import defaultdict
 from functools import reduce, singledispatch
 from funsor import Tensor
+from funsor.cnf import Contraction
 
 
 def to_var(x, name):
@@ -24,37 +25,71 @@ def to_arg(x):
 
 def fjit(cls, *args):
     new_args = []
-    for field, arg in zip(cls._ast_fields, args):
-        if isinstance(arg, (Number, Tensor)):
-            arg = to_var(arg, field)
-        new_args.append(arg)
-    new_args = tuple(new_args)
-    return cls(*new_args)
-
-
-def linearize(cls, *args, log=True):
-    jvp = logJVP if log else JVP
-    new_args = []
     for arg_name, arg in zip(cls._ast_fields, args):
         if isinstance(arg, (Number, Tensor)):
-            tangent_var = to_var(arg, "d" + arg_name)
-            arg = jvp(arg, tangent_var)
+            arg = to_var(arg, arg_name)
         new_args.append(arg)
     new_args = tuple(new_args)
     return cls(*new_args)
+
+
+def grad(cls, *args, targets, log=True):
+    (out_primal, linear_fn), in_tangents = linearize(cls, *args, targets=targets, log=log)
+    linear_terms = get_linear_terms(linear_fn, set(in_tangents))
+
+    out_shape = tuple(value.size for key, value in linear_fn.inputs.items() if key not in in_tangents)
+    out_inputs = tuple(key for key in linear_fn.inputs if key not in in_tangents)
+    out_tangent = Variable("dout", Array["real", out_shape])[out_inputs]
+
+    grad_dict = {}
+    for name, var in in_tangents.items():
+        grad_dict[name] = transpose(linear_terms[name], var, out_tangent)
+    return grad_dict
+
+
+def linearize(cls, *args, targets, log=True):
+    jvp = logJVP if log else JVP
+    new_args = []
+    in_tangents = {}
+    for arg_name, arg in zip(cls._ast_fields, args):
+        # if isinstance(arg, (Number, Tensor)):
+        if arg in targets:
+            tangent_var = to_var(arg, arg_name)
+            arg = jvp(arg, tangent_var)
+            in_tangents[arg_name] = tangent_var
+        new_args.append(arg)
+    new_args = tuple(new_args)
+    return cls(*new_args), in_tangents
 
 
 def get_linear_terms(expr, linear_vars):
-    breakpoint()
-    pass
+    if len(linear_vars) == 1:
+        return {next(iter(linear_vars)): expr}
+    assert isinstance(expr, Contraction)
+    assert expr.bin_op is ops.add or expr.bin_op is ops.logaddexp
+    assert expr.red_op is ops.nullop
+    terms = {}
+    for term in expr.terms:
+        if len(linear_vars.intersection(term.inputs)) == 1:
+            var = next(iter(linear_vars.intersection(term.inputs)))
+            terms[var] = term
+        else:
+            result = get_linear_terms(term, linear_vars)
+            terms.update(result)
+    return terms
 
 
 @singledispatch
-def transpose(expr, linear_vars):
-    get_linear_terms(expr, linear_vars)
-    out_shape = tuple(value.size for key, value in expr.inputs.items() if key not in linear_vars)
-    out_inputs = tuple(key for key in expr.inputs if key not in linear_vars)
-    out_tangent = Variable("dout", Array["real", out_shape])[out_inputs]
+def transpose(expr, target, out_tangent):
+    if expr is target:
+        return out_tangent
+    raise ValueError
+
+
+@transpose.register(Binary)
+def transpose_binary(expr, target, out_tangent):
+    if expr is target:
+        return out_tangent
     breakpoint()
     pass
 
@@ -94,7 +129,7 @@ def jvp_binary(op, lhs, rhs):
     return type(lhs)(primal, tangent)
 
 
-@lazy.register(Reduce, AssociativeOp, JVP, frozenset)
+@eager.register(Reduce, AssociativeOp, JVP, frozenset)
 @eager.register(Reduce, AssociativeOp, logJVP, frozenset)
 def jvp_reduce(op, arg, reduced_vars):
     sum_op, prod_op = arg.sum_op, arg.prod_op
