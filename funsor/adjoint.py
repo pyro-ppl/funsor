@@ -3,22 +3,28 @@
 
 from collections import defaultdict
 from collections.abc import Hashable
+from functools import reduce
 
 from funsor.cnf import Contraction, nullop
+from funsor.domains import Reals
 from funsor.interpretations import Interpretation, reflect
 from funsor.interpreter import stack_reinterpret
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
+from funsor.sum_product import MarkovProduct
 from funsor.terms import (
     Binary,
     Cat,
+    eager,
     Funsor,
+    Lambda,
     Reduce,
     Scatter,
     Slice,
     Subs,
     substitute,
     to_funsor,
+    Variable,
 )
 
 from . import instrument, interpreter, ops
@@ -65,12 +71,12 @@ class AdjointTape(Interpretation):
         self._old_interpretation = interpreter.get_interpretation()
         return super().__enter__()
 
-    def adjoint(self, sum_op, bin_op, root, targets=None):
+    def adjoint(self, sum_op, bin_op, root, targets=None, out_adj=None):
 
         zero = to_funsor(ops.UNITS[sum_op])
         one = to_funsor(ops.UNITS[bin_op])
         adjoint_values = defaultdict(lambda: zero)
-        adjoint_values[root] = one
+        adjoint_values[root] = out_adj or one
 
         reached_root = False
         while self.tape:
@@ -127,11 +133,11 @@ class AdjointTape(Interpretation):
         return {target: result[target] for target in targets}
 
 
-def adjoint(sum_op, bin_op, expr):
+def adjoint(sum_op, bin_op, expr, out_adj=None):
     with AdjointTape() as tape:
         # TODO fix traversal order in AdjointTape instead of using stack_reinterpret
         root = stack_reinterpret(expr)
-    return tape.adjoint(sum_op, bin_op, root)
+    return tape.adjoint(sum_op, bin_op, root, out_adj=out_adj)
 
 
 # logaddexp/add
@@ -145,6 +151,21 @@ if instrument.DEBUG:
     adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(
         instrument.debug_logged(fn)
     )
+
+
+@adjoint_ops.register(
+    MarkovProduct, AssociativeOp, AssociativeOp, Funsor, AssociativeOp, AssociativeOp, Funsor, Variable, frozenset, frozenset
+)
+def adjoint_markovproduct(adj_sum_op, adj_bin_op, out_adj, sum_op, prod_op, trans, time, step, step_names):
+    input_vars = tuple(Variable(key, value) for key, value in trans.inputs.items())
+    trans_bound = reduce(lambda x, y: Lambda(y, x), input_vars, trans)
+    #  trans_placeholder = Variable("__trans", trans_bound.output)[tuple(trans.inputs)]
+    trans_placeholder = Variable("__trans", Reals[trans.data.shape])[tuple(trans.inputs)]
+    with eager:
+        expr = MarkovProduct(sum_op, prod_op, trans_placeholder, time, step, step_names)
+    bwd_expr = adjoint(adj_sum_op, adj_bin_op, expr, out_adj=out_adj)[trans_placeholder]
+    trans_adj = bwd_expr(__trans=trans_bound)
+    return ((trans, trans_adj),)
 
 
 @adjoint_ops.register(
