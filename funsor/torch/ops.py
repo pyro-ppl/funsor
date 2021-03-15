@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numbers
+import typing
 
 import torch
 
@@ -58,11 +59,8 @@ def _astype(x, dtype):
     return x.type(getattr(torch, dtype))
 
 
-@ops.cat.register(int, [torch.Tensor])
-def _cat(dim, *x):
-    if len(x) == 1:
-        return x[0]
-    return torch.cat(x, dim=dim)
+ops.cat.register(typing.Tuple[torch.Tensor, ...])(torch.cat)
+ops.cat.register(typing.List[torch.Tensor, ...])(torch.cat)
 
 
 @ops.cholesky.register(torch.Tensor)

@@ -17,7 +17,6 @@ from .op import (
     TransformOp,
     UnaryOp,
     declare_op_types,
-    make_op,
 )
 
 _builtin_abs = abs
@@ -25,114 +24,92 @@ _builtin_pow = pow
 _builtin_sum = sum
 
 
-def sigmoid(x):
-    return 1 / (1 + exp(-x))
+# FIXME Most code assumes this is an AssociativeCommutativeOp.
+class AssociativeOp(BinaryOp):
+    pass
 
 
-def softplus(x):
-    return log(1.0 + exp(x))
+@AssociativeOp.make
+def nullop(x, y):
+    """Placeholder associative op that unifies with any other op"""
+    raise ValueError("should never actually evaluate this!")
 
 
+@BinaryOp.make(metaclass=CachedOpMeta)
+def getitem(lhs, rhs, offset=0):
+    if offset == 0:
+        return lhs[rhs]
+    return lhs[(slice(None),) * offset + (rhs,)]
+
+
+abs = UnaryOp.make(_builtin_abs)
+eq = BinaryOp.make(operator.eq)
+ge = BinaryOp.make(operator.ge)
+gt = BinaryOp.make(operator.gt)
+invert = UnaryOp.make(operator.invert)
+le = BinaryOp.make(operator.le)
+lt = BinaryOp.make(operator.lt)
+ne = BinaryOp.make(operator.ne)
+pos = UnaryOp.make(operator.pos)
+neg = UnaryOp.make(operator.neg)
+pow = BinaryOp.make(operator.pow)
+sub = BinaryOp.make(operator.sub)
+truediv = BinaryOp.make(operator.truediv)
+floordiv = BinaryOp.make(operator.floordiv)
+add = AssociativeOp.make(operator.add)
+and_ = AssociativeOp.make(operator.and_)
+mul = AssociativeOp.make(operator.mul)
+matmul = BinaryOp.make(operator.matmul)
+mod = BinaryOp.make(operator.mod)
+lshift = BinaryOp.make(operator.lshift)
+rshift = BinaryOp.make(operator.rshift)
+or_ = AssociativeOp.make(operator.or_)
+xor = AssociativeOp.make(operator.xor)
+max = AssociativeOp.make(max)
+min = AssociativeOp.make(min)
+
+lgamma = UnaryOp.make(math.lgamma)
+log1p = UnaryOp.make(math.log1p)
+sqrt = UnaryOp.make(math.sqrt)
+
+
+@UnaryOp.make
 def reciprocal(x):
     if isinstance(x, Number):
         return 1.0 / x
     raise ValueError("No reciprocal for type {}".format(type(x)))
 
 
-# FIXME Most code assumes this is an AssociativeCommutativeOp.
-class AssociativeOp(Op):
-    pass
+@UnaryOp.make
+def softplus(x):
+    return log(1.0 + exp(x))
 
 
-class NullOp(AssociativeOp):
-    """Placeholder associative op that unifies with any other op"""
-
-    pass
-
-
-@NullOp
-def nullop(x, y):
-    raise ValueError("should never actually evaluate this!")
+@TransformOp.make
+def log(x):
+    return math.log(x) if x > 0 else -math.inf
 
 
-class GetitemOp(Op, metaclass=CachedOpMeta):
-    """
-    Op encoding an index into one dimension, e.g. ``x[:,:,y]`` for offset of 2.
-    """
-
-    def __init__(self, offset):
-        assert isinstance(offset, int)
-        assert offset >= 0
-        self.offset = offset
-        self._prefix = (slice(None),) * offset
-        super(GetitemOp, self).__init__(self._default)
-        self.__name__ = "GetitemOp({})".format(offset)
-
-    def __reduce__(self):
-        return GetitemOp, (self.offset,)
-
-    def _default(self, x, y):
-        return x[self._prefix + (y,)] if self.offset else x[y]
+exp = TransformOp.make(math.exp)
+tanh = TransformOp.make(math.tanh)
+atanh = TransformOp.make(math.atanh)
 
 
-getitem = GetitemOp(0)
-abs = make_op(_builtin_abs, UnaryOp)
-eq = make_op(operator.eq, BinaryOp)
-ge = make_op(operator.ge, BinaryOp)
-gt = make_op(operator.gt, BinaryOp)
-invert = make_op(operator.invert, UnaryOp)
-le = make_op(operator.le, BinaryOp)
-lt = make_op(operator.lt, BinaryOp)
-ne = make_op(operator.ne, BinaryOp)
-pos = make_op(operator.pos, UnaryOp)
-neg = make_op(operator.neg, UnaryOp)
-pow = make_op(operator.pow, BinaryOp)
-sub = make_op(operator.sub, BinaryOp)
-truediv = make_op(operator.truediv, BinaryOp)
-floordiv = make_op(operator.floordiv, BinaryOp)
-add = make_op(operator.add, AssociativeOp)
-and_ = make_op(operator.and_, AssociativeOp)
-mul = make_op(operator.mul, AssociativeOp)
-matmul = make_op(operator.matmul, BinaryOp)
-mod = make_op(operator.mod, BinaryOp)
-lshift = make_op(operator.lshift, BinaryOp)
-rshift = make_op(operator.rshift, BinaryOp)
-or_ = make_op(operator.or_, AssociativeOp)
-xor = make_op(operator.xor, AssociativeOp)
-max = make_op(max, AssociativeOp)
-min = make_op(min, AssociativeOp)
-
-lgamma = make_op(math.lgamma, UnaryOp)
-log1p = make_op(math.log1p, UnaryOp)
-sqrt = make_op(math.sqrt, UnaryOp)
-
-reciprocal = make_op(reciprocal, UnaryOp)
-softplus = make_op(softplus, UnaryOp)
-
-exp = make_op(math.exp, TransformOp)
-log = make_op(
-    lambda x: math.log(x) if x > 0 else -math.inf, parent=TransformOp, name="log"
-)
-tanh = make_op(math.tanh, TransformOp)
-atanh = make_op(math.atanh, TransformOp)
-sigmoid = make_op(sigmoid, TransformOp)
+@TransformOp.make
+def sigmoid(x):
+    return 1 / (1 + exp(-x))
 
 
-@make_op(parent=type(sub))
+@sub.make
 def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
 
 
-@make_op(parent=type(truediv))
+@truediv.make
 def safediv(x, y):
     if isinstance(y, Number):
         return operator.truediv(x, y)
-
-
-@add.register(object)
-def _unary_add(x):
-    return x.sum()
 
 
 @exp.set_log_abs_det_jacobian
@@ -198,8 +175,6 @@ UNARY_INVERSES[add] = neg
 
 __all__ = [
     "AssociativeOp",
-    "GetitemOp",
-    "NullOp",
     "abs",
     "add",
     "and_",

@@ -8,25 +8,48 @@ import weakref
 from multipledispatch import Dispatcher
 
 
+def apply(function, args, kwargs={}):
+    return function(*args, **kwargs)
+
+
 class WeakPartial:
-    """
-    Like ``functools.partial(fn, arg)`` but weakly referencing ``arg``.
-    """
+    # Like ``functools.partial(fn, arg)`` but weakly referencing ``arg``.
 
     def __init__(self, fn, arg):
         self.fn = fn
         self.weak_arg = weakref.ref(arg)
         functools.update_wrapper(self, fn)
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         arg = self.weak_arg()
-        return self.fn(arg, *args)
+        return self.fn(arg, *args, **kwargs)
 
 
-class CachedOpMeta(type):
+class OpMeta(type):
+    """
+    Metaclass for :class:`Op` classes.
+    """
+
+    def __init__(cls, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        cls._subclass_registry = []
+
+        # Register all existing patterns.
+        for supercls in reversed(inspect.getmro(cls)):
+            for pattern, fn in getattr(supercls, "_subclass_registry", ()):
+                cls.dispatcher.add(pattern, WeakPartial(fn, cls))
+
+    @property
+    def register(cls):
+        return cls.dispatcher.register
+
+
+class CachedOpMeta(OpMeta):
     """
     Metaclass for caching op instance construction.
-    Caching strategy is to key on ``*args`` and retain values forever.
+
+    Caching strategy is to key on ``args[arity:],kwargs`` and retain values
+    forever. This requires all non-funsor args to be hashable.
     """
 
     def __init__(cls, *args, **kwargs):
@@ -34,63 +57,62 @@ class CachedOpMeta(type):
         cls._instance_cache = {}
 
     def __call__(cls, *args, **kwargs):
-        try:
-            return cls._instance_cache[args]
-        except KeyError:
-            instance = super(CachedOpMeta, cls).__call__(*args, **kwargs)
-            cls._instance_cache[args] = instance
-            return instance
+        bound = cls.signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        args = bound.args
+        fn = cls.dispatcher.dispatch(*args[: cls.arity])
+        return fn(*args, **bound.kwargs)
 
+    def bind_partial(cls, *args, **kwargs):
+        """
+        Finds or constructs an instance ``op`` such that::
 
-class WrappedOpMeta(type):
-    """
-    Metaclass for ops that wrap temporary backend ops.
-    Caching strategy is to key on ``id(backend_op)`` and forget values asap.
-    """
+            op(*args[:op.arity]) == cls()(*args, **kwargs)
 
-    def __init__(cls, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        cls._instance_cache = weakref.WeakValueDictionary()
-
-    def __call__(cls, fn):
-        if inspect.ismethod(fn):
-            key = id(fn.__self__), fn.__func__  # e.g. t.log_abs_det_jacobian
-        else:
-            key = id(fn)  # e.g. t.inv
+        where ``cls()`` is the default op.
+        """
+        bound = cls.signature.bind(*args, **kwargs)
+        args = bound.args
+        assert len(args) >= cls.arity, "missing required args"
+        args = args[cls.arity :]
+        kwargs = bound.kwargs
+        key = cls._hash_args_kwargs(args, tuple(kwargs.items()))
         try:
             return cls._instance_cache[key]
         except KeyError:
-            op = super().__call__(fn)
-            op.fn = fn  # Ensures the key id(fn) is not reused.
+            op = cls(*args, **kwargs)
             cls._instance_cache[key] = op
             return op
 
+    @staticmethod
+    def _hash_args_kwargs(args, kwargs):
+        return args, tuple(kwargs.items())
 
-class Op(Dispatcher):
-    _all_instances = weakref.WeakSet()
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls._subclass_registry = []
+class Op(metaclass=OpMeta):
+    r"""
+    Abstract base class for all mathematical operations on ground terms.
 
-    def __init__(self, fn, *, name=None):
-        if isinstance(fn, str):
-            fn, name = None, fn
-        if name is None:
-            name = fn.__name__
-        super(Op, self).__init__(name)
-        if fn is not None:
-            # register as default operation
-            for nargs in (1, 2, 3):
-                default_signature = (object,) * nargs
-                self.add(default_signature, fn)
+    Ops take ``arity``-many leftmost positional args that may be funsors,
+    followed by additional non-funsor args and kwargs. The additional args and
+    kwargs must have default values.
 
-        # Register all existing patterns.
-        for supercls in reversed(inspect.getmro(type(self))):
-            for pattern, fn in getattr(supercls, "_subclass_registry", ()):
-                self.add(pattern, WeakPartial(fn, self))
-        # Save self for registering future patterns.
-        Op._all_instances.add(self)
+    :cvar int arity: The number of funsor arguments this op takes. Must be
+        defined by subclasses.
+    :param \*args:
+    :param \*\*kwargs: All extra arguments to this op, excluding the arguments
+        up to ``.arity``,
+    """
+
+    arity = NotImplemented  # abstract
+
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        cls = type(self)
+        args = (None,) * cls.arity + args
+        bound = cls.signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        self.defaults = tuple(bound.arguments.items())[cls.arity :]
 
     def __copy__(self):
         return self
@@ -99,7 +121,8 @@ class Op(Dispatcher):
         return self
 
     def __reduce__(self):
-        return self.__name__
+        args = self.bound.args[self.arity :]
+        return apply, (type(self), args, self.bound.kwargs)
 
     def __repr__(self):
         return "ops." + self.__name__
@@ -107,41 +130,69 @@ class Op(Dispatcher):
     def __str__(self):
         return self.__name__
 
+    def __call__(self, *args, **kwargs):
+        # Normalize args, kwargs.
+        cls = type(self)
+        bound = cls.signature.bind(*args, **kwargs)
+        for key, value in self.defaults:
+            bound.arguments.setdefault(key, value)
+        args = bound.args
+        assert len(args) >= cls.arity
+        kwargs = bound.kwargs
+
+        # Dispatch.
+        fn = cls.dispatcher.dispatch(*args[: cls.arity])
+        return fn(*args, **kwargs)
+
     @classmethod
     def subclass_register(cls, *pattern):
         def decorator(fn):
-            # Register with all existing instances.
-            for op in Op._all_instances:
-                if isinstance(op, cls):
-                    op.add(pattern, WeakPartial(fn, op))
-            # Ensure registration with all future instances.
+            # Register with all existing sublasses.
+            for subcls in [cls] + cls.__subclasses__():
+                cls.dispatcher.add(pattern, WeakPartial(fn, subcls))
+            # Ensure registration with all future subclasses.
             cls._subclass_registry.append((pattern, fn))
             return fn
 
         return decorator
 
+    @classmethod
+    def make(cls, fn=None, *, name=None, metaclass=OpMeta, module_name="funsor.ops"):
+        """
+        Factory to create a new :class:`Op` subclass together with a new
+        instance of that class.
+        """
+        if not isinstance(cls.arity, int):
+            raise TypeError(
+                f"Can't instantiate abstract class {cls.__name__} with abstract arity"
+            )
 
-def make_op(fn=None, parent=None, *, name=None, module_name="funsor.ops"):
-    """
-    Factory to create a new :class:`Op` subclass and a new instance of that class.
-    """
-    # Support use as decorator.
-    if fn is None:
-        return lambda fn: make_op(fn, parent, name=name, module_name=module_name)
+        # Support use as decorator.
+        if fn is None:
+            return lambda fn: cls.make(fn, name=name, module_name=module_name)
+        assert callable(fn)
 
-    if parent is None:
-        parent = Op
-    assert issubclass(parent, Op)
+        if name is None:
+            name = fn.__name__
+        assert isinstance(name, str)
 
-    if name is None:
-        name = fn if isinstance(fn, str) else fn.__name__
-    assert isinstance(name, str)
-
-    classname = name.capitalize().rstrip("_") + "Op"  # e.g. add -> AddOp
-    cls = type(classname, (parent,), {})
-    cls.__module__ = module_name
-    op = cls(fn, name=name)
-    return op
+        assert issubclass(metaclass, OpMeta)
+        classname = name.capitalize().rstrip("_") + "Op"  # e.g. add -> AddOp
+        signature = inspect.Signature.from_callable(fn)
+        dispatcher = Dispatcher(name)
+        op_class = metaclass(
+            classname,
+            (cls,),
+            {
+                "default": fn,
+                "dispatcher": dispatcher,
+                "signature": signature,
+            },
+        )
+        op_class.__module__ = module_name
+        dispatcher.add((object,) * cls.arity, fn)
+        op = op_class()
+        return op
 
 
 def declare_op_types(locals_, all_, name_):
@@ -161,12 +212,20 @@ def declare_op_types(locals_, all_, name_):
     all_.sort()
 
 
+class NullaryOp(Op):
+    arity = 0
+
+
 class UnaryOp(Op):
-    pass
+    arity = 1
 
 
 class BinaryOp(Op):
-    pass
+    arity = 2
+
+
+class TernaryOp(Op):
+    arity = 3
 
 
 class TransformOp(UnaryOp):
@@ -195,6 +254,30 @@ class TransformOp(UnaryOp):
     @staticmethod
     def log_abs_det_jacobian(x, y):
         raise NotImplementedError
+
+
+class WrappedOpMeta(type):
+    """
+    Metaclass for ops that wrap temporary backend ops.
+    Caching strategy is to key on ``id(backend_op)`` and forget values asap.
+    """
+
+    def __init__(cls, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        cls._instance_cache = weakref.WeakValueDictionary()
+
+    def __call__(cls, fn):
+        if inspect.ismethod(fn):
+            key = id(fn.__self__), fn.__func__  # e.g. t.log_abs_det_jacobian
+        else:
+            key = id(fn)  # e.g. t.inv
+        try:
+            return cls._instance_cache[key]
+        except KeyError:
+            op = super().__call__(fn)
+            op.fn = fn  # Ensures the key id(fn) is not reused.
+            cls._instance_cache[key] = op
+            return op
 
 
 class WrappedTransformOp(TransformOp, metaclass=WrappedOpMeta):
@@ -265,13 +348,14 @@ __all__ = [
     "CachedOpMeta",
     "DISTRIBUTIVE_OPS",
     "LogAbsDetJacobianOp",
+    "NullaryOp",
     "Op",
     "SAFE_BINARY_INVERSES",
+    "TernaryOp",
     "TransformOp",
     "UNARY_INVERSES",
     "UNITS",
     "UnaryOp",
     "WrappedTransformOp",
     "declare_op_types",
-    "make_op",
 ]

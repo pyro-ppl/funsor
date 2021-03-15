@@ -137,7 +137,7 @@ class BlockVector(object):
 
         # Concatenate parts.
         parts = [v for k, v in sorted(self.parts.items())]
-        result = ops.cat(-1, *parts)
+        result = ops.cat(parts, -1)
         if not get_tracing_state():
             assert result.shape == self.shape
         return result
@@ -182,10 +182,10 @@ class BlockMatrix(object):
         # TODO This could be optimized into a single .reshape().cat().reshape() if
         #   all inputs are contiguous, thereby saving a memcopy.
         columns = {
-            i: ops.cat(-1, *[v for j, v in sorted(part.items())])
+            i: ops.cat([v for j, v in sorted(part.items())], -1)
             for i, part in self.parts.items()
         }
-        result = ops.cat(-2, *[v for i, v in sorted(columns.items())])
+        result = ops.cat([v for i, v in sorted(columns.items())], -2)
         if not get_tracing_state():
             assert result.shape == self.shape
         return result
@@ -468,32 +468,32 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             k for k, d in self.inputs.items() if d.dtype == "real" and k not in b
         )
         prec_aa = ops.cat(
-            -2,
-            *[
+            [
                 ops.cat(-1, *[precision[..., i1, i2] for k2, i2 in slices if k2 in a])
                 for k1, i1 in slices
                 if k1 in a
-            ]
+            ],
+            -2,
         )
         prec_ab = ops.cat(
-            -2,
             *[
                 ops.cat(-1, *[precision[..., i1, i2] for k2, i2 in slices if k2 in b])
                 for k1, i1 in slices
                 if k1 in a
-            ]
+            ],
+            -2
         )
         prec_bb = ops.cat(
-            -2,
             *[
-                ops.cat(-1, *[precision[..., i1, i2] for k2, i2 in slices if k2 in b])
+                ops.cat([precision[..., i1, i2] for k2, i2 in slices if k2 in b], -1)
                 for k1, i1 in slices
                 if k1 in b
-            ]
+            ],
+            -2
         )
-        info_a = ops.cat(-1, *[info_vec[..., i] for k, i in slices if k in a])
-        info_b = ops.cat(-1, *[info_vec[..., i] for k, i in slices if k in b])
-        value_b = ops.cat(-1, *[values[k] for k, i in slices if k in b])
+        info_a = ops.cat([info_vec[..., i] for k, i in slices if k in a], -1)
+        info_b = ops.cat([info_vec[..., i] for k, i in slices if k in b], -1)
+        value_b = ops.cat([values[k] for k, i in slices if k in b], -1)
         info_vec = info_a - _mv(prec_ab, value_b)
         log_scale = _vv(value_b, info_b - 0.5 * _mv(prec_bb, value_b))
         precision = ops.expand(prec_aa, info_vec.shape + info_vec.shape[-1:])
@@ -637,8 +637,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                             1,
                         )
                         (b if key in reduced_vars else a).append(block)
-                a = ops.cat(-1, *a)
-                b = ops.cat(-1, *b)
+                a = ops.cat(a, -1)
+                b = ops.cat(b, -1)
                 prec_aa = self.precision[..., a[..., None], a]
                 prec_ba = self.precision[..., b[..., None], a]
                 prec_bb = self.precision[..., b[..., None], b]

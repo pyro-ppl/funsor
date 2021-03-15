@@ -1087,7 +1087,7 @@ def test_scatter_number(op):
 
     proto = source.data.reshape((-1,))[:1].reshape(())
     zero = ops.full_like(ops.expand(proto, (5, 2)), ops.UNITS[op])
-    expected_data = ops.cat(1, source.data.reshape((5, 1)), zero)
+    expected_data = ops.cat([source.data.reshape((5, 1)), zero], 1)
     expected = Tensor(expected_data, OrderedDict(k=Bint[5], i=Bint[3]))
 
     assert_close(actual, expected)

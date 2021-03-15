@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numbers
+import typing
 
 import jax.numpy as np
 import numpy as onp
@@ -67,11 +68,8 @@ def _astype(x, dtype):
     return x.astype(np.result_type(dtype))
 
 
-@ops.cat.register(int, [array])
-def _cat(dim, *x):
-    if len(x) == 1:
-        return x[0]
-    return np.concatenate(x, axis=dim)
+ops.cat.register(typing.Tuple[array, ...])(np.concatenate)
+ops.cat.register(typing.List[array, ...])(np.concatenate)
 
 
 @ops.cholesky.register(array)

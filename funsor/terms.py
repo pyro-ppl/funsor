@@ -1916,22 +1916,30 @@ def quote_inplace_first_arg_on_first_line(arg, indent, out):
         out[-1] = i, line + ")"
 
 
-ops.UnaryOp.subclass_register(Funsor)(Unary)
-ops.BinaryOp.subclass_register(Funsor, Funsor)(Binary)
-ops.AssociativeOp.subclass_register(Funsor, Funsor)(Binary)
-ops.AssociativeOp.subclass_register(Funsor)(Unary)  # Reductions.
+@ops.UnaryOp.subclass_register(Funsor)
+def unary_funsor(cls, arg, *args, **kwargs):
+    op = cls.bind_partial(arg, *args, **kwargs)
+    return Unary(op, arg)
+
+
+@ops.BinaryOp.subclass_register(Funsor, Funsor)
+def binary_funsor_funsor(cls, lhs, rhs, *args, **kwargs):
+    op = cls.bind_partial(lhs, rhs, *args, **kwargs)
+    return Binary(op, lhs, rhs)
 
 
 @ops.BinaryOp.subclass_register(object, Funsor)
-@ops.AssociativeOp.subclass_register(object, Funsor)
-def binary_object_funsor(op, x, y):
-    return Binary(op, to_funsor(x), y)
+def binary_object_funsor(cls, lhs, rhs, *args, **kwargs):
+    lhs = to_funsor(lhs)
+    op = cls.bind_partial(lhs, rhs, *args, **kwargs)
+    return Binary(op, lhs, rhs)
 
 
 @ops.BinaryOp.subclass_register(Funsor, object)
-@ops.AssociativeOp.subclass_register(Funsor, object)
-def binary_funsor_object(op, x, y):
-    return Binary(op, x, to_funsor(y))
+def binary_funsor_object(cls, lhs, rhs, *args, **kwargs):
+    rhs = to_funsor(rhs)
+    op = cls.bind_partial(lhs, rhs, *args, **kwargs)
+    return Binary(op, lhs, rhs)
 
 
 __all__ = [

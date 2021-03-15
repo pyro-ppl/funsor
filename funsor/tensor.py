@@ -891,7 +891,7 @@ def eager_cat_homogeneous(name, part_name, *parts):
     del inputs[part_name]
 
     dim = 0
-    tensor = ops.cat(dim, *tensors)
+    tensor = ops.cat(tensors, dim)
     inputs = OrderedDict([(name, Bint[tensor.shape[dim]])] + list(inputs.items()))
     return Tensor(tensor, inputs, dtype=output.dtype)
 
