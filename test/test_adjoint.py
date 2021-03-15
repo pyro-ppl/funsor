@@ -209,6 +209,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
 @pytest.mark.parametrize(
     "impl",
     [
+        MarkovProduct,
         sequential_sum_product,
         naive_sequential_sum_product,
         xfail_param(MarkovProduct, reason="mysteriously doubles adjoint values?"),
@@ -227,30 +228,33 @@ def test_sequential_sum_product_adjoint(
         trans = random_tensor(inputs)
     time = Variable("time", Bint[num_steps])
 
-    with AdjointTape() as actual_tape:
-        actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
-        actual = actual.reduce(sum_op)
+    with funsor.terms.lazy:
+        with AdjointTape() as actual_tape:
+            actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
+            actual = actual.reduce(sum_op)
 
-    # Check against contract.
-    operands = tuple(
-        trans(time=t, prev="t_{}".format(t), curr="t_{}".format(t + 1))
-        for t in range(num_steps)
-    )
-    reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
-    with AdjointTape() as expected_tape:
-        with reflect:
-            lazy_expected = sum_product(sum_op, prod_op, operands, reduce_vars)
-        expected = apply_optimizer(lazy_expected)
-        expected = expected.reduce(sum_op)
+        # Check against contract.
+        operands = tuple(
+            trans(time=t, prev="t_{}".format(t), curr="t_{}".format(t + 1))
+            for t in range(num_steps)
+        )
+        reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
+        with AdjointTape() as expected_tape:
+            # with reflect:
+            expected = sum_product(sum_op, prod_op, operands, reduce_vars)
+            # expected = apply_optimizer(lazy_expected)
+            expected = expected.reduce(sum_op)
 
+        # perform backward passes only after the sanity check
+        expected_bwds = expected_tape.adjoint(sum_op, prod_op, expected, operands)
+        actual_bwd = actual_tape.adjoint(sum_op, prod_op, actual, (trans,))[trans]
+
+    actual = apply_optimizer(actual)
+    expected = apply_optimizer(expected)
     # check forward pass (sanity check)
     assert_close(
         actual, expected.align(tuple(actual.inputs.keys())), rtol=5e-3 * num_steps
     )
-
-    # perform backward passes only after the sanity check
-    expected_bwds = expected_tape.adjoint(sum_op, prod_op, expected, operands)
-    actual_bwd = actual_tape.adjoint(sum_op, prod_op, actual, (trans,))[trans]
 
     # check backward pass
     for t, operand in enumerate(operands):
