@@ -159,8 +159,8 @@ if instrument.DEBUG:
 def adjoint_markovproduct(adj_sum_op, adj_bin_op, out_adj, sum_op, prod_op, trans, time, step, step_names):
     input_vars = tuple(Variable(key, value) for key, value in trans.inputs.items())
     trans_bound = reduce(lambda x, y: Lambda(y, x), input_vars, trans)
-    #  trans_placeholder = Variable("__trans", trans_bound.output)[tuple(trans.inputs)]
-    trans_placeholder = Variable("__trans", Reals[trans.data.shape])[tuple(trans.inputs)]
+    trans_placeholder = Variable("__trans", trans_bound.output)[tuple(trans.inputs)]
+    # trans_placeholder = Variable("__trans", Reals[trans.data.shape])[tuple(trans.inputs)]
     with eager:
         expr = MarkovProduct(sum_op, prod_op, trans_placeholder, time, step, step_names)
     bwd_expr = adjoint(adj_sum_op, adj_bin_op, expr, out_adj=out_adj)[trans_placeholder]
