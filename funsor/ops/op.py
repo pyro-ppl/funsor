@@ -28,10 +28,16 @@ class WeakPartial:
 class OpMeta(type):
     """
     Metaclass for :class:`Op` classes.
+
+    This weakly caches op instances. Caching strategy is to key on
+    ``args[arity:],kwargs`` and to weakly retain values. Caching requires all
+    non-funsor args to be hashable; for non-hashable args, implement a derived
+    metaclass with custom :meth:`hash_args_kwargs` method.
     """
 
     def __init__(cls, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        cls._instance_cache = weakref.WeakValueDictionary()
         cls._subclass_registry = []
 
         # Register all existing patterns.
@@ -42,19 +48,6 @@ class OpMeta(type):
     @property
     def register(cls):
         return cls.dispatcher.register
-
-
-class CachedOpMeta(OpMeta):
-    """
-    Metaclass for caching op instance construction.
-
-    Caching strategy is to key on ``args[arity:],kwargs`` and retain values
-    forever. This requires all non-funsor args to be hashable.
-    """
-
-    def __init__(cls, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        cls._instance_cache = {}
 
     def __call__(cls, *args, **kwargs):
         bound = cls.signature.bind(*args, **kwargs)
@@ -67,7 +60,7 @@ class CachedOpMeta(OpMeta):
         """
         Finds or constructs an instance ``op`` such that::
 
-            op(*args[:op.arity]) == cls()(*args, **kwargs)
+            op(*args[:cls.arity]) == cls()(*args, **kwargs)
 
         where ``cls()`` is the default op.
         """
@@ -76,7 +69,7 @@ class CachedOpMeta(OpMeta):
         assert len(args) >= cls.arity, "missing required args"
         args = args[cls.arity :]
         kwargs = bound.kwargs
-        key = cls._hash_args_kwargs(args, tuple(kwargs.items()))
+        key = cls.hash_args_kwargs(args, tuple(kwargs.items()))
         try:
             return cls._instance_cache[key]
         except KeyError:
@@ -85,7 +78,7 @@ class CachedOpMeta(OpMeta):
             return op
 
     @staticmethod
-    def _hash_args_kwargs(args, kwargs):
+    def hash_args_kwargs(args, kwargs):
         return args, tuple(kwargs.items())
 
 
@@ -96,6 +89,16 @@ class Op(metaclass=OpMeta):
     Ops take ``arity``-many leftmost positional args that may be funsors,
     followed by additional non-funsor args and kwargs. The additional args and
     kwargs must have default values.
+
+    When wrapping new backend ops, keep in mind these restrictions:
+
+    - Create new ops only by decoraing a default implementation with
+      ``@UnaryOp.make``, ``@BinaryOp.make``, etc.
+    - Register backend-specific implementations via ``@my_op.register(type1)``,
+      ``@my_op.register(type1, type2)`` etc for arity 1, 2, etc. Patterns may
+      include only the first ``arity``-many types.
+    - Only the first ``arity``-many arguments may be funsors. Remaining args
+      and kwargs must all be ground Python data.
 
     :cvar int arity: The number of funsor arguments this op takes. Must be
         defined by subclasses.
@@ -345,7 +348,6 @@ UNARY_INVERSES = {}  # binary op -> inverse unary op
 __all__ = [
     "BINARY_INVERSES",
     "BinaryOp",
-    "CachedOpMeta",
     "DISTRIBUTIVE_OPS",
     "LogAbsDetJacobianOp",
     "NullaryOp",

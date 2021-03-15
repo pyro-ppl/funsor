@@ -12,7 +12,6 @@ from .op import (
     UNARY_INVERSES,
     UNITS,
     BinaryOp,
-    CachedOpMeta,
     Op,
     TransformOp,
     UnaryOp,
@@ -35,7 +34,7 @@ def nullop(x, y):
     raise ValueError("should never actually evaluate this!")
 
 
-@BinaryOp.make(metaclass=CachedOpMeta)
+@BinaryOp.make
 def getitem(lhs, rhs, offset=0):
     if offset == 0:
         return lhs[rhs]

@@ -26,8 +26,8 @@ from .op import (
     DISTRIBUTIVE_OPS,
     UNITS,
     BinaryOp,
-    CachedOpMeta,
     Op,
+    OpMeta,
     TernaryOp,
     UnaryOp,
     declare_op_types,
@@ -72,7 +72,7 @@ def logaddexp(x, y):
 sample = logaddexp.make(logaddexp.default, name="sample")
 
 
-class ReshapeMeta(CachedOpMeta):
+class ReshapeMeta(OpMeta):
     def _hash_args_kwargs(cls, shape):
         return tuple(shape)  # necessary to convert torch.Size to tuple
 
