@@ -5,9 +5,9 @@ from collections import OrderedDict
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
-from funsor.autodiff import JVP, to_var, to_arg, fjit, linearize, grad
+from funsor.autodiff import JVP, to_var, to_arg, fjit, grad, requires_grad, transpose
 from funsor.testing import assert_close, random_tensor
-from funsor.terms import Variable, Number, lazy, Lambda, Binary, Funsor
+from funsor.terms import Variable, Number, lazy, Lambda, Binary, Funsor, Tuple
 from funsor.tensor import Tensor
 from funsor.optimizer import apply_optimizer
 from funsor.interpreter import interpretation
@@ -200,9 +200,14 @@ def test_fjit():
 
 def test_grad():
     # Add
-    x = random_tensor(OrderedDict(j=Bint[4]))
-    y = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
-    result = grad(Binary, ops.add, x, y, log=False)
+    x = requires_grad(random_tensor(OrderedDict(j=Bint[4])))
+    y = requires_grad(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
+    A = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+    # A = random_tensor(OrderedDict(j=Bint[4]))
+    out_adj = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
+
+    z = x * A 
+    result = grad(z, (x,), out_adj)
     breakpoint()
 
     dx = random_tensor(OrderedDict(j=Bint[4]))
