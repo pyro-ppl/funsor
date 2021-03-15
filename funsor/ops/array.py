@@ -43,7 +43,6 @@ all = UnaryOp.make(np.all)
 amax = UnaryOp.make(np.amax)
 amin = UnaryOp.make(np.amin)
 any = UnaryOp.make(np.any)
-full_like = UnaryOp.make(np.full_like)
 isnan = UnaryOp.make(np.isnan)
 prod = UnaryOp.make(np.prod)
 sum = UnaryOp.make(np.sum)
@@ -53,6 +52,11 @@ exp.register(array)(np.exp)
 log1p.register(array)(np.log1p)
 tanh.register(array)(np.tanh)
 atanh.register(array)(np.arctanh)
+
+
+@UnaryOp.make
+def full_like(prototype, shape=(), fill_value=0):
+    return np.full_like(prototype, shape, fill_value)
 
 
 @log.register(array)
@@ -73,8 +77,13 @@ sample = logaddexp.make(logaddexp.default, name="sample")
 
 
 class ReshapeMeta(OpMeta):
-    def _hash_args_kwargs(cls, shape):
-        return tuple(shape)  # necessary to convert torch.Size to tuple
+    def hash_args_kwargs(cls, args, kwargs):
+        assert not kwargs
+        if args:
+            (shape,) = args
+            shape = tuple(shape)  # necessary to convert torch.Size to tuple
+            args = (shape,)
+        return super().hash_args_kwargs(args, kwargs)
 
 
 @UnaryOp.make(metaclass=ReshapeMeta)
@@ -236,7 +245,7 @@ def argmax(x, dim):
     raise NotImplementedError
 
 
-@argmax.register(array, int)
+@argmax.register(array)
 def _argmax(x, dim):
     return np.argmax(x, dim)
 
@@ -246,7 +255,7 @@ def new_arange(x, stop):
     return np.arange(stop)
 
 
-@new_arange.register(array, int, int, int)
+@new_arange.register(array)
 def _new_arange(x, start, stop, step):
     return np.arange(start, stop, step)
 
@@ -257,18 +266,18 @@ def new_zeros(x, shape):
 
 
 @UnaryOp.make
-def new_full(x, shape, value):
+def new_full(x, shape=(), value=math.nan):
     return np.full(shape, value, dtype=x.dtype)
 
 
 @UnaryOp.make
-def new_eye(x, shape):
+def new_eye(x, shape=()):
     n = shape[-1]
     return np.broadcast_to(np.eye(n), shape + (n,))
 
 
 @UnaryOp.make
-def permute(x, dims):
+def permute(x, dims=()):
     return np.transpose(x, axes=dims)
 
 

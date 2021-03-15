@@ -50,32 +50,16 @@ class OpMeta(type):
         return cls.dispatcher.register
 
     def __call__(cls, *args, **kwargs):
+        args = (None,) * cls.arity + args
         bound = cls.signature.bind(*args, **kwargs)
         bound.apply_defaults()
-        args = bound.args
-        fn = cls.dispatcher.dispatch(*args[: cls.arity])
-        return fn(*args, **bound.kwargs)
-
-    def bind_partial(cls, *args, **kwargs):
-        """
-        Finds or constructs an instance ``op`` such that::
-
-            op(*args[:cls.arity]) == cls()(*args, **kwargs)
-
-        where ``cls()`` is the default op.
-        """
-        bound = cls.signature.bind(*args, **kwargs)
-        args = bound.args
-        assert len(args) >= cls.arity, "missing required args"
-        args = args[cls.arity :]
+        args = bound.args[cls.arity :]
         kwargs = bound.kwargs
-        key = cls.hash_args_kwargs(args, tuple(kwargs.items()))
-        try:
-            return cls._instance_cache[key]
-        except KeyError:
-            op = cls(*args, **kwargs)
-            cls._instance_cache[key] = op
-            return op
+        key = cls.hash_args_kwargs(args, kwargs)
+        op = cls._instance_cache.get(key, None)
+        if op is None:
+            op = cls._instance_cache[key] = super().__call__(*args, **kwargs)
+        return op
 
     @staticmethod
     def hash_args_kwargs(args, kwargs):
@@ -90,7 +74,8 @@ class Op(metaclass=OpMeta):
     followed by additional non-funsor args and kwargs. The additional args and
     kwargs must have default values.
 
-    When wrapping new backend ops, keep in mind these restrictions:
+    When wrapping new backend ops, keep in mind these restrictions, which may
+    require you to wrap backend functions before making them into ops:
 
     - Create new ops only by decoraing a default implementation with
       ``@UnaryOp.make``, ``@BinaryOp.make``, etc.
@@ -99,6 +84,7 @@ class Op(metaclass=OpMeta):
       include only the first ``arity``-many types.
     - Only the first ``arity``-many arguments may be funsors. Remaining args
       and kwargs must all be ground Python data.
+    - All remaining non-funsor args and kwargs must define default values.
 
     :cvar int arity: The number of funsor arguments this op takes. Must be
         defined by subclasses.
@@ -259,7 +245,7 @@ class TransformOp(UnaryOp):
         raise NotImplementedError
 
 
-class WrappedOpMeta(type):
+class WrappedOpMeta(OpMeta):
     """
     Metaclass for ops that wrap temporary backend ops.
     Caching strategy is to key on ``id(backend_op)`` and forget values asap.

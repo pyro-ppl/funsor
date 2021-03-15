@@ -19,6 +19,8 @@ from .op import (
 )
 
 _builtin_abs = abs
+_builtin_max = max
+_builtin_min = min
 _builtin_pow = pow
 _builtin_sum = sum
 
@@ -64,8 +66,17 @@ lshift = BinaryOp.make(operator.lshift)
 rshift = BinaryOp.make(operator.rshift)
 or_ = AssociativeOp.make(operator.or_)
 xor = AssociativeOp.make(operator.xor)
-max = AssociativeOp.make(max)
-min = AssociativeOp.make(min)
+
+
+@AssociativeOp.make
+def max(lhs, rhs):
+    return _builtin_max(lhs, rhs)
+
+
+@AssociativeOp.make
+def min(lhs, rhs):
+    return _builtin_min(lhs, rhs)
+
 
 lgamma = UnaryOp.make(math.lgamma)
 log1p = UnaryOp.make(math.log1p)

@@ -1918,27 +1918,27 @@ def quote_inplace_first_arg_on_first_line(arg, indent, out):
 
 @ops.UnaryOp.subclass_register(Funsor)
 def unary_funsor(cls, arg, *args, **kwargs):
-    op = cls.bind_partial(arg, *args, **kwargs)
+    op = cls(*args, **kwargs)
     return Unary(op, arg)
 
 
 @ops.BinaryOp.subclass_register(Funsor, Funsor)
 def binary_funsor_funsor(cls, lhs, rhs, *args, **kwargs):
-    op = cls.bind_partial(lhs, rhs, *args, **kwargs)
+    op = cls(*args, **kwargs)
     return Binary(op, lhs, rhs)
 
 
 @ops.BinaryOp.subclass_register(object, Funsor)
 def binary_object_funsor(cls, lhs, rhs, *args, **kwargs):
+    op = cls(*args, **kwargs)
     lhs = to_funsor(lhs)
-    op = cls.bind_partial(lhs, rhs, *args, **kwargs)
     return Binary(op, lhs, rhs)
 
 
 @ops.BinaryOp.subclass_register(Funsor, object)
 def binary_funsor_object(cls, lhs, rhs, *args, **kwargs):
+    op = cls(*args, **kwargs)
     rhs = to_funsor(rhs)
-    op = cls.bind_partial(lhs, rhs, *args, **kwargs)
     return Binary(op, lhs, rhs)
 
 
