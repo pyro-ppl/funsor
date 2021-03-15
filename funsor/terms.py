@@ -1942,6 +1942,19 @@ def binary_funsor_object(cls, lhs, rhs, *args, **kwargs):
     return Binary(op, lhs, rhs)
 
 
+@ops.TernaryOp.subclass_register(Funsor, Funsor, Funsor)
+@ops.TernaryOp.subclass_register(Funsor, Funsor, object)
+@ops.TernaryOp.subclass_register(Funsor, object, object)
+@ops.TernaryOp.subclass_register(object, Funsor, object)
+@ops.TernaryOp.subclass_register(object, object, Funsor)
+def binary_funsor_object(cls, x, y, z, *args, **kwargs):
+    op = cls(*args, **kwargs)
+    x = to_funsor(x)
+    y = to_funsor(y)
+    z = to_funsor(z)
+    return Finitary(op, (x, y, z))
+
+
 __all__ = [
     "Approximate",
     "Binary",

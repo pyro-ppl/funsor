@@ -153,7 +153,7 @@ def diagonal(x, dim1, dim2):
     raise NotImplementedError
 
 
-@diagonal.register(array, int, int)
+@diagonal.register(array)
 def _diagonal(x, dim1, dim2):
     return np.diagonal(x, axis1=dim1, axis2=dim2)
 
