@@ -29,7 +29,6 @@ from funsor.terms import (
     Subs,
     Unary,
     Variable,
-    substitute,
     to_funsor,
 )
 from funsor.typing import Variadic
@@ -220,13 +219,7 @@ class Contraction(Funsor):
             for var in self.reduced_vars
         )
         alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
-        terms = tuple(
-            term
-            if isinstance(term, Funsor)
-            and not set(self.bound).intersection(term.inputs)
-            else substitute(term, alpha_subs)
-            for term in self.terms
-        )
+        terms = super()._alpha_convert(alpha_subs)[-1]
         return self.red_op, self.bin_op, reduced_vars, terms
 
 

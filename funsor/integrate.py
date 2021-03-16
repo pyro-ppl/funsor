@@ -18,7 +18,6 @@ from funsor.terms import (
     Unary,
     Variable,
     _convert_reduced_vars,
-    substitute,
     to_funsor,
 )
 
@@ -77,8 +76,7 @@ class Integrate(Funsor, metaclass=IntegrateMeta):
             )
             for k, v in alpha_subs.items()
         }
-        log_measure = substitute(self.log_measure, alpha_subs)
-        integrand = substitute(self.integrand, alpha_subs)
+        log_measure, integrand, _ = super()._alpha_convert(alpha_subs)
         return log_measure, integrand, reduced_vars
 
 
