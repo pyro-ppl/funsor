@@ -3,6 +3,8 @@
 
 import functools
 import inspect
+import math
+import operator
 import weakref
 
 from funsor.registry import PartialDispatcher
@@ -11,6 +13,23 @@ from funsor.util import methodof
 
 def apply(function, args, kwargs={}):
     return function(*args, **kwargs)
+
+
+def _get_signature(fn):
+    try:
+        return inspect.Signature.from_callable(fn)
+    except ValueError as e:
+        # In Python <=3.6, attempt to parse docstring of builtins.
+        if any(fn is getattr(lib, fn.__name__, None) for lib in (math, operator)):
+            if fn.__doc__.startswith(f"{fn.__name__}(x)"):
+                return inspect.Signature.from_callable(lambda x: None)
+            if fn.__doc__.startswith(f"{fn.__name__}(a)"):
+                return inspect.Signature.from_callable(lambda a: None)
+            if fn.__doc__.startswith(f"{fn.__name__}(obj)"):
+                return inspect.Signature.from_callable(lambda obj: None)
+            if fn.__doc__.startswith(f"{fn.__name__}(a, b)"):
+                return inspect.Signature.from_callable(lambda a, b: None)
+        raise e from None
 
 
 def _iter_subclasses(cls):
@@ -201,7 +220,7 @@ class Op(metaclass=OpMeta):
         assert issubclass(metaclass, OpMeta)
 
         classname = _snake_to_camel(name) + "Op"  # e.g. scatter_add -> ScatterAddOp
-        signature = inspect.Signature.from_callable(fn)
+        signature = _get_signature(fn)
         op_class = metaclass(
             classname,
             (cls,),
