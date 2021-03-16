@@ -60,13 +60,13 @@ def any(x, dim=None):
 
 
 @UnaryOp.make
-def amax(x, dim=None):
-    return np.amax(x, dim)
+def amax(x, dim=None, keepdims=False):
+    return np.amax(x, dim, keepdims=keepdims)
 
 
 @UnaryOp.make
-def amin(x, dim=None):
-    return np.amax(x, dim)
+def amin(x, dim=None, keepdims=False):
+    return np.amax(x, dim, keepdims=keepdims)
 
 
 @UnaryOp.make
