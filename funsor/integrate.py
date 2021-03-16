@@ -18,7 +18,6 @@ from funsor.terms import (
     Unary,
     Variable,
     _convert_reduced_vars,
-    to_funsor,
 )
 
 
@@ -63,21 +62,6 @@ class Integrate(Funsor, metaclass=IntegrateMeta):
         self.log_measure = log_measure
         self.integrand = integrand
         self.reduced_vars = reduced_vars
-
-    def _alpha_convert(self, alpha_subs):
-        assert set(self.bound).issuperset(alpha_subs)
-        reduced_vars = frozenset(
-            Variable(alpha_subs.get(v.name, v.name), v.output)
-            for v in self.reduced_vars
-        )
-        alpha_subs = {
-            k: to_funsor(
-                v, self.integrand.inputs.get(k, self.log_measure.inputs.get(k))
-            )
-            for k, v in alpha_subs.items()
-        }
-        log_measure, integrand, _ = super()._alpha_convert(alpha_subs)
-        return log_measure, integrand, reduced_vars
 
 
 @normalize.register(Integrate, Funsor, Funsor, frozenset)

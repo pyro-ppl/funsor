@@ -298,8 +298,8 @@ class Funsor(object, metaclass=FunsorMeta):
         Rename bound variables while preserving all free variables.
         """
         # Substitute all funsor values.
-        # Subclasses must handle string conversion.
         assert set(alpha_subs).issubset(self.bound)
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
         return tuple(
             v
             if isinstance(v, Funsor) and not set(self.bound).intersection(v.inputs)
@@ -1027,14 +1027,6 @@ class Reduce(Funsor):
             str(self.arg), self.op.__name__, ", ".join(rvars)
         )
 
-    def _alpha_convert(self, alpha_subs):
-        alpha_subs = {
-            k: to_funsor(v, self.arg.inputs[k]) for k, v in alpha_subs.items()
-        }
-        op, arg, reduced_vars = super()._alpha_convert(alpha_subs)
-        reduced_vars = frozenset(alpha_subs.get(var.name, var) for var in reduced_vars)
-        return op, arg, reduced_vars
-
 
 def _reduce_unrelated_vars(op, arg, reduced_vars):
     factor_vars = reduced_vars - arg.input_vars
@@ -1495,12 +1487,6 @@ class Lambda(Funsor):
         super(Lambda, self).__init__(inputs, output, fresh, bound)
         self.var = var
         self.expr = expr
-
-    def _alpha_convert(self, alpha_subs):
-        alpha_subs = {
-            k: to_funsor(v, self.var.inputs[k]) for k, v in alpha_subs.items()
-        }
-        return super()._alpha_convert(alpha_subs)
 
 
 @eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
