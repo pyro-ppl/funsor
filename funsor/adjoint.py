@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import defaultdict
-from collections.abc import Hashable
 
 from funsor.cnf import Contraction, null
 from funsor.interpretations import Interpretation, reflect
