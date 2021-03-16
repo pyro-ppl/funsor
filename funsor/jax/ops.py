@@ -120,9 +120,11 @@ def _finfo(x):
     return np.finfo(x.dtype)
 
 
-@ops.is_numeric_array.register(array)
-def _is_numeric_array(x):
-    return True
+for typ in array:
+
+    @ops.is_numeric_array.register(typ)
+    def _is_numeric_array(x):
+        return True
 
 
 @ops.isnan.register(array)

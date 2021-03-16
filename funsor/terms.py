@@ -1963,6 +1963,11 @@ def finitary_funsor(cls, arg, *args, **kwargs):
     return Finitary(op, arg)
 
 
+@ops.is_numeric_array.register(Funsor)
+def _is_numeric_array(x):
+    return False
+
+
 __all__ = [
     "Approximate",
     "Binary",

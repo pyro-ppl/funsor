@@ -4,6 +4,7 @@
 import math
 import numbers
 import typing
+from functools import singledispatch
 
 import numpy as np
 
@@ -211,9 +212,17 @@ def finfo(x):
     return np.finfo(x.dtype)
 
 
-@UnaryOp.make
+# this isn't really a mathematical op
+@singledispatch
 def is_numeric_array(x):
-    return True if isinstance(x, array) else False
+    return False
+
+
+for typ in array:
+
+    @is_numeric_array.register(typ)
+    def _is_numeric_array(x):
+        return True
 
 
 @logaddexp.register(array, array)

@@ -1184,6 +1184,11 @@ def tensordot(x, y, dims):
     return Einsum(equation, x, y)
 
 
+@ops.is_numeric_array.register(Tensor)
+def _is_numeric_array(x):
+    return True
+
+
 REDUCE_OP_TO_NUMERIC = {
     ops.add: ops.sum,
     ops.mul: ops.prod,

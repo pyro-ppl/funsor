@@ -469,27 +469,27 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         )
         prec_aa = ops.cat(
             [
-                ops.cat(-1, *[precision[..., i1, i2] for k2, i2 in slices if k2 in a])
+                ops.cat([precision[..., i1, i2] for k2, i2 in slices if k2 in a], -1)
                 for k1, i1 in slices
                 if k1 in a
             ],
             -2,
         )
         prec_ab = ops.cat(
-            *[
-                ops.cat(-1, *[precision[..., i1, i2] for k2, i2 in slices if k2 in b])
+            [
+                ops.cat([precision[..., i1, i2] for k2, i2 in slices if k2 in b], -1)
                 for k1, i1 in slices
                 if k1 in a
             ],
-            -2
+            -2,
         )
         prec_bb = ops.cat(
-            *[
+            [
                 ops.cat([precision[..., i1, i2] for k2, i2 in slices if k2 in b], -1)
                 for k1, i1 in slices
                 if k1 in b
             ],
-            -2
+            -2,
         )
         info_a = ops.cat([info_vec[..., i] for k, i in slices if k in a], -1)
         info_b = ops.cat([info_vec[..., i] for k, i in slices if k in b], -1)
