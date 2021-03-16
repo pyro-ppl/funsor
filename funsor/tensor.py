@@ -764,16 +764,18 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
 
 @eager.register(Unary, ReshapeOp, Tensor)
 def eager_reshape_tensor(op, arg):
-    if arg.shape == op.shape:
+    shape = op.defaults["shape"]
+    if arg.shape == shape:
         return arg
     batch_shape = arg.data.shape[: len(arg.data.shape) - len(arg.shape)]
-    data = arg.data.reshape(batch_shape + op.shape)
+    data = arg.data.reshape(batch_shape + shape)
     return Tensor(data, arg.inputs, arg.dtype)
 
 
 @eager.register(Binary, GetitemOp, Tensor, Number)
 def eager_getitem_tensor_number(op, lhs, rhs):
-    index = [slice(None)] * (len(lhs.inputs) + op.offset)
+    offset = op.defaults["offset"]
+    index = [slice(None)] * (len(lhs.inputs) + offset)
     index.append(rhs.data)
     index = tuple(index)
     data = lhs.data[index]
@@ -782,8 +784,9 @@ def eager_getitem_tensor_number(op, lhs, rhs):
 
 @eager.register(Binary, GetitemOp, Tensor, Variable)
 def eager_getitem_tensor_variable(op, lhs, rhs):
-    assert op.offset < len(lhs.output.shape)
-    assert rhs.output == Bint[lhs.output.shape[op.offset]]
+    offset = op.defaults["offset"]
+    assert offset < len(lhs.output.shape)
+    assert rhs.output == Bint[lhs.output.shape[offset]]
     assert rhs.name not in lhs.inputs
 
     # Convert a positional event dimension to a named batch dimension.
@@ -791,7 +794,7 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
     inputs[rhs.name] = rhs.output
     data = lhs.data
     target_dim = len(lhs.inputs)
-    source_dim = target_dim + op.offset
+    source_dim = target_dim + offset
     if target_dim != source_dim:
         perm = list(range(len(data.shape)))
         del perm[source_dim]
@@ -802,8 +805,9 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
 
 @eager.register(Binary, GetitemOp, Tensor, Tensor)
 def eager_getitem_tensor_tensor(op, lhs, rhs):
-    assert op.offset < len(lhs.output.shape)
-    assert rhs.output == Bint[lhs.output.shape[op.offset]]
+    offset = op.defaults["offset"]
+    assert offset < len(lhs.output.shape)
+    assert rhs.output == Bint[lhs.output.shape[offset]]
 
     # Compute inputs and outputs.
     if lhs.inputs == rhs.inputs:
@@ -815,7 +819,7 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
 
     # Perform advanced indexing.
     lhs_data_dim = len(lhs_data.shape)
-    target_dim = lhs_data_dim - len(lhs.output.shape) + op.offset
+    target_dim = lhs_data_dim - len(lhs.output.shape) + offset
     index = [None] * lhs_data_dim
     for i in range(target_dim):
         index[i] = ops.new_arange(lhs_data, lhs_data.shape[i]).reshape(
@@ -1086,29 +1090,6 @@ def function(*signature):
     return functools.partial(_function, inputs, output)
 
 
-class EinsumOp(ops.Op, metaclass=ops.CachedOpMeta):
-    def __init__(self, equation):
-        self.equation = equation
-
-
-@find_domain.register(EinsumOp)
-def _find_domain_einsum(op, *operands):
-    equation = op.equation
-    ein_inputs, ein_output = equation.split("->")
-    ein_inputs = ein_inputs.split(",")
-    size_dict = {}
-    for ein_input, x in zip(ein_inputs, operands):
-        assert x.dtype == "real"
-        assert len(ein_input) == len(x.shape)
-        for name, size in zip(ein_input, x.shape):
-            other_size = size_dict.setdefault(name, size)
-            if other_size != size:
-                raise ValueError(
-                    "Size mismatch at {}: {} vs {}".format(name, size, other_size)
-                )
-    return Reals[tuple(size_dict[d] for d in ein_output)]
-
-
 def Einsum(equation, *operands):
     """
     Wrapper around :func:`torch.einsum` or :func:`np.einsum` to operate on real-valued Funsors.
@@ -1120,10 +1101,10 @@ def Einsum(equation, *operands):
     :param str equation: An :func:`torch.einsum` or :func:`np.einsum` equation.
     :param tuple operands: A tuple of input funsors.
     """
-    return Finitary(EinsumOp(equation), tuple(operands))
+    return ops.einsum(operands, equation)
 
 
-@eager.register(Finitary, EinsumOp, typing.Tuple[Tensor, ...])
+@eager.register(Finitary, ops.EinsumOp, typing.Tuple[Tensor, ...])
 def eager_einsum(op, operands):
     # Make new symbols for inputs of operands.
     equation = op.equation

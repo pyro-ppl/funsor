@@ -5,11 +5,21 @@ import functools
 import inspect
 import weakref
 
-from multipledispatch import Dispatcher
+from funsor.registry import PartialDispatcher
 
 
 def apply(function, args, kwargs={}):
     return function(*args, **kwargs)
+
+
+def _iter_subclasses(cls):
+    yield cls
+    for subcls in cls.__subclasses__():
+        yield from _iter_subclasses(subcls)
+
+
+def _snake_to_camel(name):
+    return "".join(part.capitalize() for part in name.split("_") if part)
 
 
 class WeakPartial:
@@ -51,7 +61,7 @@ class OpMeta(type):
 
     def __call__(cls, *args, **kwargs):
         args = (None,) * cls.arity + args
-        bound = cls.signature.bind(*args, **kwargs)
+        bound = cls.signature.bind_partial(*args, **kwargs)
         bound.apply_defaults()
         args = bound.args[cls.arity :]
         kwargs = bound.kwargs
@@ -84,7 +94,6 @@ class Op(metaclass=OpMeta):
       include only the first ``arity``-many types.
     - Only the first ``arity``-many arguments may be funsors. Remaining args
       and kwargs must all be ground Python data.
-    - All remaining non-funsor args and kwargs must define default values.
 
     :cvar int arity: The number of funsor arguments this op takes. Must be
         defined by subclasses.
@@ -99,9 +108,15 @@ class Op(metaclass=OpMeta):
         super().__init__()
         cls = type(self)
         args = (None,) * cls.arity + args
-        bound = cls.signature.bind(*args, **kwargs)
+        bound = cls.signature.bind_partial(*args, **kwargs)
         bound.apply_defaults()
-        self.defaults = tuple(bound.arguments.items())[cls.arity :]
+        self.defaults = bound.arguments
+        for key in list(self.defaults)[: cls.arity]:
+            del self.defaults[key]
+
+    @property
+    def __name__(self):
+        return self.name
 
     def __copy__(self):
         return self
@@ -110,8 +125,7 @@ class Op(metaclass=OpMeta):
         return self
 
     def __reduce__(self):
-        args = self.bound.args[self.arity :]
-        return apply, (type(self), args, self.bound.kwargs)
+        return apply, (type(self), (), self.defaults)
 
     def __repr__(self):
         return "ops." + self.__name__
@@ -123,22 +137,32 @@ class Op(metaclass=OpMeta):
         # Normalize args, kwargs.
         cls = type(self)
         bound = cls.signature.bind(*args, **kwargs)
-        for key, value in self.defaults:
+        for key, value in self.defaults.items():
             bound.arguments.setdefault(key, value)
         args = bound.args
         assert len(args) >= cls.arity
         kwargs = bound.kwargs
 
         # Dispatch.
-        fn = cls.dispatcher.dispatch(*args[: cls.arity])
+        fn = cls.dispatcher.partial_call(*args[: cls.arity])
         return fn(*args, **kwargs)
+
+    def register(self, *pattern):
+        if len(pattern) != self.arity:
+            raise ValueError(
+                f"Invalid pattern for {self}, "
+                f"expected {self.arity} types but got {len(pattern)}."
+            )
+        return type(self).dispatcher.register(*pattern)
 
     @classmethod
     def subclass_register(cls, *pattern):
         def decorator(fn):
             # Register with all existing sublasses.
-            for subcls in [cls] + cls.__subclasses__():
-                cls.dispatcher.add(pattern, WeakPartial(fn, subcls))
+            for subcls in _iter_subclasses(cls):
+                dispatcher = getattr(subcls, "dispatcher", None)
+                if dispatcher is not None:
+                    dispatcher.add(pattern, WeakPartial(fn, subcls))
             # Ensure registration with all future subclasses.
             cls._subclass_registry.append((pattern, fn))
             return fn
@@ -149,7 +173,11 @@ class Op(metaclass=OpMeta):
     def make(cls, fn=None, *, name=None, metaclass=OpMeta, module_name="funsor.ops"):
         """
         Factory to create a new :class:`Op` subclass together with a new
-        instance of that class.
+        default instance of that class.
+
+        :param callable fn: A function whose signature can be inspected.
+        :returns: The new default instance.
+        :rtype: Op
         """
         if not isinstance(cls.arity, int):
             raise TypeError(
@@ -166,20 +194,19 @@ class Op(metaclass=OpMeta):
         assert isinstance(name, str)
 
         assert issubclass(metaclass, OpMeta)
-        classname = name.capitalize().rstrip("_") + "Op"  # e.g. add -> AddOp
+        classname = _snake_to_camel(name) + "Op"  # e.g. scatter_add -> ScatterAddOp
         signature = inspect.Signature.from_callable(fn)
-        dispatcher = Dispatcher(name)
         op_class = metaclass(
             classname,
             (cls,),
             {
-                "default": fn,
-                "dispatcher": dispatcher,
+                "name": name,
                 "signature": signature,
+                "default": staticmethod(fn),
+                "dispatcher": PartialDispatcher(fn, name),
             },
         )
         op_class.__module__ = module_name
-        dispatcher.add((object,) * cls.arity, fn)
         op = op_class()
         return op
 
@@ -215,6 +242,10 @@ class BinaryOp(Op):
 
 class TernaryOp(Op):
     arity = 3
+
+
+class FinitaryOp(Op):
+    arity = 1  # encoded as a tuple
 
 
 class TransformOp(UnaryOp):
@@ -335,6 +366,7 @@ __all__ = [
     "BINARY_INVERSES",
     "BinaryOp",
     "DISTRIBUTIVE_OPS",
+    "FinitaryOp",
     "LogAbsDetJacobianOp",
     "NullaryOp",
     "Op",

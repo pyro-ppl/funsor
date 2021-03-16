@@ -1670,9 +1670,10 @@ class Lambda(Funsor):
 
 @eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
 def eager_getitem_lambda(op, lhs, rhs):
-    if op.offset == 0:
+    offset = op.defaults["offset"]
+    if offset == 0:
         return Subs(lhs.expr, ((lhs.var.name, rhs),))
-    expr = GetitemOp(op.offset - 1)(lhs.expr, rhs)
+    expr = GetitemOp(offset - 1)(lhs.expr, rhs)
     return Lambda(lhs.var, expr)
 
 
@@ -1947,12 +1948,19 @@ def binary_funsor_object(cls, lhs, rhs, *args, **kwargs):
 @ops.TernaryOp.subclass_register(Funsor, object, object)
 @ops.TernaryOp.subclass_register(object, Funsor, object)
 @ops.TernaryOp.subclass_register(object, object, Funsor)
-def binary_funsor_object(cls, x, y, z, *args, **kwargs):
+def ternary_funsor_object(cls, x, y, z, *args, **kwargs):
     op = cls(*args, **kwargs)
     x = to_funsor(x)
     y = to_funsor(y)
     z = to_funsor(z)
     return Finitary(op, (x, y, z))
+
+
+# FIXME allow some non-funsors
+@ops.FinitaryOp.subclass_register(typing.Tuple[Funsor, ...])
+def finitary_funsor(cls, arg, *args, **kwargs):
+    op = cls(*args, **kwargs)
+    return Finitary(op, arg)
 
 
 __all__ = [

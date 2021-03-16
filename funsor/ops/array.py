@@ -38,12 +38,12 @@ _builtin_any = any
 
 # This is used only for pattern matching.
 array = (np.ndarray, np.generic)
+arraylist = sum([(typing.Tuple[t, ...], typing.List[t]) for t in array], ())
 
 all = UnaryOp.make(np.all)
 amax = UnaryOp.make(np.amax)
 amin = UnaryOp.make(np.amin)
 any = UnaryOp.make(np.any)
-isnan = UnaryOp.make(np.isnan)
 prod = UnaryOp.make(np.prod)
 sum = UnaryOp.make(np.sum)
 
@@ -55,7 +55,12 @@ atanh.register(array)(np.arctanh)
 
 
 @UnaryOp.make
-def full_like(prototype, shape=(), fill_value=0):
+def isnan(x):
+    return np.isnan(x)
+
+
+@UnaryOp.make
+def full_like(prototype, shape, fill_value):
     return np.full_like(prototype, shape, fill_value)
 
 
@@ -96,18 +101,17 @@ def astype(x, dtype):
     raise NotImplementedError
 
 
-@astype.register(array, str)
+@astype.register(array)
 def _astype(x, dtype):
     return x.astype(dtype)
 
 
 @UnaryOp.make
-def cat(parts, axis=0):
+def cat(parts, axis):
     raise NotImplementedError
 
 
-cat.register(typing.Tuple[array, ...])(np.concatenate)
-cat.register(typing.List[array, ...])(np.concatenate)
+cat.register(arraylist)(np.concatenate)
 
 
 @UnaryOp.make
@@ -163,8 +167,7 @@ def einsum(operands, equation):
     raise NotImplementedError
 
 
-@einsum.register(typing.Tuple[array, ...])
-@einsum.register(typing.List[array, ...])
+@einsum.register(arraylist)
 def _einsum(operands, equation):
     return np.einsum(equation, *operands)
 
@@ -251,13 +254,17 @@ def _argmax(x, dim):
 
 
 @UnaryOp.make
-def new_arange(x, stop):
-    return np.arange(stop)
+def new_arange(x, start=None, stop=None, step=None):
+    raise NotImplementedError
 
 
 @new_arange.register(array)
 def _new_arange(x, start, stop, step):
-    return np.arange(start, stop, step)
+    if step is not None:
+        return np.arange(start, stop, step)
+    if stop is not None:
+        return np.arange(start, stop)
+    return np.arange(start)
 
 
 @UnaryOp.make
@@ -266,18 +273,18 @@ def new_zeros(x, shape):
 
 
 @UnaryOp.make
-def new_full(x, shape=(), value=math.nan):
+def new_full(x, shape, value):
     return np.full(shape, value, dtype=x.dtype)
 
 
 @UnaryOp.make
-def new_eye(x, shape=()):
+def new_eye(x, shape):
     n = shape[-1]
     return np.broadcast_to(np.eye(n), shape + (n,))
 
 
 @UnaryOp.make
-def permute(x, dims=()):
+def permute(x, dims):
     return np.transpose(x, axes=dims)
 
 
@@ -336,8 +343,7 @@ def stack(parts, axis=0):
     raise NotImplementedError
 
 
-stack.register(typing.Tuple[array, ...])(np.stack)
-stack.register(typing.List[array, ...])(np.stack)
+stack.register(arraylist)(np.stack)
 
 
 @UnaryOp.make
@@ -345,7 +351,7 @@ def transpose(array, axis1, axis2):
     raise NotImplementedError
 
 
-transpose.register(array, int, int)(np.swapaxes)
+transpose.register(array)(np.swapaxes)
 
 
 @BinaryOp.make

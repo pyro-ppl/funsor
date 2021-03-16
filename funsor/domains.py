@@ -250,14 +250,15 @@ def _find_domain_log_exp(op, domain):
 
 @find_domain.register(ops.ReshapeOp)
 def _find_domain_reshape(op, domain):
-    return Array[domain.dtype, op.shape]
+    return Array[domain.dtype, op.defaults["shape"]]
 
 
 @find_domain.register(ops.GetitemOp)
 def _find_domain_getitem(op, lhs_domain, rhs_domain):
     if isinstance(lhs_domain, ArrayType):
+        offset = op.defaults["offset"]
         dtype = lhs_domain.dtype
-        shape = lhs_domain.shape[: op.offset] + lhs_domain.shape[1 + op.offset :]
+        shape = lhs_domain.shape[:offset] + lhs_domain.shape[1 + offset :]
         return Array[dtype, shape]
     elif isinstance(lhs_domain, ProductDomain):
         # XXX should this return a Union?
@@ -342,7 +343,7 @@ def _find_domain_associative_generic(op, *domains):
 
 @find_domain.register(ops.WrappedTransformOp)
 def _transform_find_domain(op, domain):
-    fn = op.dispatch(object)
+    fn = op.default
     shape = fn.forward_shape(domain.shape)
     return Array[domain.dtype, shape]
 
@@ -351,6 +352,24 @@ def _transform_find_domain(op, domain):
 def _transform_log_abs_det_jacobian(op, domain, codomain):
     # TODO do we need to handle batch shape here?
     return Real
+
+
+@find_domain.register(ops.EinsumOp)
+def _find_domain_einsum(op, operands):
+    equation = op.defaults["equation"]
+    ein_inputs, ein_output = equation.split("->")
+    ein_inputs = ein_inputs.split(",")
+    size_dict = {}
+    for ein_input, x in zip(ein_inputs, operands):
+        assert x.dtype == "real"
+        assert len(ein_input) == len(x.shape)
+        for name, size in zip(ein_input, x.shape):
+            other_size = size_dict.setdefault(name, size)
+            if other_size != size:
+                raise ValueError(
+                    "Size mismatch at {}: {} vs {}".format(name, size, other_size)
+                )
+    return Reals[tuple(size_dict[d] for d in ein_output)]
 
 
 __all__ = [

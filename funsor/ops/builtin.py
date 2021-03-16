@@ -31,7 +31,7 @@ class AssociativeOp(BinaryOp):
 
 
 @AssociativeOp.make
-def nullop(x, y):
+def null(x, y):
     """Placeholder associative op that unifies with any other op"""
     raise ValueError("should never actually evaluate this!")
 
@@ -209,7 +209,7 @@ __all__ = [
     "mul",
     "ne",
     "neg",
-    "nullop",
+    "null",
     "or_",
     "pos",
     "pow",
