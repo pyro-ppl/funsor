@@ -124,12 +124,12 @@ def safediv(x, y):
 
 @exp.set_log_abs_det_jacobian
 def log_abs_det_jacobian(x, y):
-    return add(x)
+    return x.sum()
 
 
 @log.set_log_abs_det_jacobian
 def log_abs_det_jacobian(x, y):
-    return -add(y)
+    return -y.sum()
 
 
 exp.set_inv(log)

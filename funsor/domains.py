@@ -354,6 +354,19 @@ def _transform_log_abs_det_jacobian(op, domain, codomain):
     return Real
 
 
+@find_domain.register(ops.StackOp)
+def _find_domain_stack(op, parts):
+    shape = broadcast_shape(*(x.shape for x in parts))
+    dim = op.defaults["dim"]
+    if dim >= 0:
+        dim = dim - len(shape) - 1
+    assert dim < 0
+    split = dim + len(shape) + 1
+    shape = shape[:split] + (len(parts),) + shape[split:]
+    output = Array[parts[0].dtype, shape]
+    return output
+
+
 @find_domain.register(ops.EinsumOp)
 def _find_domain_einsum(op, operands):
     equation = op.defaults["equation"]
