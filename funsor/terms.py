@@ -1460,7 +1460,7 @@ class Finitary(Funsor):
         inputs = OrderedDict()
         for arg in args:
             inputs.update(arg.inputs)
-        output = find_domain(op, *(arg.output for arg in args))
+        output = find_domain(op, tuple(arg.output for arg in args))
         super().__init__(inputs, output)
         self.op = op
         self.args = args

@@ -1132,7 +1132,7 @@ def eager_einsum(op, operands):
     out = "".join(new_symbols[k] for k in inputs) + out
     equation = ",".join(ins) + "->" + out
 
-    data = ops.einsum(equation, *[x.data for x in operands])
+    data = ops.einsum([x.data for x in operands], equation)
     return Tensor(data, inputs)
 
 
