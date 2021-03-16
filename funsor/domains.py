@@ -343,7 +343,7 @@ def _find_domain_associative_generic(op, *domains):
 
 @find_domain.register(ops.WrappedTransformOp)
 def _transform_find_domain(op, domain):
-    fn = op.default
+    fn = op.defaults["fn"]
     shape = fn.forward_shape(domain.shape)
     return Array[domain.dtype, shape]
 

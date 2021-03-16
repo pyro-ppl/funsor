@@ -6,6 +6,7 @@ import inspect
 import weakref
 
 from funsor.registry import PartialDispatcher
+from funsor.util import methodof
 
 
 def apply(function, args, kwargs={}):
@@ -170,7 +171,7 @@ class Op(metaclass=OpMeta):
         return decorator
 
     @classmethod
-    def make(cls, fn=None, *, name=None, metaclass=OpMeta, module_name="funsor.ops"):
+    def make(cls, fn=None, *, name=None, metaclass=None, module_name="funsor.ops"):
         """
         Factory to create a new :class:`Op` subclass together with a new
         default instance of that class.
@@ -186,20 +187,26 @@ class Op(metaclass=OpMeta):
 
         # Support use as decorator.
         if fn is None:
-            return lambda fn: cls.make(fn, name=name, module_name=module_name)
+            return lambda fn: cls.make(
+                fn, name=name, metaclass=metaclass, module_name=module_name
+            )
         assert callable(fn)
 
         if name is None:
             name = fn.__name__
         assert isinstance(name, str)
 
+        if metaclass is None:
+            metaclass = type(cls)
         assert issubclass(metaclass, OpMeta)
+
         classname = _snake_to_camel(name) + "Op"  # e.g. scatter_add -> ScatterAddOp
         signature = inspect.Signature.from_callable(fn)
         op_class = metaclass(
             classname,
             (cls,),
             {
+                "__doc__": fn.__doc__,
                 "name": name,
                 "signature": signature,
                 "default": staticmethod(fn),
@@ -290,77 +297,76 @@ class WrappedOpMeta(OpMeta):
     Caching strategy is to key on ``id(backend_op)`` and forget values asap.
     """
 
-    def __init__(cls, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        cls._instance_cache = weakref.WeakValueDictionary()
-
-    def __call__(cls, fn):
-        if inspect.ismethod(fn):
-            key = id(fn.__self__), fn.__func__  # e.g. t.log_abs_det_jacobian
-        else:
-            key = id(fn)  # e.g. t.inv
-        try:
-            return cls._instance_cache[key]
-        except KeyError:
-            op = super().__call__(fn)
-            op.fn = fn  # Ensures the key id(fn) is not reused.
-            cls._instance_cache[key] = op
-            return op
+    def hash_args_kwargs(self, args, kwargs):
+        if args:
+            (fn,) = args
+            if inspect.ismethod(fn):
+                args = id(fn.__self__), fn.__func__  # e.g. t.log_abs_det_jacobian
+            else:
+                args = (id(fn),)  # e.g. t.inv
+        return super().hash_args_kwargs(args, kwargs)
 
 
-class WrappedTransformOp(TransformOp, metaclass=WrappedOpMeta):
+@TransformOp.make(metaclass=WrappedOpMeta)
+def wrapped_transform(x, fn, *, validate_args=True):
     """
     Wrapper for a backend ``Transform`` object that provides ``.inv`` and
     ``.log_abs_det_jacobian``. This additionally validates shapes on the first
     :meth:`__call__`.
     """
+    if not validate_args:
+        return fn(x)
 
-    def __init__(self, fn):
-        super().__init__(fn, name=type(fn).__name__)
-        self._is_validated = False
+    try:
+        # Check for shape metadata available after
+        # https://github.com/pytorch/pytorch/pull/50547
+        # https://github.com/pytorch/pytorch/pull/50581
+        # https://github.com/pyro-ppl/pyro/pull/2739
+        # https://github.com/pyro-ppl/numpyro/pull/876
+        fn.domain.event_dim
+        fn.codomain.event_dim
+        fn.forward_shape
+    except AttributeError:
+        backend = fn.__module__.split(".")[0]
+        raise NotImplementedError(
+            f"{fn} is missing shape metadata; try upgrading backend {backend}"
+        )
 
-    def __call__(self, x):
-        if self._is_validated:
-            return super().__call__(x)
+    if len(x.shape) < fn.domain.event_dim:
+        raise ValueError(f"Too few dimensions for input, in {fn.__name_}")
+    event_shape = x.shape[len(x.shape) - fn.domain.event_dim :]
+    shape = fn.forward_shape(event_shape)
+    if len(shape) > fn.codomain.event_dim:
+        raise ValueError(
+            f"Cannot treat transform {fn.__name__} as an Op because it is batched"
+        )
 
-        try:
-            # Check for shape metadata available after
-            # https://github.com/pytorch/pytorch/pull/50547
-            # https://github.com/pytorch/pytorch/pull/50581
-            # https://github.com/pyro-ppl/pyro/pull/2739
-            # https://github.com/pyro-ppl/numpyro/pull/876
-            self.fn.domain.event_dim
-            self.fn.codomain.event_dim
-            self.fn.forward_shape
-        except AttributeError:
-            backend = self.fn.__module__.split(".")[0]
-            raise NotImplementedError(
-                f"{self.fn} is missing shape metadata; "
-                f"try upgrading backend {backend}"
-            )
-
-        if len(x.shape) < self.fn.domain.event_dim:
-            raise ValueError(f"Too few dimensions for input, in {self.name}")
-        event_shape = x.shape[len(x.shape) - self.fn.domain.event_dim :]
-        shape = self.fn.forward_shape(event_shape)
-        if len(shape) > self.fn.codomain.event_dim:
-            raise ValueError(
-                f"Cannot treat transform {self.name} as an Op " "because it is batched"
-            )
-        self._is_validated = True
-        return super().__call__(x)
-
-    @property
-    def inv(self):
-        return WrappedTransformOp(self.fn.inv)
-
-    @property
-    def log_abs_det_jacobian(self):
-        return LogAbsDetJacobianOp(self.fn.log_abs_det_jacobian)
+    return fn(x)
 
 
-class LogAbsDetJacobianOp(BinaryOp, metaclass=WrappedOpMeta):
-    pass
+WrappedTransformOp = type(wrapped_transform)
+
+
+@methodof(WrappedTransformOp)
+@property
+def inv(self):
+    fn = self.defaults["fn"]
+    return WrappedTransformOp(fn=fn.inv)
+
+
+@methodof(WrappedTransformOp)
+@property
+def log_abs_det_jacobian(self):
+    fn = self.defaults["fn"]
+    return LogAbsDetJacobianOp(fn=fn.log_abs_det_jacobian)
+
+
+@BinaryOp.make(metaclass=WrappedOpMeta)
+def log_abs_det_jacobian(x, y, fn):
+    return fn(x, y)
+
+
+LogAbsDetJacobianOp = type(log_abs_det_jacobian)
 
 
 # Op registration tables.
@@ -386,4 +392,6 @@ __all__ = [
     "UnaryOp",
     "WrappedTransformOp",
     "declare_op_types",
+    "log_abs_det_jacobian",
+    "wrapped_transform",
 ]
