@@ -337,6 +337,14 @@ class Funsor(object, metaclass=FunsorMeta):
     def requires_grad(self):
         return False
 
+    def expand(self, op, expanded_vars):
+        assert isinstance(op, AssociativeOp)
+        # Eagerly convert reduced_vars to appropriate things.
+        assert isinstance(expanded_vars, tuple)
+        if not expanded_vars:
+            return self
+        return Expand(op, self, expanded_vars)
+
     def reduce(self, op, reduced_vars=None):
         """
         Reduce along all or a subset of inputs.
@@ -992,6 +1000,48 @@ class Binary(Funsor):
 def die_binary(op, lhs, rhs):
     expr = reflect.interpret(Binary, op, lhs, rhs)
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
+
+
+class Expand(Funsor):
+    """
+    Lazy expand operation over multiple variables.
+
+    The user-facing interface is the :meth:`Funsor.expand` method.
+
+    :param op: An associative operator.
+    :type op: ~funsor.ops.AssociativeOp
+    :param funsor arg: An argument to be reduced.
+    :param frozenset reduced_vars: A set of variables over which to reduce.
+    """
+
+    def __init__(self, op, arg, expanded_vars):
+        assert isinstance(op, AssociativeOp)
+        assert isinstance(arg, Funsor)
+        assert isinstance(expanded_vars, tuple)
+        assert all(isinstance(v, Variable) for v in expanded_vars)
+        inputs = OrderedDict([(var.name, var.output) for var in expanded_vars])
+        inputs.update(arg.inputs)
+        output = arg.output
+        fresh = frozenset()
+        bound = {}
+        super().__init__(inputs, output, fresh, bound)
+        self.op = op
+        self.arg = arg
+        self.expanded_vars = expanded_vars
+
+    def __repr__(self):
+        assert self.expanded_vars
+        rvars = [repr(v) for v in self.expanded_vars]
+        return "{}.expand({}, {{{}}})".format(
+            repr(self.arg), self.op.__name__, ", ".join(rvars)
+        )
+
+    def __str__(self):
+        assert self.expanded_vars
+        rvars = [repr(v) for v in self.expanded_vars]
+        return "{}.expand({}, {{{}}})".format(
+            repr(self.arg), self.op.__name__, ", ".join(rvars)
+        )
 
 
 class Reduce(Funsor):
