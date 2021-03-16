@@ -23,7 +23,6 @@ array = (onp.generic, onp.ndarray, DeviceArray, Tracer)
 ops.atanh.register(array)(np.arctanh)
 ops.clamp.register(array)(np.clip)
 ops.exp.register(array)(np.exp)
-ops.new_full.register(array)(np.full_like)
 ops.log1p.register(array)(np.log1p)
 ops.max.register(array, array)(np.maximum)
 ops.min.register(array, array)(np.minimum)
@@ -66,7 +65,6 @@ def _astype(x, dtype):
 
 
 ops.cat.register(typing.Tuple[typing.Union[array], ...])(np.concatenate)
-ops.cat.register(typing.List[typing.Union[array]])(np.concatenate)
 
 
 @ops.cholesky.register(array)
@@ -103,7 +101,6 @@ def _diagonal(x, dim1, dim2):
 
 
 @ops.einsum.register(typing.Tuple[typing.Union[array], ...])
-@ops.einsum.register(typing.List[typing.Union[array]])
 def _einsum(operands, equation):
     return np.einsum(equation, *operands)
 
@@ -192,6 +189,11 @@ def _min(x, y):
     return np.clip(x, a_min=None, a_max=y)
 
 
+@ops.new_full.register(array)
+def _new_full(x, shape, value):
+    return np.full(shape, value, dtype=x.dtype)
+
+
 @ops.new_arange.register(array)
 def _new_arange(x, start, stop, step):
     if step is not None:
@@ -249,8 +251,8 @@ def _scatter(dest, indices, src):
 
 
 @ops.stack.register(typing.Tuple[typing.Union[array + (int, float)], ...])
-def _stack(dim, *x):
-    return np.stack(x, axis=dim)
+def _stack(parts, dim=0):
+    return np.stack(parts, axis=dim)
 
 
 @ops.sum.register(array)

@@ -26,6 +26,7 @@ from .op import (
     DISTRIBUTIVE_OPS,
     UNITS,
     BinaryOp,
+    FinitaryOp,
     Op,
     OpMeta,
     TernaryOp,
@@ -38,14 +39,7 @@ _builtin_any = any
 
 # This is used only for pattern matching.
 array = (np.ndarray, np.generic)
-arraylist = sum([(typing.Tuple[t, ...], typing.List[t]) for t in array], ())
-
-all = UnaryOp.make(np.all)
-amax = UnaryOp.make(np.amax)
-amin = UnaryOp.make(np.amin)
-any = UnaryOp.make(np.any)
-prod = UnaryOp.make(np.prod)
-sum = UnaryOp.make(np.sum)
+arraylist = typing.Tuple[typing.Union[array], ...]
 
 sqrt.register(array)(np.sqrt)
 exp.register(array)(np.exp)
@@ -55,13 +49,43 @@ atanh.register(array)(np.arctanh)
 
 
 @UnaryOp.make
+def all(x, dim=None):
+    return np.all(x, dim)
+
+
+@UnaryOp.make
+def any(x, dim=None):
+    return np.any(x, dim)
+
+
+@UnaryOp.make
+def amax(x, dim=None):
+    return np.amax(x, dim)
+
+
+@UnaryOp.make
+def amin(x, dim=None):
+    return np.amax(x, dim)
+
+
+@UnaryOp.make
+def sum(x, dim=None):
+    return np.sum(x, dim)
+
+
+@UnaryOp.make
+def prod(x, dim=None):
+    return np.prod(x, dim)
+
+
+@UnaryOp.make
 def isnan(x):
     return np.isnan(x)
 
 
 @UnaryOp.make
-def full_like(prototype, shape, fill_value):
-    return np.full_like(prototype, shape, fill_value)
+def full_like(prototype, fill_value):
+    return np.full_like(prototype, fill_value)
 
 
 @log.register(array)
@@ -106,7 +130,7 @@ def _astype(x, dtype):
     return x.astype(dtype)
 
 
-@UnaryOp.make
+@FinitaryOp.make
 def cat(parts, axis):
     raise NotImplementedError
 
@@ -162,7 +186,7 @@ def _diagonal(x, dim1, dim2):
     return np.diagonal(x, axis1=dim1, axis2=dim2)
 
 
-@UnaryOp.make
+@FinitaryOp.make
 def einsum(operands, equation):
     raise NotImplementedError
 
@@ -338,8 +362,8 @@ def _scatter_add(destin, indices, source):
     return result
 
 
-@UnaryOp.make
-def stack(parts, axis=0):
+@FinitaryOp.make
+def stack(parts, dim=0):
     raise NotImplementedError
 
 

@@ -23,6 +23,7 @@ ops.sigmoid.register(torch.Tensor)(torch.sigmoid)
 ops.sqrt.register(torch.Tensor)(torch.sqrt)
 ops.tanh.register(torch.Tensor)(torch.tanh)
 ops.transpose.register(torch.Tensor)(torch.transpose)
+ops.unsqueeze.register(torch.Tensor)(torch.unsqueeze)
 
 
 @ops.all.register(torch.Tensor)
@@ -56,7 +57,6 @@ def _astype(x, dtype):
 
 
 ops.cat.register(typing.Tuple[torch.Tensor, ...])(torch.cat)
-ops.cat.register(typing.List[torch.Tensor])(torch.cat)
 
 
 @ops.cholesky.register(torch.Tensor)
@@ -268,7 +268,6 @@ def _scatter_add(destin, indices, source):
 
 
 ops.stack.register(typing.Tuple[torch.Tensor, ...])(torch.stack)
-ops.stack.register(typing.List[torch.Tensor])(torch.stack)
 
 
 @ops.sum.register(torch.Tensor)

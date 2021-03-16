@@ -18,7 +18,7 @@ from funsor.domains import Array, Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.interpretations import eager, lazy
 from funsor.interpreter import reinterpret
-from funsor.tensor import Einsum, Tensor, numeric_array, stack
+from funsor.tensor import Einsum, Tensor, numeric_array
 from funsor.terms import Independent, Variable, to_funsor
 from funsor.testing import (
     assert_close,
@@ -1205,7 +1205,7 @@ def test_beta_bernoulli_conjugate(batch_shape):
     conditional = dist.Bernoulli(probs=prior)
     reduced = (latent + conditional).reduce(ops.logaddexp, set(["prior"]))
     assert isinstance(reduced, dist.DirichletMultinomial)
-    concentration = stack((concentration0, concentration1), dim=-1)
+    concentration = ops.stack((concentration0, concentration1), dim=-1)
     assert_close(reduced.concentration, concentration)
     assert_close(reduced.total_count, Tensor(numeric_array(1.0)))
 

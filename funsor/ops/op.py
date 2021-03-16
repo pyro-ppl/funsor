@@ -136,7 +136,7 @@ class Op(metaclass=OpMeta):
     def __call__(self, *args, **kwargs):
         # Normalize args, kwargs.
         cls = type(self)
-        bound = cls.signature.bind(*args, **kwargs)
+        bound = cls.signature.bind_partial(*args, **kwargs)
         for key, value in self.defaults.items():
             bound.arguments.setdefault(key, value)
         args = bound.args
@@ -246,6 +246,14 @@ class TernaryOp(Op):
 
 class FinitaryOp(Op):
     arity = 1  # encoded as a tuple
+
+
+# Convert list to tuple for easier typing.
+@FinitaryOp.subclass_register(list)
+def _list_to_tuple(cls, arg, *args, **kwargs):
+    arg = tuple(arg)
+    op = cls(*args, **kwargs)
+    return op(arg)
 
 
 class TransformOp(UnaryOp):
