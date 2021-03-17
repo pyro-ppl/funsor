@@ -7,7 +7,6 @@ import re
 import types
 import warnings
 from collections import OrderedDict
-from collections.abc import Hashable
 from functools import singledispatch
 
 import numpy as np
