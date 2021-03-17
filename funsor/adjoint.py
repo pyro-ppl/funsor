@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import defaultdict
+from collections.abc import Hashable
 
 from funsor.cnf import Contraction, null
 from funsor.interpretations import Interpretation, reflect
@@ -48,7 +49,15 @@ class AdjointTape(Interpretation):
             self.tape.append((result, cls, args))
         else:
             result = self._old_interpretation.interpret(cls, *args)
-        lazy_args = [self._eager_to_lazy.get(arg, arg) for arg in args]
+        lazy_args = [
+            self._eager_to_lazy.get(
+                id(arg)
+                if ops.is_numeric_array(arg) or not isinstance(arg, Hashable)
+                else arg,
+                arg,
+            )
+            for arg in args
+        ]
         self._eager_to_lazy[result] = reflect.interpret(cls, *lazy_args)
         return result
 

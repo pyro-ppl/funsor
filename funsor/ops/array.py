@@ -215,6 +215,9 @@ def finfo(x):
 # this isn't really a mathematical op
 @singledispatch
 def is_numeric_array(x):
+    """
+    Returns whether an object is a ground numeric array.
+    """
     return False
 
 
