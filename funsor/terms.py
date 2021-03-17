@@ -1555,7 +1555,7 @@ class Cat(Funsor, metaclass=CatMeta):
         assert isinstance(parts, tuple)
         assert isinstance(part_name, str)
         assert parts
-        assert all(part_name in x.inputs for x in parts)
+        assert all(part_name in x.inputs for x in parts), (part_name, x.inputs)
         if part_name != name:
             assert not any(name in x.inputs for x in parts)
         assert len(set(x.output for x in parts)) == 1
@@ -1705,7 +1705,7 @@ class Independent(Funsor):
         assert isinstance(fn, Funsor)
         assert isinstance(reals_var, str)
         assert isinstance(bint_var, str)
-        assert bint_var in fn.inputs
+        assert bint_var in fn.inputs, (bint_var, fn.inputs)
         assert isinstance(fn.inputs[bint_var].dtype, int)
         assert isinstance(diag_var, str)
         assert diag_var in fn.inputs
