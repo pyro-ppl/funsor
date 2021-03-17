@@ -1,8 +1,11 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import math
 from collections import OrderedDict
+from functools import reduce
 
+import pytest
 import torch
 
 import funsor
@@ -21,65 +24,83 @@ from funsor.testing import assert_close, random_tensor
 funsor.set_backend("torch")
 
 
-def test_mul_x_y():
+@pytest.mark.parametrize(
+    "sum_op,prod_op,tojvp",
+    [(ops.add, ops.mul, to_jvp), (ops.logaddexp, ops.add, to_ljvp)],
+)
+def test_mul_x_y(sum_op, prod_op, tojvp):
     with autodiff:
         # Mul
-        x = to_jvp(random_tensor(OrderedDict(j=Bint[4])))
-        y = to_jvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
+        x = tojvp(random_tensor(OrderedDict(j=Bint[4])))
+        y = tojvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
         out_adj = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
 
-        z = x * y
+        z = prod_op(x, y)
         result = grad(z, (x, y), out_adj)
 
-    expected_x = (out_adj * y[0]).reduce(ops.add, "k")
-    expected_y = out_adj * x[0]
+    expected_x = prod_op(out_adj, y.primal).reduce(sum_op, "k")
+    expected_y = prod_op(out_adj, x.primal)
 
     actual_x = apply_optimizer(result[x])
     actual_y = apply_optimizer(result[y])
 
-    assert_close(actual_x, expected_x)
-    assert_close(actual_y, expected_y)
+    assert_close(actual_x, expected_x, rtol=1e-5)
+    assert_close(actual_y, expected_y, rtol=1e-5)
 
 
-def test_mul_x_x():
+@pytest.mark.parametrize(
+    "sum_op,prod_op,tojvp",
+    [(ops.add, ops.mul, to_jvp), (ops.logaddexp, ops.add, to_ljvp)],
+)
+def test_mul_x_x(sum_op, prod_op, tojvp):
     with autodiff:
         # Mul
-        x = to_jvp(random_tensor(OrderedDict(j=Bint[4])))
+        x = tojvp(random_tensor(OrderedDict(j=Bint[4])))
         out_adj = random_tensor(OrderedDict(j=Bint[4]))
 
-        z = x * x
+        z = prod_op(x, x)
         result = grad(z, (x,), out_adj)
 
-    expected_x = 2 * out_adj * x[0]
+    two = 2 if tojvp is to_jvp else math.log(2)
+    expected_x = reduce(prod_op, (two, out_adj, x.primal))
     actual_x = apply_optimizer(result[x])
     assert_close(actual_x, expected_x)
 
 
-def test_add_x_x():
+@pytest.mark.parametrize(
+    "sum_op,prod_op,tojvp",
+    [(ops.add, ops.mul, to_jvp), (ops.logaddexp, ops.add, to_ljvp)],
+)
+def test_add_x_x(sum_op, prod_op, tojvp):
     with autodiff:
         # Add
-        x = to_jvp(random_tensor(OrderedDict(j=Bint[4])))
+        x = tojvp(random_tensor(OrderedDict(j=Bint[4])))
         out_adj = random_tensor(OrderedDict(j=Bint[4]))
 
-        z = x + x
+        z = sum_op(x, x)
         result = grad(z, (x,), out_adj)
 
-    expected_x = 2 * out_adj
+    two = 2 if tojvp is to_jvp else math.log(2)
+    expected_x = prod_op(two, out_adj)
     actual_x = apply_optimizer(result[x])
     assert_close(actual_x, expected_x)
 
 
-def test_add_x_y():
+@pytest.mark.parametrize(
+    "sum_op,prod_op,tojvp",
+    [(ops.add, ops.mul, to_jvp), (ops.logaddexp, ops.add, to_ljvp)],
+)
+def test_add_x_y(sum_op, prod_op, tojvp):
     with autodiff:
         # Add
-        x = to_jvp(random_tensor(OrderedDict(j=Bint[4])))
-        y = to_jvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
+        x = tojvp(random_tensor(OrderedDict(j=Bint[4])))
+        y = tojvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
         out_adj = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
 
-        z = x + y
+        z = sum_op(x, y)
         result = grad(z, (x, y), out_adj)
 
-    expected_x = out_adj.reduce(ops.add, "k")
+    expected_x = out_adj.reduce(sum_op, "k")
     expected_y = out_adj
 
     actual_x = apply_optimizer(result[x])
@@ -89,17 +110,22 @@ def test_add_x_y():
     assert_close(actual_y, expected_y)
 
 
-def test_mul_add_x_x_y():
+@pytest.mark.parametrize(
+    "sum_op,prod_op,tojvp",
+    [(ops.add, ops.mul, to_jvp), (ops.logaddexp, ops.add, to_ljvp)],
+)
+def test_mul_add_x_x_y(sum_op, prod_op, tojvp):
     with autodiff:
         # Add Mul
-        x = to_jvp(random_tensor(OrderedDict(j=Bint[4])))
-        y = to_jvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
+        x = tojvp(random_tensor(OrderedDict(j=Bint[4])))
+        y = tojvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
         out_adj = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
 
-        z = x * x + y
+        z = sum_op(prod_op(x, x), y)
         result = grad(z, (x, y), out_adj)
 
-    expected_x = 2 * x[0] * out_adj.reduce(ops.add, "k")
+    two = 2 if tojvp is to_jvp else math.log(2)
+    expected_x = reduce(prod_op, (two, x.primal, out_adj.reduce(sum_op, "k")))
     expected_y = out_adj
 
     actual_x = apply_optimizer(result[x])
@@ -109,18 +135,23 @@ def test_mul_add_x_x_y():
     assert_close(actual_y, expected_y)
 
 
-def test_mul_add_xx_yy():
+@pytest.mark.parametrize(
+    "sum_op,prod_op,tojvp",
+    [(ops.add, ops.mul, to_jvp), (ops.logaddexp, ops.add, to_ljvp)],
+)
+def test_mul_add_xx_yy(sum_op, prod_op, tojvp):
     with autodiff:
         # Add Mul
-        x = to_jvp(random_tensor(OrderedDict(j=Bint[4])))
-        y = to_jvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
+        x = tojvp(random_tensor(OrderedDict(j=Bint[4])))
+        y = tojvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
         out_adj = random_tensor(OrderedDict(j=Bint[4], k=Bint[5]))
 
-        z = x * x + y + y
+        z = reduce(sum_op, (prod_op(x, x), y, y))
         result = grad(z, (x, y), out_adj)
 
-    expected_x = 2 * x[0] * out_adj.reduce(ops.add, "k")
-    expected_y = 2 * out_adj
+    two = 2 if tojvp is to_jvp else math.log(2)
+    expected_x = reduce(prod_op, (two, x.primal, out_adj.reduce(sum_op, "k")))
+    expected_y = prod_op(two, out_adj)
 
     actual_x = apply_optimizer(result[x])
     actual_y = apply_optimizer(result[y])
@@ -129,38 +160,67 @@ def test_mul_add_xx_yy():
     assert_close(actual_y, expected_y)
 
 
-def test_reduce_x():
+@pytest.mark.parametrize(
+    "sum_op,prod_op,tojvp",
+    [(ops.add, ops.mul, to_jvp), (ops.logaddexp, ops.add, to_ljvp)],
+)
+def test_reduce_add_x(sum_op, prod_op, tojvp):
     with autodiff:
         # Reduce
-        y = to_jvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
+        y = tojvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
         out_adj = random_tensor(OrderedDict(j=Bint[4]))
 
-        z = y.reduce(ops.add, "k")
+        z = y.reduce(sum_op, "k")
         result = grad(z, (y,), out_adj)
 
     expected_y = out_adj.expand(ops.add, (Variable("k", Bint[5]),))
     actual_y = apply_optimizer(result[y])
-    assert_close(actual_y, expected_y)
+    assert_close(actual_y, expected_y, rtol=1e-5)
 
 
-def test_mul_reduce_x_y():
+@pytest.mark.parametrize(
+    "sum_op,prod_op,div_op,tojvp",
+    [
+        (ops.add, ops.mul, ops.safediv, to_jvp),
+        (ops.logaddexp, ops.add, ops.safesub, to_ljvp),
+    ],
+)
+def test_reduce_mul_x(sum_op, prod_op, div_op, tojvp):
     with autodiff:
         # Reduce
-        x = to_jvp(random_tensor(OrderedDict(j=Bint[4])))
-        y = to_jvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
+        y = tojvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
+        out_adj = random_tensor(OrderedDict(j=Bint[4]))
+
+        z = y.reduce(prod_op, "k")
+        result = grad(z, (y,), out_adj)
+
+    actual_y = apply_optimizer(result[y])
+    expected_y = div_op(prod_op(out_adj, z.primal), y.primal)
+    assert_close(actual_y, apply_optimizer(expected_y), rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "sum_op,prod_op,tojvp",
+    [(ops.add, ops.mul, to_jvp), (ops.logaddexp, ops.add, to_ljvp)],
+)
+def test_mul_reduce_x_y(sum_op, prod_op, tojvp):
+    with autodiff:
+        # Reduce
+        x = tojvp(random_tensor(OrderedDict(j=Bint[4])))
+        y = tojvp(random_tensor(OrderedDict(j=Bint[4], k=Bint[5])))
         out_adj = random_tensor(OrderedDict(k=Bint[5]))
 
-        z = (x * y).reduce(ops.add, "j")
+        z = prod_op(x, y).reduce(sum_op, "j")
         result = grad(z, (x, y), out_adj)
 
-    expected_x = (y[0] * out_adj).reduce(ops.add, "k")
-    expected_y = x[0] * out_adj.expand(ops.add, (Variable("j", Bint[4]),))
+    expected_x = prod_op(y.primal, out_adj).reduce(sum_op, "k")
+    expected_y = prod_op(x.primal, out_adj.expand(ops.add, (Variable("j", Bint[4]),)))
 
     actual_x = apply_optimizer(result[x])
     actual_y = apply_optimizer(result[y])
 
-    assert_close(actual_x, expected_x)
-    assert_close(actual_y, expected_y)
+    assert_close(actual_x, expected_x, rtol=1e-5)
+    assert_close(actual_y, expected_y, rtol=1e-5)
 
 
 #  def test_trace():

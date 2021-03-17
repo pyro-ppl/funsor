@@ -101,7 +101,11 @@ def grad(expr, targets, out_tangent=None):
     out_tangent = expr.one if out_tangent is None else out_tangent
     in_tangents = set(target.tangent for target in targets)
     transposes = transpose(
-        expr.tangent, out_tangent, in_tangents, defaultdict(lambda: expr.zero)
+        expr.tangent,
+        out_tangent,
+        in_tangents,
+        defaultdict(lambda: expr.zero),
+        type(expr),
     )
     result = {}
     for target in targets:
@@ -110,54 +114,58 @@ def grad(expr, targets, out_tangent=None):
 
 
 @singledispatch
-def transpose(expr, out_tangent, in_tangents, result):
+def transpose(expr, out_tangent, in_tangents, result, semiring):
     if expr in in_tangents:
-        result[expr] += out_tangent
+        result[expr] = semiring.sum_op(result[expr], out_tangent)
     return result
 
 
 @transpose.register(Binary)
-def transpose_binary(expr, out_tangent, in_tangents, result):
-    if expr in in_tangents:
-        result[expr] += out_tangent
-        out_tangent = result[expr]
+def transpose_binary(expr, out_tangent, in_tangents, result, semiring):
 
     op, lhs, rhs = expr.op, expr.lhs, expr.rhs
+    sum_op, prod_op = semiring.sum_op, semiring.prod_op
 
-    if op is ops.add:
-        lhs_adj = out_tangent.reduce(ops.add, out_tangent.input_vars - lhs.input_vars)
-        rhs_adj = out_tangent.reduce(ops.add, out_tangent.input_vars - rhs.input_vars)
-    elif op is ops.mul:
-        lhs_adj = (out_tangent * rhs).reduce(
-            ops.add, out_tangent.input_vars - lhs.input_vars
+    if expr in in_tangents:
+        result[expr] = sum_op(result[expr], out_tangent)
+        out_tangent = result[expr]
+
+    if op is sum_op:
+        lhs_adj = out_tangent.reduce(sum_op, out_tangent.input_vars - lhs.input_vars)
+        rhs_adj = out_tangent.reduce(sum_op, out_tangent.input_vars - rhs.input_vars)
+    elif op is prod_op:
+        lhs_adj = prod_op(rhs, out_tangent).reduce(
+            sum_op, out_tangent.input_vars - lhs.input_vars
         )
-        rhs_adj = (out_tangent * lhs).reduce(
-            ops.add, out_tangent.input_vars - rhs.input_vars
+        rhs_adj = prod_op(lhs, out_tangent).reduce(
+            sum_op, out_tangent.input_vars - rhs.input_vars
         )
     else:
         return result  # is it always correct?
-    result = transpose(lhs, lhs_adj, in_tangents, result)
-    result = transpose(rhs, rhs_adj, in_tangents, result)
+    result = transpose(lhs, lhs_adj, in_tangents, result, semiring)
+    result = transpose(rhs, rhs_adj, in_tangents, result, semiring)
     return result
 
 
 @transpose.register(Reduce)
-def transpose_reduce(expr, out_tangent, in_tangents, result):
-    if expr in in_tangents:
-        result[expr] += out_tangent
-        out_tangent = result[expr]
-
+def transpose_reduce(expr, out_tangent, in_tangents, result, semiring):
     # fix this in contraction as well
     op, arg, reduced_vars = _alpha_unmangle(expr)
+    sum_op, prod_op = semiring.sum_op, semiring.prod_op
 
-    if op is ops.add:
-        arg_adj = out_tangent.expand(ops.add, tuple(reduced_vars))
-    elif op is ops.mul:
-        arg_adj = ops.safediv(ops.mul(out_tangent, expr), arg)
+    if expr in in_tangents:
+        result[expr] = sum_op(result[expr], out_tangent)
+        out_tangent = result[expr]
+
+    if op is sum_op:
+        arg_adj = out_tangent.expand(sum_op, tuple(reduced_vars))
+        result = transpose(arg, arg_adj, in_tangents, result, semiring)
+        return result
+    elif op is prod_op:
+        # this is unnecessary
+        return result
     else:
         raise ValueError
-    result = transpose(arg, arg_adj, in_tangents, result)
-    return result
 
 
 @transpose.register(Contraction)
@@ -246,7 +254,7 @@ def jvp_reduce(op, arg, reduced_vars):
         tangent = Reduce(sum_op, arg_tangent, reduced_vars)
     elif op is prod_op:
         tangent = Reduce(
-            prod_op, div_op(prod_op(arg_tangent, out_primal), arg_primal), reduced_vars
+            sum_op, div_op(prod_op(arg_tangent, out_primal), arg_primal), reduced_vars
         )
     else:
         raise NotImplementedError

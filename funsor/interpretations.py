@@ -336,7 +336,9 @@ Constructs a trace (expression) in terms of primitive operations.
 """
 
 autodiff_base = DispatchedInterpretation("autodiff")
-autodiff = PrioritizedInterpretation(autodiff_base, trace_base, eager_base, normalize_base, reflect)
+autodiff = PrioritizedInterpretation(
+    autodiff_base, trace_base, eager_base, normalize_base, reflect
+)
 """
 Constructs a trace (expression) in terms of primitive operations.
 """
