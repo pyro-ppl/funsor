@@ -6,7 +6,7 @@ from collections.abc import Hashable
 
 from funsor.cnf import Contraction, nullop
 from funsor.interpretations import Interpretation, reflect
-from funsor.interpreter import stack_reinterpret
+from funsor.interpreter import reinterpret
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import (
@@ -130,8 +130,7 @@ class AdjointTape(Interpretation):
 
 def adjoint(sum_op, bin_op, expr):
     with AdjointTape() as tape:
-        # TODO fix traversal order in AdjointTape instead of using stack_reinterpret
-        root = stack_reinterpret(expr)
+        root = reinterpret(expr)
     return tape.adjoint(sum_op, bin_op, root)
 
 
