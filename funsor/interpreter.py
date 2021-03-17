@@ -216,38 +216,9 @@ def gensym(x=None):
     return "V" + str(sym)
 
 
-class ANFDict(OrderedDict):
-    """
-    OrderedDict with slightly more liberal hashing semantics.
-    Used with cons-hashing for representing Funsor expression DAGs.
-    """
-
-    @staticmethod
-    def _key(x):
-        return id(x) if is_numeric_array(x) or not isinstance(x, Hashable) else x
-
-    def __setitem__(self, key, value):
-        super().__setitem__(self._key(key), value)
-
-    def __getitem__(self, key):
-        return super().__getitem__(self._key(key))
-
-    def __contains__(self, key):
-        return super().__contains__(self._key(key))
-
-    def __delitem__(self, key):
-        return super().__delitem__(self._key(key))
-
-    def move_to_end(self, key, last=True):
-        return super().move_to_end(self._key(key), last=last)
-
-    def get(self, key, default=None):
-        return super().get(self._key(key), default)
-
-
 def anf(x):
     stack = [x]
-    child_to_parents, children_counts = ANFDict(), ANFDict()
+    child_to_parents, children_counts = {}, {}
     leaves = []
     while stack:
         h = stack.pop(0)
@@ -263,7 +234,7 @@ def anf(x):
         if children_counts[h] == 0:
             leaves.append(h)
 
-    env = ANFDict(((x, x),))
+    env = OrderedDict(((x, x),))
     while leaves:
         h = leaves.pop(0)
         for parent in child_to_parents[h]:
@@ -281,7 +252,7 @@ def stack_reinterpret(x):
     for key, value in env.items():
         if is_atom(value):
             continue
-        if isinstance(value, (tuple, frozenset)):
+        if isinstance(value, (tuple, frozenset)):  # TODO absorb this into interpret
             env[key] = type(value)(env.get(c, c) for c in children(value))
         else:
             env[key] = interpret(type(value), *(env.get(c, c) for c in children(value)))
