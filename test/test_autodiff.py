@@ -173,7 +173,7 @@ def test_reduce_add_x(sum_op, prod_op, tojvp):
         z = y.reduce(sum_op, "k")
         result = grad(z, (y,), out_adj)
 
-    expected_y = out_adj.expand(ops.add, (Variable("k", Bint[5]),))
+    expected_y = out_adj.expand((Variable("k", Bint[5]),))
     actual_y = apply_optimizer(result[y])
     assert_close(actual_y, expected_y, rtol=1e-5)
 
@@ -214,7 +214,7 @@ def test_mul_reduce_x_y(sum_op, prod_op, tojvp):
         result = grad(z, (x, y), out_adj)
 
     expected_x = prod_op(y.primal, out_adj).reduce(sum_op, "k")
-    expected_y = prod_op(x.primal, out_adj.expand(ops.add, (Variable("j", Bint[4]),)))
+    expected_y = prod_op(x.primal, out_adj.expand((Variable("j", Bint[4]),)))
 
     actual_x = apply_optimizer(result[x])
     actual_y = apply_optimizer(result[y])

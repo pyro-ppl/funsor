@@ -683,8 +683,8 @@ def eager_scatter_tensor(op, subs, source, reduced_vars):
     return Tensor(data, destin_inputs, output.dtype)
 
 
-@eager.register(Expand, AssociativeOp, (Number, Tensor), tuple)
-def eager_tensor_expand(op, arg, expanded_vars):
+@eager.register(Expand, (Number, Tensor), tuple)
+def eager_tensor_expand(arg, expanded_vars):
     expanded_shape = tuple(var.output.size for var in expanded_vars)
     old_shape = (-1,) * (len(arg.inputs) + len(arg.output.shape))
     new_shape = expanded_shape + old_shape

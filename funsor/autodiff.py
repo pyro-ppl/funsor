@@ -158,7 +158,7 @@ def transpose_reduce(expr, out_tangent, in_tangents, result, semiring):
         out_tangent = result[expr]
 
     if op is sum_op:
-        arg_adj = out_tangent.expand(sum_op, tuple(reduced_vars))
+        arg_adj = out_tangent.expand(tuple(reduced_vars))
         result = transpose(arg, arg_adj, in_tangents, result, semiring)
         return result
     elif op is prod_op:
@@ -194,7 +194,7 @@ def transpose_contraction(expr, out_tangent, in_tangents, result):
     elif expr.bin_op is ops.nullop:
         for term in expr.terms:  # only one term
             if expr.red_op is ops.add:
-                term_adj = out_tangent.expand(ops.add, tuple(expr.reduced_vars))
+                term_adj = out_tangent.expand(tuple(expr.reduced_vars))
             elif expr.red_op is ops.mul:
                 term_adj = ops.safediv(ops.mul(out_tangent, expr), term)
             else:

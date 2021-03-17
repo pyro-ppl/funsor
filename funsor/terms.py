@@ -337,13 +337,12 @@ class Funsor(object, metaclass=FunsorMeta):
     def requires_grad(self):
         return False
 
-    def expand(self, op, expanded_vars):
-        assert isinstance(op, AssociativeOp)
+    def expand(self, expanded_vars):
         # Eagerly convert reduced_vars to appropriate things.
         assert isinstance(expanded_vars, tuple)
         if not expanded_vars:
             return self
-        return Expand(op, self, expanded_vars)
+        return Expand(self, expanded_vars)
 
     def reduce(self, op, reduced_vars=None):
         """
@@ -1014,8 +1013,7 @@ class Expand(Funsor):
     :param frozenset reduced_vars: A set of variables over which to reduce.
     """
 
-    def __init__(self, op, arg, expanded_vars):
-        assert isinstance(op, AssociativeOp)
+    def __init__(self, arg, expanded_vars):
         assert isinstance(arg, Funsor)
         assert isinstance(expanded_vars, tuple)
         assert all(isinstance(v, Variable) for v in expanded_vars)
@@ -1025,22 +1023,21 @@ class Expand(Funsor):
         fresh = frozenset()
         bound = {}
         super().__init__(inputs, output, fresh, bound)
-        self.op = op
         self.arg = arg
         self.expanded_vars = expanded_vars
 
     def __repr__(self):
         assert self.expanded_vars
         rvars = [repr(v) for v in self.expanded_vars]
-        return "{}.expand({}, {{{}}})".format(
-            repr(self.arg), self.op.__name__, ", ".join(rvars)
+        return "{}.expand({{{}}})".format(
+            repr(self.arg), ", ".join(rvars)
         )
 
     def __str__(self):
         assert self.expanded_vars
         rvars = [repr(v) for v in self.expanded_vars]
-        return "{}.expand({}, {{{}}})".format(
-            repr(self.arg), self.op.__name__, ", ".join(rvars)
+        return "{}.expand({{{}}})".format(
+            repr(self.arg), ", ".join(rvars)
         )
 
 
