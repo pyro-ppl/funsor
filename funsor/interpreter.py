@@ -199,11 +199,12 @@ def stack_reinterpret(x):
     :return: A reinterpreted version of the input.
     :raises: ValueError
     """
+    if is_atom(x):
+        return x
+
     interpret = _STACK[-1].interpret
     env = anf(x)
     for key, value in env.items():
-        if is_atom(value):
-            continue
         if isinstance(value, (tuple, frozenset)):  # TODO absorb this into interpret
             env[key] = type(value)(c if is_atom(c) else env[c] for c in children(value))
         else:
@@ -211,28 +212,6 @@ def stack_reinterpret(x):
                 type(value), *(c if is_atom(c) else env[c] for c in children(value))
             )
     return env[x]
-
-
-def _anf_recur(interpret, env, visited, key, value):
-    if is_atom(value) or key in visited:
-        return value
-    elif isinstance(value, (tuple, frozenset)):  # TODO absorb this into interpret
-        env[key] = type(value)(
-            c if is_atom(c) else _anf_recur(interpret, env, visited, c, env[c])
-            for c in children(value)
-        )
-        visited.add(key)
-        return env[key]
-    else:
-        env[key] = interpret(
-            type(value),
-            *(
-                c if is_atom(c) else _anf_recur(interpret, env, visited, c, env[c])
-                for c in children(value)
-            ),
-        )
-        visited.add(key)
-        return env[key]
 
 
 def recursion_reinterpret(x):
@@ -249,7 +228,12 @@ def recursion_reinterpret(x):
     :return: A reinterpreted version of the input.
     :raises: ValueError
     """
-    return _anf_recur(_STACK[-1].interpret, anf(x), set(), x, x)
+    if is_atom(x):
+        return x
+    elif isinstance(x, (tuple, frozenset)):
+        return type(x)(map(recursion_reinterpret, children(x)))
+    else:
+        return _STACK[-1].interpret(type(x), *map(recursion_reinterpret, children(x)))
 
 
 def reinterpret(x):
