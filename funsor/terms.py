@@ -269,9 +269,12 @@ class Funsor(object, metaclass=FunsorMeta):
         return type_hints
 
     def __repr__(self):
-        return "{}({})".format(
-            type(self).__name__, ", ".join(map(repr, self._ast_values))
-        )
+        try:
+            ast_values = self._ast_values
+        except AttributeError:
+            # E.g. when printing errors during __init__, before ._ast_va.
+            return f"{type(self).__name__}(...)"
+        return "{}({})".format(type(self).__name__, ", ".join(map(repr, ast_values)))
 
     def __str__(self):
         return "{}({})".format(
