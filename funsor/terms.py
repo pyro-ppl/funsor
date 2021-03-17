@@ -272,7 +272,7 @@ class Funsor(object, metaclass=FunsorMeta):
         try:
             ast_values = self._ast_values
         except AttributeError:
-            # E.g. when printing errors during __init__, before ._ast_va.
+            # E.g. when printing errors during __init__, before ._ast_values is set.
             return f"{type(self).__name__}(...)"
         return "{}({})".format(type(self).__name__, ", ".join(map(repr, ast_values)))
 
@@ -1558,7 +1558,8 @@ class Cat(Funsor, metaclass=CatMeta):
         assert isinstance(parts, tuple)
         assert isinstance(part_name, str)
         assert parts
-        assert all(part_name in x.inputs for x in parts), (part_name, x.inputs)
+        for part in parts:
+            assert part_name in part.inputs, (part_name, part.inputs)
         if part_name != name:
             assert not any(name in x.inputs for x in parts)
         assert len(set(x.output for x in parts)) == 1
