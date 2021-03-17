@@ -2,16 +2,71 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
-import funsor.ops as ops
-from funsor.ops import AssociativeOp, LogOp
-from funsor.terms import Binary, Reduce, Tuple, Unary, eager, lazy, Variable, Number, Lambda, Funsor
-from funsor.interpreter import interpretation
-from funsor.domains import Bint, Real, Array, Reals
 from collections import defaultdict
 from functools import reduce, singledispatch
+
+import funsor.ops as ops
 from funsor import Tensor
+from funsor.adjoint import _alpha_unmangle
 from funsor.cnf import Contraction
-from funsor.interpretations import trace, autodiff
+from funsor.domains import Array, Bint, Real, Reals
+from funsor.interpretations import autodiff, trace
+from funsor.interpreter import interpretation
+from funsor.ops import AssociativeOp, LogOp
+from funsor.terms import (
+    Binary,
+    Funsor,
+    Lambda,
+    Number,
+    Reduce,
+    Tuple,
+    Unary,
+    Variable,
+    eager,
+    lazy,
+)
+
+
+class JVP(Tuple):
+    """
+    Tuple:(Primal, Tanget)
+    Semiring: (Add, Mul)
+    """
+
+    sum_op = ops.add
+    prod_op = ops.mul
+    div_op = ops.safediv
+    zero = Number(0)
+    one = Number(1)
+
+    @property
+    def primal(self):
+        return self[0]
+
+    @property
+    def tangent(self):
+        return self[1]
+
+
+class LJVP(Tuple):
+    """
+    Tuple: (LogPrimal, LogTanget)
+    Semiring: (Logaddexp, Add)
+    """
+
+    sum_op = ops.logaddexp
+    prod_op = ops.add
+    div_op = ops.safesub
+    zero = Number(-math.inf)
+    one = Number(0)
+
+    @property
+    def primal(self):
+        return self[0]
+
+    @property
+    def tangent(self):
+        return self[1]
 
 
 @trace.register(Binary, AssociativeOp, Funsor, Funsor)
@@ -28,156 +83,124 @@ def trace_binary_associativeop(op, arg, reduced_args):
     return result
 
 
-class JVP(Tuple):
-    """
-    Tuple:(Primal, Tanget)
-    Semiring: (Add, Mul)
-    """
-    sum_op = ops.add
-    prod_op = ops.mul
-    div_op = ops.safediv
-    zero = Number(0)
-    one = Number(1)
+def to_jvp(primal):
+    input_vars = tuple(Variable(key, value) for key, value in primal.inputs.items())
+    output = reduce(lambda x, y: Lambda(y, x), reversed(input_vars), primal).output
+    tangent_placeholder = Variable(str(id(primal)), output)[tuple(primal.inputs)]
+    return JVP(primal, tangent_placeholder)
 
 
-class logJVP(Tuple):
-    """
-    Tuple: (LogPrimal, LogTanget)
-    Semiring: (Logaddexp, Add)
-    """
-    sum_op = ops.logaddexp
-    prod_op = ops.add
-    div_op = ops.safesub
-    zero = Number(-math.inf)
-    one = Number(0)
+def to_ljvp(primal):
+    input_vars = tuple(Variable(key, value) for key, value in primal.inputs.items())
+    output = reduce(lambda x, y: Lambda(y, x), reversed(input_vars), primal).output
+    tangent_placeholder = Variable(str(id(primal)), output)[tuple(primal.inputs)]
+    return LJVP(primal, tangent_placeholder)
 
 
-def requires_grad(primal):
-    tangent = Variable(str(id(primal)), Array["real", primal.data.shape])[tuple(primal.inputs)]
-    return JVP(primal, tangent)
-
-
-def to_var(x, name):
-    var = Variable(name, Array["real", x.data.shape])[tuple(x.inputs)]
-    return var
-
-
-def to_arg(x):
-    input_vars = tuple(Variable(key, value) for key, value in x.inputs.items())
-    arg = reduce(lambda a, b: Lambda(b, a), reversed(input_vars), x)
-    return arg
-
-
-def fjit(cls, *args):
-    new_args = []
-    for arg_name, arg in zip(cls._ast_fields, args):
-        if isinstance(arg, (Number, Tensor)):
-            arg = to_var(arg, arg_name)
-        new_args.append(arg)
-    new_args = tuple(new_args)
-    return cls(*new_args)
-
-
-def grad(expr, targets, out_adj=None):
-    out_primal, out_tangent = expr
-    # in_primals = Tuple(tuple(primal for primal, _ in targets))
-    in_tangents = set(tangent for _, tangent in targets)
-    out_adj = Number(1) if out_adj is None else out_adj
-    transposes = transpose(out_tangent, out_adj, in_tangents)
+def grad(expr, targets, out_tangent=None):
+    out_tangent = expr.one if out_tangent is None else out_tangent
+    in_tangents = set(target.tangent for target in targets)
+    transposes = transpose(
+        expr.tangent, out_tangent, in_tangents, defaultdict(lambda: expr.zero)
+    )
     result = {}
     for target in targets:
-        result[target] = transposes[target[1]]
-
-    #  out_shape = tuple(value.size for key, value in out_tangent.inputs.items() if key not in in_tangents.inputs)
-    #  out_inputs = tuple(key for key in out_tangent.inputs if key not in in_tangents.inputs)
-    #  out_tangent = Variable("dout", Array["real", out_shape])[out_inputs]
-    # out_tangent = Number(1.0)
+        result[target] = transposes[target.tangent]
     return result
 
 
 @singledispatch
-def transpose(expr, out_adj, targets, result=defaultdict(lambda: Number(0))):
-    breakpoint()
-    if expr in targets:
-        result[expr] += out_adj
+def transpose(expr, out_tangent, in_tangents, result):
+    if expr in in_tangents:
+        result[expr] += out_tangent
     return result
 
 
 @transpose.register(Binary)
-def transpose_binary(expr, out_adj, targets, result=defaultdict(lambda: Number(0))):
-    breakpoint()
-    if expr in targets:
-        result[expr] += out_adj
-        out_adj = result[expr]
+def transpose_binary(expr, out_tangent, in_tangents, result):
+    if expr in in_tangents:
+        result[expr] += out_tangent
+        out_tangent = result[expr]
 
-    lhs, rhs, op = expr.lhs, expr.rhs, expr.op
+    op, lhs, rhs = expr.op, expr.lhs, expr.rhs
 
     if op is ops.add:
-        lhs_adj = out_adj.reduce(ops.add, out_adj.input_vars - lhs.input_vars)
-        rhs_adj = out_adj.reduce(ops.add, out_adj.input_vars - rhs.input_vars)
+        lhs_adj = out_tangent.reduce(ops.add, out_tangent.input_vars - lhs.input_vars)
+        rhs_adj = out_tangent.reduce(ops.add, out_tangent.input_vars - rhs.input_vars)
     elif op is ops.mul:
-        lhs_adj = (out_adj * rhs).reduce(ops.add, out_adj.input_vars - lhs.input_vars)
-        rhs_adj = (out_adj * lhs).reduce(ops.add, out_adj.input_vars - rhs.input_vars)
+        lhs_adj = (out_tangent * rhs).reduce(
+            ops.add, out_tangent.input_vars - lhs.input_vars
+        )
+        rhs_adj = (out_tangent * lhs).reduce(
+            ops.add, out_tangent.input_vars - rhs.input_vars
+        )
     else:
-        return result # is it always correct?
-    result = transpose(lhs, lhs_adj, targets, result)
-    result = transpose(rhs, rhs_adj, targets, result)
+        return result  # is it always correct?
+    result = transpose(lhs, lhs_adj, in_tangents, result)
+    result = transpose(rhs, rhs_adj, in_tangents, result)
     return result
 
 
 @transpose.register(Reduce)
-def transpose_reduce(expr, out_adj, targets, result=defaultdict(lambda: Number(0))):
-    breakpoint()
-    if expr in targets:
-        result[expr] += out_adj
-        out_adj = result[expr]
+def transpose_reduce(expr, out_tangent, in_tangents, result):
+    if expr in in_tangents:
+        result[expr] += out_tangent
+        out_tangent = result[expr]
 
-    op, arg, reduced_vars = expr.op, expr.arg, expr.reduced_vars
+    # fix this in contraction as well
+    op, arg, reduced_vars = _alpha_unmangle(expr)
 
     if op is ops.add:
-        arg_adj = out_adj.expand(ops.add, tuple(reduced_vars))
+        arg_adj = out_tangent.expand(ops.add, tuple(reduced_vars))
     elif op is ops.mul:
-        arg_adj = ops.safediv(ops.mul(out_adj, expr), arg)
+        arg_adj = ops.safediv(ops.mul(out_tangent, expr), arg)
     else:
         raise ValueError
-    result = transpose(arg, arg_adj, targets, result)
+    result = transpose(arg, arg_adj, in_tangents, result)
     return result
 
 
 @transpose.register(Contraction)
-def transpose_contraction(expr, out_adj, targets, result=defaultdict(lambda: Number(0))):
-    # assert expr.bin_op is ops.add or expr.bin_op is ops.logaddexp
+def transpose_contraction(expr, out_tangent, in_tangents, result):
     breakpoint()
-    if expr in targets:
-        result[expr] += out_adj
-        out_adj = result[expr]
+    if expr in in_tangents:
+        result[expr] += out_tangent
+        out_tangent = result[expr]
 
     if expr.red_op is ops.nullop:
         for term in expr.terms:
             if expr.bin_op is ops.add:
-                term_adj = out_adj.reduce(ops.add, out_adj.input_vars - term.input_vars)
+                term_adj = out_tangent.reduce(
+                    ops.add, out_tangent.input_vars - term.input_vars
+                )
             elif expr.bin_op is ops.mul:
-                expr_div_term = reduce(ops.mul, tuple(t for t in expr.terms if t is not term))
-                term_adj = (out_adj * expr_div_term).reduce(ops.add, out_adj.input_vars - term.input_vars)
+                expr_div_term = reduce(
+                    ops.mul, tuple(t for t in expr.terms if t is not term)
+                )
+                term_adj = (out_tangent * expr_div_term).reduce(
+                    ops.add, out_tangent.input_vars - term.input_vars
+                )
             else:
                 raise ValueError
-            result = transpose(term, term_adj, targets, result)
+            result = transpose(term, term_adj, in_tangents, result)
     elif expr.bin_op is ops.nullop:
-        for term in expr.terms: # only one term
+        for term in expr.terms:  # only one term
             if expr.red_op is ops.add:
-                term_adj = out_adj.expand(ops.add, tuple(expr.reduced_vars))
+                term_adj = out_tangent.expand(ops.add, tuple(expr.reduced_vars))
             elif expr.red_op is ops.mul:
-                term_adj = ops.safediv(ops.mul(out_adj, expr), term)
+                term_adj = ops.safediv(ops.mul(out_tangent, expr), term)
             else:
                 raise ValueError
-            result = transpose(term, term_adj, targets, result)
+            result = transpose(term, term_adj, in_tangents, result)
     else:
         raise ValueError
     return result
 
 
+@eager.register(Binary, AssociativeOp, JVP, JVP)
+@eager.register(Binary, AssociativeOp, LJVP, LJVP)
 @autodiff.register(Binary, AssociativeOp, JVP, JVP)
-@autodiff.register(Binary, AssociativeOp, logJVP, logJVP)
+@autodiff.register(Binary, AssociativeOp, LJVP, LJVP)
 def jvp_binary(op, lhs, rhs):
     sum_op, prod_op = lhs.sum_op, lhs.prod_op
     lhs_primal, lhs_tangent = lhs
@@ -186,14 +209,18 @@ def jvp_binary(op, lhs, rhs):
     if op is sum_op:
         tangent = sum_op(lhs_tangent, rhs_tangent)
     elif op is prod_op:
-        tangent = sum_op(prod_op(rhs_primal, lhs_tangent), prod_op(lhs_primal, rhs_tangent))
+        tangent = sum_op(
+            prod_op(rhs_primal, lhs_tangent), prod_op(lhs_primal, rhs_tangent)
+        )
     else:
         raise NotImplementedError
     return type(lhs)(primal, tangent)
 
 
+@eager.register(Binary, AssociativeOp, JVP, Tensor)
+@eager.register(Binary, AssociativeOp, LJVP, Tensor)
 @autodiff.register(Binary, AssociativeOp, JVP, Tensor)
-@autodiff.register(Binary, AssociativeOp, logJVP, Tensor)
+@autodiff.register(Binary, AssociativeOp, LJVP, Tensor)
 def jvp_binary_jvp_funsor(op, lhs, rhs):
     sum_op, prod_op = lhs.sum_op, lhs.prod_op
     lhs_primal, lhs_tangent = lhs
@@ -207,8 +234,10 @@ def jvp_binary_jvp_funsor(op, lhs, rhs):
     return type(lhs)(primal, tangent)
 
 
+@eager.register(Reduce, AssociativeOp, JVP, frozenset)
+@eager.register(Reduce, AssociativeOp, LJVP, frozenset)
 @autodiff.register(Reduce, AssociativeOp, JVP, frozenset)
-@autodiff.register(Reduce, AssociativeOp, logJVP, frozenset)
+@autodiff.register(Reduce, AssociativeOp, LJVP, frozenset)
 def jvp_reduce(op, arg, reduced_vars):
     sum_op, prod_op, div_op = arg.sum_op, arg.prod_op, arg.div_op
     arg_primal, arg_tangent = arg
@@ -216,7 +245,9 @@ def jvp_reduce(op, arg, reduced_vars):
     if op is sum_op:
         tangent = Reduce(sum_op, arg_tangent, reduced_vars)
     elif op is prod_op:
-        tangent = Reduce(prod_op, div_op(prod_op(arg_tangent, out_primal), arg_primal), reduced_vars)
+        tangent = Reduce(
+            prod_op, div_op(prod_op(arg_tangent, out_primal), arg_primal), reduced_vars
+        )
     else:
         raise NotImplementedError
     return type(arg)(out_primal, tangent)
