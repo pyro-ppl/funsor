@@ -16,7 +16,7 @@ from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpretations import eager, normalize, reflect
-from funsor.interpreter import recursion_reinterpret
+from funsor.interpreter import children, recursion_reinterpret
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, null
 from funsor.tensor import Tensor
 from funsor.terms import (
@@ -248,6 +248,11 @@ def recursion_reinterpret_contraction(x):
     return type(x)(
         *map(recursion_reinterpret, (x.red_op, x.bin_op, x.reduced_vars) + x.terms)
     )
+
+
+@children.register(Contraction)
+def children_contraction(x):
+    return (x.red_op, x.bin_op, x.reduced_vars) + x.terms
 
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])

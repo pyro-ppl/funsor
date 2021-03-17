@@ -6,8 +6,7 @@ import os
 import re
 import types
 import warnings
-from collections import OrderedDict
-from collections.abc import Hashable
+from collections import OrderedDict, deque
 from functools import singledispatch
 
 import numpy as np
@@ -216,67 +215,49 @@ def gensym(x=None):
     return "V" + str(sym)
 
 
-def stack_reinterpret(x):
-    r"""
-    Overloaded reinterpretation of a deferred expression.
-    This interpreter uses an explicit stack and no recursion but is much slower.
-
-    This handles a limited class of expressions, raising
-    ``ValueError`` in unhandled cases.
-
-    :param x: An input, typically involving deferred
-        :class:`~funsor.terms.Funsor` s.
-    :type x: A funsor or data structure holding funsors.
-    :return: A reinterpreted version of the input.
-    :raises: ValueError
-    """
-
-    def _key(x):
-        return id(x) if is_numeric_array(x) or not isinstance(x, Hashable) else x
-
-    x_name = gensym(x)
-    node_vars = {x_name: x}
-    node_names = {x: x_name}
-    env = {}
-    stack = [(x_name, x)]
-    parent_to_children = OrderedDict()
-    child_to_parents = OrderedDict()
+def anf(x):
+    stack = deque([x])
+    child_to_parents, children_counts = {}, {}
+    leaves = deque()
     while stack:
-        h_name, h = stack.pop(0)
-        parent_to_children[h_name] = []
+        h = stack.popleft()
+        children_counts[h] = 0
+        child_to_parents.setdefault(h, [])
         for c in children(h):
-            if _key(c) in node_names:
-                c_name = node_names[_key(c)]
-            else:
-                c_name = gensym("__NAME")
-                node_names[_key(c)] = c_name
-                node_vars[c_name] = c
-                stack.append((c_name, c))
-            parent_to_children.setdefault(h_name, []).append(c_name)
-            child_to_parents.setdefault(c_name, []).append(h_name)
+            if is_atom(c):
+                continue
+            if c not in child_to_parents:
+                stack.append(c)
+            child_to_parents.setdefault(c, []).append(h)
+            children_counts[h] += 1
+        if children_counts[h] == 0:
+            leaves.append(h)
 
-    children_counts = OrderedDict((k, len(v)) for k, v in parent_to_children.items())
-    leaves = [name for name, count in children_counts.items() if count == 0]
-    interpret = _STACK[-1].interpret
+    env = OrderedDict(((x, x),))
     while leaves:
-        h_name = leaves.pop(0)
-        if h_name in child_to_parents:
-            for parent in child_to_parents[h_name]:
-                children_counts[parent] -= 1
-                if children_counts[parent] == 0:
-                    leaves.append(parent)
+        h = leaves.popleft()
+        for parent in child_to_parents[h]:
+            children_counts[parent] -= 1
+            if children_counts[parent] == 0:
+                leaves.append(parent)
+        env[h] = h
 
-        h = node_vars[h_name]
-        if is_atom(h):
-            env[h_name] = h
-        elif isinstance(h, (tuple, frozenset)):
-            env[h_name] = type(h)(env[c_name] for c_name in parent_to_children[h_name])
+    env.move_to_end(x)
+    return env
+
+
+def stack_reinterpret(x):
+    env = anf(x)
+    for key, value in env.items():
+        if is_atom(value):
+            continue
+        if isinstance(value, (tuple, frozenset)):  # TODO absorb this into interpret
+            env[key] = type(value)(c if is_atom(c) else env[c] for c in children(value))
         else:
-            env[h_name] = interpret(
-                type(h), *(env[c_name] for c_name in parent_to_children[h_name])
+            env[key] = interpret(
+                type(value), *(c if is_atom(c) else env[c] for c in children(value))
             )
-
-    return env[x_name]
+    return env[x]
 
 
 def reinterpret(x):
