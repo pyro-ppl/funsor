@@ -683,7 +683,19 @@ def eager_scatter_tensor(op, subs, source, reduced_vars):
     return Tensor(data, destin_inputs, output.dtype)
 
 
-@eager.register(Expand, (Number, Tensor), tuple)
+@eager.register(Expand, Number, tuple)
+def eager_tensor_expand(arg, expanded_vars):
+    shape = tuple(var.output.size for var in expanded_vars)
+    inputs = OrderedDict([(var.name, var.output) for var in expanded_vars])
+    data = ops.new_full(
+        funsor.tensor.get_default_prototype(),
+        shape,
+        arg.data
+    )
+    return Tensor(data, inputs, arg.dtype)
+
+
+@eager.register(Expand, Tensor, tuple)
 def eager_tensor_expand(arg, expanded_vars):
     expanded_shape = tuple(var.output.size for var in expanded_vars)
     old_shape = (-1,) * (len(arg.inputs) + len(arg.output.shape))

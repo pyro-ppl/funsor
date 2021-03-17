@@ -211,35 +211,48 @@ def transpose_contraction(expr, out_tangent, in_tangents, result):
 @autodiff.register(Binary, AssociativeOp, LJVP, LJVP)
 def jvp_binary(op, lhs, rhs):
     sum_op, prod_op = lhs.sum_op, lhs.prod_op
-    lhs_primal, lhs_tangent = lhs
-    rhs_primal, rhs_tangent = rhs
-    primal = Binary(op, lhs_primal, rhs_primal)
+    primal = Binary(op, lhs.primal, rhs.primal)
     if op is sum_op:
-        tangent = sum_op(lhs_tangent, rhs_tangent)
+        tangent = sum_op(lhs.tangent, rhs.tangent)
     elif op is prod_op:
         tangent = sum_op(
-            prod_op(rhs_primal, lhs_tangent), prod_op(lhs_primal, rhs_tangent)
+            prod_op(rhs.primal, lhs.tangent), prod_op(lhs.primal, rhs.tangent)
         )
     else:
         raise NotImplementedError
     return type(lhs)(primal, tangent)
 
 
-@eager.register(Binary, AssociativeOp, JVP, Tensor)
-@eager.register(Binary, AssociativeOp, LJVP, Tensor)
-@autodiff.register(Binary, AssociativeOp, JVP, Tensor)
-@autodiff.register(Binary, AssociativeOp, LJVP, Tensor)
+@eager.register(Binary, AssociativeOp, JVP, (Number, Tensor))
+@eager.register(Binary, AssociativeOp, LJVP, (Number, Tensor))
+@autodiff.register(Binary, AssociativeOp, JVP, (Number, Tensor))
+@autodiff.register(Binary, AssociativeOp, LJVP, (Number, Tensor))
 def jvp_binary_jvp_funsor(op, lhs, rhs):
     sum_op, prod_op = lhs.sum_op, lhs.prod_op
-    lhs_primal, lhs_tangent = lhs
-    primal = Binary(op, lhs_primal, rhs)
+    primal = Binary(op, lhs.primal, rhs)
     if op is sum_op:
-        tangent = sum_op(lhs_tangent, rhs)
+        tangent = sum_op(lhs.tangent, rhs)
     elif op is prod_op:
-        tangent = prod_op(lhs_tangent, rhs)
+        tangent = prod_op(lhs.tangent, rhs)
     else:
         raise NotImplementedError
     return type(lhs)(primal, tangent)
+
+
+@eager.register(Binary, AssociativeOp, (Number, Tensor), JVP)
+@eager.register(Binary, AssociativeOp, (Number, Tensor), LJVP)
+@autodiff.register(Binary, AssociativeOp, (Number, Tensor), JVP)
+@autodiff.register(Binary, AssociativeOp, (Number, Tensor), LJVP)
+def jvp_binary_jvp_funsor(op, lhs, rhs):
+    sum_op, prod_op = rhs.sum_op, rhs.prod_op
+    primal = Binary(op, lhs, rhs.primal)
+    if op is sum_op:
+        tangent = sum_op(lhs, rhs.tangent)
+    elif op is prod_op:
+        tangent = prod_op(lhs, rhs.tangent)
+    else:
+        raise NotImplementedError
+    return type(rhs)(primal, tangent)
 
 
 @eager.register(Reduce, AssociativeOp, JVP, frozenset)
@@ -248,17 +261,16 @@ def jvp_binary_jvp_funsor(op, lhs, rhs):
 @autodiff.register(Reduce, AssociativeOp, LJVP, frozenset)
 def jvp_reduce(op, arg, reduced_vars):
     sum_op, prod_op, div_op = arg.sum_op, arg.prod_op, arg.div_op
-    arg_primal, arg_tangent = arg
-    out_primal = Reduce(op, arg_primal, reduced_vars)
+    primal = Reduce(op, arg.primal, reduced_vars)
     if op is sum_op:
-        tangent = Reduce(sum_op, arg_tangent, reduced_vars)
+        tangent = Reduce(sum_op, arg.tangent, reduced_vars)
     elif op is prod_op:
         tangent = Reduce(
-            sum_op, div_op(prod_op(arg_tangent, out_primal), arg_primal), reduced_vars
+            sum_op, div_op(prod_op(arg.tangent, primal), arg.primal), reduced_vars
         )
     else:
         raise NotImplementedError
-    return type(arg)(out_primal, tangent)
+    return type(arg)(primal, tangent)
 
 
 #  @lazy.register(Unary, LogOp, JVP)
