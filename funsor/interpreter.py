@@ -252,9 +252,11 @@ def stack_reinterpret(x):
         if is_atom(value):
             continue
         if isinstance(value, (tuple, frozenset)):  # TODO absorb this into interpret
-            env[key] = type(value)(env.get(c, c) for c in children(value))
+            env[key] = type(value)(c if is_atom(c) else env[c] for c in children(value))
         else:
-            env[key] = interpret(type(value), *(env.get(c, c) for c in children(value)))
+            env[key] = interpret(
+                type(value), *(c if is_atom(c) else env[c] for c in children(value))
+            )
     return env[x]
 
 
