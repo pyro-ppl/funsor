@@ -221,6 +221,7 @@ class ANFDict(OrderedDict):
     OrderedDict with slightly more liberal hashing semantics.
     Used with cons-hashing for representing Funsor expression DAGs.
     """
+
     @staticmethod
     def _key(x):
         return id(x) if is_numeric_array(x) or not isinstance(x, Hashable) else x
