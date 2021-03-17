@@ -329,6 +329,20 @@ eager = PrioritizedInterpretation(eager_base, normalize_base, reflect)
 Eager exact naive interpretation wherever possible.
 """
 
+trace_base = DispatchedInterpretation("trace")
+trace = PrioritizedInterpretation(trace_base, eager_base, normalize_base, reflect)
+"""
+Constructs a trace (expression) in terms of primitive operations.
+"""
+
+autodiff_base = DispatchedInterpretation("autodiff")
+autodiff = PrioritizedInterpretation(
+    autodiff_base, trace_base, eager_base, normalize_base, reflect
+)
+"""
+Constructs a trace (expression) in terms of primitive operations.
+"""
+
 die = DispatchedInterpretation("die")
 eager_or_die = PrioritizedInterpretation(eager_base, die, reflect)
 

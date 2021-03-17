@@ -18,9 +18,10 @@ import funsor
 from . import ops
 from .delta import Delta
 from .domains import Array, ArrayType, Bint, Product, Real, Reals, find_domain
-from .ops import GetitemOp, MatmulOp, Op, ReshapeOp
+from .ops import AssociativeOp, GetitemOp, MatmulOp, Op, ReshapeOp
 from .terms import (
     Binary,
+    Expand,
     Finitary,
     Funsor,
     FunsorMeta,
@@ -680,6 +681,28 @@ def eager_scatter_tensor(op, subs, source, reduced_vars):
     # TODO Add a check for injectivity and dispatch to scatter_add etc.
     data = ops.scatter(destin, indices, source_data)
     return Tensor(data, destin_inputs, output.dtype)
+
+
+@eager.register(Expand, Number, tuple)
+def eager_tensor_expand(arg, expanded_vars):
+    shape = tuple(var.output.size for var in expanded_vars)
+    inputs = OrderedDict([(var.name, var.output) for var in expanded_vars])
+    data = ops.new_full(
+        funsor.tensor.get_default_prototype(),
+        shape,
+        arg.data
+    )
+    return Tensor(data, inputs, arg.dtype)
+
+
+@eager.register(Expand, Tensor, tuple)
+def eager_tensor_expand(arg, expanded_vars):
+    expanded_shape = tuple(var.output.size for var in expanded_vars)
+    old_shape = (-1,) * (len(arg.inputs) + len(arg.output.shape))
+    new_shape = expanded_shape + old_shape
+    inputs = OrderedDict([(var.name, var.output) for var in expanded_vars])
+    inputs.update(arg.inputs)
+    return Tensor(ops.expand(arg.data, new_shape), inputs, arg.dtype)
 
 
 @eager.register(Binary, Op, Tensor, Number)

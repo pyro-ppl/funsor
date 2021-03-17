@@ -261,6 +261,7 @@ def _find_domain_getitem(op, lhs_domain, rhs_domain):
         return Array[dtype, shape]
     elif isinstance(lhs_domain, ProductDomain):
         # XXX should this return a Union?
+        return Real
         raise NotImplementedError(
             "Cannot statically infer domain from: " f"{lhs_domain}[{rhs_domain}]"
         )
@@ -325,7 +326,10 @@ def _find_domain_associative_generic(op, *domains):
         return Array[domains[0].dtype, ()]
 
     lhs, rhs = domains
-    if lhs.dtype == "real" or rhs.dtype == "real":
+    # FIXME
+    if lhs is rhs:
+        return lhs
+    elif lhs.dtype == "real" or rhs.dtype == "real":
         dtype = "real"
     elif op in (ops.add, ops.mul, ops.pow, ops.max, ops.min):
         dtype = op(lhs.dtype - 1, rhs.dtype - 1) + 1
