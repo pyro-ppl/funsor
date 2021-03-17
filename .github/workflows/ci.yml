@@ -86,4 +86,4 @@ jobs:
         pip freeze
     - name: Run test
       run: |
-        CI=1 FUNSOR_BACKEND=jax make test
+        CI=1 JAX_ENABLE_X64=1 FUNSOR_BACKEND=jax make test
