@@ -6,7 +6,7 @@ import os
 import re
 import types
 import warnings
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from functools import singledispatch
 
 import numpy as np
@@ -216,11 +216,11 @@ def gensym(x=None):
 
 
 def anf(x):
-    stack = [x]
+    stack = deque([x])
     child_to_parents, children_counts = {}, {}
-    leaves = []
+    leaves = deque()
     while stack:
-        h = stack.pop(0)
+        h = stack.popleft()
         children_counts[h] = 0
         child_to_parents.setdefault(h, [])
         for c in children(h):
@@ -235,7 +235,7 @@ def anf(x):
 
     env = OrderedDict(((x, x),))
     while leaves:
-        h = leaves.pop(0)
+        h = leaves.popleft()
         for parent in child_to_parents[h]:
             children_counts[parent] -= 1
             if children_counts[parent] == 0:
