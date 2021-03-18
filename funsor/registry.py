@@ -13,9 +13,9 @@ class PartialDispatcher(Dispatcher):
     Wrapper to avoid appearance in stack traces.
     """
 
-    def __init__(self, default=None):
+    def __init__(self, default=None, name="PartialDispatcher"):
         self.default = default if default is None else PartialDefault(default)
-        super().__init__("PartialDispatcher")
+        super().__init__(name)
         if default is not None:
             self.add(([object],), self.default)
 

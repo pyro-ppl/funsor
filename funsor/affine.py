@@ -8,7 +8,7 @@ import opt_einsum
 
 from funsor.domains import Bint
 from funsor.interpreter import gensym
-from funsor.tensor import EinsumOp, Tensor, get_default_prototype
+from funsor.tensor import Tensor, get_default_prototype
 from funsor.terms import Binary, Finitary, Funsor, Lambda, Reduce, Unary, Variable
 
 from . import ops
@@ -92,7 +92,7 @@ def _(fn):
     return affine_inputs(fn.arg) - fn.reduced_vars
 
 
-@affine_inputs.register(Finitary[EinsumOp, tuple])
+@affine_inputs.register(Finitary[ops.EinsumOp, tuple])
 def _(fn):
     # This is simply a multiary version of the above Binary(ops.mul, ...) case.
     results = []
