@@ -105,8 +105,6 @@ def reflect(cls, *args, **kwargs):
     result._ast_values = args
 
     # alpha-convert eagerly upon binding any variable.
-    # the identifier we use to reconcile alpha-conversion and cons-hashing
-    # is the string literal of hash() of the type and cons-hashing key:
     if result.bound:
         alpha_subs = _alpha_mangle(result.bound)
         alpha_mangled_args = reflect(result._alpha_convert)(alpha_subs)
