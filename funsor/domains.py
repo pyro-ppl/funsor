@@ -250,20 +250,21 @@ def _find_domain_log_exp(op, domain):
 
 @find_domain.register(ops.SumOp)
 def _find_domain_sum(op, domain):
-    # Canonicalize axes.
-    ndim = len(domain.shape)
-    if op.axis is None:
-        axis = set(range(ndim))
-    elif isinstance(op.axis, int):
-        axis = {op.axis % ndim}
+    # Canonicalize dim.
+    dim = op.defaults.get("dim", None)
+    ndims = len(domain.shape)
+    if dim is None:
+        dims = set(range(ndims))
+    elif isinstance(dim, int):
+        dims = {dim % ndims}
     else:
-        axis = {i % ndim for i in op.axis}
+        dims = {i % ndims for i in dim}
 
     # Compute shape.
-    if op.keepdims:
-        shape = tuple(1 if i in axis else size for i, size in enumerate(domain.shape))
+    if op.defaults.get("keepdims", False):
+        shape = tuple(1 if i in dims else size for i, size in enumerate(domain.shape))
     else:
-        shape = tuple(size for i, size in enumerate(domain.shape) if i not in axis)
+        shape = tuple(size for i, size in enumerate(domain.shape) if i not in dims)
 
     # Compute domain.
     if domain.dtype == "real":

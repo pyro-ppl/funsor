@@ -258,8 +258,8 @@ def _stack(parts, dim=0):
 
 
 @ops.sum.register(array)
-def _sum(x, dim):
-    return np.sum(x, axis=dim)
+def _sum(x, dim, keepdims):
+    return np.sum(x, dim, keepdims=keepdims)
 
 
 @ops.triangular_solve.register(array, array)

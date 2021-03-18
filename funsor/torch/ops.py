@@ -271,8 +271,13 @@ ops.stack.register(typing.Tuple[torch.Tensor, ...])(torch.stack)
 
 
 @ops.sum.register(torch.Tensor)
-def _sum(x, dim):
-    return x.sum() if dim is None else x.sum(dim)
+def _sum(x, dim, keepdims):
+    if dim is None:
+        if keepdims:
+            dim = tuple(range(x.dim()))
+            return x.sum(dim, True)
+        return x.sum()
+    return x.sum(dim, keepdims)
 
 
 @ops.triangular_solve.register(torch.Tensor, torch.Tensor)
