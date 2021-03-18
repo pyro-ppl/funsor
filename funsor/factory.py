@@ -248,7 +248,7 @@ def make_funsor(fn):
 
     ResultMeta.__name__ = f"{fn.__name__}Meta"
     Result = ResultMeta(
-        fn.__name__, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
+        fn.__name__, (Funsor,), {"__init__": __init__}
     )
     pattern = (Result,) + tuple(
         _hint_to_pattern(input_types[k]) for k in Result._ast_fields
