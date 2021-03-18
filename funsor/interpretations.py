@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import weakref
 from abc import ABC, abstractmethod
 from collections.abc import Hashable
 from contextlib import ContextDecorator, contextmanager
@@ -9,6 +10,7 @@ from timeit import default_timer
 from . import instrument
 from .interpreter import (
     get_interpretation,
+    is_atom,
     pop_interpretation,
     push_interpretation,
     reinterpret,
@@ -270,7 +272,7 @@ class NormalizedInterpretation(Interpretation):
         self.subinterpretation = subinterpretation
         self.register = self.subinterpretation.register
         self.dispatch = self.subinterpretation.dispatch
-        self._cache = {}  # weakref.WeakKeyDictionary()  # TODO make this work
+        self._cache = {}  # weakref.WeakValueDictionary()  # TODO make this work
 
     def interpret(self, cls, *args):
         # 1. try self.subinterpret.
@@ -285,7 +287,7 @@ class NormalizedInterpretation(Interpretation):
             normalized_args = []
             for arg in args:
                 try:
-                    normalized_args.append(self._cache[arg])
+                    normalized_args.append(arg if is_atom(arg) else self._cache[arg])
                 except KeyError:
                     normalized_arg = reinterpret(arg)
                     self._cache[arg] = normalized_arg
