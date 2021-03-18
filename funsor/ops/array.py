@@ -42,7 +42,7 @@ full_like = make_op(np.full_like)
 isnan = make_op(np.isnan)
 prod = make_op(np.prod)
 stack = make_op("stack")
-sum = make_op(np.sum, params=("axis", "keepdims"))
+sum = make_op(np.sum)
 transpose = make_op("transpose")
 
 sqrt.register(array)(np.sqrt)
