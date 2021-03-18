@@ -729,7 +729,6 @@ def _(arg, indent, out):
         out[-1] = i, line + ")"
 
 
-interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
 interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 

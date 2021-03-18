@@ -96,32 +96,6 @@ def interpretation(new):
     return new
 
 
-@singledispatch
-def recursion_reinterpret(x):
-    r"""
-    Overloaded reinterpretation of a deferred expression.
-    This interpreter uses the Python stack and is subject to the recursion limit.
-
-    This handles a limited class of expressions, raising
-    ``ValueError`` in unhandled cases.
-
-    :param x: An input, typically involving deferred
-        :class:`~funsor.terms.Funsor` s.
-    :type x: A funsor or data structure holding funsors.
-    :return: A reinterpreted version of the input.
-    :raises: ValueError
-    """
-    raise ValueError(type(x))
-
-
-# We need to register this later in terms.py after declaring Funsor.
-# reinterpret.register(Funsor)
-@instrument.debug_logged
-def reinterpret_funsor(x):
-    interpret = _STACK[-1].interpret
-    return interpret(type(x), *map(recursion_reinterpret, x._ast_values))
-
-
 _ground_types = (
     str,
     int,
@@ -138,39 +112,10 @@ _ground_types = (
 )
 
 
-for t in _ground_types:
-
-    @recursion_reinterpret.register(t)
-    def recursion_reinterpret_ground(x):
-        return x
-
-
-@recursion_reinterpret.register(tuple)
-@instrument.debug_logged
-def recursion_reinterpret_tuple(x):
-    return tuple(map(recursion_reinterpret, x))
-
-
-@recursion_reinterpret.register(frozenset)
-@instrument.debug_logged
-def recursion_reinterpret_frozenset(x):
-    return frozenset(map(recursion_reinterpret, x))
-
-
-@recursion_reinterpret.register(dict)
-@instrument.debug_logged
-def recursion_reinterpret_dict(x):
-    return {key: recursion_reinterpret(value) for key, value in x.items()}
-
-
-@recursion_reinterpret.register(OrderedDict)
-@instrument.debug_logged
-def recursion_reinterpret_ordereddict(x):
-    return OrderedDict((key, recursion_reinterpret(value)) for key, value in x.items())
-
-
 @singledispatch
 def children(x):
+    if is_atom(x):
+        return ()
     raise ValueError(type(x))
 
 
@@ -189,13 +134,6 @@ def _children_tuple(x):
 @children.register(OrderedDict)
 def _children_tuple(x):
     return x.values()
-
-
-for t in _ground_types:
-
-    @children.register(t)
-    def _children_ground(x):
-        return ()
 
 
 def is_atom(x):
@@ -247,10 +185,26 @@ def anf(x):
 
 
 def stack_reinterpret(x):
+    r"""
+    Overloaded reinterpretation of a deferred expression.
+    This interpreter does not use the Python stack and
+    therefore works with arbitrarily large expressions.
+
+    This handles a limited class of expressions, raising
+    ``ValueError`` in unhandled cases.
+
+    :param x: An input, typically involving deferred
+        :class:`~funsor.terms.Funsor` s.
+    :type x: A funsor or data structure holding funsors.
+    :return: A reinterpreted version of the input.
+    :raises: ValueError
+    """
+    if is_atom(x):
+        return x
+
+    interpret = _STACK[-1].interpret
     env = anf(x)
     for key, value in env.items():
-        if is_atom(value):
-            continue
         if isinstance(value, (tuple, frozenset)):  # TODO absorb this into interpret
             env[key] = type(value)(c if is_atom(c) else env[c] for c in children(value))
         else:
@@ -258,6 +212,29 @@ def stack_reinterpret(x):
                 type(value), *(c if is_atom(c) else env[c] for c in children(value))
             )
     return env[x]
+
+
+@instrument.debug_logged
+def recursion_reinterpret(x):
+    r"""
+    Overloaded reinterpretation of a deferred expression.
+    This interpreter uses the Python stack and is subject to the recursion limit.
+
+    This handles a limited class of expressions, raising
+    ``ValueError`` in unhandled cases.
+
+    :param x: An input, typically involving deferred
+        :class:`~funsor.terms.Funsor` s.
+    :type x: A funsor or data structure holding funsors.
+    :return: A reinterpreted version of the input.
+    :raises: ValueError
+    """
+    if is_atom(x):
+        return x
+    elif isinstance(x, (tuple, frozenset)):
+        return type(x)(map(recursion_reinterpret, children(x)))
+    else:
+        return _STACK[-1].interpret(type(x), *map(recursion_reinterpret, children(x)))
 
 
 def reinterpret(x):
