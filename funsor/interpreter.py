@@ -214,6 +214,7 @@ def stack_reinterpret(x):
     return env[x]
 
 
+@instrument.debug_logged
 def recursion_reinterpret(x):
     r"""
     Overloaded reinterpretation of a deferred expression.
