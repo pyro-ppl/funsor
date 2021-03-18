@@ -43,6 +43,11 @@ def _amin(x, dim, keepdims=False):
     return x.min() if dim is None else x.min(dim, keepdims)[0]
 
 
+@ops.argmax.register(torch.Tensor, int)
+def _argmax(x, dim):
+    return x.max(dim).indices
+
+
 @ops.any.register(torch.Tensor, (int, type(None)))
 def _any(x, dim):
     return x.any() if dim is None else x.any(dim=dim)
@@ -128,6 +133,25 @@ def _log(x):
     return x.log()
 
 
+@ops.logaddexp.register(torch.Tensor, torch.Tensor)
+def _safe_logaddexp_tensor_tensor(x, y):
+    finfo = torch.finfo(x.dtype)
+    shift = torch.max(x.detach(), y.detach()).clamp(min=finfo.min)
+    return torch.log(torch.exp(x - shift) + torch.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(numbers.Number, torch.Tensor)
+def _safe_logaddexp_number_tensor(x, y):
+    finfo = torch.finfo(y.dtype)
+    shift = y.detach().clamp(min=max(x, finfo.min))
+    return torch.log(torch.exp(x - shift) + torch.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(torch.Tensor, numbers.Number)
+def _safe_logaddexp_tensor_number(x, y):
+    return _safe_logaddexp_number_tensor(y, x)
+
+
 @ops.logsumexp.register(torch.Tensor, (int, type(None)))
 def _logsumexp(x, dim):
     return x.reshape(-1).logsumexp(0) if dim is None else x.logsumexp(dim)
@@ -183,6 +207,11 @@ def _new_zeros(x, shape):
     return x.new_zeros(shape)
 
 
+@ops.new_full.register(torch.Tensor, tuple, numbers.Number)
+def _new_full(x, shape, value):
+    return x.new_full(shape, value)
+
+
 @ops.permute.register(torch.Tensor, (tuple, list))
 def _permute(x, dims):
     return x.permute(dims)
@@ -212,6 +241,7 @@ def _reciprocal(x):
     return result
 
 
+@ops.safediv.register(torch.Tensor, torch.Tensor)
 @ops.safediv.register(numbers.Number, torch.Tensor)
 def _safediv(x, y):
     try:
@@ -221,6 +251,7 @@ def _safediv(x, y):
     return x * y.reciprocal().clamp(max=finfo.max)
 
 
+@ops.safesub.register(torch.Tensor, torch.Tensor)
 @ops.safesub.register(numbers.Number, torch.Tensor)
 def _safesub(x, y):
     try:
@@ -228,6 +259,19 @@ def _safesub(x, y):
     except TypeError:
         finfo = torch.iinfo(y.dtype)
     return x + (-y).clamp(max=finfo.max)
+
+
+@ops.scatter.register(torch.Tensor, tuple, torch.Tensor)
+def _scatter(destin, indices, source):
+    result = destin.clone()
+    result[indices] = source
+    return result
+
+
+@ops.scatter_add.register(torch.Tensor, tuple, torch.Tensor)
+def _scatter_add(destin, indices, source):
+    result = destin.clone()
+    return result.index_put(indices, source, accumulate=True)
 
 
 @ops.stack.register(int, [torch.Tensor])

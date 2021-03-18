@@ -360,7 +360,7 @@ def test_multinomial_density(batch_shape, event_shape):
         total_count: Real, probs: Reals[event_shape], value: Reals[event_shape]
     ) -> Real:
         if get_backend() == "torch":
-            total_count = total_count.max().item()
+            total_count = int(total_count.max())
         return backend_dist.Multinomial(total_count, probs).log_prob(value)
 
     check_funsor(
@@ -1459,10 +1459,7 @@ def test_power_transform(shape):
 @pytest.mark.parametrize("shape", [(10,), (4, 3)], ids=str)
 @pytest.mark.parametrize(
     "to_event",
-    [
-        True,
-        xfail_param(False, reason="bug in to_funsor(TransformedDistribution)"),
-    ],
+    [True, xfail_param(False, reason="bug in to_funsor(TransformedDistribution)")],
 )
 def test_haar_transform(shape, to_event):
     try:

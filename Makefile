@@ -33,6 +33,7 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/discrete_hmm.py -n 2 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 500 --lazy
+	python examples/forward_backward.py -t 3
 	python examples/kalman_filter.py -n 2
 	python examples/kalman_filter.py -n 2 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/kalman_filter.py -n 1 -t 50 --lazy

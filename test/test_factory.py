@@ -8,7 +8,7 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Real, Reals
-from funsor.factory import Bound, Fresh, Value, make_funsor, to_funsor
+from funsor.factory import Bound, Fresh, Has, Value, make_funsor, to_funsor
 from funsor.interpretations import reflect
 from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
@@ -55,7 +55,7 @@ def test_flatten():
         i: Bound,
         j: Bound,
         ij: Fresh[lambda i, j: Bint[i.size * j.size]],
-    ) -> Fresh[lambda x: x.dtype]:
+    ) -> Fresh[lambda x: x]:
         m = to_funsor(i, x.inputs.get(i, None)).output.size
         n = to_funsor(j, x.inputs.get(j, None)).output.size
         ij = to_funsor(ij, Bint[m * n])
@@ -67,6 +67,7 @@ def test_flatten():
     inputs["b"] = Bint[4]
     data = random_tensor(inputs, Real)
     x = Flatten21(data, "a", "b", "ab")
+    assert isinstance(x, Tensor)
 
     check_funsor(x, {"ab": Bint[12]}, Real, data.data.reshape(-1))
 
@@ -87,6 +88,31 @@ def test_unflatten():
     inputs["b"] = Bint[6]
     data = random_tensor(inputs, Real)
     x = Unflatten(data, "b", "c", "d")
+    assert isinstance(x, Tensor)
+
+    check_funsor(
+        x, {"a": Bint[5], "c": Bint[3], "d": Bint[2]}, Real, data.data.reshape(5, 3, 2)
+    )
+
+
+def test_unflatten_dependent():
+    @make_funsor
+    def Unflatten(
+        k: Value[int],
+        x: Funsor,
+        i: Bound,
+        i_over_k: Fresh[lambda k, i: Bint[i.size // k]],
+        i_mod_k: Fresh[lambda k: Bint[k]],
+    ) -> Fresh[lambda x: x]:
+        assert i.output.size % k == 0
+        return x(**{i.name: i_over_k * Number(k, k + 1) + i_mod_k})
+
+    inputs = OrderedDict()
+    inputs["a"] = Bint[5]
+    inputs["b"] = Bint[6]
+    data = random_tensor(inputs, Real)
+    x = Unflatten(2, data, "b", "c", "d")
+    assert isinstance(x, Tensor)
 
     check_funsor(
         x, {"a": Bint[5], "c": Bint[3], "d": Bint[2]}, Real, data.data.reshape(5, 3, 2)
@@ -112,9 +138,10 @@ def test_cat2():
     inputs["b"] = Bint[4]
     x = random_tensor(inputs, Real)
     y = random_tensor(inputs, Real)
-    xy = Cat2(x, y, "a", "a", "aa")
+    y = y(a="c")  # to avoid bound variable clash
+    xy = Cat2(x, y, "a", "c", "ac")
 
-    check_funsor(xy, {"aa": Bint[6], "b": Bint[4]}, Real)
+    check_funsor(xy, {"ac": Bint[6], "b": Bint[4]}, Real)
 
 
 def test_normal():
@@ -223,3 +250,28 @@ def test_value_dependence():
             x: Funsor, dim: Value[Number]
         ) -> Fresh[lambda x, dim: Array[x.dtype, x.shape[:dim] + x.shape[dim + 1 :]]]:
             return None
+
+
+def test_matmul_has():
+    @make_funsor
+    def MatMul(
+        x: Has[{"i"}],  # noqa: F821
+        y: Has[{"i"}],  # noqa: F821
+        i: Bound,
+    ) -> Fresh[lambda x: x]:
+        return (x * y).reduce(ops.add, i)
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    y = random_tensor(OrderedDict(b=Bint[4], c=Bint[3]))
+    with reflect:
+        xy = MatMul(x, y, "b")
+    check_funsor(xy, {"a": Bint[3], "c": Bint[3]}, Real)
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    y = random_tensor(OrderedDict(c=Bint[4], d=Bint[3]))
+    with pytest.warns(SyntaxWarning):
+        with reflect:
+            xy = MatMul(x, y, "b")
+    # To preserve extensionality, should only error on reflect
+    xy = MatMul(x, y, "b")
+    check_funsor(xy, {"a": Bint[3], "c": Bint[4], "d": Bint[3]}, Real)

@@ -42,6 +42,7 @@ _INFIX = {k: v for v, k, _ in INFIX_OPERATORS}
 # See failing example at https://github.com/pyro-ppl/funsor/pull/414
 class SubstituteInterpretation(Interpretation):
     def __init__(self, subs, base_interpretation):
+        super().__init__("subs")
         if isinstance(subs, (dict, OrderedDict)):
             subs = tuple(subs.items())
         self.subs = subs
@@ -187,13 +188,13 @@ def _convert_reduced_vars(reduced_vars, inputs):
 
     :param reduced_vars:
     :type reduced_vars: str, Variable, or set or frozenset thereof.
-    :rtype: frozenset of Variable
+    :returns: A frozenset of reduced variables.
+    :rtype: frozenset of :class:`Variable`
     """
     # Avoid copying if arg is of correct type.
-    if isinstance(reduced_vars, frozenset) and all(
-        isinstance(var, Variable) for var in reduced_vars
-    ):
-        return reduced_vars
+    if isinstance(reduced_vars, frozenset):
+        if all(isinstance(var, Variable) for var in reduced_vars):
+            return reduced_vars
 
     if isinstance(reduced_vars, (str, Variable)):
         reduced_vars = {reduced_vars}
@@ -231,6 +232,7 @@ class Funsor(object, metaclass=FunsorMeta):
             assert isinstance(name, str)
             assert isinstance(input_, Domain)
         assert isinstance(output, Domain)
+        assert getattr(output, "is_concrete", True)
         assert isinstance(fresh, frozenset)
         assert isinstance(bound, dict)
         super(Funsor, self).__init__()
@@ -339,7 +341,8 @@ class Funsor(object, metaclass=FunsorMeta):
         """
         Reduce along all or a subset of inputs.
 
-        :param callable op: A reduction operation.
+        :param op: A reduction operation.
+        :type op: ~funsor.ops.AssociativeOp
         :param reduced_vars: An optional input name or set of names to reduce.
             If unspecified, all inputs will be reduced.
         :type reduced_vars: str, Variable, or set or frozenset thereof.
@@ -355,6 +358,33 @@ class Funsor(object, metaclass=FunsorMeta):
         if not reduced_vars:
             return self
         return Reduce(op, self, reduced_vars)
+
+    def approximate(self, op, guide, approx_vars=None):
+        """
+        Approximate wrt and all or a subset of inputs.
+
+        :param AssociativeOp op: A reduction operation.
+        :param Funsor guide: A guide funsor (e.g. a proposal distribution).
+        :param approx_vars: An optional input name or set of names to reduce.
+            If unspecified, all inputs will be reduced.
+        :type approx_vars: str, Variable, or set or frozenset thereof.
+        """
+        assert isinstance(op, AssociativeOp)
+        assert self.output == Real
+        assert guide.output == self.output
+        # Eagerly convert approx_vars to appropriate things.
+        inputs = self.inputs.copy()
+        inputs.update(guide.inputs)
+        input_vars = self.input_vars | guide.input_vars
+        if approx_vars is None:
+            # Empty approx_vars means "approximate everything".
+            approx_vars = input_vars
+        else:
+            approx_vars = _convert_reduced_vars(approx_vars, inputs)
+            approx_vars &= input_vars  # Drop unrelated vars.
+        if not approx_vars:
+            return self  # exact
+        return Approximate(op, self, guide, approx_vars)
 
     def sample(self, sampled_vars, sample_inputs=None, rng_key=None):
         """
@@ -977,13 +1007,16 @@ class Reduce(Funsor):
     """
     Lazy reduction over multiple variables.
 
-    :param ~funsor.ops.Op op: A binary operator.
+    The user-facing interface is the :meth:`Funsor.reduce` method.
+
+    :param op: An associative operator.
+    :type op: ~funsor.ops.AssociativeOp
     :param funsor arg: An argument to be reduced.
     :param frozenset reduced_vars: A set of variables over which to reduce.
     """
 
     def __init__(self, op, arg, reduced_vars):
-        assert callable(op)
+        assert isinstance(op, AssociativeOp)
         assert isinstance(arg, Funsor)
         assert isinstance(reduced_vars, frozenset)
         assert all(isinstance(v, Variable) for v in reduced_vars)
@@ -1064,6 +1097,127 @@ def eager_reduce(op, arg, reduced_vars):
 def die_reduce(op, arg, reduced_vars):
     expr = reflect.interpret(Reduce, op, arg, reduced_vars)
     raise NotImplementedError(f"Missing pattern for {repr(expr)}")
+
+
+class Scatter(Funsor):
+    """
+    Transpose of structurally linear :class:`Subs`, followed by
+    :class:`Reduce`.
+
+    For injective scatter operations this should satisfy the equation::
+
+        if destin = Scatter(op, subs, source, frozenset())
+        then source = Subs(destin, subs)
+
+    .. warning:: This is currently implemented only for injective scatter
+        operations. In particular, this does not allow accumulation behavior
+        like scatter-add.
+
+    .. note:: ``Scatter(ops.add, ...)`` is the funsor analog of
+        ``numpy.add.at()`` or :func:`torch.index_put` or
+        :func:`jax.lax.scatter_add`. For injective substitutions,
+        ``Scatter(ops.add, ...)`` is roughly equivalent to the tensor
+        operation::
+
+            result = zeros(...)  # since zero is the additive unit
+            result[subs] = source
+
+    :param AssociativeOp op: An op. The unit of this op will be used as
+        default value.
+    :param tuple subs: A substitution.
+    :param Funsor source: A source for data to be scattered from.
+    :param frozenset reduced_vars: A set of variables over which to reduce.
+    """
+
+    def __init__(self, op, subs, source, reduced_vars):
+        assert isinstance(op, AssociativeOp)
+        assert isinstance(subs, tuple)
+        assert len(subs) == len(set(key for key, value in subs))
+        assert isinstance(source, Funsor)
+        assert isinstance(reduced_vars, frozenset)
+        assert all(isinstance(v, Variable) for v in reduced_vars)
+        reduced_names = frozenset(v.name for v in reduced_vars)
+
+        # First compute inputs of the pure-scatter op with no reduction.
+        inputs = OrderedDict()
+        for key, value in subs:
+            assert isinstance(key, str)
+            assert isinstance(value, Funsor)
+            assert key not in source.inputs
+            assert key not in reduced_names
+            for k, d in value.inputs.items():
+                # These are "batch" inputs and should be left of subs keys.
+                d2 = inputs.setdefault(k, d)
+                assert d2 == d
+        for k, d in source.inputs.items():
+            # These are "batch" inputs and should be left of subs keys.
+            d2 = inputs.setdefault(k, d)
+            assert d2 == d
+        for key, value in subs:
+            assert key not in inputs
+            # These are "event" inputs and should be right of "batch" inputs.
+            inputs[key] = value.output
+
+        # Then narrow these down to the fused scatter-reduce op.
+        inputs = OrderedDict(
+            (k, d) for k, d in inputs.items() if k not in reduced_names
+        )
+        fresh = frozenset(key for key, value in subs)
+        bound = {v.name: v.output for v in reduced_vars}
+        super().__init__(inputs, source.output, fresh, bound)
+        self.op = op
+        self.subs = subs
+        self.source = source
+        self.reduced_vars = reduced_vars
+
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
+        op, subs, source, reduced_vars = super()._alpha_convert(alpha_subs)
+        reduced_vars = frozenset(alpha_subs.get(var.name, var) for var in reduced_vars)
+        return op, subs, source, reduced_vars
+
+
+class Approximate(Funsor):
+    """
+    Interpretation-specific approximation wrt a set of variables.
+
+    The default eager interpretation should be exact.
+    The user-facing interface is the :meth:`Funsor.approximate` method.
+
+    :param op: An associative operator.
+    :type op: ~funsor.ops.AssociativeOp
+    :param Funsor model: An exact funsor depending on ``reduced_vars``.
+    :param Funsor guide: A proposal funsor guiding optional approximation.
+    :param frozenset approx_vars: A set of variables over which to approximate.
+    """
+
+    def __init__(self, op, model, guide, approx_vars):
+        assert isinstance(op, AssociativeOp)
+        assert isinstance(model, Funsor)
+        assert isinstance(guide, Funsor)
+        assert model.output is guide.output
+        assert isinstance(approx_vars, frozenset), approx_vars
+        inputs = model.inputs.copy()
+        inputs.update(guide.inputs)
+        output = model.output
+        fresh = frozenset(v.name for v in approx_vars)
+        bound = {v.name: v.output for v in approx_vars}
+        super().__init__(inputs, output, fresh, bound)
+        self.op = op
+        self.model = model
+        self.guide = guide
+        self.approx_vars = approx_vars
+
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
+        op, model, guide, approx_vars = super()._alpha_convert(alpha_subs)
+        approx_vars = frozenset(alpha_subs.get(var.name, var) for var in approx_vars)
+        return op, model, guide, approx_vars
+
+
+@eager.register(Approximate, AssociativeOp, Funsor, Funsor, frozenset)
+def eager_approximate(op, model, guide, approx_vars):
+    return model  # exact
 
 
 class NumberMeta(FunsorMeta):
@@ -1279,6 +1433,20 @@ def simplify_binary_funsor_align(op, lhs, rhs):
 @simplify.register(Binary, Op, Align, Align)
 def simplify_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
+
+
+class Finitary(Funsor):
+    def __init__(self, op, args):
+        assert isinstance(op, ops.Op)
+        assert isinstance(args, tuple)
+        assert all(isinstance(v, Funsor) for v in args)
+        inputs = OrderedDict()
+        for arg in args:
+            inputs.update(arg.inputs)
+        output = find_domain(op, *(arg.output for arg in args))
+        super().__init__(inputs, output)
+        self.op = op
+        self.args = args
 
 
 class Stack(Funsor):
@@ -1753,6 +1921,7 @@ def binary_funsor_object(op, x, y):
 
 
 __all__ = [
+    "Approximate",
     "Binary",
     "Cat",
     "Funsor",
@@ -1760,6 +1929,7 @@ __all__ = [
     "Lambda",
     "Number",
     "Reduce",
+    "Scatter",
     "Stack",
     "Slice",
     "Subs",

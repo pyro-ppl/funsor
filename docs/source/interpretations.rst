@@ -13,7 +13,6 @@ Interpretations
 ---------------
 .. automodule:: funsor.interpretations
     :members:
-    :undoc-members:
     :show-inheritance:
     :member-order: bysource
 
@@ -21,14 +20,19 @@ Monte Carlo
 -----------
 .. automodule:: funsor.montecarlo
     :members:
-    :undoc-members:
     :show-inheritance:
     :member-order: bysource
 
-Memoize
------------
-.. automodule:: funsor.memoize
+Approximations
+--------------
+.. automodule:: funsor.approximations
     :members:
-    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
+
+Evidence lower bound
+--------------------
+.. automodule:: funsor.elbo
+    :members:
     :show-inheritance:
     :member-order: bysource
