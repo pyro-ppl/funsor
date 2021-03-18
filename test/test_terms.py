@@ -277,26 +277,47 @@ def test_unary(symbol, data):
 
 
 @pytest.mark.parametrize("event_shape", [(3, 2)], ids=str)
+@pytest.mark.parametrize("dim", [None, 0, (1,), (0, 1)], ids=str)
+@pytest.mark.parametrize("keepdim", [False, True], ids=str)
 @pytest.mark.parametrize(
     "name",
     [
         "all",
         "any",
-        "logsumexp",
+        #  "argmax",
+        #  "argmin",
         "max",
-        "mean",
         "min",
-        "prod",
-        "std",
         "sum",
+        "prod",
+        "logsumexp",
+        "mean",
+        "std",
         "var",
     ],
 )
-def test_reduce_event(name, event_shape):
+def test_reduce_event(name, event_shape, dim, keepdim):
+    if name in ("argmax", "argmin"):
+        if dim is None and keepdim:
+            pytest.xfail(reason="find_domain needs to be fixed")
+        elif isinstance(dim, tuple):
+            pytest.xfail(reason="argmax and argmin don't support tuple dim")
+
     dtype = 2 if name in ("any", "all") else "real"
     x = random_tensor(OrderedDict(i=Bint[5]), output=Array[dtype, event_shape])
-    actual = getattr(x, name)()
-    check_funsor(actual, x.inputs, Array[dtype, ()])
+    actual = getattr(x, name)(dim=dim, keepdim=keepdim)
+
+    # compute expected shape
+    dim = (0, 1) if dim is None else dim
+    dim = (dim,) if isinstance(dim, int) else dim
+    if keepdim:
+        shape = tuple(
+            1 if i in dim else event_shape[i] for i in range(len(event_shape))
+        )
+    else:
+        shape = tuple(event_shape[i] for i in range(len(event_shape)) if i not in dim)
+
+    check_funsor(actual, x.inputs, Array[dtype, shape])
 
 
 BINARY_OPS = ["+", "-", "*", "/", "**", "==", "!=", "<", "<=", ">", ">=", "min", "max"]

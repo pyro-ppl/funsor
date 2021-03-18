@@ -249,7 +249,7 @@ def _find_domain_log_exp(op, domain):
 
 
 @find_domain.register(ops.ReductionOp)
-def _find_domain_sum(op, domain):
+def _find_domain_reduction(op, domain):
     # Canonicalize dim.
     dim = op.defaults.get("dim", None)
     ndims = len(domain.shape)
@@ -272,6 +272,7 @@ def _find_domain_sum(op, domain):
     else:
         raise NotImplementedError("TODO")
 
+    breakpoint()
     return Array[dtype, shape]
 
 

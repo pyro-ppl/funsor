@@ -295,27 +295,6 @@ class Tensor(Funsor, metaclass=TensorMeta):
         data = self.data[tuple(index)]
         return Tensor(data, inputs, self.dtype)
 
-    def eager_unary(self, op):
-        dtype = find_domain(op, self.output).dtype
-        if op in REDUCE_OP_TO_NUMERIC:
-            batch_dim = len(self.data.shape) - len(self.output.shape)
-            data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
-            data = REDUCE_OP_TO_NUMERIC[op](data, -1)
-            return Tensor(data, self.inputs, dtype)
-        if op in NUMERIC_OPS:
-            batch_dim = len(self.data.shape) - len(self.output.shape)
-            event_dim = len(self.output.shape)
-            if op.axis is None:
-                op.axis = tuple(batch_dim + i for i in range(event_dim))
-            elif isinstance(op.axis, int):
-                op.axis = batch_dim + op.axis % event_dim
-            elif isinstance(op.axis, tuple):
-                op.axis = tuple(batch_dim + i % event_dim for i in op.axis)
-            else:
-                raise ValueError
-            return Tensor(op(self.data), self.inputs, dtype)
-        return Tensor(op(self.data), self.inputs, dtype)
-
     def eager_reduce(self, op, reduced_vars):
         if op in REDUCE_OP_TO_NUMERIC:
             numeric_op = REDUCE_OP_TO_NUMERIC[op]
@@ -1227,18 +1206,10 @@ REDUCE_OP_TO_NUMERIC = {
 }
 
 
-NUMERIC_OPS = [
-    ops.mean,
-    ops.std,
-    ops.var,
-]
-
-
 __all__ = [
     "Einsum",
     "Function",
     "REDUCE_OP_TO_NUMERIC",
-    "NUMERIC_OPS",
     "Tensor",
     "align_tensor",
     "align_tensors",

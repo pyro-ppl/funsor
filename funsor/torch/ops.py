@@ -3,6 +3,7 @@
 
 import numbers
 import typing
+from functools import partial, reduce
 
 import torch
 
@@ -26,29 +27,118 @@ ops.transpose.register(torch.Tensor)(torch.transpose)
 ops.unsqueeze.register(torch.Tensor)(torch.unsqueeze)
 
 
+###########################################
+# Reduction Ops
+###########################################
+
+
 @ops.all.register(torch.Tensor)
-def _all(x, dim):
-    return x.all() if dim is None else x.all(dim=dim)
+def _all(x, dim, keepdim):
+    if dim is None and not keepdim:
+        return x.all()
 
+    if isinstance(dim, int):
+        return x.all(dim, keepdim=keepdim)
 
-@ops.amax.register(torch.Tensor)
-def _amax(x, dim, keepdims=False):
-    return x.max() if dim is None else x.max(dim, keepdims)[0]
-
-
-@ops.amin.register(torch.Tensor)
-def _amin(x, dim, keepdims=False):
-    return x.min() if dim is None else x.min(dim, keepdims)[0]
-
-
-@ops.argmax.register(torch.Tensor)
-def _argmax(x, dim):
-    return x.max(dim).indices
+    dim = tuple(range(x.dim())) if dim is None else dim
+    return reduce(partial(torch.all, keepdim=keepdim), dim, x)
 
 
 @ops.any.register(torch.Tensor)
-def _any(x, dim):
-    return x.any() if dim is None else x.any(dim=dim)
+def _any(x, dim, keepdim):
+    if dim is None and not keepdim:
+        return x.any()
+
+    if isinstance(dim, int):
+        return x.any(dim, keepdim=keepdim)
+
+    dim = tuple(range(x.dim())) if dim is None else dim
+    return reduce(partial(torch.any, keepdim=keepdim), dim, x)
+
+
+@ops.argmax.register(torch.Tensor)
+def _argmax(x, dim, keepdim):
+    # FIXME find_domain
+    return x.argmax(dim, keepdim=keepdim)
+
+
+@ops.argmin.register(torch.Tensor)
+def _argmin(x, dim, keepdim):
+    # FIXME find_domain
+    return x.argmin(dim, keepdim=keepdim)
+
+
+@ops.amax.register(torch.Tensor)
+def _amax(x, dim, keepdim):
+    if dim is None and not keepdim:
+        return x.amax()
+    dim = tuple(range(x.dim())) if dim is None else dim
+    return x.amax(dim, keepdim=keepdim)
+
+
+@ops.amin.register(torch.Tensor)
+def _amin(x, dim, keepdim):
+    if dim is None and not keepdim:
+        return x.amin()
+    dim = tuple(range(x.dim())) if dim is None else dim
+    return x.amin(dim, keepdim=keepdim)
+
+
+@ops.sum.register(torch.Tensor)
+def _sum(x, dim, keepdim):
+    if dim is None and not keepdim:
+        return x.sum()
+    dim = tuple(range(x.dim())) if dim is None else dim
+    return x.sum(dim, keepdim=keepdim)
+
+
+@ops.prod.register(torch.Tensor)
+def _prod(x, dim, keepdim):
+    if dim is None and not keepdim:
+        return x.prod()
+
+    if isinstance(dim, int):
+        return x.prod(dim, keepdim=keepdim)
+
+    dim = tuple(range(x.dim())) if dim is None else dim
+    return reduce(partial(torch.prod, keepdim=keepdim), dim, x)
+
+
+@ops.logsumexp.register(torch.Tensor)
+def _logsumexp(x, dim, keepdim):
+    dim = tuple(range(x.dim())) if dim is None else dim
+    return x.logsumexp(dim, keepdim=keepdim)
+
+
+@ops.mean.register(torch.Tensor)
+def _mean(x, dim, keepdim):
+    if dim is None and not keepdim:
+        return x.mean()
+    dim = tuple(range(x.dim())) if dim is None else dim
+    return x.mean(dim, keepdim=keepdim)
+
+
+@ops.std.register(torch.Tensor)
+def _std(x, dim, ddof, keepdim):
+    dim = tuple(range(x.dim())) if dim is None else dim
+    if ddof == 0:
+        return x.std(dim, unbiased=False, keepdim=keepdim)
+    if ddof == 1:
+        return x.std(dim, keepdim=keepdim)
+    raise NotImplementedError
+
+
+@ops.var.register(torch.Tensor)
+def _var(x, dim, ddof, keepdim):
+    dim = tuple(range(x.dim())) if dim is None else dim
+    if ddof == 0:
+        return x.var(dim, unbiased=False, keepdim=keepdim)
+    if ddof == 1:
+        return x.var(dim, keepdim=keepdim)
+    raise NotImplementedError
+
+
+###########################################
 
 
 @ops.astype.register(torch.Tensor)
@@ -146,11 +236,6 @@ def _safe_logaddexp_tensor_number(x, y):
     return _safe_logaddexp_number_tensor(y, x)
 
 
-@ops.logsumexp.register(torch.Tensor)
-def _logsumexp(x, dim):
-    return x.reshape(-1).logsumexp(0) if dim is None else x.logsumexp(dim)
-
-
 @ops.max.register(torch.Tensor, torch.Tensor)
 def _max(x, y):
     return torch.max(x, y)
@@ -164,12 +249,6 @@ def _max(x, y):
 @ops.max.register(torch.Tensor, numbers.Number)
 def _max(x, y):
     return x.clamp(min=y)
-
-
-@ops.mean.register(torch.Tensor)
-def _mean(x, dim=None, keepdim=False):
-    dim = tuple(x.shape) if dim is None else dim
-    return x.mean(dim, keepdim=keepdim)
 
 
 @ops.min.register(torch.Tensor, torch.Tensor)
@@ -229,11 +308,6 @@ def _pow(x, y):
     return x ** y
 
 
-@ops.prod.register(torch.Tensor)
-def _prod(x, dim):
-    return x.prod() if dim is None else x.prod(dim=dim)
-
-
 @ops.reciprocal.register(torch.Tensor)
 def _reciprocal(x):
     result = x.reciprocal().clamp(max=torch.finfo(x.dtype).max)
@@ -276,36 +350,6 @@ def _scatter_add(destin, indices, source):
 ops.stack.register(typing.Tuple[torch.Tensor, ...])(torch.stack)
 
 
-@ops.std.register(torch.Tensor)
-def _std(x, dim, ddof, keepdim):
-    dim = tuple(x.shape) if dim is None else dim
-    if ddof == 0:
-        return x.std(dim, unbiased=False, keepdim=keepdim)
-    if ddof == 1:
-        return x.std(dim, keepdim=keepdim)
-    raise NotImplementedError
-
-
-@ops.sum.register(torch.Tensor)
-def _sum(x, dim, keepdims):
-    if dim is None:
-        if keepdims:
-            dim = tuple(range(x.dim()))
-            return x.sum(dim, True)
-        return x.sum()
-    return x.sum(dim, keepdims)
-
-
 @ops.triangular_solve.register(torch.Tensor, torch.Tensor)
 def _triangular_solve(x, y, upper=False, transpose=False):
     return x.triangular_solve(y, upper, transpose).solution
-
-
-@ops.var.register(torch.Tensor)
-def _var(x, dim, ddof, keepdim):
-    dim = tuple(x.shape) if dim is None else dim
-    if ddof == 0:
-        return x.var(dim, unbiased=False, keepdim=keepdim)
-    if ddof == 1:
-        return x.var(dim, keepdim=keepdim)
-    raise NotImplementedError

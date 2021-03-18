@@ -50,29 +50,65 @@ tanh.register(array)(np.tanh)
 atanh.register(array)(np.arctanh)
 
 
-@UnaryOp.make
-def all(x, dim=None):
-    return np.all(x, dim)
+###########################################
+# Reduction Ops
+###########################################
 
 
-@UnaryOp.make
-def any(x, dim=None):
-    return np.any(x, dim)
+@ReductionOp.make
+def all(x, dim=None, keepdim=False):
+    return np.all(x, dim, keepdims=keepdim)
 
 
-@UnaryOp.make
-def amax(x, dim=None, keepdims=False):
-    return np.amax(x, dim, keepdims=keepdims)
+@ReductionOp.make
+def any(x, dim=None, keepdim=False):
+    return np.any(x, dim, keepdims=keepdim)
 
 
-@UnaryOp.make
-def amin(x, dim=None, keepdims=False):
-    return np.amax(x, dim, keepdims=keepdims)
+@ReductionOp.make
+def argmax(x, dim=None, keepdim=False):
+    if keepdim:
+        return np.expand_dims(np.argmax(x, dim), dim)
+    else:
+        return np.argmax(x, dim)
+
+
+@ReductionOp.make
+def argmin(x, dim=None, keepdim=False):
+    if keepdim:
+        return np.expand_dims(np.argmin(x, dim), dim)
+    else:
+        return np.argmin(x, dim)
+
+
+@ReductionOp.make
+def amax(x, dim=None, keepdim=False):
+    return np.amax(x, dim, keepdims=keepdim)
+
+
+@ReductionOp.make
+def amin(x, dim=None, keepdim=False):
+    return np.amax(x, dim, keepdims=keepdim)
 
 
 @ReductionOp.make
 def sum(x, dim=None, keepdim=False):
     return np.sum(x, dim, keepdims=keepdim)
+
+
+@ReductionOp.make
+def prod(x, dim=None, keepdim=False):
+    return np.prod(x, dim, keepdims=keepdim)
+
+
+@ReductionOp.make
+def logsumexp(x, dim, keepdim=False):
+    amax = np.amax(x, axis=dim, keepdims=True)
+    # treat the case x = -inf
+    amax = np.where(np.isfinite(amax), amax, 0.0)
+    unnormalized_lse = log(np.sum(np.exp(x - amax), dim, keepdims=keepdim))
+    amax = amax if keepdim else amax.squeeze(dim)
+    return unnormalized_lse + amax
 
 
 @ReductionOp.make
@@ -88,11 +124,6 @@ def std(x, dim=None, ddof=0, keepdim=False):
 @ReductionOp.make
 def var(x, dim=None, ddof=0, keepdim=False):
     return np.var(x, dim, ddof=ddof, keepdims=keepdim)
-
-
-@UnaryOp.make
-def prod(x, dim=None):
-    return np.prod(x, dim)
 
 
 @UnaryOp.make
@@ -263,14 +294,6 @@ def _safe_logaddexp_tensor_number(x, y):
     return _safe_logaddexp_number_tensor(y, x)
 
 
-@UnaryOp.make
-def logsumexp(x, dim):
-    amax = np.amax(x, axis=dim, keepdims=True)
-    # treat the case x = -inf
-    amax = np.where(np.isfinite(amax), amax, 0.0)
-    return log(np.sum(np.exp(x - amax), axis=dim)) + amax.squeeze(axis=dim)
-
-
 max.register(array, array)(np.maximum)
 min.register(array, array)(np.minimum)
 
@@ -293,16 +316,6 @@ def _min(x, y):
 @min.register(array, (int, float))
 def _min(x, y):
     return np.clip(x, a_min=None, a_max=y)
-
-
-@UnaryOp.make
-def argmax(x, dim):
-    raise NotImplementedError
-
-
-@argmax.register(array)
-def _argmax(x, dim):
-    return np.argmax(x, dim)
 
 
 @UnaryOp.make
@@ -429,6 +442,7 @@ __all__ = [
     "amin",
     "any",
     "argmax",
+    "argmin",
     "astype",
     "cat",
     "cholesky",

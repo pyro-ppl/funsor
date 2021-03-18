@@ -559,26 +559,32 @@ class Funsor(object, metaclass=FunsorMeta):
     # reduce over output shape while preserving all inputs.
     # To reduce over inputs, instead call .reduce(op, reduced_vars).
 
+    def all(self, dim=None, keepdim=False):
+        return Unary(ops.AllOp(dim, keepdim), self)
+
+    def any(self, dim=None, keepdim=False):
+        return Unary(ops.AnyOp(dim, keepdim), self)
+
+    def argmax(self, dim=None, keepdim=False):
+        return Unary(ops.ArgmaxOp(dim, keepdim), self)
+
+    def argmin(self, dim=None, keepdim=False):
+        return Unary(ops.ArgminOp(dim, keepdim), self)
+
+    def max(self, dim=None, keepdim=False):
+        return Unary(ops.AmaxOp(dim, keepdim), self)
+
+    def min(self, dim=None, keepdim=False):
+        return Unary(ops.AmaxOp(dim, keepdim), self)
+
     def sum(self, dim=None, keepdim=False):
-        return Unary(ops.SumOp(dim, keepdim=keepdim), self)
+        return Unary(ops.SumOp(dim, keepdim), self)
 
-    def prod(self):
-        return Unary(ops.mul, self)
+    def prod(self, dim=None, keepdim=False):
+        return Unary(ops.ProdOp(dim, keepdim), self)
 
-    def logsumexp(self):
-        return Unary(ops.logaddexp, self)
-
-    def all(self):
-        return Unary(ops.and_, self)
-
-    def any(self):
-        return Unary(ops.or_, self)
-
-    def min(self):
-        return Unary(ops.min, self)
-
-    def max(self):
-        return Unary(ops.max, self)
+    def logsumexp(self, dim=None, keepdim=False):
+        return Unary(ops.LogsumexpOp(dim, keepdim), self)
 
     def mean(self, dim=None, keepdim=False):
         return Unary(ops.MeanOp(dim, keepdim), self)

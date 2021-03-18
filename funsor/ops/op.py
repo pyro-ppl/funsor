@@ -287,6 +287,7 @@ class ReductionOp(UnaryOp):
     Here reduction operations are defined in a broad sense, not only
     associative operations. This helps to unify find_domain logic.
     """
+
     pass
 
 
