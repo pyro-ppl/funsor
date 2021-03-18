@@ -377,3 +377,12 @@ def test_lognormal_distribution(moment):
     samples = backend_dist.LogNormal(loc_data, scale_data).sample((num_samples,))
     expected = (samples ** moment).mean(0)
     assert_close(actual.data, expected, atol=1e-2, rtol=1e-2)
+
+
+def test_sample_normalizer_not_expand():
+    x = random_tensor(OrderedDict(a=Bint[2]))
+    sample_inputs = OrderedDict(particle=Bint[5])
+    rng_key = np.zeros(2, dtype=np.uint32) if get_backend() == "jax" else None
+    sample = x.sample(frozenset({"a"}), sample_inputs, rng_key=rng_key)
+    actual = sample.terms[1]
+    assert not actual.inputs
