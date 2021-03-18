@@ -111,7 +111,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
         if not names or names == tuple(n for n, p in self.terms):
             return self
 
-        new_terms = sorted(self.terms, key=lambda t: names.index(t[0]))
+        new_terms = tuple(sorted(self.terms, key=lambda t: names.index(t[0])))
         return Delta(new_terms)
 
     def eager_subs(self, subs):
@@ -146,7 +146,7 @@ class Delta(Funsor, metaclass=DeltaMeta):
 
     def eager_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)
-        if op is ops.logaddexp:
+        if op in (ops.max, ops.logaddexp):
             if reduced_vars - self.fresh and self.fresh - reduced_vars:
                 result = self
                 if not reduced_vars.isdisjoint(self.fresh):

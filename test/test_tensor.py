@@ -22,7 +22,6 @@ from funsor.tensor import (
     Tensor,
     align_tensors,
     numeric_array,
-    stack,
     tensordot,
 )
 from funsor.terms import Cat, Lambda, Number, Scatter, Slice, Stack, Variable
@@ -870,7 +869,7 @@ def test_einsum(equation):
     inputs = inputs.split(",")
     tensors = [randn(tuple(sizes[d] for d in dims)) for dims in inputs]
     funsors = [Tensor(x) for x in tensors]
-    expected = Tensor(ops.einsum(equation, *tensors))
+    expected = Tensor(ops.einsum(tensors, equation))
     actual = Einsum(equation, *funsors)
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
@@ -895,7 +894,7 @@ def test_batched_einsum(equation, batch1, batch2):
     inputs, tensors = align_tensors(*funsors)
     batch = tuple(v.size for v in inputs.values())
     tensors = [ops.expand(x, batch + f.shape) for (x, f) in zip(tensors, funsors)]
-    expected = Tensor(ops.einsum(_equation, *tensors), inputs)
+    expected = Tensor(ops.einsum(tensors, _equation), inputs)
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
@@ -941,8 +940,8 @@ def test_tensor_tensordot(x_shape, xy_shape, y_shape):
 )
 def test_tensor_stack(n, shape, dim):
     tensors = [randn(shape) for _ in range(n)]
-    actual = stack(tuple(Tensor(t) for t in tensors), dim=dim)
-    expected = Tensor(ops.stack(dim, *tensors))
+    actual = ops.stack(tuple(Tensor(t) for t in tensors), dim=dim)
+    expected = Tensor(ops.stack(tensors, dim))
     assert_close(actual, expected)
 
 
@@ -1087,7 +1086,7 @@ def test_scatter_number(op):
 
     proto = source.data.reshape((-1,))[:1].reshape(())
     zero = ops.full_like(ops.expand(proto, (5, 2)), ops.UNITS[op])
-    expected_data = ops.cat(1, source.data.reshape((5, 1)), zero)
+    expected_data = ops.cat([source.data.reshape((5, 1)), zero], 1)
     expected = Tensor(expected_data, OrderedDict(k=Bint[5], i=Bint[3]))
 
     assert_close(actual, expected)
@@ -1306,3 +1305,54 @@ def test_scatter_pure_renaming():
 
     assert actual.input_vars == expected.input_vars
     assert ((actual - expected).abs() < 1e-4).data.all()
+
+
+@pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
+def test_sum(event_shape):
+    data = randn(*event_shape)
+    DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
+    KEEPDIMS = [False, True]
+
+    assert_close(Tensor(ops.sum(data)), ops.sum(Tensor(data)))
+    for dim in DIMS:
+        assert_close(Tensor(ops.sum(data, dim)), ops.sum(Tensor(data), dim))
+        assert_close(Tensor(ops.sum(data, dim=dim)), ops.sum(Tensor(data), dim=dim))
+    for keepdims in KEEPDIMS:
+        assert_close(
+            Tensor(ops.sum(data, keepdims=keepdims)),
+            ops.sum(Tensor(data), keepdims=keepdims),
+        )
+        for dim in DIMS:
+            assert_close(
+                Tensor(ops.sum(data, dim, keepdims)),
+                ops.sum(Tensor(data), dim, keepdims),
+            )
+            assert_close(
+                Tensor(ops.sum(data, dim, keepdims=keepdims)),
+                ops.sum(Tensor(data), dim, keepdims=keepdims),
+            )
+            assert_close(
+                Tensor(ops.sum(data, dim=dim, keepdims=keepdims)),
+                ops.sum(Tensor(data), dim=dim, keepdims=keepdims),
+            )
+
+
+@pytest.mark.parametrize("batch_shape", [(), (5,)], ids=str)
+@pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
+def test_sum_batch(batch_shape, event_shape):
+    inputs = OrderedDict((k, Bint[s]) for k, s in zip("abc", batch_shape))
+    data = randn(*batch_shape, *event_shape)
+    DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
+    KEEPDIMS = [False, True]
+
+    def raw_sum(x, dim=None, keepdims=False, batch_ndims=len(batch_shape)):
+        if batch_ndims == 0:
+            return ops.sum(x, dim, keepdims)
+        return ops.stack([raw_sum(part, dim, keepdims, batch_ndims - 1) for part in x])
+
+    rtol = 1e-5 if get_backend() == "jax" else 1e-6
+    for keepdims in KEEPDIMS:
+        for dim in DIMS:
+            actual = ops.sum(Tensor(data, inputs), dim, keepdims)
+            expected = Tensor(raw_sum(data, dim, keepdims), inputs)
+            assert_close(actual, expected, rtol=rtol)

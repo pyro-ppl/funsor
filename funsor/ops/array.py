@@ -3,6 +3,8 @@
 
 import math
 import numbers
+import typing
+from functools import singledispatch
 
 import numpy as np
 
@@ -21,35 +23,70 @@ from .builtin import (
     sqrt,
     tanh,
 )
-from .op import DISTRIBUTIVE_OPS, UNITS, CachedOpMeta, Op, declare_op_types, make_op
+from .op import (
+    DISTRIBUTIVE_OPS,
+    UNITS,
+    BinaryOp,
+    FinitaryOp,
+    Op,
+    OpMeta,
+    TernaryOp,
+    UnaryOp,
+    declare_op_types,
+)
 
 _builtin_all = all
 _builtin_any = any
 
 # This is used only for pattern matching.
 array = (np.ndarray, np.generic)
-
-all = make_op(np.all)
-amax = make_op(np.amax)
-amin = make_op(np.amin)
-any = make_op(np.any)
-astype = make_op("astype")
-cat = make_op("cat")
-clamp = make_op("clamp")
-diagonal = make_op("diagonal")
-einsum = make_op("einsum")
-full_like = make_op(np.full_like)
-isnan = make_op(np.isnan)
-prod = make_op(np.prod)
-stack = make_op("stack")
-sum = make_op(np.sum)
-transpose = make_op("transpose")
+arraylist = typing.Tuple[typing.Union[array], ...]
 
 sqrt.register(array)(np.sqrt)
 exp.register(array)(np.exp)
 log1p.register(array)(np.log1p)
 tanh.register(array)(np.tanh)
 atanh.register(array)(np.arctanh)
+
+
+@UnaryOp.make
+def all(x, dim=None):
+    return np.all(x, dim)
+
+
+@UnaryOp.make
+def any(x, dim=None):
+    return np.any(x, dim)
+
+
+@UnaryOp.make
+def amax(x, dim=None, keepdims=False):
+    return np.amax(x, dim, keepdims=keepdims)
+
+
+@UnaryOp.make
+def amin(x, dim=None, keepdims=False):
+    return np.amax(x, dim, keepdims=keepdims)
+
+
+@UnaryOp.make
+def sum(x, dim=None, keepdims=False):
+    return np.sum(x, dim, keepdims=keepdims)
+
+
+@UnaryOp.make
+def prod(x, dim=None):
+    return np.prod(x, dim)
+
+
+@UnaryOp.make
+def isnan(x):
+    return np.isnan(x)
+
+
+@UnaryOp.make
+def full_like(prototype, fill_value):
+    return np.full_like(prototype, fill_value)
 
 
 @log.register(array)
@@ -60,113 +97,57 @@ def _log(x):
         return np.log(x)
 
 
-def _logaddexp(x, y):
+@AssociativeOp.make
+def logaddexp(x, y):
     shift = max(detach(x), detach(y))
     return log(exp(x - shift) + exp(y - shift)) + shift
 
 
-logaddexp = make_op(_logaddexp, AssociativeOp, name="logaddexp")
-sample = make_op(_logaddexp, type(logaddexp), name="sample")
+sample = logaddexp.make(logaddexp.default, name="sample")
 
 
-class MeanOpMeta(CachedOpMeta):
-    def __call__(cls, axis=None, keepdims=False):
-        return super().__call__(axis, keepdims)
+class ReshapeMeta(OpMeta):
+    def hash_args_kwargs(cls, args, kwargs):
+        assert not kwargs
+        if args:
+            (shape,) = args
+            shape = tuple(shape)  # necessary to convert torch.Size to tuple
+            args = (shape,)
+        return super().hash_args_kwargs(args, kwargs)
 
 
-class MeanOp(Op, metaclass=MeanOpMeta):
-    def __init__(self, axis, keepdims):
-        self.axis = axis
-        self.keepdims = keepdims
-        super().__init__(self._default)
-
-    def _reduce(self):
-        return MeanOp, (self.axis, self.keepdims)
-
-    def _default(self, x):
-        return x.mean(self.axis, keepdims=self.keepdims)
+@UnaryOp.make(metaclass=ReshapeMeta)
+def reshape(x, shape):
+    return x.reshape(shape)
 
 
-class StdOpMeta(CachedOpMeta):
-    def __call__(cls, axis=None, ddof=0, keepdims=False):
-        return super().__call__(axis, ddof, keepdims)
+@UnaryOp.make
+def astype(x, dtype):
+    raise NotImplementedError
 
 
-class StdOp(Op, metaclass=StdOpMeta):
-    def __init__(self, axis, ddof, keepdims):
-        self.axis = axis
-        self.ddof = ddof
-        self.keepdims = keepdims
-        super().__init__(self._default)
-
-    def _reduce(self):
-        return StdOp, (self.axis, self.ddof, self.keepdims)
-
-    def _default(self, x):
-        return x.std(self.axis, ddof=self.ddof, keepdims=self.keepdims)
-
-
-class VarOpMeta(CachedOpMeta):
-    def __call__(cls, axis=None, ddof=0, keepdims=False):
-        return super().__call__(axis, ddof, keepdims)
-
-
-class VarOp(Op, metaclass=VarOpMeta):
-    def __init__(self, axis, ddof, keepdims):
-        self.axis = axis
-        self.ddof = ddof
-        self.keepdims = keepdims
-        super().__init__(self._default)
-
-    def _reduce(self):
-        return VarOp, (self.axis, self.ddof, self.keepdims)
-
-    def _default(self, x):
-        return x.var(self.axis, ddof=self.ddof, keepdims=self.keepdims)
-
-
-mean = MeanOp()
-std = StdOp()
-var = VarOp()
-
-
-class ReshapeMeta(CachedOpMeta):
-    def __call__(cls, shape):
-        shape = tuple(shape)  # necessary to convert torch.Size to tuple
-        return super().__call__(shape)
-
-
-class ReshapeOp(Op, metaclass=ReshapeMeta):
-    def __init__(self, shape):
-        self.shape = shape
-        super().__init__(self._default)
-
-    def __reduce__(self):
-        return ReshapeOp, (self.shape,)
-
-    def _default(self, x):
-        return x.reshape(self.shape)
-
-
-@astype.register(array, str)
+@astype.register(array)
 def _astype(x, dtype):
     return x.astype(dtype)
 
 
-@cat.register(int, [array])
-def _cat(dim, *x):
-    return np.concatenate(x, axis=dim)
+@FinitaryOp.make
+def cat(parts, axis):
+    raise NotImplementedError
 
 
-@clamp.register(array, numbers.Number, numbers.Number)
-@clamp.register(array, numbers.Number, type(None))
-@clamp.register(array, type(None), numbers.Number)
-@clamp.register(array, type(None), type(None))
-def _clamp(x, min, max):
-    return np.clip(x, a_min=min, a_max=max)
+cat.register(arraylist)(np.concatenate)
 
 
-@Op
+@UnaryOp.make
+def clamp(x, min=None, max=None):
+    return min(max(x, min), max)
+
+
+clamp.register(array)(np.clip)
+
+
+@UnaryOp.make
 def cholesky(x):
     """
     Like :func:`numpy.linalg.cholesky` but uses sqrt for scalar matrices.
@@ -176,7 +157,7 @@ def cholesky(x):
     return np.linalg.cholesky(x)
 
 
-@Op
+@UnaryOp.make
 def cholesky_inverse(x):
     """
     Like :func:`torch.cholesky_inverse` but supports batching and gradients.
@@ -184,29 +165,39 @@ def cholesky_inverse(x):
     return cholesky_solve(new_eye(x, x.shape[:-1]), x)
 
 
-@Op
+@BinaryOp.make
 def cholesky_solve(x, y):
     y_inv = np.linalg.inv(y)
     A = np.swapaxes(y_inv, -2, -1) @ y_inv
     return A @ x
 
 
-@Op
+@UnaryOp.make
 def detach(x):
     return x
 
 
-@diagonal.register(array, int, int)
+@UnaryOp.make
+def diagonal(x, dim1, dim2):
+    raise NotImplementedError
+
+
+@diagonal.register(array)
 def _diagonal(x, dim1, dim2):
     return np.diagonal(x, axis1=dim1, axis2=dim2)
 
 
-@einsum.register(str, [array])
-def _einsum(x, *operand):
-    return np.einsum(x, *operand)
+@FinitaryOp.make
+def einsum(operands, equation):
+    raise NotImplementedError
 
 
-@Op
+@einsum.register(arraylist)
+def _einsum(operands, equation):
+    return np.einsum(equation, *operands)
+
+
+@UnaryOp.make
 def expand(x, shape):
     prepend_dim = len(shape) - np.ndim(x)
     assert prepend_dim >= 0
@@ -216,14 +207,25 @@ def expand(x, shape):
     return np.broadcast_to(x, shape)
 
 
-@Op
+@UnaryOp.make
 def finfo(x):
     return np.finfo(x.dtype)
 
 
-@Op
+# this isn't really a mathematical op
+@singledispatch
 def is_numeric_array(x):
-    return True if isinstance(x, array) else False
+    """
+    Returns whether an object is a ground numeric array.
+    """
+    return False
+
+
+for typ in array:
+
+    @is_numeric_array.register(typ)
+    def _is_numeric_array(x):
+        return True
 
 
 @logaddexp.register(array, array)
@@ -245,7 +247,7 @@ def _safe_logaddexp_tensor_number(x, y):
     return _safe_logaddexp_number_tensor(y, x)
 
 
-@Op
+@UnaryOp.make
 def logsumexp(x, dim):
     amax = np.amax(x, axis=dim, keepdims=True)
     # treat the case x = -inf
@@ -253,9 +255,8 @@ def logsumexp(x, dim):
     return log(np.sum(np.exp(x - amax), axis=dim)) + amax.squeeze(axis=dim)
 
 
-@max.register(array, array)
-def _max(x, y):
-    return np.maximum(x, y)
+max.register(array, array)(np.maximum)
+min.register(array, array)(np.minimum)
 
 
 @max.register((int, float), array)
@@ -268,11 +269,6 @@ def _max(x, y):
     return np.clip(x, a_min=y, a_max=None)
 
 
-@min.register(array, array)
-def _min(x, y):
-    return np.minimum(x, y)
-
-
 @min.register((int, float), array)
 def _min(x, y):
     return np.clip(y, a_min=None, a_max=x)
@@ -283,43 +279,47 @@ def _min(x, y):
     return np.clip(x, a_min=None, a_max=y)
 
 
-@Op
+@UnaryOp.make
 def argmax(x, dim):
     raise NotImplementedError
 
 
-@argmax.register(array, int)
+@argmax.register(array)
 def _argmax(x, dim):
     return np.argmax(x, dim)
 
 
-@Op
-def new_arange(x, stop):
-    return np.arange(stop)
+@UnaryOp.make
+def new_arange(x, start=None, stop=None, step=None):
+    raise NotImplementedError
 
 
-@new_arange.register(array, int, int, int)
+@new_arange.register(array)
 def _new_arange(x, start, stop, step):
-    return np.arange(start, stop, step)
+    if step is not None:
+        return np.arange(start, stop, step)
+    if stop is not None:
+        return np.arange(start, stop)
+    return np.arange(start)
 
 
-@Op
+@UnaryOp.make
 def new_zeros(x, shape):
     return np.zeros(shape, dtype=x.dtype)
 
 
-@Op
+@UnaryOp.make
 def new_full(x, shape, value):
     return np.full(shape, value, dtype=x.dtype)
 
 
-@Op
+@UnaryOp.make
 def new_eye(x, shape):
     n = shape[-1]
     return np.broadcast_to(np.eye(n), shape + (n,))
 
 
-@Op
+@UnaryOp.make
 def permute(x, dims):
     return np.transpose(x, axes=dims)
 
@@ -350,7 +350,7 @@ def _safesub(x, y):
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
 
 
-@Op
+@TernaryOp.make
 def scatter(destin, indices, source):
     raise NotImplementedError
 
@@ -362,7 +362,7 @@ def _scatter(destin, indices, source):
     return result
 
 
-@Op
+@TernaryOp.make
 def scatter_add(destin, indices, source):
     raise NotImplementedError
 
@@ -374,24 +374,30 @@ def _scatter_add(destin, indices, source):
     return result
 
 
-@stack.register(int, [array])
-def _stack(dim, *x):
-    return np.stack(x, axis=dim)
+@FinitaryOp.make
+def stack(parts, dim=0):
+    raise NotImplementedError
 
 
-@transpose.register(array, int, int)
-def _transpose(x, dim1, dim2):
-    return np.swapaxes(x, dim1, dim2)
+stack.register(arraylist)(np.stack)
 
 
-@Op
+@UnaryOp.make
+def transpose(array, axis1, axis2):
+    raise NotImplementedError
+
+
+transpose.register(array)(np.swapaxes)
+
+
+@BinaryOp.make
 def triangular_solve(x, y, upper=False, transpose=False):
     if transpose:
         y = np.swapaxes(y, -2, -1)
     return np.linalg.inv(y) @ x
 
 
-@Op
+@UnaryOp.make
 def unsqueeze(x, dim):
     return np.expand_dims(x, axis=dim)
 

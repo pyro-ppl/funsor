@@ -18,7 +18,7 @@ import funsor
 from . import ops
 from .delta import Delta
 from .domains import Array, ArrayType, Bint, Product, Real, Reals, find_domain
-from .ops import GetitemOp, MatmulOp, Op, ReshapeOp
+from .ops import BinaryOp, FinitaryOp, GetitemOp, MatmulOp, Op, ReshapeOp
 from .terms import (
     Binary,
     Finitary,
@@ -694,21 +694,21 @@ def eager_scatter_tensor(op, subs, source, reduced_vars):
     return Tensor(data, destin_inputs, output.dtype)
 
 
-@eager.register(Binary, Op, Tensor, Number)
+@eager.register(Binary, BinaryOp, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):
     dtype = find_domain(op, lhs.output, rhs.output).dtype
     data = op(lhs.data, rhs.data)
     return Tensor(data, lhs.inputs, dtype)
 
 
-@eager.register(Binary, Op, Number, Tensor)
+@eager.register(Binary, BinaryOp, Number, Tensor)
 def eager_binary_number_tensor(op, lhs, rhs):
     dtype = find_domain(op, lhs.output, rhs.output).dtype
     data = op(lhs.data, rhs.data)
     return Tensor(data, rhs.inputs, dtype)
 
 
-@eager.register(Binary, Op, Tensor, Tensor)
+@eager.register(Binary, BinaryOp, Tensor, Tensor)
 def eager_binary_tensor_tensor(op, lhs, rhs):
     # Compute inputs and outputs.
     dtype = find_domain(op, lhs.output, rhs.output).dtype
@@ -776,16 +776,37 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
 
 @eager.register(Unary, ReshapeOp, Tensor)
 def eager_reshape_tensor(op, arg):
-    if arg.shape == op.shape:
+    shape = op.defaults["shape"]
+    if arg.shape == shape:
         return arg
     batch_shape = arg.data.shape[: len(arg.data.shape) - len(arg.shape)]
-    data = arg.data.reshape(batch_shape + op.shape)
+    data = arg.data.reshape(batch_shape + shape)
+    return Tensor(data, arg.inputs, arg.dtype)
+
+
+@eager.register(Unary, ops.SumOp, Tensor)
+def eager_sum_tensor(op, arg):
+    if not arg.inputs:
+        return Tensor(op(arg.data), arg.inputs, arg.dtype)
+
+    # Work around batch inputs.
+    dim = op.defaults.get("dim", None)
+    keepdims = op.defaults.get("keepdims", False)
+    ndims = len(arg.output.shape)
+    if dim is None:
+        dim = tuple(range(-ndims, 0))
+    elif isinstance(dim, int):
+        dim = dim % ndims - ndims
+    else:
+        dim = tuple(d % ndims - ndims for d in dim)
+    data = op(arg.data, dim, keepdims)
     return Tensor(data, arg.inputs, arg.dtype)
 
 
 @eager.register(Binary, GetitemOp, Tensor, Number)
 def eager_getitem_tensor_number(op, lhs, rhs):
-    index = [slice(None)] * (len(lhs.inputs) + op.offset)
+    offset = op.defaults["offset"]
+    index = [slice(None)] * (len(lhs.inputs) + offset)
     index.append(rhs.data)
     index = tuple(index)
     data = lhs.data[index]
@@ -794,8 +815,9 @@ def eager_getitem_tensor_number(op, lhs, rhs):
 
 @eager.register(Binary, GetitemOp, Tensor, Variable)
 def eager_getitem_tensor_variable(op, lhs, rhs):
-    assert op.offset < len(lhs.output.shape)
-    assert rhs.output == Bint[lhs.output.shape[op.offset]]
+    offset = op.defaults["offset"]
+    assert offset < len(lhs.output.shape)
+    assert rhs.output == Bint[lhs.output.shape[offset]]
     assert rhs.name not in lhs.inputs
 
     # Convert a positional event dimension to a named batch dimension.
@@ -803,7 +825,7 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
     inputs[rhs.name] = rhs.output
     data = lhs.data
     target_dim = len(lhs.inputs)
-    source_dim = target_dim + op.offset
+    source_dim = target_dim + offset
     if target_dim != source_dim:
         perm = list(range(len(data.shape)))
         del perm[source_dim]
@@ -814,8 +836,9 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
 
 @eager.register(Binary, GetitemOp, Tensor, Tensor)
 def eager_getitem_tensor_tensor(op, lhs, rhs):
-    assert op.offset < len(lhs.output.shape)
-    assert rhs.output == Bint[lhs.output.shape[op.offset]]
+    offset = op.defaults["offset"]
+    assert offset < len(lhs.output.shape)
+    assert rhs.output == Bint[lhs.output.shape[offset]]
 
     # Compute inputs and outputs.
     if lhs.inputs == rhs.inputs:
@@ -827,7 +850,7 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
 
     # Perform advanced indexing.
     lhs_data_dim = len(lhs_data.shape)
-    target_dim = lhs_data_dim - len(lhs.output.shape) + op.offset
+    target_dim = lhs_data_dim - len(lhs.output.shape) + offset
     index = [None] * lhs_data_dim
     for i in range(target_dim):
         index[i] = ops.new_arange(lhs_data, lhs_data.shape[i]).reshape(
@@ -842,10 +865,22 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
-@eager.register(Finitary, Op, typing.Tuple[Tensor, ...])
+@eager.register(Finitary, ops.StackOp, typing.Tuple[Tensor, ...])
+def eager_finitary_stack(op, parts):
+    dim = op.defaults["dim"]
+    if dim >= 0:
+        event_dim = max(len(part.output.shape) for part in parts)
+        dim = dim - event_dim - 1
+    assert dim < 0
+    inputs, raw_parts = align_tensors(*parts)
+    raw_result = ops.stack(raw_parts, dim)
+    return Tensor(raw_result, inputs, parts[0].dtype)
+
+
+@eager.register(Finitary, FinitaryOp, typing.Tuple[Tensor, ...])
 def eager_finitary_generic_tensors(op, args):
     inputs, raw_args = align_tensors(*args)
-    raw_result = op(*raw_args)
+    raw_result = op(raw_args)
     return Tensor(raw_result, inputs, args[0].dtype)
 
 
@@ -878,7 +913,7 @@ def eager_stack_homogeneous(name, *parts):
 
     shape = tuple(d.size for d in part_inputs.values()) + output.shape
     data = ops.stack(
-        0, *[ops.expand(align_tensor(part_inputs, part), shape) for part in parts]
+        [ops.expand(align_tensor(part_inputs, part), shape) for part in parts]
     )
     inputs = OrderedDict([(name, Bint[len(parts)])])
     inputs.update(part_inputs)
@@ -903,7 +938,7 @@ def eager_cat_homogeneous(name, part_name, *parts):
     del inputs[part_name]
 
     dim = 0
-    tensor = ops.cat(dim, *tensors)
+    tensor = ops.cat(tensors, dim)
     inputs = OrderedDict([(name, Bint[tensor.shape[dim]])] + list(inputs.items()))
     return Tensor(tensor, inputs, dtype=output.dtype)
 
@@ -1098,29 +1133,6 @@ def function(*signature):
     return functools.partial(_function, inputs, output)
 
 
-class EinsumOp(ops.Op, metaclass=ops.CachedOpMeta):
-    def __init__(self, equation):
-        self.equation = equation
-
-
-@find_domain.register(EinsumOp)
-def _find_domain_einsum(op, *operands):
-    equation = op.equation
-    ein_inputs, ein_output = equation.split("->")
-    ein_inputs = ein_inputs.split(",")
-    size_dict = {}
-    for ein_input, x in zip(ein_inputs, operands):
-        assert x.dtype == "real"
-        assert len(ein_input) == len(x.shape)
-        for name, size in zip(ein_input, x.shape):
-            other_size = size_dict.setdefault(name, size)
-            if other_size != size:
-                raise ValueError(
-                    "Size mismatch at {}: {} vs {}".format(name, size, other_size)
-                )
-    return Reals[tuple(size_dict[d] for d in ein_output)]
-
-
 def Einsum(equation, *operands):
     """
     Wrapper around :func:`torch.einsum` or :func:`np.einsum` to operate on real-valued Funsors.
@@ -1132,13 +1144,13 @@ def Einsum(equation, *operands):
     :param str equation: An :func:`torch.einsum` or :func:`np.einsum` equation.
     :param tuple operands: A tuple of input funsors.
     """
-    return Finitary(EinsumOp(equation), tuple(operands))
+    return ops.einsum(operands, equation)
 
 
-@eager.register(Finitary, EinsumOp, typing.Tuple[Tensor, ...])
+@eager.register(Finitary, ops.EinsumOp, typing.Tuple[Tensor, ...])
 def eager_einsum(op, operands):
     # Make new symbols for inputs of operands.
-    equation = op.equation
+    equation = op.defaults["equation"]
     inputs = OrderedDict()
     for x in operands:
         inputs.update(x.inputs)
@@ -1163,7 +1175,7 @@ def eager_einsum(op, operands):
     out = "".join(new_symbols[k] for k in inputs) + out
     equation = ",".join(ins) + "->" + out
 
-    data = ops.einsum(equation, *[x.data for x in operands])
+    data = ops.einsum([x.data for x in operands], equation)
     return Tensor(data, inputs)
 
 
@@ -1203,31 +1215,6 @@ def tensordot(x, y, dims):
     return Einsum(equation, x, y)
 
 
-def stack(parts, dim=0):
-    """
-    Wrapper around :func:`torch.stack` or :func:`np.stack` to operate on real-valued Funsors.
-
-    Note this operates only on the ``output`` tensor. To stack funsors in a
-    new named dim, instead use :class:`~funsor.terms.Stack`.
-
-    :param tuple parts: A tuple of funsors.
-    :param int dim: A torch dim along which to stack.
-    :rtype: Funsor
-    """
-    assert isinstance(dim, int)
-    assert isinstance(parts, tuple)
-    assert len(set(x.output for x in parts)) == 1
-    shape = parts[0].output.shape
-    if dim >= 0:
-        dim = dim - len(shape) - 1
-    assert dim < 0
-    split = dim + len(shape) + 1
-    shape = shape[:split] + (len(parts),) + shape[split:]
-    output = Array[parts[0].dtype, shape]
-    fn = functools.partial(ops.stack, dim)
-    return Function(fn, output, parts)
-
-
 REDUCE_OP_TO_NUMERIC = {
     ops.add: ops.sum,
     ops.mul: ops.prod,
@@ -1257,6 +1244,5 @@ __all__ = [
     "align_tensors",
     "function",
     "ignore_jit_warnings",
-    "stack",
     "tensordot",
 ]
