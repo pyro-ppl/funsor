@@ -4,7 +4,7 @@
 from collections import defaultdict
 from collections.abc import Hashable
 
-from funsor.cnf import Contraction, null
+from funsor.cnf import Contraction
 from funsor.interpretations import Interpretation, reflect
 from funsor.interpreter import stack_reinterpret
 from funsor.ops import AssociativeOp
@@ -233,7 +233,7 @@ def adjoint_contract_generic(
 def adjoint_contract(
     adj_sum_op, adj_prod_op, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs
 ):
-    if prod_op is adj_prod_op and sum_op in (null, adj_sum_op):
+    if prod_op is adj_prod_op and sum_op in (ops.null, adj_sum_op):
 
         # the only change is here:
         out_adj = Approximate(

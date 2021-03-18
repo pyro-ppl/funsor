@@ -6,7 +6,7 @@ import collections
 from opt_einsum.paths import greedy
 
 import funsor.interpreter as interpreter
-from funsor.cnf import Contraction, null
+from funsor.cnf import Contraction
 from funsor.interpretations import (
     DispatchedInterpretation,
     PrioritizedInterpretation,
@@ -18,6 +18,8 @@ from funsor.interpreter import get_interpretation
 from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp
 from funsor.terms import Funsor
 from funsor.typing import Variadic
+
+from . import ops
 
 unfold_base = DispatchedInterpretation()
 unfold = PrioritizedInterpretation(unfold_base, normalize_base, lazy)
@@ -31,7 +33,7 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
         if not isinstance(v, Contraction):
             continue
 
-        if v.red_op is null and (v.bin_op, bin_op) in DISTRIBUTIVE_OPS:
+        if v.red_op is ops.null and (v.bin_op, bin_op) in DISTRIBUTIVE_OPS:
             # a * e * (b + c + d) -> (a * e * b) + (a * e * c) + (a * e * d)
             new_terms = tuple(
                 Contraction(
@@ -44,7 +46,7 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
             )
             return Contraction(red_op, v.bin_op, reduced_vars, *new_terms)
 
-        if red_op in (v.red_op, null) and (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
+        if red_op in (v.red_op, ops.null) and (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
             new_terms = (
                 terms[:i]
                 + (Contraction(v.red_op, v.bin_op, frozenset(), *v.terms),)
@@ -54,9 +56,9 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
                 red_op, reduced_vars
             )
 
-        if v.red_op in (red_op, null) and bin_op in (v.bin_op, null):
-            red_op = v.red_op if red_op is null else red_op
-            bin_op = v.bin_op if bin_op is null else bin_op
+        if v.red_op in (red_op, ops.null) and bin_op in (v.bin_op, ops.null):
+            red_op = v.red_op if red_op is ops.null else red_op
+            bin_op = v.bin_op if bin_op is ops.null else bin_op
             new_terms = terms[:i] + v.terms + terms[i + 1 :]
             return Contraction(
                 red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms
@@ -93,8 +95,9 @@ def eager_contract_base(red_op, bin_op, reduced_vars, *terms):
 
 @optimize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
-
-    if red_op is null or bin_op is null or not (red_op, bin_op) in DISTRIBUTIVE_OPS:
+    if red_op is ops.null or bin_op is ops.null:
+        return None
+    if (red_op, bin_op) not in DISTRIBUTIVE_OPS:
         return None
 
     # build opt_einsum optimizer IR
@@ -140,7 +143,7 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
         )
 
         path_end = Contraction(
-            red_op if path_end_reduced_vars else null,
+            red_op if path_end_reduced_vars else ops.null,
             bin_op,
             path_end_reduced_vars,
             ta,
