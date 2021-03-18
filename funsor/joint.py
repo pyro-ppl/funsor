@@ -60,8 +60,8 @@ def eager_cat_homogeneous(name, part_name, *parts):
         del int_inputs[part_name]
 
     dim = 0
-    info_vec = ops.cat(dim, *info_vecs)
-    precision = ops.cat(dim, *precisions)
+    info_vec = ops.cat(info_vecs, dim)
+    precision = ops.cat(precisions, dim)
     inputs[name] = Bint[info_vec.shape[dim]]
     int_inputs[name] = inputs[name]
     result = Gaussian(info_vec, precision, inputs)
@@ -69,7 +69,7 @@ def eager_cat_homogeneous(name, part_name, *parts):
         for i, d in enumerate(discretes):
             if d is None:
                 discretes[i] = ops.new_zeros(info_vecs[i], info_vecs[i].shape[:-1])
-        discrete = ops.cat(dim, *discretes)
+        discrete = ops.cat(discretes, dim)
         result = result + Tensor(discrete, int_inputs)
     return result
 
@@ -104,9 +104,7 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
     discrete += gaussian.log_normalizer
     new_discrete = discrete.reduce(ops.logaddexp, approx_vars & discrete.input_vars)
     num_elements = reduce(
-        ops.mul,
-        [v.output.num_elements for v in approx_vars - discrete.input_vars],
-        1,
+        ops.mul, [v.output.num_elements for v in approx_vars - discrete.input_vars], 1
     )
     if num_elements != 1:
         new_discrete -= math.log(num_elements)

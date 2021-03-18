@@ -7,8 +7,8 @@ import pytest
 import funsor.ops as ops
 from funsor.cnf import BACKEND_TO_EINSUM_BACKEND, BACKEND_TO_LOGSUMEXP_BACKEND
 from funsor.einsum import einsum, naive_plated_einsum
+from funsor.interpretations import memoize
 from funsor.interpreter import reinterpret
-from funsor.memoize import memoize
 from funsor.tensor import numeric_array
 from funsor.terms import reflect
 from funsor.testing import make_einsum_example, xfail_param

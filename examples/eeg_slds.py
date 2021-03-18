@@ -7,7 +7,7 @@ Example: Switching Linear Dynamical System EEG
 
 We use a switching linear dynamical system [1] to model a EEG time series dataset.
 For inference we use a moment-matching approximation enabled by
-`funsor.interpretation(funsor.terms.moment_matching)`.
+`funsor.interpretations.moment_matching`.
 
 References
 
@@ -158,7 +158,7 @@ class SLDS(nn.Module):
         return trans_logits, trans_probs, trans_mvn, obs_mvn, x_trans_dist, y_dist
 
     # compute the marginal log probability of the observed data using a moment-matching approximation
-    @funsor.interpretation(funsor.terms.moment_matching)
+    @funsor.interpretations.moment_matching
     def log_prob(self, data):
         (
             trans_logits,
@@ -176,10 +176,8 @@ class SLDS(nn.Module):
 
         for t, y in enumerate(data):
             # construct free variables for s_t and x_t
-            s_vars[t] = funsor.Variable(
-                "s_{}".format(t), funsor.Bint[self.num_components]
-            )
-            x_vars[t] = funsor.Variable("x_{}".format(t), funsor.Reals[self.hidden_dim])
+            s_vars[t] = funsor.Variable(f"s_{t}", funsor.Bint[self.num_components])
+            x_vars[t] = funsor.Variable(f"x_{t}", funsor.Reals[self.hidden_dim])
 
             # incorporate the discrete switching dynamics
             log_prob += dist.Categorical(trans_probs(s=s_vars[t - 1]), value=s_vars[t])
@@ -195,12 +193,10 @@ class SLDS(nn.Module):
             if t > self.moment_matching_lag - 1:
                 log_prob = log_prob.reduce(
                     ops.logaddexp,
-                    frozenset(
-                        [
-                            s_vars[t - self.moment_matching_lag].name,
-                            x_vars[t - self.moment_matching_lag].name,
-                        ]
-                    ),
+                    {
+                        s_vars[t - self.moment_matching_lag],
+                        x_vars[t - self.moment_matching_lag],
+                    },
                 )
 
             # incorporate the observation p(y_t | x_t, s_t)
@@ -211,12 +207,10 @@ class SLDS(nn.Module):
         for t in range(self.moment_matching_lag):
             log_prob = log_prob.reduce(
                 ops.logaddexp,
-                frozenset(
-                    [
-                        s_vars[T - self.moment_matching_lag + t].name,
-                        x_vars[T - self.moment_matching_lag + t].name,
-                    ]
-                ),
+                {
+                    s_vars[T - self.moment_matching_lag + t],
+                    x_vars[T - self.moment_matching_lag + t],
+                },
             )
 
         # assert that we've reduced all the free variables in log_prob
@@ -229,7 +223,7 @@ class SLDS(nn.Module):
     # here we implicitly use a moment matching lag of L = 1. the general logic follows
     # the logic in the log_prob method.
     @torch.no_grad()
-    @funsor.interpretation(funsor.terms.moment_matching)
+    @funsor.interpretations.moment_matching
     def filter_and_predict(self, data, smoothing=False):
         (
             trans_logits,
@@ -249,10 +243,8 @@ class SLDS(nn.Module):
         test_LLs = []
 
         for t, y in enumerate(data):
-            s_vars[t] = funsor.Variable(
-                "s_{}".format(t), funsor.Bint[self.num_components]
-            )
-            x_vars[t] = funsor.Variable("x_{}".format(t), funsor.Reals[self.hidden_dim])
+            s_vars[t] = funsor.Variable(f"s_{t}", funsor.Bint[self.num_components])
+            x_vars[t] = funsor.Variable(f"x_{t}", funsor.Reals[self.hidden_dim])
 
             log_prob += dist.Categorical(trans_probs(s=s_vars[t - 1]), value=s_vars[t])
 
@@ -263,7 +255,7 @@ class SLDS(nn.Module):
 
             if t > 0:
                 log_prob = log_prob.reduce(
-                    ops.logaddexp, frozenset([s_vars[t - 1].name, x_vars[t - 1].name])
+                    ops.logaddexp, {s_vars[t - 1], x_vars[t - 1]}
                 )
 
             # do 1-step prediction and compute test LL
@@ -275,7 +267,7 @@ class SLDS(nn.Module):
                     predictive_y_dist(y=y).reduce(ops.logaddexp).data.item()
                 )
                 predictive_y_dist = predictive_y_dist.reduce(
-                    ops.logaddexp, frozenset(["x_{}".format(t), "s_{}".format(t)])
+                    ops.logaddexp, {f"x_{t}", f"s_{t}"}
                 )
                 predictive_y_dists.append(funsor_to_mvn(predictive_y_dist, 0, ()))
 
@@ -292,11 +284,11 @@ class SLDS(nn.Module):
             T = data.size(0)
 
             s_vars = {
-                t: funsor.Variable("s_{}".format(t), funsor.Bint[self.num_components])
+                t: funsor.Variable(f"s_{t}", funsor.Bint[self.num_components])
                 for t in range(T)
             }
             x_vars = {
-                t: funsor.Variable("x_{}".format(t), funsor.Reals[self.hidden_dim])
+                t: funsor.Variable(f"x_{t}", funsor.Reals[self.hidden_dim])
                 for t in range(T)
             }
 
@@ -315,7 +307,7 @@ class SLDS(nn.Module):
                 )
                 integral += x_trans_dist(s=s_vars[t], x=x_vars[t], y=x_vars[t + 1])
                 integral = integral.reduce(
-                    ops.logaddexp, frozenset([s_vars[t + 1].name, x_vars[t + 1].name])
+                    ops.logaddexp, {s_vars[t + 1], x_vars[t + 1]}
                 )
                 smoothing_dists.append(filtering_dists[t] + integral)
 
@@ -329,7 +321,7 @@ class SLDS(nn.Module):
         if smoothing:
             # compute smoothed mean function
             smoothing_dists = [
-                funsor_to_cat_and_mvn(d, 0, ("s_{}".format(t),))
+                funsor_to_cat_and_mvn(d, 0, (f"s_{t}",))
                 for t, d in enumerate(reversed(smoothing_dists))
             ]
             means = torch.stack([d[1].mean for d in smoothing_dists])  # T 2 xdim
@@ -363,9 +355,9 @@ def main(args):
         download_data()
         N_val, N_test = 149, 200
         data = np.loadtxt("eeg.dat", delimiter=",", skiprows=19)
-        print("[raw data shape] {}".format(data.shape))
+        print(f"[raw data shape] {data.shape}")
         data = data[::20, :]
-        print("[data shape after thinning] {}".format(data.shape))
+        print(f"[data shape after thinning] {data.shape}")
         eye_state = [int(d) for d in data[:, -1].tolist()]
         data = torch.tensor(data[:, :-1]).float()
     # in test mode (for continuous integration on github) so create fake data
@@ -386,8 +378,8 @@ def main(args):
     data_std = data[0:N_train, :].std(0)
     data /= data_std
 
-    print("Length of time series T: {}   Observation dimension: {}".format(T, obs_dim))
-    print("N_train: {}  N_val: {}  N_test: {}".format(N_train, N_val, N_test))
+    print(f"Length of time series T: {T}   Observation dimension: {obs_dim}")
+    print(f"N_train: {N_train}  N_val: {N_val}  N_test: {N_test}")
 
     torch.manual_seed(args.seed)
 
@@ -493,7 +485,7 @@ def main(args):
                 pred_means[-N_valtest:, which] + 1.645 * pred_stds[-N_valtest:, which],
                 color="lightblue",
             )
-            ax.set_ylabel("$y_{%d}$" % (which + 1), fontsize=20)
+            ax.set_ylabel(f"$y_{which + 1}$", fontsize=20)
             ax.tick_params(axis="both", which="major", labelsize=14)
 
         axes[-1].plot(to_seconds * np.arange(T), eye_state, "k", ls="solid")

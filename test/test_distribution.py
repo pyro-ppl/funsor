@@ -18,7 +18,7 @@ from funsor.domains import Array, Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.interpretations import eager, lazy
 from funsor.interpreter import reinterpret
-from funsor.tensor import Einsum, Tensor, numeric_array, stack
+from funsor.tensor import Einsum, Tensor, numeric_array
 from funsor.terms import Independent, Variable, to_funsor
 from funsor.testing import (
     assert_close,
@@ -360,7 +360,7 @@ def test_multinomial_density(batch_shape, event_shape):
         total_count: Real, probs: Reals[event_shape], value: Reals[event_shape]
     ) -> Real:
         if get_backend() == "torch":
-            total_count = total_count.max().item()
+            total_count = int(total_count.max())
         return backend_dist.Multinomial(total_count, probs).log_prob(value)
 
     check_funsor(
@@ -972,6 +972,7 @@ def test_dirichlet_sample(batch_shape, sample_inputs, event_shape, reparametrize
         params,
         sample_inputs,
         inputs,
+        num_samples=200000,
         atol=1e-2 if reparametrized else 1e-1,
     )
 
@@ -1205,7 +1206,7 @@ def test_beta_bernoulli_conjugate(batch_shape):
     conditional = dist.Bernoulli(probs=prior)
     reduced = (latent + conditional).reduce(ops.logaddexp, set(["prior"]))
     assert isinstance(reduced, dist.DirichletMultinomial)
-    concentration = stack((concentration0, concentration1), dim=-1)
+    concentration = ops.stack((concentration0, concentration1), dim=-1)
     assert_close(reduced.concentration, concentration)
     assert_close(reduced.total_count, Tensor(numeric_array(1.0)))
 
@@ -1459,10 +1460,7 @@ def test_power_transform(shape):
 @pytest.mark.parametrize("shape", [(10,), (4, 3)], ids=str)
 @pytest.mark.parametrize(
     "to_event",
-    [
-        True,
-        xfail_param(False, reason="bug in to_funsor(TransformedDistribution)"),
-    ],
+    [True, xfail_param(False, reason="bug in to_funsor(TransformedDistribution)")],
 )
 def test_haar_transform(shape, to_event):
     try:

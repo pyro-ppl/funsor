@@ -4,6 +4,9 @@
 import os
 
 import numpy as np
+import pytest
+
+pytest.register_assert_rewrite("funsor.testing")  # noqa: E402
 
 import funsor.util
 

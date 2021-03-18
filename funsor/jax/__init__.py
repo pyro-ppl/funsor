@@ -4,42 +4,14 @@
 from jax.core import Tracer
 from jax.interpreters.xla import DeviceArray
 
-from funsor.adjoint import adjoint_ops
-from funsor.interpreter import children, recursion_reinterpret
-from funsor.ops import AssociativeOp
-from funsor.tensor import Tensor, tensor_to_funsor
-from funsor.terms import Funsor, to_funsor
+from funsor.tensor import tensor_to_funsor
+from funsor.terms import to_funsor
 from funsor.util import quote
 
 from . import distributions as _
 from . import ops as _
 
 del _  # flake8
-
-
-@adjoint_ops.register(
-    Tensor,
-    AssociativeOp,
-    AssociativeOp,
-    Funsor,
-    (DeviceArray, Tracer),
-    tuple,
-    object,
-)
-def adjoint_tensor(adj_redop, adj_binop, out_adj, data, inputs, dtype):
-    return {}
-
-
-@recursion_reinterpret.register(DeviceArray)
-@recursion_reinterpret.register(Tracer)
-def _recursion_reinterpret_ground(x):
-    return x
-
-
-@children.register(DeviceArray)
-@children.register(Tracer)
-def _children_ground(x):
-    return ()
 
 
 to_funsor.register(DeviceArray)(tensor_to_funsor)

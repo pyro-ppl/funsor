@@ -6,6 +6,7 @@ import io
 import itertools
 import pickle
 from collections import OrderedDict
+from functools import reduce
 from typing import get_type_hints
 
 import numpy as np
@@ -14,21 +15,22 @@ import pytest
 import funsor
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Product, Real, Reals, find_domain
+from funsor.interpretations import eager, lazy
 from funsor.tensor import (
     REDUCE_OP_TO_NUMERIC,
     Einsum,
     Tensor,
     align_tensors,
     numeric_array,
-    stack,
     tensordot,
 )
-from funsor.terms import Cat, Lambda, Number, Slice, Stack, Variable, lazy
+from funsor.terms import Cat, Lambda, Number, Scatter, Slice, Stack, Variable
 from funsor.testing import (
     assert_close,
     assert_equiv,
     check_funsor,
     empty,
+    iter_subsets,
     rand,
     randn,
     random_tensor,
@@ -126,15 +128,7 @@ def test_indexing():
 
 def test_advanced_indexing_shape():
     I, J, M, N = 4, 4, 2, 3
-    x = Tensor(
-        randn((I, J)),
-        OrderedDict(
-            [
-                ("i", Bint[I]),
-                ("j", Bint[J]),
-            ]
-        ),
-    )
+    x = Tensor(randn((I, J)), OrderedDict(i=Bint[I], j=Bint[J]))
     m = Tensor(numeric_array([2, 3]), OrderedDict([("m", Bint[M])]), I)
     n = Tensor(numeric_array([0, 1, 1]), OrderedDict([("n", Bint[N])]), J)
     assert x.data.shape == (I, J)
@@ -230,55 +224,16 @@ def test_advanced_indexing_tensor(output_shape):
     #      \ | /
     #        x
     output = Reals[output_shape]
-    x = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-                ("j", Bint[3]),
-                ("k", Bint[4]),
-            ]
-        ),
-        output,
-    )
-    i = random_tensor(
-        OrderedDict(
-            [
-                ("u", Bint[5]),
-            ]
-        ),
-        Bint[2],
-    )
-    j = random_tensor(
-        OrderedDict(
-            [
-                ("v", Bint[6]),
-                ("u", Bint[5]),
-            ]
-        ),
-        Bint[3],
-    )
-    k = random_tensor(
-        OrderedDict(
-            [
-                ("v", Bint[6]),
-            ]
-        ),
-        Bint[4],
-    )
+    x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3], k=Bint[4]), output)
+    i = random_tensor(OrderedDict(u=Bint[5]), Bint[2])
+    j = random_tensor(OrderedDict(v=Bint[6], u=Bint[5]), Bint[3])
+    k = random_tensor(OrderedDict(v=Bint[6]), Bint[4])
 
     expected_data = empty((5, 6) + output_shape)
     for u in range(5):
         for v in range(6):
             expected_data[u, v] = x.data[i.data[u], j.data[v, u], k.data[v]]
-    expected = Tensor(
-        expected_data,
-        OrderedDict(
-            [
-                ("u", Bint[5]),
-                ("v", Bint[6]),
-            ]
-        ),
-    )
+    expected = Tensor(expected_data, OrderedDict(u=Bint[5], v=Bint[6]))
 
     assert_equiv(expected, x(i, j, k))
     assert_equiv(expected, x(i=i, j=j, k=k))
@@ -302,14 +257,7 @@ def test_advanced_indexing_tensor(output_shape):
 @pytest.mark.parametrize("output_shape", [(), (7,), (3, 2)])
 def test_advanced_indexing_lazy(output_shape):
     x = Tensor(
-        randn((2, 3, 4) + output_shape),
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-                ("j", Bint[3]),
-                ("k", Bint[4]),
-            ]
-        ),
+        randn((2, 3, 4) + output_shape), OrderedDict(i=Bint[2], j=Bint[3], k=Bint[4])
     )
     u = Variable("u", Bint[2])
     v = Variable("v", Bint[3])
@@ -325,15 +273,7 @@ def test_advanced_indexing_lazy(output_shape):
     for u in range(2):
         for v in range(3):
             expected_data[u, v] = x.data[i_data[u], j_data[v], k_data[u, v]]
-    expected = Tensor(
-        expected_data,
-        OrderedDict(
-            [
-                ("u", Bint[2]),
-                ("v", Bint[3]),
-            ]
-        ),
-    )
+    expected = Tensor(expected_data, OrderedDict(u=Bint[2], v=Bint[3]))
 
     assert_equiv(expected, x(i, j, k))
     assert_equiv(expected, x(i=i, j=j, k=k))
@@ -363,18 +303,7 @@ def unary_eval(symbol, x):
 @pytest.mark.parametrize("dims", [(), ("a",), ("a", "b")])
 @pytest.mark.parametrize(
     "symbol",
-    [
-        "~",
-        "-",
-        "abs",
-        "atanh",
-        "sqrt",
-        "exp",
-        "log",
-        "log1p",
-        "sigmoid",
-        "tanh",
-    ],
+    ["~", "-", "abs", "atanh", "sqrt", "exp", "log", "log1p", "sigmoid", "tanh"],
 )
 def test_unary(symbol, dims):
     sizes = {"a": 3, "b": 4}
@@ -906,16 +835,7 @@ def test_function_of_numeric_array():
 
 
 def test_align():
-    x = Tensor(
-        randn((2, 3, 4)),
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-                ("j", Bint[3]),
-                ("k", Bint[4]),
-            ]
-        ),
-    )
+    x = Tensor(randn((2, 3, 4)), OrderedDict(i=Bint[2], j=Bint[3], k=Bint[4]))
     y = x.align(("j", "k", "i"))
     assert isinstance(y, Tensor)
     assert tuple(y.inputs) == ("j", "k", "i")
@@ -949,8 +869,8 @@ def test_einsum(equation):
     inputs = inputs.split(",")
     tensors = [randn(tuple(sizes[d] for d in dims)) for dims in inputs]
     funsors = [Tensor(x) for x in tensors]
-    expected = Tensor(ops.einsum(equation, *tensors))
-    actual = Einsum(equation, tuple(funsors))
+    expected = Tensor(ops.einsum(tensors, equation))
+    actual = Einsum(equation, *funsors)
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
@@ -968,13 +888,13 @@ def test_batched_einsum(equation, batch1, batch2):
         random_tensor(batch, Reals[tuple(sizes[d] for d in dims)])
         for batch, dims in zip([batch1, batch2], inputs)
     ]
-    actual = Einsum(equation, tuple(funsors))
+    actual = Einsum(equation, *funsors)
 
     _equation = ",".join("..." + i for i in inputs) + "->..." + output
     inputs, tensors = align_tensors(*funsors)
     batch = tuple(v.size for v in inputs.values())
     tensors = [ops.expand(x, batch + f.shape) for (x, f) in zip(tensors, funsors)]
-    expected = Tensor(ops.einsum(_equation, *tensors), inputs)
+    expected = Tensor(ops.einsum(tensors, _equation), inputs)
     assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
@@ -1020,48 +940,20 @@ def test_tensor_tensordot(x_shape, xy_shape, y_shape):
 )
 def test_tensor_stack(n, shape, dim):
     tensors = [randn(shape) for _ in range(n)]
-    actual = stack(tuple(Tensor(t) for t in tensors), dim=dim)
-    expected = Tensor(ops.stack(dim, *tensors))
+    actual = ops.stack(tuple(Tensor(t) for t in tensors), dim=dim)
+    expected = Tensor(ops.stack(tensors, dim))
     assert_close(actual, expected)
 
 
 @pytest.mark.parametrize("output", [Bint[2], Real, Reals[4], Reals[2, 3]], ids=str)
 def test_funsor_stack(output):
-    x = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-            ]
-        ),
-        output,
-    )
-    y = random_tensor(
-        OrderedDict(
-            [
-                ("j", Bint[3]),
-            ]
-        ),
-        output,
-    )
-    z = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-                ("k", Bint[4]),
-            ]
-        ),
-        output,
-    )
+    x = random_tensor(OrderedDict(i=Bint[2]), output)
+    y = random_tensor(OrderedDict(j=Bint[3]), output)
+    z = random_tensor(OrderedDict(i=Bint[2], k=Bint[4]), output)
 
     xy = Stack("t", (x, y))
     assert isinstance(xy, Tensor)
-    assert xy.inputs == OrderedDict(
-        [
-            ("t", Bint[2]),
-            ("i", Bint[2]),
-            ("j", Bint[3]),
-        ]
-    )
+    assert xy.inputs == OrderedDict(t=Bint[2], i=Bint[2], j=Bint[3])
     assert xy.output == output
     for j in range(3):
         assert_close(xy(t=0, j=j), x)
@@ -1070,14 +962,7 @@ def test_funsor_stack(output):
 
     xyz = Stack("t", (x, y, z))
     assert isinstance(xyz, Tensor)
-    assert xyz.inputs == OrderedDict(
-        [
-            ("t", Bint[3]),
-            ("i", Bint[2]),
-            ("j", Bint[3]),
-            ("k", Bint[4]),
-        ]
-    )
+    assert xyz.inputs == OrderedDict(t=Bint[3], i=Bint[2], j=Bint[3], k=Bint[4])
     assert xy.output == output
     for j in range(3):
         for k in range(4):
@@ -1091,32 +976,9 @@ def test_funsor_stack(output):
 
 @pytest.mark.parametrize("output", [Bint[2], Real, Reals[4], Reals[2, 3]], ids=str)
 def test_cat_simple(output):
-    x = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[2]),
-            ]
-        ),
-        output,
-    )
-    y = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[3]),
-                ("j", Bint[4]),
-            ]
-        ),
-        output,
-    )
-    z = random_tensor(
-        OrderedDict(
-            [
-                ("i", Bint[5]),
-                ("k", Bint[6]),
-            ]
-        ),
-        output,
-    )
+    x = random_tensor(OrderedDict(i=Bint[2]), output)
+    y = random_tensor(OrderedDict(i=Bint[3], j=Bint[4]), output)
+    z = random_tensor(OrderedDict(i=Bint[5], k=Bint[6]), output)
 
     assert Cat("i", (x,)) is x
     assert Cat("i", (y,)) is y
@@ -1124,23 +986,12 @@ def test_cat_simple(output):
 
     xy = Cat("i", (x, y))
     assert isinstance(xy, Tensor)
-    assert xy.inputs == OrderedDict(
-        [
-            ("i", Bint[2 + 3]),
-            ("j", Bint[4]),
-        ]
-    )
+    assert xy.inputs == OrderedDict(i=Bint[2 + 3], j=Bint[4])
     assert xy.output == output
 
     xyz = Cat("i", (x, y, z))
     assert isinstance(xyz, Tensor)
-    assert xyz.inputs == OrderedDict(
-        [
-            ("i", Bint[2 + 3 + 5]),
-            ("j", Bint[4]),
-            ("k", Bint[6]),
-        ]
-    )
+    assert xyz.inputs == OrderedDict(i=Bint[2 + 3 + 5], j=Bint[4], k=Bint[6])
     assert xy.output == output
 
 
@@ -1226,3 +1077,282 @@ def test_diagonal_rename():
 
 def test_empty_tensor_possible():
     funsor.to_funsor(randn(3, 0), dim_to_name=OrderedDict([(-1, "a"), (-2, "b")]))
+
+
+@pytest.mark.parametrize("op", [ops.add, ops.mul, ops.max, ops.min])
+def test_scatter_number(op):
+    source = random_tensor(OrderedDict(k=Bint[5]))
+    actual = Scatter(op, (("i", Number(0, 3)),), source, frozenset())
+
+    proto = source.data.reshape((-1,))[:1].reshape(())
+    zero = ops.full_like(ops.expand(proto, (5, 2)), ops.UNITS[op])
+    expected_data = ops.cat([source.data.reshape((5, 1)), zero], 1)
+    expected = Tensor(expected_data, OrderedDict(k=Bint[5], i=Bint[3]))
+
+    assert_close(actual, expected)
+    assert_close(actual(i=0), source)  # Scatter is transpose to Subs
+
+
+def test_scatter_2d():
+    # Consider n=5 nonzero entries in a 3x4 image.
+    i = Tensor(numeric_array([0, 0, 1, 2, 2]), dtype=3)["n"]
+    j = Tensor(numeric_array([0, 1, 0, 2, 3]), dtype=4)["n"]
+    source = Tensor(numeric_array([1.0, 2.0, 3.0, 4.0, 5.0]))["n"]
+    reduced_vars = frozenset({Variable("n", Bint[5])})
+    actual = Scatter(ops.add, (("i", i), ("j", j)), source, reduced_vars)
+    expected = Tensor(
+        numeric_array(
+            [[1.0, 2.0, 0.0, 0.0], [3.0, 0.0, 0.0, 0.0], [0.0, 0.0, 4.0, 5.0]]
+        )
+    )["i", "j"]
+
+    assert_close(actual, expected)
+
+
+def test_scatter_3():
+    # b is a batch variable
+    # n,m are reduced variables, and
+    # i is a destin variable
+    source = Tensor(
+        numeric_array(
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [1.5, 2.5, 3.5], [4.5, 5.5, 6.5]]
+        )
+    )["b", "n"]
+    i = Tensor(numeric_array([[0, 1], [3, 4], [5, 6]]), dtype=7)["n", "m"]
+    reduced_vars = frozenset({Variable("n", Bint[3]), Variable("m", Bint[2])})
+    actual = Scatter(ops.add, (("i", i),), source, reduced_vars)
+    expected = Tensor(
+        numeric_array(
+            [
+                [1.0, 4.0, 1.5, 4.5],
+                [1.0, 4.0, 1.5, 4.5],
+                [0.0, 0.0, 0.0, 0.0],
+                [2.0, 5.0, 2.5, 5.5],
+                [2.0, 5.0, 2.5, 5.5],
+                [3.0, 6.0, 3.5, 6.5],
+                [3.0, 6.0, 3.5, 6.5],
+            ]
+        ).T
+    )["b", "i"]
+    assert_close(actual, expected)
+
+
+@pytest.mark.xfail(reason="non-injective")
+def test_scatter_4():
+    source = Number(1.0)
+    i = Tensor(numeric_array([0, 0]), dtype=1)["n"]
+    reduced_vars = frozenset({Variable("n", Bint[2])})
+    # By extensionality, i should be equivalent to:
+    #   i = Number(0, dtype=1)
+    # however that would lead to actual = Tensor([1.0])["i"].
+    actual = Scatter(ops.add, (("i", i),), source, reduced_vars)
+    expected = Tensor(numeric_array([2.0]))["i"]
+    assert_close(actual, expected)
+
+
+def test_scatter_diag_embed():
+    source = random_tensor(OrderedDict(k=Bint[3]))
+    k = Variable("k", Bint[3])
+    actual = Scatter(ops.add, (("i", k), ("j", k)), source, frozenset({k}))
+    assert set(actual.inputs) == {"i", "j"}
+
+    expected_data = numeric_array(
+        [
+            [float(source.data[0]), 0, 0],
+            [0, float(source.data[1]), 0],
+            [0, 0, float(source.data[2])],
+        ]
+    )
+    expected = Tensor(expected_data)["i", "j"]
+    assert_close(actual, expected)
+
+
+def _scatter_i_examples():
+    result = []
+    for source_inputs in ["", "a", "ab", "abc"]:
+        sets = ["".join(s) for s in iter_subsets(source_inputs)]
+        for i_inputs, reduced_vars in itertools.product(sets, sets):
+            result.append((source_inputs, i_inputs, reduced_vars))
+    return result
+
+
+@pytest.mark.parametrize("source_inputs, i_inputs, reduced_vars", _scatter_i_examples())
+@pytest.mark.parametrize("output_shape", [(), (5,)], ids=str)
+def test_scatter_i(source_inputs, i_inputs, output_shape, reduced_vars):
+    inputs = OrderedDict(a=Bint[2], b=Bint[3], c=Bint[4])
+    reduced_names = set(reduced_vars)
+    reduced_vars = frozenset(Variable(k, inputs[k]) for k in reduced_vars)
+
+    source_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in source_inputs)
+    source = random_tensor(source_inputs, Reals[output_shape])
+
+    # Sample an injective set of indices.
+    i_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in i_inputs)
+    i_shape = tuple(v.size for v in i_inputs.values())
+    i_numel = reduce(ops.mul, i_shape, 1)
+    i_size = i_numel * 2  # give a little headroom
+    i_data = np.random.permutation(i_size)[:i_numel]
+    i_data = numeric_array(i_data.reshape(i_shape))
+    i = Tensor(i_data, i_inputs, dtype=i_size)
+    subs = (("i", i),)
+
+    for interp in [lazy, eager]:
+        with interp:
+            destin = Scatter(ops.add, subs, source, reduced_vars)
+
+        # Check shape.
+        assert destin.inputs.get("i") == Bint[i_size]
+        for k, v in source_inputs.items():
+            if k in reduced_names:
+                assert k not in destin.inputs
+            else:
+                assert destin.inputs.get(k) == v
+        assert destin.output == source.output
+
+    if reduced_vars <= i.input_vars:
+        # Check that Scatter is a pseudoinverse of Subs.
+        source2 = destin(**dict(subs))
+        assert source2.input_vars == source.input_vars
+        assert ((source2 - source).abs() < 1e-6).data.all()
+
+        # Check total.
+        actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
+        expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
+        assert expected.input_vars <= actual.input_vars
+        assert ((actual - expected).abs() < 1e-5).data.all()
+
+
+def _scatter_ji_examples():
+    result = []
+    for source_inputs in ["", "a", "ab", "abc"]:
+        sets = ["".join(s) for s in iter_subsets(source_inputs)]
+        for i_inputs, j_inputs, reduced_vars in itertools.product(sets, sets, sets):
+            result.append((source_inputs, i_inputs, j_inputs, reduced_vars))
+    return result
+
+
+@pytest.mark.parametrize(
+    "source_inputs, i_inputs, j_inputs, reduced_vars", _scatter_ji_examples()
+)
+@pytest.mark.parametrize("output_shape", [()], ids=str)
+def test_scatter_ji(source_inputs, i_inputs, j_inputs, output_shape, reduced_vars):
+    inputs = OrderedDict(a=Bint[2], b=Bint[3], c=Bint[4])
+    reduced_names = set(reduced_vars)
+    reduced_vars = frozenset(Variable(k, inputs[k]) for k in reduced_vars)
+
+    source_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in source_inputs)
+    source = random_tensor(source_inputs, Reals[output_shape])
+
+    # Sample an injective set of indices.
+    i_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in i_inputs)
+    i_shape = tuple(v.size for v in i_inputs.values())
+    i_numel = reduce(ops.mul, i_shape, 1)
+    i_size = i_numel * 2  # give a little headroom
+    i_data = np.random.permutation(i_size)[:i_numel]
+    i_data = numeric_array(i_data.reshape(i_shape))
+    i = Tensor(i_data, i_inputs, dtype=i_size)
+
+    # Sample another injective set of indices.
+    j_inputs = OrderedDict((k, v) for k, v in inputs.items() if k in j_inputs)
+    j_shape = tuple(v.size for v in j_inputs.values())
+    j_numel = reduce(ops.mul, j_shape, 1)
+    j_size = j_numel * 2  # give a little headroom
+    j_data = np.random.permutation(j_size)[:j_numel]
+    j_data = numeric_array(j_data.reshape(j_shape))
+    j = Tensor(j_data, j_inputs, dtype=j_size)
+
+    subs = (("i", i), ("j", j))
+
+    for interp in [lazy, eager]:
+        with interp:
+            destin = Scatter(ops.add, subs, source, reduced_vars)
+
+        # Check shape.
+        assert destin.inputs.get("i") == Bint[i_size]
+        assert destin.inputs.get("j") == Bint[j_size]
+        for k, v in source_inputs.items():
+            if k in reduced_names:
+                assert k not in destin.inputs
+            else:
+                assert destin.inputs.get(k) == v
+        assert destin.output == source.output
+
+    if reduced_vars <= i.input_vars | j.input_vars:
+        # Check that Scatter is a pseudoinverse of Subs.
+        source2 = destin(**dict(subs))
+        source2 = source2.align(tuple(source.inputs))
+        assert_close(source2, source)
+
+        # Check total.
+        actual = destin.reduce(ops.add, destin.input_vars - source.input_vars)
+        expected = source.reduce(ops.add, source.input_vars - destin.input_vars)
+        assert set(expected.inputs).issubset(actual.inputs)
+        assert ((actual - expected).abs() < 1e-4).data.all()
+
+
+def test_scatter_pure_renaming():
+
+    x = random_tensor(OrderedDict(time=Bint[4], prev=Bint[2], curr=Bint[2]))
+    drop = Variable("drop", x.inputs["prev"])
+    subs = (("prev", drop),)
+
+    source = x(**dict(subs))
+
+    reduced_vars = frozenset([drop])
+
+    actual = Scatter(ops.add, subs, source, reduced_vars)
+    expected = x
+
+    assert actual.input_vars == expected.input_vars
+    assert ((actual - expected).abs() < 1e-4).data.all()
+
+
+@pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
+def test_sum(event_shape):
+    data = randn(*event_shape)
+    DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
+    KEEPDIMS = [False, True]
+
+    assert_close(Tensor(ops.sum(data)), ops.sum(Tensor(data)))
+    for dim in DIMS:
+        assert_close(Tensor(ops.sum(data, dim)), ops.sum(Tensor(data), dim))
+        assert_close(Tensor(ops.sum(data, dim=dim)), ops.sum(Tensor(data), dim=dim))
+    for keepdims in KEEPDIMS:
+        assert_close(
+            Tensor(ops.sum(data, keepdims=keepdims)),
+            ops.sum(Tensor(data), keepdims=keepdims),
+        )
+        for dim in DIMS:
+            assert_close(
+                Tensor(ops.sum(data, dim, keepdims)),
+                ops.sum(Tensor(data), dim, keepdims),
+            )
+            assert_close(
+                Tensor(ops.sum(data, dim, keepdims=keepdims)),
+                ops.sum(Tensor(data), dim, keepdims=keepdims),
+            )
+            assert_close(
+                Tensor(ops.sum(data, dim=dim, keepdims=keepdims)),
+                ops.sum(Tensor(data), dim=dim, keepdims=keepdims),
+            )
+
+
+@pytest.mark.parametrize("batch_shape", [(), (5,)], ids=str)
+@pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
+def test_sum_batch(batch_shape, event_shape):
+    inputs = OrderedDict((k, Bint[s]) for k, s in zip("abc", batch_shape))
+    data = randn(*batch_shape, *event_shape)
+    DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
+    KEEPDIMS = [False, True]
+
+    def raw_sum(x, dim=None, keepdims=False, batch_ndims=len(batch_shape)):
+        if batch_ndims == 0:
+            return ops.sum(x, dim, keepdims)
+        return ops.stack([raw_sum(part, dim, keepdims, batch_ndims - 1) for part in x])
+
+    rtol = 1e-5 if get_backend() == "jax" else 1e-6
+    for keepdims in KEEPDIMS:
+        for dim in DIMS:
+            actual = ops.sum(Tensor(data, inputs), dim, keepdims)
+            expected = Tensor(raw_sum(data, dim, keepdims), inputs)
+            assert_close(actual, expected, rtol=rtol)

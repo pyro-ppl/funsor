@@ -15,7 +15,7 @@ import torch
 import torch.utils.data
 from torch import nn, optim
 from torch.nn import functional as F
-from torchvision import datasets, transforms
+from torchvision import transforms
 
 import funsor
 import funsor.ops as ops
@@ -59,6 +59,9 @@ def main(args):
     # XXX Temporary fix after https://github.com/pyro-ppl/pyro/pull/2701
     import pyro
 
+    # XXX Temporarily use Pyro's MNIST https://github.com/pyro-ppl/pyro/pull/2775
+    from pyro.contrib.examples.util import MNIST
+
     pyro.enable_validation(False)
 
     encoder = Encoder()
@@ -67,7 +70,7 @@ def main(args):
     encode = funsor.function(Reals[28, 28], (Reals[20], Reals[20]))(encoder)
     decode = funsor.function(Reals[20], Reals[28, 28])(decoder)
 
-    @funsor.interpretation(funsor.montecarlo.MonteCarlo())
+    @funsor.montecarlo.MonteCarlo()
     def loss_function(data, subsample_scale):
         # Lazily sample from the guide.
         loc, scale = encode(data)
@@ -87,9 +90,7 @@ def main(args):
         return loss
 
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            DATA_PATH, train=True, download=True, transform=transforms.ToTensor()
-        ),
+        MNIST(DATA_PATH, train=True, download=True, transform=transforms.ToTensor()),
         batch_size=args.batch_size,
         shuffle=True,
     )
@@ -113,10 +114,10 @@ def main(args):
             train_loss += loss.item()
             optimizer.step()
             if batch_idx % 50 == 0:
-                print("  loss = {}".format(loss.item()))
+                print(f"  loss = {loss.item()}")
                 if batch_idx and args.smoke_test:
                     return
-        print("epoch {} train_loss = {}".format(epoch, train_loss))
+        print(f"epoch {epoch} train_loss = {train_loss}")
 
 
 if __name__ == "__main__":

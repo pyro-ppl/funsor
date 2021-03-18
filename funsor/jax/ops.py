@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import numbers
+import typing
 
 import jax.numpy as np
 import numpy as onp
 from jax import lax
 from jax.core import Tracer
 from jax.interpreters.xla import DeviceArray
+from jax.ops import index_update
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, gammaln, logsumexp
 
@@ -19,53 +21,50 @@ from .. import ops
 
 array = (onp.generic, onp.ndarray, DeviceArray, Tracer)
 ops.atanh.register(array)(np.arctanh)
-ops.clamp.register(array, numbers.Number, numbers.Number)(np.clip)
-ops.clamp.register(array, numbers.Number, type(None))(np.clip)
-ops.clamp.register(array, type(None), numbers.Number)(np.clip)
-ops.clamp.register(array, type(None), type(None))(np.clip)
+ops.clamp.register(array)(np.clip)
 ops.exp.register(array)(np.exp)
-ops.full_like.register(array, numbers.Number)(np.full_like)
 ops.log1p.register(array)(np.log1p)
-ops.max.register(array)(np.maximum)
-ops.min.register(array)(np.minimum)
-ops.permute.register(array, (tuple, list))(np.transpose)
+ops.max.register(array, array)(np.maximum)
+ops.min.register(array, array)(np.minimum)
+ops.permute.register(array)(np.transpose)
 ops.sigmoid.register(array)(expit)
 ops.sqrt.register(array)(np.sqrt)
 ops.tanh.register(array)(np.tanh)
-ops.transpose.register(array, int, int)(np.swapaxes)
-ops.unsqueeze.register(array, int)(np.expand_dims)
+ops.transpose.register(array)(np.swapaxes)
+ops.unsqueeze.register(array)(np.expand_dims)
 
 
-@ops.all.register(array, (int, type(None)))
+@ops.all.register(array)
 def _all(x, dim):
     return np.all(x, axis=dim)
 
 
-@ops.amax.register(array, (int, type(None)))
+@ops.amax.register(array)
 def _amax(x, dim, keepdims=False):
     return np.amax(x, axis=dim, keepdims=keepdims)
 
 
-@ops.amin.register(array, (int, type(None)))
+@ops.amin.register(array)
 def _amin(x, dim, keepdims=False):
     return np.amin(x, axis=dim, keepdims=keepdims)
 
 
-@ops.any.register(array, (int, type(None)))
+@ops.argmax.register(array)
+def _argmax(x, dim):
+    return np.argmax(x, dim)
+
+
+@ops.any.register(array)
 def _any(x, dim):
     return np.any(x, axis=dim)
 
 
-@ops.astype.register(array, str)
+@ops.astype.register(array)
 def _astype(x, dtype):
-    return x.astype(dtype)
+    return x.astype(np.result_type(dtype))
 
 
-@ops.cat.register(int, [array])
-def _cat(dim, *x):
-    if len(x) == 1:
-        return x[0]
-    return np.concatenate(x, axis=dim)
+ops.cat.register(typing.Tuple[typing.Union[array], ...])(np.concatenate)
 
 
 @ops.cholesky.register(array)
@@ -96,17 +95,17 @@ def _detach(x):
     return lax.stop_gradient(x)
 
 
-@ops.diagonal.register(array, int, int)
+@ops.diagonal.register(array)
 def _diagonal(x, dim1, dim2):
     return np.diagonal(x, axis1=dim1, axis2=dim2)
 
 
-@ops.einsum.register(str, [array])
-def _einsum(equation, *operands):
+@ops.einsum.register(typing.Tuple[typing.Union[array], ...])
+def _einsum(operands, equation):
     return np.einsum(equation, *operands)
 
 
-@ops.expand.register(array, tuple)
+@ops.expand.register(array)
 def _expand(x, shape):
     prepend_dim = len(shape) - np.ndim(x)
     assert prepend_dim >= 0
@@ -118,12 +117,14 @@ def _expand(x, shape):
 
 @ops.finfo.register(array)
 def _finfo(x):
-    return np.finfo(x.dtype)
+    return np.finfo(np.result_type(x))
 
 
-@ops.is_numeric_array.register(array)
-def _is_numeric_array(x):
-    return True
+for typ in array:
+
+    @ops.is_numeric_array.register(typ)
+    def _is_numeric_array(x):
+        return True
 
 
 @ops.isnan.register(array)
@@ -141,14 +142,32 @@ def _log(x):
     return np.log(x)
 
 
-@ops.logsumexp.register(array, (int, type(None)))
+@ops.logaddexp.register(array, array)
+def _safe_logaddexp_tensor_tensor(x, y):
+    finfo = np.finfo(np.result_type(x))
+    shift = np.clip(ops.max(ops.detach(x), ops.detach(y)), a_max=None, a_min=finfo.min)
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(numbers.Number, array)
+def _safe_logaddexp_number_tensor(x, y):
+    finfo = np.finfo(np.result_type(y))
+    shift = np.clip(ops.detach(y), a_max=None, a_min=max(x, finfo.min))
+    return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
+
+
+@ops.logaddexp.register(array, numbers.Number)
+def _safe_logaddexp_tensor_number(x, y):
+    return _safe_logaddexp_number_tensor(y, x)
+
+
+@ops.logsumexp.register(array)
 def _logsumexp(x, dim):
     return logsumexp(x, axis=dim)
 
 
-@ops.max.register(array, array)
-def _max(x, y):
-    return np.maximum(x, y)
+ops.max.register(array, array)(np.maximum)
+ops.min.register(array, array)(np.minimum)
 
 
 @ops.max.register((int, float), array)
@@ -159,11 +178,6 @@ def _max(x, y):
 @ops.max.register(array, (int, float))
 def _max(x, y):
     return np.clip(x, a_min=y, a_max=None)
-
-
-@ops.min.register(array, array)
-def _min(x, y):
-    return np.minimum(x, y)
 
 
 # TODO: replace (int, float) by numbers.Number
@@ -177,64 +191,75 @@ def _min(x, y):
     return np.clip(x, a_min=None, a_max=y)
 
 
-@ops.new_arange.register(array, int, int, int)
+@ops.new_full.register(array)
+def _new_full(x, shape, value):
+    return np.full(shape, value, dtype=np.result_type(x))
+
+
+@ops.new_arange.register(array)
 def _new_arange(x, start, stop, step):
-    return np.arange(start, stop, step)
+    if step is not None:
+        return np.arange(start, stop, step)
+    if stop is not None:
+        return np.arange(start, stop)
+    return np.arange(start)
 
 
-@ops.new_arange.register(array, int)
-def _new_arange(x, stop):
-    return np.arange(stop)
-
-
-@ops.new_eye.register(array, tuple)
+@ops.new_eye.register(array)
 def _new_eye(x, shape):
     n = shape[-1]
     return np.broadcast_to(np.eye(n), shape + (n,))
 
 
-@ops.new_zeros.register(array, tuple)
+@ops.new_zeros.register(array)
 def _new_zeros(x, shape):
-    return onp.zeros(shape, dtype=x.dtype)
+    return onp.zeros(shape, dtype=np.result_type(x))
 
 
-@ops.prod.register(array, (int, type(None)))
+@ops.prod.register(array)
 def _prod(x, dim):
     return np.prod(x, axis=dim)
 
 
 @ops.reciprocal.register(array)
 def _reciprocal(x):
-    result = np.clip(np.reciprocal(x), a_max=np.finfo(x.dtype).max)
+    result = np.clip(np.reciprocal(x), a_max=np.finfo(np.result_type(x)).max)
     return result
 
 
+@ops.safediv.register(array, array)
 @ops.safediv.register((int, float), array)
 def _safediv(x, y):
     try:
-        finfo = np.finfo(y.dtype)
+        finfo = np.finfo(np.result_type(y))
     except ValueError:
-        finfo = np.iinfo(y.dtype)
+        finfo = np.iinfo(np.result_type(y))
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
+@ops.safesub.register(array, array)
 @ops.safesub.register((int, float), array)
 def _safesub(x, y):
     try:
-        finfo = np.finfo(y.dtype)
+        finfo = np.finfo(np.result_type(y))
     except ValueError:
-        finfo = np.iinfo(y.dtype)
+        finfo = np.iinfo(np.result_type(y))
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
 
 
-@ops.stack.register(int, [array + (int, float)])
-def _stack(dim, *x):
-    return np.stack(x, axis=dim)
+@ops.scatter.register(array, tuple, array)
+def _scatter(dest, indices, src):
+    return index_update(dest, indices, src)
 
 
-@ops.sum.register(array, (int, type(None)))
-def _sum(x, dim):
-    return np.sum(x, axis=dim)
+@ops.stack.register(typing.Tuple[typing.Union[array + (int, float)], ...])
+def _stack(parts, dim=0):
+    return np.stack(parts, axis=dim)
+
+
+@ops.sum.register(array)
+def _sum(x, dim, keepdims):
+    return np.sum(x, dim, keepdims=keepdims)
 
 
 @ops.triangular_solve.register(array, array)
@@ -257,10 +282,7 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     x_new_shape = batch_shape[:prepend_ndim]
     for (sy, sx) in zip(y.shape[:-2], batch_shape[prepend_ndim:]):
         x_new_shape += (sx // sy, sy)
-    x_new_shape += (
-        n,
-        m,
-    )
+    x_new_shape += (n, m)
     x = np.reshape(x, x_new_shape)
     # Permute y to make it have shape (..., 1, j, m, i, 1, n)
     batch_ndim = x.ndim - 2
