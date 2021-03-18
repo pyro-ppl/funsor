@@ -772,6 +772,25 @@ def eager_reshape_tensor(op, arg):
     return Tensor(data, arg.inputs, arg.dtype)
 
 
+@eager.register(Unary, ops.SumOp, Tensor)
+def eager_sum_tensor(op, arg):
+    if not arg.inputs:
+        return Tensor(op(arg.data), arg.inputs, arg.dtype)
+
+    # Work around batch inputs.
+    dim = op.defaults.get("dim", None)
+    keepdims = op.defaults.get("keepdims", False)
+    ndims = len(arg.output.shape)
+    if dim is None:
+        dim = tuple(range(-ndims, 0))
+    elif isinstance(dim, int):
+        dim = dim % ndims - ndims
+    else:
+        dim = tuple(d % ndims - ndims for d in dim)
+    data = op(arg.data, dim, keepdims)
+    return Tensor(data, arg.inputs, arg.dtype)
+
+
 @eager.register(Binary, GetitemOp, Tensor, Number)
 def eager_getitem_tensor_number(op, lhs, rhs):
     offset = op.defaults["offset"]

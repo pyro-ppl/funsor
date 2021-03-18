@@ -70,8 +70,8 @@ def amin(x, dim=None, keepdims=False):
 
 
 @UnaryOp.make
-def sum(x, dim=None):
-    return np.sum(x, dim)
+def sum(x, dim=None, keepdims=False):
+    return np.sum(x, dim, keepdims=keepdims)
 
 
 @UnaryOp.make

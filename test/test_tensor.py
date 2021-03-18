@@ -1305,3 +1305,53 @@ def test_scatter_pure_renaming():
 
     assert actual.input_vars == expected.input_vars
     assert ((actual - expected).abs() < 1e-4).data.all()
+
+
+@pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
+def test_sum(event_shape):
+    data = randn(*event_shape)
+    DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
+    KEEPDIMS = [False, True]
+
+    assert_close(Tensor(ops.sum(data)), ops.sum(Tensor(data)))
+    for dim in DIMS:
+        assert_close(Tensor(ops.sum(data, dim)), ops.sum(Tensor(data), dim))
+        assert_close(Tensor(ops.sum(data, dim=dim)), ops.sum(Tensor(data), dim=dim))
+    for keepdims in KEEPDIMS:
+        assert_close(
+            Tensor(ops.sum(data, keepdims=keepdims)),
+            ops.sum(Tensor(data), keepdims=keepdims),
+        )
+        for dim in DIMS:
+            assert_close(
+                Tensor(ops.sum(data, dim, keepdims)),
+                ops.sum(Tensor(data), dim, keepdims),
+            )
+            assert_close(
+                Tensor(ops.sum(data, dim, keepdims=keepdims)),
+                ops.sum(Tensor(data), dim, keepdims=keepdims),
+            )
+            assert_close(
+                Tensor(ops.sum(data, dim=dim, keepdims=keepdims)),
+                ops.sum(Tensor(data), dim=dim, keepdims=keepdims),
+            )
+
+
+@pytest.mark.parametrize("batch_shape", [(), (5,)], ids=str)
+@pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
+def test_sum_batch(batch_shape, event_shape):
+    inputs = OrderedDict((k, Bint[s]) for k, s in zip("abc", batch_shape))
+    data = randn(*batch_shape, *event_shape)
+    DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
+    KEEPDIMS = [False, True]
+
+    def raw_sum(x, dim=None, keepdims=False, batch_ndims=len(batch_shape)):
+        if batch_ndims == 0:
+            return ops.sum(x, dim, keepdims)
+        return ops.stack([raw_sum(part, dim, keepdims, batch_ndims - 1) for part in x])
+
+    for keepdims in KEEPDIMS:
+        for dim in DIMS:
+            actual = ops.sum(Tensor(data, inputs), dim, keepdims)
+            expected = Tensor(raw_sum(data, dim, keepdims), inputs)
+            assert_close(actual, expected)
