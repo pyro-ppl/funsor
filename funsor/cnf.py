@@ -16,8 +16,8 @@ from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
 from funsor.interpretations import eager, normalize, reflect
-from funsor.interpreter import recursion_reinterpret
-from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, nullop
+from funsor.interpreter import children, recursion_reinterpret
+from funsor.ops import DISTRIBUTIVE_OPS, AssociativeOp, NullOp, null
 from funsor.tensor import Tensor
 from funsor.terms import (
     _INFIX,
@@ -69,7 +69,7 @@ class Contraction(Funsor):
         for v in terms:
             inputs.update((k, d) for k, d in v.inputs.items() if k not in bound)
 
-        if bin_op is nullop:
+        if bin_op is null:
             output = terms[0].output
         else:
             output = reduce(
@@ -107,8 +107,8 @@ class Contraction(Funsor):
         if not sampled_vars:
             return self
 
-        if self.red_op in (ops.logaddexp, nullop):
-            if self.bin_op in (ops.nullop, ops.logaddexp):
+        if self.red_op in (ops.logaddexp, null):
+            if self.bin_op in (ops.null, ops.logaddexp):
                 if rng_key is not None and get_backend() == "jax":
                     import jax
 
@@ -250,6 +250,11 @@ def recursion_reinterpret_contraction(x):
     )
 
 
+@children.register(Contraction)
+def children_contraction(x):
+    return (x.red_op, x.bin_op, x.reduced_vars) + x.terms
+
+
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Variadic[Funsor])
 def eager_contraction_generic_to_tuple(red_op, bin_op, reduced_vars, *terms):
     return eager.interpret(Contraction, red_op, bin_op, reduced_vars, terms)
@@ -272,7 +277,7 @@ def eager_contraction_generic_recursive(red_op, bin_op, reduced_vars, terms):
             if unique_vars:
                 result = term.reduce(red_op, unique_vars)
                 if result is not normalize.interpret(
-                    Contraction, red_op, nullop, unique_vars, (term,)
+                    Contraction, red_op, null, unique_vars, (term,)
                 ):
                     terms[i] = result
                     reduced_vars -= unique_vars
@@ -427,7 +432,7 @@ def normalize_contraction_commutative_canonical_order(
 )
 def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, other):
     return Contraction(
-        mixture.red_op if red_op is nullop else red_op,
+        mixture.red_op if red_op is null else red_op,
         bin_op,
         reduced_vars | mixture.reduced_vars,
         *(mixture.terms + (other,))
@@ -439,7 +444,7 @@ def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, o
 )
 def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mixture):
     return Contraction(
-        mixture.red_op if red_op is nullop else red_op,
+        mixture.red_op if red_op is null else red_op,
         bin_op,
         reduced_vars | mixture.reduced_vars,
         *(mixture.terms + (other,))
@@ -462,13 +467,13 @@ def normalize_trivial(red_op, bin_op, reduced_vars, term):
 @normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
 
-    if not reduced_vars and red_op is not nullop:
-        return Contraction(nullop, bin_op, reduced_vars, *terms)
+    if not reduced_vars and red_op is not null:
+        return Contraction(null, bin_op, reduced_vars, *terms)
 
-    if len(terms) == 1 and bin_op is not nullop:
-        return Contraction(red_op, nullop, reduced_vars, *terms)
+    if len(terms) == 1 and bin_op is not null:
+        return Contraction(red_op, null, reduced_vars, *terms)
 
-    if red_op is nullop and bin_op is nullop:
+    if red_op is null and bin_op is null:
         return terms[0]
 
     if red_op is bin_op:
@@ -493,11 +498,11 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
             continue
 
         # fuse operations without distributing
-        if (v.red_op is nullop and bin_op is v.bin_op) or (
-            bin_op is nullop and v.red_op in (red_op, nullop)
+        if (v.red_op is null and bin_op is v.bin_op) or (
+            bin_op is null and v.red_op in (red_op, null)
         ):
-            red_op = v.red_op if red_op is nullop else red_op
-            bin_op = v.bin_op if bin_op is nullop else bin_op
+            red_op = v.red_op if red_op is null else red_op
+            bin_op = v.bin_op if bin_op is null else bin_op
             new_terms = terms[:i] + v.terms + terms[i + 1 :]
             return Contraction(
                 red_op, bin_op, reduced_vars | v.reduced_vars, *new_terms
@@ -514,12 +519,12 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
 
 @normalize.register(Binary, AssociativeOp, Funsor, Funsor)
 def binary_to_contract(op, lhs, rhs):
-    return Contraction(nullop, op, frozenset(), lhs, rhs)
+    return Contraction(null, op, frozenset(), lhs, rhs)
 
 
 @normalize.register(Reduce, AssociativeOp, Funsor, frozenset)
 def reduce_funsor(op, arg, reduced_vars):
-    return Contraction(op, nullop, reduced_vars, arg)
+    return Contraction(op, null, reduced_vars, arg)
 
 
 @normalize.register(

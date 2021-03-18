@@ -27,7 +27,6 @@ from funsor.tensor import (
     get_default_prototype,
     ignore_jit_warnings,
     numeric_array,
-    stack,
 )
 from funsor.terms import (
     Funsor,
@@ -768,15 +767,15 @@ def LogNormal(loc, scale, value="value"):
 
 
 def eager_beta(concentration1, concentration0, value):
-    concentration = stack((concentration0, concentration1))
-    value = stack((1 - value, value))
+    concentration = ops.stack((concentration0, concentration1))
+    value = ops.stack((1 - value, value))
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     return backend_dist.Dirichlet(concentration, value=value)  # noqa: F821
 
 
 def eager_binomial(total_count, probs, value):
-    probs = stack((1 - probs, probs))
-    value = stack((total_count - value, value))
+    probs = ops.stack((1 - probs, probs))
+    value = ops.stack((total_count - value, value))
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     return backend_dist.Multinomial(total_count, probs, value=value)  # noqa: F821
 

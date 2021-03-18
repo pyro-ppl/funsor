@@ -237,7 +237,10 @@ def methodof(cls, name=None):
         if name_ is None:
             fn_ = fn
             while not hasattr(fn_, "__name__"):
-                fn_ = fn_.__func__
+                if isinstance(fn_, property):
+                    fn_ = fn_.fget
+                else:
+                    fn_ = fn_.__func__
             name_ = fn_.__name__
         setattr(cls, name_, fn)
         return fn
