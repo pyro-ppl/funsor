@@ -339,7 +339,7 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
     ids=id_from_inputs,
 )
 def test_gaussian_mixture_distribution(batch_inputs, event_inputs):
-    num_samples = 200000
+    num_samples = 250000
     sample_inputs = OrderedDict(particle=Bint[num_samples])
     be_inputs = OrderedDict(batch_inputs + event_inputs)
     int_inputs = OrderedDict((k, d) for k, d in be_inputs.items() if d.dtype != "real")

@@ -117,7 +117,7 @@ def _expand(x, shape):
 
 @ops.finfo.register(array)
 def _finfo(x):
-    return np.finfo(x.dtype)
+    return np.finfo(np.result_type(x))
 
 
 for typ in array:
@@ -144,14 +144,14 @@ def _log(x):
 
 @ops.logaddexp.register(array, array)
 def _safe_logaddexp_tensor_tensor(x, y):
-    finfo = np.finfo(x.dtype)
+    finfo = np.finfo(np.result_type(x))
     shift = np.clip(ops.max(ops.detach(x), ops.detach(y)), a_max=None, a_min=finfo.min)
     return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
 
 
 @ops.logaddexp.register(numbers.Number, array)
 def _safe_logaddexp_number_tensor(x, y):
-    finfo = np.finfo(y.dtype)
+    finfo = np.finfo(np.result_type(y))
     shift = np.clip(ops.detach(y), a_max=None, a_min=max(x, finfo.min))
     return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
 
@@ -193,7 +193,7 @@ def _min(x, y):
 
 @ops.new_full.register(array)
 def _new_full(x, shape, value):
-    return np.full(shape, value, dtype=x.dtype)
+    return np.full(shape, value, dtype=np.result_type(x))
 
 
 @ops.new_arange.register(array)
@@ -213,7 +213,7 @@ def _new_eye(x, shape):
 
 @ops.new_zeros.register(array)
 def _new_zeros(x, shape):
-    return onp.zeros(shape, dtype=x.dtype)
+    return onp.zeros(shape, dtype=np.result_type(x))
 
 
 @ops.prod.register(array)
@@ -223,7 +223,7 @@ def _prod(x, dim):
 
 @ops.reciprocal.register(array)
 def _reciprocal(x):
-    result = np.clip(np.reciprocal(x), a_max=np.finfo(x.dtype).max)
+    result = np.clip(np.reciprocal(x), a_max=np.finfo(np.result_type(x)).max)
     return result
 
 
@@ -231,9 +231,9 @@ def _reciprocal(x):
 @ops.safediv.register((int, float), array)
 def _safediv(x, y):
     try:
-        finfo = np.finfo(y.dtype)
+        finfo = np.finfo(np.result_type(y))
     except ValueError:
-        finfo = np.iinfo(y.dtype)
+        finfo = np.iinfo(np.result_type(y))
     return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
 
 
@@ -241,9 +241,9 @@ def _safediv(x, y):
 @ops.safesub.register((int, float), array)
 def _safesub(x, y):
     try:
-        finfo = np.finfo(y.dtype)
+        finfo = np.finfo(np.result_type(y))
     except ValueError:
-        finfo = np.iinfo(y.dtype)
+        finfo = np.iinfo(np.result_type(y))
     return x + np.clip(-y, a_min=None, a_max=finfo.max)
 
 

@@ -1350,8 +1350,9 @@ def test_sum_batch(batch_shape, event_shape):
             return ops.sum(x, dim, keepdims)
         return ops.stack([raw_sum(part, dim, keepdims, batch_ndims - 1) for part in x])
 
+    rtol = 1e-5 if get_backend() == "jax" else 1e-6
     for keepdims in KEEPDIMS:
         for dim in DIMS:
             actual = ops.sum(Tensor(data, inputs), dim, keepdims)
             expected = Tensor(raw_sum(data, dim, keepdims), inputs)
-            assert_close(actual, expected)
+            assert_close(actual, expected, rtol=rtol)
