@@ -22,10 +22,12 @@ from funsor.interpretations import (
     eager,
     lazy,
     moment_matching,
+    normalize,
     reflect,
     sequential,
+    simplify,
 )
-from funsor.interpreter import PatternMissingError, interpret
+from funsor.interpreter import PatternMissingError, interpret, reinterpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
 from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_origin
@@ -448,6 +450,11 @@ class Funsor(object, metaclass=FunsorMeta):
         assert isinstance(sample_inputs, OrderedDict)
         if sampled_vars.isdisjoint(self.inputs):
             return self
+        normalized_self = normalize(reinterpret)(self)
+        if normalized_self is not self:
+            return normalized_self.unscaled_sample(
+                sampled_vars, sample_inputs, rng_key=rng_key
+            )
         raise ValueError("Cannot sample from a {}".format(type(self).__name__))
 
     def align(self, names):
@@ -899,13 +906,17 @@ class Subs(Funsor, metaclass=SubsMeta):
         return Subs(arg, tuple(self.subs.items()))
 
 
-@lazy.register(Subs, Funsor, object)
-@eager.register(Subs, Funsor, object)
+@lazy.register(Subs, Funsor, tuple)
+@eager.register(Subs, Funsor, tuple)
 def eager_subs(arg, subs):
-    assert isinstance(subs, tuple)
+    return substitute(arg, subs)
+
+
+@simplify.register(Subs, Funsor, tuple)
+def empty_subs(arg, subs):
     if not any(k in arg.inputs for k, v in subs):
         return arg
-    return substitute(arg, subs)
+    return None
 
 
 @die.register(Subs, Funsor, tuple)
@@ -946,11 +957,11 @@ def eager_unary(op, arg):
     return instrument.debug_logged(arg.eager_unary)(op)
 
 
-@eager.register(Unary, AssociativeOp, Funsor)
+@simplify.register(Unary, AssociativeOp, Funsor)
 def eager_unary(op, arg):
     if not arg.output.shape:
         return arg
-    return instrument.debug_logged(arg.eager_unary)(op)
+    return None
 
 
 @die.register(Unary, Op, Funsor)
@@ -1059,7 +1070,8 @@ class Reduce(Funsor):
         return op, arg, reduced_vars
 
 
-def _reduce_unrelated_vars(op, arg, reduced_vars):
+@simplify.register(Reduce, AssociativeOp, Funsor, frozenset)
+def simplify_reduce_unrelated_vars(op, arg, reduced_vars):
     factor_vars = reduced_vars - arg.input_vars
     if factor_vars:
         reduced_vars = reduced_vars & arg.input_vars
@@ -1073,44 +1085,33 @@ def _reduce_unrelated_vars(op, arg, reduced_vars):
         )
         for add_op, mul_op in ops.DISTRIBUTIVE_OPS:
             if add_op is op:
-                arg = mul_op(arg, multiplicity).reduce(op, reduced_vars)
-                return arg, None
+                return mul_op(arg, multiplicity).reduce(op, reduced_vars)
         raise NotImplementedError(f"Cannot reduce {op}")
-    return arg, frozenset(v.name for v in reduced_vars)
-
-
-@lazy.register(Reduce, AssociativeOp, Funsor, frozenset)
-def lazy_reduce(op, arg, reduced_vars):
-    new_arg, new_reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
-    if new_reduced_vars is None:
-        return new_arg
-    if new_arg is arg:
-        return None
-    return new_arg.reduce(op, new_reduced_vars)
-
-
-@eager.register(Reduce, AssociativeOp, Funsor, frozenset)
-def eager_reduce(op, arg, reduced_vars):
-    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
-    if reduced_vars is None:
-        return arg
-    return instrument.debug_logged(arg.eager_reduce)(op, reduced_vars)
+    return None
 
 
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
-    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
-    if reduced_vars is None:
-        return arg
-    return instrument.debug_logged(arg.sequential_reduce)(op, reduced_vars)
+    if reduced_vars <= arg.input_vars:
+        reduced_vars = frozenset(v.name for v in reduced_vars)
+        return instrument.debug_logged(arg.sequential_reduce)(op, reduced_vars)
+    return None
 
 
 @moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
 def moment_matching_reduce(op, arg, reduced_vars):
-    arg, reduced_vars = _reduce_unrelated_vars(op, arg, reduced_vars)
-    if reduced_vars is None:
-        return arg
-    return instrument.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+    if reduced_vars <= arg.input_vars:
+        reduced_vars = frozenset(v.name for v in reduced_vars)
+        return instrument.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+    return None
+
+
+@eager.register(Reduce, AssociativeOp, Funsor, frozenset)
+def eager_reduce(op, arg, reduced_vars):
+    if reduced_vars <= arg.input_vars:
+        reduced_vars = frozenset(v.name for v in reduced_vars)
+        return instrument.debug_logged(arg.eager_reduce)(op, reduced_vars)
+    return None
 
 
 @die.register(Reduce, Op, Funsor, frozenset)
@@ -1432,26 +1433,26 @@ class Align(Funsor):
         return self.arg.reduce(op, reduced_vars)
 
 
-@eager.register(Align, Funsor, tuple)
-def eager_align(arg, names):
+@simplify.register(Align, Funsor, tuple)
+def simplify_align(arg, names):
     if not frozenset(names) == frozenset(arg.inputs.keys()):
         # assume there's been a substitution and this align is no longer valid
         return arg
     return None
 
 
-@eager.register(Binary, Op, Align, Funsor)
-def eager_binary_align_funsor(op, lhs, rhs):
+@simplify.register(Binary, Op, Align, Funsor)
+def simplify_binary_align_funsor(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs)
 
 
-@eager.register(Binary, Op, Funsor, Align)
-def eager_binary_funsor_align(op, lhs, rhs):
+@simplify.register(Binary, Op, Funsor, Align)
+def simplify_binary_funsor_align(op, lhs, rhs):
     return Binary(op, lhs, rhs.arg)
 
 
-@eager.register(Binary, Op, Align, Align)
-def eager_binary_align_align(op, lhs, rhs):
+@simplify.register(Binary, Op, Align, Align)
+def simplify_binary_align_align(op, lhs, rhs):
     return Binary(op, lhs.arg, rhs.arg)
 
 
@@ -1630,9 +1631,12 @@ class Cat(Funsor, metaclass=CatMeta):
 
 @eager.register(Cat, str, tuple, str)
 def eager_cat(name, parts, part_name):
-    if len(parts) == 1:
-        return parts[0](**{part_name: name})
     return eager_cat_homogeneous(name, part_name, *parts)
+
+
+@simplify.register(Cat, str, typing.Tuple[Funsor], str)
+def eager_cat(name, parts, part_name):
+    return parts[0](**{part_name: name})
 
 
 @dispatch(str, str, Variadic[Funsor])
@@ -1672,8 +1676,8 @@ class Lambda(Funsor):
         return super()._alpha_convert(alpha_subs)
 
 
-@eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
-def eager_getitem_lambda(op, lhs, rhs):
+@simplify.register(Binary, GetitemOp, Lambda, (Funsor, Align))
+def simplify_getitem_lambda(op, lhs, rhs):
     offset = op.defaults["offset"]
     if offset == 0:
         return Subs(lhs.expr, ((lhs.var.name, rhs),))
@@ -1765,7 +1769,7 @@ class Independent(Funsor):
         raise NotImplementedError("entropy() not yet implemented for Independent")
 
 
-@eager.register(Independent, Funsor, str, str, str)
+@simplify.register(Independent, Funsor, str, str, str)
 def eager_independent_trivial(fn, reals_var, bint_var, diag_var):
     # compare to Independent.eager_subs
     if diag_var not in fn.inputs:

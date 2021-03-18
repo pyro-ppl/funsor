@@ -10,7 +10,8 @@ from functools import singledispatch
 import makefun
 
 from funsor.instrument import debug_logged
-from funsor.terms import Funsor, FunsorMeta, Variable, eager, to_funsor
+from funsor.interpretations import simplify
+from funsor.terms import Funsor, FunsorMeta, Variable, to_funsor
 
 
 def _erase_types(fn):
@@ -257,7 +258,7 @@ def make_funsor(fn):
     pattern = (Result,) + tuple(
         _hint_to_pattern(input_types[k]) for k in Result._ast_fields
     )
-    eager.register(*pattern)(_erase_types(fn))
+    simplify.register(*pattern)(_erase_types(fn))
     return Result
 
 

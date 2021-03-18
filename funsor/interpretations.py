@@ -1,13 +1,20 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import weakref
 from abc import ABC, abstractmethod
 from collections.abc import Hashable
 from contextlib import ContextDecorator, contextmanager
 from timeit import default_timer
 
 from . import instrument
-from .interpreter import get_interpretation, pop_interpretation, push_interpretation
+from .interpreter import (
+    get_interpretation,
+    is_atom,
+    pop_interpretation,
+    push_interpretation,
+    reinterpret,
+)
 from .registry import KeyedRegistry
 from .util import get_backend
 
@@ -259,6 +266,45 @@ class StatefulInterpretation(Interpretation, metaclass=StatefulInterpretationMet
             return cls.registry.register(*args)
 
 
+class NormalizedInterpretation(Interpretation):
+    def __init__(self, subinterpretation):
+        super().__init__(f"Normalized({subinterpretation.__name__})")
+        self.subinterpretation = subinterpretation
+        self.register = self.subinterpretation.register
+        self.dispatch = self.subinterpretation.dispatch
+        self._cache = {}  # weakref.WeakValueDictionary()  # TODO make this work
+
+    def interpret(self, cls, *args):
+        # 1. try self.subinterpret.
+        result = self.subinterpretation.interpret(cls, *args)
+        if result is not None:
+            return result
+
+        # 2. normalize to a Contraction normal form (will succeed)
+        # Note eager_contraction_generic_recursive() effectively fuses this
+        # step with step 3 below to short-circuit some logic.
+        with normalize:
+            normalized_args = []
+            for arg in args:
+                try:
+                    normalized_args.append(arg if is_atom(arg) else self._cache[arg])
+                except KeyError:
+                    normalized_arg = reinterpret(arg)
+                    self._cache[arg] = normalized_arg
+                    normalized_args.append(normalized_arg)
+            normal_form = cls(*normalized_args)
+
+        # 3. try evaluating that normal form
+        with PrioritizedInterpretation(self.subinterpretation, simplify):
+            # TODO use .interpret instead of reinterpret here to avoid traversal
+            result = reinterpret(normal_form)
+        if result is not normal_form:  # I.e. was progress made?
+            return result
+
+        # 4. if that fails, fall back to base interpretation of cls(*args)
+        return None
+
+
 class Memoize(Interpretation):
     """
     Exploits cons-hashing to do implicit common subexpression elimination.
@@ -303,6 +349,18 @@ def memoize(cache=None):
 # Concrete interpretations.
 
 
+class Simplify(DispatchedInterpretation):
+
+    is_total = True  # because it always ends with normalize
+
+    def interpret(self, cls, *args):
+        result = super().interpret(cls, *args)
+        if result is None:
+            with normalize:
+                result = cls(*args)
+        return result
+
+
 @CallableInterpretation
 def reflect(cls, *args):
     raise ValueError("Should be overwritten in terms.py")
@@ -317,35 +375,34 @@ Normalize modulo associativity and commutativity, but do not evaluate any
 numerical operations.
 """
 
-lazy_base = DispatchedInterpretation("lazy")
+simplify = Simplify("simplify")
+
+lazy_base = NormalizedInterpretation(DispatchedInterpretation("lazy"))
 lazy = PrioritizedInterpretation(lazy_base, reflect)
 """
 Performs substitutions eagerly, but construct lazy funsors for everything else.
 """
 
-eager_base = DispatchedInterpretation("eager")
-eager = PrioritizedInterpretation(eager_base, normalize_base, reflect)
+eager_base = NormalizedInterpretation(DispatchedInterpretation("eager"))
+eager = PrioritizedInterpretation(eager_base, reflect)
 """
 Eager exact naive interpretation wherever possible.
 """
 
 die = DispatchedInterpretation("die")
-eager_or_die = PrioritizedInterpretation(eager_base, die, reflect)
+eager_or_die = PrioritizedInterpretation(eager_base.subinterpretation, die, reflect)
 
-sequential_base = DispatchedInterpretation("sequential")
-# XXX does this work with sphinx/help()?
-sequential = PrioritizedInterpretation(
-    sequential_base, eager_base, normalize_base, reflect
-)
+sequential_base = NormalizedInterpretation(DispatchedInterpretation("sequential"))
+sequential = PrioritizedInterpretation(sequential_base, eager)
 """
 Eagerly execute ops with known implementations; additonally execute
 vectorized ops sequentially if no known vectorized implementation exists.
 """
 
-moment_matching_base = DispatchedInterpretation("moment_matching")
-moment_matching = PrioritizedInterpretation(
-    moment_matching_base, eager_base, normalize_base, reflect
+moment_matching_base = NormalizedInterpretation(
+    DispatchedInterpretation("moment_matching")
 )
+moment_matching = PrioritizedInterpretation(moment_matching_base, eager)
 """
 A moment matching interpretation of :class:`Reduce` expressions. This falls
 back to :class:`eager` in other cases.
@@ -359,6 +416,8 @@ __all__ = [
     "CallableInterpretation",
     "DispatchedInterpretation",
     "Interpretation",
+    "NormalizedInterpretation",
+    "PrioritizedInterpretation",
     "Memoize",
     "StatefulInterpretation",
     "die",
@@ -369,4 +428,5 @@ __all__ = [
     "normalize",
     "reflect",
     "sequential",
+    "simplify",
 ]

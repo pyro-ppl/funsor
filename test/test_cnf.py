@@ -13,12 +13,12 @@ from funsor.cnf import (
     BACKEND_TO_LOGSUMEXP_BACKEND,
     Contraction,
 )
-from funsor.domains import Array, Bint, Reals  # noqa: F401
+from funsor.domains import Array, Bint, Real, Reals  # noqa: F401
 from funsor.einsum import einsum, naive_plated_einsum
 from funsor.interpretations import eager, normalize, reflect
 from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
-from funsor.terms import Number
+from funsor.terms import Number, Variable
 from funsor.testing import (
     assert_close,
     check_funsor,
@@ -26,6 +26,37 @@ from funsor.testing import (
     random_tensor,
 )
 from funsor.util import get_backend, quote
+
+
+def test_unit():
+    x = Variable("x", Real)
+    assert x + 0 is x
+
+
+def test_commutativity():
+    x = Variable("x", Real)
+    assert x + 1 is 1 + x
+
+
+def test_associativity():
+    x = Variable("x", Real)
+    y = Variable("y", Real)
+    z = Variable("z", Real)
+    assert (x + y) + z is x + (y + z)
+
+
+@pytest.mark.xfail(reason="not handled")
+def test_inverse_1():
+    x = Variable("x", Real)
+    assert x - x is Number(0, Real)
+
+
+@pytest.mark.xfail(reason="not handled")
+def test_inverse_2():
+    x = Variable("x", Real)
+    y = Variable("y", Real)
+    assert x + y - x - y is Number(0, Real)
+
 
 EINSUM_EXAMPLES = [
     ("a,b->", ""),

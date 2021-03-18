@@ -8,7 +8,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian
-from funsor.interpretations import eager, normalize
+from funsor.interpretations import eager, normalize, simplify
 from funsor.tensor import Tensor
 from funsor.terms import (
     Funsor,
@@ -88,12 +88,22 @@ def normalize_integrate(log_measure, integrand, reduced_vars):
 
 
 @normalize.register(
+    Unary, ops.ExpOp, Contraction[ops.NullOp, ops.AddOp, frozenset, tuple]
+)
+def normalize_expadd(op, arg):
+    # TODO guarantee this is lazy - want no direct exponentiation of ground values
+    return Contraction(arg.red_op, ops.mul, arg.reduced_vars, *map(op, arg.terms))
+
+
+@simplify.register(
     Integrate,
     Contraction[Union[ops.NullOp, ops.LogaddexpOp], ops.AddOp, frozenset, tuple],
     Funsor,
     frozenset,
 )
-def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
+def simplify_integrate_contraction(log_measure, integrand, reduced_vars):
+    # TODO ensure this rule fires - delta points must be substituted correctly
+    # TODO should this be part of normalize or simplify? probably normalize...
     reduced_names = frozenset(v.name for v in reduced_vars)
     delta_terms = [
         t
@@ -109,34 +119,22 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
                 if name in reduced_names.intersection(integrand.inputs)
             }
         )
-    return normalize_integrate(log_measure, integrand, reduced_vars)
+    return Integrate(log_measure, integrand, reduced_vars)
 
 
-@eager.register(
+@simplify.register(
     Contraction,
     ops.AddOp,
     ops.MulOp,
     frozenset,
     Unary[ops.ExpOp, Union[GaussianMixture, Delta, Gaussian, Number, Tensor]],
-    (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture),
+    Funsor,  # TODO is this too broad?
 )
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
-    reduced_names = frozenset(v.name for v in reduced_vars)
-    if not (reduced_names.issubset(lhs.inputs) and reduced_names.issubset(rhs.inputs)):
-        args = red_op, bin_op, reduced_vars, (lhs, rhs)
-        result = eager.dispatch(Contraction, *args)(*args)
-        if result is not None:
-            return result
-
-    args = lhs.log(), rhs, reduced_vars
-    result = eager.dispatch(Integrate, *args)(*args)
-    if result is not None:
-        return result
-
-    return None
+    return Integrate(lhs.log(), rhs, reduced_vars)
 
 
-@eager.register(Integrate, GaussianMixture, Funsor, frozenset)
+@simplify.register(Integrate, GaussianMixture, Funsor, frozenset)
 def eager_integrate_gaussianmixture(log_measure, integrand, reduced_vars):
     real_vars = frozenset(v for v in reduced_vars if v.dtype == "real")
     if reduced_vars <= real_vars:
