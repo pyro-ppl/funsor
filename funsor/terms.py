@@ -21,6 +21,7 @@ from funsor.interpretations import (
     die,
     eager,
     lazy,
+    moment_matching,
     normalize,
     reflect,
     sequential,
@@ -1094,6 +1095,14 @@ def sequential_reduce(op, arg, reduced_vars):
     if reduced_vars <= arg.input_vars:
         reduced_vars = frozenset(v.name for v in reduced_vars)
         return instrument.debug_logged(arg.sequential_reduce)(op, reduced_vars)
+    return None
+
+
+@moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
+def moment_matching_reduce(op, arg, reduced_vars):
+    if reduced_vars <= arg.input_vars:
+        reduced_vars = frozenset(v.name for v in reduced_vars)
+        return instrument.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
     return None
 
 
