@@ -234,7 +234,7 @@ def transform_to_torch_transform(op, name_to_dim=None):
 
 @op_to_torch_transform.register(ops.WrappedTransformOp)
 def transform_to_torch_transform(op, name_to_dim=None):
-    return op.fn
+    return op.defaults["fn"]
 
 
 @op_to_torch_transform.register(ops.ExpOp)
@@ -281,7 +281,7 @@ def transform_to_data(expr, name_to_dim=None):
 
 @to_funsor.register(torch.distributions.Transform)
 def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    op = ops.WrappedTransformOp(tfm)
+    op = ops.WrappedTransformOp(fn=tfm)
     name = next(real_inputs.keys()) if real_inputs else "value"
     return op(Variable(name, output))
 

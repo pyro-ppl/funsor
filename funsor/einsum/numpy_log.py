@@ -43,7 +43,7 @@ def einsum(equation, *operands):
             shift = ops.permute(shift, [dims.index(dim) for dim in output])
         shifts.append(shift)
 
-    result = ops.log(ops.einsum(equation, *exp_operands))
+    result = ops.log(ops.einsum(exp_operands, equation))
     return sum(shifts + [result])
 
 

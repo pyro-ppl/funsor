@@ -243,7 +243,7 @@ if not hasattr(dist.TransformedDistribution, "has_rsample"):
 
 @to_funsor.register(dist.transforms.Transform)
 def transform_to_funsor(tfm, output=None, dim_to_name=None, real_inputs=None):
-    op = ops.WrappedTransformOp(tfm)
+    op = ops.WrappedTransformOp(fn=tfm)
     name = next(real_inputs.keys()) if real_inputs else "value"
     return op(Variable(name, output))
 
