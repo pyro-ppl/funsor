@@ -1194,12 +1194,6 @@ class Scatter(Funsor):
         self.source = source
         self.reduced_vars = reduced_vars
 
-    def _alpha_convert(self, alpha_subs):
-        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
-        op, subs, source, reduced_vars = super()._alpha_convert(alpha_subs)
-        reduced_vars = frozenset(alpha_subs.get(var.name, var) for var in reduced_vars)
-        return op, subs, source, reduced_vars
-
 
 class Approximate(Funsor):
     """

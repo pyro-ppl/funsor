@@ -246,10 +246,6 @@ def make_funsor(fn):
         for name, arg in zip(self._ast_fields, args):
             setattr(self, name, arg)
 
-    def _alpha_convert(self, alpha_subs):
-        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
-        return Funsor._alpha_convert(self, alpha_subs)
-
     ResultMeta.__name__ = f"{fn.__name__}Meta"
     Result = ResultMeta(
         fn.__name__, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
