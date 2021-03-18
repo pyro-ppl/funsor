@@ -559,8 +559,8 @@ class Funsor(object, metaclass=FunsorMeta):
     # reduce over output shape while preserving all inputs.
     # To reduce over inputs, instead call .reduce(op, reduced_vars).
 
-    def sum(self):
-        return Unary(ops.add, self)
+    def sum(self, dim=None, keepdim=False):
+        return Unary(ops.SumOp(dim, keepdim=keepdim), self)
 
     def prod(self):
         return Unary(ops.mul, self)
@@ -580,14 +580,14 @@ class Funsor(object, metaclass=FunsorMeta):
     def max(self):
         return Unary(ops.max, self)
 
-    def mean(self, axis=None, keepdims=False):
-        return Unary(ops.MeanOp(axis, keepdims), self)
+    def mean(self, dim=None, keepdim=False):
+        return Unary(ops.MeanOp(dim, keepdim), self)
 
-    def std(self, axis=None, ddof=0, keepdims=False):
-        return Unary(ops.StdOp(axis, ddof, keepdims), self)
+    def std(self, dim=None, ddof=0, keepdim=False):
+        return Unary(ops.StdOp(dim, ddof, keepdim), self)
 
-    def var(self, axis=None, ddof=0, keepdims=False):
-        return Unary(ops.VarOp(axis, ddof, keepdims), self)
+    def var(self, dim=None, ddof=0, keepdim=False):
+        return Unary(ops.VarOp(dim, ddof, keepdim), self)
 
     def __add__(self, other):
         return Binary(ops.add, self, to_funsor(other))

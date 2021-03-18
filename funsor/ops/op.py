@@ -282,6 +282,14 @@ def _list_to_tuple(cls, arg, *args, **kwargs):
     return op(arg)
 
 
+class ReductionOp(UnaryOp):
+    """
+    Here reduction operations are defined in a broad sense, not only
+    associative operations. This helps to unify find_domain logic.
+    """
+    pass
+
+
 class TransformOp(UnaryOp):
     def set_inv(self, fn):
         """

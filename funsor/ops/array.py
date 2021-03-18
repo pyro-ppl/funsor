@@ -30,6 +30,7 @@ from .op import (
     FinitaryOp,
     Op,
     OpMeta,
+    ReductionOp,
     TernaryOp,
     UnaryOp,
     declare_op_types,
@@ -69,9 +70,24 @@ def amin(x, dim=None, keepdims=False):
     return np.amax(x, dim, keepdims=keepdims)
 
 
-@UnaryOp.make
-def sum(x, dim=None, keepdims=False):
-    return np.sum(x, dim, keepdims=keepdims)
+@ReductionOp.make
+def sum(x, dim=None, keepdim=False):
+    return np.sum(x, dim, keepdims=keepdim)
+
+
+@ReductionOp.make
+def mean(x, dim=None, keepdim=False):
+    return np.mean(x, dim, keepdims=keepdim)
+
+
+@ReductionOp.make
+def std(x, dim=None, ddof=0, keepdim=False):
+    return np.std(x, dim, ddof=ddof, keepdims=keepdim)
+
+
+@ReductionOp.make
+def var(x, dim=None, ddof=0, keepdim=False):
+    return np.var(x, dim, ddof=ddof, keepdims=keepdim)
 
 
 @UnaryOp.make

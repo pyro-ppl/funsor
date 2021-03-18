@@ -784,14 +784,14 @@ def eager_reshape_tensor(op, arg):
     return Tensor(data, arg.inputs, arg.dtype)
 
 
-@eager.register(Unary, ops.SumOp, Tensor)
-def eager_sum_tensor(op, arg):
+@eager.register(Unary, ops.ReductionOp, Tensor)
+def eager_reduction_tensor(op, arg):
     if not arg.inputs:
         return Tensor(op(arg.data), arg.inputs, arg.dtype)
 
     # Work around batch inputs.
     dim = op.defaults.get("dim", None)
-    keepdims = op.defaults.get("keepdims", False)
+    keepdim = op.defaults.get("keepdim", False)
     ndims = len(arg.output.shape)
     if dim is None:
         dim = tuple(range(-ndims, 0))
@@ -799,7 +799,7 @@ def eager_sum_tensor(op, arg):
         dim = dim % ndims - ndims
     else:
         dim = tuple(d % ndims - ndims for d in dim)
-    data = op(arg.data, dim, keepdims)
+    data = op(arg.data, dim, keepdim)
     return Tensor(data, arg.inputs, arg.dtype)
 
 

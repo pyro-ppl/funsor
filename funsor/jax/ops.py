@@ -142,9 +142,9 @@ def _log(x):
     return np.log(x)
 
 
-@ops.mean.register(array, (tuple, int, type(None)), bool)
-def _mean(x, axis, keepdims):
-    return x.mean(axis, keepdims=keepdims)
+@ops.mean.register(array)
+def _mean(x, dim, keepdim):
+    return x.mean(dim, keepdims=keepdim)
 
 
 @ops.logaddexp.register(array, array)
@@ -166,9 +166,9 @@ def _safe_logaddexp_tensor_number(x, y):
     return _safe_logaddexp_number_tensor(y, x)
 
 
-@ops.std.register(array, (tuple, int, type(None)), int, bool)
-def _std(x, axis, ddof, keepdims):
-    return x.std(axis, ddof=ddof, keepdims=keepdims)
+@ops.std.register(array)
+def _std(x, dim, ddof, keepdim):
+    return x.std(dim, ddof=ddof, keepdims=keepdim)
 
 
 @ops.logsumexp.register(array)
@@ -326,6 +326,6 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     return sol.reshape(batch_shape + (n, m))
 
 
-@ops.var.register(array, (tuple, int, type(None)), int, bool)
-def _var(x, axis, ddof, keepdims):
-    return x.var(axis, ddof=ddof, keepdims=keepdims)
+@ops.var.register(array)
+def _var(x, dim, ddof, keepdim):
+    return x.var(dim, ddof=ddof, keepdims=keepdim)

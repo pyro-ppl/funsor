@@ -166,11 +166,10 @@ def _max(x, y):
     return x.clamp(min=y)
 
 
-# @ops.mean.register(torch.Tensor, (tuple, int, type(None)), bool)
 @ops.mean.register(torch.Tensor)
-def _mean(x, dim, keepdim):
-    breakpoint()
-    return x.flatten().mean(dim, keepdim=keepdim)
+def _mean(x, dim=None, keepdim=False):
+    dim = tuple(x.shape) if dim is None else dim
+    return x.mean(dim, keepdim=keepdim)
 
 
 @ops.min.register(torch.Tensor, torch.Tensor)
@@ -277,7 +276,7 @@ def _scatter_add(destin, indices, source):
 ops.stack.register(typing.Tuple[torch.Tensor, ...])(torch.stack)
 
 
-@ops.std.register(torch.Tensor, (tuple, int, type(None)), int, bool)
+@ops.std.register(torch.Tensor)
 def _std(x, dim, ddof, keepdim):
     dim = tuple(x.shape) if dim is None else dim
     if ddof == 0:
@@ -302,7 +301,7 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     return x.triangular_solve(y, upper, transpose).solution
 
 
-@ops.var.register(torch.Tensor, (tuple, int, type(None)), int, bool)
+@ops.var.register(torch.Tensor)
 def _var(x, dim, ddof, keepdim):
     dim = tuple(x.shape) if dim is None else dim
     if ddof == 0:

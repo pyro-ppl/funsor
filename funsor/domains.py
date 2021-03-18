@@ -248,7 +248,7 @@ def _find_domain_log_exp(op, domain):
     return Array["real", domain.shape]
 
 
-@find_domain.register(ops.SumOp)
+@find_domain.register(ops.ReductionOp)
 def _find_domain_sum(op, domain):
     # Canonicalize dim.
     dim = op.defaults.get("dim", None)
@@ -261,10 +261,10 @@ def _find_domain_sum(op, domain):
         dims = {i % ndims for i in dim}
 
     # Compute shape.
-    if op.defaults.get("keepdims", False):
-        shape = tuple(1 if i in dims else size for i, size in enumerate(domain.shape))
+    if op.defaults.get("keepdim", False):
+        shape = tuple(1 if i in dims else domain[i] for i in range(ndims))
     else:
-        shape = tuple(size for i, size in enumerate(domain.shape) if i not in dims)
+        shape = tuple(domain[i] for i in range(ndims) if i not in dims)
 
     # Compute domain.
     if domain.dtype == "real":
@@ -379,22 +379,6 @@ def _transform_find_domain(op, domain):
 def _transform_log_abs_det_jacobian(op, domain, codomain):
     # TODO do we need to handle batch shape here?
     return Real
-
-
-@find_domain.register(ops.MeanOp)
-@find_domain.register(ops.StdOp)
-@find_domain.register(ops.VarOp)
-def _find_domain_mean_std_var(op, domain):
-    event_dim = len(domain.shape)
-    if op.axis is None:
-        shape = ()
-    elif isinstance(op.axis, int):
-        shape = tuple(domain[i] for i in range(event_dim) if i != op.axis)
-    elif isinstance(op.axis, tuple):
-        shape = tuple(domain[i] for i in range(event_dim) if i not in op.axis)
-    else:
-        raise ValueError
-    return Array["real", shape]
 
 
 @find_domain.register(ops.StackOp)
