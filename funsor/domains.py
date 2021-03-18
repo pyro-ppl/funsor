@@ -272,7 +272,6 @@ def _find_domain_reduction(op, domain):
     else:
         raise NotImplementedError("TODO")
 
-    breakpoint()
     return Array[dtype, shape]
 
 

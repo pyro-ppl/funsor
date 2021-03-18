@@ -295,6 +295,9 @@ class Tensor(Funsor, metaclass=TensorMeta):
         data = self.data[tuple(index)]
         return Tensor(data, inputs, self.dtype)
 
+    def eager_unary(self, op):
+        return Tensor(op(self.data), self.inputs, self.dtype)
+
     def eager_reduce(self, op, reduced_vars):
         if op in REDUCE_OP_TO_NUMERIC:
             numeric_op = REDUCE_OP_TO_NUMERIC[op]
