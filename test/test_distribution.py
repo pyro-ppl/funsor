@@ -972,6 +972,7 @@ def test_dirichlet_sample(batch_shape, sample_inputs, event_shape, reparametrize
         params,
         sample_inputs,
         inputs,
+        num_samples=200000,
         atol=1e-2 if reparametrized else 1e-1,
     )
 
