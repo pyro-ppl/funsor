@@ -23,6 +23,7 @@ from funsor.interpretations import (
     lazy,
     normalize,
     reflect,
+    sequential,
     simplify,
 )
 from funsor.interpreter import PatternMissingError, interpret, reinterpret
@@ -1085,6 +1086,14 @@ def simplify_reduce_unrelated_vars(op, arg, reduced_vars):
             if add_op is op:
                 return mul_op(arg, multiplicity).reduce(op, reduced_vars)
         raise NotImplementedError(f"Cannot reduce {op}")
+    return None
+
+
+@sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
+def sequential_reduce(op, arg, reduced_vars):
+    if reduced_vars <= arg.input_vars:
+        reduced_vars = frozenset(v.name for v in reduced_vars)
+        return instrument.debug_logged(arg.sequential_reduce)(op, reduced_vars)
     return None
 
 
