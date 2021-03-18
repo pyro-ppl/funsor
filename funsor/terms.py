@@ -21,7 +21,6 @@ from funsor.interpretations import (
     die,
     eager,
     lazy,
-    moment_matching,
     normalize,
     reflect,
     sequential,
@@ -486,38 +485,6 @@ class Funsor(object, metaclass=FunsorMeta):
         return None  # defer to default implementation
 
     def eager_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)
-        if not reduced_vars:
-            return self
-
-        return None  # defer to default implementation
-
-    def sequential_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)
-        if not reduced_vars:
-            return self
-
-        # Try to sum out integer scalars. This is mainly useful for testing,
-        # since reduction is more efficiently implemented by Tensor.
-        eager_vars = []
-        lazy_vars = []
-        for k in reduced_vars:
-            if isinstance(self.inputs[k].dtype, int) and not self.inputs[k].shape:
-                eager_vars.append(k)
-            else:
-                lazy_vars.append(k)
-        if eager_vars:
-            result = None
-            for values in itertools.product(*(self.inputs[k] for k in eager_vars)):
-                subs = dict(zip(eager_vars, values))
-                result = self(**subs) if result is None else op(result, self(**subs))
-            if lazy_vars:
-                result = Reduce(op, result, frozenset(lazy_vars))
-            return result
-
-        return None  # defer to default implementation
-
-    def moment_matching_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)
         if not reduced_vars:
             return self
@@ -1093,16 +1060,23 @@ def simplify_reduce_unrelated_vars(op, arg, reduced_vars):
 @sequential.register(Reduce, AssociativeOp, Funsor, frozenset)
 def sequential_reduce(op, arg, reduced_vars):
     if reduced_vars <= arg.input_vars:
-        reduced_vars = frozenset(v.name for v in reduced_vars)
-        return instrument.debug_logged(arg.sequential_reduce)(op, reduced_vars)
-    return None
-
-
-@moment_matching.register(Reduce, AssociativeOp, Funsor, frozenset)
-def moment_matching_reduce(op, arg, reduced_vars):
-    if reduced_vars <= arg.input_vars:
-        reduced_vars = frozenset(v.name for v in reduced_vars)
-        return instrument.debug_logged(arg.moment_matching_reduce)(op, reduced_vars)
+        # Try to sum out integer scalars. This is mainly useful for testing,
+        # since reduction is more efficiently implemented by Tensor.
+        eager_vars = []
+        lazy_vars = []
+        for v in reduced_vars:
+            if isinstance(v.output.dtype, int) and not v.output.shape:
+                eager_vars.append(v)
+            else:
+                lazy_vars.append(v)
+        if eager_vars:
+            result = None
+            for values in itertools.product(*(v.output for v in eager_vars)):
+                subs = {v.name: value for v, value in zip(eager_vars, values)}
+                result = arg(**subs) if result is None else op(result, arg(**subs))
+            if lazy_vars:
+                result = Reduce(op, result, frozenset(lazy_vars))
+            return result
     return None
 
 
