@@ -157,7 +157,7 @@ def test_affine_subs():
             (
                 "obs_b2",
                 Contraction(
-                    ops.nullop,
+                    ops.null,
                     ops.add,
                     frozenset(),
                     (

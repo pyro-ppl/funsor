@@ -63,7 +63,7 @@ def test_bart(analytic_kl):
         q = Independent(
             Independent(
                 Contraction(
-                    ops.nullop,
+                    ops.null,
                     ops.add,
                     frozenset(),
                     (
@@ -177,7 +177,7 @@ def test_bart(analytic_kl):
                     ops.logaddexp,
                     ops.add,
                     Contraction(
-                        ops.nullop,
+                        ops.null,
                         ops.add,
                         frozenset(),
                         (
@@ -358,7 +358,7 @@ def test_bart(analytic_kl):
         )
         p_likelihood = Contraction(
             ops.add,
-            ops.nullop,
+            ops.null,
             frozenset(
                 {
                     Variable("time_b17", Bint[2]),
