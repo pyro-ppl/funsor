@@ -773,7 +773,7 @@ def eager_reshape_tensor(op, arg):
 
 
 @eager.register(Unary, ops.SumOp, Tensor)
-def eager_reshape_tensor(op, arg):
+def eager_sum_tensor(op, arg):
     if not arg.inputs:
         return Tensor(op(arg.data), arg.inputs, arg.dtype)
 
