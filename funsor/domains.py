@@ -262,9 +262,9 @@ def _find_domain_reduction(op, domain):
 
     # Compute shape.
     if op.defaults.get("keepdim", False):
-        shape = tuple(1 if i in dims else domain[i] for i in range(ndims))
+        shape = tuple(1 if i in dims else domain.shape[i] for i in range(ndims))
     else:
-        shape = tuple(domain[i] for i in range(ndims) if i not in dims)
+        shape = tuple(domain.shape[i] for i in range(ndims) if i not in dims)
 
     # Compute domain.
     if domain.dtype == "real":

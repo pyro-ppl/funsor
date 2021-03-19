@@ -88,7 +88,7 @@ def amax(x, dim=None, keepdim=False):
 
 @ReductionOp.make
 def amin(x, dim=None, keepdim=False):
-    return np.amax(x, dim, keepdims=keepdim)
+    return np.amin(x, dim, keepdims=keepdim)
 
 
 @ReductionOp.make

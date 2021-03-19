@@ -1317,23 +1317,23 @@ def test_sum(event_shape):
     for dim in DIMS:
         assert_close(Tensor(ops.sum(data, dim)), ops.sum(Tensor(data), dim))
         assert_close(Tensor(ops.sum(data, dim=dim)), ops.sum(Tensor(data), dim=dim))
-    for keepdims in KEEPDIMS:
+    for keepdim in KEEPDIMS:
         assert_close(
-            Tensor(ops.sum(data, keepdims=keepdims)),
-            ops.sum(Tensor(data), keepdims=keepdims),
+            Tensor(ops.sum(data, keepdim=keepdim)),
+            ops.sum(Tensor(data), keepdim=keepdim),
         )
         for dim in DIMS:
             assert_close(
-                Tensor(ops.sum(data, dim, keepdims)),
-                ops.sum(Tensor(data), dim, keepdims),
+                Tensor(ops.sum(data, dim, keepdim)),
+                ops.sum(Tensor(data), dim, keepdim),
             )
             assert_close(
-                Tensor(ops.sum(data, dim, keepdims=keepdims)),
-                ops.sum(Tensor(data), dim, keepdims=keepdims),
+                Tensor(ops.sum(data, dim, keepdim=keepdim)),
+                ops.sum(Tensor(data), dim, keepdim=keepdim),
             )
             assert_close(
-                Tensor(ops.sum(data, dim=dim, keepdims=keepdims)),
-                ops.sum(Tensor(data), dim=dim, keepdims=keepdims),
+                Tensor(ops.sum(data, dim=dim, keepdim=keepdim)),
+                ops.sum(Tensor(data), dim=dim, keepdim=keepdim),
             )
 
 
@@ -1345,14 +1345,14 @@ def test_sum_batch(batch_shape, event_shape):
     DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
     KEEPDIMS = [False, True]
 
-    def raw_sum(x, dim=None, keepdims=False, batch_ndims=len(batch_shape)):
+    def raw_sum(x, dim=None, keepdim=False, batch_ndims=len(batch_shape)):
         if batch_ndims == 0:
-            return ops.sum(x, dim, keepdims)
-        return ops.stack([raw_sum(part, dim, keepdims, batch_ndims - 1) for part in x])
+            return ops.sum(x, dim, keepdim)
+        return ops.stack([raw_sum(part, dim, keepdim, batch_ndims - 1) for part in x])
 
     rtol = 1e-5 if get_backend() == "jax" else 1e-6
-    for keepdims in KEEPDIMS:
+    for keepdim in KEEPDIMS:
         for dim in DIMS:
-            actual = ops.sum(Tensor(data, inputs), dim, keepdims)
-            expected = Tensor(raw_sum(data, dim, keepdims), inputs)
+            actual = ops.sum(Tensor(data, inputs), dim, keepdim)
+            expected = Tensor(raw_sum(data, dim, keepdim), inputs)
             assert_close(actual, expected, rtol=rtol)

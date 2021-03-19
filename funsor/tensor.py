@@ -768,9 +768,13 @@ def eager_reshape_tensor(op, arg):
 
 @eager.register(Unary, ops.ReductionOp, Tensor)
 def eager_reduction_tensor(op, arg):
+    if not arg.output.shape:
+        return arg
+
     if not arg.inputs:
         return Tensor(op(arg.data), arg.inputs, arg.dtype)
 
+    dtype = find_domain(op, arg.output).dtype
     # Work around batch inputs.
     dim = op.defaults.get("dim", None)
     keepdim = op.defaults.get("keepdim", False)
@@ -782,7 +786,7 @@ def eager_reduction_tensor(op, arg):
     else:
         dim = tuple(d % ndims - ndims for d in dim)
     data = op(arg.data, dim, keepdim)
-    return Tensor(data, arg.inputs, arg.dtype)
+    return Tensor(data, arg.inputs, dtype)
 
 
 @eager.register(Binary, GetitemOp, Tensor, Number)

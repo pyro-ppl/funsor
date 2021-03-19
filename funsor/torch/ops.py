@@ -100,8 +100,17 @@ def _prod(x, dim, keepdim):
     if isinstance(dim, int):
         return x.prod(dim, keepdim=keepdim)
 
-    dim = tuple(range(x.dim())) if dim is None else dim
-    return reduce(partial(torch.prod, keepdim=keepdim), dim, x)
+    # reduce over multiple dims.
+    reduced_dim = (
+        tuple(range(x.dim())) if dim is None else tuple(d % x.dim() for d in dim)
+    )
+    nonreduced_dim = tuple(i for i in range(x.dim()) if i not in reduced_dim)
+    permutation = nonreduced_dim + reduced_dim
+    result = torch.prod(x.permute(permutation).flatten(-len(reduced_dim), -1), -1)
+    if keepdim:
+        shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
+        result = result.view(shape)
+    return result
 
 
 @ops.logsumexp.register(torch.Tensor)

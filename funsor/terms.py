@@ -575,7 +575,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return Unary(ops.AmaxOp(dim, keepdim), self)
 
     def min(self, dim=None, keepdim=False):
-        return Unary(ops.AmaxOp(dim, keepdim), self)
+        return Unary(ops.AminOp(dim, keepdim), self)
 
     def sum(self, dim=None, keepdim=False):
         return Unary(ops.SumOp(dim, keepdim), self)
