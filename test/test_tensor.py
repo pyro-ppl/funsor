@@ -1313,28 +1313,30 @@ def test_sum(event_shape):
     DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
     KEEPDIMS = [False, True]
 
-    assert_close(Tensor(ops.sum(data)), ops.sum(Tensor(data)))
+    expected = Tensor(ops.sum(data))
+    assert_close(ops.sum(Tensor(data)), expected)
+    assert_close(Tensor(data).sum(), expected)
+
     for dim in DIMS:
-        assert_close(Tensor(ops.sum(data, dim)), ops.sum(Tensor(data), dim))
-        assert_close(Tensor(ops.sum(data, dim=dim)), ops.sum(Tensor(data), dim=dim))
+        expected = Tensor(ops.sum(data, dim))
+        assert_close(ops.sum(Tensor(data), dim), expected)
+        assert_close(ops.sum(Tensor(data), dim=dim), expected)
+        assert_close(Tensor(data).sum(dim), expected)
+        assert_close(Tensor(data).sum(dim=dim), expected)
+
     for keepdims in KEEPDIMS:
-        assert_close(
-            Tensor(ops.sum(data, keepdims=keepdims)),
-            ops.sum(Tensor(data), keepdims=keepdims),
-        )
+        expected = Tensor(ops.sum(data, keepdims=keepdims))
+        assert_close(ops.sum(Tensor(data), keepdims=keepdims), expected)
+        assert_close(Tensor(data).sum(keepdims=keepdims), expected)
+
         for dim in DIMS:
-            assert_close(
-                Tensor(ops.sum(data, dim, keepdims)),
-                ops.sum(Tensor(data), dim, keepdims),
-            )
-            assert_close(
-                Tensor(ops.sum(data, dim, keepdims=keepdims)),
-                ops.sum(Tensor(data), dim, keepdims=keepdims),
-            )
-            assert_close(
-                Tensor(ops.sum(data, dim=dim, keepdims=keepdims)),
-                ops.sum(Tensor(data), dim=dim, keepdims=keepdims),
-            )
+            expected = Tensor(ops.sum(data, dim, keepdims))
+            assert_close(ops.sum(Tensor(data), dim, keepdims), expected)
+            assert_close(ops.sum(Tensor(data), dim, keepdims=keepdims), expected)
+            assert_close(ops.sum(Tensor(data), dim=dim, keepdims=keepdims), expected)
+            assert_close(Tensor(data).sum(dim, keepdims), expected)
+            assert_close(Tensor(data).sum(dim, keepdims=keepdims), expected)
+            assert_close(Tensor(data).sum(dim=dim, keepdims=keepdims), expected)
 
 
 @pytest.mark.parametrize("batch_shape", [(), (5,)], ids=str)

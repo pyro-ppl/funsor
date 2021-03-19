@@ -559,8 +559,8 @@ class Funsor(object, metaclass=FunsorMeta):
     # reduce over output shape while preserving all inputs.
     # To reduce over inputs, instead call .reduce(op, reduced_vars).
 
-    def sum(self):
-        return Unary(ops.add, self)
+    def sum(self, dim=None, keepdims=False):
+        return Unary(ops.SumOp(dim, keepdims), self)
 
     def prod(self):
         return Unary(ops.mul, self)
