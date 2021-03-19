@@ -269,8 +269,10 @@ def _find_domain_reduction(op, domain):
     # Compute domain.
     if domain.dtype == "real":
         dtype = "real"
+    elif op.name in ("all", "any"):
+        dtype = domain.dtype
     else:
-        raise NotImplementedError("TODO")
+        raise NotImplementedError
 
     return Array[dtype, shape]
 

@@ -3,7 +3,6 @@
 
 import numbers
 import typing
-from functools import partial, reduce
 
 import torch
 
@@ -32,6 +31,17 @@ ops.unsqueeze.register(torch.Tensor)(torch.unsqueeze)
 ###########################################
 
 
+def _flatten_reduced_dims(x, dim):
+    # Canonicalize reduced dim.
+    reduced_dim = (
+        tuple(range(x.dim())) if dim is None else tuple(d % x.dim() for d in dim)
+    )
+    nonreduced_dim = tuple(i for i in range(x.dim()) if i not in reduced_dim)
+    # permute & flatten reduced dim.
+    permutation = nonreduced_dim + reduced_dim
+    return x.permute(permutation).flatten(-len(reduced_dim), -1), reduced_dim
+
+
 @ops.all.register(torch.Tensor)
 def _all(x, dim, keepdim):
     if dim is None and not keepdim:
@@ -40,8 +50,12 @@ def _all(x, dim, keepdim):
     if isinstance(dim, int):
         return x.all(dim, keepdim=keepdim)
 
-    dim = tuple(range(x.dim())) if dim is None else dim
-    return reduce(partial(torch.all, keepdim=keepdim), dim, x)
+    # reduce over multiple dims.
+    x_flattened, reduced_dim = _flatten_reduced_dims(x, dim)
+    if keepdim:
+        shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
+        return torch.all(x_flattened, -1).view(shape)
+    return torch.all(x_flattened, -1)
 
 
 @ops.any.register(torch.Tensor)
@@ -52,8 +66,12 @@ def _any(x, dim, keepdim):
     if isinstance(dim, int):
         return x.any(dim, keepdim=keepdim)
 
-    dim = tuple(range(x.dim())) if dim is None else dim
-    return reduce(partial(torch.any, keepdim=keepdim), dim, x)
+    # reduce over multiple dims.
+    x_flattened, reduced_dim = _flatten_reduced_dims(x, dim)
+    if keepdim:
+        shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
+        return torch.any(x_flattened, -1).view(shape)
+    return torch.any(x_flattened, -1)
 
 
 @ops.argmax.register(torch.Tensor)
@@ -101,16 +119,11 @@ def _prod(x, dim, keepdim):
         return x.prod(dim, keepdim=keepdim)
 
     # reduce over multiple dims.
-    reduced_dim = (
-        tuple(range(x.dim())) if dim is None else tuple(d % x.dim() for d in dim)
-    )
-    nonreduced_dim = tuple(i for i in range(x.dim()) if i not in reduced_dim)
-    permutation = nonreduced_dim + reduced_dim
-    result = torch.prod(x.permute(permutation).flatten(-len(reduced_dim), -1), -1)
+    x_flattened, reduced_dim = _flatten_reduced_dims(x, dim)
     if keepdim:
         shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
-        result = result.view(shape)
-    return result
+        return torch.prod(x_flattened, -1).view(shape)
+    return torch.prod(x_flattened, -1)
 
 
 @ops.logsumexp.register(torch.Tensor)

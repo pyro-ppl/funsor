@@ -126,6 +126,9 @@ def var(x, dim=None, ddof=0, keepdim=False):
     return np.var(x, dim, ddof=ddof, keepdims=keepdim)
 
 
+###########################################
+
+
 @UnaryOp.make
 def isnan(x):
     return np.isnan(x)

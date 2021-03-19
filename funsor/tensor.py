@@ -296,7 +296,8 @@ class Tensor(Funsor, metaclass=TensorMeta):
         return Tensor(data, inputs, self.dtype)
 
     def eager_unary(self, op):
-        return Tensor(op(self.data), self.inputs, self.dtype)
+        dtype = find_domain(op, self.output).dtype
+        return Tensor(op(self.data), self.inputs, dtype)
 
     def eager_reduce(self, op, reduced_vars):
         if op in REDUCE_OP_TO_NUMERIC:
