@@ -58,7 +58,6 @@ def make_op(fn):
     op = op_cls.make(fn)
 
     # Register a find_domain implementation.
-    # TODO generalize to dependent output types.
     @find_domain.register(type(op))
     def find_domain_made_op(op, *args):
         if interpreter._TYPECHECK:
