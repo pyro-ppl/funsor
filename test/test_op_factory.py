@@ -7,8 +7,7 @@ from collections import OrderedDict
 
 import pytest
 
-from funsor.domains import Array, Bint, Product, Reals
-from funsor.factory import Fresh as Dependent
+from funsor.domains import Array, Bint, Dependent, Product, Reals
 from funsor.op_factory import make_op
 from funsor.tensor import Tensor
 from funsor.terms import Binary, Tuple, Unary, Variable
@@ -88,7 +87,6 @@ def test_make_op_2(batch_shape):
     assert_close(actual, Tensor(actual_data, inputs))
 
 
-@pytest.mark.xfail(reason="Dependent annotations are not implemented")
 @pytest.mark.parametrize("batch_shape", [(), (10,)], ids=str)
 def test_make_op_3(batch_shape):
     inputs = OrderedDict((k, Bint[s]) for k, s in zip("abc", batch_shape))

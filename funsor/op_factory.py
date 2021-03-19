@@ -5,7 +5,7 @@ import inspect
 import typing
 
 from funsor import interpreter
-from funsor.domains import BintType, find_domain
+from funsor.domains import BintType, Dependent, find_domain
 from funsor.interpretations import eager
 from funsor.interpreter import PatternMissingError
 from funsor.tensor import Tensor
@@ -37,14 +37,14 @@ def make_op(fn):
 
     1. Creates a new ``Op`` subclass and instance ``op``.
     2. Registers a :func:`~funsor.domains.find_domain` rule based on ``fn``'s
-        return type.
+       return type.
     3. Registers an eager rule.
 
     This assumes ``fn`` is compatible with broadcasting.
     """
     input_types = typing.get_type_hints(fn)
     output_type = input_types.pop("return")
-    parameters = inspect.Signature.from_callable(fn).parameters
+    parameters = tuple(inspect.Signature.from_callable(fn).parameters)
     hints = tuple(input_types.get(name) for name in parameters)
     arity = len(parameters)
     if arity == 1:
@@ -65,6 +65,8 @@ def make_op(fn):
             for arg, hint in zip(args, hints):
                 if hint is not None:
                     assert deep_issubclass(arg, hint)
+        if isinstance(output_type, Dependent):
+            return output_type(**dict(zip(parameters, args)))
         return output_type
 
     # Register an eager funsor rule.
