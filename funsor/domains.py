@@ -267,10 +267,10 @@ def _find_domain_reduction(op, domain):
         shape = tuple(domain.shape[i] for i in range(ndims) if i not in dims)
 
     # Compute domain.
-    if domain.dtype == "real":
+    if op.name in ("all", "any"):
+        dtype = 2
+    elif domain.dtype == "real":
         dtype = "real"
-    elif op.name in ("all", "any"):
-        dtype = domain.dtype
     else:
         raise NotImplementedError("TODO")
 

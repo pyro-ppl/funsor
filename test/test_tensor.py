@@ -675,6 +675,7 @@ def test_reduce_event(op, event_shape, dims):
     dtype = "real"
     if op in [ops.and_, ops.or_]:
         data = ops.astype(data, "uint8")
+        dtype = 2
     expected_data = numeric_op(data.reshape(batch_shape + (-1,)), -1)
 
     x = Tensor(data, inputs, dtype=dtype)
@@ -1326,25 +1327,26 @@ def test_reduction(op, event_shape):
     DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
     KEEPDIMS = [False, True]
     op_name = op.name[1:] if op.name in {"amin", "amax"} else op.name
+    dtype = 2 if op.name in {"all", "any"} else "real"
 
-    expected = Tensor(op(data))
+    expected = Tensor(op(data), dtype=dtype)
     assert_close(op(Tensor(data)), expected)
     assert_close(getattr(Tensor(data), op_name)(), expected)
 
     for dim in DIMS:
-        expected = Tensor(op(data, dim))
+        expected = Tensor(op(data, dim), dtype=dtype)
         assert_close(op(Tensor(data), dim), expected)
         assert_close(op(Tensor(data), dim=dim), expected)
         assert_close(getattr(Tensor(data), op_name)(dim), expected)
         assert_close(getattr(Tensor(data), op_name)(dim=dim), expected)
 
     for keepdim in KEEPDIMS:
-        expected = Tensor(op(data, keepdim=keepdim))
+        expected = Tensor(op(data, keepdim=keepdim), dtype=dtype)
         assert_close(op(Tensor(data), keepdim=keepdim), expected)
         assert_close(getattr(Tensor(data), op_name)(keepdim=keepdim), expected)
 
         for dim in DIMS:
-            expected = Tensor(op(data, dim, keepdim))
+            expected = Tensor(op(data, dim, keepdim), dtype=dtype)
             assert_close(op(Tensor(data), dim, keepdim), expected)
             assert_close(op(Tensor(data), dim, keepdim=keepdim), expected)
             assert_close(op(Tensor(data), dim=dim, keepdim=keepdim), expected)
@@ -1425,6 +1427,7 @@ def test_std_var(op, event_shape):
 def test_reduction_batch(op, batch_shape, event_shape):
     inputs = OrderedDict((k, Bint[s]) for k, s in zip("abc", batch_shape))
     data = randn(*batch_shape, *event_shape)
+    dtype = 2 if op.name in {"all", "any"} else "real"
     DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
     KEEPDIMS = [False, True]
 
@@ -1439,5 +1442,5 @@ def test_reduction_batch(op, batch_shape, event_shape):
     for keepdim in KEEPDIMS:
         for dim in DIMS:
             actual = op(Tensor(data, inputs), dim, keepdim=keepdim)
-            expected = Tensor(raw_reduction(data, dim, keepdim), inputs)
+            expected = Tensor(raw_reduction(data, dim, keepdim), inputs, dtype)
             assert_close(actual, expected, rtol=rtol)
