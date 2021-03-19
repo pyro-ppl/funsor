@@ -54,7 +54,7 @@ def _argmax(x, dim, keepdim):
     if keepdim:
         return np.expand_dims(np.argmax(x, dim), dim)
     else:
-        np.argmax(x, dim)
+        return np.argmax(x, dim)
 
 
 @ops.argmin.register(array)
