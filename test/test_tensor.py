@@ -1307,52 +1307,137 @@ def test_scatter_pure_renaming():
     assert ((actual - expected).abs() < 1e-4).data.all()
 
 
+@pytest.mark.parametrize(
+    "op",
+    [
+        ops.any,
+        ops.all,
+        ops.amin,
+        ops.amax,
+        ops.sum,
+        ops.logsumexp,
+        ops.prod,
+        ops.mean,
+    ],
+)
 @pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
-def test_sum(event_shape):
+def test_reduction(op, event_shape):
     data = randn(*event_shape)
     DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
     KEEPDIMS = [False, True]
+    op_name = op.name[1:] if op.name in {"amin", "amax"} else op.name
 
-    assert_close(Tensor(ops.sum(data)), ops.sum(Tensor(data)))
+    expected = Tensor(op(data))
+    assert_close(op(Tensor(data)), expected)
+    assert_close(getattr(Tensor(data), op_name)(), expected)
+
     for dim in DIMS:
-        assert_close(Tensor(ops.sum(data, dim)), ops.sum(Tensor(data), dim))
-        assert_close(Tensor(ops.sum(data, dim=dim)), ops.sum(Tensor(data), dim=dim))
+        expected = Tensor(op(data, dim))
+        assert_close(op(Tensor(data), dim), expected)
+        assert_close(op(Tensor(data), dim=dim), expected)
+        assert_close(getattr(Tensor(data), op_name)(dim), expected)
+        assert_close(getattr(Tensor(data), op_name)(dim=dim), expected)
+
     for keepdim in KEEPDIMS:
-        assert_close(
-            Tensor(ops.sum(data, keepdim=keepdim)),
-            ops.sum(Tensor(data), keepdim=keepdim),
-        )
+        expected = Tensor(op(data, keepdim=keepdim))
+        assert_close(op(Tensor(data), keepdim=keepdim), expected)
+        assert_close(getattr(Tensor(data), op_name)(keepdim=keepdim), expected)
+
         for dim in DIMS:
+            expected = Tensor(op(data, dim, keepdim))
+            assert_close(op(Tensor(data), dim, keepdim), expected)
+            assert_close(op(Tensor(data), dim, keepdim=keepdim), expected)
+            assert_close(op(Tensor(data), dim=dim, keepdim=keepdim), expected)
+            assert_close(getattr(Tensor(data), op_name)(dim, keepdim), expected)
+            assert_close(getattr(Tensor(data), op_name)(dim, keepdim=keepdim), expected)
             assert_close(
-                Tensor(ops.sum(data, dim, keepdim)),
-                ops.sum(Tensor(data), dim, keepdim),
-            )
-            assert_close(
-                Tensor(ops.sum(data, dim, keepdim=keepdim)),
-                ops.sum(Tensor(data), dim, keepdim=keepdim),
-            )
-            assert_close(
-                Tensor(ops.sum(data, dim=dim, keepdim=keepdim)),
-                ops.sum(Tensor(data), dim=dim, keepdim=keepdim),
+                getattr(Tensor(data), op_name)(dim=dim, keepdim=keepdim), expected
             )
 
 
+@pytest.mark.parametrize(
+    "op",
+    [
+        ops.std,
+        ops.var,
+    ],
+)
+@pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
+def test_std_var(op, event_shape):
+    data = randn(*event_shape)
+    DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
+    DDOFS = [0, 1]
+    KEEPDIMS = [False, True]
+
+    expected = Tensor(op(data))
+    assert_close(op(Tensor(data)), expected)
+    assert_close(getattr(Tensor(data), op.name)(), expected)
+
+    for dim in DIMS:
+        expected = Tensor(op(data, dim))
+        assert_close(op(Tensor(data), dim), expected)
+        assert_close(op(Tensor(data), dim=dim), expected)
+        assert_close(getattr(Tensor(data), op.name)(dim), expected)
+        assert_close(getattr(Tensor(data), op.name)(dim=dim), expected)
+
+    for keepdim in KEEPDIMS:
+        expected = Tensor(op(data, keepdim=keepdim))
+        assert_close(op(Tensor(data), keepdim=keepdim), expected)
+        assert_close(getattr(Tensor(data), op.name)(keepdim=keepdim), expected)
+
+        for ddof in DDOFS:
+            for dim in DIMS:
+                expected = Tensor(op(data, dim, ddof, keepdim))
+                assert_close(op(Tensor(data), dim, ddof, keepdim), expected)
+                assert_close(op(Tensor(data), dim, ddof, keepdim=keepdim), expected)
+                assert_close(
+                    op(Tensor(data), dim=dim, ddof=ddof, keepdim=keepdim), expected
+                )
+                assert_close(
+                    getattr(Tensor(data), op.name)(dim, ddof, keepdim), expected
+                )
+                assert_close(
+                    getattr(Tensor(data), op.name)(dim, ddof, keepdim=keepdim), expected
+                )
+                assert_close(
+                    getattr(Tensor(data), op.name)(dim=dim, ddof=ddof, keepdim=keepdim),
+                    expected,
+                )
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        ops.any,
+        ops.all,
+        ops.amin,
+        ops.amax,
+        ops.sum,
+        ops.logsumexp,
+        ops.prod,
+        ops.mean,
+        ops.std,
+        ops.var,
+    ],
+)
 @pytest.mark.parametrize("batch_shape", [(), (5,)], ids=str)
 @pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
-def test_sum_batch(batch_shape, event_shape):
+def test_reduction_batch(op, batch_shape, event_shape):
     inputs = OrderedDict((k, Bint[s]) for k, s in zip("abc", batch_shape))
     data = randn(*batch_shape, *event_shape)
     DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
     KEEPDIMS = [False, True]
 
-    def raw_sum(x, dim=None, keepdim=False, batch_ndims=len(batch_shape)):
+    def raw_reduction(x, dim=None, keepdim=False, batch_ndims=len(batch_shape)):
         if batch_ndims == 0:
-            return ops.sum(x, dim, keepdim)
-        return ops.stack([raw_sum(part, dim, keepdim, batch_ndims - 1) for part in x])
+            return op(x, dim, keepdim=keepdim)
+        return ops.stack(
+            [raw_reduction(part, dim, keepdim, batch_ndims - 1) for part in x]
+        )
 
     rtol = 1e-5 if get_backend() == "jax" else 1e-6
     for keepdim in KEEPDIMS:
         for dim in DIMS:
-            actual = ops.sum(Tensor(data, inputs), dim, keepdim)
-            expected = Tensor(raw_sum(data, dim, keepdim), inputs)
+            actual = op(Tensor(data, inputs), dim, keepdim=keepdim)
+            expected = Tensor(raw_reduction(data, dim, keepdim), inputs)
             assert_close(actual, expected, rtol=rtol)

@@ -786,7 +786,7 @@ def eager_reduction_tensor(op, arg):
         dim = dim % ndims - ndims
     else:
         dim = tuple(d % ndims - ndims for d in dim)
-    data = op(arg.data, dim, keepdim)
+    data = op(arg.data, dim=dim, keepdim=keepdim)
     return Tensor(data, arg.inputs, dtype)
 
 

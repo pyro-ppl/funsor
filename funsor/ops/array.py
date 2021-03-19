@@ -100,7 +100,7 @@ def prod(x, dim=None, keepdim=False):
 
 
 @ReductionOp.make
-def logsumexp(x, dim, keepdim=False):
+def logsumexp(x, dim=None, keepdim=False):
     amax = np.amax(x, axis=dim, keepdims=True)
     # treat the case x = -inf
     amax = np.where(np.isfinite(amax), amax, 0.0)
