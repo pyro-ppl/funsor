@@ -69,16 +69,14 @@ def any(x, dim=None, keepdim=False):
 def argmax(x, dim=None, keepdim=False):
     if keepdim:
         return np.expand_dims(np.argmax(x, dim), dim)
-    else:
-        return np.argmax(x, dim)
+    return np.argmax(x, dim)
 
 
 @ReductionOp.make
 def argmin(x, dim=None, keepdim=False):
     if keepdim:
         return np.expand_dims(np.argmin(x, dim), dim)
-    else:
-        return np.argmin(x, dim)
+    return np.argmin(x, dim)
 
 
 @ReductionOp.make

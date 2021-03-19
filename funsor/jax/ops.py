@@ -53,16 +53,14 @@ def _any(x, dim, keepdim):
 def _argmax(x, dim, keepdim):
     if keepdim:
         return np.expand_dims(np.argmax(x, dim), dim)
-    else:
-        return np.argmax(x, dim)
+    return np.argmax(x, dim)
 
 
 @ops.argmin.register(array)
 def _argmin(x, dim, keepdim):
     if keepdim:
         return np.expand_dims(np.argmin(x, dim), dim)
-    else:
-        return np.argmin(x, dim)
+    return np.argmin(x, dim)
 
 
 @ops.amax.register(array)
