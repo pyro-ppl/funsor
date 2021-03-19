@@ -284,8 +284,8 @@ def test_unary(symbol, data):
     [
         "all",
         "any",
-        #  "argmax",
-        #  "argmin",
+        "argmax",
+        "argmin",
         "max",
         "min",
         "sum",
@@ -300,6 +300,8 @@ def test_reduce_event(name, event_shape, dim, keepdim):
     if name in ("argmax", "argmin"):
         if dim is None and keepdim:
             pytest.xfail(reason="find_domain needs to be fixed")
+        elif dim is None and not keepdim:
+            pytest.xfail(reason="eager_reduction_tensor converts None to tuple")
         elif isinstance(dim, tuple):
             pytest.xfail(reason="argmax and argmin don't support tuple dim")
 

@@ -284,7 +284,7 @@ def _list_to_tuple(cls, arg, *args, **kwargs):
 
 class ReductionOp(UnaryOp):
     """
-    Reduction operations are defined in a broad sense, not only
+    Reduction operations are defined in a broad sense - not only
     associative operations. This helps to unify find_domain logic.
     """
 

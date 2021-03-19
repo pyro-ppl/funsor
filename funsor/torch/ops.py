@@ -31,7 +31,7 @@ ops.unsqueeze.register(torch.Tensor)(torch.unsqueeze)
 ###########################################
 
 
-def _flatten_reduced_dims(x, dim):
+def _flatten_reduced_dim(x, dim):
     # Canonicalize reduced dim.
     reduced_dim = (
         tuple(range(x.dim())) if dim is None else tuple(d % x.dim() for d in dim)
@@ -51,7 +51,7 @@ def _all(x, dim, keepdim):
         return x.all(dim, keepdim=keepdim)
 
     # reduce over multiple dims.
-    x_flattened, reduced_dim = _flatten_reduced_dims(x, dim)
+    x_flattened, reduced_dim = _flatten_reduced_dim(x, dim)
     if keepdim:
         shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
         return torch.all(x_flattened, -1).view(shape)
@@ -67,7 +67,7 @@ def _any(x, dim, keepdim):
         return x.any(dim, keepdim=keepdim)
 
     # reduce over multiple dims.
-    x_flattened, reduced_dim = _flatten_reduced_dims(x, dim)
+    x_flattened, reduced_dim = _flatten_reduced_dim(x, dim)
     if keepdim:
         shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
         return torch.any(x_flattened, -1).view(shape)
@@ -119,7 +119,7 @@ def _prod(x, dim, keepdim):
         return x.prod(dim, keepdim=keepdim)
 
     # reduce over multiple dims.
-    x_flattened, reduced_dim = _flatten_reduced_dims(x, dim)
+    x_flattened, reduced_dim = _flatten_reduced_dim(x, dim)
     if keepdim:
         shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
         return torch.prod(x_flattened, -1).view(shape)
