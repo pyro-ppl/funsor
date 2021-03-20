@@ -62,7 +62,7 @@ def test_to_funsor():
     assert to_funsor(0) is Number(0)
 
 
-@pytest.mark.parametrize("x", ["foo", list(), tuple(), set(), dict()])
+@pytest.mark.parametrize("x", ["foo", list(), set(), dict()])
 def test_to_funsor_error(x):
     with pytest.raises(ValueError):
         to_funsor(x)

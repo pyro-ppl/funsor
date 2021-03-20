@@ -70,7 +70,7 @@ def make_op(fn):
 
     # Register an eager funsor rule.
     # TODO generalize to more funsor types, ideally to Funsor itself.
-    pattern = [funsor_cls, op_cls] + [(Number, Tuple, Tensor)] * arity
+    pattern = [funsor_cls, type(op)] + [(Number, Tuple, Tensor)] * arity
     eager.register(*pattern)(eager_tensor_made_op)
 
     return op
