@@ -15,7 +15,15 @@ from multipledispatch import dispatch
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
+from funsor.domains import (
+    Array,
+    Bint,
+    Domain,
+    Product,
+    ProductDomain,
+    Real,
+    find_domain,
+)
 from funsor.interpretations import (
     Interpretation,
     die,
@@ -28,7 +36,7 @@ from funsor.interpretations import (
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
-from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_origin
+from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_args, get_origin
 from funsor.util import getargspec, lazy_property, pretty, quote
 
 from . import instrument, interpreter, ops
@@ -1790,6 +1798,19 @@ class Tuple(Funsor):
     def __iter__(self):
         for i in range(len(self.args)):
             yield self[i]
+
+
+@to_funsor.register(tuple)
+def tuple_to_funsor(args, output=None, dim_to_name=None):
+    if not isinstance(output, ProductDomain):
+        raise NotImplementedError("TODO")
+    outputs = get_args(output)
+    assert len(outputs) == len(args)
+    funsor_args = tuple(
+        to_funsor(arg, output=arg_output, dim_to_name=dim_to_name)
+        for arg, arg_output in zip(args, outputs)
+    )
+    return Tuple(funsor_args)
 
 
 @lazy.register(Binary, GetitemOp, Tuple, Number)

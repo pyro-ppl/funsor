@@ -3,6 +3,7 @@
 
 import copyreg
 import functools
+import inspect
 import operator
 import warnings
 from functools import reduce
@@ -219,6 +220,40 @@ class Product(tuple, metaclass=ProductDomain):
     __args__ = NotImplemented
 
 
+class DependentMeta(type):
+    def __getitem__(cls, fn):
+        return cls(fn)
+
+
+class Dependent(metaclass=DependentMeta):
+    """
+    Type hint for dependently type-decorated functions.
+
+    Examples::
+
+        Dependent[Real]  # a constant known domain
+        Dependent[lambda x: Array[x.dtype, x.shape[1:]]  # args are Domains
+        Dependent[lambda x, y: Bint[x.size + y.size]]
+
+    :param callable fn: A lambda taking named arguments (in any order)
+        which will be filled in with the domain of the similarly named
+        funsor argument to the decorated function. This lambda should
+        compute a desired resulting domain given domains of arguments.
+    """
+
+    def __init__(self, fn):
+        function = type(lambda: None)
+        self.fn = fn if isinstance(fn, function) else lambda: fn
+        self.args = inspect.getfullargspec(fn)[0]
+
+    def __call__(self, **kwargs):
+        return self.fn(*map(kwargs.__getitem__, self.args))
+
+
+################################################################################
+# Function registration
+
+
 @quote.register(BintType)
 @quote.register(RealsType)
 def _(arg, indent, out):
@@ -415,10 +450,11 @@ def _find_domain_einsum(op, operands):
 __all__ = [
     "Bint",
     "BintType",
+    "Dependent",
     "Domain",
     "Real",
-    "RealsType",
     "Reals",
+    "RealsType",
     "bint",
     "find_domain",
     "reals",
