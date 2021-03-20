@@ -276,6 +276,42 @@ def test_unary(symbol, data):
     check_funsor(actual, {}, Array[dtype, ()], expected_data)
 
 
+@pytest.mark.parametrize("event_shape", [(3, 2)], ids=str)
+@pytest.mark.parametrize("axis", [None, 0, (1,), (0, 1)], ids=str)
+@pytest.mark.parametrize("keepdims", [False, True], ids=str)
+@pytest.mark.parametrize(
+    "name",
+    [
+        "all",
+        "any",
+        "max",
+        "min",
+        "sum",
+        "prod",
+        "logsumexp",
+        "mean",
+        "std",
+        "var",
+    ],
+)
+def test_reduce_event(name, event_shape, axis, keepdims):
+    dtype = 2 if name in ("any", "all") else "real"
+    x = random_tensor(OrderedDict(i=Bint[5]), output=Array[dtype, event_shape])
+    actual = getattr(x, name)(axis=axis, keepdims=keepdims)
+
+    # compute expected shape
+    axis = (0, 1) if axis is None else axis
+    axis = (axis,) if isinstance(axis, int) else axis
+    if keepdims:
+        shape = tuple(
+            1 if i in axis else event_shape[i] for i in range(len(event_shape))
+        )
+    else:
+        shape = tuple(event_shape[i] for i in range(len(event_shape)) if i not in axis)
+
+    check_funsor(actual, x.inputs, Array[dtype, shape])
+
+
 BINARY_OPS = ["+", "-", "*", "/", "**", "==", "!=", "<", "<=", ">", ">=", "min", "max"]
 BOOLEAN_OPS = ["&", "|", "^"]
 

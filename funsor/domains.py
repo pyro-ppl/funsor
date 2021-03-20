@@ -283,8 +283,8 @@ def _find_domain_log_exp(op, domain):
     return Array["real", domain.shape]
 
 
-@find_domain.register(ops.SumOp)
-def _find_domain_sum(op, domain):
+@find_domain.register(ops.ReductionOp)
+def _find_domain_reduction(op, domain):
     # Canonicalize dim.
     dim = op.defaults.get("dim", None)
     ndims = len(domain.shape)
@@ -297,12 +297,14 @@ def _find_domain_sum(op, domain):
 
     # Compute shape.
     if op.defaults.get("keepdims", False):
-        shape = tuple(1 if i in dims else size for i, size in enumerate(domain.shape))
+        shape = tuple(1 if i in dims else domain.shape[i] for i in range(ndims))
     else:
-        shape = tuple(size for i, size in enumerate(domain.shape) if i not in dims)
+        shape = tuple(domain.shape[i] for i in range(ndims) if i not in dims)
 
     # Compute domain.
-    if domain.dtype == "real":
+    if op.name in ("all", "any"):
+        dtype = 2
+    elif domain.dtype == "real":
         dtype = "real"
     else:
         raise NotImplementedError("TODO")

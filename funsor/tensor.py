@@ -297,11 +297,6 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     def eager_unary(self, op):
         dtype = find_domain(op, self.output).dtype
-        if op in REDUCE_OP_TO_NUMERIC:
-            batch_dim = len(self.data.shape) - len(self.output.shape)
-            data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
-            data = REDUCE_OP_TO_NUMERIC[op](data, -1)
-            return Tensor(data, self.inputs, dtype)
         return Tensor(op(self.data), self.inputs, dtype)
 
     def eager_reduce(self, op, reduced_vars):
@@ -772,23 +767,28 @@ def eager_reshape_tensor(op, arg):
     return Tensor(data, arg.inputs, arg.dtype)
 
 
-@eager.register(Unary, ops.SumOp, Tensor)
-def eager_sum_tensor(op, arg):
+@eager.register(Unary, ops.ReductionOp, Tensor)
+def eager_reduction_tensor(op, arg):
+    dtype = find_domain(op, arg.output).dtype
+
+    if not arg.output.shape:
+        return Tensor(op(ops.unsqueeze(arg.data, -1), -1), arg.inputs, dtype)
+
     if not arg.inputs:
-        return Tensor(op(arg.data), arg.inputs, arg.dtype)
+        return Tensor(op(arg.data), arg.inputs, dtype)
 
     # Work around batch inputs.
-    dim = op.defaults.get("dim", None)
+    axis = op.defaults.get("axis", None)
     keepdims = op.defaults.get("keepdims", False)
     ndims = len(arg.output.shape)
-    if dim is None:
-        dim = tuple(range(-ndims, 0))
-    elif isinstance(dim, int):
-        dim = dim % ndims - ndims
+    if axis is None:
+        axis = tuple(range(-ndims, 0))
+    elif isinstance(axis, int):
+        axis = axis % ndims - ndims
     else:
-        dim = tuple(d % ndims - ndims for d in dim)
-    data = op(arg.data, dim, keepdims)
-    return Tensor(data, arg.inputs, arg.dtype)
+        axis = tuple(d % ndims - ndims for d in axis)
+    data = op(arg.data, axis=axis, keepdims=keepdims)
+    return Tensor(data, arg.inputs, dtype)
 
 
 @eager.register(Binary, GetitemOp, Tensor, Number)
