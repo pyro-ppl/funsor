@@ -74,18 +74,6 @@ def _any(x, dim, keepdim):
     return torch.any(x_flattened, -1)
 
 
-@ops.argmax.register(torch.Tensor)
-def _argmax(x, dim, keepdim):
-    # FIXME find_domain
-    return torch.argmax(x, dim, keepdim=keepdim)
-
-
-@ops.argmin.register(torch.Tensor)
-def _argmin(x, dim, keepdim):
-    # FIXME find_domain
-    return torch.argmin(x, dim, keepdim=keepdim)
-
-
 @ops.amax.register(torch.Tensor)
 def _amax(x, dim, keepdim):
     if dim is None and not keepdim:
@@ -161,6 +149,18 @@ def _var(x, dim, ddof, keepdim):
 
 
 ###########################################
+
+
+@ops.argmax.register(torch.Tensor)
+def _argmax(x, dim, keepdim):
+    # FIXME find_domain
+    return torch.argmax(x, dim, keepdim=keepdim)
+
+
+@ops.argmin.register(torch.Tensor)
+def _argmin(x, dim, keepdim):
+    # FIXME find_domain
+    return torch.argmin(x, dim, keepdim=keepdim)
 
 
 @ops.astype.register(torch.Tensor)

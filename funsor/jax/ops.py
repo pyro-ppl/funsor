@@ -49,20 +49,6 @@ def _any(x, dim, keepdim):
     return np.any(x, dim, keepdims=keepdim)
 
 
-@ops.argmax.register(array)
-def _argmax(x, dim, keepdim):
-    if keepdim:
-        return np.expand_dims(np.argmax(x, dim), dim)
-    return np.argmax(x, dim)
-
-
-@ops.argmin.register(array)
-def _argmin(x, dim, keepdim):
-    if keepdim:
-        return np.expand_dims(np.argmin(x, dim), dim)
-    return np.argmin(x, dim)
-
-
 @ops.amax.register(array)
 def _amax(x, dim, keepdim):
     return np.amax(x, dim, keepdims=keepdim)
@@ -104,6 +90,20 @@ def _var(x, dim, ddof, keepdim):
 
 
 ###########################################
+
+
+@ops.argmax.register(array)
+def _argmax(x, dim, keepdim):
+    if keepdim:
+        return np.expand_dims(np.argmax(x, dim), dim)
+    return np.argmax(x, dim)
+
+
+@ops.argmin.register(array)
+def _argmin(x, dim, keepdim):
+    if keepdim:
+        return np.expand_dims(np.argmin(x, dim), dim)
+    return np.argmin(x, dim)
 
 
 @ops.astype.register(array)

@@ -66,20 +66,6 @@ def any(x, dim=None, keepdim=False):
 
 
 @ReductionOp.make
-def argmax(x, dim=None, keepdim=False):
-    if keepdim:
-        return np.expand_dims(np.argmax(x, dim), dim)
-    return np.argmax(x, dim)
-
-
-@ReductionOp.make
-def argmin(x, dim=None, keepdim=False):
-    if keepdim:
-        return np.expand_dims(np.argmin(x, dim), dim)
-    return np.argmin(x, dim)
-
-
-@ReductionOp.make
 def amax(x, dim=None, keepdim=False):
     return np.amax(x, dim, keepdims=keepdim)
 
@@ -125,6 +111,20 @@ def var(x, dim=None, ddof=0, keepdim=False):
 
 
 ###########################################
+
+
+@UnaryOp.make
+def argmax(x, dim=None, keepdim=False):
+    if keepdim:
+        return np.expand_dims(np.argmax(x, dim), dim)
+    return np.argmax(x, dim)
+
+
+@UnaryOp.make
+def argmin(x, dim=None, keepdim=False):
+    if keepdim:
+        return np.expand_dims(np.argmin(x, dim), dim)
+    return np.argmin(x, dim)
 
 
 @UnaryOp.make

@@ -772,7 +772,7 @@ def eager_reduction_tensor(op, arg):
     dtype = find_domain(op, arg.output).dtype
 
     if not arg.output.shape:
-        return arg
+        return Tensor(op(ops.unsqueeze(arg.data, -1), -1), arg.inputs, dtype)
 
     if not arg.inputs:
         return Tensor(op(arg.data), arg.inputs, dtype)
