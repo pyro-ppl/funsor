@@ -305,22 +305,17 @@ class Tensor(Funsor, metaclass=TensorMeta):
             assert isinstance(reduced_vars, frozenset)
             self_vars = frozenset(self.inputs)
             reduced_vars = reduced_vars & self_vars
-            if reduced_vars == self_vars and not self.output.shape:
-                return Tensor(numeric_op(self.data, None), dtype=self.dtype)
-
-            # Reduce one dim at a time.
-            data = self.data
-            offset = 0
-            for k, domain in self.inputs.items():
-                if k in reduced_vars:
-                    assert not domain.shape
-                    data = numeric_op(data, offset)
-                else:
-                    offset += 1
+            if not reduced_vars:
+                return self
+            reduced_dims = tuple(
+                d for d, var in enumerate(self.inputs) if var in reduced_vars
+            )
+            dtype = find_domain(op, self.output).dtype
             inputs = OrderedDict(
                 (k, v) for k, v in self.inputs.items() if k not in reduced_vars
             )
-            return Tensor(data, inputs, self.dtype)
+            data = numeric_op(self.data, reduced_dims)
+            return Tensor(data, inputs, dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
