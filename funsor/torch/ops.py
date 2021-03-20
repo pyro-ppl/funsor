@@ -43,108 +43,108 @@ def _flatten_reduced_dim(x, dim):
 
 
 @ops.all.register(torch.Tensor)
-def _all(x, dim, keepdim):
-    if dim is None and not keepdim:
+def _all(x, axis, keepdims):
+    if axis is None and not keepdims:
         return torch.all(x)
 
-    if isinstance(dim, int):
-        return torch.all(x, dim, keepdim=keepdim)
+    if isinstance(axis, int):
+        return torch.all(x, axis, keepdim=keepdims)
 
     # reduce over multiple dims.
-    x_flattened, reduced_dim = _flatten_reduced_dim(x, dim)
-    if keepdim:
+    x_flattened, reduced_dim = _flatten_reduced_dim(x, axis)
+    if keepdims:
         shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
         return torch.all(x_flattened, -1).view(shape)
     return torch.all(x_flattened, -1)
 
 
 @ops.any.register(torch.Tensor)
-def _any(x, dim, keepdim):
-    if dim is None and not keepdim:
+def _any(x, axis, keepdims):
+    if axis is None and not keepdims:
         return torch.any(x)
 
-    if isinstance(dim, int):
-        return torch.any(x, dim, keepdim=keepdim)
+    if isinstance(axis, int):
+        return torch.any(x, axis, keepdim=keepdims)
 
     # reduce over multiple dims.
-    x_flattened, reduced_dim = _flatten_reduced_dim(x, dim)
-    if keepdim:
+    x_flattened, reduced_dim = _flatten_reduced_dim(x, axis)
+    if keepdims:
         shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
         return torch.any(x_flattened, -1).view(shape)
     return torch.any(x_flattened, -1)
 
 
 @ops.amax.register(torch.Tensor)
-def _amax(x, dim, keepdim):
-    if dim is None and not keepdim:
+def _amax(x, axis, keepdims):
+    if axis is None and not keepdims:
         return torch.amax(x)
-    dim = tuple(range(x.dim())) if dim is None else dim
-    return torch.amax(x, dim, keepdim=keepdim)
+    axis = tuple(range(x.dim())) if axis is None else axis
+    return torch.amax(x, axis, keepdim=keepdims)
 
 
 @ops.amin.register(torch.Tensor)
-def _amin(x, dim, keepdim):
-    if dim is None and not keepdim:
+def _amin(x, axis, keepdims):
+    if axis is None and not keepdims:
         return torch.amin(x)
-    dim = tuple(range(x.dim())) if dim is None else dim
-    return torch.amin(x, dim, keepdim=keepdim)
+    axis = tuple(range(x.dim())) if axis is None else axis
+    return torch.amin(x, axis, keepdim=keepdims)
 
 
 @ops.sum.register(torch.Tensor)
-def _sum(x, dim, keepdim):
-    if dim is None and not keepdim:
+def _sum(x, axis, keepdims):
+    if axis is None and not keepdims:
         return torch.sum(x)
-    dim = tuple(range(x.dim())) if dim is None else dim
-    return torch.sum(x, dim, keepdim=keepdim)
+    axis = tuple(range(x.dim())) if axis is None else axis
+    return torch.sum(x, axis, keepdim=keepdims)
 
 
 @ops.prod.register(torch.Tensor)
-def _prod(x, dim, keepdim):
-    if dim is None and not keepdim:
+def _prod(x, axis, keepdims):
+    if axis is None and not keepdims:
         return torch.prod(x)
 
-    if isinstance(dim, int):
-        return torch.prod(x, dim, keepdim=keepdim)
+    if isinstance(axis, int):
+        return torch.prod(x, axis, keepdim=keepdims)
 
     # reduce over multiple dims.
-    x_flattened, reduced_dim = _flatten_reduced_dim(x, dim)
-    if keepdim:
+    x_flattened, reduced_dim = _flatten_reduced_dim(x, axis)
+    if keepdims:
         shape = tuple(1 if i in reduced_dim else x.shape[i] for i in range(x.dim()))
         return torch.prod(x_flattened, -1).view(shape)
     return torch.prod(x_flattened, -1)
 
 
 @ops.logsumexp.register(torch.Tensor)
-def _logsumexp(x, dim, keepdim):
-    dim = tuple(range(x.dim())) if dim is None else dim
-    return torch.logsumexp(x, dim, keepdim=keepdim)
+def _logsumexp(x, axis, keepdims):
+    axis = tuple(range(x.dim())) if axis is None else axis
+    return torch.logsumexp(x, axis, keepdim=keepdims)
 
 
 @ops.mean.register(torch.Tensor)
-def _mean(x, dim, keepdim):
-    if dim is None and not keepdim:
+def _mean(x, axis, keepdims):
+    if axis is None and not keepdims:
         return torch.mean(x)
-    dim = tuple(range(x.dim())) if dim is None else dim
-    return torch.mean(x, dim, keepdim=keepdim)
+    axis = tuple(range(x.dim())) if axis is None else axis
+    return torch.mean(x, axis, keepdim=keepdims)
 
 
 @ops.std.register(torch.Tensor)
-def _std(x, dim, ddof, keepdim):
-    dim = tuple(range(x.dim())) if dim is None else dim
+def _std(x, axis, ddof, keepdims):
+    axis = tuple(range(x.dim())) if axis is None else axis
     if ddof == 0:
-        return torch.std(x, dim, unbiased=False, keepdim=keepdim)
+        return torch.std(x, axis, unbiased=False, keepdim=keepdims)
     if ddof == 1:
-        return torch.std(x, dim, keepdim=keepdim)
+        return torch.std(x, axis, keepdim=keepdims)
     raise NotImplementedError
 
 
 @ops.var.register(torch.Tensor)
-def _var(x, dim, ddof, keepdim):
-    dim = tuple(range(x.dim())) if dim is None else dim
+def _var(x, axis, ddof, keepdims):
+    axis = tuple(range(x.dim())) if axis is None else axis
     if ddof == 0:
-        return torch.var(x, dim, unbiased=False, keepdim=keepdim)
+        return torch.var(x, axis, unbiased=False, keepdim=keepdims)
     if ddof == 1:
-        return torch.var(x, dim, keepdim=keepdim)
+        return torch.var(x, axis, keepdim=keepdims)
     raise NotImplementedError
 
 
@@ -152,15 +152,15 @@ def _var(x, dim, ddof, keepdim):
 
 
 @ops.argmax.register(torch.Tensor)
-def _argmax(x, dim, keepdim):
+def _argmax(x, axis, keepdims):
     # FIXME find_domain
-    return torch.argmax(x, dim, keepdim=keepdim)
+    return torch.argmax(x, axis, keepdim=keepdims)
 
 
 @ops.argmin.register(torch.Tensor)
-def _argmin(x, dim, keepdim):
+def _argmin(x, axis, keepdims):
     # FIXME find_domain
-    return torch.argmin(x, dim, keepdim=keepdim)
+    return torch.argmin(x, axis, keepdim=keepdims)
 
 
 @ops.astype.register(torch.Tensor)

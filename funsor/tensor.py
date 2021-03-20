@@ -778,16 +778,16 @@ def eager_reduction_tensor(op, arg):
         return Tensor(op(arg.data), arg.inputs, dtype)
 
     # Work around batch inputs.
-    dim = op.defaults.get("dim", None)
-    keepdim = op.defaults.get("keepdim", False)
+    axis = op.defaults.get("axis", None)
+    keepdims = op.defaults.get("keepdims", False)
     ndims = len(arg.output.shape)
-    if dim is None:
-        dim = tuple(range(-ndims, 0))
-    elif isinstance(dim, int):
-        dim = dim % ndims - ndims
+    if axis is None:
+        axis = tuple(range(-ndims, 0))
+    elif isinstance(axis, int):
+        axis = axis % ndims - ndims
     else:
-        dim = tuple(d % ndims - ndims for d in dim)
-    data = op(arg.data, dim=dim, keepdim=keepdim)
+        axis = tuple(d % ndims - ndims for d in axis)
+    data = op(arg.data, axis=axis, keepdims=keepdims)
     return Tensor(data, arg.inputs, dtype)
 
 

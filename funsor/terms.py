@@ -559,41 +559,41 @@ class Funsor(object, metaclass=FunsorMeta):
     # reduce over output shape while preserving all inputs.
     # To reduce over inputs, instead call .reduce(op, reduced_vars).
 
-    def all(self, dim=None, keepdim=False):
-        return Unary(ops.AllOp(dim, keepdim), self)
+    def all(self, axis=None, keepdims=False):
+        return Unary(ops.AllOp(axis, keepdims), self)
 
-    def any(self, dim=None, keepdim=False):
-        return Unary(ops.AnyOp(dim, keepdim), self)
+    def any(self, axis=None, keepdims=False):
+        return Unary(ops.AnyOp(axis, keepdims), self)
 
-    def argmax(self, dim=None, keepdim=False):
-        return Unary(ops.ArgmaxOp(dim, keepdim), self)
+    def argmax(self, axis=None, keepdims=False):
+        return Unary(ops.ArgmaxOp(axis, keepdims), self)
 
-    def argmin(self, dim=None, keepdim=False):
-        return Unary(ops.ArgminOp(dim, keepdim), self)
+    def argmin(self, axis=None, keepdims=False):
+        return Unary(ops.ArgminOp(axis, keepdims), self)
 
-    def max(self, dim=None, keepdim=False):
-        return Unary(ops.AmaxOp(dim, keepdim), self)
+    def max(self, axis=None, keepdims=False):
+        return Unary(ops.AmaxOp(axis, keepdims), self)
 
-    def min(self, dim=None, keepdim=False):
-        return Unary(ops.AminOp(dim, keepdim), self)
+    def min(self, axis=None, keepdims=False):
+        return Unary(ops.AminOp(axis, keepdims), self)
 
-    def sum(self, dim=None, keepdim=False):
-        return Unary(ops.SumOp(dim, keepdim), self)
+    def sum(self, axis=None, keepdims=False):
+        return Unary(ops.SumOp(axis, keepdims), self)
 
-    def prod(self, dim=None, keepdim=False):
-        return Unary(ops.ProdOp(dim, keepdim), self)
+    def prod(self, axis=None, keepdims=False):
+        return Unary(ops.ProdOp(axis, keepdims), self)
 
-    def logsumexp(self, dim=None, keepdim=False):
-        return Unary(ops.LogsumexpOp(dim, keepdim), self)
+    def logsumexp(self, axis=None, keepdims=False):
+        return Unary(ops.LogsumexpOp(axis, keepdims), self)
 
-    def mean(self, dim=None, keepdim=False):
-        return Unary(ops.MeanOp(dim, keepdim), self)
+    def mean(self, axis=None, keepdims=False):
+        return Unary(ops.MeanOp(axis, keepdims), self)
 
-    def std(self, dim=None, ddof=0, keepdim=False):
-        return Unary(ops.StdOp(dim, ddof, keepdim), self)
+    def std(self, axis=None, ddof=0, keepdims=False):
+        return Unary(ops.StdOp(axis, ddof, keepdims), self)
 
-    def var(self, dim=None, ddof=0, keepdim=False):
-        return Unary(ops.VarOp(dim, ddof, keepdim), self)
+    def var(self, axis=None, ddof=0, keepdims=False):
+        return Unary(ops.VarOp(axis, ddof, keepdims), self)
 
     def __add__(self, other):
         return Binary(ops.add, self, to_funsor(other))

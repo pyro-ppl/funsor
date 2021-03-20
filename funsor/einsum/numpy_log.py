@@ -27,7 +27,7 @@ def einsum(equation, *operands):
         shift = ops.detach(operand)
         for i, dim in enumerate(dims):
             if dim not in output:
-                shift = ops.amax(shift, i, keepdim=True)
+                shift = ops.amax(shift, i, keepdims=True)
         # avoid nan due to -inf - -inf
         shift = ops.clamp(shift, ops.finfo(shift).min, None)
         exp_operands.append(ops.exp(operand - shift))

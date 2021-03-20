@@ -1336,24 +1336,26 @@ def test_reduction(op, event_shape):
     for dim in DIMS:
         expected = Tensor(op(data, dim), dtype=dtype)
         assert_close(op(Tensor(data), dim), expected)
-        assert_close(op(Tensor(data), dim=dim), expected)
+        assert_close(op(Tensor(data), axis=dim), expected)
         assert_close(getattr(Tensor(data), op_name)(dim), expected)
-        assert_close(getattr(Tensor(data), op_name)(dim=dim), expected)
+        assert_close(getattr(Tensor(data), op_name)(axis=dim), expected)
 
-    for keepdim in KEEPDIMS:
-        expected = Tensor(op(data, keepdim=keepdim), dtype=dtype)
-        assert_close(op(Tensor(data), keepdim=keepdim), expected)
-        assert_close(getattr(Tensor(data), op_name)(keepdim=keepdim), expected)
+    for keepdims in KEEPDIMS:
+        expected = Tensor(op(data, keepdims=keepdims), dtype=dtype)
+        assert_close(op(Tensor(data), keepdims=keepdims), expected)
+        assert_close(getattr(Tensor(data), op_name)(keepdims=keepdims), expected)
 
         for dim in DIMS:
-            expected = Tensor(op(data, dim, keepdim), dtype=dtype)
-            assert_close(op(Tensor(data), dim, keepdim), expected)
-            assert_close(op(Tensor(data), dim, keepdim=keepdim), expected)
-            assert_close(op(Tensor(data), dim=dim, keepdim=keepdim), expected)
-            assert_close(getattr(Tensor(data), op_name)(dim, keepdim), expected)
-            assert_close(getattr(Tensor(data), op_name)(dim, keepdim=keepdim), expected)
+            expected = Tensor(op(data, dim, keepdims), dtype=dtype)
+            assert_close(op(Tensor(data), dim, keepdims), expected)
+            assert_close(op(Tensor(data), dim, keepdims=keepdims), expected)
+            assert_close(op(Tensor(data), axis=dim, keepdims=keepdims), expected)
+            assert_close(getattr(Tensor(data), op_name)(dim, keepdims), expected)
             assert_close(
-                getattr(Tensor(data), op_name)(dim=dim, keepdim=keepdim), expected
+                getattr(Tensor(data), op_name)(dim, keepdims=keepdims), expected
+            )
+            assert_close(
+                getattr(Tensor(data), op_name)(axis=dim, keepdims=keepdims), expected
             )
 
 
@@ -1378,31 +1380,34 @@ def test_std_var(op, event_shape):
     for dim in DIMS:
         expected = Tensor(op(data, dim))
         assert_close(op(Tensor(data), dim), expected)
-        assert_close(op(Tensor(data), dim=dim), expected)
+        assert_close(op(Tensor(data), axis=dim), expected)
         assert_close(getattr(Tensor(data), op.name)(dim), expected)
-        assert_close(getattr(Tensor(data), op.name)(dim=dim), expected)
+        assert_close(getattr(Tensor(data), op.name)(axis=dim), expected)
 
-    for keepdim in KEEPDIMS:
-        expected = Tensor(op(data, keepdim=keepdim))
-        assert_close(op(Tensor(data), keepdim=keepdim), expected)
-        assert_close(getattr(Tensor(data), op.name)(keepdim=keepdim), expected)
+    for keepdims in KEEPDIMS:
+        expected = Tensor(op(data, keepdims=keepdims))
+        assert_close(op(Tensor(data), keepdims=keepdims), expected)
+        assert_close(getattr(Tensor(data), op.name)(keepdims=keepdims), expected)
 
         for ddof in DDOFS:
             for dim in DIMS:
-                expected = Tensor(op(data, dim, ddof, keepdim))
-                assert_close(op(Tensor(data), dim, ddof, keepdim), expected)
-                assert_close(op(Tensor(data), dim, ddof, keepdim=keepdim), expected)
+                expected = Tensor(op(data, dim, ddof, keepdims))
+                assert_close(op(Tensor(data), dim, ddof, keepdims), expected)
+                assert_close(op(Tensor(data), dim, ddof, keepdims=keepdims), expected)
                 assert_close(
-                    op(Tensor(data), dim=dim, ddof=ddof, keepdim=keepdim), expected
+                    op(Tensor(data), axis=dim, ddof=ddof, keepdims=keepdims), expected
                 )
                 assert_close(
-                    getattr(Tensor(data), op.name)(dim, ddof, keepdim), expected
+                    getattr(Tensor(data), op.name)(dim, ddof, keepdims), expected
                 )
                 assert_close(
-                    getattr(Tensor(data), op.name)(dim, ddof, keepdim=keepdim), expected
+                    getattr(Tensor(data), op.name)(dim, ddof, keepdims=keepdims),
+                    expected,
                 )
                 assert_close(
-                    getattr(Tensor(data), op.name)(dim=dim, ddof=ddof, keepdim=keepdim),
+                    getattr(Tensor(data), op.name)(
+                        axis=dim, ddof=ddof, keepdims=keepdims
+                    ),
                     expected,
                 )
 
@@ -1431,16 +1436,16 @@ def test_reduction_batch(op, batch_shape, event_shape):
     DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
     KEEPDIMS = [False, True]
 
-    def raw_reduction(x, dim=None, keepdim=False, batch_ndims=len(batch_shape)):
+    def raw_reduction(x, dim=None, keepdims=False, batch_ndims=len(batch_shape)):
         if batch_ndims == 0:
-            return op(x, dim, keepdim=keepdim)
+            return op(x, dim, keepdims=keepdims)
         return ops.stack(
-            [raw_reduction(part, dim, keepdim, batch_ndims - 1) for part in x]
+            [raw_reduction(part, dim, keepdims, batch_ndims - 1) for part in x]
         )
 
     rtol = 1e-5 if get_backend() == "jax" else 1e-6
-    for keepdim in KEEPDIMS:
+    for keepdims in KEEPDIMS:
         for dim in DIMS:
-            actual = op(Tensor(data, inputs), dim, keepdim=keepdim)
-            expected = Tensor(raw_reduction(data, dim, keepdim), inputs, dtype)
+            actual = op(Tensor(data, inputs), dim, keepdims=keepdims)
+            expected = Tensor(raw_reduction(data, dim, keepdims), inputs, dtype)
             assert_close(actual, expected, rtol=rtol)

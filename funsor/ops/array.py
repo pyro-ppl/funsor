@@ -56,75 +56,75 @@ atanh.register(array)(np.arctanh)
 
 
 @ReductionOp.make
-def all(x, dim=None, keepdim=False):
-    return np.all(x, dim, keepdims=keepdim)
+def all(x, axis=None, keepdims=False):
+    return np.all(x, axis, keepdims=keepdims)
 
 
 @ReductionOp.make
-def any(x, dim=None, keepdim=False):
-    return np.any(x, dim, keepdims=keepdim)
+def any(x, axis=None, keepdims=False):
+    return np.any(x, axis, keepdims=keepdims)
 
 
 @ReductionOp.make
-def amax(x, dim=None, keepdim=False):
-    return np.amax(x, dim, keepdims=keepdim)
+def amax(x, axis=None, keepdims=False):
+    return np.amax(x, axis, keepdims=keepdims)
 
 
 @ReductionOp.make
-def amin(x, dim=None, keepdim=False):
-    return np.amin(x, dim, keepdims=keepdim)
+def amin(x, axis=None, keepdims=False):
+    return np.amin(x, axis, keepdims=keepdims)
 
 
 @ReductionOp.make
-def sum(x, dim=None, keepdim=False):
-    return np.sum(x, dim, keepdims=keepdim)
+def sum(x, axis=None, keepdims=False):
+    return np.sum(x, axis, keepdims=keepdims)
 
 
 @ReductionOp.make
-def prod(x, dim=None, keepdim=False):
-    return np.prod(x, dim, keepdims=keepdim)
+def prod(x, axis=None, keepdims=False):
+    return np.prod(x, axis, keepdims=keepdims)
 
 
 @ReductionOp.make
-def logsumexp(x, dim=None, keepdim=False):
-    amax = np.amax(x, axis=dim, keepdims=True)
+def logsumexp(x, axis=None, keepdims=False):
+    amax = np.amax(x, axis=axis, keepdims=True)
     # treat the case x = -inf
     amax = np.where(np.isfinite(amax), amax, 0.0)
-    unnormalized_lse = log(np.sum(np.exp(x - amax), dim, keepdims=keepdim))
-    amax = amax if keepdim else amax.squeeze(dim)
+    unnormalized_lse = log(np.sum(np.exp(x - amax), axis, keepdims=keepdims))
+    amax = amax if keepdims else amax.squeeze(axis)
     return unnormalized_lse + amax
 
 
 @ReductionOp.make
-def mean(x, dim=None, keepdim=False):
-    return np.mean(x, dim, keepdims=keepdim)
+def mean(x, axis=None, keepdims=False):
+    return np.mean(x, axis, keepdims=keepdims)
 
 
 @ReductionOp.make
-def std(x, dim=None, ddof=0, keepdim=False):
-    return np.std(x, dim, ddof=ddof, keepdims=keepdim)
+def std(x, axis=None, ddof=0, keepdims=False):
+    return np.std(x, axis, ddof=ddof, keepdims=keepdims)
 
 
 @ReductionOp.make
-def var(x, dim=None, ddof=0, keepdim=False):
-    return np.var(x, dim, ddof=ddof, keepdims=keepdim)
+def var(x, axis=None, ddof=0, keepdims=False):
+    return np.var(x, axis, ddof=ddof, keepdims=keepdims)
 
 
 ###########################################
 
 
 @UnaryOp.make
-def argmax(x, dim=None, keepdim=False):
-    if keepdim:
-        return np.expand_dims(np.argmax(x, dim), dim)
-    return np.argmax(x, dim)
+def argmax(x, axis=None, keepdims=False):
+    if keepdims:
+        return np.expand_dims(np.argmax(x, axis), axis)
+    return np.argmax(x, axis)
 
 
 @UnaryOp.make
-def argmin(x, dim=None, keepdim=False):
-    if keepdim:
-        return np.expand_dims(np.argmin(x, dim), dim)
-    return np.argmin(x, dim)
+def argmin(x, axis=None, keepdims=False):
+    if keepdims:
+        return np.expand_dims(np.argmin(x, axis), axis)
+    return np.argmin(x, axis)
 
 
 @UnaryOp.make

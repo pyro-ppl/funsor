@@ -40,70 +40,70 @@ ops.unsqueeze.register(array)(np.expand_dims)
 
 
 @ops.all.register(array)
-def _all(x, dim, keepdim):
-    return np.all(x, dim, keepdims=keepdim)
+def _all(x, axis, keepdims):
+    return np.all(x, axis, keepdims=keepdims)
 
 
 @ops.any.register(array)
-def _any(x, dim, keepdim):
-    return np.any(x, dim, keepdims=keepdim)
+def _any(x, axis, keepdims):
+    return np.any(x, axis, keepdims=keepdims)
 
 
 @ops.amax.register(array)
-def _amax(x, dim, keepdim):
-    return np.amax(x, dim, keepdims=keepdim)
+def _amax(x, axis, keepdims):
+    return np.amax(x, axis, keepdims=keepdims)
 
 
 @ops.amin.register(array)
-def _amin(x, dim, keepdim):
-    return np.amax(x, dim, keepdims=keepdim)
+def _amin(x, axis, keepdims):
+    return np.amax(x, axis, keepdims=keepdims)
 
 
 @ops.sum.register(array)
-def _sum(x, dim, keepdim):
-    return np.sum(x, dim, keepdims=keepdim)
+def _sum(x, axis, keepdims):
+    return np.sum(x, axis, keepdims=keepdims)
 
 
 @ops.prod.register(array)
-def _prod(x, dim, keepdim):
-    return np.prod(x, dim, keepdims=keepdim)
+def _prod(x, axis, keepdims):
+    return np.prod(x, axis, keepdims=keepdims)
 
 
 @ops.logsumexp.register(array)
-def _logsumexp(x, dim, keepdim):
-    return logsumexp(x, dim, keepdims=keepdim)
+def _logsumexp(x, axis, keepdims):
+    return logsumexp(x, axis, keepdims=keepdims)
 
 
 @ops.mean.register(array)
-def _mean(x, dim, keepdim):
-    return np.mean(x, dim, keepdims=keepdim)
+def _mean(x, axis, keepdims):
+    return np.mean(x, axis, keepdims=keepdims)
 
 
 @ops.std.register(array)
-def _std(x, dim, ddof, keepdim):
-    return np.std(x, dim, ddof=ddof, keepdims=keepdim)
+def _std(x, axis, ddof, keepdims):
+    return np.std(x, axis, ddof=ddof, keepdims=keepdims)
 
 
 @ops.var.register(array)
-def _var(x, dim, ddof, keepdim):
-    return np.var(x, dim, ddof=ddof, keepdims=keepdim)
+def _var(x, axis, ddof, keepdims):
+    return np.var(x, axis, ddof=ddof, keepdims=keepdims)
 
 
 ###########################################
 
 
 @ops.argmax.register(array)
-def _argmax(x, dim, keepdim):
-    if keepdim:
-        return np.expand_dims(np.argmax(x, dim), dim)
-    return np.argmax(x, dim)
+def _argmax(x, axis, keepdims):
+    if keepdims:
+        return np.expand_dims(np.argmax(x, axis), axis)
+    return np.argmax(x, axis)
 
 
 @ops.argmin.register(array)
-def _argmin(x, dim, keepdim):
-    if keepdim:
-        return np.expand_dims(np.argmin(x, dim), dim)
-    return np.argmin(x, dim)
+def _argmin(x, axis, keepdims):
+    if keepdims:
+        return np.expand_dims(np.argmin(x, axis), axis)
+    return np.argmin(x, axis)
 
 
 @ops.astype.register(array)
