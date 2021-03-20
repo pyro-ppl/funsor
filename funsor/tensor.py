@@ -305,10 +305,12 @@ class Tensor(Funsor, metaclass=TensorMeta):
             assert isinstance(reduced_vars, frozenset)
             self_vars = frozenset(self.inputs)
             reduced_vars = reduced_vars & self_vars
-            dtype = find_domain(op, self.output).dtype
             reduced_dims = tuple(
                 d for d, var in enumerate(self.inputs) if var in reduced_vars
             )
+            if not reduced_dims:
+                return self
+            dtype = find_domain(op, self.output).dtype
             inputs = OrderedDict(
                 (k, v) for k, v in self.inputs.items() if k not in reduced_vars
             )
