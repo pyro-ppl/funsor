@@ -409,7 +409,7 @@ def stack(parts, dim=0):
     raise NotImplementedError
 
 
-stack.register(arraylist)(np.stack)
+stack.register(typing.Tuple[typing.Union[array + (int, float)], ...])(np.stack)
 
 
 @UnaryOp.make
