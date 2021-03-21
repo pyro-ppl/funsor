@@ -975,10 +975,12 @@ def test_funsor_stack(output):
         assert_close(xyz(t=2, j=j), z)
 
 
-@pytest.mark.skipif(get_backend() == "torch", reason="torck.stack does not support Python scalars")
+@pytest.mark.skipif(
+    get_backend() == "torch", reason="torck.stack does not support Python scalars"
+)
 def test_number_stack():
     actual = ops.stack((Number(2.0), Number(3)))
-    assert_close(actual, Tensor(numeric_array([2., 3.])))
+    assert_close(actual, Tensor(numeric_array([2.0, 3.0])))
 
 
 @pytest.mark.parametrize("output", [Bint[2], Real, Reals[4], Reals[2, 3]], ids=str)

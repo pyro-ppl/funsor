@@ -848,7 +848,9 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
-@eager.register(Finitary, ops.StackOp, typing.Tuple[typing.Union[(Number, Tensor)], ...])
+@eager.register(
+    Finitary, ops.StackOp, typing.Tuple[typing.Union[(Number, Tensor)], ...]
+)
 def eager_finitary_stack(op, parts):
     dim = op.defaults["dim"]
     if dim >= 0:
