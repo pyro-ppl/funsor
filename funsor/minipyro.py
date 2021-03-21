@@ -33,7 +33,9 @@ import funsor
 class Distribution(object):
     def __init__(self, funsor_dist, sample_inputs=None):
         assert isinstance(funsor_dist, funsor.Funsor)
-        assert not sample_inputs or all(isinstance(inp.dtype, int) for inp in sample_inputs.values())
+        assert not sample_inputs or all(
+            isinstance(inp.dtype, int) for inp in sample_inputs.values()
+        )
         self.funsor_dist = funsor_dist
         self.output = self.funsor_dist.inputs["value"]
         self.sample_inputs = sample_inputs
@@ -43,15 +45,15 @@ class Distribution(object):
         if self.sample_inputs:
             result = result + funsor.tensor.Tensor(
                 torch.zeros(*(size.dtype for size in self.sample_inputs.values())),
-                self.sample_inputs
+                self.sample_inputs,
             )
         return result
 
     # Draw a sample.
     def __call__(self):
-        with funsor.interpreter.interpretation(funsor.terms.eager):
-            dist = self.funsor_dist(value='value')
-            delta = dist.sample(frozenset(['value']), sample_inputs=self.sample_inputs)
+        with funsor.interpretations.eager:
+            dist = self.funsor_dist(value="value")
+            delta = dist.sample(frozenset(["value"]), sample_inputs=self.sample_inputs)
         if isinstance(delta, funsor.cnf.Contraction):
             assert len(delta.terms) == 2
             assert any(isinstance(t, funsor.delta.Delta) for t in delta.terms)
@@ -122,8 +124,9 @@ class trace(Messenger):
     # trace illustrates why we need postprocess_message in addition to process_message:
     # We only want to record a value after all other effects have been applied
     def postprocess_message(self, msg):
-        assert msg["type"] != "sample" or msg["name"] not in self.trace, \
-            "sample sites must have unique names"
+        assert (
+            msg["type"] != "sample" or msg["name"] not in self.trace
+        ), "sample sites must have unique names"
         self.trace[msg["name"]] = msg.copy()
 
     def get_trace(self, *args, **kwargs):
@@ -199,7 +202,7 @@ class PlateMessenger(Messenger):
 def tensor_to_funsor(value, cond_indep_stack, output):
     assert isinstance(value, torch.Tensor)
     event_shape = output.shape
-    batch_shape = value.shape[:value.dim() - len(event_shape)]
+    batch_shape = value.shape[: value.dim() - len(event_shape)]
     if torch._C._get_tracing_state():
         with funsor.tensor.ignore_jit_warnings():
             batch_shape = tuple(map(int, batch_shape))
@@ -234,7 +237,9 @@ class log_joint(Messenger):
 
     def postprocess_message(self, msg):
         if msg["type"] == "sample":
-            assert msg["name"] not in self.log_factors, "all sites must have unique names"
+            assert (
+                msg["name"] not in self.log_factors
+            ), "all sites must have unique names"
             log_prob = msg["fn"].log_prob(msg["value"])
             self.log_factors[msg["name"]] = log_prob
             self.plates.update(f.name for f in msg["cond_indep_stack"].values())
@@ -252,12 +257,14 @@ def apply_stack(msg):
     if msg["value"] is None:
         msg["value"] = msg["fn"](*msg["args"])
     if isinstance(msg["value"], torch.Tensor):
-        msg["value"] = tensor_to_funsor(msg["value"], msg["cond_indep_stack"], msg["output"])
+        msg["value"] = tensor_to_funsor(
+            msg["value"], msg["cond_indep_stack"], msg["output"]
+        )
 
     # A Messenger that sets msg["stop"] == True also prevents application
     # of postprocess_message by Messengers above it on the stack
     # via the pointer variable from the process_message loop
-    for handler in PYRO_STACK[-pointer-1:]:
+    for handler in PYRO_STACK[-pointer - 1 :]:
         handler.postprocess_message(msg)
     return msg
 
@@ -292,13 +299,18 @@ def sample(name, fn, obs=None, infer=None):
 
 # param is an effectful version of PARAM_STORE.setdefault that also handles constraints.
 # When any effect handlers are active, it constructs an initial message and calls apply_stack.
-def param(name, init_value=None, constraint=torch.distributions.constraints.real, event_dim=None):
+def param(
+    name,
+    init_value=None,
+    constraint=torch.distributions.constraints.real,
+    event_dim=None,
+):
     cond_indep_stack = {}
     output = None
     if init_value is not None:
         if event_dim is None:
             event_dim = init_value.dim()
-        output = funsor.Reals[init_value.shape[init_value.dim() - event_dim:]]
+        output = funsor.Reals[init_value.shape[init_value.dim() - event_dim :]]
 
     def fn(init_value, constraint):
         if name in PARAM_STORE:
@@ -308,15 +320,21 @@ def param(name, init_value=None, constraint=torch.distributions.constraints.real
             assert init_value is not None
             with torch.no_grad():
                 constrained_value = init_value.detach()
-                unconstrained_value = torch.distributions.transform_to(constraint).inv(constrained_value)
+                unconstrained_value = torch.distributions.transform_to(constraint).inv(
+                    constrained_value
+                )
             unconstrained_value.requires_grad_()
             unconstrained_value._funsor_metadata = (cond_indep_stack, output)
             PARAM_STORE[name] = unconstrained_value, constraint
 
         # Transform from unconstrained space to constrained space.
-        constrained_value = torch.distributions.transform_to(constraint)(unconstrained_value)
+        constrained_value = torch.distributions.transform_to(constraint)(
+            unconstrained_value
+        )
         constrained_value.unconstrained = weakref.ref(unconstrained_value)
-        return tensor_to_funsor(constrained_value, *unconstrained_value._funsor_metadata)
+        return tensor_to_funsor(
+            constrained_value, *unconstrained_value._funsor_metadata
+        )
 
     # if there are no active Messengers, we just draw a sample and return it as expected:
     if not PYRO_STACK:
@@ -401,8 +419,7 @@ class SVI(object):
         # Differentiate the loss.
         funsor.to_data(loss).backward()
         # Grab all the parameters from the trace.
-        params = [site["value"].data.unconstrained()
-                  for site in param_capture.values()]
+        params = [site["value"].data.unconstrained() for site in param_capture.values()]
         # Take a step w.r.t. each parameter in params.
         self.optim(params)
         # Zero out the gradients so that they don't accumulate.
@@ -420,7 +437,7 @@ def Expectation(log_probs, costs, sum_vars, prod_vars):
             prod_op=funsor.ops.add,
             factors=log_probs,
             plates=prod_vars,
-            eliminate=(prod_vars | sum_vars) - frozenset(cost.inputs)
+            eliminate=(prod_vars | sum_vars) - frozenset(cost.inputs),
         )
         term = funsor.Integrate(log_prob, cost, sum_vars & frozenset(cost.inputs))
         term = term.reduce(funsor.ops.add, prod_vars & frozenset(cost.inputs))
@@ -440,37 +457,46 @@ def elbo(model, guide, *args, **kwargs):
 
     # contract out auxiliary variables in the guide
     guide_log_probs = list(guide_log_joint.log_factors.values())
-    guide_aux_vars = frozenset().union(*(f.inputs for f in guide_log_probs)) - \
-        frozenset(guide_log_joint.plates) - \
-        frozenset(model_log_joint.log_factors)
+    guide_aux_vars = (
+        frozenset().union(*(f.inputs for f in guide_log_probs))
+        - frozenset(guide_log_joint.plates)
+        - frozenset(model_log_joint.log_factors)
+    )
     if guide_aux_vars:
         guide_log_probs = funsor.sum_product.partial_sum_product(
             funsor.ops.logaddexp,
             funsor.ops.add,
             guide_log_probs,
             plates=frozenset(guide_log_joint.plates),
-            eliminate=guide_aux_vars)
+            eliminate=guide_aux_vars,
+        )
 
     # contract out auxiliary variables in the model
     model_log_probs = list(model_log_joint.log_factors.values())
-    model_aux_vars = frozenset().union(*(f.inputs for f in model_log_probs)) - \
-        frozenset(model_log_joint.plates) - \
-        frozenset(guide_log_joint.log_factors)
+    model_aux_vars = (
+        frozenset().union(*(f.inputs for f in model_log_probs))
+        - frozenset(model_log_joint.plates)
+        - frozenset(guide_log_joint.log_factors)
+    )
     if model_aux_vars:
         model_log_probs = funsor.sum_product.partial_sum_product(
             funsor.ops.logaddexp,
             funsor.ops.add,
             model_log_probs,
             plates=frozenset(model_log_joint.plates),
-            eliminate=model_aux_vars)
+            eliminate=model_aux_vars,
+        )
 
     # compute remaining plates and sum_dims
     plates = frozenset().union(
-        *(model_log_joint.plates.intersection(f.inputs) for f in model_log_probs))
+        *(model_log_joint.plates.intersection(f.inputs) for f in model_log_probs)
+    )
     plates = plates | frozenset().union(
-        *(guide_log_joint.plates.intersection(f.inputs) for f in guide_log_probs))
-    sum_vars = frozenset().union(model_log_joint.log_factors, guide_log_joint.log_factors) - \
-        frozenset(model_aux_vars | guide_aux_vars)
+        *(guide_log_joint.plates.intersection(f.inputs) for f in guide_log_probs)
+    )
+    sum_vars = frozenset().union(
+        model_log_joint.log_factors, guide_log_joint.log_factors
+    ) - frozenset(model_aux_vars | guide_aux_vars)
 
     # Accumulate costs from model and guide and log_probs from guide.
     # Cf. pyro.infer.traceenum_elbo._compute_dice_elbo()
@@ -486,10 +512,9 @@ def elbo(model, guide, *args, **kwargs):
     # Compute expected cost.
     # Cf. pyro.infer.util.Dice.compute_expectation()
     # https://github.com/pyro-ppl/pyro/blob/0.3.0/pyro/infer/util.py#L212
-    elbo = Expectation(tuple(log_probs),
-                       tuple(costs),
-                       sum_vars=sum_vars,
-                       prod_vars=plates)
+    elbo = Expectation(
+        tuple(log_probs), tuple(costs), sum_vars=sum_vars, prod_vars=plates
+    )
 
     loss = -elbo
     assert not loss.inputs
@@ -508,7 +533,7 @@ class ELBO(object):
 # This is a wrapper for compatibility with full Pyro.
 class Trace_ELBO(ELBO):
     def __call__(self, model, guide, *args, **kwargs):
-        with funsor.montecarlo.monte_carlo_interpretation():
+        with funsor.montecarlo.MonteCarlo():
             return elbo(model, guide, *args, **kwargs)
 
 
@@ -521,7 +546,7 @@ class TraceEnum_ELBO(ELBO):
     # TODO allow mixing of sampling and exact integration
     def __call__(self, model, guide, *args, **kwargs):
         if self.options.get("optimize", None):
-            with funsor.interpreter.interpretation(funsor.optimizer.optimize):
+            with funsor.optimizer.optimize:
                 elbo_expr = elbo(model, guide, *args, **kwargs)
             return funsor.reinterpret(elbo_expr)
         return elbo(model, guide, *args, **kwargs)
@@ -545,17 +570,20 @@ class Jit(object):
             self._param_trace = tr
 
         # Augment args with reads from the global param store.
-        unconstrained_params = tuple(param(name).data.unconstrained()
-                                     for name in self._param_trace)
+        unconstrained_params = tuple(
+            param(name).data.unconstrained() for name in self._param_trace
+        )
         params_and_args = unconstrained_params + args
 
         # On first call, create a compiled elbo.
         if self._compiled is None:
 
             def compiled(*params_and_args):
-                unconstrained_params = params_and_args[:len(self._param_trace)]
-                args = params_and_args[len(self._param_trace):]
-                for name, unconstrained_param in zip(self._param_trace, unconstrained_params):
+                unconstrained_params = params_and_args[: len(self._param_trace)]
+                args = params_and_args[len(self._param_trace) :]
+                for name, unconstrained_param in zip(
+                    self._param_trace, unconstrained_params
+                ):
                     constrained_param = param(name)  # assume param has been initialized
                     assert constrained_param.data.unconstrained() is unconstrained_param
                     self._param_trace[name]["value"] = constrained_param
@@ -567,7 +595,9 @@ class Jit(object):
             with validation_enabled(False), warnings.catch_warnings():
                 if self.ignore_jit_warnings:
                     warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
-                self._compiled = torch.jit.trace(compiled, params_and_args, check_trace=False)
+                self._compiled = torch.jit.trace(
+                    compiled, params_and_args, check_trace=False
+                )
 
         data = self._compiled(*params_and_args)
         return funsor.tensor.Tensor(data)

@@ -4,6 +4,8 @@ run_outputs*
 data
 .data
 results
+docs/source/examples/
+docs/source/tutorials/
 examples/*/processed
 examples/*/results
 examples/*/raw

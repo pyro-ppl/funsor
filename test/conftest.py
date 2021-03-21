@@ -1,9 +1,17 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import os
+
 import numpy as np
+import pytest
+
+pytest.register_assert_rewrite("funsor.testing")  # noqa: E402
 
 import funsor.util
+
+_BACKEND = os.environ.get("FUNSOR_BACKEND", "numpy")
+funsor.util.set_backend(_BACKEND)
 
 
 def _disallow_set_backend(*args):
@@ -12,15 +20,14 @@ def _disallow_set_backend(*args):
 
 def pytest_runtest_setup(item):
     np.random.seed(0)
-    backend = funsor.util.get_backend()
-    if backend == "torch":
+    if _BACKEND == "torch":
         import pyro
 
         pyro.set_rng_seed(0)
         pyro.enable_validation(True)
-    elif backend == "jax":
+    elif _BACKEND == "jax":
         from jax.config import config
 
-        config.update('jax_platform_name', 'cpu')
+        config.update("jax_platform_name", "cpu")
 
     funsor.util.set_backend = _disallow_set_backend

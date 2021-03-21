@@ -5,35 +5,39 @@ import functools
 import itertools
 import typing
 import warnings
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from contextlib import contextmanager
 from functools import reduce
 
 import numpy as np
 import opt_einsum
 from multipledispatch import dispatch
-from multipledispatch.variadic import Variadic
 
 import funsor
-import funsor.ops as ops
-from funsor.delta import Delta
-from funsor.domains import Array, ArrayType, Bint, Real, Reals, find_domain
-from funsor.ops import GetitemOp, MatmulOp, Op, ReshapeOp
-from funsor.terms import (
+
+from . import ops
+from .delta import Delta
+from .domains import Array, ArrayType, Bint, Product, Real, Reals, find_domain
+from .ops import BinaryOp, FinitaryOp, GetitemOp, MatmulOp, Op, ReshapeOp
+from .terms import (
     Binary,
+    Finitary,
     Funsor,
     FunsorMeta,
     Lambda,
     Number,
+    Scatter,
     Slice,
+    Tuple,
     Unary,
     Variable,
     eager,
     substitute,
     to_data,
-    to_funsor
+    to_funsor,
 )
-from funsor.util import get_backend, get_tracing_state, getargspec, is_nn_module, lazy_property, quote
+from .typing import Variadic
+from .util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
 
 
 def get_default_prototype():
@@ -57,21 +61,29 @@ def numeric_array(x, dtype=None, device=None):
 
 
 def dummy_numeric_array(domain):
-    value = 0.1 if domain.dtype == 'real' else 1
+    value = 0.1 if domain.dtype == "real" else 1
     return ops.expand(numeric_array(value), domain.shape) if domain.shape else value
 
 
 def _nameof(fn):
-    return getattr(fn, '__name__', type(fn).__name__)
+    return getattr(fn, "__name__", type(fn).__name__)
 
 
 @contextmanager
 def ignore_jit_warnings():
-    with warnings.catch_warnings():
-        if get_backend() == "torch":
-            import torch
+    if get_backend() != "torch":
+        yield
+        return
 
-            warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+    import torch
+
+    if not torch._C._get_tracing_state():
+        yield
+        return
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+        warnings.filterwarnings("ignore", "Iterating over a tensor")
         yield
 
 
@@ -79,6 +91,7 @@ class TensorMeta(FunsorMeta):
     """
     Wrapper to fill in default args and convert between OrderedDict and tuple.
     """
+
     def __call__(cls, data, inputs=None, dtype="real"):
         if inputs is None:
             inputs = tuple()
@@ -88,6 +101,7 @@ class TensorMeta(FunsorMeta):
         # it seems that there is no harm with the conversion generic -> ndarray here
         if isinstance(data, np.generic):
             data = data.__array__()
+
         return super(TensorMeta, cls).__call__(data, inputs, dtype)
 
 
@@ -113,6 +127,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
     :param dtype: optional output datatype. Defaults to "real".
     :type dtype: int or the string "real".
     """
+
     def __init__(self, data, inputs=None, dtype="real"):
         assert ops.is_numeric_array(data)
         assert isinstance(inputs, tuple)
@@ -121,25 +136,27 @@ class Tensor(Funsor, metaclass=TensorMeta):
             for (k, d), size in zip(inputs, data.shape):
                 assert d.dtype == size
         inputs = OrderedDict(inputs)
-        output = Array[dtype, data.shape[len(inputs):]]
+        output = Array[dtype, data.shape[len(inputs) :]]
         fresh = frozenset(inputs.keys())
-        bound = frozenset()
+        bound = {}
         super(Tensor, self).__init__(inputs, output, fresh, bound)
         self.data = data
 
+    @ignore_jit_warnings()
     def __repr__(self):
         if self.output != "real":
-            return 'Tensor({}, {}, {})'.format(self.data, self.inputs, repr(self.dtype))
+            return "Tensor({}, {}, {})".format(self.data, self.inputs, repr(self.dtype))
         elif self.inputs:
-            return 'Tensor({}, {})'.format(self.data, self.inputs)
+            return "Tensor({}, {})".format(self.data, self.inputs)
         else:
-            return 'Tensor({})'.format(self.data)
+            return "Tensor({})".format(self.data)
 
+    @ignore_jit_warnings()
     def __str__(self):
         if self.dtype != "real":
-            return 'Tensor({}, {}, {})'.format(self.data, self.inputs, repr(self.dtype))
+            return "Tensor({}, {}, {})".format(self.data, self.inputs, repr(self.dtype))
         elif self.inputs:
-            return 'Tensor({}, {})'.format(self.data, self.inputs)
+            return "Tensor({}, {})".format(self.data, self.inputs)
         else:
             return str(self.data)
 
@@ -176,16 +193,26 @@ class Tensor(Funsor, metaclass=TensorMeta):
         old_dims = tuple(self.inputs)
         new_dims = tuple(inputs)
         permutation = tuple(old_dims.index(d) for d in new_dims)
-        permutation = permutation + tuple(range(len(permutation), len(permutation) + len(self.output.shape)))
+        permutation = permutation + tuple(
+            range(len(permutation), len(permutation) + len(self.output.shape))
+        )
         data = ops.permute(self.data, permutation)
         return Tensor(data, inputs, self.dtype)
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = OrderedDict((k, to_funsor(v, self.inputs[k]))
-                           for k, v in subs if k in self.inputs)
+        subs = OrderedDict(
+            (k, to_funsor(v, self.inputs[k])) for k, v in subs if k in self.inputs
+        )
         if not subs:
             return self
+
+        # Handle diagonal variable substitution
+        var_counts = Counter(v for v in subs.values() if isinstance(v, Variable))
+        subs = OrderedDict(
+            (k, self.materialize(v) if var_counts[v] > 1 else v)
+            for k, v in subs.items()
+        )
 
         # Handle renaming to enable cons hashing, and
         # handle slicing to avoid copying data.
@@ -223,7 +250,9 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
         # Construct a dict with each input's positional dim,
         # counting from the right so as to support broadcasting.
-        total_size = len(inputs) + len(self.output.shape)  # Assumes only scalar indices.
+        total_size = len(inputs) + len(
+            self.output.shape
+        )  # Assumes only scalar indices.
         new_dims = {}
         for k, domain in inputs.items():
             assert not domain.shape
@@ -248,25 +277,26 @@ class Tensor(Funsor, metaclass=TensorMeta):
             else:
                 # Construct a [:] slice for this preserved input.
                 offset_from_right = -1 - new_dims[k]
-                index.append(ops.new_arange(self.data, domain.dtype).reshape(
-                    (-1,) + (1,) * offset_from_right))
+                index.append(
+                    ops.new_arange(self.data, domain.dtype).reshape(
+                        (-1,) + (1,) * offset_from_right
+                    )
+                )
 
         # Construct a [:] slice for the output.
         for i, size in enumerate(self.output.shape):
             offset_from_right = len(self.output.shape) - i - 1
-            index.append(ops.new_arange(self.data, size).reshape(
-                (-1,) + (1,) * offset_from_right))
+            index.append(
+                ops.new_arange(self.data, size).reshape(
+                    (-1,) + (1,) * offset_from_right
+                )
+            )
 
         data = self.data[tuple(index)]
         return Tensor(data, inputs, self.dtype)
 
     def eager_unary(self, op):
         dtype = find_domain(op, self.output).dtype
-        if op in REDUCE_OP_TO_NUMERIC:
-            batch_dim = len(self.data.shape) - len(self.output.shape)
-            data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
-            data = REDUCE_OP_TO_NUMERIC[op](data, -1)
-            return Tensor(data, self.inputs, dtype)
         return Tensor(op(self.data), self.inputs, dtype)
 
     def eager_reduce(self, op, reduced_vars):
@@ -275,21 +305,17 @@ class Tensor(Funsor, metaclass=TensorMeta):
             assert isinstance(reduced_vars, frozenset)
             self_vars = frozenset(self.inputs)
             reduced_vars = reduced_vars & self_vars
-            if reduced_vars == self_vars and not self.output.shape:
-                return Tensor(numeric_op(self.data, None), dtype=self.dtype)
-
-            # Reduce one dim at a time.
-            data = self.data
-            offset = 0
-            for k, domain in self.inputs.items():
-                if k in reduced_vars:
-                    assert not domain.shape
-                    data = numeric_op(data, offset)
-                else:
-                    offset += 1
-            inputs = OrderedDict((k, v) for k, v in self.inputs.items()
-                                 if k not in reduced_vars)
-            return Tensor(data, inputs, self.dtype)
+            if not reduced_vars:
+                return self
+            reduced_dims = tuple(
+                d for d, var in enumerate(self.inputs) if var in reduced_vars
+            )
+            dtype = find_domain(op, self.output).dtype
+            inputs = OrderedDict(
+                (k, v) for k, v in self.inputs.items() if k not in reduced_vars
+            )
+            data = numeric_op(self.data, reduced_dims)
+            return Tensor(data, inputs, dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
@@ -299,11 +325,16 @@ class Tensor(Funsor, metaclass=TensorMeta):
             return self
 
         # Partition inputs into sample_inputs + batch_inputs + event_inputs.
-        sample_inputs = OrderedDict((k, d) for k, d in sample_inputs.items()
-                                    if k not in self.inputs)
+        sample_inputs = OrderedDict(
+            (k, d) for k, d in sample_inputs.items() if k not in self.inputs
+        )
         sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
-        batch_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k not in sampled_vars)
-        event_inputs = OrderedDict((k, d) for k, d in self.inputs.items() if k in sampled_vars)
+        batch_inputs = OrderedDict(
+            (k, d) for k, d in self.inputs.items() if k not in sampled_vars
+        )
+        event_inputs = OrderedDict(
+            (k, d) for k, d in self.inputs.items() if k in sampled_vars
+        )
         be_inputs = batch_inputs.copy()
         be_inputs.update(event_inputs)
         sb_inputs = sample_inputs.copy()
@@ -311,16 +342,23 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
         # Sample all variables in a single Categorical call.
         logits = align_tensor(be_inputs, self)
-        batch_shape = logits.shape[:len(batch_inputs)]
+        batch_shape = logits.shape[: len(batch_inputs)]
         flat_logits = logits.reshape(batch_shape + (-1,))
         sample_shape = tuple(d.dtype for d in sample_inputs.values())
 
         backend = get_backend()
         if backend != "numpy":
             from importlib import import_module
-            dist = import_module(funsor.distribution.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend])
-            sample_args = (sample_shape,) if rng_key is None else (rng_key, sample_shape)
-            flat_sample = dist.CategoricalLogits.dist_class(logits=flat_logits).sample(*sample_args)
+
+            dist = import_module(
+                funsor.distribution.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend]
+            )
+            sample_args = (
+                (sample_shape,) if rng_key is None else (rng_key, sample_shape)
+            )
+            flat_sample = dist.CategoricalLogits.dist_class(logits=flat_logits).sample(
+                *sample_args
+            )
         else:  # default numpy backend
             assert backend == "numpy"
             shape = sample_shape + flat_logits.shape[:-1]
@@ -355,13 +393,22 @@ class Tensor(Funsor, metaclass=TensorMeta):
         #       g = delta(x=x0) |f|.
         if (backend == "torch" and flat_logits.requires_grad) or backend == "jax":
             # Apply a dice factor to preserve differentiability.
-            index = [ops.new_arange(self.data, n).reshape((n,) + (1,) * (len(flat_logits.shape) - i - 2))
-                     for i, n in enumerate(flat_logits.shape[:-1])]
+            index = [
+                ops.new_arange(self.data, n).reshape(
+                    (n,) + (1,) * (len(flat_logits.shape) - i - 2)
+                )
+                for i, n in enumerate(flat_logits.shape[:-1])
+            ]
             index.append(flat_sample)
             log_prob = flat_logits[tuple(index)]
             assert log_prob.shape == flat_sample.shape
-            results.append(Tensor(ops.logsumexp(ops.detach(flat_logits), -1) +
-                                  (log_prob - ops.detach(log_prob)), sb_inputs))
+            results.append(
+                Tensor(
+                    ops.logsumexp(ops.detach(flat_logits), -1)
+                    + (log_prob - ops.detach(log_prob)),
+                    sb_inputs,
+                )
+            )
         else:
             # This is the special case f = detach(f).
             results.append(Tensor(ops.logsumexp(flat_logits, -1), batch_inputs))
@@ -430,12 +477,17 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
         output = output if output is not None else Reals[x.shape]
         result = Tensor(x, dtype=output.dtype)
         if result.output != output:
-            raise ValueError("Invalid shape: expected {}, actual {}"
-                             .format(output.shape, result.output.shape))
+            raise ValueError(
+                "Invalid shape: expected {}, actual {}".format(
+                    output.shape, result.output.shape
+                )
+            )
         return result
     else:
-        assert all(isinstance(k, int) and k < 0 and isinstance(v, str)
-                   for k, v in dim_to_name.items())
+        assert all(
+            isinstance(k, int) and k < 0 and isinstance(v, str)
+            for k, v in dim_to_name.items()
+        )
 
         if output is None:
             # Assume the leftmost dim_to_name key refers to the leftmost dim of x
@@ -449,7 +501,7 @@ def tensor_to_funsor(x, output=None, dim_to_name=None):
         packed_inputs = OrderedDict()
         for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
             name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
-            if name is not None and size > 1:
+            if name is not None and size != 1:
                 packed_inputs[name] = Bint[size]
         shape = tuple(d.size for d in packed_inputs.values()) + output.shape
         if x.shape != shape:
@@ -484,16 +536,23 @@ def align_tensor(new_inputs, x, expand=False):
 
     # Permute squashed input dims.
     x_keys = tuple(old_inputs)
-    data = ops.permute(data, tuple(x_keys.index(k) for k in new_inputs if k in old_inputs) +
-                       tuple(range(len(old_inputs), len(data.shape))))
+    data = ops.permute(
+        data,
+        tuple(x_keys.index(k) for k in new_inputs if k in old_inputs)
+        + tuple(range(len(old_inputs), len(data.shape))),
+    )
 
     # Unsquash multivariate input dims by filling in ones.
-    data = data.reshape(tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs) +
-                        x.output.shape)
+    data = data.reshape(
+        tuple(old_inputs[k].dtype if k in old_inputs else 1 for k in new_inputs)
+        + x.output.shape
+    )
 
     # Optionally expand new dims.
     if expand:
-        data = ops.expand(data, tuple(d.dtype for d in new_inputs.values()) + x.output.shape)
+        data = ops.expand(
+            data, tuple(d.dtype for d in new_inputs.values()) + x.output.shape
+        )
     return data
 
 
@@ -512,7 +571,7 @@ def align_tensors(*args, **kwargs):
         with given ``inputs``.
     :rtype: tuple
     """
-    expand = kwargs.pop('expand', False)
+    expand = kwargs.pop("expand", False)
     assert not kwargs
     inputs = OrderedDict()
     for x in args:
@@ -525,19 +584,28 @@ def align_tensors(*args, **kwargs):
 def tensor_to_data(x, name_to_dim=None):
     if not name_to_dim or not x.inputs:
         if x.inputs:
-            raise ValueError("cannot convert Tensor to data due to lazy inputs: {}".format(set(x.inputs)))
+            raise ValueError(
+                "cannot convert Tensor to data due to lazy inputs: {}".format(
+                    set(x.inputs)
+                )
+            )
         return x.data
     else:
-        assert all(isinstance(k, str) and isinstance(v, int) and v < 0
-                   for k, v in name_to_dim.items())
+        assert all(
+            isinstance(k, str) and isinstance(v, int) and v < 0
+            for k, v in name_to_dim.items()
+        )
         # logic very similar to pyro.ops.packed.unpack
         # first collapse input domains into single dimensions
-        data = x.data.reshape(tuple(d.dtype for d in x.inputs.values()) + x.output.shape)
+        data = x.data.reshape(
+            tuple(d.dtype for d in x.inputs.values()) + x.output.shape
+        )
         # permute packed dimensions to correct order
         unsorted_dims = [name_to_dim[name] for name in x.inputs]
         dims = sorted(unsorted_dims)
-        permutation = [unsorted_dims.index(dim) for dim in dims] + \
-            list(range(len(dims), len(dims) + len(x.output.shape)))
+        permutation = [unsorted_dims.index(dim) for dim in dims] + list(
+            range(len(dims), len(dims) + len(x.output.shape))
+        )
         data = ops.permute(data, permutation)
         # expand
         batch_shape = [1] * -min(dims)
@@ -546,19 +614,79 @@ def tensor_to_data(x, name_to_dim=None):
         return data.reshape(tuple(batch_shape) + x.output.shape)
 
 
-@eager.register(Binary, Op, Tensor, Number)
+@eager.register(Scatter, Op, tuple, Number, frozenset)
+def eager_scatter_number(op, subs, source, reduced_vars):
+    # case: injective renaming
+    if all(isinstance(v, Variable) for k, v in subs):
+        if len({v.name for k, v in subs}) == len(subs):
+            return source
+
+    source = Tensor(numeric_array(source.data), dtype=source.dtype)
+    return eager_scatter_tensor(op, subs, source, reduced_vars)
+
+
+@eager.register(Scatter, Op, tuple, Tensor, frozenset)
+def eager_scatter_tensor(op, subs, source, reduced_vars):
+    if not all(isinstance(v, (Variable, Number, Slice, Tensor)) for k, v in subs):
+        return None
+
+    # Compute shapes.
+    reduced_names = frozenset(v.name for v in reduced_vars)
+    destin_inputs = OrderedDict()
+    tensor_inputs = OrderedDict()
+    for key, value in subs:
+        for k, d in value.inputs.items():
+            # These are "batch" inputs and should be left of subs keys.
+            if k not in reduced_names:
+                destin_inputs[k] = d
+            tensor_inputs[k] = d
+    for k, d in source.inputs.items():
+        # These are "batch" inputs and should be left of subs keys.
+        if k not in reduced_names:
+            destin_inputs[k] = d
+        tensor_inputs[k] = d
+    for key, value in subs:
+        # These are "event" inputs and should be right of "batch" inputs.
+        destin_inputs[key] = value.output
+
+    # Construct aligned backend tensors.
+    tensors = []
+    for k, d in tensor_inputs.items():
+        if k not in reduced_names:
+            tensors.append(Variable(k, d))  # effectively a slice
+    for key, value in subs:
+        tensors.append(value)
+    tensors = [source.materialize(x) for x in tensors]
+    tensors.append(source)
+    tensors = [align_tensor(tensor_inputs, x, expand=True) for x in tensors]
+    indices = tuple(tensors[:-1])
+    source_data = tensors[-1]
+
+    # Construct a destination backend tensor.
+    output = source.output
+    shape = tuple(d.size for d in destin_inputs.values()) + output.shape
+    destin = ops.new_full(source.data, shape, ops.UNITS[op])
+
+    # TODO Add a check for injectivity and dispatch to scatter_add etc.
+    data = ops.scatter(destin, indices, source_data)
+    return Tensor(data, destin_inputs, output.dtype)
+
+
+@eager.register(Binary, BinaryOp, Tensor, Number)
 def eager_binary_tensor_number(op, lhs, rhs):
+    dtype = find_domain(op, lhs.output, rhs.output).dtype
     data = op(lhs.data, rhs.data)
-    return Tensor(data, lhs.inputs, lhs.dtype)
+    return Tensor(data, lhs.inputs, dtype)
 
 
-@eager.register(Binary, Op, Number, Tensor)
+@eager.register(Binary, BinaryOp, Number, Tensor)
 def eager_binary_number_tensor(op, lhs, rhs):
+    dtype = find_domain(op, lhs.output, rhs.output).dtype
     data = op(lhs.data, rhs.data)
-    return Tensor(data, rhs.inputs, rhs.dtype)
+    return Tensor(data, rhs.inputs, dtype)
 
 
-@eager.register(Binary, Op, Tensor, Tensor)
+@eager.register(Binary, BinaryOp, Tensor, Tensor)
 def eager_binary_tensor_tensor(op, lhs, rhs):
     # Compute inputs and outputs.
     dtype = find_domain(op, lhs.output, rhs.output).dtype
@@ -626,16 +754,42 @@ def eager_binary_tensor_tensor(op, lhs, rhs):
 
 @eager.register(Unary, ReshapeOp, Tensor)
 def eager_reshape_tensor(op, arg):
-    if arg.shape == op.shape:
+    shape = op.defaults["shape"]
+    if arg.shape == shape:
         return arg
-    batch_shape = arg.data.shape[:len(arg.data.shape) - len(arg.shape)]
-    data = arg.data.reshape(batch_shape + op.shape)
+    batch_shape = arg.data.shape[: len(arg.data.shape) - len(arg.shape)]
+    data = arg.data.reshape(batch_shape + shape)
     return Tensor(data, arg.inputs, arg.dtype)
+
+
+@eager.register(Unary, ops.ReductionOp, Tensor)
+def eager_reduction_tensor(op, arg):
+    dtype = find_domain(op, arg.output).dtype
+
+    if not arg.output.shape:
+        return Tensor(op(ops.unsqueeze(arg.data, -1), -1), arg.inputs, dtype)
+
+    if not arg.inputs:
+        return Tensor(op(arg.data), arg.inputs, dtype)
+
+    # Work around batch inputs.
+    axis = op.defaults.get("axis", None)
+    keepdims = op.defaults.get("keepdims", False)
+    ndims = len(arg.output.shape)
+    if axis is None:
+        axis = tuple(range(-ndims, 0))
+    elif isinstance(axis, int):
+        axis = axis % ndims - ndims
+    else:
+        axis = tuple(d % ndims - ndims for d in axis)
+    data = op(arg.data, axis=axis, keepdims=keepdims)
+    return Tensor(data, arg.inputs, dtype)
 
 
 @eager.register(Binary, GetitemOp, Tensor, Number)
 def eager_getitem_tensor_number(op, lhs, rhs):
-    index = [slice(None)] * (len(lhs.inputs) + op.offset)
+    offset = op.defaults["offset"]
+    index = [slice(None)] * (len(lhs.inputs) + offset)
     index.append(rhs.data)
     index = tuple(index)
     data = lhs.data[index]
@@ -644,8 +798,9 @@ def eager_getitem_tensor_number(op, lhs, rhs):
 
 @eager.register(Binary, GetitemOp, Tensor, Variable)
 def eager_getitem_tensor_variable(op, lhs, rhs):
-    assert op.offset < len(lhs.output.shape)
-    assert rhs.output == Bint[lhs.output.shape[op.offset]]
+    offset = op.defaults["offset"]
+    assert offset < len(lhs.output.shape)
+    assert rhs.output == Bint[lhs.output.shape[offset]]
     assert rhs.name not in lhs.inputs
 
     # Convert a positional event dimension to a named batch dimension.
@@ -653,7 +808,7 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
     inputs[rhs.name] = rhs.output
     data = lhs.data
     target_dim = len(lhs.inputs)
-    source_dim = target_dim + op.offset
+    source_dim = target_dim + offset
     if target_dim != source_dim:
         perm = list(range(len(data.shape)))
         del perm[source_dim]
@@ -664,8 +819,9 @@ def eager_getitem_tensor_variable(op, lhs, rhs):
 
 @eager.register(Binary, GetitemOp, Tensor, Tensor)
 def eager_getitem_tensor_tensor(op, lhs, rhs):
-    assert op.offset < len(lhs.output.shape)
-    assert rhs.output == Bint[lhs.output.shape[op.offset]]
+    offset = op.defaults["offset"]
+    assert offset < len(lhs.output.shape)
+    assert rhs.output == Bint[lhs.output.shape[offset]]
 
     # Compute inputs and outputs.
     if lhs.inputs == rhs.inputs:
@@ -677,15 +833,38 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
 
     # Perform advanced indexing.
     lhs_data_dim = len(lhs_data.shape)
-    target_dim = lhs_data_dim - len(lhs.output.shape) + op.offset
+    target_dim = lhs_data_dim - len(lhs.output.shape) + offset
     index = [None] * lhs_data_dim
     for i in range(target_dim):
-        index[i] = ops.new_arange(lhs_data, lhs_data.shape[i]).reshape((-1,) + (1,) * (lhs_data_dim - i - 2))
+        index[i] = ops.new_arange(lhs_data, lhs_data.shape[i]).reshape(
+            (-1,) + (1,) * (lhs_data_dim - i - 2)
+        )
     index[target_dim] = rhs_data
     for i in range(1 + target_dim, lhs_data_dim):
-        index[i] = ops.new_arange(lhs_data, lhs_data.shape[i]).reshape((-1,) + (1,) * (lhs_data_dim - i - 1))
+        index[i] = ops.new_arange(lhs_data, lhs_data.shape[i]).reshape(
+            (-1,) + (1,) * (lhs_data_dim - i - 1)
+        )
     data = lhs_data[tuple(index)]
     return Tensor(data, inputs, lhs.dtype)
+
+
+@eager.register(Finitary, ops.StackOp, typing.Tuple[Tensor, ...])
+def eager_finitary_stack(op, parts):
+    dim = op.defaults["dim"]
+    if dim >= 0:
+        event_dim = max(len(part.output.shape) for part in parts)
+        dim = dim - event_dim - 1
+    assert dim < 0
+    inputs, raw_parts = align_tensors(*parts)
+    raw_result = ops.stack(raw_parts, dim)
+    return Tensor(raw_result, inputs, parts[0].dtype)
+
+
+@eager.register(Finitary, FinitaryOp, typing.Tuple[Tensor, ...])
+def eager_finitary_generic_tensors(op, args):
+    inputs, raw_args = align_tensors(*args)
+    raw_result = op(raw_args)
+    return Tensor(raw_result, inputs, args[0].dtype)
 
 
 @eager.register(Lambda, Variable, Tensor)
@@ -716,8 +895,9 @@ def eager_stack_homogeneous(name, *parts):
         part_inputs.update(part.inputs)
 
     shape = tuple(d.size for d in part_inputs.values()) + output.shape
-    data = ops.stack(0, *[ops.expand(align_tensor(part_inputs, part), shape)
-                          for part in parts])
+    data = ops.stack(
+        [ops.expand(align_tensor(part_inputs, part), shape) for part in parts]
+    )
     inputs = OrderedDict([(name, Bint[len(parts)])])
     inputs.update(part_inputs)
     return Tensor(data, inputs, dtype=output.dtype)
@@ -741,25 +921,9 @@ def eager_cat_homogeneous(name, part_name, *parts):
     del inputs[part_name]
 
     dim = 0
-    tensor = ops.cat(dim, *tensors)
+    tensor = ops.cat(tensors, dim)
     inputs = OrderedDict([(name, Bint[tensor.shape[dim]])] + list(inputs.items()))
     return Tensor(tensor, inputs, dtype=output.dtype)
-
-
-# TODO Promote this to a Funsor subclass.
-class LazyTuple(tuple):
-    def __call__(self, *args, **kwargs):
-        return LazyTuple(x(*args, **kwargs) for x in self)
-
-    @lazy_property
-    def __annotations__(self):
-        result = {}
-        output = []
-        for part in self:
-            result.update(part.__annotations__)
-            output.append(result.pop("return"))
-        result["return"] = typing.Tuple[tuple(output)]
-        return result
 
 
 # TODO Move this to terms.py; it is no longer Tensor-specific.
@@ -776,6 +940,7 @@ class Function(Funsor):
     :param type output: An output domain.
     :param Funsor args: Funsor arguments.
     """
+
     def __init__(self, fn, output, args):
         assert callable(fn)
         assert not isinstance(fn, Function)
@@ -789,12 +954,14 @@ class Function(Funsor):
         self.args = args
 
     def __repr__(self):
-        return '{}({}, {}, {})'.format(type(self).__name__, _nameof(self.fn),
-                                       repr(self.output), repr(self.args))
+        return "{}({}, {}, {})".format(
+            type(self).__name__, _nameof(self.fn), repr(self.output), repr(self.args)
+        )
 
     def __str__(self):
-        return '{}({}, {}, {})'.format(type(self).__name__, _nameof(self.fn),
-                                       str(self.output), str(self.args))
+        return "{}({}, {}, {})".format(
+            type(self).__name__, _nameof(self.fn), str(self.output), str(self.args)
+        )
 
 
 @quote.register(Function)
@@ -828,13 +995,13 @@ def _select(fn, i, *args):
 def _nested_function(fn, args, output):
     if isinstance(output, ArrayType):
         return Function(fn, output, args)
-    elif output.__origin__ in (tuple, typing.Tuple):
+    elif output.__origin__ in (tuple, Product, typing.Tuple):
         result = []
         for i, output_i in enumerate(output.__args__):
             fn_i = functools.partial(_select, fn, i)
             fn_i.__name__ = "{}_{}".format(_nameof(fn), i)
             result.append(_nested_function(fn_i, args, output_i))
-        return LazyTuple(result)
+        return Tuple(tuple(result))
     raise ValueError("Invalid output: {}".format(output))
 
 
@@ -867,14 +1034,12 @@ def _function(inputs, output, fn):
     else:
         names = getargspec(fn)[0]
     if isinstance(inputs, dict):
-        args = tuple(Variable(name, inputs[name])
-                     for name in names if name in inputs)
+        args = tuple(Variable(name, inputs[name]) for name in names if name in inputs)
     else:
-        args = tuple(Variable(name, domain)
-                     for (name, domain) in zip(names, inputs))
+        args = tuple(Variable(name, domain) for (name, domain) in zip(names, inputs))
     assert len(args) == len(inputs)
     if not isinstance(output, ArrayType):
-        assert output.__origin__ in (tuple, typing.Tuple)
+        assert output.__origin__ in (tuple, Product, typing.Tuple)
         # Memoize multiple-output functions so that invocations can be shared among
         # all outputs. This is not foolproof, but does work in simple situations.
         fn = _Memoized(fn)
@@ -883,9 +1048,11 @@ def _function(inputs, output, fn):
 
 def _tuple_to_Tuple(tp):
     if isinstance(tp, tuple):
-        warnings.warn("tuple types like (Real, Reals[2]) are deprecated, "
-                      "use Tuple[Real, Reals[2]] instead",
-                      DeprecationWarning)
+        warnings.warn(
+            "tuple types like (Real, Reals[2]) are deprecated, "
+            "use Tuple[Real, Reals[2]] instead",
+            DeprecationWarning,
+        )
         tp = tuple(map(_tuple_to_Tuple, tp))
         return typing.Tuple[tp]
     return tp
@@ -934,19 +1101,25 @@ def function(*signature):
                 inputs = typing.get_type_hints(fn)
             output = inputs.pop("return")
             assert all(isinstance(d, ArrayType) for d in inputs.values())
-            assert (isinstance(output, (ArrayType, tuple)) or
-                    output.__origin__ in (tuple, typing.Tuple))
+            assert isinstance(output, (ArrayType, tuple)) or output.__origin__ in (
+                tuple,
+                Product,
+                typing.Tuple,
+            )
             return _function(inputs, output, fn)
     # Usage @function(input1, ..., inputN, output)
     inputs, output = signature[:-1], signature[-1]
     output = _tuple_to_Tuple(output)
     assert all(isinstance(d, ArrayType) for d in inputs)
-    assert (isinstance(output, (ArrayType, tuple)) or
-            output.__origin__ in (tuple, typing.Tuple))
+    assert isinstance(output, (ArrayType, tuple)) or output.__origin__ in (
+        tuple,
+        Product,
+        typing.Tuple,
+    )
     return functools.partial(_function, inputs, output)
 
 
-class Einsum(Funsor):
+def Einsum(equation, *operands):
     """
     Wrapper around :func:`torch.einsum` or :func:`np.einsum` to operate on real-valued Funsors.
 
@@ -957,66 +1130,39 @@ class Einsum(Funsor):
     :param str equation: An :func:`torch.einsum` or :func:`np.einsum` equation.
     :param tuple operands: A tuple of input funsors.
     """
-    def __init__(self, equation, operands):
-        assert isinstance(equation, str)
-        assert isinstance(operands, tuple)
-        assert all(isinstance(x, Funsor) for x in operands)
-        ein_inputs, ein_output = equation.split('->')
-        ein_inputs = ein_inputs.split(',')
-        size_dict = {}
-        inputs = OrderedDict()
-        assert len(ein_inputs) == len(operands)
-        for ein_input, x in zip(ein_inputs, operands):
-            assert x.dtype == 'real'
-            inputs.update(x.inputs)
-            assert len(ein_input) == len(x.output.shape)
-            for name, size in zip(ein_input, x.output.shape):
-                other_size = size_dict.setdefault(name, size)
-                if other_size != size:
-                    raise ValueError("Size mismatch at {}: {} vs {}"
-                                     .format(name, size, other_size))
-        output = Reals[tuple(size_dict[d] for d in ein_output)]
-        super(Einsum, self).__init__(inputs, output)
-        self.equation = equation
-        self.operands = operands
-
-    def __repr__(self):
-        return 'Einsum({}, {})'.format(repr(self.equation), repr(self.operands))
-
-    def __str__(self):
-        return 'Einsum({}, {})'.format(repr(self.equation), str(self.operands))
+    return ops.einsum(operands, equation)
 
 
-@eager.register(Einsum, str, tuple)
-def eager_einsum(equation, operands):
-    if all(isinstance(x, Tensor) for x in operands):
-        # Make new symbols for inputs of operands.
-        inputs = OrderedDict()
-        for x in operands:
-            inputs.update(x.inputs)
-        symbols = set(equation)
-        get_symbol = iter(map(opt_einsum.get_symbol, itertools.count()))
-        new_symbols = {}
-        for k in inputs:
+@eager.register(Finitary, ops.EinsumOp, typing.Tuple[Tensor, ...])
+def eager_einsum(op, operands):
+    # Make new symbols for inputs of operands.
+    equation = op.defaults["equation"]
+    inputs = OrderedDict()
+    for x in operands:
+        inputs.update(x.inputs)
+    symbols = set(equation)
+    get_symbol = iter(map(opt_einsum.get_symbol, itertools.count()))
+    new_symbols = {}
+    for k in inputs:
+        symbol = next(get_symbol)
+        while symbol in symbols:
             symbol = next(get_symbol)
-            while symbol in symbols:
-                symbol = next(get_symbol)
-            symbols.add(symbol)
-            new_symbols[k] = symbol
+        symbols.add(symbol)
+        new_symbols[k] = symbol
 
-        # Manually broadcast using einsum symbols.
-        assert '.' not in equation
-        ins, out = equation.split('->')
-        ins = ins.split(',')
-        ins = [''.join(new_symbols[k] for k in x.inputs) + x_out
-               for x, x_out in zip(operands, ins)]
-        out = ''.join(new_symbols[k] for k in inputs) + out
-        equation = ','.join(ins) + '->' + out
+    # Manually broadcast using einsum symbols.
+    assert "." not in equation
+    ins, out = equation.split("->")
+    ins = ins.split(",")
+    ins = [
+        "".join(new_symbols[k] for k in x.inputs) + x_out
+        for x, x_out in zip(operands, ins)
+    ]
+    out = "".join(new_symbols[k] for k in inputs) + out
+    equation = ",".join(ins) + "->" + out
 
-        data = ops.einsum(equation, *[x.data for x in operands])
-        return Tensor(data, inputs)
-
-    return None  # defer to default implementation
+    data = ops.einsum([x.data for x in operands], equation)
+    return Tensor(data, inputs)
 
 
 def tensordot(x, y, dims):
@@ -1046,36 +1192,13 @@ def tensordot(x, y, dims):
     x_start, x_end = 0, len(x.output.shape)
     y_start = x_end - dims
     y_end = y_start + len(y.output.shape)
-    symbols = 'abcdefghijklmnopqrstuvwxyz'
-    equation = '{},{}->{}'.format(symbols[x_start:x_end],
-                                  symbols[y_start:y_end],
-                                  symbols[x_start:y_start] + symbols[x_end:y_end])
-    return Einsum(equation, (x, y))
-
-
-def stack(parts, dim=0):
-    """
-    Wrapper around :func:`torch.stack` or :func:`np.stack` to operate on real-valued Funsors.
-
-    Note this operates only on the ``output`` tensor. To stack funsors in a
-    new named dim, instead use :class:`~funsor.terms.Stack`.
-
-    :param tuple parts: A tuple of funsors.
-    :param int dim: A torch dim along which to stack.
-    :rtype: Funsor
-    """
-    assert isinstance(dim, int)
-    assert isinstance(parts, tuple)
-    assert len(set(x.output for x in parts)) == 1
-    shape = parts[0].output.shape
-    if dim >= 0:
-        dim = dim - len(shape) - 1
-    assert dim < 0
-    split = dim + len(shape) + 1
-    shape = shape[:split] + (len(parts),) + shape[split:]
-    output = Array[parts[0].dtype, shape]
-    fn = functools.partial(ops.stack, dim)
-    return Function(fn, output, parts)
+    symbols = "abcdefghijklmnopqrstuvwxyz"
+    equation = "{},{}->{}".format(
+        symbols[x_start:x_end],
+        symbols[y_start:y_end],
+        symbols[x_start:y_start] + symbols[x_end:y_end],
+    )
+    return Einsum(equation, x, y)
 
 
 REDUCE_OP_TO_NUMERIC = {
@@ -1091,14 +1214,13 @@ REDUCE_OP_TO_NUMERIC = {
 
 
 __all__ = [
-    'Einsum',
-    'Function',
-    'REDUCE_OP_TO_NUMERIC',
-    'Tensor',
-    'align_tensor',
-    'align_tensors',
-    'function',
-    'ignore_jit_warnings',
-    'stack',
-    'tensordot',
+    "Einsum",
+    "Function",
+    "REDUCE_OP_TO_NUMERIC",
+    "Tensor",
+    "align_tensor",
+    "align_tensors",
+    "function",
+    "ignore_jit_warnings",
+    "tensordot",
 ]

@@ -1,31 +1,40 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Example: Mini Pyro
+==================
+
+"""
+
 import argparse
 
 import torch
-from pyro.generic import distributions as dist
-from pyro.generic import infer, optim, pyro, pyro_backend
+from pyroapi import distributions as dist
+from pyroapi import infer, optim, pyro, pyro_backend
 from torch.distributions import constraints
 
-from funsor.interpreter import interpretation
-from funsor.montecarlo import monte_carlo
+import funsor
+from funsor.montecarlo import MonteCarlo
 
 
 def main(args):
+    funsor.set_backend("torch")
+
     # Define a basic model with a single Normal latent random variable `loc`
     # and a batch of Normally distributed observations.
     def model(data):
-        loc = pyro.sample("loc", dist.Normal(0., 1.))
+        loc = pyro.sample("loc", dist.Normal(0.0, 1.0))
         with pyro.plate("data", len(data), dim=-1):
-            pyro.sample("obs", dist.Normal(loc, 1.), obs=data)
+            pyro.sample("obs", dist.Normal(loc, 1.0), obs=data)
 
     # Define a guide (i.e. variational distribution) with a Normal
     # distribution over the latent random variable `loc`.
     def guide(data):
-        guide_loc = pyro.param("guide_loc", torch.tensor(0.))
-        guide_scale = pyro.param("guide_scale", torch.tensor(1.),
-                                 constraint=constraints.positive)
+        guide_loc = pyro.param("guide_loc", torch.tensor(0.0))
+        guide_scale = pyro.param(
+            "guide_scale", torch.tensor(1.0), constraint=constraints.positive
+        )
         pyro.sample("loc", dist.Normal(guide_loc, guide_scale))
 
     # Generate some data.
@@ -34,7 +43,7 @@ def main(args):
 
     # Because the API in minipyro matches that of Pyro proper,
     # training code works with generic Pyro implementations.
-    with pyro_backend(args.backend), interpretation(monte_carlo):
+    with pyro_backend(args.backend), MonteCarlo():
         # Construct an SVI object so we can do variational inference on our
         # model/guide pair.
         Elbo = infer.JitTrace_ELBO if args.jit else infer.Trace_ELBO
@@ -47,14 +56,14 @@ def main(args):
         for step in range(args.num_steps):
             loss = svi.step(data)
             if args.verbose and step % 100 == 0:
-                print("step {} loss = {}".format(step, loss))
+                print(f"step {step} loss = {loss}")
 
         # Report the final values of the variational parameters
         # in the guide after training.
         if args.verbose:
             for name in pyro.get_param_store():
                 value = pyro.param(name).data
-                print("{} = {}".format(name, value.detach().cpu().numpy()))
+                print(f"{name} = {value.detach().cpu().numpy()}")
 
         # For this simple (conjugate) model we know the exact posterior. In
         # particular we know that the variational distribution should be

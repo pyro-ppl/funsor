@@ -3,28 +3,34 @@
 
 from collections import OrderedDict
 
+import numpy as np
 import pytest
 
 from funsor import ops
 from funsor.domains import Bint
 from funsor.integrate import Integrate
-from funsor.interpreter import interpretation
-from funsor.montecarlo import monte_carlo
-from funsor.terms import Variable, eager, lazy, moment_matching, normalize, reflect
+from funsor.interpretations import eager, lazy, moment_matching, normalize, reflect
+from funsor.montecarlo import MonteCarlo
+from funsor.terms import Variable
 from funsor.testing import assert_close, random_tensor
-from funsor.util import get_backend
 
 
-@pytest.mark.parametrize('interp', [
-    reflect, lazy, normalize, eager, moment_matching,
-    pytest.param(monte_carlo, marks=pytest.mark.xfail(
-        get_backend() == "jax", reason="Lacking pattern to pass rng_key"))
-])
+@pytest.mark.parametrize(
+    "interp",
+    [
+        reflect,
+        lazy,
+        normalize,
+        eager,
+        moment_matching,
+        MonteCarlo(rng_key=np.array([0, 0], dtype=np.uint32)),
+    ],
+)
 def test_integrate(interp):
-    log_measure = random_tensor(OrderedDict([('i', Bint[2]), ('j', Bint[3])]))
-    integrand = random_tensor(OrderedDict([('j', Bint[3]), ('k', Bint[4])]))
-    with interpretation(interp):
-        Integrate(log_measure, integrand, {'i', 'j', 'k'})
+    log_measure = random_tensor(OrderedDict([("i", Bint[2]), ("j", Bint[3])]))
+    integrand = random_tensor(OrderedDict([("j", Bint[3]), ("k", Bint[4])]))
+    with interp:
+        Integrate(log_measure, integrand, {"i", "j", "k"})
 
 
 def test_syntactic_sugar():

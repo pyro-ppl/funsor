@@ -11,15 +11,17 @@ Funsor is a tensor-like library for functions and distributions
    :maxdepth: 2
    :caption: Funsor Core:
 
-   domains
    ops
+   domains
    interpretations
    funsors
    optimizer
    adjoint
    sum_product
    affine
+   factory
    testing
+   typing
 
 .. toctree::
    :glob:
@@ -30,6 +32,20 @@ Funsor is a tensor-like library for functions and distributions
    distributions
    minipyro
    einsum
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Tutorials and Examples
+   :name: tutorials-and-examples
+
+   examples/discrete_hmm
+   examples/eeg_slds
+   examples/kalman_filter
+   examples/minipyro
+   examples/pcfg
+   examples/sensor
+   examples/slds
+   examples/vae
 
 
 Indices and tables

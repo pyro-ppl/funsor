@@ -1,6 +1,12 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Example: VAE MNIST
+==================
+
+"""
+
 import argparse
 import os
 from collections import OrderedDict
@@ -10,7 +16,7 @@ import torch
 import torch.utils.data
 from torch import nn, optim
 from torch.nn import functional as F
-from torchvision import datasets, transforms
+from torchvision import transforms
 
 import funsor
 import funsor.ops as ops
@@ -18,7 +24,7 @@ import funsor.torch.distributions as dist
 from funsor.domains import Bint, Reals
 
 REPO_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_PATH = os.path.join(REPO_PATH, 'data')
+DATA_PATH = os.path.join(REPO_PATH, "data")
 
 
 class Encoder(nn.Module):
@@ -51,6 +57,14 @@ class Decoder(nn.Module):
 def main(args):
     funsor.set_backend("torch")
 
+    # XXX Temporary fix after https://github.com/pyro-ppl/pyro/pull/2701
+    import pyro
+
+    # XXX Temporarily use Pyro's MNIST https://github.com/pyro-ppl/pyro/pull/2775
+    from pyro.contrib.examples.util import MNIST
+
+    pyro.enable_validation(False)
+
     encoder = Encoder()
     decoder = Decoder()
 
@@ -58,34 +72,36 @@ def main(args):
     encode = funsor.function(encoder)
     decode = funsor.function(decoder)
 
-    @funsor.interpreter.interpretation(funsor.montecarlo.monte_carlo)
+    @funsor.montecarlo.MonteCarlo()
     def loss_function(data, subsample_scale):
         # Lazily sample from the guide.
         loc, scale = encode(data)
         q = funsor.Independent(
-            dist.Normal(loc['i'], scale['i'], value='z_i'),
-            'z', 'i', 'z_i')
+            dist.Normal(loc["i"], scale["i"], value="z_i"), "z", "i", "z_i"
+        )
 
         # Evaluate the model likelihood at the lazy value z.
-        probs = decode('z')
-        p = dist.Bernoulli(probs['x', 'y'], value=data['x', 'y'])
-        p = p.reduce(ops.add, {'x', 'y'})
+        probs = decode("z")
+        p = dist.Bernoulli(probs["x", "y"], value=data["x", "y"])
+        p = p.reduce(ops.add, {"x", "y"})
 
         # Construct an elbo. This is where sampling happens.
-        elbo = funsor.Integrate(q, p - q, 'z')
-        elbo = elbo.reduce(ops.add, 'batch') * subsample_scale
+        elbo = funsor.Integrate(q, p - q, "z")
+        elbo = elbo.reduce(ops.add, "batch") * subsample_scale
         loss = -elbo
         return loss
 
     train_loader = torch.utils.data.DataLoader(
-        datasets.MNIST(DATA_PATH, train=True, download=True,
-                       transform=transforms.ToTensor()),
-        batch_size=args.batch_size, shuffle=True)
+        MNIST(DATA_PATH, train=True, download=True, transform=transforms.ToTensor()),
+        batch_size=args.batch_size,
+        shuffle=True,
+    )
 
     encoder.train()
     decoder.train()
-    optimizer = optim.Adam(list(encoder.parameters()) +
-                           list(decoder.parameters()), lr=1e-3)
+    optimizer = optim.Adam(
+        list(encoder.parameters()) + list(decoder.parameters()), lr=1e-3
+    )
     for epoch in range(args.num_epochs):
         train_loss = 0
         for batch_idx, (data, _) in enumerate(train_loader):
@@ -100,16 +116,16 @@ def main(args):
             train_loss += loss.item()
             optimizer.step()
             if batch_idx % 50 == 0:
-                print('  loss = {}'.format(loss.item()))
+                print(f"  loss = {loss.item()}")
                 if batch_idx and args.smoke_test:
                     return
-        print('epoch {} train_loss = {}'.format(epoch, train_loss))
+        print(f"epoch {epoch} train_loss = {train_loss}")
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='VAE MNIST Example')
-    parser.add_argument('-n', '--num-epochs', type=int, default=10)
-    parser.add_argument('--batch-size', type=int, default=8)
-    parser.add_argument('--smoke-test', action='store_true')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="VAE MNIST Example")
+    parser.add_argument("-n", "--num-epochs", type=int, default=10)
+    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--smoke-test", action="store_true")
     args = parser.parse_args()
     main(args)
