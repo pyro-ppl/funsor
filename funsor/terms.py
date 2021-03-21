@@ -1874,6 +1874,7 @@ def symbolic(*signature):
             return _symbolic(inputs, output, fn)
     # Usage: @symbolic(Real, Reals[3], Bint[3])
     output = None
+    # FIXME: what is inputs?
     return functools.partial(_symbolic, inputs, output)
 
 
