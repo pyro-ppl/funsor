@@ -12,6 +12,7 @@ from funsor.op_factory import make_op
 from funsor.tensor import Tensor
 from funsor.terms import Binary, Tuple, Unary, Variable
 from funsor.testing import assert_close, randn
+from funsor.util import get_backend
 
 
 @pytest.mark.parametrize("batch_shape", [(), (10,)], ids=str)
@@ -98,6 +99,43 @@ def test_make_op_3(batch_shape):
     ) -> Dependent[lambda x, y: Reals[x.shape[0], y.shape[1]]]:
         return x @ y
 
+    for L, J, K in [(2, 3, 4), (5, 6, 7)]:
+        # Check symbolic.
+        x = Variable("x", Reals[L, J])
+        y = Variable("y", Reals[J, K])
+        actual = matmul(x, y)
+        assert isinstance(actual, Binary)
+        assert actual.output == Reals[L, K]
+
+        # Check on ground term.
+        x_data = randn(*batch_shape, L, J)
+        y_data = randn(*batch_shape, J, K)
+        actual_data = matmul(x_data, y_data)
+        assert isinstance(actual_data, type(x_data))
+        assert_close(actual_data, x_data @ y_data)
+
+        # Check on funsor.Tensors.
+        x = Tensor(x_data, inputs)
+        y = Tensor(y_data, inputs)
+        actual = matmul(x, y)
+        assert isinstance(actual, Tensor)
+        assert_close(actual, Tensor(actual_data, inputs))
+
+
+@pytest.mark.skipif(get_backend() != "torch", reason="requires nn.Module")
+@pytest.mark.parametrize("batch_shape", [(), (10,)], ids=str)
+def test_nn_module(batch_shape):
+    import torch
+
+    class Matmul(torch.nn.Module):
+        def forward(
+            self, x, y
+        ) -> Dependent[lambda x, y: Reals[x.shape[0], y.shape[1]]]:
+            return x @ y
+
+    matmul = make_op(Matmul())
+
+    inputs = OrderedDict((k, Bint[s]) for k, s in zip("abc", batch_shape))
     for L, J, K in [(2, 3, 4), (5, 6, 7)]:
         # Check symbolic.
         x = Variable("x", Reals[L, J])

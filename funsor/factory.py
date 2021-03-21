@@ -14,11 +14,15 @@ from funsor.terms import Funsor, FunsorMeta, Variable, eager, to_funsor
 from funsor.util import as_callable
 
 
+def _get_name(fn):
+    return getattr(fn, "__name__", type(fn).__name__)
+
+
 def _erase_types(fn):
     def result(*args):
         return fn(*args)
 
-    result.__name__ = fn.__name__
+    result.__name__ = _get_name(fn)
     result.__module__ = fn.__module__
     return debug_logged(result)
 
@@ -251,9 +255,10 @@ def make_funsor(fn):
         alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
         return Funsor._alpha_convert(self, alpha_subs)
 
-    ResultMeta.__name__ = f"{fn.__name__}Meta"
+    name = _get_name(fn)
+    ResultMeta.__name__ = f"{name}Meta"
     Result = ResultMeta(
-        fn.__name__, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
+        name, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
     )
     pattern = (Result,) + tuple(
         _hint_to_pattern(input_types[k]) for k in Result._ast_fields

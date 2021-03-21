@@ -15,19 +15,24 @@ def apply(function, args, kwargs={}):
     return function(*args, **kwargs)
 
 
+def _get_name(fn):
+    return getattr(fn, "__name__", type(fn).__name__)
+
+
 def _get_signature(fn):
     try:
         return inspect.Signature.from_callable(fn)
     except ValueError as e:
         # In Python <=3.6, attempt to parse docstring of builtins.
-        if any(fn is getattr(lib, fn.__name__, None) for lib in (math, operator)):
-            if fn.__doc__.startswith(f"{fn.__name__}(x)"):
+        name = _get_name(fn)
+        if any(fn is getattr(lib, name, None) for lib in (math, operator)):
+            if fn.__doc__.startswith(f"{name}(x)"):
                 return inspect.Signature.from_callable(lambda x: None)
-            if fn.__doc__.startswith(f"{fn.__name__}(a)"):
+            if fn.__doc__.startswith(f"{name}(a)"):
                 return inspect.Signature.from_callable(lambda a: None)
-            if fn.__doc__.startswith(f"{fn.__name__}(obj)"):
+            if fn.__doc__.startswith(f"{name}(obj)"):
                 return inspect.Signature.from_callable(lambda obj: None)
-            if fn.__doc__.startswith(f"{fn.__name__}(a, b)"):
+            if fn.__doc__.startswith(f"{name}(a, b)"):
                 return inspect.Signature.from_callable(lambda a, b: None)
         raise e from None
 
@@ -212,7 +217,7 @@ class Op(metaclass=OpMeta):
         assert callable(fn)
 
         if name is None:
-            name = fn.__name__
+            name = _get_name(fn)
         assert isinstance(name, str)
 
         if metaclass is None:
@@ -366,7 +371,7 @@ def wrapped_transform(x, fn, *, validate_args=True):
     shape = fn.forward_shape(event_shape)
     if len(shape) > fn.codomain.event_dim:
         raise ValueError(
-            f"Cannot treat transform {fn.__name__} as an Op because it is batched"
+            f"Cannot treat transform {_get_name(fn)} as an Op because it is batched"
         )
 
     return fn(x)
