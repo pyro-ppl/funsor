@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import functools
+import inspect
 import itertools
 import typing
 import warnings
@@ -37,7 +38,7 @@ from .terms import (
     to_funsor,
 )
 from .typing import Variadic
-from .util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
+from .util import as_callable, get_backend, get_tracing_state, quote
 
 
 def get_default_prototype():
@@ -1029,10 +1030,7 @@ class _Memoized(object):
 
 
 def _function(inputs, output, fn):
-    if is_nn_module(fn):
-        names = getargspec(fn.forward)[0][1:]
-    else:
-        names = getargspec(fn)[0]
+    names = tuple(inspect.Signature.from_callable(as_callable(fn)).parameters)
     if isinstance(inputs, dict):
         args = tuple(Variable(name, inputs[name]) for name in names if name in inputs)
     else:
@@ -1095,10 +1093,7 @@ def function(*signature):
         fn = signature[0]
         if callable(fn) and not isinstance(fn, ArrayType):
             # Usage: @function
-            if is_nn_module(fn):
-                inputs = typing.get_type_hints(fn.forward)
-            else:
-                inputs = typing.get_type_hints(fn)
+            inputs = typing.get_type_hints(as_callable(fn))
             output = inputs.pop("return")
             assert all(isinstance(d, ArrayType) for d in inputs.values())
             assert isinstance(output, (ArrayType, tuple)) or output.__origin__ in (

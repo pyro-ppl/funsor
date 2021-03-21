@@ -219,6 +219,15 @@ def is_nn_module(x):
     return False
 
 
+def as_callable(fn):
+    """
+    Converts nn.Modules ``m`` to ``m.forward``.
+    """
+    if is_nn_module(fn):
+        return fn.forward
+    return fn
+
+
 def methodof(cls, name=None):
     """
     Decorator to set the named method of the given class. Can be stacked.

@@ -1,6 +1,12 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Example: Forward-Backward algorithm
+===================================
+
+"""
+
 import argparse
 from collections import OrderedDict
 from typing import Dict, List, Tuple

@@ -11,6 +11,7 @@ import makefun
 
 from funsor.instrument import debug_logged
 from funsor.terms import Funsor, FunsorMeta, Variable, eager, to_funsor
+from funsor.util import as_callable
 
 
 def _erase_types(fn):
@@ -170,7 +171,7 @@ def make_funsor(fn):
     :param callable fn: A type annotated function of Funsors.
     :rtype: subclas of :class:`~funsor.terms.Funsor`
     """
-    input_types = typing.get_type_hints(fn)
+    input_types = typing.get_type_hints(as_callable(fn))
     for name, hint in input_types.items():
         if not (hint in (Funsor, Bound) or isinstance(hint, (Fresh, Value, Has))):
             raise TypeError(f"Invalid type hint {name}: {hint}")

@@ -115,7 +115,7 @@ class Op(metaclass=OpMeta):
     - Only the first ``arity``-many arguments may be funsors. Remaining args
       and kwargs must all be ground Python data.
 
-    :cvar int arity: The number of funsor arguments this op takes. Must be
+    :cvar int ~.arity: The number of funsor arguments this op takes. Must be
         defined by subclasses.
     :param \*args:
     :param \*\*kwargs: All extra arguments to this op, excluding the arguments

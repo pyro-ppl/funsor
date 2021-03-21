@@ -9,11 +9,12 @@ Example: VAE MNIST
 
 import argparse
 import os
+import typing
 from collections import OrderedDict
-from typing import Tuple
 
 import torch
 import torch.utils.data
+from pyro.contrib.examples.util import MNIST
 from torch import nn, optim
 from torch.nn import functional as F
 from torchvision import transforms
@@ -34,7 +35,7 @@ class Encoder(nn.Module):
         self.fc21 = nn.Linear(400, 20)
         self.fc22 = nn.Linear(400, 20)
 
-    def forward(self, image: Reals[28, 28]) -> Tuple[Reals[20], Reals[20]]:
+    def forward(self, image: Reals[28, 28]) -> typing.Tuple[Reals[20], Reals[20]]:
         image = image.reshape(image.shape[:-2] + (-1,))
         h1 = F.relu(self.fc1(image))
         loc = self.fc21(h1)
@@ -59,9 +60,6 @@ def main(args):
 
     # XXX Temporary fix after https://github.com/pyro-ppl/pyro/pull/2701
     import pyro
-
-    # XXX Temporarily use Pyro's MNIST https://github.com/pyro-ppl/pyro/pull/2775
-    from pyro.contrib.examples.util import MNIST
 
     pyro.enable_validation(False)
 
