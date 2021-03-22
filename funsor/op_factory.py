@@ -11,6 +11,7 @@ from funsor.interpreter import PatternMissingError
 from funsor.tensor import Tensor
 from funsor.terms import Binary, Number, Tuple, Unary, to_data, to_funsor
 from funsor.typing import deep_issubclass
+from funsor.util import as_callable
 
 from . import ops
 
@@ -42,9 +43,9 @@ def make_op(fn):
 
     This assumes ``fn`` is compatible with broadcasting.
     """
-    input_types = typing.get_type_hints(fn)
+    input_types = typing.get_type_hints(as_callable(fn))
     output_type = input_types.pop("return")
-    parameters = tuple(inspect.Signature.from_callable(fn).parameters)
+    parameters = tuple(inspect.Signature.from_callable(as_callable(fn)).parameters)
     hints = tuple(input_types.get(name) for name in parameters)
     arity = len(parameters)
     if arity == 1:

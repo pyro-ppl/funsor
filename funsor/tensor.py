@@ -37,7 +37,14 @@ from .terms import (
     to_funsor,
 )
 from .typing import Variadic
-from .util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
+from .util import (
+    as_callable,
+    get_backend,
+    get_tracing_state,
+    getargspec,
+    is_nn_module,
+    quote,
+)
 
 
 def get_default_prototype():
@@ -1097,7 +1104,7 @@ def function(*signature):
         fn = signature[0]
         if callable(fn) and not isinstance(fn, ArrayType):
             # Usage: @function
-            inputs = typing.get_type_hints(fn)
+            inputs = typing.get_type_hints(as_callable(fn))
             output = inputs.pop("return")
             assert all(isinstance(d, ArrayType) for d in inputs.values())
             assert isinstance(output, (ArrayType, tuple)) or output.__origin__ in (
