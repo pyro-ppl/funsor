@@ -5,8 +5,8 @@ import weakref
 
 import pytest
 
+from funsor import ops
 from funsor.distribution import BACKEND_TO_DISTRIBUTIONS_BACKEND
-from funsor.ops import WrappedTransformOp
 from funsor.util import get_backend
 
 
@@ -21,16 +21,16 @@ def dist():
 
 def test_transform_op_cache(dist):
     t = dist.transforms.PowerTransform(0.5)
-    W = WrappedTransformOp
-    assert W(t) is W(t)
-    assert W(t).inv is W(t).inv
-    assert W(t.inv) is W(t).inv
-    assert W(t).log_abs_det_jacobian is W(t).log_abs_det_jacobian
+    W = ops.WrappedTransformOp
+    assert W(fn=t) is W(fn=t)
+    assert W(fn=t).inv is W(fn=t).inv
+    assert W(fn=t.inv) is W(fn=t).inv
+    assert W(fn=t).log_abs_det_jacobian is W(fn=t).log_abs_det_jacobian
 
 
 def test_transform_op_gc(dist):
     t = dist.transforms.PowerTransform(0.5)
-    op = WrappedTransformOp(t)
+    op = ops.WrappedTransformOp(fn=t)
     op_set = weakref.WeakSet()
     op_set.add(op)
     assert len(op_set) == 1

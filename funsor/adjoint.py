@@ -4,12 +4,13 @@
 from collections import defaultdict
 from collections.abc import Hashable
 
-from funsor.cnf import Contraction, nullop
+from funsor.cnf import Contraction
 from funsor.interpretations import Interpretation, reflect
 from funsor.interpreter import stack_reinterpret
 from funsor.ops import AssociativeOp
 from funsor.registry import KeyedRegistry
 from funsor.terms import (
+    Approximate,
     Binary,
     Cat,
     Funsor,
@@ -165,6 +166,9 @@ def adjoint_binary(adj_sum_op, adj_prod_op, out_adj, op, lhs, rhs):
 )
 def adjoint_reduce(adj_sum_op, adj_prod_op, out_adj, op, arg, reduced_vars):
     if op is adj_sum_op:
+        out_adj = Approximate(
+            adj_sum_op, out_adj, adj_prod_op(out_adj, arg), reduced_vars
+        )
         return ((arg, out_adj),)
     elif op is adj_prod_op:  # plate!
         out = arg.reduce(adj_prod_op, reduced_vars)
@@ -229,7 +233,16 @@ def adjoint_contract_generic(
 def adjoint_contract(
     adj_sum_op, adj_prod_op, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs
 ):
-    if prod_op is adj_prod_op and sum_op in (nullop, adj_sum_op):
+    if prod_op is adj_prod_op and sum_op in (ops.null, adj_sum_op):
+
+        # the only change is here:
+        out_adj = Approximate(
+            adj_sum_op,
+            out_adj,
+            adj_prod_op(out_adj, adj_prod_op(lhs, rhs)),
+            reduced_vars,
+        )
+
         lhs_adj = adj_prod_op(out_adj, rhs)
         rhs_adj = adj_prod_op(lhs, out_adj)
         return ((lhs, lhs_adj), (rhs, rhs_adj))

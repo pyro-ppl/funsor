@@ -14,6 +14,7 @@ from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
 from funsor.terms import Cat, Funsor, Lambda, Number, eager
 from funsor.testing import assert_close, check_funsor, random_tensor
+from funsor.util import get_backend
 
 
 def test_lambda_lambda():
@@ -170,6 +171,27 @@ def test_normal():
     actual = d(value=value)
     assert isinstance(actual, Tensor)
     check_funsor(actual, {"i": Bint[3]}, Real)
+
+
+@pytest.mark.skipif(get_backend() != "torch", reason="requires nn.Module")
+def test_nn_module():
+    import torch
+
+    class Matmul(torch.nn.Module):
+        def forward(
+            self,
+            x: Funsor,
+            y: Funsor,
+            i: Bound,
+        ) -> Fresh[lambda x: x]:
+            return (x * y).reduce(ops.add, i)
+
+    matmul = make_funsor(Matmul())
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    y = random_tensor(OrderedDict(c=Bint[4], d=Bint[3]))
+    xy = matmul(x, y, "b")
+    check_funsor(xy, {"a": Bint[3], "c": Bint[4], "d": Bint[3]}, Real)
 
 
 def test_matmul():

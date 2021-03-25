@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
+import typing
 
 import pytest
 import torch
@@ -31,11 +32,10 @@ def bounded_exp(x, bound):
 call_count = 0
 
 
-@funsor.function(
-    Reals[2 * num_origins * num_destins],
-    (Reals[num_origins, num_destins, 2], Reals[num_origins, num_destins]),
-)
-def unpack_gate_rate(gate_rate):
+@funsor.function
+def unpack_gate_rate(
+    gate_rate: Reals[2 * num_origins * num_destins],
+) -> typing.Tuple[Reals[num_origins, num_destins, 2], Reals[num_origins, num_destins]]:
     global call_count
     call_count += 1
     batch_shape = gate_rate.shape[:-1]
@@ -63,7 +63,7 @@ def test_bart(analytic_kl):
         q = Independent(
             Independent(
                 Contraction(
-                    ops.nullop,
+                    ops.null,
                     ops.add,
                     frozenset(),
                     (
@@ -177,7 +177,7 @@ def test_bart(analytic_kl):
                     ops.logaddexp,
                     ops.add,
                     Contraction(
-                        ops.nullop,
+                        ops.null,
                         ops.add,
                         frozenset(),
                         (
@@ -358,7 +358,7 @@ def test_bart(analytic_kl):
         )
         p_likelihood = Contraction(
             ops.add,
-            ops.nullop,
+            ops.null,
             frozenset(
                 {
                     Variable("time_b17", Bint[2]),

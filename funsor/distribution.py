@@ -20,16 +20,15 @@ from funsor.domains import Array, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (
-    Function,
     Tensor,
     align_tensors,
     dummy_numeric_array,
     get_default_prototype,
     ignore_jit_warnings,
     numeric_array,
-    stack,
 )
 from funsor.terms import (
+    Finitary,
     Funsor,
     FunsorMeta,
     Independent,
@@ -41,6 +40,7 @@ from funsor.terms import (
     to_data,
     to_funsor,
 )
+from funsor.typing import deep_isinstance
 from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
 
 BACKEND_TO_DISTRIBUTIONS_BACKEND = {
@@ -466,9 +466,9 @@ def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
     )
     dim_to_name.update(event_dim_to_name)
     result = to_funsor(backend_dist.base_dist, dim_to_name=dim_to_name)
-    if isinstance(result, Distribution) and not isinstance(
-        result.value, Function
-    ):  # Function used in some eager patterns
+    if isinstance(result, Distribution) and not deep_isinstance(
+        result.value, Finitary[ops.StackOp, tuple]
+    ):  # ops.stack() used in some eager patterns
         params = tuple(result.params.values())[:-1]
         for dim, name in reversed(event_dim_to_name.items()):
             dim_var = to_funsor(name, result.inputs[name])
@@ -768,15 +768,15 @@ def LogNormal(loc, scale, value="value"):
 
 
 def eager_beta(concentration1, concentration0, value):
-    concentration = stack((concentration0, concentration1))
-    value = stack((1 - value, value))
+    concentration = ops.stack((concentration0, concentration1))
+    value = ops.stack((1 - value, value))
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     return backend_dist.Dirichlet(concentration, value=value)  # noqa: F821
 
 
 def eager_binomial(total_count, probs, value):
-    probs = stack((1 - probs, probs))
-    value = stack((total_count - value, value))
+    probs = ops.stack((1 - probs, probs))
+    value = ops.stack((total_count - value, value))
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     return backend_dist.Multinomial(total_count, probs, value=value)  # noqa: F821
 

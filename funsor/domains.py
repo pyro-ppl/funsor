@@ -3,6 +3,7 @@
 
 import copyreg
 import functools
+import inspect
 import operator
 import warnings
 from functools import reduce
@@ -219,6 +220,40 @@ class Product(tuple, metaclass=ProductDomain):
     __args__ = NotImplemented
 
 
+class DependentMeta(type):
+    def __getitem__(cls, fn):
+        return cls(fn)
+
+
+class Dependent(metaclass=DependentMeta):
+    """
+    Type hint for dependently type-decorated functions.
+
+    Examples::
+
+        Dependent[Real]  # a constant known domain
+        Dependent[lambda x: Array[x.dtype, x.shape[1:]]  # args are Domains
+        Dependent[lambda x, y: Bint[x.size + y.size]]
+
+    :param callable fn: A lambda taking named arguments (in any order)
+        which will be filled in with the domain of the similarly named
+        funsor argument to the decorated function. This lambda should
+        compute a desired resulting domain given domains of arguments.
+    """
+
+    def __init__(self, fn):
+        function = type(lambda: None)
+        self.fn = fn if isinstance(fn, function) else lambda: fn
+        self.args = inspect.getfullargspec(fn)[0]
+
+    def __call__(self, **kwargs):
+        return self.fn(*map(kwargs.__getitem__, self.args))
+
+
+################################################################################
+# Function registration
+
+
 @quote.register(BintType)
 @quote.register(RealsType)
 def _(arg, indent, out):
@@ -248,16 +283,46 @@ def _find_domain_log_exp(op, domain):
     return Array["real", domain.shape]
 
 
+@find_domain.register(ops.ReductionOp)
+def _find_domain_reduction(op, domain):
+    # Canonicalize dim.
+    dim = op.defaults.get("dim", None)
+    ndims = len(domain.shape)
+    if dim is None:
+        dims = set(range(ndims))
+    elif isinstance(dim, int):
+        dims = {dim % ndims}
+    else:
+        dims = {i % ndims for i in dim}
+
+    # Compute shape.
+    if op.defaults.get("keepdims", False):
+        shape = tuple(1 if i in dims else domain.shape[i] for i in range(ndims))
+    else:
+        shape = tuple(domain.shape[i] for i in range(ndims) if i not in dims)
+
+    # Compute domain.
+    if op.name in ("all", "any"):
+        dtype = 2
+    elif domain.dtype == "real":
+        dtype = "real"
+    else:
+        raise NotImplementedError("TODO")
+
+    return Array[dtype, shape]
+
+
 @find_domain.register(ops.ReshapeOp)
 def _find_domain_reshape(op, domain):
-    return Array[domain.dtype, op.shape]
+    return Array[domain.dtype, op.defaults["shape"]]
 
 
 @find_domain.register(ops.GetitemOp)
 def _find_domain_getitem(op, lhs_domain, rhs_domain):
     if isinstance(lhs_domain, ArrayType):
+        offset = op.defaults["offset"]
         dtype = lhs_domain.dtype
-        shape = lhs_domain.shape[: op.offset] + lhs_domain.shape[1 + op.offset :]
+        shape = lhs_domain.shape[:offset] + lhs_domain.shape[1 + offset :]
         return Array[dtype, shape]
     elif isinstance(lhs_domain, ProductDomain):
         # XXX should this return a Union?
@@ -342,7 +407,7 @@ def _find_domain_associative_generic(op, *domains):
 
 @find_domain.register(ops.WrappedTransformOp)
 def _transform_find_domain(op, domain):
-    fn = op.dispatch(object)
+    fn = op.defaults["fn"]
     shape = fn.forward_shape(domain.shape)
     return Array[domain.dtype, shape]
 
@@ -353,13 +418,45 @@ def _transform_log_abs_det_jacobian(op, domain, codomain):
     return Real
 
 
+@find_domain.register(ops.StackOp)
+def _find_domain_stack(op, parts):
+    shape = broadcast_shape(*(x.shape for x in parts))
+    dim = op.defaults["dim"]
+    if dim >= 0:
+        dim = dim - len(shape) - 1
+    assert dim < 0
+    split = dim + len(shape) + 1
+    shape = shape[:split] + (len(parts),) + shape[split:]
+    output = Array[parts[0].dtype, shape]
+    return output
+
+
+@find_domain.register(ops.EinsumOp)
+def _find_domain_einsum(op, operands):
+    equation = op.defaults["equation"]
+    ein_inputs, ein_output = equation.split("->")
+    ein_inputs = ein_inputs.split(",")
+    size_dict = {}
+    for ein_input, x in zip(ein_inputs, operands):
+        assert x.dtype == "real"
+        assert len(ein_input) == len(x.shape)
+        for name, size in zip(ein_input, x.shape):
+            other_size = size_dict.setdefault(name, size)
+            if other_size != size:
+                raise ValueError(
+                    "Size mismatch at {}: {} vs {}".format(name, size, other_size)
+                )
+    return Reals[tuple(size_dict[d] for d in ein_output)]
+
+
 __all__ = [
     "Bint",
     "BintType",
+    "Dependent",
     "Domain",
     "Real",
-    "RealsType",
     "Reals",
+    "RealsType",
     "bint",
     "find_domain",
     "reals",

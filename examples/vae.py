@@ -9,10 +9,12 @@ Example: VAE MNIST
 
 import argparse
 import os
+import typing
 from collections import OrderedDict
 
 import torch
 import torch.utils.data
+from pyro.contrib.examples.util import MNIST
 from torch import nn, optim
 from torch.nn import functional as F
 from torchvision import transforms
@@ -33,7 +35,7 @@ class Encoder(nn.Module):
         self.fc21 = nn.Linear(400, 20)
         self.fc22 = nn.Linear(400, 20)
 
-    def forward(self, image):
+    def forward(self, image: Reals[28, 28]) -> typing.Tuple[Reals[20], Reals[20]]:
         image = image.reshape(image.shape[:-2] + (-1,))
         h1 = F.relu(self.fc1(image))
         loc = self.fc21(h1)
@@ -47,7 +49,7 @@ class Decoder(nn.Module):
         self.fc3 = nn.Linear(20, 400)
         self.fc4 = nn.Linear(400, 784)
 
-    def forward(self, z):
+    def forward(self, z: Reals[20]) -> Reals[28, 28]:
         h3 = F.relu(self.fc3(z))
         out = torch.sigmoid(self.fc4(h3))
         return out.reshape(out.shape[:-1] + (28, 28))
@@ -59,16 +61,14 @@ def main(args):
     # XXX Temporary fix after https://github.com/pyro-ppl/pyro/pull/2701
     import pyro
 
-    # XXX Temporarily use Pyro's MNIST https://github.com/pyro-ppl/pyro/pull/2775
-    from pyro.contrib.examples.util import MNIST
-
     pyro.enable_validation(False)
 
     encoder = Encoder()
     decoder = Decoder()
 
-    encode = funsor.function(Reals[28, 28], (Reals[20], Reals[20]))(encoder)
-    decode = funsor.function(Reals[20], Reals[28, 28])(decoder)
+    # These rely on type hints on the .forward() methods.
+    encode = funsor.function(encoder)
+    decode = funsor.function(decoder)
 
     @funsor.montecarlo.MonteCarlo()
     def loss_function(data, subsample_scale):

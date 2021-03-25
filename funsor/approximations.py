@@ -4,7 +4,7 @@
 from collections import OrderedDict
 from functools import reduce, singledispatch
 
-from funsor.cnf import GaussianMixture
+from funsor.cnf import Contraction, GaussianMixture
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _compute_offsets
 from funsor.instrument import debug_logged
@@ -22,6 +22,7 @@ Point-approximate at the argmax of the provided guide.
 """
 
 
+@argmax_approximate.register(Approximate, ops.MaxOp, Funsor, Funsor, frozenset)
 @argmax_approximate.register(Approximate, ops.LogaddexpOp, Funsor, Funsor, frozenset)
 def argmax_approximate_logaddexp(op, model, guide, approx_vars):
     result = model
@@ -86,6 +87,8 @@ def compute_argmax(model, approx_vars):
         variable name in ``approx_vars``.
     :rtype: str
     """
+    if approx_vars.isdisjoint(model.input_vars):
+        return {}  # nothing to do
     raise NotImplementedError
 
 
@@ -189,6 +192,21 @@ def compute_argmax_gaussian_mixture(model, approx_vars):
         discrete = discrete + gaussian.reduce(ops.logaddexp, real_vars)
         result.update(compute_argmax(discrete, int_approx_vars))
 
+    return result
+
+
+@compute_argmax.register(Contraction[ops.NullOp, ops.AddOp, frozenset, tuple])
+def compute_argmax_contract(model, approx_vars):
+    for t1 in model.terms:
+        for t2 in model.terms:
+            if t1 is t2:
+                continue
+            if not approx_vars.isdisjoint(t1.input_vars & t2.input_vars):
+                raise ValueError("should never be here")
+
+    result = {}
+    for term in model.terms:
+        result.update(compute_argmax(term, approx_vars & term.input_vars))
     return result
 
 

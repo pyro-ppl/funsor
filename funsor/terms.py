@@ -15,7 +15,15 @@ from multipledispatch import dispatch
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
+from funsor.domains import (
+    Array,
+    Bint,
+    Domain,
+    Product,
+    ProductDomain,
+    Real,
+    find_domain,
+)
 from funsor.interpretations import (
     Interpretation,
     die,
@@ -28,7 +36,7 @@ from funsor.interpretations import (
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
-from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_origin
+from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_args, get_origin
 from funsor.util import getargspec, lazy_property, pretty, quote
 
 from . import instrument, interpreter, ops
@@ -269,9 +277,12 @@ class Funsor(object, metaclass=FunsorMeta):
         return type_hints
 
     def __repr__(self):
-        return "{}({})".format(
-            type(self).__name__, ", ".join(map(repr, self._ast_values))
-        )
+        try:
+            ast_values = self._ast_values
+        except AttributeError:
+            # E.g. when printing errors during __init__, before ._ast_values is set.
+            return f"{type(self).__name__}(...)"
+        return "{}({})".format(type(self).__name__, ", ".join(map(repr, ast_values)))
 
     def __str__(self):
         return "{}({})".format(
@@ -556,26 +567,41 @@ class Funsor(object, metaclass=FunsorMeta):
     # reduce over output shape while preserving all inputs.
     # To reduce over inputs, instead call .reduce(op, reduced_vars).
 
-    def sum(self):
-        return Unary(ops.add, self)
+    def all(self, axis=None, keepdims=False):
+        return Unary(ops.AllOp(axis, keepdims), self)
 
-    def prod(self):
-        return Unary(ops.mul, self)
+    def any(self, axis=None, keepdims=False):
+        return Unary(ops.AnyOp(axis, keepdims), self)
 
-    def logsumexp(self):
-        return Unary(ops.logaddexp, self)
+    def argmax(self, axis=None, keepdims=False):
+        return Unary(ops.ArgmaxOp(axis, keepdims), self)
 
-    def all(self):
-        return Unary(ops.and_, self)
+    def argmin(self, axis=None, keepdims=False):
+        return Unary(ops.ArgminOp(axis, keepdims), self)
 
-    def any(self):
-        return Unary(ops.or_, self)
+    def max(self, axis=None, keepdims=False):
+        return Unary(ops.AmaxOp(axis, keepdims), self)
 
-    def min(self):
-        return Unary(ops.min, self)
+    def min(self, axis=None, keepdims=False):
+        return Unary(ops.AminOp(axis, keepdims), self)
 
-    def max(self):
-        return Unary(ops.max, self)
+    def sum(self, axis=None, keepdims=False):
+        return Unary(ops.SumOp(axis, keepdims), self)
+
+    def prod(self, axis=None, keepdims=False):
+        return Unary(ops.ProdOp(axis, keepdims), self)
+
+    def logsumexp(self, axis=None, keepdims=False):
+        return Unary(ops.LogsumexpOp(axis, keepdims), self)
+
+    def mean(self, axis=None, keepdims=False):
+        return Unary(ops.MeanOp(axis, keepdims), self)
+
+    def std(self, axis=None, ddof=0, keepdims=False):
+        return Unary(ops.StdOp(axis, ddof, keepdims), self)
+
+    def var(self, axis=None, ddof=0, keepdims=False):
+        return Unary(ops.VarOp(axis, ddof, keepdims), self)
 
     def __add__(self, other):
         return Binary(ops.add, self, to_funsor(other))
@@ -726,7 +752,6 @@ def _(arg, indent, out):
         out[-1] = i, line + ")"
 
 
-interpreter.recursion_reinterpret.register(Funsor)(interpreter.reinterpret_funsor)
 interpreter.children.register(Funsor)(interpreter.children_funsor)
 
 
@@ -1460,7 +1485,7 @@ class Finitary(Funsor):
         inputs = OrderedDict()
         for arg in args:
             inputs.update(arg.inputs)
-        output = find_domain(op, *(arg.output for arg in args))
+        output = find_domain(op, tuple(arg.output for arg in args))
         super().__init__(inputs, output)
         self.op = op
         self.args = args
@@ -1555,7 +1580,8 @@ class Cat(Funsor, metaclass=CatMeta):
         assert isinstance(parts, tuple)
         assert isinstance(part_name, str)
         assert parts
-        assert all(part_name in x.inputs for x in parts)
+        for part in parts:
+            assert part_name in part.inputs, (part_name, part.inputs)
         if part_name != name:
             assert not any(name in x.inputs for x in parts)
         assert len(set(x.output for x in parts)) == 1
@@ -1670,9 +1696,10 @@ class Lambda(Funsor):
 
 @eager.register(Binary, GetitemOp, Lambda, (Funsor, Align))
 def eager_getitem_lambda(op, lhs, rhs):
-    if op.offset == 0:
+    offset = op.defaults["offset"]
+    if offset == 0:
         return Subs(lhs.expr, ((lhs.var.name, rhs),))
-    expr = GetitemOp(op.offset - 1)(lhs.expr, rhs)
+    expr = GetitemOp(offset - 1)(lhs.expr, rhs)
     return Lambda(lhs.var, expr)
 
 
@@ -1704,7 +1731,7 @@ class Independent(Funsor):
         assert isinstance(fn, Funsor)
         assert isinstance(reals_var, str)
         assert isinstance(bint_var, str)
-        assert bint_var in fn.inputs
+        assert bint_var in fn.inputs, (bint_var, fn.inputs)
         assert isinstance(fn.inputs[bint_var].dtype, int)
         assert isinstance(diag_var, str)
         assert diag_var in fn.inputs
@@ -1788,6 +1815,19 @@ class Tuple(Funsor):
             yield self[i]
 
 
+@to_funsor.register(tuple)
+def tuple_to_funsor(args, output=None, dim_to_name=None):
+    if not isinstance(output, ProductDomain):
+        raise NotImplementedError("TODO")
+    outputs = get_args(output)
+    assert len(outputs) == len(args)
+    funsor_args = tuple(
+        to_funsor(arg, output=arg_output, dim_to_name=dim_to_name)
+        for arg, arg_output in zip(args, outputs)
+    )
+    return Tuple(funsor_args)
+
+
 @lazy.register(Binary, GetitemOp, Tuple, Number)
 @eager.register(Binary, GetitemOp, Tuple, Number)
 def eager_getitem_tuple(op, lhs, rhs):
@@ -1834,6 +1874,7 @@ def symbolic(*signature):
             return _symbolic(inputs, output, fn)
     # Usage: @symbolic(Real, Reals[3], Bint[3])
     output = None
+    # FIXME: what is inputs?
     return functools.partial(_symbolic, inputs, output)
 
 
@@ -1916,22 +1957,50 @@ def quote_inplace_first_arg_on_first_line(arg, indent, out):
         out[-1] = i, line + ")"
 
 
-ops.UnaryOp.subclass_register(Funsor)(Unary)
-ops.BinaryOp.subclass_register(Funsor, Funsor)(Binary)
-ops.AssociativeOp.subclass_register(Funsor, Funsor)(Binary)
-ops.AssociativeOp.subclass_register(Funsor)(Unary)  # Reductions.
+@ops.UnaryOp.subclass_register(Funsor)
+def unary_funsor(cls, arg, *args, **kwargs):
+    op = cls(*args, **kwargs)
+    return Unary(op, arg)
+
+
+@ops.BinaryOp.subclass_register(Funsor, Funsor)
+def binary_funsor_funsor(cls, lhs, rhs, *args, **kwargs):
+    op = cls(*args, **kwargs)
+    return Binary(op, lhs, rhs)
 
 
 @ops.BinaryOp.subclass_register(object, Funsor)
-@ops.AssociativeOp.subclass_register(object, Funsor)
-def binary_object_funsor(op, x, y):
-    return Binary(op, to_funsor(x), y)
+def binary_object_funsor(cls, lhs, rhs, *args, **kwargs):
+    op = cls(*args, **kwargs)
+    lhs = to_funsor(lhs)
+    return Binary(op, lhs, rhs)
 
 
 @ops.BinaryOp.subclass_register(Funsor, object)
-@ops.AssociativeOp.subclass_register(Funsor, object)
-def binary_funsor_object(op, x, y):
-    return Binary(op, x, to_funsor(y))
+def binary_funsor_object(cls, lhs, rhs, *args, **kwargs):
+    op = cls(*args, **kwargs)
+    rhs = to_funsor(rhs)
+    return Binary(op, lhs, rhs)
+
+
+@ops.TernaryOp.subclass_register(Funsor, Funsor, Funsor)
+@ops.TernaryOp.subclass_register(Funsor, Funsor, object)
+@ops.TernaryOp.subclass_register(Funsor, object, object)
+@ops.TernaryOp.subclass_register(object, Funsor, object)
+@ops.TernaryOp.subclass_register(object, object, Funsor)
+def ternary_funsor_object(cls, x, y, z, *args, **kwargs):
+    op = cls(*args, **kwargs)
+    x = to_funsor(x)
+    y = to_funsor(y)
+    z = to_funsor(z)
+    return Finitary(op, (x, y, z))
+
+
+# FIXME allow some non-funsors
+@ops.FinitaryOp.subclass_register(typing.Tuple[Funsor, ...])
+def finitary_funsor(cls, arg, *args, **kwargs):
+    op = cls(*args, **kwargs)
+    return Finitary(op, arg)
 
 
 __all__ = [
