@@ -39,6 +39,17 @@ from funsor.testing import (
 from funsor.util import get_backend
 
 
+def test_repr():
+    data = randn(())
+    assert repr(Tensor(data)) == f"Tensor({str(data)})"
+
+    data = randn((2,))
+    assert repr(Tensor(data)) == f"Tensor({str(data)})"
+
+    data = ops.astype(zeros((2,)), "int64")
+    assert repr(Tensor(data, {}, 3)) == f"Tensor({str(data)}, {{}}, 3)"
+
+
 @pytest.mark.parametrize("output_shape", [(), (2,), (3, 2)], ids=str)
 @pytest.mark.parametrize("inputs", [(), ("a",), ("a", "b"), ("b", "a", "c")], ids=str)
 def test_quote(output_shape, inputs):
