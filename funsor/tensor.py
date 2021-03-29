@@ -151,23 +151,25 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     @ignore_jit_warnings()
     def __repr__(self):
+        data = repr(self.data)
         inputs = dict.__repr__(self.inputs)
         if self.dtype != "real":
-            return "Tensor({}, {}, {})".format(self.data, inputs, repr(self.dtype))
+            return "Tensor({}, {}, {})".format(data, inputs, repr(self.dtype))
         elif self.inputs:
-            return "Tensor({}, {})".format(self.data, inputs)
+            return "Tensor({}, {})".format(data, inputs)
         else:
-            return "Tensor({})".format(self.data)
+            return "Tensor({})".format(data)
 
     @ignore_jit_warnings()
     def __str__(self):
+        data = str(self.data)
         inputs = dict.__repr__(self.inputs)
         if self.dtype != "real":
-            return "Tensor({}, {}, {})".format(self.data, inputs, repr(self.dtype))
+            return "Tensor({}, {}, {})".format(data, inputs, repr(self.dtype))
         elif self.inputs:
-            return "Tensor({}, {})".format(self.data, inputs)
+            return "Tensor({}, {})".format(data, inputs)
         else:
-            return str(self.data)
+            return data
 
     def __int__(self):
         return int(self.data)

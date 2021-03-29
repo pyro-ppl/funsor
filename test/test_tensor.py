@@ -41,13 +41,13 @@ from funsor.util import get_backend
 
 def test_repr():
     data = randn(())
-    assert repr(Tensor(data)) == f"Tensor({str(data)})"
+    assert repr(Tensor(data)) == f"Tensor({repr(data)})"
 
     data = randn((2,))
-    assert repr(Tensor(data)) == f"Tensor({str(data)})"
+    assert repr(Tensor(data)) == f"Tensor({repr(data)})"
 
     data = ops.astype(zeros((2,)), "int64")
-    assert repr(Tensor(data, {}, 3)) == f"Tensor({str(data)}, {{}}, 3)"
+    assert repr(Tensor(data, {}, 3)) == f"Tensor({repr(data)}, {{}}, 3)"
 
 
 @pytest.mark.parametrize("output_shape", [(), (2,), (3, 2)], ids=str)
