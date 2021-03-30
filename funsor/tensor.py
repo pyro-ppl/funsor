@@ -151,7 +151,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     @ignore_jit_warnings()
     def __repr__(self):
-        data = str(self.data).replace("\n", "\n       ")
+        data = repr(self.data).replace("\n", "\n       ")
         inputs = dict.__repr__(self.inputs)
         if self.dtype != "real":
             return "Tensor({}, {}, {})".format(data, inputs, repr(self.dtype))
