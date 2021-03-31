@@ -102,7 +102,7 @@ class TensorMeta(FunsorMeta):
     def __call__(cls, data, inputs=None, dtype="real"):
         if inputs is None:
             inputs = tuple()
-        elif isinstance(inputs, OrderedDict):
+        elif isinstance(inputs, dict):
             inputs = tuple(inputs.items())
         # XXX: memoize tests fail for np.generic because those scalar values are hashable?
         # it seems that there is no harm with the conversion generic -> ndarray here
@@ -122,14 +122,14 @@ class Tensor(Funsor, metaclass=TensorMeta):
     For example::
 
         data = torch.zeros(5,4,3,2)
-        x = Tensor(data, OrderedDict([("i", Bint[5]), ("j", Bint[4])]))
+        x = Tensor(data, {"i": Bint[5], "j": Bint[4]})
         assert x.output == Reals[3, 2]
 
     Operators like ``matmul`` and ``.sum()`` operate only on the output shape,
     and will not change the named inputs.
 
     :param numeric_array data: A PyTorch tensor or NumPy ndarray.
-    :param OrderedDict inputs: An optional mapping from input name (str) to
+    :param dict inputs: An optional mapping from input name (str) to
         datatype (``funsor.domains.Domain``). Defaults to empty.
     :param dtype: optional output datatype. Defaults to "real".
     :type dtype: int or the string "real".
@@ -151,21 +151,25 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     @ignore_jit_warnings()
     def __repr__(self):
-        if self.output != "real":
-            return "Tensor({}, {}, {})".format(self.data, self.inputs, repr(self.dtype))
+        data = repr(self.data).replace("\n", "\n       ")
+        inputs = dict.__repr__(self.inputs)
+        if self.dtype != "real":
+            return "Tensor({}, {}, {})".format(data, inputs, repr(self.dtype))
         elif self.inputs:
-            return "Tensor({}, {})".format(self.data, self.inputs)
+            return "Tensor({}, {})".format(data, inputs)
         else:
-            return "Tensor({})".format(self.data)
+            return "Tensor({})".format(data)
 
     @ignore_jit_warnings()
     def __str__(self):
+        data = str(self.data).replace("\n", "\n       ")
+        inputs = dict.__repr__(self.inputs)
         if self.dtype != "real":
-            return "Tensor({}, {}, {})".format(self.data, self.inputs, repr(self.dtype))
+            return "Tensor({}, {}, {})".format(data, inputs, repr(self.dtype))
         elif self.inputs:
-            return "Tensor({}, {})".format(self.data, self.inputs)
+            return "Tensor({}, {})".format(data, inputs)
         else:
-            return str(self.data)
+            return data
 
     def __int__(self):
         return int(self.data)
