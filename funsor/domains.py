@@ -47,7 +47,7 @@ class ArrayType(Domain):
                 result = RealsType(name, (), {"shape": shape})
             elif isinstance(dtype, int):
                 assert dtype >= 0
-                name = "Bint[{}, {}]".format(dtype, ",".join(map(str, shape)))
+                name = "Bint[{}]".format(",".join(map(str, (dtype,) + shape)))
                 result = BintType(name, (), {"dtype": dtype, "shape": shape})
             else:
                 raise ValueError("invalid dtype: {}".format(dtype))
