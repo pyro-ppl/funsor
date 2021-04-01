@@ -40,6 +40,7 @@ Funsor is a tensor-like library for functions and distributions
 
    tutorials/named_tensor_notation_i
    examples/discrete_hmm
+   examples/forward_backward
    examples/eeg_slds
    examples/kalman_filter
    examples/minipyro
