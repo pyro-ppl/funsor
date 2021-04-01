@@ -1,6 +1,6 @@
 makefun
 multipledispatch
-nbsphinx
+nbsphinx==0.8.1
 numpy>=1.7
 opt_einsum>=2.3.2
 pytest>=4.1
