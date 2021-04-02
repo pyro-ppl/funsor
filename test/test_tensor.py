@@ -14,6 +14,8 @@ import pytest
 
 import funsor
 import funsor.ops as ops
+from funsor.cnf import Contraction
+from funsor.delta import Delta
 from funsor.domains import Array, Bint, Product, Real, Reals, find_domain
 from funsor.interpretations import eager, lazy
 from funsor.tensor import (
@@ -1468,3 +1470,32 @@ def test_reduction_batch(op, batch_shape, event_shape):
             actual = op(Tensor(data, inputs), dim, keepdims=keepdims)
             expected = Tensor(raw_reduction(data, dim, keepdims), inputs, dtype)
             assert_close(actual, expected, rtol=rtol)
+
+
+def test_scatter_substitute():
+    expr = Scatter(
+        ops.logaddexp,
+        (('_time_states_38',
+        Number(0, 1),),),
+        Contraction(ops.null, ops.add,
+        frozenset(),
+        (Delta(
+            (('states',
+            (Tensor(
+                np.array(5, dtype=np.int32),
+                (),
+                10),
+            Number(0.0),),),
+            ('_PREV_states',
+            (Tensor(
+                np.array(4, dtype=np.int32),
+                (),
+                10),
+            Number(0.0),),),)),
+        Tensor(
+            np.array(0.3386716842651367, dtype=np.float32),
+            (),
+            'real'),)),
+        frozenset())
+
+    expr(_time_states_38="_time_states")
