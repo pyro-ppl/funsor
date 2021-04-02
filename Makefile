@@ -14,6 +14,7 @@ lint: FORCE
 	black --check .
 	isort --check .
 	python scripts/update_headers.py --check
+	python test/test_import.py
 
 license: FORCE
 	python scripts/update_headers.py
