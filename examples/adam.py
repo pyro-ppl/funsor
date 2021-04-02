@@ -1,3 +1,5 @@
+# Copyright Contributors to the Pyro project.
+# SPDX-License-Identifier: Apache-2.0
 
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
@@ -14,10 +16,10 @@ import torch
 
 import funsor
 import funsor.ops as ops
+from funsor.adam import Adam
 from funsor.domains import Real, Reals
 from funsor.tensor import Tensor
 from funsor.terms import Variable
-from funsor.adam import Adam
 
 
 def main(args):

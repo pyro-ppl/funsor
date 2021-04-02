@@ -19,6 +19,7 @@ class Adam(StatefulInterpretation):
         for name in loss.inputs:
             print(name, optim.params(name))
     """
+
     def __init__(self, num_steps, **kwargs):
         name = kwargs.pop("name", "adam")
         super().__init__(name)
@@ -50,8 +51,10 @@ def adam_min(self, op, loss, reduced_vars):
         import torch
 
         with torch.enable_grad():
-            params = {var.name: self.param(var.name, var.output).data
-                      for var in reduced_vars.intersection(loss.input_vars)}
+            params = {
+                var.name: self.param(var.name, var.output).data
+                for var in reduced_vars.intersection(loss.input_vars)
+            }
             optimizer = torch.optim.Adam(list(params.values()), **self.optim_params)
             for step in range(self.num_steps):
                 optimizer.zero_grad()
