@@ -1,16 +1,21 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+"""
+Example: Kalman Filter
+======================
+
+"""
+
 import argparse
 
 import torch
 
 import funsor
-import funsor.torch.distributions as dist
 import funsor.ops as ops
-from funsor.interpreter import interpretation, reinterpret
+import funsor.torch.distributions as dist
+from funsor.interpreter import reinterpret
 from funsor.optimizer import apply_optimizer
-from funsor.terms import lazy
 
 
 def main(args):
@@ -23,15 +28,15 @@ def main(args):
 
     # A Gaussian HMM model.
     def model(data):
-        log_prob = funsor.to_funsor(0.)
+        log_prob = funsor.to_funsor(0.0)
 
-        x_curr = funsor.Tensor(torch.tensor(0.))
+        x_curr = funsor.Tensor(torch.tensor(0.0))
         for t, y in enumerate(data):
             x_prev = x_curr
 
             # A delayed sample statement.
-            x_curr = funsor.Variable('x_{}'.format(t), funsor.Real)
-            log_prob += dist.Normal(1 + x_prev / 2., trans_noise, value=x_curr)
+            x_curr = funsor.Variable("x_{}".format(t), funsor.Real)
+            log_prob += dist.Normal(1 + x_prev / 2.0, trans_noise, value=x_curr)
 
             # Optionally marginalize out the previous state.
             if t > 0 and not args.lazy:
@@ -51,26 +56,26 @@ def main(args):
     for step in range(args.train_steps):
         optim.zero_grad()
         if args.lazy:
-            with interpretation(lazy):
+            with funsor.interpretations.lazy:
                 log_prob = apply_optimizer(model(data))
             log_prob = reinterpret(log_prob)
         else:
             log_prob = model(data)
-        assert not log_prob.inputs, 'free variables remain'
+        assert not log_prob.inputs, "free variables remain"
         loss = -log_prob.data
         loss.backward()
         optim.step()
         if args.verbose and step % 10 == 0:
-            print('step {} loss = {}'.format(step, loss.item()))
+            print("step {} loss = {}".format(step, loss.item()))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Kalman filter example")
     parser.add_argument("-t", "--time-steps", default=10, type=int)
     parser.add_argument("-n", "--train-steps", default=101, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)
-    parser.add_argument("--lazy", action='store_true')
-    parser.add_argument("--filter", action='store_true')
+    parser.add_argument("--lazy", action="store_true")
+    parser.add_argument("--filter", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
     main(args)

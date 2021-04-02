@@ -7,8 +7,8 @@ import pyro
 import torch
 from torch.distributions import constraints
 
-import funsor.torch.distributions as dist
 import funsor.ops as ops
+import funsor.torch.distributions as dist
 from funsor.domains import Bint, Reals
 from funsor.tensor import Tensor
 from funsor.terms import Stack, Variable, to_funsor
@@ -24,10 +24,7 @@ class Guide(object):
     def initialize_params(self):
 
         # dictionary of guide random effect parameters
-        params = {
-            "eps_g": {},
-            "eps_i": {},
-        }
+        params = {"eps_g": {}, "eps_i": {}}
 
         N_state = self.config["sizes"]["state"]
 
@@ -35,15 +32,16 @@ class Guide(object):
         if self.config["group"]["random"] == "continuous":
 
             params["eps_g"]["loc"] = Tensor(
-                pyro.param("loc_group",
-                           lambda: torch.zeros((N_state, N_state))),
+                pyro.param("loc_group", lambda: torch.zeros((N_state, N_state))),
                 OrderedDict([("y_prev", Bint[N_state])]),
             )
 
             params["eps_g"]["scale"] = Tensor(
-                pyro.param("scale_group",
-                           lambda: torch.ones((N_state, N_state)),
-                           constraint=constraints.positive),
+                pyro.param(
+                    "scale_group",
+                    lambda: torch.ones((N_state, N_state)),
+                    constraint=constraints.positive,
+                ),
                 OrderedDict([("y_prev", Bint[N_state])]),
             )
 
@@ -52,15 +50,18 @@ class Guide(object):
         if self.config["individual"]["random"] == "continuous":
 
             params["eps_i"]["loc"] = Tensor(
-                pyro.param("loc_individual",
-                           lambda: torch.zeros((N_c, N_state, N_state))),
+                pyro.param(
+                    "loc_individual", lambda: torch.zeros((N_c, N_state, N_state))
+                ),
                 OrderedDict([("g", Bint[N_c]), ("y_prev", Bint[N_state])]),
             )
 
             params["eps_i"]["scale"] = Tensor(
-                pyro.param("scale_individual",
-                           lambda: torch.ones((N_c, N_state, N_state)),
-                           constraint=constraints.positive),
+                pyro.param(
+                    "scale_individual",
+                    lambda: torch.ones((N_c, N_state, N_state)),
+                    constraint=constraints.positive,
+                ),
                 OrderedDict([("g", Bint[N_c]), ("y_prev", Bint[N_state])]),
             )
 
@@ -76,7 +77,7 @@ class Guide(object):
         N_c = self.config["sizes"]["group"]
         N_s = self.config["sizes"]["individual"]
 
-        log_prob = Tensor(torch.tensor(0.), OrderedDict())
+        log_prob = Tensor(torch.tensor(0.0), OrderedDict())
 
         plate_g = Tensor(torch.zeros(N_c), OrderedDict([("g", Bint[N_c])]))
         plate_i = Tensor(torch.zeros(N_s), OrderedDict([("i", Bint[N_s])]))
@@ -87,14 +88,15 @@ class Guide(object):
 
         # individual-level random effects
         if self.config["individual"]["random"] == "continuous":
-            eps_i_dist = plate_g + plate_i + dist.Normal(**self.params["eps_i"])(value="eps_i")
+            eps_i_dist = (
+                plate_g + plate_i + dist.Normal(**self.params["eps_i"])(value="eps_i")
+            )
             log_prob += eps_i_dist
 
         return log_prob
 
 
 class Model(object):
-
     def __init__(self, config):
         self.config = config
         self.params = self.initialize_params()
@@ -126,15 +128,16 @@ class Model(object):
         if self.config["group"]["random"] == "discrete":
 
             params["e_g"]["probs"] = Tensor(
-                pyro.param("probs_e_g",
-                           lambda: torch.randn((N_v,)).abs(),
-                           constraint=constraints.simplex),
+                pyro.param(
+                    "probs_e_g",
+                    lambda: torch.randn((N_v,)).abs(),
+                    constraint=constraints.simplex,
+                ),
                 OrderedDict(),
             )
 
             params["eps_g"]["theta"] = Tensor(
-                pyro.param("theta_g",
-                           lambda: torch.randn((N_v, N_state, N_state))),
+                pyro.param("theta_g", lambda: torch.randn((N_v, N_state, N_state))),
                 OrderedDict([("e_g", Bint[N_v]), ("y_prev", Bint[N_state])]),
             )
 
@@ -147,8 +150,7 @@ class Model(object):
             )
 
             params["eps_g"]["scale"] = Tensor(
-                torch.ones((N_state, N_state)),
-                OrderedDict([("y_prev", Bint[N_state])]),
+                torch.ones((N_state, N_state)), OrderedDict([("y_prev", Bint[N_state])])
             )
 
         # initialize individual-level random effect parameters
@@ -156,16 +158,21 @@ class Model(object):
         if self.config["individual"]["random"] == "discrete":
 
             params["e_i"]["probs"] = Tensor(
-                pyro.param("probs_e_i",
-                           lambda: torch.randn((N_c, N_v,)).abs(),
-                           constraint=constraints.simplex),
+                pyro.param(
+                    "probs_e_i",
+                    lambda: torch.randn((N_c, N_v)).abs(),
+                    constraint=constraints.simplex,
+                ),
                 OrderedDict([("g", Bint[N_c])]),  # different value per group
             )
 
             params["eps_i"]["theta"] = Tensor(
-                pyro.param("theta_i",
-                           lambda: torch.randn((N_c, N_v, N_state, N_state))),
-                OrderedDict([("g", Bint[N_c]), ("e_i", Bint[N_v]), ("y_prev", Bint[N_state])]),
+                pyro.param(
+                    "theta_i", lambda: torch.randn((N_c, N_v, N_state, N_state))
+                ),
+                OrderedDict(
+                    [("g", Bint[N_c]), ("e_i", Bint[N_v]), ("y_prev", Bint[N_state])]
+                ),
             )
 
         elif self.config["individual"]["random"] == "continuous":
@@ -183,59 +190,72 @@ class Model(object):
         # initialize likelihood parameters
         # observation 1: step size (step ~ Gamma)
         params["zi_step"]["zi_param"] = Tensor(
-            pyro.param("step_zi_param",
-                       lambda: torch.ones((N_state, 2)),
-                       constraint=constraints.simplex),
+            pyro.param(
+                "step_zi_param",
+                lambda: torch.ones((N_state, 2)),
+                constraint=constraints.simplex,
+            ),
             OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["step"]["concentration"] = Tensor(
-            pyro.param("step_param_concentration",
-                       lambda: torch.randn((N_state,)).abs(),
-                       constraint=constraints.positive),
+            pyro.param(
+                "step_param_concentration",
+                lambda: torch.randn((N_state,)).abs(),
+                constraint=constraints.positive,
+            ),
             OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["step"]["rate"] = Tensor(
-            pyro.param("step_param_rate",
-                       lambda: torch.randn((N_state,)).abs(),
-                       constraint=constraints.positive),
+            pyro.param(
+                "step_param_rate",
+                lambda: torch.randn((N_state,)).abs(),
+                constraint=constraints.positive,
+            ),
             OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         # observation 2: step angle (angle ~ VonMises)
         params["angle"]["concentration"] = Tensor(
-            pyro.param("angle_param_concentration",
-                       lambda: torch.randn((N_state,)).abs(),
-                       constraint=constraints.positive),
+            pyro.param(
+                "angle_param_concentration",
+                lambda: torch.randn((N_state,)).abs(),
+                constraint=constraints.positive,
+            ),
             OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["angle"]["loc"] = Tensor(
-            pyro.param("angle_param_loc",
-                       lambda: torch.randn((N_state,)).abs()),
+            pyro.param("angle_param_loc", lambda: torch.randn((N_state,)).abs()),
             OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         # observation 3: dive activity (omega ~ Beta)
         params["zi_omega"]["zi_param"] = Tensor(
-            pyro.param("omega_zi_param",
-                       lambda: torch.ones((N_state, 2)),
-                       constraint=constraints.simplex),
+            pyro.param(
+                "omega_zi_param",
+                lambda: torch.ones((N_state, 2)),
+                constraint=constraints.simplex,
+            ),
             OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["omega"]["concentration0"] = Tensor(
-            pyro.param("omega_param_concentration0",
-                       lambda: torch.randn((N_state,)).abs(),
-                       constraint=constraints.positive),
+            pyro.param(
+                "omega_param_concentration0",
+                lambda: torch.randn((N_state,)).abs(),
+                constraint=constraints.positive,
+            ),
             OrderedDict([("y_curr", Bint[N_state])]),
         )
 
         params["omega"]["concentration1"] = Tensor(
-            pyro.param("omega_param_concentration1",
-                       lambda: torch.randn((N_state,)).abs(),
-                       constraint=constraints.positive),
+            pyro.param(
+                "omega_param_concentration1",
+                lambda: torch.randn((N_state,)).abs(),
+                constraint=constraints.positive,
+            ),
             OrderedDict([("y_curr", Bint[N_state])]),
         )
 
@@ -246,15 +266,19 @@ class Model(object):
         """
         Convert raw observation tensors into funsor.tensor.Tensors
         """
-        batch_inputs = OrderedDict([
-            ("i", Bint[self.config["sizes"]["individual"]]),
-            ("g", Bint[self.config["sizes"]["group"]]),
-            ("t", Bint[self.config["sizes"]["timesteps"]]),
-        ])
+        batch_inputs = OrderedDict(
+            [
+                ("i", Bint[self.config["sizes"]["individual"]]),
+                ("g", Bint[self.config["sizes"]["group"]]),
+                ("t", Bint[self.config["sizes"]["timesteps"]]),
+            ]
+        )
 
         observations = {}
         for name, data in self.config["observations"].items():
-            observations[name] = Tensor(data[..., :self.config["sizes"]["timesteps"]], batch_inputs)
+            observations[name] = Tensor(
+                data[..., : self.config["sizes"]["timesteps"]], batch_inputs
+            )
 
         self.observations = observations
         return self.observations
@@ -263,11 +287,13 @@ class Model(object):
         """
         Convert raw raggedness tensors into funsor.tensor.Tensors
         """
-        batch_inputs = OrderedDict([
-            ("i", Bint[self.config["sizes"]["individual"]]),
-            ("g", Bint[self.config["sizes"]["group"]]),
-            ("t", Bint[self.config["sizes"]["timesteps"]]),
-        ])
+        batch_inputs = OrderedDict(
+            [
+                ("i", Bint[self.config["sizes"]["individual"]]),
+                ("g", Bint[self.config["sizes"]["group"]]),
+                ("t", Bint[self.config["sizes"]["timesteps"]]),
+            ]
+        )
 
         raggedness_masks = {}
         for name in ("individual", "timestep"):
@@ -277,8 +303,9 @@ class Model(object):
                     data = data.unsqueeze(-1)
                 data = data.expand(tuple(v.dtype for v in batch_inputs.values()))
             data = data.to(self.config["observations"]["step"].dtype)
-            raggedness_masks[name] = Tensor(data[..., :self.config["sizes"]["timesteps"]],
-                                            batch_inputs)
+            raggedness_masks[name] = Tensor(
+                data[..., : self.config["sizes"]["timesteps"]], batch_inputs
+            )
 
         self.raggedness_masks = raggedness_masks
         return self.raggedness_masks
@@ -293,8 +320,7 @@ class Model(object):
 
         # initialize gamma to uniform
         gamma = Tensor(
-            torch.zeros((N_state, N_state)),
-            OrderedDict([("y_prev", Bint[N_state])]),
+            torch.zeros((N_state, N_state)), OrderedDict([("y_prev", Bint[N_state])])
         )
 
         N_v = self.config["sizes"]["random"]
@@ -319,7 +345,7 @@ class Model(object):
 
             log_prob.append(eps_g_dist)
         else:
-            eps_g = to_funsor(0.)
+            eps_g = to_funsor(0.0)
 
         N_s = self.config["sizes"]["individual"]
 
@@ -328,21 +354,26 @@ class Model(object):
         if self.config["individual"]["random"] == "discrete":
             # individual-level discrete effect
             e_i = Variable("e_i", Bint[N_v])
-            e_i_dist = plate_g + plate_i + dist.Categorical(
-                **self.params["e_i"]
-            )(value=e_i) * self.raggedness_masks["individual"](t=0)
+            e_i_dist = (
+                plate_g
+                + plate_i
+                + dist.Categorical(**self.params["e_i"])(value=e_i)
+                * self.raggedness_masks["individual"](t=0)
+            )
 
             log_prob.append(e_i_dist)
 
-            eps_i = (plate_i + plate_g + self.params["eps_i"]["theta"](e_i=e_i))
+            eps_i = plate_i + plate_g + self.params["eps_i"]["theta"](e_i=e_i)
 
         elif self.config["individual"]["random"] == "continuous":
             eps_i = Variable("eps_i", Reals[N_state])
-            eps_i_dist = plate_g + plate_i + dist.Normal(**self.params["eps_i"])(value=eps_i)
+            eps_i_dist = (
+                plate_g + plate_i + dist.Normal(**self.params["eps_i"])(value=eps_i)
+            )
 
             log_prob.append(eps_i_dist)
         else:
-            eps_i = to_funsor(0.)
+            eps_i = to_funsor(0.0)
 
         # add group-level and individual-level random effects to gamma
         gamma = gamma + eps_g + eps_i
@@ -353,40 +384,70 @@ class Model(object):
         gamma_y = gamma(y_prev="y(t=1)")
 
         y = Variable("y", Bint[N_state])
-        y_dist = plate_g + plate_i + dist.Categorical(
-            probs=gamma_y.exp() / gamma_y.exp().sum()
-        )(value=y)
+        y_dist = (
+            plate_g
+            + plate_i
+            + dist.Categorical(probs=gamma_y.exp() / gamma_y.exp().sum())(value=y)
+        )
 
         # observation 1: step size
-        step_dist = plate_g + plate_i + dist.Gamma(
-            **{k: v(y_curr=y) for k, v in self.params["step"].items()}
-        )(value=self.observations["step"])
+        step_dist = (
+            plate_g
+            + plate_i
+            + dist.Gamma(**{k: v(y_curr=y) for k, v in self.params["step"].items()})(
+                value=self.observations["step"]
+            )
+        )
 
         # step size zero-inflation
         if self.config["zeroinflation"]:
-            step_zi = dist.Categorical(probs=self.params["zi_step"]["zi_param"](y_curr=y))(
-                value="zi_step")
-            step_zi_dist = plate_g + plate_i + dist.Delta(self.config["MISSING"], 0.)(
-                value=self.observations["step"])
-            step_dist = (step_zi + Stack("zi_step", (step_dist, step_zi_dist))).reduce(ops.logaddexp, "zi_step")
+            step_zi = dist.Categorical(
+                probs=self.params["zi_step"]["zi_param"](y_curr=y)
+            )(value="zi_step")
+            step_zi_dist = (
+                plate_g
+                + plate_i
+                + dist.Delta(self.config["MISSING"], 0.0)(
+                    value=self.observations["step"]
+                )
+            )
+            step_dist = (step_zi + Stack("zi_step", (step_dist, step_zi_dist))).reduce(
+                ops.logaddexp, "zi_step"
+            )
 
         # observation 2: step angle
-        angle_dist = plate_g + plate_i + dist.VonMises(
-            **{k: v(y_curr=y) for k, v in self.params["angle"].items()}
-        )(value=self.observations["angle"])
+        angle_dist = (
+            plate_g
+            + plate_i
+            + dist.VonMises(
+                **{k: v(y_curr=y) for k, v in self.params["angle"].items()}
+            )(value=self.observations["angle"])
+        )
 
         # observation 3: dive activity
-        omega_dist = plate_g + plate_i + dist.Beta(
-            **{k: v(y_curr=y) for k, v in self.params["omega"].items()}
-        )(value=self.observations["omega"])
+        omega_dist = (
+            plate_g
+            + plate_i
+            + dist.Beta(**{k: v(y_curr=y) for k, v in self.params["omega"].items()})(
+                value=self.observations["omega"]
+            )
+        )
 
         # dive activity zero-inflation
         if self.config["zeroinflation"]:
-            omega_zi = dist.Categorical(probs=self.params["zi_omega"]["zi_param"](y_curr=y))(
-                value="zi_omega")
-            omega_zi_dist = plate_g + plate_i + dist.Delta(self.config["MISSING"], 0.)(
-                value=self.observations["omega"])
-            omega_dist = (omega_zi + Stack("zi_omega", (omega_dist, omega_zi_dist))).reduce(ops.logaddexp, "zi_omega")
+            omega_zi = dist.Categorical(
+                probs=self.params["zi_omega"]["zi_param"](y_curr=y)
+            )(value="zi_omega")
+            omega_zi_dist = (
+                plate_g
+                + plate_i
+                + dist.Delta(self.config["MISSING"], 0.0)(
+                    value=self.observations["omega"]
+                )
+            )
+            omega_dist = (
+                omega_zi + Stack("zi_omega", (omega_dist, omega_zi_dist))
+            ).reduce(ops.logaddexp, "zi_omega")
 
         # finally, construct the term for parallel scan reduction
         hmm_factor = step_dist + angle_dist + omega_dist

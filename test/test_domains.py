@@ -6,15 +6,25 @@ import pickle
 
 import pytest
 
-from funsor.domains import Bint, Real, Reals, Bint, Reals  # noqa F401
+from funsor.domains import Bint, Real, Reals
 
 
-@pytest.mark.parametrize('expr', [
-    "Bint[2]",
-    "Real",
-    "Reals[4]",
-    "Reals[3, 2]",
-])
+def test_str():
+    assert str(Bint[3]) == "Bint[3]"
+    assert str(Real) == "Real"
+    assert str(Reals[2]) == "Reals[2]"
+    assert str(Reals[2, 3]) == "Reals[2,3]"
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        "Bint[2]",
+        "Real",
+        "Reals[4]",
+        "Reals[3, 2]",
+    ],
+)
 def test_pickle(expr):
     x = eval(expr)
     f = io.BytesIO()

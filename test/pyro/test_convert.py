@@ -17,7 +17,7 @@ from funsor.pyro.convert import (
     funsor_to_tensor,
     matrix_and_mvn_to_funsor,
     mvn_to_funsor,
-    tensor_to_funsor
+    tensor_to_funsor,
 )
 from funsor.tensor import Tensor
 from funsor.terms import Funsor, Variable
@@ -28,14 +28,14 @@ BATCH_SHAPES = [(), (1,), (4,), (2, 3), (1, 2, 1, 3, 1)]
 REAL_SIZES = [(1,), (1, 1), (1, 1, 1), (1, 2), (2, 1), (2, 3), (3, 1, 2)]
 
 
-@pytest.mark.parametrize("event_shape,event_output", [
-    (shape, size)
-    for shape in EVENT_SHAPES
-    for size in range(len(shape))
-], ids=str)
+@pytest.mark.parametrize(
+    "event_shape,event_output",
+    [(shape, size) for shape in EVENT_SHAPES for size in range(len(shape))],
+    ids=str,
+)
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_tensor_funsor_tensor(batch_shape, event_shape, event_output):
-    event_inputs = ("foo", "bar", "baz")[:len(event_shape) - event_output]
+    event_inputs = ("foo", "bar", "baz")[: len(event_shape) - event_output]
     t = torch.randn(batch_shape + event_shape)
     f = tensor_to_funsor(t, event_inputs, event_output)
     t2 = funsor_to_tensor(f, t.dim(), event_inputs)
@@ -77,21 +77,27 @@ def test_mvn_to_funsor(batch_shape, event_shape, event_sizes):
 
 @pytest.mark.parametrize("x_size", [1, 2])
 @pytest.mark.parametrize("y_size", [1, 3])
-@pytest.mark.parametrize("matrix_shape,loc_shape,scale_shape,x_shape,y_shape", [
-    ((), (), (), (), ()),
-    ((4,), (4,), (4,), (4,), (4,)),
-    ((4, 5), (4, 5), (4, 5), (4, 5), (4, 5)),
-    ((4,), (), (), (), ()),
-    ((), (4,), (), (), ()),
-    ((), (), (4,), (), ()),
-    ((), (), (), (4,), ()),
-    ((), (), (), (), (4,)),
-], ids=str)
-def test_affine_normal(matrix_shape, loc_shape, scale_shape, x_shape, y_shape,
-                       x_size, y_size):
-
+@pytest.mark.parametrize(
+    "matrix_shape,loc_shape,scale_shape,x_shape,y_shape",
+    [
+        ((), (), (), (), ()),
+        ((4,), (4,), (4,), (4,), (4,)),
+        ((4, 5), (4, 5), (4, 5), (4, 5), (4, 5)),
+        ((4,), (), (), (), ()),
+        ((), (4,), (), (), ()),
+        ((), (), (4,), (), ()),
+        ((), (), (), (4,), ()),
+        ((), (), (), (), (4,)),
+    ],
+    ids=str,
+)
+def test_affine_normal(
+    matrix_shape, loc_shape, scale_shape, x_shape, y_shape, x_size, y_size
+):
     def _rand(batch_shape, *event_shape):
-        inputs = OrderedDict(zip("abcdef", map(Bint.__getitem__, reversed(batch_shape))))
+        inputs = OrderedDict(
+            zip("abcdef", map(Bint.__getitem__, reversed(batch_shape)))
+        )
         return random_tensor(inputs, Reals[event_shape])
 
     matrix = _rand(matrix_shape, x_size, y_size)
@@ -100,9 +106,9 @@ def test_affine_normal(matrix_shape, loc_shape, scale_shape, x_shape, y_shape,
     value_x = _rand(x_shape, x_size)
     value_y = _rand(y_shape, y_size)
 
-    f = AffineNormal(matrix, loc, scale,
-                     Variable("x", Reals[x_size]),
-                     Variable("y", Reals[y_size]))
+    f = AffineNormal(
+        matrix, loc, scale, Variable("x", Reals[x_size]), Variable("y", Reals[y_size])
+    )
     assert isinstance(f, AffineNormal)
 
     # Evaluate via two different patterns.
@@ -122,8 +128,9 @@ def test_matrix_and_mvn_to_funsor(batch_shape, event_shape, x_size, y_size):
     int_inputs = OrderedDict((k, Bint[size]) for k, size in zip("abc", event_shape))
     real_inputs = OrderedDict([("x", Reals[x_size]), ("y", Reals[y_size])])
 
-    f = (matrix_and_mvn_to_funsor(matrix, y_mvn, tuple(int_inputs), "x", "y") +
-         mvn_to_funsor(xy_mvn, tuple(int_inputs), real_inputs))
+    f = matrix_and_mvn_to_funsor(
+        matrix, y_mvn, tuple(int_inputs), "x", "y"
+    ) + mvn_to_funsor(xy_mvn, tuple(int_inputs), real_inputs)
     assert isinstance(f, Funsor)
     for k, d in int_inputs.items():
         if d.num_elements == 1:
@@ -139,7 +146,8 @@ def test_matrix_and_mvn_to_funsor(batch_shape, event_shape, x_size, y_size):
     y_pred = x.unsqueeze(-2).matmul(matrix).squeeze(-2)
     actual_log_prob = f(x=x, y=y)
     expected_log_prob = tensor_to_funsor(
-        xy_mvn.log_prob(xy) + y_mvn.log_prob(y - y_pred), tuple(int_inputs))
+        xy_mvn.log_prob(xy) + y_mvn.log_prob(y - y_pred), tuple(int_inputs)
+    )
     assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=1e-4)
 
 
@@ -174,7 +182,7 @@ def test_matrix_and_mvn_to_funsor_diag(batch_shape, x_size, y_size):
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)
 def test_funsor_to_mvn(batch_shape, event_shape, real_size):
     expected = random_mvn(batch_shape + event_shape, real_size)
-    event_dims = tuple("abc"[:len(event_shape)])
+    event_dims = tuple("abc"[: len(event_shape)])
     ndims = len(expected.batch_shape)
 
     funsor_ = dist_to_funsor(expected, event_dims)(value="value")
@@ -184,8 +192,9 @@ def test_funsor_to_mvn(batch_shape, event_shape, real_size):
     assert isinstance(actual, dist.MultivariateNormal)
     assert actual.batch_shape == expected.batch_shape
     assert_close(actual.loc, expected.loc, atol=1e-3, rtol=None)
-    assert_close(actual.precision_matrix,
-                 expected.precision_matrix, atol=1e-3, rtol=None)
+    assert_close(
+        actual.precision_matrix, expected.precision_matrix, atol=1e-3, rtol=None
+    )
 
 
 @pytest.mark.parametrize("int_size", [2, 3])
@@ -196,11 +205,12 @@ def test_funsor_to_cat_and_mvn(batch_shape, event_shape, int_size, real_size):
     logits = torch.randn(batch_shape + event_shape + (int_size,))
     expected_cat = dist.Categorical(logits=logits)
     expected_mvn = random_mvn(batch_shape + event_shape + (int_size,), real_size)
-    event_dims = tuple("abc"[:len(event_shape)]) + ("component",)
+    event_dims = tuple("abc"[: len(event_shape)]) + ("component",)
     ndims = len(expected_cat.batch_shape)
 
-    funsor_ = (tensor_to_funsor(logits, event_dims) +
-               dist_to_funsor(expected_mvn, event_dims)(value="value"))
+    funsor_ = tensor_to_funsor(logits, event_dims) + dist_to_funsor(
+        expected_mvn, event_dims
+    )(value="value")
     assert isinstance(funsor_, Funsor)
 
     actual_cat, actual_mvn = funsor_to_cat_and_mvn(funsor_, ndims, event_dims)
@@ -210,8 +220,9 @@ def test_funsor_to_cat_and_mvn(batch_shape, event_shape, int_size, real_size):
     assert actual_mvn.batch_shape == expected_mvn.batch_shape
     assert_close(actual_cat.logits, expected_cat.logits, atol=1e-4, rtol=None)
     assert_close(actual_mvn.loc, expected_mvn.loc, atol=1e-4, rtol=None)
-    assert_close(actual_mvn.precision_matrix,
-                 expected_mvn.precision_matrix, atol=1e-4, rtol=None)
+    assert_close(
+        actual_mvn.precision_matrix, expected_mvn.precision_matrix, atol=1e-4, rtol=None
+    )
 
 
 @pytest.mark.parametrize("batch_shape", BATCH_SHAPES, ids=str)

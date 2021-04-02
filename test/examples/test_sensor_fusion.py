@@ -6,8 +6,8 @@ from collections import OrderedDict
 import pytest
 import torch
 
-import funsor.torch.distributions as dist
 import funsor.ops as ops
+import funsor.torch.distributions as dist
 from funsor.cnf import Contraction
 from funsor.domains import Bint, Reals
 from funsor.gaussian import Gaussian
@@ -18,7 +18,7 @@ from funsor.testing import random_mvn
 
 
 # This version constructs factors using funsor.torch.distributions.
-@pytest.mark.parametrize('state_dim,obs_dim', [(3, 2), (2, 3)])
+@pytest.mark.parametrize("state_dim,obs_dim", [(3, 2), (2, 3)])
 def test_distributions(state_dim, obs_dim):
     data = Tensor(torch.randn(2, obs_dim))["time"]
 
@@ -32,7 +32,8 @@ def test_distributions(state_dim, obs_dim):
     trans_dist = dist.MultivariateNormal(
         loc=trans_mvn.loc,
         scale_tril=trans_mvn.scale_tril,
-        value=curr - prev @ trans_mat)
+        value=curr - prev @ trans_mat,
+    )
 
     state = Variable("state", Reals[state_dim])
     obs = Variable("obs", Reals[obs_dim])
@@ -41,7 +42,8 @@ def test_distributions(state_dim, obs_dim):
     obs_dist = dist.MultivariateNormal(
         loc=obs_mvn.loc,
         scale_tril=obs_mvn.scale_tril,
-        value=state @ obs_mat + bias - obs)
+        value=state @ obs_mat + bias - obs,
+    )
 
     log_prob = 0
     log_prob += bias_dist
@@ -89,19 +91,88 @@ def test_pyro_convert():
 def test_affine_subs():
     # This was recorded from test_pyro_convert.
     x = Subs(
-     Gaussian(
-      torch.tensor([1.3027106523513794, 1.4167094230651855, -0.9750942587852478, 0.5321089029312134, -0.9039931297302246], dtype=torch.float32),  # noqa
-      torch.tensor([[1.0199567079544067, 0.9840421676635742, -0.473368763923645, 0.34206756949424744, -0.7562517523765564], [0.9840421676635742, 1.511502742767334, -1.7593903541564941, 0.6647964119911194, -0.5119513273239136], [-0.4733688533306122, -1.7593903541564941, 3.2386727333068848, -0.9345928430557251, -0.1534711718559265], [0.34206756949424744, 0.6647964119911194, -0.9345928430557251, 0.3141004145145416, -0.12399007380008698], [-0.7562517523765564, -0.5119513273239136, -0.1534711718559265, -0.12399007380008698, 0.6450173854827881]], dtype=torch.float32),  # noqa
-      (('state_1_b6',
-        Reals[3],),
-       ('obs_b2',
-        Reals[2],),)),
-     (('obs_b2',
-       Contraction(ops.nullop, ops.add,
-        frozenset(),
-        (Variable('bias_b5', Reals[2]),
-         Tensor(
-          torch.tensor([-2.1787893772125244, 0.5684312582015991], dtype=torch.float32),  # noqa
-          (),
-          'real'),)),),))
+        Gaussian(
+            torch.tensor(
+                [
+                    1.3027106523513794,
+                    1.4167094230651855,
+                    -0.9750942587852478,
+                    0.5321089029312134,
+                    -0.9039931297302246,
+                ],
+                dtype=torch.float32,
+            ),  # noqa
+            torch.tensor(
+                [
+                    [
+                        1.0199567079544067,
+                        0.9840421676635742,
+                        -0.473368763923645,
+                        0.34206756949424744,
+                        -0.7562517523765564,
+                    ],
+                    [
+                        0.9840421676635742,
+                        1.511502742767334,
+                        -1.7593903541564941,
+                        0.6647964119911194,
+                        -0.5119513273239136,
+                    ],
+                    [
+                        -0.4733688533306122,
+                        -1.7593903541564941,
+                        3.2386727333068848,
+                        -0.9345928430557251,
+                        -0.1534711718559265,
+                    ],
+                    [
+                        0.34206756949424744,
+                        0.6647964119911194,
+                        -0.9345928430557251,
+                        0.3141004145145416,
+                        -0.12399007380008698,
+                    ],
+                    [
+                        -0.7562517523765564,
+                        -0.5119513273239136,
+                        -0.1534711718559265,
+                        -0.12399007380008698,
+                        0.6450173854827881,
+                    ],
+                ],
+                dtype=torch.float32,
+            ),  # noqa
+            (
+                (
+                    "state_1_b6",
+                    Reals[3],
+                ),
+                (
+                    "obs_b2",
+                    Reals[2],
+                ),
+            ),
+        ),
+        (
+            (
+                "obs_b2",
+                Contraction(
+                    ops.null,
+                    ops.add,
+                    frozenset(),
+                    (
+                        Variable("bias_b5", Reals[2]),
+                        Tensor(
+                            torch.tensor(
+                                [-2.1787893772125244, 0.5684312582015991],
+                                dtype=torch.float32,
+                            ),  # noqa
+                            (),
+                            "real",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
     assert isinstance(x, (Gaussian, Contraction)), x.pretty()

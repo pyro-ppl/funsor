@@ -5,7 +5,18 @@ import math
 import operator
 from numbers import Number
 
-from .op import DISTRIBUTIVE_OPS, PRODUCT_INVERSES, UNITS, Op, TransformOp
+from .op import (
+    BINARY_INVERSES,
+    DISTRIBUTIVE_OPS,
+    SAFE_BINARY_INVERSES,
+    UNARY_INVERSES,
+    UNITS,
+    BinaryOp,
+    Op,
+    TransformOp,
+    UnaryOp,
+    declare_op_types,
+)
 
 _builtin_abs = abs
 _builtin_max = max
@@ -15,192 +26,136 @@ _builtin_sum = sum
 
 
 # FIXME Most code assumes this is an AssociativeCommutativeOp.
-class AssociativeOp(Op):
+class AssociativeOp(BinaryOp):
     pass
 
 
-class AddOp(AssociativeOp):
-    pass
-
-
-class MulOp(AssociativeOp):
-    pass
-
-
-class MatmulOp(Op):  # Associtive but not commutative.
-    pass
-
-
-class SubOp(Op):
-    pass
-
-
-class NegOp(Op):
-    pass
-
-
-class DivOp(Op):
-    pass
-
-
-class NullOp(AssociativeOp):
+@AssociativeOp.make
+def null(x, y):
     """Placeholder associative op that unifies with any other op"""
-    pass
-
-
-@NullOp
-def nullop(x, y):
     raise ValueError("should never actually evaluate this!")
 
 
-class GetitemMeta(type):
-    _cache = {}
-
-    def __call__(cls, offset):
-        try:
-            return GetitemMeta._cache[offset]
-        except KeyError:
-            instance = super(GetitemMeta, cls).__call__(offset)
-            GetitemMeta._cache[offset] = instance
-            return instance
+@BinaryOp.make
+def getitem(lhs, rhs, offset=0):
+    if offset == 0:
+        return lhs[rhs]
+    return lhs[(slice(None),) * offset + (rhs,)]
 
 
-class GetitemOp(Op, metaclass=GetitemMeta):
-    """
-    Op encoding an index into one dimension, e.g. ``x[:,:,y]`` for offset of 2.
-    """
-    def __init__(self, offset):
-        assert isinstance(offset, int)
-        assert offset >= 0
-        self.offset = offset
-        self._prefix = (slice(None),) * offset
-        super(GetitemOp, self).__init__(self._default)
-        self.__name__ = 'GetitemOp({})'.format(offset)
-
-    def __reduce__(self):
-        return GetitemOp, (self.offset,)
-
-    def _default(self, x, y):
-        return x[self._prefix + (y,)] if self.offset else x[y]
-
-
-getitem = GetitemOp(0)
-abs = Op(_builtin_abs)
-eq = Op(operator.eq)
-ge = Op(operator.ge)
-gt = Op(operator.gt)
-invert = Op(operator.invert)
-le = Op(operator.le)
-lt = Op(operator.lt)
-ne = Op(operator.ne)
-neg = NegOp(operator.neg)
-sub = SubOp(operator.sub)
-truediv = DivOp(operator.truediv)
-
-add = AddOp(operator.add)
-and_ = AssociativeOp(operator.and_)
-mul = MulOp(operator.mul)
-matmul = MatmulOp(operator.matmul)
-or_ = AssociativeOp(operator.or_)
-xor = AssociativeOp(operator.xor)
+abs = UnaryOp.make(_builtin_abs)
+eq = BinaryOp.make(operator.eq)
+ge = BinaryOp.make(operator.ge)
+gt = BinaryOp.make(operator.gt)
+invert = UnaryOp.make(operator.invert)
+le = BinaryOp.make(operator.le)
+lt = BinaryOp.make(operator.lt)
+ne = BinaryOp.make(operator.ne)
+pos = UnaryOp.make(operator.pos)
+neg = UnaryOp.make(operator.neg)
+pow = BinaryOp.make(operator.pow)
+sub = BinaryOp.make(operator.sub)
+truediv = BinaryOp.make(operator.truediv)
+floordiv = BinaryOp.make(operator.floordiv)
+add = AssociativeOp.make(operator.add)
+and_ = AssociativeOp.make(operator.and_)
+mul = AssociativeOp.make(operator.mul)
+matmul = BinaryOp.make(operator.matmul)
+mod = BinaryOp.make(operator.mod)
+lshift = BinaryOp.make(operator.lshift)
+rshift = BinaryOp.make(operator.rshift)
+or_ = AssociativeOp.make(operator.or_)
+xor = AssociativeOp.make(operator.xor)
 
 
-@add.register(object)
-def _unary_add(x):
-    return x.sum()
+@AssociativeOp.make
+def max(lhs, rhs):
+    return _builtin_max(lhs, rhs)
 
 
-@Op
-def sqrt(x):
-    return math.sqrt(x)
+@AssociativeOp.make
+def min(lhs, rhs):
+    return _builtin_min(lhs, rhs)
 
 
-class ExpOp(TransformOp):
-    pass
+lgamma = UnaryOp.make(math.lgamma)
+log1p = UnaryOp.make(math.log1p)
+sqrt = UnaryOp.make(math.sqrt)
 
 
-@ExpOp
-def exp(x):
-    return math.exp(x)
+@UnaryOp.make
+def reciprocal(x):
+    if isinstance(x, Number):
+        return 1.0 / x
+    raise ValueError("No reciprocal for type {}".format(type(x)))
 
 
-@exp.set_log_abs_det_jacobian
-def log_abs_det_jacobian(x, y):
-    return add(x)
+@UnaryOp.make
+def softplus(x):
+    return log(1.0 + exp(x))
 
 
-class LogOp(TransformOp):
-    pass
-
-
-@LogOp
+@TransformOp.make
 def log(x):
     return math.log(x) if x > 0 else -math.inf
 
 
-@log.set_log_abs_det_jacobian
-def log_abs_det_jacobian(x, y):
-    return -add(y)
+exp = TransformOp.make(math.exp)
+tanh = TransformOp.make(math.tanh)
+atanh = TransformOp.make(math.atanh)
 
 
-exp.set_inv(log)
-log.set_inv(exp)
-
-
-@Op
-def log1p(x):
-    return math.log1p(x)
-
-
-@Op
+@TransformOp.make
 def sigmoid(x):
     return 1 / (1 + exp(-x))
 
 
-@Op
-def pow(x, y):
-    return x ** y
-
-
-@AssociativeOp
-def min(x, y):
-    if hasattr(x, '__min__'):
-        return x.__min__(y)
-    if hasattr(y, '__min__'):
-        return y.__min__(x)
-    return _builtin_min(x, y)
-
-
-@AssociativeOp
-def max(x, y):
-    if hasattr(x, '__max__'):
-        return x.__max__(y)
-    if hasattr(y, '__max__'):
-        return y.__max__(x)
-    return _builtin_max(x, y)
-
-
-@SubOp
+@sub.make
 def safesub(x, y):
     if isinstance(y, Number):
         return sub(x, y)
 
 
-@DivOp
+@truediv.make
 def safediv(x, y):
     if isinstance(y, Number):
-        return truediv(x, y)
+        return operator.truediv(x, y)
 
 
-class ReciprocalOp(Op):
-    pass
+@exp.set_log_abs_det_jacobian
+def log_abs_det_jacobian(x, y):
+    return x.sum()
 
 
-@ReciprocalOp
-def reciprocal(x):
-    if isinstance(x, Number):
-        return 1. / x
-    raise ValueError("No reciprocal for type {}".format(type(x)))
+@log.set_log_abs_det_jacobian
+def log_abs_det_jacobian(x, y):
+    return -y.sum()
+
+
+exp.set_inv(log)
+log.set_inv(exp)
+tanh.set_inv(atanh)
+atanh.set_inv(tanh)
+
+
+@tanh.set_log_abs_det_jacobian
+def tanh_log_abs_det_jacobian(x, y):
+    return 2.0 * (math.log(2.0) - x - softplus(-2.0 * x))
+
+
+@atanh.set_log_abs_det_jacobian
+def atanh_log_abs_det_jacobian(x, y):
+    return -tanh.log_abs_det_jacobian(y, x)
+
+
+@sigmoid.set_inv
+def sigmoid_inv(y):
+    return log(y) - log1p(-y)
+
+
+@sigmoid.set_log_abs_det_jacobian
+def sigmoid_log_abs_det_jacobian(x, y):
+    return -softplus(-x) - softplus(x)
 
 
 DISTRIBUTIVE_OPS.add((add, mul))
@@ -208,57 +163,72 @@ DISTRIBUTIVE_OPS.add((max, mul))
 DISTRIBUTIVE_OPS.add((min, mul))
 DISTRIBUTIVE_OPS.add((max, add))
 DISTRIBUTIVE_OPS.add((min, add))
+DISTRIBUTIVE_OPS.add((or_, and_))
 
-UNITS[mul] = 1.
-UNITS[add] = 0.
+UNITS[mul] = 1.0
+UNITS[add] = 0.0
+UNITS[max] = -math.inf
+UNITS[min] = math.inf
+UNITS[and_] = False
+UNITS[xor] = False
+UNITS[or_] = True
 
-PRODUCT_INVERSES[mul] = safediv
-PRODUCT_INVERSES[add] = safesub
+BINARY_INVERSES[mul] = truediv
+BINARY_INVERSES[add] = sub
+BINARY_INVERSES[xor] = xor
+
+SAFE_BINARY_INVERSES[mul] = safediv
+SAFE_BINARY_INVERSES[add] = safesub
+
+UNARY_INVERSES[mul] = reciprocal
+UNARY_INVERSES[add] = neg
 
 __all__ = [
-    'AddOp',
-    'AssociativeOp',
-    'DivOp',
-    'ExpOp',
-    'GetitemOp',
-    'LogOp',
-    'MatmulOp',
-    'MulOp',
-    'NegOp',
-    'NullOp',
-    'ReciprocalOp',
-    'SubOp',
-    'abs',
-    'add',
-    'and_',
-    'eq',
-    'exp',
-    'ge',
-    'getitem',
-    'gt',
-    'invert',
-    'le',
-    'log',
-    'log1p',
-    'lt',
-    'matmul',
-    'max',
-    'min',
-    'mul',
-    'ne',
-    'neg',
-    'nullop',
-    'or_',
-    'pow',
-    'reciprocal',
-    'safediv',
-    'safesub',
-    'sigmoid',
-    'sqrt',
-    'sub',
-    'truediv',
-    'xor',
+    "AssociativeOp",
+    "abs",
+    "add",
+    "and_",
+    "atanh",
+    "eq",
+    "exp",
+    "floordiv",
+    "ge",
+    "getitem",
+    "gt",
+    "invert",
+    "le",
+    "lgamma",
+    "log",
+    "log1p",
+    "lshift",
+    "lt",
+    "matmul",
+    "max",
+    "min",
+    "mod",
+    "mul",
+    "ne",
+    "neg",
+    "null",
+    "or_",
+    "pos",
+    "pow",
+    "reciprocal",
+    "rshift",
+    "safediv",
+    "safesub",
+    "sigmoid",
+    "sqrt",
+    "sub",
+    "tanh",
+    "truediv",
+    "xor",
 ]
 
-__doc__ = "\n".join(".. autodata:: {}\n".format(_name)
-                    for _name in __all__ if isinstance(globals()[_name], Op))
+declare_op_types(globals(), __all__, __name__)
+
+__doc__ = "\n".join(
+    ".. autodata:: {}\n".format(_name)
+    for _name in __all__
+    if isinstance(globals()[_name], Op)
+)

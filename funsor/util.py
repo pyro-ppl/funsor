@@ -4,6 +4,7 @@
 import functools
 import inspect
 import re
+import sys
 
 import numpy as np
 
@@ -65,8 +66,8 @@ def quote(arg):
     for indent, line in out:
         if indent + len(line) >= 80:
             line += "  # noqa"
-        lines.append(' ' * indent + line)
-    return '\n'.join(lines)
+        lines.append(" " * indent + line)
+    return "\n".join(lines)
 
 
 def pretty(arg, maxlen=40):
@@ -75,18 +76,18 @@ def pretty(arg, maxlen=40):
     """
     out = []
     _quote_inplace(arg, 0, out)
-    fill = u'   \u2502' * 100
+    fill = u"   \u2502" * 100
     lines = []
     for indent, line in out:
         if len(line) > maxlen:
             line = line[:maxlen] + "..."
         lines.append(fill[:indent] + line)
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 @functools.singledispatch
 def _quote_inplace(arg, indent, out):
-    line = re.sub('\n\\s*', ' ', repr(arg))
+    line = re.sub("\n\\s*", " ", repr(arg))
     out.append((indent, line))
 
 
@@ -106,13 +107,13 @@ def _(arg, indent, out):
         temp[0] = i - 1, "(" + line
         out.extend(temp)
         i, line = out[-1]
-        out[-1] = i, line + ','
+        out[-1] = i, line + ","
     for value in arg[1:]:
         quote.inplace(value, indent + 1, out)
         i, line = out[-1]
-        out[-1] = i, line + ','
+        out[-1] = i, line + ","
     i, line = out[-1]
-    out[-1] = i, line + ')'
+    out[-1] = i, line + ")"
 
 
 @quote.register(np.ndarray)
@@ -120,7 +121,9 @@ def _quote(arg, indent, out):
     """
     Work around NumPy ndarray not supporting reproducible repr.
     """
-    out.append((indent, "np.array({}, dtype=np.{})".format(repr(arg.tolist()), arg.dtype)))
+    out.append(
+        (indent, "np.array({}, dtype=np.{})".format(repr(arg.tolist()), arg.dtype))
+    )
 
 
 def broadcast_shape(*shapes, **kwargs):
@@ -133,7 +136,7 @@ def broadcast_shape(*shapes, **kwargs):
     :rtype: tuple
     :raises: ValueError
     """
-    strict = kwargs.pop('strict', False)
+    strict = kwargs.pop("strict", False)
     reversed_shape = []
     for shape in shapes:
         for i, size in enumerate(reversed(shape)):
@@ -142,8 +145,11 @@ def broadcast_shape(*shapes, **kwargs):
             elif reversed_shape[i] == 1 and not strict:
                 reversed_shape[i] = size
             elif reversed_shape[i] != size and (size != 1 or strict):
-                raise ValueError('shape mismatch: objects cannot be broadcast to a single shape: {}'.format(
-                    ' vs '.join(map(str, shapes))))
+                raise ValueError(
+                    "shape mismatch: objects cannot be broadcast to a single shape: {}".format(
+                        " vs ".join(map(str, shapes))
+                    )
+                )
     return tuple(reversed(reversed_shape))
 
 
@@ -164,23 +170,29 @@ def set_backend(backend):
 
     if backend == "numpy":
         if _JAX_LOADED:
-            raise ValueError("Cannot revert back to NumPy backend when JAX backend has been set.")
+            raise ValueError(
+                "Cannot revert back to NumPy backend when JAX backend has been set."
+            )
         else:
             _FUNSOR_BACKEND = "numpy"
     elif backend == "torch":
         _FUNSOR_BACKEND = "torch"
 
         import torch  # noqa: F401
+
         import funsor.torch  # noqa: F401
     elif backend == "jax":
         _FUNSOR_BACKEND = "jax"
         _JAX_LOADED = True
 
         import jax  # noqa: F401
+
         import funsor.jax  # noqa: F401
     else:
-        raise ValueError("backend should be either 'numpy', 'torch', or 'jax'"
-                         ", got {}".format(backend))
+        raise ValueError(
+            "backend should be either 'numpy', 'torch', or 'jax'"
+            ", got {}".format(backend)
+        )
 
 
 def get_backend():
@@ -194,20 +206,26 @@ def get_backend():
 
 
 def get_tracing_state():
-    if _FUNSOR_BACKEND == "torch":
-        import torch
-
+    torch = sys.modules.get("torch")
+    if torch is not None:
         return torch._C._get_tracing_state()
-    else:
-        return None
+    return None
 
 
 def is_nn_module(x):
-    if _FUNSOR_BACKEND == "torch":
-        import torch
-
+    torch = sys.modules.get("torch")
+    if torch is not None:
         return isinstance(x, torch.nn.Module)
     return False
+
+
+def as_callable(fn):
+    """
+    Converts nn.Modules ``m`` to ``m.forward``.
+    """
+    if is_nn_module(fn):
+        return fn.forward
+    return fn
 
 
 def methodof(cls, name=None):
@@ -220,13 +238,18 @@ def methodof(cls, name=None):
        def __call__(self, x):
            return x
     """
+
     def decorator(fn):
         name_ = name
         if name_ is None:
             fn_ = fn
             while not hasattr(fn_, "__name__"):
-                fn_ = fn_.__func__
+                if isinstance(fn_, property):
+                    fn_ = fn_.fget
+                else:
+                    fn_ = fn_.__func__
             name_ = fn_.__name__
         setattr(cls, name_, fn)
         return fn
+
     return decorator
