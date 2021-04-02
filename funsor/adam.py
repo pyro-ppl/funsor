@@ -23,6 +23,7 @@ class Adam(StatefulInterpretation):
         name = kwargs.pop("name", "adam")
         super().__init__(name)
         self.num_steps = num_steps
+        self.log_every = kwargs.pop("log_every", 0)
         self.optim_params = kwargs  # TODO make precise
         self.params = {}
 
@@ -59,8 +60,11 @@ def adam_min(self, op, loss, reduced_vars):
                 # cons-hashed value and avoids possible downstream memoization
                 # (which would be incorrect because underlying data has changed).
                 # TODO test that this interacts with cons-hashing correctly
-                loss(**{k: v[...] for k, v in params.items()}).data.backward()
+                step_loss = loss(**{k: v[...] for k, v in params.items()}).data
+                step_loss.backward()
                 optimizer.step()
+                if self.log_every and step % self.log_every == 0:
+                    print(f"step {step: >6d} loss = {step_loss.data:g}")
     else:
         raise NotImplementedError(f"Unsupported backend {get_backend()}")
     return loss(**params)

@@ -38,7 +38,7 @@ def main(args):
     loss = (pred - truth).abs().reduce(ops.add, "n")
 
     # Inference.
-    with Adam(args.num_steps, lr=args.learning_rate) as optim:
+    with Adam(args.num_steps, lr=args.learning_rate, log_every=args.log_every) as optim:
         loss.reduce(ops.min, {"weight", "bias"})
 
     print(f"True bias\n{true_bias}")
@@ -53,7 +53,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("-P", "--num-features", type=int, default=10)
     parser.add_argument("-N", "--num-data", type=int, default=100)
-    parser.add_argument("-n", "--num-steps", type=int, default=200)
-    parser.add_argument("-lr", "--learning-rate", type=float, default=1e-2)
+    parser.add_argument("-n", "--num-steps", type=int, default=201)
+    parser.add_argument("-lr", "--learning-rate", type=float, default=0.05)
+    parser.add_argument("--log-every", type=int, default=20)
     args = parser.parse_args()
     main(args)
