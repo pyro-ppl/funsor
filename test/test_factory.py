@@ -8,13 +8,14 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Real, Reals
-from funsor.factory import Bound, Fresh, Has, Value, make_funsor, to_funsor
+from funsor.factory import BindReturn, Bound, Fresh, Has, Value, make_funsor, to_funsor
 from funsor.interpretations import reflect
 from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
-from funsor.terms import Cat, Funsor, Lambda, Number, eager
+from funsor.terms import Cat, Funsor, Lambda, Number, eager, lazy
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.util import get_backend
+from funsor.optimizer import apply_optimizer
 
 
 def test_lambda_lambda():
@@ -67,7 +68,9 @@ def test_flatten():
     inputs["a"] = Bint[3]
     inputs["b"] = Bint[4]
     data = random_tensor(inputs, Real)
-    x = Flatten21(data, "a", "b", "ab")
+    with lazy:
+        x = Flatten21(data, "a", "b", "ab")
+    breakpoint()
     assert isinstance(x, Tensor)
 
     check_funsor(x, {"ab": Bint[12]}, Real, data.data.reshape(-1))
@@ -297,3 +300,19 @@ def test_matmul_has():
     # To preserve extensionality, should only error on reflect
     xy = MatMul(x, y, "b")
     check_funsor(xy, {"a": Bint[3], "c": Bint[4], "d": Bint[3]}, Real)
+
+
+def test_softmax():
+    @make_funsor
+    def Softmax(
+        x: Funsor,
+        ax: BindReturn,
+    ) -> Fresh[lambda x: x]:
+        y = x - x.reduce(ops.logaddexp, ax)
+        return y.exp()
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    with reflect:
+        y = Softmax(x, "a")
+    z = apply_optimizer(y)
+    check_funsor(y, {"a": Bint[3], "b": Bint[4]}, Real)
