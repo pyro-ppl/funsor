@@ -11,11 +11,11 @@ from funsor.domains import Array, Bint, Real, Reals
 from funsor.factory import BindReturn, Bound, Fresh, Has, Value, make_funsor, to_funsor
 from funsor.interpretations import reflect
 from funsor.interpreter import reinterpret
+from funsor.optimizer import apply_optimizer
 from funsor.tensor import Tensor
 from funsor.terms import Cat, Funsor, Lambda, Number, eager, lazy
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.util import get_backend
-from funsor.optimizer import apply_optimizer
 
 
 def test_lambda_lambda():
@@ -68,9 +68,7 @@ def test_flatten():
     inputs["a"] = Bint[3]
     inputs["b"] = Bint[4]
     data = random_tensor(inputs, Real)
-    with lazy:
-        x = Flatten21(data, "a", "b", "ab")
-    breakpoint()
+    x = Flatten21(data, "a", "b", "ab")
     assert isinstance(x, Tensor)
 
     check_funsor(x, {"ab": Bint[12]}, Real, data.data.reshape(-1))
@@ -314,5 +312,8 @@ def test_softmax():
     x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
     with reflect:
         y = Softmax(x, "a")
-    z = apply_optimizer(y)
-    check_funsor(y, {"a": Bint[3], "b": Bint[4]}, Real)
+    assert y.fresh == frozenset({"a"})
+    assert all(bound in y.x.inputs for bound in y.bound)
+    assert isinstance(apply_optimizer(x), Tensor)
+    z = reinterpret(y)
+    check_funsor(z, {"a": Bint[3], "b": Bint[4]}, Real)
