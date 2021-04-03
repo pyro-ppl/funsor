@@ -67,13 +67,24 @@ class Bound:
     pass
 
 
-class BindReturn:
+class BindReturnMeta(type):
+    def __getitem__(cls, fn):
+        return BindReturn(fn)
+
+
+class BindReturn(metaclass=BindReturnMeta):
     """
     Type hint for :func:`make_funsor` decorated functions. This provides hints
     for variables (names) that are bound and returned.
     """
 
-    pass
+    def __init__(self, fn):
+        function = type(lambda: None)
+        self.fn = fn if isinstance(fn, function) else lambda: fn
+        self.args = inspect.getfullargspec(fn)[0]
+
+    def __call__(self, **kwargs):
+        return self.fn(*map(kwargs.__getitem__, self.args))
 
 
 class ValueMeta(type):
@@ -146,7 +157,7 @@ def _get_dependent_args(fields, hints, args):
     return {
         name: arg if isinstance(hint, Value) else arg.output
         for name, arg, hint in zip(fields, args, hints)
-        if hint in (Funsor, Bound) or isinstance(hint, (Has, Value))
+        if hint in (Funsor, Bound) or isinstance(hint, (Has, Value, BindReturn))
     }
 
 
@@ -188,11 +199,16 @@ def make_funsor(fn):
     input_types = typing.get_type_hints(as_callable(fn))
     for name, hint in input_types.items():
         if not (
-            hint in (Funsor, Bound, BindReturn) or isinstance(hint, (Fresh, Value, Has))
+            hint in (Funsor, Bound) or isinstance(hint, (Fresh, Value, Has, BindReturn))
         ):
             raise TypeError(f"Invalid type hint {name}: {hint}")
     output_type = input_types.pop("return")
     hints = tuple(input_types.values())
+
+    if any(isinstance(hint, BindReturn) for hint in hints):
+        bind_return = ["bind_return"]
+    else:
+        bind_return = []
 
     class ResultMeta(FunsorMeta):
         def __call__(cls, *args, bind_return=None):
@@ -201,7 +217,7 @@ def make_funsor(fn):
             # Bind-and-return variables
             if bind_return is None:
                 bind_return = frozenset(
-                    (arg, arg) for hint, arg in zip(hints, args) if hint is BindReturn
+                    (arg, arg) for hint, arg in zip(hints, args) if isinstance(hint, BindReturn)
                 )
 
             # Compute domains of bound variables.
@@ -209,7 +225,7 @@ def make_funsor(fn):
                 hint = input_types[name]
                 if hint is Funsor or isinstance(hint, Has):  # TODO support domains
                     args[i] = to_funsor(arg)
-                elif hint in (Bound, BindReturn):
+                elif hint is Bound or isinstance(hint, BindReturn):
                     for other in args:
                         if isinstance(other, Funsor):
                             domain = other.inputs.get(arg, None)
@@ -228,7 +244,7 @@ def make_funsor(fn):
             # Compute domains of fresh variables.
             dependent_args = _get_dependent_args(cls._ast_fields, hints, args)
             for i, (hint, arg) in enumerate(zip(hints, args)):
-                if isinstance(hint, Fresh):
+                if isinstance(hint, (Fresh, BindReturn)):
                     domain = hint(**dependent_args)
                     args[i] = to_funsor(arg, domain)
 
@@ -236,11 +252,6 @@ def make_funsor(fn):
             if bind_return:
                 args.append(bind_return)
             return super().__call__(*args)
-
-    if BindReturn in hints:
-        bind_return = ["bind_return"]
-    else:
-        bind_return = []
 
     @makefun.with_signature(
         "__init__({})".format(", ".join(["self"] + list(input_types) + bind_return))
@@ -295,7 +306,7 @@ def make_funsor(fn):
         alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
         return Funsor._alpha_convert(self, alpha_subs)
 
-    if BindReturn in hints:
+    if bind_return:
         def new_fn(*args, **kwargs):
             args, bind_return = args[:-1], args[-1]
             result = fn(*args)
@@ -310,7 +321,7 @@ def make_funsor(fn):
     Result = ResultMeta(
         name, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
     )
-    if BindReturn in hints:
+    if bind_return:
         bind_return_pattern = (frozenset,)
     else:
         bind_return_pattern = ()

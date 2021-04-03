@@ -304,7 +304,7 @@ def test_softmax():
     @make_funsor
     def Softmax(
         x: Funsor,
-        ax: BindReturn,
+        ax: BindReturn[lambda ax: ax],
     ) -> Fresh[lambda x: x]:
         y = x - x.reduce(ops.logaddexp, ax)
         return y.exp()
