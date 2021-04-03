@@ -14,6 +14,7 @@ lint: FORCE
 	black --check .
 	isort --check .
 	python scripts/update_headers.py --check
+	python test/test_import.py
 
 license: FORCE
 	python scripts/update_headers.py
@@ -47,6 +48,7 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --smoke
 	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --parallel --smoke
 	python examples/sensor.py --seed=0 --num-frames=2 -n 1
+	python examples/adam.py --num-steps=21
 	@echo PASS
 else ifeq (${FUNSOR_BACKEND}, jax)
 	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi --ignore=test/test_distribution.py --ignore=test/test_distribution_generic.py

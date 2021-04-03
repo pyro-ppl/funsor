@@ -25,3 +25,7 @@ def test_all_modules_are_imported():
         actual = getattr(import_module("funsor"), name)
         expected = import_module("funsor.{}".format(name))
         assert actual == expected
+
+
+if __name__ == "__main__":
+    test_all_modules_are_imported()

@@ -39,6 +39,7 @@ Funsor is a tensor-like library for functions and distributions
    :name: tutorials-and-examples
 
    tutorials/named_tensor_notation_i
+   examples/adam
    examples/discrete_hmm
    examples/forward_backward
    examples/eeg_slds
@@ -48,7 +49,6 @@ Funsor is a tensor-like library for functions and distributions
    examples/sensor
    examples/slds
    examples/vae
-
 
 Indices and tables
 ==================

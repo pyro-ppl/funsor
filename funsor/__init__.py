@@ -25,6 +25,7 @@ from funsor.terms import (
 from funsor.util import get_backend, pretty, quote, set_backend
 
 from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
+    adam,
     adjoint,
     affine,
     approximations,
@@ -66,6 +67,7 @@ __all__ = [
     "Stack",
     "Tensor",
     "Variable",
+    "adam",
     "adjoint",
     "affine",
     "approximations",
