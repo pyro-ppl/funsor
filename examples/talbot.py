@@ -5,8 +5,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Example: Talbot's method for numerical inversion of Laplace transform
-=====================================================================
+Example: Talbot's method for numerical inversion of the Laplace transform
+=========================================================================
 
 """
 
@@ -40,10 +40,11 @@ def main(args):
         ]
         + noise
     )
-    LaplaceTransformData = rate ** nsteps / (s * (rate + s) ** nsteps)
-
+    F = rate ** nsteps / (s * (rate + s) ** nsteps)
     # Inverse Laplace.
-    pred = InverseLaplace(LaplaceTransformData, time, "s")
+    pred = InverseLaplace(F, time, "s")
+
+    # Loss function.
     loss = (pred - data).abs().reduce(ops.add, "timepoint")
     init_params = {
         "rate": Tensor(torch.tensor(5.0, requires_grad=True)),
@@ -59,11 +60,12 @@ def main(args):
         with Talbot(num_steps=args.talbot_num_steps):
             loss.reduce(ops.min, {"rate", "nsteps"})
 
+    # Fit curve.
     with Talbot(num_steps=args.talbot_num_steps):
         fit = pred(rate=optim.param("rate"), nsteps=optim.param("nsteps"))
 
     print(f"Data\n{data}")
-    print(f"Fit\n{fit}")
+    print(f"Fit curve\n{fit}")
     print(f"True rate\n{true_rate}")
     print("Learned rate\n{}".format(optim.param("rate").item()))
     print(f"True number of steps\n{true_nsteps}")
