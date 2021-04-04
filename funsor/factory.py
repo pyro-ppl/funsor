@@ -217,7 +217,7 @@ def make_funsor(fn):
         bind_return_kwarg = ["bind_return"]
         bind_return_pattern = (frozenset,)
 
-        def new_fn(*args, **kwargs):
+        def new_fn(*args):
             args, bind_return = args[:-1], args[-1]
             result = fn(*args)
             if bind_return:

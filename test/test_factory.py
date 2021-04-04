@@ -316,7 +316,7 @@ def test_unroll():
     assert all(bound in y.x.inputs and bound[1:8] == "__BOUND" for bound in y.bound)
     z = reinterpret(y)
     assert isinstance(z, Tensor)
-    check_funsor(z, {"a": Bint[4], "kernel": Bint[2]}, Real)
+    check_funsor(z, {"a": Bint[5 - 2 + 1], "kernel": Bint[2]}, Real)
 
 
 def test_softmax():
