@@ -10,7 +10,7 @@ from functools import singledispatch
 import makefun
 
 from funsor.instrument import debug_logged
-from funsor.terms import Funsor, FunsorMeta, Subs, Variable, eager, to_funsor
+from funsor.terms import Funsor, FunsorMeta, Subs, Variable, eager, to_funsor, substitute
 from funsor.util import as_callable
 
 
@@ -244,9 +244,13 @@ def make_funsor(fn):
             # Compute domains of fresh variables.
             dependent_args = _get_dependent_args(cls._ast_fields, hints, args)
             for i, (hint, arg) in enumerate(zip(hints, args)):
-                if isinstance(hint, (Fresh, BindReturn)):
+                if isinstance(hint, Fresh):
                     domain = hint(**dependent_args)
                     args[i] = to_funsor(arg, domain)
+                elif isinstance(hint, BindReturn):
+                    domain = hint(**dependent_args)
+                    args[i] = to_funsor(arg.name, domain)
+
 
             # Append bind_return to args
             if bind_return:
@@ -267,12 +271,12 @@ def make_funsor(fn):
         for hint, arg, arg_name in zip(hints, args, self._ast_fields):
             if hint is Funsor:
                 assert isinstance(arg, Funsor)
-                inputs.update((bind_return.get(k, k), v) for k, v in arg.inputs.items())
+                inputs.update(arg.inputs)
             elif isinstance(hint, Has):
                 assert isinstance(arg, Funsor)
-                inputs.update((bind_return.get(k, k), v) for k, v in arg.inputs.items())
+                inputs.update(arg.inputs)
                 for name in hint.bound:
-                    if kwargs[name] not in arg.input_vars:
+                    if kwargs[name].name not in arg.inputs:
                         warnings.warn(
                             f"Argument {arg_name} is missing bound variable {kwargs[name]} from argument {name}."
                             f"Are you sure {name} will always appear in {arg_name}?",
@@ -281,8 +285,9 @@ def make_funsor(fn):
         for hint, arg in zip(hints, args):
             if hint is Bound:
                 bound[arg.name] = inputs.pop(arg.name)
-            elif hint is BindReturn:
-                bound[arg.name] = inputs[bind_return[arg.name]]
+            elif isinstance(hint, BindReturn):
+                bound[arg.name] = inputs.pop(arg.name)
+                inputs[bind_return[arg.name]] = arg.output
         for hint, arg in zip(hints, args):
             if isinstance(hint, Fresh):
                 for k, d in arg.inputs.items():
@@ -297,14 +302,18 @@ def make_funsor(fn):
             setattr(self, name, arg)
 
     def _alpha_convert(self, alpha_subs):
+        result = []
+        new_alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
+        for hint, field, value in zip(hints, self._ast_fields, self._ast_values):
+            if isinstance(hint, BindReturn):
+                result.append(to_funsor(alpha_subs[value.name], value.output))
+            else:
+                result.append(substitute(value, new_alpha_subs))
         if hasattr(self, "bind_return"):
-            bind_return = frozenset(
+            result.append(frozenset(
                 (alpha_subs.get(k, k), v) for k, v in self.bind_return.items()
-            )
-            alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
-            return Funsor._alpha_convert(self, alpha_subs)[:-1] + (bind_return,)
-        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
-        return Funsor._alpha_convert(self, alpha_subs)
+            ))
+        return tuple(result)
 
     if bind_return:
         def new_fn(*args, **kwargs):
