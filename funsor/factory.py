@@ -223,6 +223,7 @@ def make_funsor(fn):
             if bind_return:
                 result = Subs(result, bind_return)
             return result
+
     else:
         bind_return_kwarg = []
         bind_return_pattern = ()
@@ -277,7 +278,9 @@ def make_funsor(fn):
             return super().__call__(*args)
 
     @makefun.with_signature(
-        "__init__({})".format(", ".join(["self"] + list(input_types) + bind_return_kwarg))
+        "__init__({})".format(
+            ", ".join(["self"] + list(input_types) + bind_return_kwarg)
+        )
     )
     def __init__(self, **kwargs):
         args = tuple(kwargs[k] for k in self._ast_fields)
