@@ -45,8 +45,17 @@ def main(args):
     # Inverse Laplace.
     pred = InverseLaplace(LaplaceTransformData, time, "s")
     loss = (pred - data).abs().reduce(ops.add, "timepoint")
+    init_params = {
+        "rate": Tensor(torch.tensor(5.0, requires_grad=True)),
+        "nsteps": Tensor(torch.tensor(2.0, requires_grad=True)),
+    }
 
-    with Adam(args.num_steps, lr=args.learning_rate, log_every=args.log_every) as optim:
+    with Adam(
+        args.num_steps,
+        lr=args.learning_rate,
+        log_every=args.log_every,
+        params=init_params,
+    ) as optim:
         with Talbot(num_steps=args.talbot_num_steps):
             loss.reduce(ops.min, {"rate", "nsteps"})
 
@@ -65,8 +74,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Numerical inversion of the Laplace transform using Talbot's method"
     )
-    parser.add_argument("-N", "--talbot-num-steps", type=int, default=24)
-    parser.add_argument("-n", "--num-steps", type=int, default=201)
+    parser.add_argument("-N", "--talbot-num-steps", type=int, default=32)
+    parser.add_argument("-n", "--num-steps", type=int, default=501)
     parser.add_argument("-lr", "--learning-rate", type=float, default=0.1)
     parser.add_argument("--log-every", type=int, default=20)
     args = parser.parse_args()

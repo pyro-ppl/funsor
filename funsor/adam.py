@@ -26,7 +26,7 @@ class Adam(StatefulInterpretation):
         self.num_steps = num_steps
         self.log_every = kwargs.pop("log_every", 0)
         self.optim_params = kwargs  # TODO make precise
-        self.params = {}
+        self.params = kwargs.pop("params", {})
 
     def param(self, name, domain=None):
         if name not in self.params:
@@ -41,7 +41,7 @@ class Adam(StatefulInterpretation):
         if get_backend() == "torch":
             import torch
 
-            return Tensor(torch.ones(domain.shape, requires_grad=True))
+            return Tensor(torch.randn(domain.shape, requires_grad=True))
         raise NotImplementedError(f"Unsupported backend {get_backend()}")
 
 
