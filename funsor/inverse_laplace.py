@@ -1,7 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import math
+from math import pi
 
 from funsor.factory import Bound, Fresh, Has, make_funsor
 from funsor.interpretations import StatefulInterpretation
@@ -45,7 +45,7 @@ class Talbot(StatefulInterpretation):
 
     def __init__(self, num_steps):
         super().__init__("talbot")
-        self.num_steps = num_steps
+        self.N = num_steps
 
 
 @Talbot.register(InverseLaplace, Funsor, Funsor, Variable)
@@ -53,27 +53,17 @@ def talbot(self, F, t, s):
     if get_backend() == "torch":
         import torch
 
-        k = torch.arange(1, self.num_steps)
-        delta = torch.zeros(self.num_steps, dtype=torch.complex64)
-        delta[0] = 2 * self.num_steps / 5
-        delta[1:] = (
-            2
-            * math.pi
-            / 5
-            * k
-            * (1 / torch.tan(math.pi / self.num_steps * k) + torch.tensor(1j))
-        )
+        k = torch.arange(1, self.N)
+        delta = torch.zeros(self.N, dtype=torch.complex64)
+        delta[0] = 2 * self.N / 5
+        delta[1:] = 2 * pi / 5 * k * (1 / (pi / self.N * k).tan() + 1j)
 
-        gamma = torch.zeros(self.num_steps, dtype=torch.complex64)
+        gamma = torch.zeros(self.N, dtype=torch.complex64)
         gamma[0] = 0.5 * delta[0].exp()
         gamma[1:] = (
             1
-            + torch.tensor(1j)
-            * math.pi
-            / self.num_steps
-            * k
-            * (1 + 1 / torch.tan(math.pi / self.num_steps * k) ** 2)
-            - torch.tensor(1j) / torch.tan(math.pi / self.num_steps * k)
+            + 1j * pi / self.N * k * (1 + 1 / (pi / self.N * k).tan() ** 2)
+            - 1j / (pi / self.N * k).tan()
         ) * delta[1:].exp()
 
         delta = Tensor(delta)["num_steps"]
