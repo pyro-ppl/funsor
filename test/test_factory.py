@@ -11,9 +11,8 @@ from funsor.domains import Array, Bint, Real, Reals
 from funsor.factory import BindReturn, Bound, Fresh, Has, Value, make_funsor, to_funsor
 from funsor.interpretations import reflect
 from funsor.interpreter import reinterpret
-from funsor.optimizer import apply_optimizer
 from funsor.tensor import Tensor
-from funsor.terms import Cat, Funsor, Lambda, Number, eager, lazy
+from funsor.terms import Cat, Funsor, Lambda, Number, eager
 from funsor.testing import assert_close, check_funsor, random_tensor
 from funsor.util import get_backend
 
@@ -303,10 +302,10 @@ def test_matmul_has():
 def test_unroll():
     @make_funsor
     def Unroll(
-        x: Has[{"ax"}],
+        x: Has[{"ax"}],  # noqa: F821
         ax: BindReturn[lambda ax, k: Bint[ax.size - k + 1]],
         k: Value[int],
-        kernel: Fresh[lambda k: Bint[k]]
+        kernel: Fresh[lambda k: Bint[k]],
     ) -> Fresh[lambda x: x]:
         return x(**{ax.name: ax + kernel})
 
@@ -323,7 +322,7 @@ def test_unroll():
 def test_softmax():
     @make_funsor
     def Softmax(
-        x: Has[{"ax"}],
+        x: Has[{"ax"}],  # noqa: F821
         ax: BindReturn[lambda ax: ax],
     ) -> Fresh[lambda x: x]:
         y = x - x.reduce(ops.logaddexp, ax)

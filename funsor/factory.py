@@ -10,7 +10,15 @@ from functools import singledispatch
 import makefun
 
 from funsor.instrument import debug_logged
-from funsor.terms import Funsor, FunsorMeta, Subs, Variable, eager, to_funsor, substitute
+from funsor.terms import (
+    Funsor,
+    FunsorMeta,
+    Subs,
+    Variable,
+    eager,
+    substitute,
+    to_funsor,
+)
 from funsor.util import as_callable
 
 
@@ -217,7 +225,9 @@ def make_funsor(fn):
             # Bind-and-return variables
             if bind_return is None:
                 bind_return = frozenset(
-                    (arg, arg) for hint, arg in zip(hints, args) if isinstance(hint, BindReturn)
+                    (arg, arg)
+                    for hint, arg in zip(hints, args)
+                    if isinstance(hint, BindReturn)
                 )
 
             # Compute domains of bound variables.
@@ -250,7 +260,6 @@ def make_funsor(fn):
                 elif isinstance(hint, BindReturn):
                     domain = hint(**dependent_args)
                     args[i] = to_funsor(arg.name, domain)
-
 
             # Append bind_return to args
             if bind_return:
@@ -310,18 +319,22 @@ def make_funsor(fn):
             else:
                 result.append(substitute(value, new_alpha_subs))
         if hasattr(self, "bind_return"):
-            result.append(frozenset(
-                (alpha_subs.get(k, k), v) for k, v in self.bind_return.items()
-            ))
+            result.append(
+                frozenset(
+                    (alpha_subs.get(k, k), v) for k, v in self.bind_return.items()
+                )
+            )
         return tuple(result)
 
     if bind_return:
+
         def new_fn(*args, **kwargs):
             args, bind_return = args[:-1], args[-1]
             result = fn(*args)
             if bind_return:
                 result = Subs(result, bind_return)
             return result
+
     else:
         new_fn = fn
 
