@@ -326,7 +326,7 @@ def make_funsor(fn):
     def _alpha_convert(self, alpha_subs):
         result = []
         new_alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
-        for hint, field, value in zip(hints, self._ast_fields, self._ast_values):
+        for hint, value in zip(hints, self._ast_values):
             if isinstance(hint, BindReturn):
                 result.append(to_funsor(alpha_subs[value.name], value.output))
             else:
