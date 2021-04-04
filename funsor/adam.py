@@ -41,7 +41,7 @@ class Adam(StatefulInterpretation):
         if get_backend() == "torch":
             import torch
 
-            return Tensor(torch.randn(domain.shape, requires_grad=True))
+            return Tensor(torch.ones(domain.shape, requires_grad=True))
         raise NotImplementedError(f"Unsupported backend {get_backend()}")
 
 

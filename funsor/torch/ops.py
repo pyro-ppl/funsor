@@ -332,7 +332,7 @@ def _pow(x, y):
 
 @ops.reciprocal.register(torch.Tensor)
 def _reciprocal(x):
-    result = x.reciprocal().clamp(max=torch.finfo(x.dtype).max)
+    result = x.reciprocal()  # .clamp(max=torch.finfo(x.dtype).max)
     return result
 
 
