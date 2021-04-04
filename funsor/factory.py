@@ -214,9 +214,19 @@ def make_funsor(fn):
     hints = tuple(input_types.values())
 
     if any(isinstance(hint, BindReturn) for hint in hints):
-        bind_return = ["bind_return"]
+        bind_return_kwarg = ["bind_return"]
+        bind_return_pattern = (frozenset,)
+
+        def new_fn(*args, **kwargs):
+            args, bind_return = args[:-1], args[-1]
+            result = fn(*args)
+            if bind_return:
+                result = Subs(result, bind_return)
+            return result
     else:
-        bind_return = []
+        bind_return_kwarg = []
+        bind_return_pattern = ()
+        new_fn = fn
 
     class ResultMeta(FunsorMeta):
         def __call__(cls, *args, bind_return=None):
@@ -267,7 +277,7 @@ def make_funsor(fn):
             return super().__call__(*args)
 
     @makefun.with_signature(
-        "__init__({})".format(", ".join(["self"] + list(input_types) + bind_return))
+        "__init__({})".format(", ".join(["self"] + list(input_types) + bind_return_kwarg))
     )
     def __init__(self, **kwargs):
         args = tuple(kwargs[k] for k in self._ast_fields)
@@ -326,27 +336,11 @@ def make_funsor(fn):
             )
         return tuple(result)
 
-    if bind_return:
-
-        def new_fn(*args, **kwargs):
-            args, bind_return = args[:-1], args[-1]
-            result = fn(*args)
-            if bind_return:
-                result = Subs(result, bind_return)
-            return result
-
-    else:
-        new_fn = fn
-
     name = _get_name(fn)
     ResultMeta.__name__ = f"{name}Meta"
     Result = ResultMeta(
         name, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
     )
-    if bind_return:
-        bind_return_pattern = (frozenset,)
-    else:
-        bind_return_pattern = ()
     pattern = (
         (Result,)
         + tuple(
