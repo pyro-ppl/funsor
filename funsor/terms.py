@@ -1222,8 +1222,7 @@ class Scatter(Funsor):
         subs = OrderedDict(subs)
         new_subs = []
         for name, sub in self.subs:
-            if name in subs:
-                assert isinstance(subs[name], Variable)
+            if name in subs and isinstance(subs[name], Variable):
                 new_subs.append((subs[name].name, sub))
             else:
                 new_subs.append((name, sub))
