@@ -30,6 +30,7 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	FUNSOR_PROFILE=99 pytest -v test/test_einsum.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
+	FUNSOR_TYPECHECK=1 pytest -v -n auto test/test_terms.py test/test_tensor.py test/test_distribution_generic.py
 	python examples/discrete_hmm.py -n 2
 	python examples/discrete_hmm.py -n 2 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 50 --lazy
@@ -53,11 +54,12 @@ ifeq (${FUNSOR_BACKEND}, torch)
 else ifeq (${FUNSOR_BACKEND}, jax)
 	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi --ignore=test/test_distribution.py --ignore=test/test_distribution_generic.py
 	pytest -v -n auto test/test_distribution.py
-	pytest -v -n auto test/test_distribution_generic.py
+	FUNSOR_TYPECHECK=1 pytest -v -n auto test/test_distribution_generic.py
+	FUNSOR_TYPECHECK=1 pytest -v -n auto test/test_terms.py test/test_tensor.py
 	@echo PASS
 else
 	# default backend
-	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi
+	FUNSOR_TYPECHECK=1 pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi
 	@echo PASS
 endif
 
