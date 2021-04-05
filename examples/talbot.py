@@ -1,9 +1,6 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-# Copyright Contributors to the Pyro project.
-# SPDX-License-Identifier: Apache-2.0
-
 """
 Example: Talbot's method for numerical inversion of the Laplace transform
 =========================================================================
