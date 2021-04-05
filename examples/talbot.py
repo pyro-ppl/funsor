@@ -22,15 +22,17 @@ from funsor.tensor import Tensor
 from funsor.terms import Funsor, Variable
 from funsor.util import get_backend
 
-from . import ops
-
 
 @make_funsor
 def InverseLaplace(
     F: Has[{"s"}], t: Funsor, s: Bound  # noqa: F821
 ) -> Fresh[lambda F: F]:
     """
-    Inverse Laplace transform of function F.
+    Inverse Laplace transform of function F(s).
+
+    There is no closed-form solution for arbitrary F(s). However, we can
+    resort to numerical approximations which we store in new interpretations.
+    For example, see Talbot's method below.
 
     :param F: function of s.
     :param t: times at which to evaluate the inverse Laplace transformation of F.
@@ -58,7 +60,7 @@ class Talbot(StatefulInterpretation):
 
     def __init__(self, num_steps):
         super().__init__("talbot")
-        self.N = num_steps
+        self.num_steps = num_steps
 
 
 @Talbot.register(InverseLaplace, Funsor, Funsor, Variable)
@@ -66,17 +68,23 @@ def talbot(self, F, t, s):
     if get_backend() == "torch":
         import torch
 
-        k = torch.arange(1, self.N)
-        delta = torch.zeros(self.N, dtype=torch.complex64)
-        delta[0] = 2 * self.N / 5
-        delta[1:] = 2 * pi / 5 * k * (1 / (pi / self.N * k).tan() + 1j)
+        k = torch.arange(1, self.num_steps)
+        delta = torch.zeros(self.num_steps, dtype=torch.complex64)
+        delta[0] = 2 * self.num_steps / 5
+        delta[1:] = (
+            2 * math.pi / 5 * k * (1 / (math.pi / self.num_steps * k).tan() + 1j)
+        )
 
-        gamma = torch.zeros(self.N, dtype=torch.complex64)
+        gamma = torch.zeros(self.num_steps, dtype=torch.complex64)
         gamma[0] = 0.5 * delta[0].exp()
         gamma[1:] = (
             1
-            + 1j * pi / self.N * k * (1 + 1 / (pi / self.N * k).tan() ** 2)
-            - 1j / (pi / self.N * k).tan()
+            + 1j
+            * math.pi
+            / self.num_steps
+            * k
+            * (1 + 1 / (math.pi / self.num_steps * k).tan() ** 2)
+            - 1j / (math.pi / self.num_steps * k).tan()
         ) * delta[1:].exp()
 
         delta = Tensor(delta)["num_steps"]
@@ -89,6 +97,15 @@ def talbot(self, F, t, s):
 
 
 def main(args):
+    """
+    Reference for the n-step sequential model used here:
+
+    Aaron L. Lucius et al (2003).
+    "General Methods for Analysis of Sequential ‘‘n-step’’ Kinetic Mechanisms:
+    Application to Single Turnover Kinetics of Helicase-Catalyzed DNA Unwinding"
+    https://www.sciencedirect.com/science/article/pii/S0006349503746487
+    """
+
     funsor.set_backend("torch")
 
     # Problem definition.
@@ -116,21 +133,20 @@ def main(args):
         "nsteps": Tensor(torch.tensor(2.0, requires_grad=True)),
     }
 
-    with Adam(
-        args.num_steps,
-        lr=args.learning_rate,
-        log_every=args.log_every,
-        params=init_params,
-    ) as optim:
-        with Talbot(num_steps=args.talbot_num_steps):
-            loss.reduce(ops.min, {"rate", "nsteps"})
-
-    # Fit curve.
     with Talbot(num_steps=args.talbot_num_steps):
-        fit = pred(rate=optim.param("rate"), nsteps=optim.param("nsteps"))
+        # Fit the data
+        with Adam(
+            args.num_steps,
+            lr=args.learning_rate,
+            log_every=args.log_every,
+            params=init_params,
+        ) as optim:
+            loss.reduce(ops.min, {"rate", "nsteps"})
+        # Fitted curve.
+        fitted_curve = pred(rate=optim.param("rate"), nsteps=optim.param("nsteps"))
 
     print(f"Data\n{data}")
-    print(f"Fit curve\n{fit}")
+    print(f"Fit curve\n{fitted_curve}")
     print(f"True rate\n{true_rate}")
     print("Learned rate\n{}".format(optim.param("rate").item()))
     print(f"True number of steps\n{true_nsteps}")
