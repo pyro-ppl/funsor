@@ -1218,6 +1218,16 @@ class Scatter(Funsor):
         reduced_vars = frozenset(alpha_subs.get(var.name, var) for var in reduced_vars)
         return op, subs, source, reduced_vars
 
+    def eager_subs(self, subs):
+        subs = OrderedDict(subs)
+        new_subs = []
+        for name, sub in self.subs:
+            if name in subs and isinstance(subs[name], Variable):
+                new_subs.append((subs[name].name, sub))
+            else:
+                new_subs.append((name, sub))
+        return Scatter(self.op, tuple(new_subs), self.source, self.reduced_vars)
+
 
 class Approximate(Funsor):
     """
