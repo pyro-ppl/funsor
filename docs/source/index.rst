@@ -41,13 +41,14 @@ Funsor is a tensor-like library for functions and distributions
    tutorials/named_tensor_notation_i
    examples/adam
    examples/discrete_hmm
-   examples/forward_backward
    examples/eeg_slds
+   examples/forward_backward
    examples/kalman_filter
    examples/minipyro
    examples/pcfg
    examples/sensor
    examples/slds
+   examples/talbot
    examples/vae
 
 Indices and tables

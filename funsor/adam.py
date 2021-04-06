@@ -26,7 +26,7 @@ class Adam(StatefulInterpretation):
         self.num_steps = num_steps
         self.log_every = kwargs.pop("log_every", 0)
         self.optim_params = kwargs  # TODO make precise
-        self.params = {}
+        self.params = kwargs.pop("params", {})
 
     def param(self, name, domain=None):
         if name not in self.params:

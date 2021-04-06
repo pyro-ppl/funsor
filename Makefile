@@ -30,6 +30,7 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	FUNSOR_PROFILE=99 pytest -v test/test_einsum.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_terms.py
 	FUNSOR_USE_TCO=1 pytest -v test/test_einsum.py
+	python examples/adam.py -n 2
 	python examples/discrete_hmm.py -n 2
 	python examples/discrete_hmm.py -n 2 -t 50 --lazy
 	FUNSOR_USE_TCO=1 python examples/discrete_hmm.py -n 1 -t 50 --lazy
@@ -43,6 +44,7 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/minipyro.py --jit
 	python examples/slds.py -n 2 -t 50
 	python examples/pcfg.py --size 3
+	python examples/talbot.py -n 2
 	python examples/vae.py --smoke-test
 	python examples/eeg_slds.py --num-steps 2 --fon --test
 	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --smoke
