@@ -8,7 +8,7 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Array, Bint, Real, Reals
-from funsor.factory import BindReturn, Bound, Fresh, Has, Value, make_funsor, to_funsor
+from funsor.factory import Bound, Fresh, Has, Value, make_funsor, to_funsor
 from funsor.interpretations import reflect
 from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
@@ -303,7 +303,7 @@ def test_unroll():
     @make_funsor
     def Unroll(
         x: Has[{"ax"}],  # noqa: F821
-        ax: BindReturn[lambda ax, k: Bint[ax.size - k + 1]],
+        ax: Fresh[lambda ax, k: Bint[ax.size - k + 1]],
         k: Value[int],
         kernel: Fresh[lambda k: Bint[k]],
     ) -> Fresh[lambda x: x]:
@@ -323,7 +323,7 @@ def test_softmax():
     @make_funsor
     def Softmax(
         x: Has[{"ax"}],  # noqa: F821
-        ax: BindReturn[lambda ax: ax],
+        ax: Fresh[lambda ax: ax],
     ) -> Fresh[lambda x: x]:
         y = x - x.reduce(ops.logaddexp, ax)
         return y.exp()

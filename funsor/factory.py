@@ -75,26 +75,6 @@ class Bound:
     pass
 
 
-class BindReturnMeta(type):
-    def __getitem__(cls, fn):
-        return BindReturn(fn)
-
-
-class BindReturn(metaclass=BindReturnMeta):
-    """
-    Type hint for :func:`make_funsor` decorated functions. This provides hints
-    for variables (names) that are bound and returned.
-    """
-
-    def __init__(self, fn):
-        function = type(lambda: None)
-        self.fn = fn if isinstance(fn, function) else lambda: fn
-        self.args = inspect.getfullargspec(fn)[0]
-
-    def __call__(self, **kwargs):
-        return self.fn(*map(kwargs.__getitem__, self.args))
-
-
 class ValueMeta(type):
     def __getitem__(cls, value_type):
         return Value(value_type)
@@ -165,7 +145,9 @@ def _get_dependent_args(fields, hints, args):
     return {
         name: arg if isinstance(hint, Value) else arg.output
         for name, arg, hint in zip(fields, args, hints)
-        if hint in (Funsor, Bound) or isinstance(hint, (Has, Value, BindReturn))
+        if hint in (Funsor, Bound)
+        or isinstance(hint, (Has, Value))
+        or (isinstance(hint, Fresh) and name in hint.args)
     }
 
 
@@ -180,7 +162,6 @@ def make_funsor(fn):
 
     - Funsor inputs are typed :class:`~funsor.terms.Funsor`.
     - Bound variable inputs (names) are typed :class:`Bound`.
-    - Bind and Return variable inputs (names) are typed :class:`BindReturn`.
     - Fresh variable inputs (names) are typed :class:`Fresh` together with
       lambda to compute the dependent domain.
     - Ground value inputs (e.g. Python ints) are typed :class:`Value` together with
@@ -207,13 +188,16 @@ def make_funsor(fn):
     input_types = typing.get_type_hints(as_callable(fn))
     for name, hint in input_types.items():
         if not (
-            hint in (Funsor, Bound) or isinstance(hint, (Fresh, Value, Has, BindReturn))
+            hint in (Funsor, Bound) or isinstance(hint, (Fresh, Value, Has))
         ):
             raise TypeError(f"Invalid type hint {name}: {hint}")
     output_type = input_types.pop("return")
     hints = tuple(input_types.values())
 
-    if any(isinstance(hint, BindReturn) for hint in hints):
+    if any(
+        isinstance(hint, Fresh) and arg in hint.args
+        for arg, hint in input_types.items()
+    ):
         bind_return_kwarg = ["bind_return"]
         bind_return_pattern = (frozenset,)
 
@@ -237,8 +221,8 @@ def make_funsor(fn):
             if bind_return is None:
                 bind_return = frozenset(
                     (arg, arg)
-                    for hint, arg in zip(hints, args)
-                    if isinstance(hint, BindReturn)
+                    for hint, arg, arg_name in zip(hints, args, cls._ast_fields)
+                    if isinstance(hint, Fresh) and arg_name in hint.args
                 )
 
             # Compute domains of bound variables.
@@ -246,7 +230,7 @@ def make_funsor(fn):
                 hint = input_types[name]
                 if hint is Funsor or isinstance(hint, Has):  # TODO support domains
                     args[i] = to_funsor(arg)
-                elif hint is Bound or isinstance(hint, BindReturn):
+                elif hint is Bound or (isinstance(hint, Fresh) and name in hint.args):
                     for other in args:
                         if isinstance(other, Funsor):
                             domain = other.inputs.get(arg, None)
@@ -264,13 +248,13 @@ def make_funsor(fn):
 
             # Compute domains of fresh variables.
             dependent_args = _get_dependent_args(cls._ast_fields, hints, args)
-            for i, (hint, arg) in enumerate(zip(hints, args)):
-                if isinstance(hint, Fresh):
-                    domain = hint(**dependent_args)
-                    args[i] = to_funsor(arg, domain)
-                elif isinstance(hint, BindReturn):
+            for i, (hint, arg, arg_name) in enumerate(zip(hints, args, cls._ast_fields)):
+                if isinstance(hint, Fresh) and arg_name in hint.args:
                     domain = hint(**dependent_args)
                     args[i] = to_funsor(arg.name, domain)
+                elif isinstance(hint, Fresh):
+                    domain = hint(**dependent_args)
+                    args[i] = to_funsor(arg, domain)
 
             # Append bind_return to args
             if bind_return:
@@ -304,10 +288,10 @@ def make_funsor(fn):
                             f"Are you sure {name} will always appear in {arg_name}?",
                             SyntaxWarning,
                         )
-        for hint, arg in zip(hints, args):
+        for hint, arg, arg_name in zip(hints, args, self._ast_fields):
             if hint is Bound:
                 bound[arg.name] = inputs.pop(arg.name)
-            elif isinstance(hint, BindReturn):
+            elif isinstance(hint, Fresh) and arg_name in hint.args:
                 bound[arg.name] = inputs.pop(arg.name)
                 inputs[bind_return[arg.name]] = arg.output
         for hint, arg in zip(hints, args):
@@ -326,8 +310,8 @@ def make_funsor(fn):
     def _alpha_convert(self, alpha_subs):
         result = []
         new_alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
-        for hint, value in zip(hints, self._ast_values):
-            if isinstance(hint, BindReturn):
+        for hint, value, arg_name in zip(hints, self._ast_values, self._ast_fields):
+            if isinstance(hint, Fresh) and arg_name in hint.args:
                 result.append(to_funsor(alpha_subs[value.name], value.output))
             else:
                 result.append(substitute(value, new_alpha_subs))
