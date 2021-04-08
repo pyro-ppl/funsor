@@ -313,7 +313,7 @@ def test_unroll():
     with reflect:
         y = Unroll(x, "a", 2, "kernel")
     assert y.fresh == frozenset({"a", "kernel"})
-    assert all(bound in y.x.inputs and bound[1:8] == "__BOUND" for bound in y.bound)
+    assert all(bound in y.x.inputs and "__BOUND" in bound for bound in y.bound)
     z = reinterpret(y)
     assert isinstance(z, Tensor)
     check_funsor(z, {"a": Bint[5 - 2 + 1], "kernel": Bint[2]}, Real)
@@ -332,7 +332,7 @@ def test_softmax():
     with reflect:
         y = Softmax(x, "a")
     assert y.fresh == frozenset({"a"})
-    assert all(bound in y.x.inputs and bound[1:8] == "__BOUND" for bound in y.bound)
+    assert all(bound in y.x.inputs and "__BOUND" in bound for bound in y.bound)
     z = reinterpret(y)
     assert isinstance(z, Tensor)
     check_funsor(z, {"a": Bint[3], "b": Bint[4]}, Real)

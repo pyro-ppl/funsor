@@ -187,31 +187,24 @@ def make_funsor(fn):
     """
     input_types = typing.get_type_hints(as_callable(fn))
     for name, hint in input_types.items():
-        if not (
-            hint in (Funsor, Bound) or isinstance(hint, (Fresh, Value, Has))
-        ):
+        if not (hint in (Funsor, Bound) or isinstance(hint, (Fresh, Value, Has))):
             raise TypeError(f"Invalid type hint {name}: {hint}")
-    output_type = input_types.pop("return")
-    hints = tuple(input_types.values())
-
     if any(
         isinstance(hint, Fresh) and arg in hint.args
         for arg, hint in input_types.items()
     ):
-        bind_return_kwarg = ["bind_return"]
-        bind_return_pattern = (frozenset,)
+        input_types["bind_return"] = Value[frozenset]
 
         def new_fn(*args):
             args, bind_return = args[:-1], args[-1]
             result = fn(*args)
-            if bind_return:
-                result = Subs(result, bind_return)
-            return result
+            return Subs(result, bind_return)
 
     else:
-        bind_return_kwarg = []
-        bind_return_pattern = ()
         new_fn = fn
+
+    output_type = input_types.pop("return")
+    hints = tuple(input_types.values())
 
     class ResultMeta(FunsorMeta):
         def __call__(cls, *args, bind_return=None):
@@ -248,7 +241,9 @@ def make_funsor(fn):
 
             # Compute domains of fresh variables.
             dependent_args = _get_dependent_args(cls._ast_fields, hints, args)
-            for i, (hint, arg, arg_name) in enumerate(zip(hints, args, cls._ast_fields)):
+            for i, (hint, arg, arg_name) in enumerate(
+                zip(hints, args, cls._ast_fields)
+            ):
                 if isinstance(hint, Fresh) and arg_name in hint.args:
                     domain = hint(**dependent_args)
                     args[i] = to_funsor(arg.name, domain)
@@ -262,9 +257,7 @@ def make_funsor(fn):
             return super().__call__(*args)
 
     @makefun.with_signature(
-        "__init__({})".format(
-            ", ".join(["self"] + list(input_types) + bind_return_kwarg)
-        )
+        "__init__({})".format(", ".join(["self"] + list(input_types)))
     )
     def __init__(self, **kwargs):
         args = tuple(kwargs[k] for k in self._ast_fields)
@@ -313,14 +306,14 @@ def make_funsor(fn):
         for hint, value, arg_name in zip(hints, self._ast_values, self._ast_fields):
             if isinstance(hint, Fresh) and arg_name in hint.args:
                 result.append(to_funsor(alpha_subs[value.name], value.output))
+            elif arg_name == "bind_return":
+                result.append(
+                    frozenset(
+                        (alpha_subs.get(k, k), v) for k, v in self.bind_return.items()
+                    )
+                )
             else:
                 result.append(substitute(value, new_alpha_subs))
-        if hasattr(self, "bind_return"):
-            result.append(
-                frozenset(
-                    (alpha_subs.get(k, k), v) for k, v in self.bind_return.items()
-                )
-            )
         return tuple(result)
 
     name = _get_name(fn)
@@ -328,14 +321,8 @@ def make_funsor(fn):
     Result = ResultMeta(
         name, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
     )
-    pattern = (
-        (Result,)
-        + tuple(
-            _hint_to_pattern(input_types[k])
-            for k in Result._ast_fields
-            if k != "bind_return"
-        )
-        + bind_return_pattern
+    pattern = (Result,) + tuple(
+        _hint_to_pattern(input_types[k]) for k in Result._ast_fields
     )
     eager.register(*pattern)(_erase_types(new_fn))
     return Result
