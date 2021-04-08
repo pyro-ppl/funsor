@@ -287,13 +287,12 @@ def make_funsor(fn):
             elif isinstance(hint, Fresh) and arg_name in hint.args:
                 bound[arg.name] = inputs.pop(arg.name)
                 inputs[bind_return[arg.name]] = arg.output
+                fresh |= frozenset({bind_return[arg.name]})
         for hint, arg in zip(hints, args):
             if isinstance(hint, Fresh):
-                for k, d in arg.inputs.items():
-                    if k not in bound:
-                        inputs[k] = d
-                        fresh |= frozenset({k})
-        fresh |= frozenset(bind_return.values())
+                if arg.name not in bound:
+                    inputs[arg.name] = arg.output
+                    fresh |= frozenset({arg.name})
         Funsor.__init__(self, inputs, output, fresh, bound)
         for name, arg in zip(self._ast_fields, args):
             if name == "bind_return":
