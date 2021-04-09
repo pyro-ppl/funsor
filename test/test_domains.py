@@ -6,7 +6,14 @@ import pickle
 
 import pytest
 
-from funsor.domains import Bint, Real, Reals  # noqa F401
+from funsor.domains import Bint, Real, Reals
+
+
+def test_str():
+    assert str(Bint[3]) == "Bint[3]"
+    assert str(Real) == "Real"
+    assert str(Reals[2]) == "Reals[2]"
+    assert str(Reals[2, 3]) == "Reals[2,3]"
 
 
 @pytest.mark.parametrize(
