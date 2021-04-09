@@ -6,7 +6,7 @@ from funsor.domains import RealsType
 from funsor.interpretations import StatefulInterpretation
 from funsor.tensor import Tensor
 from funsor.terms import Funsor, Reduce
-from funsor.util import backends_supported, get_backend
+from funsor.util import backends_supported
 
 
 class Adam(StatefulInterpretation):
@@ -35,14 +35,13 @@ class Adam(StatefulInterpretation):
             self.params[name] = self._initialize(name, domain)
         return self.params[name]
 
+    @backends_supported("torch")
     def _initialize(self, name, domain):
         assert isinstance(name, str)
         assert isinstance(domain, RealsType)
-        if get_backend() == "torch":
-            import torch
+        import torch
 
-            return Tensor(torch.randn(domain.shape, requires_grad=True))
-        raise NotImplementedError(f"Unsupported backend {get_backend()}")
+        return Tensor(torch.randn(domain.shape, requires_grad=True))
 
 
 @Adam.register(Reduce, ops.MinOp, Funsor, frozenset)
