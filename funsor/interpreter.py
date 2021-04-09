@@ -6,7 +6,7 @@ import os
 import re
 import types
 import warnings
-from collections import OrderedDict, deque
+from collections import OrderedDict, defaultdict, deque
 from functools import singledispatch
 
 import numpy as np
@@ -153,20 +153,19 @@ def gensym(x=None):
     return "V" + str(sym)
 
 
-def anf(x):
+def anf(x, stop=is_atom):
     stack = deque([x])
-    child_to_parents, children_counts = {}, {}
+    child_to_parents = defaultdict(list)
+    children_counts = defaultdict(int)
     leaves = deque()
     while stack:
         h = stack.popleft()
-        children_counts[h] = 0
-        child_to_parents.setdefault(h, [])
         for c in children(h):
-            if is_atom(c):
+            if stop(c):
                 continue
             if c not in child_to_parents:
                 stack.append(c)
-            child_to_parents.setdefault(c, []).append(h)
+            child_to_parents[c].append(h)
             children_counts[h] += 1
         if children_counts[h] == 0:
             leaves.append(h)
