@@ -6,7 +6,7 @@ from funsor.domains import RealsType
 from funsor.interpretations import StatefulInterpretation
 from funsor.tensor import Tensor
 from funsor.terms import Funsor, Reduce
-from funsor.util import backends_supported
+from funsor.util import get_backend
 
 
 class Adam(StatefulInterpretation):
@@ -35,38 +35,41 @@ class Adam(StatefulInterpretation):
             self.params[name] = self._initialize(name, domain)
         return self.params[name]
 
-    @backends_supported("torch")
     def _initialize(self, name, domain):
         assert isinstance(name, str)
         assert isinstance(domain, RealsType)
-        import torch
+        if get_backend() == "torch":
+            import torch
 
-        return Tensor(torch.randn(domain.shape, requires_grad=True))
+            return Tensor(torch.randn(domain.shape, requires_grad=True))
+        raise NotImplementedError(f"Unsupported backend {get_backend()}")
 
 
 @Adam.register(Reduce, ops.MinOp, Funsor, frozenset)
-@backends_supported("torch")
 def adam_min(self, op, loss, reduced_vars):
-    import torch
+    if get_backend() == "torch":
+        import torch
 
-    with torch.enable_grad():
-        params = {
-            var.name: self.param(var.name, var.output).data
-            for var in reduced_vars.intersection(loss.input_vars)
-        }
-        optimizer = torch.optim.Adam(list(params.values()), **self.optim_params)
-        for step in range(self.num_steps):
-            optimizer.zero_grad()
-            # Note we use v[...] to trigger a shallow copy of the underlying
-            # torch.Tensor object so that funsor.Tensor(-) creates a new
-            # cons-hashed value and avoids possible downstream memoization
-            # (which would be incorrect because underlying data has changed).
-            # TODO test that this interacts with cons-hashing correctly
-            step_loss = loss(**{k: v[...] for k, v in params.items()}).data
-            step_loss.backward()
-            optimizer.step()
-            if self.log_every and step % self.log_every == 0:
-                print(f"step {step: >6d} loss = {step_loss.data:g}")
+        with torch.enable_grad():
+            params = {
+                var.name: self.param(var.name, var.output).data
+                for var in reduced_vars.intersection(loss.input_vars)
+            }
+            optimizer = torch.optim.Adam(list(params.values()), **self.optim_params)
+            for step in range(self.num_steps):
+                optimizer.zero_grad()
+                # Note we use v[...] to trigger a shallow copy of the underlying
+                # torch.Tensor object so that funsor.Tensor(-) creates a new
+                # cons-hashed value and avoids possible downstream memoization
+                # (which would be incorrect because underlying data has changed).
+                # TODO test that this interacts with cons-hashing correctly
+                step_loss = loss(**{k: v[...] for k, v in params.items()}).data
+                step_loss.backward()
+                optimizer.step()
+                if self.log_every and step % self.log_every == 0:
+                    print(f"step {step: >6d} loss = {step_loss.data:g}")
+    else:
+        raise NotImplementedError(f"Unsupported backend {get_backend()}")
     return loss(**params)
 
 
