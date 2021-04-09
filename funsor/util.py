@@ -77,7 +77,7 @@ def pretty(arg, maxlen=40):
     """
     out = []
     _quote_inplace(arg, 0, out)
-    fill = "   \u2502" * 100
+    fill = u"   \u2502" * 100
     lines = []
     for indent, line in out:
         if len(line) > maxlen:
