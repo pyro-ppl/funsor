@@ -5,13 +5,14 @@ import inspect
 import typing
 import warnings
 from collections import OrderedDict
+from contextlib import contextmanager
 from functools import singledispatch
 
 import makefun
 
 from funsor.instrument import debug_logged
 from funsor.terms import Funsor, FunsorMeta, Variable, eager, to_funsor
-from funsor.util import as_callable
+from funsor.util import as_callable, get_backend
 
 
 def _get_name(fn):
@@ -275,3 +276,13 @@ def _hint_to_pattern(t):
 @_hint_to_pattern.register(Value)
 def _(t):
     return t.value_type
+
+
+@contextmanager
+def backends_supported(*backends):
+    if get_backend() not in backends:
+        raise NotImplementedError(f"Unsupported backend {get_backend()}")
+    try:
+        yield
+    finally:
+        pass

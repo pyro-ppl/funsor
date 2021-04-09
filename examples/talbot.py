@@ -10,17 +10,14 @@ Example: Talbot's method for numerical inversion of the Laplace transform
 import argparse
 import math
 
-import torch
-
 import funsor
 import funsor.ops as ops
 from funsor.adam import Adam
 from funsor.domains import Real
-from funsor.factory import Bound, Fresh, Has, make_funsor
+from funsor.factory import Bound, Fresh, Has, backends_supported, make_funsor
 from funsor.interpretations import StatefulInterpretation
 from funsor.tensor import Tensor
 from funsor.terms import Funsor, Variable
-from funsor.util import get_backend
 
 
 @make_funsor
@@ -64,36 +61,32 @@ class Talbot(StatefulInterpretation):
 
 
 @Talbot.register(InverseLaplace, Funsor, Funsor, Variable)
+@backends_supported("torch")
 def talbot(self, F, t, s):
-    if get_backend() == "torch":
-        import torch
+    import torch
 
-        k = torch.arange(1, self.num_steps)
-        delta = torch.zeros(self.num_steps, dtype=torch.complex64)
-        delta[0] = 2 * self.num_steps / 5
-        delta[1:] = (
-            2 * math.pi / 5 * k * (1 / (math.pi / self.num_steps * k).tan() + 1j)
-        )
+    k = torch.arange(1, self.num_steps)
+    delta = torch.zeros(self.num_steps, dtype=torch.complex64)
+    delta[0] = 2 * self.num_steps / 5
+    delta[1:] = 2 * math.pi / 5 * k * (1 / (math.pi / self.num_steps * k).tan() + 1j)
 
-        gamma = torch.zeros(self.num_steps, dtype=torch.complex64)
-        gamma[0] = 0.5 * delta[0].exp()
-        gamma[1:] = (
-            1
-            + 1j
-            * math.pi
-            / self.num_steps
-            * k
-            * (1 + 1 / (math.pi / self.num_steps * k).tan() ** 2)
-            - 1j / (math.pi / self.num_steps * k).tan()
-        ) * delta[1:].exp()
+    gamma = torch.zeros(self.num_steps, dtype=torch.complex64)
+    gamma[0] = 0.5 * delta[0].exp()
+    gamma[1:] = (
+        1
+        + 1j
+        * math.pi
+        / self.num_steps
+        * k
+        * (1 + 1 / (math.pi / self.num_steps * k).tan() ** 2)
+        - 1j / (math.pi / self.num_steps * k).tan()
+    ) * delta[1:].exp()
 
-        delta = Tensor(delta)["num_steps"]
-        gamma = Tensor(gamma)["num_steps"]
-        ilt = 0.4 / t * (gamma * F(**{s.name: delta / t})).reduce(ops.add, "num_steps")
+    delta = Tensor(delta)["num_steps"]
+    gamma = Tensor(gamma)["num_steps"]
+    ilt = 0.4 / t * (gamma * F(**{s.name: delta / t})).reduce(ops.add, "num_steps")
 
-        return Tensor(ilt.data.real, ilt.inputs)
-    else:
-        raise NotImplementedError(f"Unsupported backend {get_backend()}")
+    return Tensor(ilt.data.real, ilt.inputs)
 
 
 def main(args):
@@ -105,6 +98,7 @@ def main(args):
     Application to Single Turnover Kinetics of Helicase-Catalyzed DNA Unwinding"
     https://www.sciencedirect.com/science/article/pii/S0006349503746487
     """
+    import torch
 
     funsor.set_backend("torch")
 
