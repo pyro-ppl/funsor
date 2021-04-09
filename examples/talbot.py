@@ -14,10 +14,11 @@ import funsor
 import funsor.ops as ops
 from funsor.adam import Adam
 from funsor.domains import Real
-from funsor.factory import Bound, Fresh, Has, backends_supported, make_funsor
+from funsor.factory import Bound, Fresh, Has, make_funsor
 from funsor.interpretations import StatefulInterpretation
 from funsor.tensor import Tensor
 from funsor.terms import Funsor, Variable
+from funsor.util import backends_supported
 
 
 @make_funsor

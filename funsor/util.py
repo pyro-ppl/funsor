@@ -5,6 +5,7 @@ import functools
 import inspect
 import re
 import sys
+from contextlib import contextmanager
 
 import numpy as np
 
@@ -76,7 +77,7 @@ def pretty(arg, maxlen=40):
     """
     out = []
     _quote_inplace(arg, 0, out)
-    fill = u"   \u2502" * 100
+    fill = "   \u2502" * 100
     lines = []
     for indent, line in out:
         if len(line) > maxlen:
@@ -253,3 +254,13 @@ def methodof(cls, name=None):
         return fn
 
     return decorator
+
+
+@contextmanager
+def backends_supported(*backends):
+    if get_backend() not in backends:
+        raise NotImplementedError(f"Unsupported backend {get_backend()}")
+    try:
+        yield
+    finally:
+        pass

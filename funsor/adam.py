@@ -3,11 +3,10 @@
 
 import funsor.ops as ops
 from funsor.domains import RealsType
-from funsor.factory import backends_supported
 from funsor.interpretations import StatefulInterpretation
 from funsor.tensor import Tensor
 from funsor.terms import Funsor, Reduce
-from funsor.util import get_backend
+from funsor.util import backends_supported, get_backend
 
 
 class Adam(StatefulInterpretation):
