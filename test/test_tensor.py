@@ -14,6 +14,8 @@ import pytest
 
 import funsor
 import funsor.ops as ops
+from funsor.cnf import Contraction
+from funsor.delta import Delta
 from funsor.domains import Array, Bint, Product, Real, Reals, find_domain
 from funsor.interpretations import eager, lazy
 from funsor.tensor import (
@@ -37,6 +39,17 @@ from funsor.testing import (
     zeros,
 )
 from funsor.util import get_backend
+
+
+def test_repr():
+    data = randn(())
+    assert repr(Tensor(data)) == f"Tensor({repr(data)})"
+
+    data = randn((2,))
+    assert repr(Tensor(data)) == f"Tensor({repr(data)})"
+
+    data = ops.astype(zeros((2,)), "int64")
+    assert repr(Tensor(data, {}, 3)) == f"Tensor({repr(data)}, {{}}, 3)"
 
 
 @pytest.mark.parametrize("output_shape", [(), (2,), (3, 2)], ids=str)
@@ -675,6 +688,7 @@ def test_reduce_event(op, event_shape, dims):
     dtype = "real"
     if op in [ops.and_, ops.or_]:
         data = ops.astype(data, "uint8")
+        dtype = 2
     expected_data = numeric_op(data.reshape(batch_shape + (-1,)), -1)
 
     x = Tensor(data, inputs, dtype=dtype)
@@ -972,6 +986,14 @@ def test_funsor_stack(output):
             assert_close(xyz(t=1, i=i, k=k), y)
     for j in range(3):
         assert_close(xyz(t=2, j=j), z)
+
+
+@pytest.mark.skipif(
+    get_backend() == "torch", reason="torck.stack does not support Python scalars"
+)
+def test_number_stack():
+    actual = ops.stack((Number(2.0), Number(3)))
+    assert_close(actual, Tensor(numeric_array([2.0, 3.0])))
 
 
 @pytest.mark.parametrize("output", [Bint[2], Real, Reals[4], Reals[2, 3]], ids=str)
@@ -1307,52 +1329,185 @@ def test_scatter_pure_renaming():
     assert ((actual - expected).abs() < 1e-4).data.all()
 
 
+@pytest.mark.parametrize(
+    "op",
+    [
+        ops.any,
+        ops.all,
+        ops.amin,
+        ops.amax,
+        ops.sum,
+        ops.logsumexp,
+        ops.prod,
+        ops.mean,
+    ],
+)
 @pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
-def test_sum(event_shape):
+def test_reduction(op, event_shape):
     data = randn(*event_shape)
     DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
     KEEPDIMS = [False, True]
+    op_name = op.name[1:] if op.name in {"amin", "amax"} else op.name
+    dtype = 2 if op.name in {"all", "any"} else "real"
 
-    assert_close(Tensor(ops.sum(data)), ops.sum(Tensor(data)))
+    expected = Tensor(op(data), dtype=dtype)
+    assert_close(op(Tensor(data)), expected)
+    assert_close(getattr(Tensor(data), op_name)(), expected)
+
     for dim in DIMS:
-        assert_close(Tensor(ops.sum(data, dim)), ops.sum(Tensor(data), dim))
-        assert_close(Tensor(ops.sum(data, dim=dim)), ops.sum(Tensor(data), dim=dim))
+        expected = Tensor(op(data, dim), dtype=dtype)
+        assert_close(op(Tensor(data), dim), expected)
+        assert_close(op(Tensor(data), axis=dim), expected)
+        assert_close(getattr(Tensor(data), op_name)(dim), expected)
+        assert_close(getattr(Tensor(data), op_name)(axis=dim), expected)
+
     for keepdims in KEEPDIMS:
-        assert_close(
-            Tensor(ops.sum(data, keepdims=keepdims)),
-            ops.sum(Tensor(data), keepdims=keepdims),
-        )
+        expected = Tensor(op(data, keepdims=keepdims), dtype=dtype)
+        assert_close(op(Tensor(data), keepdims=keepdims), expected)
+        assert_close(getattr(Tensor(data), op_name)(keepdims=keepdims), expected)
+
         for dim in DIMS:
+            expected = Tensor(op(data, dim, keepdims), dtype=dtype)
+            assert_close(op(Tensor(data), dim, keepdims), expected)
+            assert_close(op(Tensor(data), dim, keepdims=keepdims), expected)
+            assert_close(op(Tensor(data), axis=dim, keepdims=keepdims), expected)
+            assert_close(getattr(Tensor(data), op_name)(dim, keepdims), expected)
             assert_close(
-                Tensor(ops.sum(data, dim, keepdims)),
-                ops.sum(Tensor(data), dim, keepdims),
+                getattr(Tensor(data), op_name)(dim, keepdims=keepdims), expected
             )
             assert_close(
-                Tensor(ops.sum(data, dim, keepdims=keepdims)),
-                ops.sum(Tensor(data), dim, keepdims=keepdims),
-            )
-            assert_close(
-                Tensor(ops.sum(data, dim=dim, keepdims=keepdims)),
-                ops.sum(Tensor(data), dim=dim, keepdims=keepdims),
+                getattr(Tensor(data), op_name)(axis=dim, keepdims=keepdims), expected
             )
 
 
+@pytest.mark.parametrize(
+    "op",
+    [
+        ops.std,
+        ops.var,
+    ],
+)
+@pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
+def test_std_var(op, event_shape):
+    data = randn(*event_shape)
+    DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
+    DDOFS = [0, 1]
+    KEEPDIMS = [False, True]
+
+    expected = Tensor(op(data))
+    assert_close(op(Tensor(data)), expected)
+    assert_close(getattr(Tensor(data), op.name)(), expected)
+
+    for dim in DIMS:
+        expected = Tensor(op(data, dim))
+        assert_close(op(Tensor(data), dim), expected)
+        assert_close(op(Tensor(data), axis=dim), expected)
+        assert_close(getattr(Tensor(data), op.name)(dim), expected)
+        assert_close(getattr(Tensor(data), op.name)(axis=dim), expected)
+
+    for keepdims in KEEPDIMS:
+        expected = Tensor(op(data, keepdims=keepdims))
+        assert_close(op(Tensor(data), keepdims=keepdims), expected)
+        assert_close(getattr(Tensor(data), op.name)(keepdims=keepdims), expected)
+
+        for ddof in DDOFS:
+            for dim in DIMS:
+                expected = Tensor(op(data, dim, ddof, keepdims))
+                assert_close(op(Tensor(data), dim, ddof, keepdims), expected)
+                assert_close(op(Tensor(data), dim, ddof, keepdims=keepdims), expected)
+                assert_close(
+                    op(Tensor(data), axis=dim, ddof=ddof, keepdims=keepdims), expected
+                )
+                assert_close(
+                    getattr(Tensor(data), op.name)(dim, ddof, keepdims), expected
+                )
+                assert_close(
+                    getattr(Tensor(data), op.name)(dim, ddof, keepdims=keepdims),
+                    expected,
+                )
+                assert_close(
+                    getattr(Tensor(data), op.name)(
+                        axis=dim, ddof=ddof, keepdims=keepdims
+                    ),
+                    expected,
+                )
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        ops.any,
+        ops.all,
+        ops.amin,
+        ops.amax,
+        ops.sum,
+        ops.logsumexp,
+        ops.prod,
+        ops.mean,
+        ops.std,
+        ops.var,
+    ],
+)
 @pytest.mark.parametrize("batch_shape", [(), (5,)], ids=str)
 @pytest.mark.parametrize("event_shape", [(2, 3, 4)], ids=str)
-def test_sum_batch(batch_shape, event_shape):
+def test_reduction_batch(op, batch_shape, event_shape):
     inputs = OrderedDict((k, Bint[s]) for k, s in zip("abc", batch_shape))
     data = randn(*batch_shape, *event_shape)
+    dtype = 2 if op.name in {"all", "any"} else "real"
     DIMS = [None, 0, 1, 2, -1, -2, -3, (0, 2)]
     KEEPDIMS = [False, True]
 
-    def raw_sum(x, dim=None, keepdims=False, batch_ndims=len(batch_shape)):
+    def raw_reduction(x, dim=None, keepdims=False, batch_ndims=len(batch_shape)):
         if batch_ndims == 0:
-            return ops.sum(x, dim, keepdims)
-        return ops.stack([raw_sum(part, dim, keepdims, batch_ndims - 1) for part in x])
+            return op(x, dim, keepdims=keepdims)
+        return ops.stack(
+            [raw_reduction(part, dim, keepdims, batch_ndims - 1) for part in x]
+        )
 
     rtol = 1e-5 if get_backend() == "jax" else 1e-6
     for keepdims in KEEPDIMS:
         for dim in DIMS:
-            actual = ops.sum(Tensor(data, inputs), dim, keepdims)
-            expected = Tensor(raw_sum(data, dim, keepdims), inputs)
+            actual = op(Tensor(data, inputs), dim, keepdims=keepdims)
+            expected = Tensor(raw_reduction(data, dim, keepdims), inputs, dtype)
             assert_close(actual, expected, rtol=rtol)
+
+
+def test_scatter_substitute():
+    expr = Scatter(
+        ops.logaddexp,
+        (
+            (
+                "_time_states_38",
+                Number(0, 1),
+            ),
+        ),
+        Contraction(
+            ops.null,
+            ops.add,
+            frozenset(),
+            (
+                Delta(
+                    (
+                        (
+                            "states",
+                            (
+                                Tensor(np.array(5, dtype=np.int32), (), 10),
+                                Number(0.0),
+                            ),
+                        ),
+                        (
+                            "_PREV_states",
+                            (
+                                Tensor(np.array(4, dtype=np.int32), (), 10),
+                                Number(0.0),
+                            ),
+                        ),
+                    )
+                ),
+                Tensor(np.array(0.3386716842651367, dtype=np.float32), (), "real"),
+            ),
+        ),
+        frozenset(),
+    )
+
+    expr(_time_states_38="_time_states")

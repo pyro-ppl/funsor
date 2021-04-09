@@ -15,7 +15,15 @@ from multipledispatch import dispatch
 
 import funsor.interpreter as interpreter
 import funsor.ops as ops
-from funsor.domains import Array, Bint, Domain, Product, Real, find_domain
+from funsor.domains import (
+    Array,
+    Bint,
+    Domain,
+    Product,
+    ProductDomain,
+    Real,
+    find_domain,
+)
 from funsor.interpretations import (
     Interpretation,
     die,
@@ -28,7 +36,7 @@ from funsor.interpretations import (
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
-from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_origin
+from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_args, get_origin
 from funsor.util import getargspec, lazy_property, pretty, quote
 
 from . import instrument, interpreter, ops
@@ -570,26 +578,41 @@ class Funsor(object, metaclass=FunsorMeta):
     # reduce over output shape while preserving all inputs.
     # To reduce over inputs, instead call .reduce(op, reduced_vars).
 
-    def sum(self):
-        return Unary(ops.add, self)
+    def all(self, axis=None, keepdims=False):
+        return Unary(ops.AllOp(axis, keepdims), self)
 
-    def prod(self):
-        return Unary(ops.mul, self)
+    def any(self, axis=None, keepdims=False):
+        return Unary(ops.AnyOp(axis, keepdims), self)
 
-    def logsumexp(self):
-        return Unary(ops.logaddexp, self)
+    def argmax(self, axis=None, keepdims=False):
+        return Unary(ops.ArgmaxOp(axis, keepdims), self)
 
-    def all(self):
-        return Unary(ops.and_, self)
+    def argmin(self, axis=None, keepdims=False):
+        return Unary(ops.ArgminOp(axis, keepdims), self)
 
-    def any(self):
-        return Unary(ops.or_, self)
+    def max(self, axis=None, keepdims=False):
+        return Unary(ops.AmaxOp(axis, keepdims), self)
 
-    def min(self):
-        return Unary(ops.min, self)
+    def min(self, axis=None, keepdims=False):
+        return Unary(ops.AminOp(axis, keepdims), self)
 
-    def max(self):
-        return Unary(ops.max, self)
+    def sum(self, axis=None, keepdims=False):
+        return Unary(ops.SumOp(axis, keepdims), self)
+
+    def prod(self, axis=None, keepdims=False):
+        return Unary(ops.ProdOp(axis, keepdims), self)
+
+    def logsumexp(self, axis=None, keepdims=False):
+        return Unary(ops.LogsumexpOp(axis, keepdims), self)
+
+    def mean(self, axis=None, keepdims=False):
+        return Unary(ops.MeanOp(axis, keepdims), self)
+
+    def std(self, axis=None, ddof=0, keepdims=False):
+        return Unary(ops.StdOp(axis, ddof, keepdims), self)
+
+    def var(self, axis=None, ddof=0, keepdims=False):
+        return Unary(ops.VarOp(axis, ddof, keepdims), self)
 
     def __add__(self, other):
         return Binary(ops.add, self, to_funsor(other))
@@ -1192,6 +1215,16 @@ class Scatter(Funsor):
         self.source = source
         self.reduced_vars = reduced_vars
 
+    def eager_subs(self, subs):
+        subs = OrderedDict(subs)
+        new_subs = []
+        for name, sub in self.subs:
+            if name in subs and isinstance(subs[name], Variable):
+                new_subs.append((subs[name].name, sub))
+            else:
+                new_subs.append((name, sub))
+        return Scatter(self.op, tuple(new_subs), self.source, self.reduced_vars)
+
 
 class Approximate(Funsor):
     """
@@ -1783,6 +1816,19 @@ class Tuple(Funsor):
             yield self[i]
 
 
+@to_funsor.register(tuple)
+def tuple_to_funsor(args, output=None, dim_to_name=None):
+    if not isinstance(output, ProductDomain):
+        raise NotImplementedError("TODO")
+    outputs = get_args(output)
+    assert len(outputs) == len(args)
+    funsor_args = tuple(
+        to_funsor(arg, output=arg_output, dim_to_name=dim_to_name)
+        for arg, arg_output in zip(args, outputs)
+    )
+    return Tuple(funsor_args)
+
+
 @lazy.register(Binary, GetitemOp, Tuple, Number)
 @eager.register(Binary, GetitemOp, Tuple, Number)
 def eager_getitem_tuple(op, lhs, rhs):
@@ -1829,6 +1875,7 @@ def symbolic(*signature):
             return _symbolic(inputs, output, fn)
     # Usage: @symbolic(Real, Reals[3], Bint[3])
     output = None
+    # FIXME: what is inputs?
     return functools.partial(_symbolic, inputs, output)
 
 

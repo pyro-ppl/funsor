@@ -30,6 +30,7 @@ from .op import (
     FinitaryOp,
     Op,
     OpMeta,
+    ReductionOp,
     TernaryOp,
     UnaryOp,
     declare_op_types,
@@ -49,34 +50,81 @@ tanh.register(array)(np.tanh)
 atanh.register(array)(np.arctanh)
 
 
-@UnaryOp.make
-def all(x, dim=None):
-    return np.all(x, dim)
+###########################################
+# Reduction Ops
+###########################################
+
+
+@ReductionOp.make
+def all(x, axis=None, keepdims=False):
+    return np.all(x, axis, keepdims=keepdims)
+
+
+@ReductionOp.make
+def any(x, axis=None, keepdims=False):
+    return np.any(x, axis, keepdims=keepdims)
+
+
+@ReductionOp.make
+def amax(x, axis=None, keepdims=False):
+    return np.amax(x, axis, keepdims=keepdims)
+
+
+@ReductionOp.make
+def amin(x, axis=None, keepdims=False):
+    return np.amin(x, axis, keepdims=keepdims)
+
+
+@ReductionOp.make
+def sum(x, axis=None, keepdims=False):
+    return np.sum(x, axis, keepdims=keepdims)
+
+
+@ReductionOp.make
+def prod(x, axis=None, keepdims=False):
+    return np.prod(x, axis, keepdims=keepdims)
+
+
+@ReductionOp.make
+def logsumexp(x, axis=None, keepdims=False):
+    amax = np.amax(x, axis=axis, keepdims=True)
+    # treat the case x = -inf
+    amax = np.where(np.isfinite(amax), amax, 0.0)
+    unnormalized_lse = log(np.sum(np.exp(x - amax), axis, keepdims=keepdims))
+    amax = amax if keepdims else amax.squeeze(axis)
+    return unnormalized_lse + amax
+
+
+@ReductionOp.make
+def mean(x, axis=None, keepdims=False):
+    return np.mean(x, axis, keepdims=keepdims)
+
+
+@ReductionOp.make
+def std(x, axis=None, ddof=0, keepdims=False):
+    return np.std(x, axis, ddof=ddof, keepdims=keepdims)
+
+
+@ReductionOp.make
+def var(x, axis=None, ddof=0, keepdims=False):
+    return np.var(x, axis, ddof=ddof, keepdims=keepdims)
+
+
+###########################################
 
 
 @UnaryOp.make
-def any(x, dim=None):
-    return np.any(x, dim)
+def argmax(x, axis=None, keepdims=False):
+    if keepdims:
+        return np.expand_dims(np.argmax(x, axis), axis)
+    return np.argmax(x, axis)
 
 
 @UnaryOp.make
-def amax(x, dim=None, keepdims=False):
-    return np.amax(x, dim, keepdims=keepdims)
-
-
-@UnaryOp.make
-def amin(x, dim=None, keepdims=False):
-    return np.amax(x, dim, keepdims=keepdims)
-
-
-@UnaryOp.make
-def sum(x, dim=None, keepdims=False):
-    return np.sum(x, dim, keepdims=keepdims)
-
-
-@UnaryOp.make
-def prod(x, dim=None):
-    return np.prod(x, dim)
+def argmin(x, axis=None, keepdims=False):
+    if keepdims:
+        return np.expand_dims(np.argmin(x, axis), axis)
+    return np.argmin(x, axis)
 
 
 @UnaryOp.make
@@ -247,14 +295,6 @@ def _safe_logaddexp_tensor_number(x, y):
     return _safe_logaddexp_number_tensor(y, x)
 
 
-@UnaryOp.make
-def logsumexp(x, dim):
-    amax = np.amax(x, axis=dim, keepdims=True)
-    # treat the case x = -inf
-    amax = np.where(np.isfinite(amax), amax, 0.0)
-    return log(np.sum(np.exp(x - amax), axis=dim)) + amax.squeeze(axis=dim)
-
-
 max.register(array, array)(np.maximum)
 min.register(array, array)(np.minimum)
 
@@ -277,16 +317,6 @@ def _min(x, y):
 @min.register(array, (int, float))
 def _min(x, y):
     return np.clip(x, a_min=None, a_max=y)
-
-
-@UnaryOp.make
-def argmax(x, dim):
-    raise NotImplementedError
-
-
-@argmax.register(array)
-def _argmax(x, dim):
-    return np.argmax(x, dim)
 
 
 @UnaryOp.make
@@ -379,7 +409,7 @@ def stack(parts, dim=0):
     raise NotImplementedError
 
 
-stack.register(arraylist)(np.stack)
+stack.register(typing.Tuple[typing.Union[array + (int, float)], ...])(np.stack)
 
 
 @UnaryOp.make
@@ -413,6 +443,7 @@ __all__ = [
     "amin",
     "any",
     "argmax",
+    "argmin",
     "astype",
     "cat",
     "cholesky",
@@ -429,6 +460,7 @@ __all__ = [
     "isnan",
     "logaddexp",
     "logsumexp",
+    "mean",
     "new_arange",
     "new_eye",
     "new_full",
@@ -439,10 +471,12 @@ __all__ = [
     "scatter",
     "scatter_add",
     "stack",
+    "std",
     "sum",
     "transpose",
     "triangular_solve",
     "unsqueeze",
+    "var",
 ]
 
 declare_op_types(globals(), __all__, __name__)

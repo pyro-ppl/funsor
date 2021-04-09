@@ -37,7 +37,14 @@ from .terms import (
     to_funsor,
 )
 from .typing import Variadic
-from .util import get_backend, get_tracing_state, getargspec, is_nn_module, quote
+from .util import (
+    as_callable,
+    get_backend,
+    get_tracing_state,
+    getargspec,
+    is_nn_module,
+    quote,
+)
 
 
 def get_default_prototype():
@@ -95,7 +102,7 @@ class TensorMeta(FunsorMeta):
     def __call__(cls, data, inputs=None, dtype="real"):
         if inputs is None:
             inputs = tuple()
-        elif isinstance(inputs, OrderedDict):
+        elif isinstance(inputs, dict):
             inputs = tuple(inputs.items())
         # XXX: memoize tests fail for np.generic because those scalar values are hashable?
         # it seems that there is no harm with the conversion generic -> ndarray here
@@ -115,14 +122,14 @@ class Tensor(Funsor, metaclass=TensorMeta):
     For example::
 
         data = torch.zeros(5,4,3,2)
-        x = Tensor(data, OrderedDict([("i", Bint[5]), ("j", Bint[4])]))
+        x = Tensor(data, {"i": Bint[5], "j": Bint[4]})
         assert x.output == Reals[3, 2]
 
     Operators like ``matmul`` and ``.sum()`` operate only on the output shape,
     and will not change the named inputs.
 
     :param numeric_array data: A PyTorch tensor or NumPy ndarray.
-    :param OrderedDict inputs: An optional mapping from input name (str) to
+    :param dict inputs: An optional mapping from input name (str) to
         datatype (``funsor.domains.Domain``). Defaults to empty.
     :param dtype: optional output datatype. Defaults to "real".
     :type dtype: int or the string "real".
@@ -144,21 +151,25 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     @ignore_jit_warnings()
     def __repr__(self):
-        if self.output != "real":
-            return "Tensor({}, {}, {})".format(self.data, self.inputs, repr(self.dtype))
+        data = repr(self.data).replace("\n", "\n       ")
+        inputs = dict.__repr__(self.inputs)
+        if self.dtype != "real":
+            return "Tensor({}, {}, {})".format(data, inputs, repr(self.dtype))
         elif self.inputs:
-            return "Tensor({}, {})".format(self.data, self.inputs)
+            return "Tensor({}, {})".format(data, inputs)
         else:
-            return "Tensor({})".format(self.data)
+            return "Tensor({})".format(data)
 
     @ignore_jit_warnings()
     def __str__(self):
+        data = str(self.data).replace("\n", "\n       ")
+        inputs = dict.__repr__(self.inputs)
         if self.dtype != "real":
-            return "Tensor({}, {}, {})".format(self.data, self.inputs, repr(self.dtype))
+            return "Tensor({}, {}, {})".format(data, inputs, repr(self.dtype))
         elif self.inputs:
-            return "Tensor({}, {})".format(self.data, self.inputs)
+            return "Tensor({}, {})".format(data, inputs)
         else:
-            return str(self.data)
+            return data
 
     def __int__(self):
         return int(self.data)
@@ -297,11 +308,6 @@ class Tensor(Funsor, metaclass=TensorMeta):
 
     def eager_unary(self, op):
         dtype = find_domain(op, self.output).dtype
-        if op in REDUCE_OP_TO_NUMERIC:
-            batch_dim = len(self.data.shape) - len(self.output.shape)
-            data = self.data.reshape(self.data.shape[:batch_dim] + (-1,))
-            data = REDUCE_OP_TO_NUMERIC[op](data, -1)
-            return Tensor(data, self.inputs, dtype)
         return Tensor(op(self.data), self.inputs, dtype)
 
     def eager_reduce(self, op, reduced_vars):
@@ -310,22 +316,17 @@ class Tensor(Funsor, metaclass=TensorMeta):
             assert isinstance(reduced_vars, frozenset)
             self_vars = frozenset(self.inputs)
             reduced_vars = reduced_vars & self_vars
-            if reduced_vars == self_vars and not self.output.shape:
-                return Tensor(numeric_op(self.data, None), dtype=self.dtype)
-
-            # Reduce one dim at a time.
-            data = self.data
-            offset = 0
-            for k, domain in self.inputs.items():
-                if k in reduced_vars:
-                    assert not domain.shape
-                    data = numeric_op(data, offset)
-                else:
-                    offset += 1
+            if not reduced_vars:
+                return self
+            reduced_dims = tuple(
+                d for d, var in enumerate(self.inputs) if var in reduced_vars
+            )
+            dtype = find_domain(op, self.output).dtype
             inputs = OrderedDict(
                 (k, v) for k, v in self.inputs.items() if k not in reduced_vars
             )
-            return Tensor(data, inputs, self.dtype)
+            data = numeric_op(self.data, reduced_dims)
+            return Tensor(data, inputs, dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
     def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
@@ -772,23 +773,28 @@ def eager_reshape_tensor(op, arg):
     return Tensor(data, arg.inputs, arg.dtype)
 
 
-@eager.register(Unary, ops.SumOp, Tensor)
-def eager_sum_tensor(op, arg):
+@eager.register(Unary, ops.ReductionOp, Tensor)
+def eager_reduction_tensor(op, arg):
+    dtype = find_domain(op, arg.output).dtype
+
+    if not arg.output.shape:
+        return Tensor(op(ops.unsqueeze(arg.data, -1), -1), arg.inputs, dtype)
+
     if not arg.inputs:
-        return Tensor(op(arg.data), arg.inputs, arg.dtype)
+        return Tensor(op(arg.data), arg.inputs, dtype)
 
     # Work around batch inputs.
-    dim = op.defaults.get("dim", None)
+    axis = op.defaults.get("axis", None)
     keepdims = op.defaults.get("keepdims", False)
     ndims = len(arg.output.shape)
-    if dim is None:
-        dim = tuple(range(-ndims, 0))
-    elif isinstance(dim, int):
-        dim = dim % ndims - ndims
+    if axis is None:
+        axis = tuple(range(-ndims, 0))
+    elif isinstance(axis, int):
+        axis = axis % ndims - ndims
     else:
-        dim = tuple(d % ndims - ndims for d in dim)
-    data = op(arg.data, dim, keepdims)
-    return Tensor(data, arg.inputs, arg.dtype)
+        axis = tuple(d % ndims - ndims for d in axis)
+    data = op(arg.data, axis=axis, keepdims=keepdims)
+    return Tensor(data, arg.inputs, dtype)
 
 
 @eager.register(Binary, GetitemOp, Tensor, Number)
@@ -853,7 +859,9 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
-@eager.register(Finitary, ops.StackOp, typing.Tuple[Tensor, ...])
+@eager.register(
+    Finitary, ops.StackOp, typing.Tuple[typing.Union[(Number, Tensor)], ...]
+)
 def eager_finitary_stack(op, parts):
     dim = op.defaults["dim"]
     if dim >= 0:
@@ -865,7 +873,7 @@ def eager_finitary_stack(op, parts):
     return Tensor(raw_result, inputs, parts[0].dtype)
 
 
-@eager.register(Finitary, FinitaryOp, typing.Tuple[Tensor, ...])
+@eager.register(Finitary, FinitaryOp, typing.Tuple[typing.Union[(Number, Tensor)], ...])
 def eager_finitary_generic_tensors(op, args):
     inputs, raw_args = align_tensors(*args)
     raw_result = op(raw_args)
@@ -1100,7 +1108,7 @@ def function(*signature):
         fn = signature[0]
         if callable(fn) and not isinstance(fn, ArrayType):
             # Usage: @function
-            inputs = typing.get_type_hints(fn)
+            inputs = typing.get_type_hints(as_callable(fn))
             output = inputs.pop("return")
             assert all(isinstance(d, ArrayType) for d in inputs.values())
             assert isinstance(output, (ArrayType, tuple)) or output.__origin__ in (

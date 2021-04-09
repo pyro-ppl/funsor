@@ -4,6 +4,7 @@
 import functools
 import inspect
 import re
+import sys
 
 import numpy as np
 
@@ -205,20 +206,26 @@ def get_backend():
 
 
 def get_tracing_state():
-    if _FUNSOR_BACKEND == "torch":
-        import torch
-
+    torch = sys.modules.get("torch")
+    if torch is not None:
         return torch._C._get_tracing_state()
-    else:
-        return None
+    return None
 
 
 def is_nn_module(x):
-    if _FUNSOR_BACKEND == "torch":
-        import torch
-
+    torch = sys.modules.get("torch")
+    if torch is not None:
         return isinstance(x, torch.nn.Module)
     return False
+
+
+def as_callable(fn):
+    """
+    Converts nn.Modules ``m`` to ``m.forward``.
+    """
+    if is_nn_module(fn):
+        return fn.forward
+    return fn
 
 
 def methodof(cls, name=None):

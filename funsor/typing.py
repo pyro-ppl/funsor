@@ -223,7 +223,7 @@ def _type_to_typing(tp):
 
 
 def get_args(tp):
-    if isinstance(tp, GenericTypeMeta) or sys.version_info[:2] < (3, 7):
+    if isinstance(tp, (GenericTypeMeta, type)) or sys.version_info[:2] < (3, 7):
         result = getattr(tp, "__args__", None)
     else:
         result = typing_extensions.get_args(tp)

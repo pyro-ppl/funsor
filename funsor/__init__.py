@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from funsor.domains import Array, Bint, Domain, Real, Reals, bint, find_domain, reals
+from funsor.factory import make_funsor
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
+from funsor.op_factory import make_op
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Tensor, function
 from funsor.terms import (
@@ -23,6 +25,7 @@ from funsor.terms import (
 from funsor.util import get_backend, pretty, quote, set_backend
 
 from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
+    adam,
     adjoint,
     affine,
     approximations,
@@ -64,6 +67,7 @@ __all__ = [
     "Stack",
     "Tensor",
     "Variable",
+    "adam",
     "adjoint",
     "affine",
     "approximations",
@@ -84,7 +88,8 @@ __all__ = [
     "interpretations",
     "interpreter",
     "joint",
-    # 'minipyro',  # TODO: enable when minipyro is backend-agnostic
+    "make_funsor",
+    "make_op",
     "montecarlo",
     "of_shape",
     "ops",
@@ -93,6 +98,7 @@ __all__ = [
     "reals",
     "reinterpret",
     "set_backend",
+    # 'minipyro',  # TODO: enable when minipyro is backend-agnostic
     "sum_product",
     "symbolic",
     "terms",

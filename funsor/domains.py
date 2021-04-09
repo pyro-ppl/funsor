@@ -3,6 +3,7 @@
 
 import copyreg
 import functools
+import inspect
 import operator
 import warnings
 from functools import reduce
@@ -46,7 +47,7 @@ class ArrayType(Domain):
                 result = RealsType(name, (), {"shape": shape})
             elif isinstance(dtype, int):
                 assert dtype >= 0
-                name = "Bint[{}, {}]".format(dtype, ",".join(map(str, shape)))
+                name = "Bint[{}]".format(",".join(map(str, (dtype,) + shape)))
                 result = BintType(name, (), {"dtype": dtype, "shape": shape})
             else:
                 raise ValueError("invalid dtype: {}".format(dtype))
@@ -219,6 +220,40 @@ class Product(tuple, metaclass=ProductDomain):
     __args__ = NotImplemented
 
 
+class DependentMeta(type):
+    def __getitem__(cls, fn):
+        return cls(fn)
+
+
+class Dependent(metaclass=DependentMeta):
+    """
+    Type hint for dependently type-decorated functions.
+
+    Examples::
+
+        Dependent[Real]  # a constant known domain
+        Dependent[lambda x: Array[x.dtype, x.shape[1:]]  # args are Domains
+        Dependent[lambda x, y: Bint[x.size + y.size]]
+
+    :param callable fn: A lambda taking named arguments (in any order)
+        which will be filled in with the domain of the similarly named
+        funsor argument to the decorated function. This lambda should
+        compute a desired resulting domain given domains of arguments.
+    """
+
+    def __init__(self, fn):
+        function = type(lambda: None)
+        self.fn = fn if isinstance(fn, function) else lambda: fn
+        self.args = inspect.getfullargspec(fn)[0]
+
+    def __call__(self, **kwargs):
+        return self.fn(*map(kwargs.__getitem__, self.args))
+
+
+################################################################################
+# Function registration
+
+
 @quote.register(BintType)
 @quote.register(RealsType)
 def _(arg, indent, out):
@@ -248,8 +283,8 @@ def _find_domain_log_exp(op, domain):
     return Array["real", domain.shape]
 
 
-@find_domain.register(ops.SumOp)
-def _find_domain_sum(op, domain):
+@find_domain.register(ops.ReductionOp)
+def _find_domain_reduction(op, domain):
     # Canonicalize dim.
     dim = op.defaults.get("dim", None)
     ndims = len(domain.shape)
@@ -262,12 +297,14 @@ def _find_domain_sum(op, domain):
 
     # Compute shape.
     if op.defaults.get("keepdims", False):
-        shape = tuple(1 if i in dims else size for i, size in enumerate(domain.shape))
+        shape = tuple(1 if i in dims else domain.shape[i] for i in range(ndims))
     else:
-        shape = tuple(size for i, size in enumerate(domain.shape) if i not in dims)
+        shape = tuple(domain.shape[i] for i in range(ndims) if i not in dims)
 
     # Compute domain.
-    if domain.dtype == "real":
+    if op.name in ("all", "any"):
+        dtype = 2
+    elif domain.dtype == "real":
         dtype = "real"
     else:
         raise NotImplementedError("TODO")
@@ -415,10 +452,11 @@ def _find_domain_einsum(op, operands):
 __all__ = [
     "Bint",
     "BintType",
+    "Dependent",
     "Domain",
     "Real",
-    "RealsType",
     "Reals",
+    "RealsType",
     "bint",
     "find_domain",
     "reals",

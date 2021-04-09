@@ -34,29 +34,76 @@ ops.transpose.register(array)(np.swapaxes)
 ops.unsqueeze.register(array)(np.expand_dims)
 
 
+###########################################
+# Reduction Ops
+###########################################
+
+
 @ops.all.register(array)
-def _all(x, dim):
-    return np.all(x, axis=dim)
-
-
-@ops.amax.register(array)
-def _amax(x, dim, keepdims=False):
-    return np.amax(x, axis=dim, keepdims=keepdims)
-
-
-@ops.amin.register(array)
-def _amin(x, dim, keepdims=False):
-    return np.amin(x, axis=dim, keepdims=keepdims)
-
-
-@ops.argmax.register(array)
-def _argmax(x, dim):
-    return np.argmax(x, dim)
+def _all(x, axis, keepdims):
+    return np.all(x, axis, keepdims=keepdims)
 
 
 @ops.any.register(array)
-def _any(x, dim):
-    return np.any(x, axis=dim)
+def _any(x, axis, keepdims):
+    return np.any(x, axis, keepdims=keepdims)
+
+
+@ops.amax.register(array)
+def _amax(x, axis, keepdims):
+    return np.amax(x, axis, keepdims=keepdims)
+
+
+@ops.amin.register(array)
+def _amin(x, axis, keepdims):
+    return np.amax(x, axis, keepdims=keepdims)
+
+
+@ops.sum.register(array)
+def _sum(x, axis, keepdims):
+    return np.sum(x, axis, keepdims=keepdims)
+
+
+@ops.prod.register(array)
+def _prod(x, axis, keepdims):
+    return np.prod(x, axis, keepdims=keepdims)
+
+
+@ops.logsumexp.register(array)
+def _logsumexp(x, axis, keepdims):
+    return logsumexp(x, axis, keepdims=keepdims)
+
+
+@ops.mean.register(array)
+def _mean(x, axis, keepdims):
+    return np.mean(x, axis, keepdims=keepdims)
+
+
+@ops.std.register(array)
+def _std(x, axis, ddof, keepdims):
+    return np.std(x, axis, ddof=ddof, keepdims=keepdims)
+
+
+@ops.var.register(array)
+def _var(x, axis, ddof, keepdims):
+    return np.var(x, axis, ddof=ddof, keepdims=keepdims)
+
+
+###########################################
+
+
+@ops.argmax.register(array)
+def _argmax(x, axis, keepdims):
+    if keepdims:
+        return np.expand_dims(np.argmax(x, axis), axis)
+    return np.argmax(x, axis)
+
+
+@ops.argmin.register(array)
+def _argmin(x, axis, keepdims):
+    if keepdims:
+        return np.expand_dims(np.argmin(x, axis), axis)
+    return np.argmin(x, axis)
 
 
 @ops.astype.register(array)
@@ -161,11 +208,6 @@ def _safe_logaddexp_tensor_number(x, y):
     return _safe_logaddexp_number_tensor(y, x)
 
 
-@ops.logsumexp.register(array)
-def _logsumexp(x, dim):
-    return logsumexp(x, axis=dim)
-
-
 ops.max.register(array, array)(np.maximum)
 ops.min.register(array, array)(np.minimum)
 
@@ -216,11 +258,6 @@ def _new_zeros(x, shape):
     return onp.zeros(shape, dtype=np.result_type(x))
 
 
-@ops.prod.register(array)
-def _prod(x, dim):
-    return np.prod(x, axis=dim)
-
-
 @ops.reciprocal.register(array)
 def _reciprocal(x):
     result = np.clip(np.reciprocal(x), a_max=np.finfo(np.result_type(x)).max)
@@ -255,11 +292,6 @@ def _scatter(dest, indices, src):
 @ops.stack.register(typing.Tuple[typing.Union[array + (int, float)], ...])
 def _stack(parts, dim=0):
     return np.stack(parts, axis=dim)
-
-
-@ops.sum.register(array)
-def _sum(x, dim, keepdims):
-    return np.sum(x, dim, keepdims=keepdims)
 
 
 @ops.triangular_solve.register(array, array)

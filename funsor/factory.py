@@ -11,13 +11,18 @@ import makefun
 
 from funsor.instrument import debug_logged
 from funsor.terms import Funsor, FunsorMeta, Variable, eager, to_funsor
+from funsor.util import as_callable
+
+
+def _get_name(fn):
+    return getattr(fn, "__name__", type(fn).__name__)
 
 
 def _erase_types(fn):
     def result(*args):
         return fn(*args)
 
-    result.__name__ = fn.__name__
+    result.__name__ = _get_name(fn)
     result.__module__ = fn.__module__
     return debug_logged(result)
 
@@ -170,7 +175,7 @@ def make_funsor(fn):
     :param callable fn: A type annotated function of Funsors.
     :rtype: subclas of :class:`~funsor.terms.Funsor`
     """
-    input_types = typing.get_type_hints(fn)
+    input_types = typing.get_type_hints(as_callable(fn))
     for name, hint in input_types.items():
         if not (hint in (Funsor, Bound) or isinstance(hint, (Fresh, Value, Has))):
             raise TypeError(f"Invalid type hint {name}: {hint}")
@@ -246,8 +251,15 @@ def make_funsor(fn):
         for name, arg in zip(self._ast_fields, args):
             setattr(self, name, arg)
 
-    ResultMeta.__name__ = f"{fn.__name__}Meta"
-    Result = ResultMeta(fn.__name__, (Funsor,), {"__init__": __init__})
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
+        return Funsor._alpha_convert(self, alpha_subs)
+
+    name = _get_name(fn)
+    ResultMeta.__name__ = f"{name}Meta"
+    Result = ResultMeta(
+        name, (Funsor,), {"__init__": __init__, "_alpha_convert": _alpha_convert}
+    )
     pattern = (Result,) + tuple(
         _hint_to_pattern(input_types[k]) for k in Result._ast_fields
     )
