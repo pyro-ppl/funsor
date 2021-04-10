@@ -235,7 +235,8 @@ def _min(x, y):
 
 @ops.new_full.register(array)
 def _new_full(x, shape, value):
-    return np.full(shape, value, dtype=np.result_type(x))
+    # TODO: revert this change
+    return np.full(shape, value).astype(dtype=np.result_type(x))
 
 
 @ops.new_arange.register(array)
