@@ -14,6 +14,7 @@ from funsor.cnf import Contraction
 from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
+from funsor.interpreter import reinterpret
 from funsor.montecarlo import MonteCarlo
 from funsor.pyro.convert import AffineNormal
 from funsor.sum_product import MarkovProduct
@@ -500,5 +501,6 @@ def test_bart(analytic_kl):
         with MonteCarlo():
             elbo = Integrate(q, p - q, "gate_rate_t")
 
+    elbo = reinterpret(elbo)
     assert isinstance(elbo, Tensor), elbo.pretty()
     assert call_count == 1
