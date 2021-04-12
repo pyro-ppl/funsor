@@ -10,6 +10,7 @@ from torch.distributions import constraints
 from funsor.cnf import Contraction
 from funsor.delta import Delta
 from funsor.domains import Bint
+from funsor.interpreter import reinterpret
 from funsor.pyro.convert import DIM_TO_NAME, funsor_to_tensor, tensor_to_funsor
 from funsor.terms import Funsor, to_funsor
 
@@ -62,7 +63,7 @@ class FunsorDistribution(TorchDistribution):
             self._validate_sample(value)
         ndims = max(len(self.batch_shape), value.dim() - self.event_dim)
         value = tensor_to_funsor(value, event_output=self.event_dim, dtype=self.dtype)
-        log_prob = self.funsor_dist(value=value)
+        log_prob = reinterpret(self.funsor_dist(value=value))
         log_prob = funsor_to_tensor(log_prob, ndims=ndims)
         return log_prob
 
