@@ -1174,6 +1174,14 @@ class Scatter(Funsor):
         if destin = Scatter(op, subs, source, frozenset())
         then source = Subs(destin, subs)
 
+    The ``reduced_vars`` is merely for computational efficiency, and could
+    always be split out into a separate ``.reduce()``.  For example in the
+    following equation, the left hand side uses much less memory than the
+    right hand side::
+
+        Scatter(op, subs, source, reduced_vars) ==
+          Scatter(op, subs, source, frozenset()).reduce(op, reduced_vars)
+
     .. warning:: This is currently implemented only for injective scatter
         operations. In particular, this does not allow accumulation behavior
         like scatter-add.
