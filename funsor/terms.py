@@ -112,6 +112,9 @@ def _alpha_mangle(bound_vars):
     }
 
 
+_SKIP_ALPHA = False
+
+
 @reflect.set_callable
 def reflect(cls, *args, **kwargs):
     """
@@ -136,9 +139,16 @@ def reflect(cls, *args, **kwargs):
     result._ast_values = args
 
     # alpha-convert eagerly upon binding any variable.
-    if result.bound:
+    global _SKIP_ALPHA
+    if result.bound and not _SKIP_ALPHA:
         alpha_subs = _alpha_mangle(result.bound)
-        alpha_mangled_args = reflect(result._alpha_convert)(alpha_subs)
+        try:
+            # optimization: don't perform alpha-conversion again
+            # when renaming subexpressions of result
+            _SKIP_ALPHA = True
+            alpha_mangled_args = reflect(result._alpha_convert)(alpha_subs)
+        finally:
+            _SKIP_ALPHA = False
 
         # TODO eliminate code duplication below
         # this is currently necessary because .bound is computed in __init__().
@@ -334,12 +344,7 @@ class Funsor(object, metaclass=FunsorMeta):
         # Substitute all funsor values.
         assert set(alpha_subs).issubset(self.bound)
         alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
-        return tuple(
-            v
-            if isinstance(v, Funsor) and not set(self.bound).intersection(v.inputs)
-            else substitute(v, alpha_subs)
-            for v in self._ast_values
-        )
+        return substitute(self._ast_values, alpha_subs)
 
     def __call__(self, *args, **kwargs):
         """
