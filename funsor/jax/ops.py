@@ -286,6 +286,9 @@ def _safesub(x, y):
 
 @ops.scatter.register(array, tuple, array)
 def _scatter(dest, indices, src):
+    missing = len(indices) - len(dest.shape)
+    if missing > 0:
+        dest = dest[(None,) * missing]
     return index_update(dest, indices, src)
 
 
