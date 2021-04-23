@@ -24,8 +24,8 @@ from pyro.distributions import validation_enabled
 from pyro.optim.clipped_adam import ClippedAdam as _ClippedAdam
 
 import funsor
-from funsor.adam import Adam
 import funsor.ops as ops
+from funsor.adam import Adam
 
 
 # Funsor repreresents distributions in a fundamentally different way from
@@ -229,6 +229,7 @@ class log_joint(Messenger):
         super(log_joint, self).__enter__()
         self.log_factors = OrderedDict()  # maps site name to log_prob factor
         self.plates = set()
+        self.params = set()
         return self
 
     def process_message(self, msg):
@@ -238,8 +239,18 @@ class log_joint(Messenger):
                 msg["value"] = funsor.Variable(msg["name"], msg["fn"].output)
         elif msg["type"] == "param":
             if msg["value"] is None:
-                # Create a delayed sample.
-                msg["value"] = funsor.Variable(msg["name"], msg["output"])
+                # Create a delayed constrained parameter.
+                constraint = msg["args"][1]
+                if constraint == torch.distributions.constraints.real:
+                    msg["value"] = funsor.Variable(msg["name"], msg["output"])
+                else:
+                    transform = torch.distributions.transform_to(constraint)
+                    op = ops.WrappedTransformOp(transform)
+                    # FIXME fix the message output
+                    unconstrained = funsor.Variable(
+                        msg["name"] + "_unconstrained", msg["output"]
+                    )
+                    msg["value"] = op(unconstrained)
 
     def postprocess_message(self, msg):
         if msg["type"] == "sample":
@@ -249,6 +260,8 @@ class log_joint(Messenger):
             log_prob = msg["fn"].log_prob(msg["value"])
             self.log_factors[msg["name"]] = log_prob
             self.plates.update(f.name for f in msg["cond_indep_stack"].values())
+        elif msg["type"] == "param":
+            self.params.update(msg["value"].inputs)
 
 
 # apply_stack is called by pyro.sample and pyro.param.
@@ -368,40 +381,6 @@ def plate(name, size, dim):
     return PlateMessenger(fn=None, name=name, size=size, dim=dim)
 
 
-# This is a thin wrapper around the `torch.optim.Optimizer` class that
-# dynamically generates optimizers for dynamically generated parameters.
-# See http://docs.pyro.ai/en/0.3.1/optimization.html
-class PyroOptim(object):
-    def __init__(self, optim_args):
-        self.optim_args = optim_args
-        # Each parameter will get its own optimizer, which we keep track
-        # of using this dictionary keyed on parameters.
-        self.optim_objs = {}
-
-    def __call__(self, params):
-        for param in params:
-            # If we've seen this parameter before, use the previously
-            # constructed optimizer.
-            if param in self.optim_objs:
-                optim = self.optim_objs[param]
-            # If we've never seen this parameter before, construct
-            # an Adam optimizer and keep track of it.
-            else:
-                optim = self.TorchOptimizer([param], **self.optim_args)
-                self.optim_objs[param] = optim
-            # Take a gradient step for the parameter param.
-            optim.step()
-
-
-# We wrap some commonly used PyTorch optimizers.
-#  class Adam(PyroOptim):
-#      TorchOptimizer = torch.optim.Adam
-
-
-class ClippedAdam(PyroOptim):
-    TorchOptimizer = _ClippedAdam
-
-
 # This is a unified interface for stochastic variational inference in Pyro.
 # The actual construction of the loss is taken care of by `loss`.
 # See http://docs.pyro.ai/en/0.3.1/inference_algos.html
@@ -414,30 +393,6 @@ class SVI(object):
 
     # This method handles running the model and guide, constructing the loss
     # function, and taking a gradient step.
-    def step(self, *args, **kwargs):
-        # This wraps both the call to `model` and `guide` in a `trace` so that
-        # we can record all the parameters that are encountered. Note that
-        # further tracing occurs inside of `loss`.
-        with trace() as param_capture:
-            # We use block here to allow tracing to record parameters only.
-            with block(hide_fn=lambda msg: msg["type"] != "param"):
-                loss = self.loss(self.model, self.guide, *args, **kwargs)
-        init_params = {name: site["fn"](*site["args"]) for name, site in param_capture.items()}
-        optim = Adam(1001, lr=0.02, log_every=50, params=init_params)
-        with funsor.montecarlo.MonteCarlo():
-            with optim:
-                result = loss.reduce(ops.min)
-        # Differentiate the loss.
-        # funsor.to_data(loss).backward()
-        # Grab all the parameters from the trace.
-        # params = [site["value"].data.unconstrained() for site in param_capture.values()]
-        # Take a step w.r.t. each parameter in params.
-        # Zero out the gradients so that they don't accumulate.
-        #  for p in params:
-        #      p.grad = torch.zeros_like(p.grad)
-        #  return loss.item()
-        return result
-
     def run(self, *args, **kwargs):
         # This wraps both the call to `model` and `guide` in a `trace` so that
         # we can record all the parameters that are encountered. Note that
@@ -446,21 +401,21 @@ class SVI(object):
             # We use block here to allow tracing to record parameters only.
             with block(hide_fn=lambda msg: msg["type"] != "param"):
                 loss = self.loss(self.model, self.guide, *args, **kwargs)
-        init_params = {name: site["fn"](*site["args"]) for name, site in param_capture.items()}
-        optim = Adam(1001, lr=0.02, log_every=50, params=init_params)
-        with funsor.montecarlo.MonteCarlo():
-            with optim:
+        init_params = {
+            name: funsor.to_funsor(site["fn"](*site["args"]).data.unconstrained())
+            for name, site in param_capture.items()
+        }
+        with self.optim.with_init(init_params):
+            with funsor.montecarlo.MonteCarlo():
                 result = loss.reduce(ops.min)
-        # Differentiate the loss.
-        # funsor.to_data(loss).backward()
-        # Grab all the parameters from the trace.
-        # params = [site["value"].data.unconstrained() for site in param_capture.values()]
-        # Take a step w.r.t. each parameter in params.
-        # Zero out the gradients so that they don't accumulate.
-        #  for p in params:
-        #      p.grad = torch.zeros_like(p.grad)
-        #  return loss.item()
+        for name, value in self.optim.params.items():
+            name = name.replace("_unconstrained", "")
+            value = value.data
+            old_value, constraint = PARAM_STORE[name]
+            if old_value is not value:
+                old_value.data.copy_(value)
         return result
+
 
 # TODO(eb8680) Replace this with funsor.Expectation.
 def Expectation(log_probs, costs, sum_vars, prod_vars):
@@ -489,12 +444,14 @@ def elbo(model, guide, *args, **kwargs):
     with log_joint() as model_log_joint:
         model(*args, **kwargs)
 
+    params = model_log_joint.params | guide_log_joint.params
     # contract out auxiliary variables in the guide
     guide_log_probs = list(guide_log_joint.log_factors.values())
     guide_aux_vars = (
         frozenset().union(*(f.inputs for f in guide_log_probs))
         - frozenset(guide_log_joint.plates)
-        - frozenset(model_log_joint.log_factors) - frozenset({"guide_loc", "guide_scale"})
+        - frozenset(model_log_joint.log_factors)
+        - frozenset(params)
     )
     if guide_aux_vars:
         guide_log_probs = funsor.sum_product.partial_sum_product(
@@ -511,6 +468,7 @@ def elbo(model, guide, *args, **kwargs):
         frozenset().union(*(f.inputs for f in model_log_probs))
         - frozenset(model_log_joint.plates)
         - frozenset(guide_log_joint.log_factors)
+        - frozenset(params)
     )
     if model_aux_vars:
         model_log_probs = funsor.sum_product.partial_sum_product(
@@ -551,7 +509,7 @@ def elbo(model, guide, *args, **kwargs):
     )
 
     loss = -elbo
-    # assert not loss.inputs
+    assert set(loss.inputs).issubset(params)
     return loss
 
 
@@ -567,7 +525,6 @@ class ELBO(object):
 # This is a wrapper for compatibility with full Pyro.
 class Trace_ELBO(ELBO):
     def __call__(self, model, guide, *args, **kwargs):
-        # with funsor.montecarlo.MonteCarlo():
         return elbo(model, guide, *args, **kwargs)
 
 

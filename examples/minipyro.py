@@ -15,8 +15,8 @@ from pyroapi import infer, optim, pyro, pyro_backend
 from torch.distributions import constraints
 
 import funsor
-from funsor.montecarlo import MonteCarlo
 from funsor.adam import Adam
+from funsor.montecarlo import MonteCarlo
 
 
 def main(args):
@@ -26,7 +26,6 @@ def main(args):
     # and a batch of Normally distributed observations.
     def model(data):
         loc = pyro.sample("loc", dist.Normal(0.0, 1.0))
-        # breakpoint()
         with pyro.plate("data", len(data), dim=-1):
             pyro.sample("obs", dist.Normal(loc, 1.0), obs=data)
 
@@ -34,11 +33,10 @@ def main(args):
     # distribution over the latent random variable `loc`.
     def guide(data):
         guide_loc = pyro.param("guide_loc", torch.tensor(0.0))
-        #  guide_scale = pyro.param(
-        #      "guide_scale", torch.tensor(1.0), constraint=constraints.positive
-        #  )
-        # breakpoint()
-        pyro.sample("loc", dist.Normal(guide_loc, 1.))
+        guide_scale = pyro.param(
+            "guide_scale", torch.tensor(1.0), constraint=constraints.positive
+        )
+        pyro.sample("loc", dist.Normal(guide_loc, guide_scale))
 
     # Generate some data.
     torch.manual_seed(0)
@@ -46,24 +44,15 @@ def main(args):
 
     # Because the API in minipyro matches that of Pyro proper,
     # training code works with generic Pyro implementations.
-    # with pyro_backend(args.backend), MonteCarlo():
     with pyro_backend(args.backend):
         # Construct an SVI object so we can do variational inference on our
         # model/guide pair.
         Elbo = infer.JitTrace_ELBO if args.jit else infer.Trace_ELBO
         elbo = Elbo()
-        # adam = optim.Adam({"lr": args.learning_rate})
-        adam = Adam(args.num_steps, lr=args.learning_rate)
+        adam = Adam(args.num_steps, lr=args.learning_rate, log_every=args.log_every)
         svi = infer.SVI(model, guide, adam, elbo)
         pyro.get_param_store().clear()
         svi.run(data)
-
-        # Basic training loop
-        #  pyro.get_param_store().clear()
-        #  for step in range(args.num_steps):
-        #      loss = svi.step(data)
-        #      if args.verbose and step % 100 == 0:
-        #          print(f"step {step} loss = {loss}")
 
         # Report the final values of the variational parameters
         # in the guide after training.
@@ -82,7 +71,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Minipyro demo")
     parser.add_argument("-b", "--backend", default="funsor")
     parser.add_argument("-n", "--num-steps", default=1001, type=int)
-    parser.add_argument("-lr", "--learning-rate", default=0.02, type=float)
+    parser.add_argument("-lr", "--learning-rate", default=0.01, type=float)
+    parser.add_argument("--log-every", type=int, default=20)
     parser.add_argument("--jit", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
