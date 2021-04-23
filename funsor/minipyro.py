@@ -24,6 +24,8 @@ from pyro.distributions import validation_enabled
 from pyro.optim.clipped_adam import ClippedAdam as _ClippedAdam
 
 import funsor
+from funsor.adam import Adam
+import funsor.ops as ops
 
 
 # Funsor repreresents distributions in a fundamentally different way from
@@ -234,6 +236,10 @@ class log_joint(Messenger):
             if msg["value"] is None:
                 # Create a delayed sample.
                 msg["value"] = funsor.Variable(msg["name"], msg["fn"].output)
+        elif msg["type"] == "param":
+            if msg["value"] is None:
+                # Create a delayed sample.
+                msg["value"] = funsor.Variable(msg["name"], msg["output"])
 
     def postprocess_message(self, msg):
         if msg["type"] == "sample":
@@ -388,8 +394,8 @@ class PyroOptim(object):
 
 
 # We wrap some commonly used PyTorch optimizers.
-class Adam(PyroOptim):
-    TorchOptimizer = torch.optim.Adam
+#  class Adam(PyroOptim):
+#      TorchOptimizer = torch.optim.Adam
 
 
 class ClippedAdam(PyroOptim):
@@ -416,17 +422,45 @@ class SVI(object):
             # We use block here to allow tracing to record parameters only.
             with block(hide_fn=lambda msg: msg["type"] != "param"):
                 loss = self.loss(self.model, self.guide, *args, **kwargs)
+        init_params = {name: site["fn"](*site["args"]) for name, site in param_capture.items()}
+        optim = Adam(1001, lr=0.02, log_every=50, params=init_params)
+        with funsor.montecarlo.MonteCarlo():
+            with optim:
+                result = loss.reduce(ops.min)
         # Differentiate the loss.
-        funsor.to_data(loss).backward()
+        # funsor.to_data(loss).backward()
         # Grab all the parameters from the trace.
-        params = [site["value"].data.unconstrained() for site in param_capture.values()]
+        # params = [site["value"].data.unconstrained() for site in param_capture.values()]
         # Take a step w.r.t. each parameter in params.
-        self.optim(params)
         # Zero out the gradients so that they don't accumulate.
-        for p in params:
-            p.grad = torch.zeros_like(p.grad)
-        return loss.item()
+        #  for p in params:
+        #      p.grad = torch.zeros_like(p.grad)
+        #  return loss.item()
+        return result
 
+    def run(self, *args, **kwargs):
+        # This wraps both the call to `model` and `guide` in a `trace` so that
+        # we can record all the parameters that are encountered. Note that
+        # further tracing occurs inside of `loss`.
+        with trace() as param_capture:
+            # We use block here to allow tracing to record parameters only.
+            with block(hide_fn=lambda msg: msg["type"] != "param"):
+                loss = self.loss(self.model, self.guide, *args, **kwargs)
+        init_params = {name: site["fn"](*site["args"]) for name, site in param_capture.items()}
+        optim = Adam(1001, lr=0.02, log_every=50, params=init_params)
+        with funsor.montecarlo.MonteCarlo():
+            with optim:
+                result = loss.reduce(ops.min)
+        # Differentiate the loss.
+        # funsor.to_data(loss).backward()
+        # Grab all the parameters from the trace.
+        # params = [site["value"].data.unconstrained() for site in param_capture.values()]
+        # Take a step w.r.t. each parameter in params.
+        # Zero out the gradients so that they don't accumulate.
+        #  for p in params:
+        #      p.grad = torch.zeros_like(p.grad)
+        #  return loss.item()
+        return result
 
 # TODO(eb8680) Replace this with funsor.Expectation.
 def Expectation(log_probs, costs, sum_vars, prod_vars):
@@ -460,7 +494,7 @@ def elbo(model, guide, *args, **kwargs):
     guide_aux_vars = (
         frozenset().union(*(f.inputs for f in guide_log_probs))
         - frozenset(guide_log_joint.plates)
-        - frozenset(model_log_joint.log_factors)
+        - frozenset(model_log_joint.log_factors) - frozenset({"guide_loc", "guide_scale"})
     )
     if guide_aux_vars:
         guide_log_probs = funsor.sum_product.partial_sum_product(
@@ -517,7 +551,7 @@ def elbo(model, guide, *args, **kwargs):
     )
 
     loss = -elbo
-    assert not loss.inputs
+    # assert not loss.inputs
     return loss
 
 
@@ -533,8 +567,8 @@ class ELBO(object):
 # This is a wrapper for compatibility with full Pyro.
 class Trace_ELBO(ELBO):
     def __call__(self, model, guide, *args, **kwargs):
-        with funsor.montecarlo.MonteCarlo():
-            return elbo(model, guide, *args, **kwargs)
+        # with funsor.montecarlo.MonteCarlo():
+        return elbo(model, guide, *args, **kwargs)
 
 
 class TraceMeanField_ELBO(ELBO):

@@ -52,7 +52,7 @@ def adam_min(self, op, loss, reduced_vars):
 
         with torch.enable_grad():
             params = {
-                var.name: self.param(var.name, var.output).data
+                var.name: self.param(var.name, var.output).data.unconstrained()
                 for var in reduced_vars.intersection(loss.input_vars)
             }
             optimizer = torch.optim.Adam(list(params.values()), **self.optim_params)
