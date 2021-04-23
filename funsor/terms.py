@@ -51,8 +51,6 @@ _INFIX = {k: v for v, k, _ in INFIX_OPERATORS}
 class SubstituteInterpretation(Interpretation):
     def __init__(self, subs, base_interpretation):
         super().__init__("subs")
-        if isinstance(subs, (dict, OrderedDict)):
-            subs = tuple(subs.items())
         self.subs = subs
         self.base_interpretation = base_interpretation
         assert isinstance(subs, tuple)
@@ -74,8 +72,33 @@ class SubstituteInterpretation(Interpretation):
 
 
 def substitute(expr, subs):
+    if isinstance(subs, (dict, OrderedDict)):
+        subs = tuple(subs.items())
+    support = frozenset(k for k, v in subs)
+
+    def stop(x):
+        if interpreter.is_atom(x):
+            return True
+        if isinstance(x, Funsor) and support.isdisjoint(x.inputs):
+            return True
+        return False
+
+    if stop(expr):
+        return expr
+
+    env = interpreter.anf(expr, stop)
+
     with SubstituteInterpretation(subs, interpreter.get_interpretation()):
-        return interpreter.reinterpret(expr)
+        for key, value in env.items():
+            args = tuple(
+                c if interpreter.is_atom(c) else env.get(c, c)
+                for c in interpreter.children(value)
+            )
+            if isinstance(value, (tuple, frozenset)):  # TODO absorb this into interpret
+                env[key] = type(value)(args)
+            else:
+                env[key] = type(value)(*args)
+    return env[expr]
 
 
 def _alpha_mangle(expr):
@@ -1150,6 +1173,14 @@ class Scatter(Funsor):
 
         if destin = Scatter(op, subs, source, frozenset())
         then source = Subs(destin, subs)
+
+    The ``reduced_vars`` is merely for computational efficiency, and could
+    always be split out into a separate ``.reduce()``.  For example in the
+    following equation, the left hand side uses much less memory than the
+    right hand side::
+
+        Scatter(op, subs, source, reduced_vars) ==
+          Scatter(op, subs, source, frozenset()).reduce(op, reduced_vars)
 
     .. warning:: This is currently implemented only for injective scatter
         operations. In particular, this does not allow accumulation behavior

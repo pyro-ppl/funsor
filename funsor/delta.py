@@ -84,6 +84,23 @@ class DeltaMeta(FunsorMeta):
 class Delta(Funsor, metaclass=DeltaMeta):
     """
     Normalized delta distribution binding multiple variables.
+
+    There are three syntaxes supported for constructing Deltas::
+
+        Delta(((name1, (point1, log_density1)),
+               (name2, (point2, log_density2)),
+               (name3, (point3, log_density3))))
+
+    or for a single name::
+
+        Delta(name, point, log_density)
+
+    or for default ``log_density == 0``::
+
+        Delta(name, point)
+
+    :param tuple terms: A tuple of tuples of the form
+        ``(name, (point, log_density))``.
     """
 
     def __init__(self, terms):
