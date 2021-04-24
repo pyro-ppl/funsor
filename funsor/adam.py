@@ -26,6 +26,7 @@ class Adam(StatefulInterpretation):
         self.num_steps = num_steps
         self.log_every = kwargs.pop("log_every", 0)
         self.optim_params = kwargs  # TODO make precise
+        self.params = {}
 
     def with_init(self, init_params):
         self.params = init_params
