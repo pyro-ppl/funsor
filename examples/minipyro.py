@@ -11,12 +11,11 @@ import argparse
 
 import torch
 from pyroapi import distributions as dist
-from pyroapi import infer, optim, pyro, pyro_backend
+from pyroapi import infer, pyro, pyro_backend
 from torch.distributions import constraints
 
 import funsor
 from funsor.adam import Adam
-from funsor.montecarlo import MonteCarlo
 
 
 def main(args):

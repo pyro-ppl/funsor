@@ -21,11 +21,9 @@ from collections import OrderedDict, namedtuple
 
 import torch
 from pyro.distributions import validation_enabled
-from pyro.optim.clipped_adam import ClippedAdam as _ClippedAdam
 
 import funsor
 import funsor.ops as ops
-from funsor.adam import Adam
 
 
 # Funsor repreresents distributions in a fundamentally different way from
