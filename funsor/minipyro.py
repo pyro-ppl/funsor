@@ -23,7 +23,7 @@ import torch
 from pyro.distributions import validation_enabled
 
 import funsor
-import funsor.ops as ops
+from funsor.adam import Adam  # noqa: F401
 
 
 # Funsor repreresents distributions in a fundamentally different way from
@@ -239,15 +239,22 @@ class log_joint(Messenger):
             if msg["value"] is None:
                 # Create a delayed constrained parameter.
                 constraint = msg["args"][1]
+                batch_names = tuple(
+                    frame.name for frame in msg["cond_indep_stack"].values()
+                )
+                batch_shape = tuple(
+                    frame.size for frame in msg["cond_indep_stack"].values()
+                )
+                output = funsor.Reals[batch_shape + msg["output"].shape]
                 if constraint == torch.distributions.constraints.real:
-                    msg["value"] = funsor.Variable(msg["name"], msg["output"])
+                    msg["value"] = funsor.Variable(msg["name"], output)[batch_names]
                 else:
                     transform = torch.distributions.transform_to(constraint)
-                    op = ops.WrappedTransformOp(transform)
+                    op = funsor.ops.WrappedTransformOp(transform)
                     # FIXME fix the message output
                     unconstrained = funsor.Variable(
-                        msg["name"] + "_unconstrained", msg["output"]
-                    )
+                        msg["name"] + "_unconstrained", output
+                    )[batch_names]
                     msg["value"] = op(unconstrained)
 
     def postprocess_message(self, msg):
@@ -323,11 +330,13 @@ def param(
     event_dim=None,
 ):
     cond_indep_stack = {}
-    output = None
-    if init_value is not None:
-        if event_dim is None:
-            event_dim = init_value.dim()
-        output = funsor.Reals[init_value.shape[init_value.dim() - event_dim :]]
+    # infer output
+    value = init_value
+    if value is None:
+        value, _ = PARAM_STORE[name]
+    if event_dim is None:
+        event_dim = value.dim()
+    output = funsor.Reals[value.shape[value.dim() - event_dim :]]
 
     def fn(init_value, constraint):
         if name in PARAM_STORE:
@@ -395,17 +404,18 @@ class SVI(object):
         # This wraps both the call to `model` and `guide` in a `trace` so that
         # we can record all the parameters that are encountered. Note that
         # further tracing occurs inside of `loss`.
-        with trace() as param_capture:
-            # We use block here to allow tracing to record parameters only.
-            with block(hide_fn=lambda msg: msg["type"] != "param"):
-                loss = self.loss(self.model, self.guide, *args, **kwargs)
+        with funsor.terms.lazy:
+            with trace() as param_capture:
+                # We use block here to allow tracing to record parameters only.
+                with block(hide_fn=lambda msg: msg["type"] != "param"):
+                    loss = self.loss(self.model, self.guide, *args, **kwargs)
         init_params = {
             name: funsor.to_funsor(site["fn"](*site["args"]).data.unconstrained())
             for name, site in param_capture.items()
         }
         with self.optim.with_init(init_params):
             with funsor.montecarlo.MonteCarlo():
-                result = loss.reduce(ops.min)
+                result = loss.reduce(funsor.ops.min)
         for name, value in self.optim.params.items():
             name = name.replace("_unconstrained", "")
             value = value.data
@@ -413,6 +423,10 @@ class SVI(object):
             if old_value is not value:
                 old_value.data.copy_(value)
         return result
+
+    def step(self, *args, **kwargs):
+        self.optim.num_steps = 1
+        return self.run(*args, **kwargs)
 
 
 # TODO(eb8680) Replace this with funsor.Expectation.
@@ -560,7 +574,8 @@ class Jit(object):
 
         # Augment args with reads from the global param store.
         unconstrained_params = tuple(
-            param(name).data.unconstrained() for name in self._param_trace
+            site["fn"](*site["args"]).data.unconstrained()
+            for site in self._param_trace.values()
         )
         params_and_args = unconstrained_params + args
 
@@ -576,7 +591,9 @@ class Jit(object):
                     constrained_param = param(name)  # assume param has been initialized
                     assert constrained_param.data.unconstrained() is unconstrained_param
                     self._param_trace[name]["value"] = constrained_param
-                result = replay(self.fn, guide_trace=self._param_trace)(*args)
+                with funsor.terms.eager:
+                    with funsor.montecarlo.MonteCarlo():
+                        result = replay(self.fn, guide_trace=self._param_trace)(*args)
                 assert not result.inputs
                 assert result.output == funsor.Real
                 return funsor.to_data(result)
