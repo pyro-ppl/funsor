@@ -2439,9 +2439,11 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
     )
     assert dict(expected.inputs) == expected_inputs
 
-    actual = sarkka_bilmes_product(
-        sum_op, prod_op, trans, time_var, global_vars, num_periods=num_periods
-    )
+    with lazy:
+        actual = sarkka_bilmes_product(
+            sum_op, prod_op, trans, time_var, global_vars, num_periods=num_periods
+        )
+    actual = apply_optimizer(actual)
     assert dict(actual.inputs) == expected_inputs
 
     actual = actual.align(tuple(expected.inputs.keys()))
