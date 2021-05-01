@@ -286,6 +286,161 @@ def modified_partial_sum_product(
     # process plate_to_step
     plate_to_step = plate_to_step.copy()
     prev_to_init = {}
+    markov_to_sarkka = {}
+    markov_sum_vars = set()
+    for key, step in plate_to_step.items():
+        # map prev to init; works for any history > 0
+        for chain in step:
+            # Case 1
+            # x_slice(0, 5, None) -> _PREV__PREV_x
+            # x_slice(1, 6, None) -> _PREV_x
+            # x_slice(2, 7, None) -> x
+
+            # Case 2
+            # x_prev - > _PREV_x
+            # x_curr -> x
+            history = len(chain) // 2
+            base_name = chain[-1]
+            for t, name in enumerate(reversed(chain[history:-1])):
+                markov_to_sarkka[name] = _shift_name(base_name, t + 1)
+            markov_sum_vars.add(base_name)
+            markov_sum_vars.update(markov_to_sarkka.keys())
+
+            init, prev = chain[: len(chain) // 2], chain[len(chain) // 2 : -1]
+            prev = tuple(markov_to_sarkka[name] for name in prev)
+            prev_to_init.update(zip(prev, init))
+        # convert step to dict type required for MarkovProduct
+        # plate_to_step[key] = {chain[1]: chain[2] for chain in step}
+    markov_sum_vars = frozenset(markov_sum_vars)
+
+    plates = frozenset(plate_to_step.keys())
+    sum_vars = eliminate - plates
+    prod_vars = eliminate.intersection(plates)
+    #  for step in plate_to_step.values():
+    #      markov_sum_vars |= frozenset(step.keys()) | frozenset(step.values())
+    # markov_sum_vars &= sum_vars
+    markov_prod_vars = frozenset(
+        k for k, v in plate_to_step.items() if v and k in eliminate
+    )
+    markov_sum_to_prod = defaultdict(set)
+    for markov_prod in markov_prod_vars:
+        for chain in plate_to_step[markov_prod]:
+            for name in chain[len(chain) // 2 :]:
+                markov_sum_to_prod[name].add(markov_prod)
+            #  markov_sum_to_prod[k].add(markov_prod)
+            #  markov_sum_to_prod[v].add(markov_prod)
+    #  if markov_sum_vars and eliminate:
+    #      breakpoint()
+
+    var_to_ordinal = {}
+    ordinal_to_factors = defaultdict(list)
+    for f in factors:
+        ordinal = plates.intersection(f.inputs)
+        ordinal_to_factors[ordinal].append(f)
+        for var in sum_vars.intersection(f.inputs):
+            var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+
+    ordinal_to_vars = defaultdict(set)
+    for var, ordinal in var_to_ordinal.items():
+        ordinal_to_vars[ordinal].add(var)
+
+    results = []
+    while ordinal_to_factors:
+        leaf = max(ordinal_to_factors, key=len)
+        leaf_factors = ordinal_to_factors.pop(leaf)
+        leaf_reduce_vars = ordinal_to_vars[leaf]
+        for (group_factors, group_vars) in _partition(
+            leaf_factors, leaf_reduce_vars | markov_prod_vars
+        ):
+            # eliminate non markov vars
+            nonmarkov_vars = group_vars - markov_sum_vars - markov_prod_vars
+            f = reduce(prod_op, group_factors).reduce(sum_op, nonmarkov_vars)
+            # eliminate markov vars
+            markov_vars = group_vars.intersection(markov_sum_vars)
+            if markov_vars:
+                markov_prod_var = [markov_sum_to_prod[var] for var in markov_vars]
+                assert all(p == markov_prod_var[0] for p in markov_prod_var)
+                if len(markov_prod_var[0]) != 1:
+                    raise ValueError("intractable!")
+                time = next(iter(markov_prod_var[0]))
+                for v in sum_vars.intersection(f.inputs):
+                    if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
+                        raise ValueError("intractable!")
+                time_var = Variable(time, f.inputs[time])
+                #  group_step = {
+                #      k: v for (k, v) in plate_to_step[time].items() if v in markov_vars
+                #  }
+                # f = MarkovProduct(sum_op, prod_op, f, time_var, group_step)
+                # markov_to_sarkka renames variables in MarkovProduct format
+                # to sarkka_bilmes_product format
+                base_names = markov_vars.intersection(
+                    _shift_name(name, -_get_shift(name))
+                    for name in markov_to_sarkka.values()
+                )
+                f = f(**markov_to_sarkka)
+                global_vars = frozenset(
+                    set(f.inputs)
+                    - {time_var.name}
+                    - set(markov_to_sarkka.values())
+                    - base_names
+                )
+                #  if global_vars:
+                #      breakpoint()
+                f = sarkka_bilmes_product(sum_op, prod_op, f, time_var, global_vars)
+                f = f.reduce(sum_op, base_names)
+                # f = f.reduce(sum_op, frozenset(group_step.values()))
+                f = f(**prev_to_init)
+
+            remaining_sum_vars = sum_vars.intersection(f.inputs)
+
+            if not remaining_sum_vars:
+                results.append(f.reduce(prod_op, leaf & prod_vars - markov_prod_vars))
+            else:
+                new_plates = frozenset().union(
+                    *(var_to_ordinal[v] for v in remaining_sum_vars)
+                )
+                if new_plates == leaf:
+                    raise ValueError("intractable!")
+                f = f.reduce(prod_op, leaf - new_plates - markov_prod_vars)
+                ordinal_to_factors[new_plates].append(f)
+
+    return results
+
+
+def modified_partial_sum_product_old(
+    sum_op, prod_op, factors, eliminate=frozenset(), plate_to_step=dict()
+):
+    """
+    Generalization of the tensor variable elimination algorithm of
+    :func:`funsor.sum_product.partial_sum_product` to handle markov dimensions
+    in addition to plate dimensions. Markov dimensions in transition factors
+    are eliminated efficiently using the parallel-scan algorithm in
+    :func:`funsor.sum_product.sequential_sum_product`. The resulting factors are then
+    combined with the initial factors and final states are eliminated. Therefore,
+    when Markov dimension is eliminated ``factors`` has to contain a pairs of
+    initial factors and transition factors.
+    :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
+    :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
+    :param factors: A collection of funsors.
+    :type factors: tuple or list
+    :param frozenset eliminate: A set of free variables to eliminate,
+        including both sum variables and product variable.
+    :param dict plate_to_step: A dict mapping markov dimensions to
+        ``step`` collections that contain ordered sequences of Markov variable names
+        (e.g., ``{"time": frozenset({("x_0", "x_prev", "x_curr")})}``).
+        Plates are passed with an empty ``step``.
+    :return: a list of partially contracted Funsors.
+    :rtype: list
+    """
+    assert callable(sum_op)
+    assert callable(prod_op)
+    assert isinstance(factors, (tuple, list))
+    assert all(isinstance(f, Funsor) for f in factors)
+    assert isinstance(eliminate, frozenset)
+    assert isinstance(plate_to_step, dict)
+    # process plate_to_step
+    plate_to_step = plate_to_step.copy()
+    prev_to_init = {}
     for key, step in plate_to_step.items():
         # map prev to init; works for any history > 0
         for chain in step:

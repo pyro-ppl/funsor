@@ -17,6 +17,7 @@ from funsor.sum_product import (
     _partition,
     mixed_sequential_sum_product,
     modified_partial_sum_product,
+    modified_partial_sum_product_old,
     naive_sarkka_bilmes_product,
     naive_sequential_sum_product,
     partial_sum_product,
@@ -987,7 +988,8 @@ def test_modified_partial_sum_product_8(
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
-@pytest.mark.parametrize("use_lazy", [False, True], ids=["eager", "lazy"])
+# @pytest.mark.parametrize("use_lazy", [False, True], ids=["eager", "lazy"])
+@pytest.mark.parametrize("use_lazy", [True])
 @pytest.mark.parametrize(
     "vars1,vars2",
     [
@@ -1059,14 +1061,14 @@ def test_modified_partial_sum_product_8(
             ),
             frozenset(),
         ),
-    ],
+    ][-1:],
 )
 @pytest.mark.parametrize(
     "w_dim,x_dim,y_dim,sequences,time,tones",
-    [(3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4)],
+    [(3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4)][0:1],
 )
 @pytest.mark.parametrize(
-    "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
+    "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)][0:1]
 )
 def test_modified_partial_sum_product_9(
     use_lazy, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
@@ -1146,6 +1148,7 @@ def test_modified_partial_sum_product_9(
         )
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
+    # breakpoint()
 
     with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
