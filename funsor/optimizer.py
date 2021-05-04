@@ -46,7 +46,11 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
             )
             return Contraction(red_op, v.bin_op, reduced_vars, *new_terms)
 
-        if red_op in (v.red_op, ops.null) and (v.red_op, bin_op) in DISTRIBUTIVE_OPS:
+        if (
+            red_op in (v.red_op, ops.null)
+            and (v.red_op, bin_op) in DISTRIBUTIVE_OPS
+            and v.reduced_vars.isdisjoint(reduced_vars)
+        ):
             new_terms = (
                 terms[:i]
                 + (Contraction(v.red_op, v.bin_op, frozenset(), *v.terms),)
@@ -56,7 +60,11 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
                 red_op, reduced_vars
             )
 
-        if v.red_op in (red_op, ops.null) and bin_op in (v.bin_op, ops.null):
+        if (
+            v.red_op in (red_op, ops.null)
+            and bin_op in (v.bin_op, ops.null)
+            and v.reduced_vars.isdisjoint(reduced_vars)
+        ):
             red_op = v.red_op if red_op is ops.null else red_op
             bin_op = v.bin_op if bin_op is ops.null else bin_op
             new_terms = terms[:i] + v.terms + terms[i + 1 :]

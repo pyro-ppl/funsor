@@ -2882,6 +2882,7 @@ def test_apply_optimizer():
                 ),
             ),
         )
-    x = apply_optimizer(term)
-    y = reinterpret(term)
-    assert_close(x, y)
+    expected = reinterpret(term)
+    actual = apply_optimizer(term)
+    expected = expected.align(tuple(actual.inputs.keys()))
+    assert_close(actual, expected)
