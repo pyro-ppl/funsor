@@ -171,7 +171,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             assert actual.dtype == expected.dtype, msg
 
         assert actual.shape == expected.shape, msg
-        if actual.dtype in (np.int32, np.int64, np.uint8, np.bool):
+        if actual.dtype in (np.int32, np.int64, np.uint8, bool):
             assert (actual == expected).all(), msg
         else:
             actual, expected = np.asarray(actual), np.asarray(expected)
