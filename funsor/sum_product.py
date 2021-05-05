@@ -251,7 +251,7 @@ def partial_sum_product(
     return results
 
 
-def modified_partial_sum_product(
+def sarkka_partial_sum_product(
     sum_op, prod_op, factors, eliminate=frozenset(), plate_to_step=dict()
 ):
     """
@@ -407,7 +407,7 @@ def modified_partial_sum_product(
     return results
 
 
-def modified_partial_sum_product_old(
+def modified_partial_sum_product(
     sum_op, prod_op, factors, eliminate=frozenset(), plate_to_step=dict()
 ):
     """

@@ -17,12 +17,12 @@ from funsor.sum_product import (
     _partition,
     mixed_sequential_sum_product,
     modified_partial_sum_product,
-    modified_partial_sum_product_old,
     naive_sarkka_bilmes_product,
     naive_sequential_sum_product,
     partial_sum_product,
     partial_unroll,
     sarkka_bilmes_product,
+    sarkka_partial_sum_product,
     sequential_sum_product,
     sum_product,
 )
@@ -101,7 +101,10 @@ def test_partition(inputs, dims, expected_num_components):
         ("abcij", ""),
     ],
 )
-@pytest.mark.parametrize("impl", [partial_sum_product, modified_partial_sum_product])
+@pytest.mark.parametrize(
+    "impl",
+    [partial_sum_product, modified_partial_sum_product, sarkka_partial_sum_product],
+)
 def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2):
     inputs = inputs.split(",")
     factors = [random_tensor(OrderedDict((d, Bint[2]) for d in ds)) for ds in inputs]
@@ -143,7 +146,12 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
-def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2, x_dim, time):
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
+def test_modified_partial_sum_product_0(
+    impl, sum_op, prod_op, vars1, vars2, x_dim, time
+):
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -156,12 +164,8 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2, x_dim, ti
     factors = [f1, f2, f3]
     plate_to_step = {"time": frozenset({("x_0", "x_prev", "x_curr")})}
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -188,8 +192,11 @@ def test_modified_partial_sum_product_0(sum_op, prod_op, vars1, vars2, x_dim, ti
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_1(
-    sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
+    impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -209,12 +216,8 @@ def test_modified_partial_sum_product_1(
     factors = [f1, f2, f3, f4, f5]
     plate_to_step = {"time": frozenset({("x_0", "x_prev", "x_curr")})}
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -246,8 +249,11 @@ def test_modified_partial_sum_product_1(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_2(
-    sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
+    impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -269,12 +275,8 @@ def test_modified_partial_sum_product_2(
         "time": frozenset({("x_0", "x_prev", "x_curr"), ("y_0", "y_prev", "y_curr")})
     }
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -306,8 +308,11 @@ def test_modified_partial_sum_product_2(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_3(
-    sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
+    impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -336,12 +341,8 @@ def test_modified_partial_sum_product_3(
         "time": frozenset({("x_0", "x_prev", "x_curr"), ("y_0", "y_prev", "y_curr")})
     }
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -404,8 +405,11 @@ def test_modified_partial_sum_product_3(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_4(
-    sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
+    impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -448,12 +452,8 @@ def test_modified_partial_sum_product_4(
         "tones": {},
     }
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -536,8 +536,11 @@ def test_modified_partial_sum_product_4(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_5(
-    sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, days, weeks, tones
+    impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, days, weeks, tones
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -581,12 +584,8 @@ def test_modified_partial_sum_product_5(
         "weeks": frozenset({("y_0", "y_prev", "y_curr")}),
     }
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -649,8 +648,11 @@ def test_modified_partial_sum_product_5(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_6(
-    sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
+    impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -698,12 +700,8 @@ def test_modified_partial_sum_product_6(
         "tones": {},
     }
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -766,8 +764,11 @@ def test_modified_partial_sum_product_6(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_7(
-    sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
+    impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -817,12 +818,8 @@ def test_modified_partial_sum_product_7(
     }
 
     with pytest.raises(ValueError, match="intractable!"):
-        factors1 = modified_partial_sum_product(
-            sum_op, prod_op, factors, vars1, plate_to_step
-        )
-        factors2 = modified_partial_sum_product(
-            sum_op, prod_op, factors1, vars2, plate_to_step
-        )
+        factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         reduce(prod_op, factors2)
 
 
@@ -906,8 +903,11 @@ def test_modified_partial_sum_product_7(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_8(
-    sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
+    impl, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -970,12 +970,8 @@ def test_modified_partial_sum_product_8(
         "tones": {},
     }
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -988,8 +984,7 @@ def test_modified_partial_sum_product_8(
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
-# @pytest.mark.parametrize("use_lazy", [False, True], ids=["eager", "lazy"])
-@pytest.mark.parametrize("use_lazy", [True])
+@pytest.mark.parametrize("use_lazy", [False, True], ids=["eager", "lazy"])
 @pytest.mark.parametrize(
     "vars1,vars2",
     [
@@ -1061,18 +1056,36 @@ def test_modified_partial_sum_product_8(
             ),
             frozenset(),
         ),
-    ][-1:],
+    ],
 )
 @pytest.mark.parametrize(
     "w_dim,x_dim,y_dim,sequences,time,tones",
-    [(3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4)][0:1],
+    [(3, 2, 3, 2, 5, 4), (3, 1, 3, 2, 5, 4), (3, 2, 1, 2, 5, 4), (3, 2, 3, 2, 1, 4)],
 )
 @pytest.mark.parametrize(
-    "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)][0:1]
+    "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
+)
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
 )
 def test_modified_partial_sum_product_9(
-    use_lazy, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
+    impl,
+    use_lazy,
+    sum_op,
+    prod_op,
+    vars1,
+    vars2,
+    w_dim,
+    x_dim,
+    y_dim,
+    sequences,
+    time,
+    tones,
 ):
+    if use_lazy and impl == sarkka_partial_sum_product:
+        pytest.xfail(
+            reason="sarkka_partial_sum_product does not yet support lazy interpretation"
+        )
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -1140,15 +1153,10 @@ def test_modified_partial_sum_product_9(
     }
 
     with (lazy if use_lazy else eager):
-        factors1 = modified_partial_sum_product(
-            sum_op, prod_op, factors, vars1, plate_to_step
-        )
-        factors2 = modified_partial_sum_product(
-            sum_op, prod_op, factors1, vars2, plate_to_step
-        )
+        factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
-    # breakpoint()
 
     with lazy:
         unrolled_factors, unrolled_vars, remaining_plates = partial_unroll(
@@ -1228,8 +1236,11 @@ def test_modified_partial_sum_product_9(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_10(
-    sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
+    impl, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -1292,12 +1303,8 @@ def test_modified_partial_sum_product_10(
         "tones": {},
     }
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -1402,7 +1409,11 @@ def test_modified_partial_sum_product_10(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_11(
+    impl,
     use_lazy,
     sum_op,
     prod_op,
@@ -1417,6 +1428,10 @@ def test_modified_partial_sum_product_11(
     time,
     tones,
 ):
+    if use_lazy and impl == sarkka_partial_sum_product:
+        pytest.xfail(
+            reason="sarkka_partial_sum_product does not yet support lazy interpretation"
+        )
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -1499,12 +1514,8 @@ def test_modified_partial_sum_product_11(
     }
 
     with (lazy if use_lazy else eager):
-        factors1 = modified_partial_sum_product(
-            sum_op, prod_op, factors, vars1, plate_to_step
-        )
-        factors2 = modified_partial_sum_product(
-            sum_op, prod_op, factors1, vars2, plate_to_step
-        )
+        factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
@@ -1583,8 +1594,11 @@ def test_modified_partial_sum_product_11(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_12(
-    sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
+    impl, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -1655,12 +1669,8 @@ def test_modified_partial_sum_product_12(
     }
 
     with pytest.raises(ValueError, match="intractable!"):
-        factors1 = modified_partial_sum_product(
-            sum_op, prod_op, factors, vars1, plate_to_step
-        )
-        factors2 = modified_partial_sum_product(
-            sum_op, prod_op, factors1, vars2, plate_to_step
-        )
+        factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         reduce(prod_op, factors2)
 
 
@@ -1759,7 +1769,11 @@ def test_modified_partial_sum_product_12(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_13(
+    impl,
     use_lazy,
     sum_op,
     prod_op,
@@ -1773,6 +1787,10 @@ def test_modified_partial_sum_product_13(
     weeks,
     tones,
 ):
+    if use_lazy and impl == sarkka_partial_sum_product:
+        pytest.xfail(
+            reason="sarkka_partial_sum_product does not yet support lazy interpretation"
+        )
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -1827,12 +1845,8 @@ def test_modified_partial_sum_product_13(
     }
 
     with (lazy if use_lazy else eager):
-        factors1 = modified_partial_sum_product(
-            sum_op, prod_op, factors, vars1, plate_to_step
-        )
-        factors2 = modified_partial_sum_product(
-            sum_op, prod_op, factors1, vars2, plate_to_step
-        )
+        factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
@@ -1928,8 +1942,11 @@ def test_modified_partial_sum_product_13(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_14(
-    sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
+    impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -1998,12 +2015,8 @@ def test_modified_partial_sum_product_14(
         ),
     }
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -2035,8 +2048,11 @@ def test_modified_partial_sum_product_14(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_16(
-    sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
+    impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
 ):
 
     f1 = random_tensor(OrderedDict({}))
@@ -2058,12 +2074,8 @@ def test_modified_partial_sum_product_16(
         "time": frozenset({("x_0", "x_prev", "x_curr"), ("y_0", "y_prev", "y_curr")})
     }
 
-    factors1 = modified_partial_sum_product(
-        sum_op, prod_op, factors, vars1, plate_to_step
-    )
-    factors2 = modified_partial_sum_product(
-        sum_op, prod_op, factors1, vars2, plate_to_step
-    )
+    factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+    factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
     actual = reduce(prod_op, factors2)
 
     with lazy:
@@ -2130,9 +2142,16 @@ def test_modified_partial_sum_product_16(
 @pytest.mark.parametrize(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
+@pytest.mark.parametrize(
+    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+)
 def test_modified_partial_sum_product_17(
-    use_lazy, sum_op, prod_op, vars1, vars2, x_dim, y_dim, z_dim, time
+    impl, use_lazy, sum_op, prod_op, vars1, vars2, x_dim, y_dim, z_dim, time
 ):
+    if use_lazy and impl == sarkka_partial_sum_product:
+        pytest.xfail(
+            reason="sarkka_partial_sum_product does not yet support lazy interpretation"
+        )
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -2207,12 +2226,8 @@ def test_modified_partial_sum_product_17(
     plate_to_step = {"time": frozenset({("x_0", "x_prev", "x_curr")})}
 
     with (lazy if use_lazy else eager):
-        factors1 = modified_partial_sum_product(
-            sum_op, prod_op, factors, vars1, plate_to_step
-        )
-        factors2 = modified_partial_sum_product(
-            sum_op, prod_op, factors1, vars2, plate_to_step
-        )
+        factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
+        factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         actual = reduce(prod_op, factors2)
     actual = apply_optimizer(actual)
 
