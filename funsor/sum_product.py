@@ -5,6 +5,7 @@ import re
 from collections import OrderedDict, defaultdict
 from functools import reduce
 from math import gcd
+from typing import Dict
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
@@ -611,6 +612,31 @@ def naive_sarkka_bilmes_product(
     return result
 
 
+
+def modified_sequential_sum_product(
+        sum_op: AssociativeOp,
+        prod_op: AssociativeOp,
+        trans: Funsor,
+        time_var: Variable,
+        step: Dict[str, Dict[str, int]],
+        num_periods: int,
+    ) -> Funsor:
+    # step example:
+    # {"a_t": {"a_tm1": 1, "a_tm2": 2}}
+    # {"b_t": {}}
+    global_vars = trans.input_vars - frozenset(step.keys()) - frozenset().union(*step.values())
+    renaming = {}
+    for curr, prevs in step.items():
+        for prev, lag in prevs.items():
+            renaming[prev] = lag * "_PREV_" + curr
+
+    trans = trans(**renaming)
+
+    return sarkka_bilmes_product(
+        sum_op, prod_op, trans, time_var, global_vars, num_periods
+    )
+
+
 def sarkka_bilmes_product(
     sum_op, prod_op, trans, time_var, global_vars=frozenset(), num_periods=1
 ):
@@ -741,6 +767,8 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
         assert all(isinstance(k, str) for k in step_names.keys())
         assert all(isinstance(v, str) for v in step_names.values())
         assert set(step_names) == set(step).union(step.values())
+        if step_names:
+            breakpoint()
         inputs = OrderedDict(
             (step_names.get(k, k), v) for k, v in trans.inputs.items() if k != time.name
         )
@@ -788,6 +816,7 @@ class MarkovProduct(Funsor, metaclass=MarkovProductMeta):
             self.sum_op, self.prod_op, self.trans, self.time, self.step, step_names
         )
         lazy = tuple((k, v) for k, v in subs if not isinstance(v, Variable))
+        breakpoint()
         if lazy:
             result = Subs(result, lazy)
         return result
