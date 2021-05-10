@@ -252,7 +252,7 @@ def partial_sum_product(
     return results
 
 
-def sarkka_partial_sum_product(
+def dynamic_partial_sum_product(
     sum_op, prod_op, factors, eliminate=frozenset(), plate_to_step=dict()
 ):
     """

@@ -22,7 +22,7 @@ from funsor.sum_product import (
     partial_sum_product,
     partial_unroll,
     sarkka_bilmes_product,
-    sarkka_partial_sum_product,
+    dynamic_partial_sum_product,
     sequential_sum_product,
     sum_product,
 )
@@ -103,7 +103,7 @@ def test_partition(inputs, dims, expected_num_components):
 )
 @pytest.mark.parametrize(
     "impl",
-    [partial_sum_product, modified_partial_sum_product, sarkka_partial_sum_product],
+    [partial_sum_product, modified_partial_sum_product, dynamic_partial_sum_product],
 )
 def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2):
     inputs = inputs.split(",")
@@ -147,7 +147,7 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_0(
     impl, sum_op, prod_op, vars1, vars2, x_dim, time
@@ -193,7 +193,7 @@ def test_modified_partial_sum_product_0(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_1(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
@@ -250,7 +250,7 @@ def test_modified_partial_sum_product_1(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_2(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
@@ -309,7 +309,7 @@ def test_modified_partial_sum_product_2(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_3(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
@@ -406,7 +406,7 @@ def test_modified_partial_sum_product_3(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_4(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
@@ -537,7 +537,7 @@ def test_modified_partial_sum_product_4(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_5(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, days, weeks, tones
@@ -649,7 +649,7 @@ def test_modified_partial_sum_product_5(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_6(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
@@ -765,7 +765,7 @@ def test_modified_partial_sum_product_6(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_7(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
@@ -904,7 +904,7 @@ def test_modified_partial_sum_product_7(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_8(
     impl, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
@@ -1066,7 +1066,7 @@ def test_modified_partial_sum_product_8(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_9(
     impl,
@@ -1233,7 +1233,7 @@ def test_modified_partial_sum_product_9(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_10(
     impl, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
@@ -1406,7 +1406,7 @@ def test_modified_partial_sum_product_10(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_11(
     impl,
@@ -1587,7 +1587,7 @@ def test_modified_partial_sum_product_11(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_12(
     impl, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
@@ -1762,7 +1762,7 @@ def test_modified_partial_sum_product_12(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_13(
     impl,
@@ -1931,7 +1931,7 @@ def test_modified_partial_sum_product_13(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_14(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
@@ -2037,7 +2037,7 @@ def test_modified_partial_sum_product_14(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_16(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
@@ -2131,7 +2131,7 @@ def test_modified_partial_sum_product_16(
     "sum_op,prod_op", [(ops.logaddexp, ops.add), (ops.add, ops.mul)]
 )
 @pytest.mark.parametrize(
-    "impl", [modified_partial_sum_product, sarkka_partial_sum_product]
+    "impl", [modified_partial_sum_product, dynamic_partial_sum_product]
 )
 def test_modified_partial_sum_product_17(
     impl, use_lazy, sum_op, prod_op, vars1, vars2, x_dim, y_dim, z_dim, time
