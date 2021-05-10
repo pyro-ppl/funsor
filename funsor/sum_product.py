@@ -407,6 +407,7 @@ def modified_partial_sum_product(
     combined with the initial factors and final states are eliminated. Therefore,
     when Markov dimension is eliminated ``factors`` has to contain a pairs of
     initial factors and transition factors.
+
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
     :param ~funsor.ops.AssociativeOp prod_op: A semiring product operation.
     :param factors: A collection of funsors.
