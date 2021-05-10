@@ -15,6 +15,7 @@ from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
     _partition,
+    dynamic_partial_sum_product,
     mixed_sequential_sum_product,
     modified_partial_sum_product,
     naive_sarkka_bilmes_product,
@@ -22,7 +23,6 @@ from funsor.sum_product import (
     partial_sum_product,
     partial_unroll,
     sarkka_bilmes_product,
-    dynamic_partial_sum_product,
     sequential_sum_product,
     sum_product,
 )
