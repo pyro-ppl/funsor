@@ -1082,10 +1082,6 @@ def test_modified_partial_sum_product_9(
     time,
     tones,
 ):
-    if use_lazy and impl == sarkka_partial_sum_product:
-        pytest.xfail(
-            reason="sarkka_partial_sum_product does not yet support lazy interpretation"
-        )
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -1428,10 +1424,6 @@ def test_modified_partial_sum_product_11(
     time,
     tones,
 ):
-    if use_lazy and impl == sarkka_partial_sum_product:
-        pytest.xfail(
-            reason="sarkka_partial_sum_product does not yet support lazy interpretation"
-        )
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -1787,10 +1779,6 @@ def test_modified_partial_sum_product_13(
     weeks,
     tones,
 ):
-    if use_lazy and impl == sarkka_partial_sum_product:
-        pytest.xfail(
-            reason="sarkka_partial_sum_product does not yet support lazy interpretation"
-        )
 
     f1 = random_tensor(OrderedDict({}))
 
@@ -2148,10 +2136,6 @@ def test_modified_partial_sum_product_16(
 def test_modified_partial_sum_product_17(
     impl, use_lazy, sum_op, prod_op, vars1, vars2, x_dim, y_dim, z_dim, time
 ):
-    if use_lazy and impl == sarkka_partial_sum_product:
-        pytest.xfail(
-            reason="sarkka_partial_sum_product does not yet support lazy interpretation"
-        )
 
     f1 = random_tensor(OrderedDict({}))
 

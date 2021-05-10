@@ -6,6 +6,7 @@ from collections import OrderedDict, defaultdict
 from functools import reduce
 from math import gcd
 
+import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import Bint
@@ -259,9 +260,9 @@ def sarkka_partial_sum_product(
     :func:`funsor.sum_product.partial_sum_product` to handle markov dimensions
     in addition to plate dimensions. Markov dimensions in transition factors
     are eliminated efficiently using the parallel-scan algorithm in
-    :func:`funsor.sum_product.sequential_sum_product`. The resulting factors are then
+    :func:`funsor.sum_product.sarkka_bilmes_product`. The resulting factors are then
     combined with the initial factors and final states are eliminated. Therefore,
-    when Markov dimension is eliminated ``factors`` has to contain a pairs of
+    when Markov dimension is eliminated ``factors`` has to contain
     initial factors and transition factors.
 
     :param ~funsor.ops.AssociativeOp sum_op: A semiring sum operation.
@@ -289,36 +290,31 @@ def sarkka_partial_sum_product(
     markov_to_sarkka = {}
     markov_sum_vars = set()
     for key, step in plate_to_step.items():
-        # map prev to init; works for any history > 0
         for chain in step:
+            # map old markov step names to sarkka_bilmes format step names
             # Case 1
-            # x_slice(0, 5, None) -> _PREV__PREV_x
-            # x_slice(1, 6, None) -> _PREV_x
-            # x_slice(2, 7, None) -> x
-
+            # x_slice(0, 5, None) -> _PREV__PREV_x_slice(2, 7, None)
+            # x_slice(1, 6, None) -> _PREV_x_slice(2, 7, None)
+            # x_slice(2, 7, None) -> x_slice(2, 7, None)
             # Case 2
-            # x_prev - > _PREV_x
-            # x_curr -> x
+            # x_prev - > _PREV_x_curr
+            # x_curr -> x_curr
             history = len(chain) // 2
             base_name = chain[-1]
             for t, name in enumerate(reversed(chain[history:-1])):
                 markov_to_sarkka[name] = _shift_name(base_name, t + 1)
             markov_sum_vars.add(base_name)
-            markov_sum_vars.update(markov_to_sarkka.keys())
+            markov_sum_vars.update(markov_to_sarkka)
 
+            # map prev to init; works for any history > 0
             init, prev = chain[: len(chain) // 2], chain[len(chain) // 2 : -1]
             prev = tuple(markov_to_sarkka[name] for name in prev)
             prev_to_init.update(zip(prev, init))
-        # convert step to dict type required for MarkovProduct
-        # plate_to_step[key] = {chain[1]: chain[2] for chain in step}
     markov_sum_vars = frozenset(markov_sum_vars)
 
     plates = frozenset(plate_to_step.keys())
     sum_vars = eliminate - plates
     prod_vars = eliminate.intersection(plates)
-    #  for step in plate_to_step.values():
-    #      markov_sum_vars |= frozenset(step.keys()) | frozenset(step.values())
-    # markov_sum_vars &= sum_vars
     markov_prod_vars = frozenset(
         k for k, v in plate_to_step.items() if v and k in eliminate
     )
@@ -327,10 +323,6 @@ def sarkka_partial_sum_product(
         for chain in plate_to_step[markov_prod]:
             for name in chain[len(chain) // 2 :]:
                 markov_sum_to_prod[name].add(markov_prod)
-            #  markov_sum_to_prod[k].add(markov_prod)
-            #  markov_sum_to_prod[v].add(markov_prod)
-    #  if markov_sum_vars and eliminate:
-    #      breakpoint()
 
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
@@ -367,9 +359,6 @@ def sarkka_partial_sum_product(
                     if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
                         raise ValueError("intractable!")
                 time_var = Variable(time, f.inputs[time])
-                #  group_step = {
-                #      k: v for (k, v) in plate_to_step[time].items() if v in markov_vars
-                #  }
                 # f = MarkovProduct(sum_op, prod_op, f, time_var, group_step)
                 # markov_to_sarkka renames variables in MarkovProduct format
                 # to sarkka_bilmes_product format
@@ -384,11 +373,10 @@ def sarkka_partial_sum_product(
                     - set(markov_to_sarkka.values())
                     - base_names
                 )
-                #  if global_vars:
-                #      breakpoint()
-                f = sarkka_bilmes_product(sum_op, prod_op, f, time_var, global_vars)
+                with funsor.terms.eager:
+                    f = funsor.optimizer.apply_optimizer(f)
+                    f = sarkka_bilmes_product(sum_op, prod_op, f, time_var, global_vars)
                 f = f.reduce(sum_op, base_names)
-                # f = f.reduce(sum_op, frozenset(group_step.values()))
                 f = f(**prev_to_init)
 
             remaining_sum_vars = sum_vars.intersection(f.inputs)
