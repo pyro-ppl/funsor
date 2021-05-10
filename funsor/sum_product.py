@@ -257,9 +257,9 @@ def dynamic_partial_sum_product(
 ):
     """
     Generalization of the tensor variable elimination algorithm of
-    :func:`funsor.sum_product.partial_sum_product` to handle markov dimensions
-    in addition to plate dimensions. Markov dimensions in transition factors
-    are eliminated efficiently using the parallel-scan algorithm in
+    :func:`funsor.sum_product.partial_sum_product` to handle higer-order markov
+    dimensions in addition to plate dimensions. Markov dimensions in transition
+    factors are eliminated efficiently using the parallel-scan algorithm in
     :func:`funsor.sum_product.sarkka_bilmes_product`. The resulting factors are then
     combined with the initial factors and final states are eliminated. Therefore,
     when Markov dimension is eliminated ``factors`` has to contain
