@@ -359,7 +359,6 @@ def dynamic_partial_sum_product(
                     if time in var_to_ordinal[v] and var_to_ordinal[v] < leaf:
                         raise ValueError("intractable!")
                 time_var = Variable(time, f.inputs[time])
-                # f = MarkovProduct(sum_op, prod_op, f, time_var, group_step)
                 # markov_to_sarkka renames variables in MarkovProduct format
                 # to sarkka_bilmes_product format
                 base_names = markov_vars.intersection(
