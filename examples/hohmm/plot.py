@@ -1,12 +1,15 @@
-
+import matplotlib.pyplot as plt
 import seaborn as sns
 
+import torch
+
 import pyro
+import pyro.distributions as dist
 from pyro.ops.indexing import vindex
 
 
 def main():
-    pyro.get_param_store().load("params_10.pt")
+    pyro.get_param_store().load("params_10_lr=0.05_n=100.pt")
     probs_xlag = pyro.param("probs_xlag")
     mix_lambda = pyro.param("mix_lambda")
     mu = pyro.param("AutoDelta.mu")
@@ -25,6 +28,19 @@ def main():
             x_curr = pyro.sample("x_{}".format(t), dist.Categorical(probs_x_t))
             preds.append(pyro.sample("y_{}".format(t), dist.Normal(mu[x_curr], sigma[x_curr])))
         samples.append(torch.stack(preds))
-    samples = torch.stack(samples)
+    samples = torch.stack(samples).detach()
+    # mean = samples.mean(0)
+    # quantile = samples.quantile(torch.tensor([0.05, 0.95]), dim=0)
+    # plt.plot()
+    sns.kdeplot(samples[:, 0], bw_adjust=0.5)
+    plt.show()
+    sns.kdeplot(samples[:, 1], bw_adjust=0.5)
+    plt.show()
+    sns.kdeplot(samples[:, 2], bw_adjust=0.5)
+    plt.show()
+    # sns.
     # TODO: plot the samples
 
+
+if __name__ == "__main__":
+    main()

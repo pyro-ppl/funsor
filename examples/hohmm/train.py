@@ -44,14 +44,14 @@ def hohmm(data, history=1):
         probs_x = probs_x + mix_lambda[i] * probs_xlag[i].reshape((x_dim,) + (1,) * i + (x_dim,))
 
     mu = pyro.sample("mu", dist.Normal(torch.tensor([-0.5, 0., 0.5]), torch.tensor([1/6, 1e-5, 1/6])).to_event(1))
-    # TODO: use Gamma(...) for precision
-    sigma = pyro.param("sigma", torch.tensor(0.05).repeat(3), constraint=constraints.interval(0., 0.1))
+    sigma = pyro.param("sigma", torch.ones(3) * 0.01, constraint=constraints.interval(0., 0.1))
 
     # initial states are 1, which has corresponding mean is 0
     x_prevs, x_curr = [torch.tensor(1) for i in range(history - 1)], torch.tensor(1)
     for t in pyro.markov(range(len(data)), history=history):
         probs_x_t = vindex(probs_x, tuple(x_prevs) + (x_curr,))
-        x_prevs = x_prevs[1:] + [x_curr]
+        if history > 1:
+            x_prevs = x_prevs[1:] + [x_curr]
         x_curr = pyro.sample("x_{}".format(t), dist.Categorical(probs_x_t), infer={"enumerate": "parallel"})
         pyro.sample("y_{}".format(t), dist.Normal(mu[x_curr], sigma[x_curr]), obs=data[t])
 
@@ -104,7 +104,7 @@ def main(args):
         logging.info("mu = {}".format(pyro.param("AutoDelta.mu").detach().clone()))
         logging.info('{: >5d}\t{}'.format(step, loss))
 
-    pyro.get_param_store().save("params_{}.pt".format(args.model))
+    pyro.get_param_store().save("params_{}_lr={}_n={}.pt".format(args.model, args.learning_rate, args.num_steps))
 
 
 if __name__ == '__main__':
