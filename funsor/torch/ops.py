@@ -174,12 +174,12 @@ ops.cat.register(typing.Tuple[torch.Tensor, ...])(torch.cat)
 @ops.cholesky.register(torch.Tensor)
 def _cholesky(x):
     """
-    Like :func:`torch.cholesky` but uses sqrt for scalar matrices.
+    Like :func:`torch.linalg.cholesky` but uses sqrt for scalar matrices.
     Works around https://github.com/pytorch/pytorch/issues/24403 often.
     """
     if x.size(-1) == 1:
         return x.sqrt()
-    return x.cholesky()
+    return torch.linalg.cholesky(x)
 
 
 @ops.cholesky_inverse.register(torch.Tensor)

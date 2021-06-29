@@ -38,7 +38,7 @@ setup(
         "typing_extensions",
     ],
     extras_require={
-        "torch": ["pyro-ppl>=1.6.0", "torch>=1.8.0"],
+        "torch": ["pyro-ppl>=1.6.0", "torch>=1.9.0"],
         "jax": ["numpyro>=0.2.4", "jax>=0.1.57", "jaxlib>=0.1.37"],
         "test": [
             "black",
@@ -50,7 +50,7 @@ setup(
             "pytest-xdist==1.27.0",
             "requests",
             "scipy",
-            "torchvision>=0.9.0",
+            "torchvision>=0.10.0",
         ],
         "dev": [
             "black",
@@ -64,7 +64,7 @@ setup(
             "sphinx>=2.0",
             "sphinx-gallery",
             "sphinx_rtd_theme",
-            "torchvision>=0.9.0",
+            "torchvision>=0.10.0",
         ],
     },
     long_description=long_description,
