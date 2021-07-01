@@ -393,10 +393,13 @@ def test_elbo_plate_plate(backend, outer_dim, inner_dim):
         assert ops.allclose(actual_grad, expected_grad, atol=1e-5)
 
 
-@pytest.mark.parametrize("backend", [
-    xfail_param("pyro", reason="https://github.com/pytorch/pytorch/issues/61096"),
-    "funsor",
-])
+@pytest.mark.parametrize(
+    "backend",
+    [
+        xfail_param("pyro", reason="https://github.com/pytorch/pytorch/issues/61096"),
+        "funsor",
+    ],
+)
 def test_elbo_enumerate_plates_1(backend):
     #  +-----------------+
     #  | a ----> b   M=2 |
