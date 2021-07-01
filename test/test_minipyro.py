@@ -619,7 +619,7 @@ def test_gaussian_probit_hmm_smoke(exact, jit):
                     loc = init_loc
                     scale_tril = init_scale
                 else:
-                    loc = trans_const + funsor.torch.torch_tensordot(
+                    loc = trans_const + torch.tensordot(
                         trans_coeff, state, 1
                     )
                     scale_tril = noise
