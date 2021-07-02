@@ -45,6 +45,7 @@ setup(
             "flake8",
             "isort>=5.0",
             "pandas",
+            "pillow==8.2.0",  # https://github.com/pytorch/pytorch/issues/61125
             "pyro-api>=0.1.2",
             "pytest==4.3.1",
             "pytest-xdist==1.27.0",
@@ -58,6 +59,7 @@ setup(
             "isort>=5.0",
             "nbsphinx",
             "pandas",
+            "pillow==8.2.0",  # https://github.com/pytorch/pytorch/issues/61125
             "pytest==4.3.1",
             "pytest-xdist==1.27.0",
             "scipy",
