@@ -14,10 +14,10 @@ from collections import OrderedDict
 
 import torch
 import torch.utils.data
-from pyro.contrib.examples.util import MNIST
 from torch import nn, optim
 from torch.nn import functional as F
 from torchvision import transforms
+from torchvision.datasets import MNIST
 
 import funsor
 import funsor.ops as ops
