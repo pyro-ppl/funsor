@@ -393,7 +393,13 @@ def test_elbo_plate_plate(backend, outer_dim, inner_dim):
         assert ops.allclose(actual_grad, expected_grad, atol=1e-5)
 
 
-@pytest.mark.parametrize("backend", ["pyro", "funsor"])
+@pytest.mark.parametrize(
+    "backend",
+    [
+        xfail_param("pyro", reason="https://github.com/pytorch/pytorch/issues/61096"),
+        "funsor",
+    ],
+)
 def test_elbo_enumerate_plates_1(backend):
     #  +-----------------+
     #  | a ----> b   M=2 |
@@ -619,9 +625,7 @@ def test_gaussian_probit_hmm_smoke(exact, jit):
                     loc = init_loc
                     scale_tril = init_scale
                 else:
-                    loc = trans_const + funsor.torch.torch_tensordot(
-                        trans_coeff, state, 1
-                    )
+                    loc = trans_const + torch.tensordot(trans_coeff, state, 1)
                     scale_tril = noise
                 state = pyro.sample(
                     "state_{}".format(t),

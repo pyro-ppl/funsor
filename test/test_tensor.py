@@ -916,6 +916,9 @@ def _numeric_tensordot(x, y, dim):
     if get_backend() == "torch":
         import torch
 
+        if dim == 0:
+            # Work around bug in torch.tensordot(-,-,0).
+            return x.reshape(x.shape + (1,) * y.dim()) * y
         return torch.tensordot(x, y, dim)
     else:
         return np.tensordot(x, y, axes=dim)
