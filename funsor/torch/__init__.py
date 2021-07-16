@@ -29,3 +29,6 @@ to_funsor.register(torch.Tensor)(tensor_to_funsor)
 @dispatch(torch.Tensor, torch.Tensor, [float])
 def allclose(a, b, rtol=1e-05, atol=1e-08):
     return torch.allclose(a, b, rtol=rtol, atol=atol)
+
+
+__all__ = ["MetadataTensor"]
