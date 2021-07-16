@@ -10,6 +10,7 @@ from funsor.util import quote
 
 from . import distributions as _
 from . import ops as _
+from .metadata import MetadataTensor
 
 del _  # flake8
 
