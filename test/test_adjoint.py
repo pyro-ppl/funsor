@@ -211,7 +211,7 @@ def test_optimized_plated_einsum_adjoint(equation, plates, backend):
     [
         sequential_sum_product,
         naive_sequential_sum_product,
-        xfail_param(MarkovProduct, reason="mysteriously doubles adjoint values?"),
+        MarkovProduct,
     ],
 )
 def test_sequential_sum_product_adjoint(
