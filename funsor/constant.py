@@ -1,10 +1,16 @@
+# Copyright Contributors to the Pyro project.
+# SPDX-License-Identifier: Apache-2.0
+
 from collections import OrderedDict
 
-from funsor.terms import Funsor, Variable, Binary, eager, Number, Unary
-from .ops import BinaryOp, FinitaryOp, GetitemOp, MatmulOp, Op, ReshapeOp, UnaryOp
-from funsor.tensor import Tensor
 from funsor.delta import Delta
 from funsor.distribution import Distribution
+from funsor.tensor import Tensor
+from funsor.terms import Binary, Funsor, Number, Unary, Variable, eager, to_funsor
+from funsor.torch import MetadataTensor
+
+from .ops import BinaryOp, FinitaryOp, GetitemOp, MatmulOp, Op, ReshapeOp, UnaryOp
+
 
 class Constant(Funsor):
     def __init__(self, const_vars, arg):
@@ -13,9 +19,7 @@ class Constant(Funsor):
         assert all(isinstance(v, Variable) for v in const_vars)
         assert all(v not in arg.inputs for v in const_vars)
         # const_names = frozenset(v.name for v in cont_vars)
-        inputs = OrderedDict(
-            (v.name, v.output) for v in const_vars
-        )
+        inputs = OrderedDict((v.name, v.output) for v in const_vars)
         inputs.update(arg.inputs)
         output = arg.output
         fresh = const_vars
@@ -40,7 +44,9 @@ class Constant(Funsor):
 
     def eager_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)
-        const_vars = frozenset({v for v in self.const_vars if v.name not in reduced_vars})
+        const_vars = frozenset(
+            {v for v in self.const_vars if v.name not in reduced_vars}
+        )
         reduced_vars = reduced_vars - frozenset({v.name for v in self.const_vars})
         if not const_vars:
             return self.arg.reduce(op, reduced_vars)
@@ -74,3 +80,42 @@ def eager_binary_tensor_constant(op, lhs, rhs):
 @eager.register(Unary, UnaryOp, Constant)
 def eager_binary_tensor_constant(op, arg):
     return Constant(arg.const_vars, op(arg.arg))
+
+
+@to_funsor.register(MetadataTensor)
+def tensor_to_funsor(x, output=None, dim_to_name=None):
+    breakpoint()
+    if not dim_to_name:
+        output = output if output is not None else Reals[x.shape]
+        result = Tensor(x, dtype=output.dtype)
+        if result.output != output:
+            raise ValueError(
+                "Invalid shape: expected {}, actual {}".format(
+                    output.shape, result.output.shape
+                )
+            )
+        return result
+    else:
+        assert all(
+            isinstance(k, int) and k < 0 and isinstance(v, str)
+            for k, v in dim_to_name.items()
+        )
+
+        if output is None:
+            # Assume the leftmost dim_to_name key refers to the leftmost dim of x
+            # when there is ambiguity about event shape
+            batch_ndims = min(-min(dim_to_name.keys()), len(x.shape))
+            output = Reals[x.shape[batch_ndims:]]
+
+        # logic very similar to pyro.ops.packed.pack
+        # this should not touch memory, only reshape
+        # pack the tensor according to the dim => name mapping in inputs
+        packed_inputs = OrderedDict()
+        for dim, size in zip(range(len(x.shape) - len(output.shape)), x.shape):
+            name = dim_to_name.get(dim + len(output.shape) - len(x.shape), None)
+            if name is not None and size != 1:
+                packed_inputs[name] = Bint[size]
+        shape = tuple(d.size for d in packed_inputs.values()) + output.shape
+        if x.shape != shape:
+            x = x.reshape(shape)
+        return Tensor(x, packed_inputs, dtype=output.dtype)

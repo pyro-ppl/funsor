@@ -7,9 +7,17 @@ import torch
 class MetadataTensor(torch.Tensor):
     def __new__(cls, data, metadata=frozenset(), **kwargs):
         assert isinstance(metadata, frozenset)
-        t = torch.Tensor._make_subclass(cls, data)
-        t._metadata = metadata
-        return t
+        if isinstance(data, torch.Tensor):
+            t = torch.Tensor._make_subclass(cls, data)
+            t._metadata = metadata
+            return t
+        else:
+            return data
+        #      breakpoint()
+        #      pass
+        #  if isinstance(data, torch.Size):
+        #      # Is this correct?
+        #      return data
 
     def __repr__(self):
         return "Metadata:\n{}\ndata:\n{}".format(

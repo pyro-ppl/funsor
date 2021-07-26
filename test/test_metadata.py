@@ -27,6 +27,8 @@ def test_metadata(data1, metadata1, data2, metadata2):
         data1 = MetadataTensor(data1, metadata1)
     if metadata2 is not None:
         data2 = MetadataTensor(data2, metadata2)
+    t = funsor.to_funsor(data1)
+    breakpoint()
 
     expected = frozenset.union(*[m for m in (metadata1, metadata2) if m is not None])
     actual = torch.add(data1, data2)._metadata
