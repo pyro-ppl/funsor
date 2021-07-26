@@ -4,21 +4,31 @@
 import torch
 
 
-class MetadataTensor(object):
-    def __init__(self, data, metadata=frozenset(), **kwargs):
+class MetadataTensor(torch.Tensor):
+    def __new__(cls, data, metadata=frozenset(), **kwargs):
         assert isinstance(metadata, frozenset)
-        self._t = torch.as_tensor(data, **kwargs)
-        self._metadata = metadata
+        if isinstance(data, torch.Tensor):
+            t = torch.Tensor._make_subclass(cls, data)
+            t._metadata = metadata
+            return t
+        else:
+            return data
 
     def __repr__(self):
-        return "Metadata:\n{}\n\ndata:\n{}".format(self._metadata, self._t)
+        return "Metadata:\n{}\ndata:\n{}".format(
+            self._metadata, torch.Tensor._make_subclass(torch.Tensor, self)
+        )
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
-        meta = frozenset().union(
-            *tuple(a._metadata for a in args if hasattr(a, "_metadata"))
-        )
-        args = [a._t if hasattr(a, "_t") else a for a in args]
-        ret = func(*args, **kwargs)
+        meta = frozenset()
+        _args = []
+        for arg in args:
+            if isinstance(arg, MetadataTensor):
+                meta |= arg._metadata
+                _args.append(torch.Tensor._make_subclass(torch.Tensor, arg))
+            else:
+                _args.append(arg)
+        ret = func(*_args, **kwargs)
         return MetadataTensor(ret, metadata=meta)

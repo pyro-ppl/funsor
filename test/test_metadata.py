@@ -4,6 +4,7 @@
 import pytest
 import torch
 
+import funsor
 from funsor.torch import MetadataTensor
 
 
