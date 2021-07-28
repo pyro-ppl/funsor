@@ -420,7 +420,7 @@ class Funsor(object, metaclass=FunsorMeta):
             return self  # exact
         return Approximate(op, self, guide, approx_vars)
 
-    def sample(self, sampled_vars, sample_inputs=None, rng_key=None):
+    def sample(self, sampled_vars, sample_inputs=None, rng_key=None, raw_value=None):
         """
         Create a Monte Carlo approximation to this funsor by replacing
         functions of ``sampled_vars`` with :class:`~funsor.delta.Delta` s.
@@ -457,8 +457,9 @@ class Funsor(object, metaclass=FunsorMeta):
         if sampled_vars.isdisjoint(self.inputs):
             return self
 
+        # breakpoint()
         result = instrument.debug_logged(self.unscaled_sample)(
-            sampled_vars, sample_inputs, rng_key
+            sampled_vars, sample_inputs, rng_key, raw_value
         )
         if sample_inputs is not None:
             log_scale = 0
@@ -469,7 +470,7 @@ class Funsor(object, metaclass=FunsorMeta):
                 result += log_scale
         return result
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None, raw_value=None):
         """
         Internal method to draw an unscaled sample.
         This should be overridden by subclasses.

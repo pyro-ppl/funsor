@@ -12,6 +12,7 @@ from importlib import import_module
 
 import makefun
 
+import funsor
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
@@ -145,13 +146,15 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         )
 
     def eager_reduce(self, op, reduced_vars):
+        # breakpoint()
         assert reduced_vars.issubset(self.inputs)
         if (
             op is ops.logaddexp
             and isinstance(self.value, Variable)
             and self.value.name in reduced_vars
         ):
-            return Number(0.0)  # distributions are normalized
+            const_inputs = tuple((k, v) for k, v in self.inputs.items() if k not in reduced_vars)
+            return funsor.constant.Constant(const_inputs, Number(0.0))  # distributions are normalized
         return super(Distribution, self).eager_reduce(op, reduced_vars)
 
     def _get_raw_dist(self):
@@ -206,7 +209,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             inputs.update(x.inputs)
         return log_prob.align(tuple(inputs))
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None, raw_value=None):
 
         # note this should handle transforms correctly via distribution_to_data
         raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
@@ -220,10 +223,19 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         sample_args = (
             (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         )
-        if raw_dist.has_rsample:
-            raw_value = raw_dist.rsample(*sample_args)
+        if raw_value is None:
+            # fix this
+            raw_value = {}
+        raw_value = {var: raw_value[var] for var in sampled_vars if var in raw_value}
+        if not raw_value:
+            if raw_dist.has_rsample:
+                raw_value = raw_dist.rsample(*sample_args)
+            else:
+                raw_value = ops.detach(raw_dist.sample(*sample_args))
         else:
-            raw_value = ops.detach(raw_dist.sample(*sample_args))
+            raw_value = raw_value[value_name]
+            #  if "data" in dim_to_name.values():
+            #      raw_value = raw_value.unsqueeze(-1)
 
         funsor_value = to_funsor(
             raw_value, output=value_output, dim_to_name=dim_to_name
@@ -232,6 +244,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             tuple(sample_inputs)
             + tuple(inp for inp in self.inputs if inp in funsor_value.inputs)
         )
+
         result = funsor.delta.Delta(value_name, funsor_value)
         if not raw_dist.has_rsample:
             # scaling of dice_factor by num samples should already be handled by Funsor.sample

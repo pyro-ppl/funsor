@@ -329,7 +329,7 @@ class Tensor(Funsor, metaclass=TensorMeta):
             return Tensor(data, inputs, dtype)
         return super(Tensor, self).eager_reduce(op, reduced_vars)
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None, raw_value=None):
         assert self.output == Real
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:

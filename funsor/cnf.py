@@ -102,7 +102,7 @@ class Contraction(Funsor):
             )
         return super().__str__()
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None, raw_value=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
@@ -120,7 +120,7 @@ class Contraction(Funsor):
                 # binary choices symbolic.
                 terms = [
                     term.unscaled_sample(
-                        sampled_vars.intersection(term.inputs), sample_inputs
+                        sampled_vars.intersection(term.inputs), sample_inputs, raw_value=raw_value
                     )
                     for term, rng_key in zip(self.terms, rng_keys)
                 ]
@@ -136,18 +136,23 @@ class Contraction(Funsor):
 
                 # Sample variables greedily in order of the terms in which they appear.
                 for term in self.terms:
+                    # breakpoint()
                     greedy_vars = sampled_vars.intersection(term.inputs)
                     if greedy_vars:
                         break
                 greedy_terms, terms = [], []
                 for term in self.terms:
+                    if isinstance(term, funsor.torch.distributions.Poisson):
+                        dd = {term.value.name}
+                    else:
+                        dd = term.inputs
                     (
-                        terms if greedy_vars.isdisjoint(term.inputs) else greedy_terms
+                        terms if greedy_vars.isdisjoint(dd) else greedy_terms
                     ).append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
                     terms.append(
-                        term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0])
+                        term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0], raw_value=raw_value)
                     )
                     result = Contraction(
                         self.red_op, self.bin_op, self.reduced_vars, *terms
@@ -162,7 +167,7 @@ class Contraction(Funsor):
                     terms.append(gaussian)
                     terms.append(-gaussian.log_normalizer)
                     terms.append(
-                        term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0])
+                        term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0], raw_value=raw_value)
                     )
                     result = Contraction(
                         self.red_op, self.bin_op, self.reduced_vars, *terms
@@ -174,7 +179,7 @@ class Contraction(Funsor):
                 ):
                     sampled_terms = [
                         term.unscaled_sample(
-                            greedy_vars.intersection(term.value.inputs), sample_inputs
+                            greedy_vars.intersection(term.value.inputs), sample_inputs, raw_value=raw_value
                         )
                         for term in greedy_terms
                         if isinstance(term, funsor.distribution.Distribution)
@@ -193,7 +198,7 @@ class Contraction(Funsor):
                         )
                     )
                 return result.unscaled_sample(
-                    sampled_vars - greedy_vars, sample_inputs, rng_keys[1]
+                    sampled_vars - greedy_vars, sample_inputs, rng_keys[1], raw_value=raw_value
                 )
 
         raise TypeError(

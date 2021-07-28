@@ -15,18 +15,19 @@ class ProvenanceTensor(torch.Tensor):
         instance = torch.Tensor.__new__(cls)
         instance.__init__(data, provenance)
         return instance
-        # return super(object).__new__(cls, data, provenance)
 
     def __init__(self, data, provenance=frozenset()):
         assert isinstance(provenance, frozenset)
         # t = torch.Tensor._make_subclass(cls, data)
+        if isinstance(data, ProvenanceTensor):
+            provenance |= data._provenance
+            data = data._t
         self._t = data
         self._provenance = provenance
 
     def __repr__(self):
         return "Provenance:\n{}\nTensor:\n{}".format(
             self._provenance, self._t
-            # self._provenance, torch.Tensor._make_subclass(torch.Tensor, self)
         )
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
@@ -52,12 +53,3 @@ class ProvenanceTensor(torch.Tensor):
                     _ret.append(r)
             return tuple(_ret)
         return ret
-
-class MyObject(torch.Tensor):
-    @staticmethod
-    def __new__(cls, x, extra_data, *args, **kwargs):
-        return super().__new__(cls, x, *args, **kwargs)
-    
-    def __init__(self, x, extra_data):
-        #super().__init__() # optional
-        self.extra_data = extra_data

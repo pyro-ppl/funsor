@@ -67,7 +67,7 @@ def eager_binary_constant_constant(op, lhs, rhs):
     return Constant(const_inputs, op(lhs.arg, rhs.arg))
 
 
-@eager.register(Binary, BinaryOp, Constant, (Number, Tensor))
+@eager.register(Binary, BinaryOp, Constant, (Number, Tensor, Distribution))
 def eager_binary_constant_tensor(op, lhs, rhs):
     const_vars = lhs.const_vars - rhs.input_vars
     if not const_vars:
@@ -76,7 +76,7 @@ def eager_binary_constant_tensor(op, lhs, rhs):
     return Constant(const_inputs, op(lhs.arg, rhs))
 
 
-@eager.register(Binary, BinaryOp, (Number, Tensor), Constant)
+@eager.register(Binary, BinaryOp, (Number, Tensor, Distribution), Constant)
 def eager_binary_tensor_constant(op, lhs, rhs):
     const_vars = rhs.const_vars - lhs.input_vars
     if not const_vars:
