@@ -470,7 +470,9 @@ class Funsor(object, metaclass=FunsorMeta):
                 result += log_scale
         return result
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None, raw_value=None):
+    def unscaled_sample(
+        self, sampled_vars, sample_inputs, rng_key=None, raw_value=None
+    ):
         """
         Internal method to draw an unscaled sample.
         This should be overridden by subclasses.

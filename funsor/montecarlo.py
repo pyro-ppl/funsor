@@ -34,7 +34,9 @@ def monte_carlo_integrate(state, log_measure, integrand, reduced_vars):
 
         sample_options["rng_key"], state.rng_key = jax.random.split(state.rng_key)
 
-    sample = log_measure.sample(reduced_vars, state.sample_inputs, raw_value=state.raw_value, **sample_options)
+    sample = log_measure.sample(
+        reduced_vars, state.sample_inputs, raw_value=state.raw_value, **sample_options
+    )
     if sample is log_measure:
         return None  # cannot progress
     reduced_vars |= frozenset(

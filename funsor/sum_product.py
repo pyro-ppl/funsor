@@ -246,7 +246,7 @@ def partial_sum_product(
                 )
                 if new_plates == leaf:
                     raise ValueError("intractable!")
-                f = f.reduce(prod_op, (leaf & eliminate) - new_plates)
+                f = f.reduce(prod_op, leaf - new_plates)
                 ordinal_to_factors[new_plates].append(f)
 
     return results

@@ -200,7 +200,9 @@ class Delta(Funsor, metaclass=DeltaMeta):
 
         return None  # defer to default implementation
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None, raw_value=None):
+    def unscaled_sample(
+        self, sampled_vars, sample_inputs, rng_key=None, raw_value=None
+    ):
         return self
 
 

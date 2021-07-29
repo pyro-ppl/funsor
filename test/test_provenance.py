@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from funsor.terms import to_funsor
-from funsor.torch.provenance import ProvenanceTensor, MyObject
+from funsor.torch.provenance import ProvenanceTensor
 
 
 @pytest.mark.parametrize(

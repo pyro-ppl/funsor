@@ -153,8 +153,12 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             and isinstance(self.value, Variable)
             and self.value.name in reduced_vars
         ):
-            const_inputs = tuple((k, v) for k, v in self.inputs.items() if k not in reduced_vars)
-            return funsor.constant.Constant(const_inputs, Number(0.0))  # distributions are normalized
+            const_inputs = OrderedDict(
+                (k, v) for k, v in self.inputs.items() if k not in reduced_vars
+            )
+            return funsor.constant.Constant(
+                const_inputs, Number(0.0)
+            )  # distributions are normalized
         return super(Distribution, self).eager_reduce(op, reduced_vars)
 
     def _get_raw_dist(self):
@@ -209,7 +213,9 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             inputs.update(x.inputs)
         return log_prob.align(tuple(inputs))
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None, raw_value=None):
+    def unscaled_sample(
+        self, sampled_vars, sample_inputs, rng_key=None, raw_value=None
+    ):
 
         # note this should handle transforms correctly via distribution_to_data
         raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
