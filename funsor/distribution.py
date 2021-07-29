@@ -146,7 +146,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         )
 
     def eager_reduce(self, op, reduced_vars):
-        # breakpoint()
         assert reduced_vars.issubset(self.inputs)
         if (
             op is ops.logaddexp
@@ -156,9 +155,11 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             const_inputs = OrderedDict(
                 (k, v) for k, v in self.inputs.items() if k not in reduced_vars
             )
-            return funsor.constant.Constant(
-                const_inputs, Number(0.0)
-            )  # distributions are normalized
+            if const_inputs:
+                return funsor.constant.Constant(
+                    const_inputs, Number(0.0)
+                )
+            return Number(0.0)  # distributions are normalized
         return super(Distribution, self).eager_reduce(op, reduced_vars)
 
     def _get_raw_dist(self):
@@ -229,19 +230,14 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         sample_args = (
             (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         )
-        if raw_value is None:
-            # fix this
-            raw_value = {}
-        raw_value = {var: raw_value[var] for var in sampled_vars if var in raw_value}
-        if not raw_value:
+
+        if raw_value is not None and value_name in raw_value:
+            raw_value = raw_value[value_name]
+        else:
             if raw_dist.has_rsample:
                 raw_value = raw_dist.rsample(*sample_args)
             else:
                 raw_value = ops.detach(raw_dist.sample(*sample_args))
-        else:
-            raw_value = raw_value[value_name]
-            #  if "data" in dim_to_name.values():
-            #      raw_value = raw_value.unsqueeze(-1)
 
         funsor_value = to_funsor(
             raw_value, output=value_output, dim_to_name=dim_to_name

@@ -4,7 +4,6 @@
 import pytest
 import torch
 
-from funsor.terms import to_funsor
 from funsor.torch.provenance import ProvenanceTensor
 
 
@@ -23,14 +22,10 @@ from funsor.torch.provenance import ProvenanceTensor
     ],
 )
 def test_provenance(data1, provenance1, data2, provenance2):
-    #  breakpoint()
-    #  mo = MyObject(data1, extra_data=provenance1)
     if provenance1 is not None:
         data1 = ProvenanceTensor(data1, provenance1)
     if provenance2 is not None:
         data2 = ProvenanceTensor(data2, provenance2)
-    breakpoint()
-    to_funsor(data1)
 
     expected = frozenset.union(
         *[m for m in (provenance1, provenance2) if m is not None]

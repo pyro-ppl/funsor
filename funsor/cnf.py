@@ -140,17 +140,16 @@ class Contraction(Funsor):
 
                 # Sample variables greedily in order of the terms in which they appear.
                 for term in self.terms:
-                    # breakpoint()
                     greedy_vars = sampled_vars.intersection(term.inputs)
                     if greedy_vars:
                         break
                 greedy_terms, terms = [], []
                 for term in self.terms:
-                    if isinstance(term, funsor.torch.distributions.Poisson):
-                        dd = {term.value.name}
+                    if isinstance(term, funsor.distribution.Distribution):
+                        term_var = {term.value.name}
                     else:
-                        dd = term.inputs
-                    (terms if greedy_vars.isdisjoint(dd) else greedy_terms).append(term)
+                        term_var = term.inputs
+                    (terms if greedy_vars.isdisjoint(term_var) else greedy_terms).append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
                     terms.append(
