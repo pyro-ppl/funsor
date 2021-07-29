@@ -149,7 +149,9 @@ class Contraction(Funsor):
                         term_var = {term.value.name}
                     else:
                         term_var = term.inputs
-                    (terms if greedy_vars.isdisjoint(term_var) else greedy_terms).append(term)
+                    (
+                        terms if greedy_vars.isdisjoint(term_var) else greedy_terms
+                    ).append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
                     terms.append(

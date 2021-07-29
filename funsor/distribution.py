@@ -156,9 +156,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
                 (k, v) for k, v in self.inputs.items() if k not in reduced_vars
             )
             if const_inputs:
-                return funsor.constant.Constant(
-                    const_inputs, Number(0.0)
-                )
+                return funsor.constant.Constant(const_inputs, Number(0.0))
             return Number(0.0)  # distributions are normalized
         return super(Distribution, self).eager_reduce(op, reduced_vars)
 

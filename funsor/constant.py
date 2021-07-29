@@ -14,6 +14,7 @@ from funsor.terms import (
     Variable,
     eager,
     to_data,
+    to_funsor,
 )
 from funsor.torch.provenance import ProvenanceTensor
 
@@ -118,3 +119,10 @@ def eager_binary_tensor_constant(op, arg):
 def constant_to_data(x, name_to_dim=None):
     data = to_data(x.arg, name_to_dim=name_to_dim)
     return ProvenanceTensor(data, provenance=frozenset(x.const_inputs.items()))
+
+
+@to_funsor.register(ProvenanceTensor)
+def provenance_to_funsor(x, output=None, dim_to_name=None):
+    if isinstance(x, ProvenanceTensor):
+        ret = to_funsor(x._t, output=output, dim_to_name=dim_to_name)
+        return Constant(OrderedDict(x._provenance), ret)

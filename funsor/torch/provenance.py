@@ -6,10 +6,6 @@ import torch
 
 class ProvenanceTensor(torch.Tensor):
     def __new__(cls, data, provenance=frozenset(), **kwargs):
-        #  assert isinstance(provenance, frozenset)
-        #  t = torch.Tensor._make_subclass(cls, data)
-        #  t._provenance = provenance
-        #  return data
         if not provenance:
             return data
         instance = torch.Tensor.__new__(cls)
@@ -18,7 +14,6 @@ class ProvenanceTensor(torch.Tensor):
 
     def __init__(self, data, provenance=frozenset()):
         assert isinstance(provenance, frozenset)
-        # t = torch.Tensor._make_subclass(cls, data)
         if isinstance(data, ProvenanceTensor):
             provenance |= data._provenance
             data = data._t
