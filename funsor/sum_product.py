@@ -963,5 +963,4 @@ def eager_markov_product(sum_op, prod_op, trans, time, step, step_names):
     else:
         raise NotImplementedError("https://github.com/pyro-ppl/funsor/issues/233")
 
-    with funsor.terms.eager:
-        return Subs(result, step_names)
+    return Subs(result, step_names)
