@@ -45,6 +45,7 @@ class Constant(Funsor, metaclass=ConstantMeta):
         a = Constant(OrderedDict(x=Real, y=Bint[3]), arg)
         assert a.reduce(ops.add, "x") is Constant(OrderedDict(y=Bint[3]), arg)
         assert a(y=1) is Constant(OrderedDict(x=Real), arg)
+        assert a(x=0, y=1) is arg
 
         c = Normal(0, 1, value="x")
         assert (a + c) is Constant(OrderedDict(y=Bint[3]), arg + c)
