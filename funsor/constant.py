@@ -34,6 +34,27 @@ class ConstantMeta(FunsorMeta):
 
 
 class Constant(Funsor, metaclass=ConstantMeta):
+    """
+    Constant funsor wrt to multiple variables (``const_inputs``).
+
+    This can be used for provenance tracking.
+
+    ``const_inputs`` are ignored (removed) under
+    substition/reduction/binary operations::
+
+        a = Constant(OrderedDict(x=Real, y=Bint[3]), arg)
+        assert a.reduce(ops.add, "x") is Constant(OrderedDict(y=Bint[3]), arg)
+        assert a(y=1) is Constant(OrderedDict(x=Real), arg)
+
+        c = Normal(0, 1, value="x")
+        assert (a + c) is Constant(OrderedDict(y=Bint[3]), arg + c)
+
+        d = Tensor(torch.tensor([1, 2, 3]))["y"]
+        assert (a + d) is Constant(OrderedDict(x=Real), arg + d)
+
+    :param dict const_inputs: A mapping from input name (str) to datatype (``funsor.domain.Domain``).
+    :param funsor arg: A funsor that is constant wrt to const_inputs.
+    """
     def __init__(self, const_inputs, arg):
         assert isinstance(arg, Funsor)
         assert isinstance(const_inputs, tuple)
@@ -61,6 +82,8 @@ class Constant(Funsor, metaclass=ConstantMeta):
                     del subs[k]
                     k = v.name
                     const_inputs[k] = d
+            else:
+                const_inputs[k] = d
         if const_inputs:
             return Constant(const_inputs, self.arg)
         return self.arg
