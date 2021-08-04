@@ -58,7 +58,8 @@ class AdjointTape(Interpretation):
             )
             for arg in args
         ]
-        self._eager_to_lazy[result] = reflect.interpret(cls, *lazy_args)
+        with self._old_interpretation:
+            self._eager_to_lazy[result] = reflect.interpret(cls, *lazy_args)
         return result
 
     def __enter__(self):
