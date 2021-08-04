@@ -262,16 +262,29 @@ def test_sequential_sum_product_adjoint(
 
 
 @pytest.mark.parametrize(
-    "use_subs", [False, xfail_param(True, reason="doubled adjoint value")]
+    "test",
+    [
+        None,
+        xfail_param("same"),
+        xfail_param("empty"),
+        xfail_param("other"),
+        xfail_param("reduce"),
+    ],
 )
-def test_subs_adjoint(use_subs):
+def test_identity_adjoint(test):
     x = random_tensor(OrderedDict(i=Bint[3]))
 
     with AdjointTape() as tape:
         y = 2 * x
-        if use_subs:
+        if test == "same":
             y = y(i="i")
+        elif test == "empty":
+            y = y()
+        elif test == "other":
+            y = y(j=0)
+        elif test == "reduce":
+            y = funsor.terms.Reduce(ops.add, y, frozenset())
 
-    # use_subs=True returns Number(4.0)
+    # these identity tests return Number(4.0)
     actual = tape.adjoint(ops.add, ops.mul, y, (x,))[x]
     assert actual is funsor.Number(2.0)
