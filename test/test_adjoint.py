@@ -259,3 +259,19 @@ def test_sequential_sum_product_adjoint(
         )
         expected_bwd = expected_bwds[operand]
         assert (actual_bwd_t - expected_bwd).abs().data.max() < 5e-3 * num_steps
+
+
+@pytest.mark.parametrize(
+    "use_subs", [False, xfail_param(True, reason="doubled adjoint value")]
+)
+def test_subs_adjoint(use_subs):
+    x = random_tensor(OrderedDict(i=Bint[3]))
+
+    with AdjointTape() as tape:
+        y = 2 * x
+        if use_subs:
+            y = y(i="i")
+
+    # use_subs=True returns Number(4.0)
+    actual = tape.adjoint(ops.add, ops.mul, y, (x,))[x]
+    assert actual is funsor.Number(2.0)

@@ -873,12 +873,13 @@ class SubsMeta(FunsorMeta):
 
     def __call__(cls, arg, subs):
         subs = tuple(
-            (k, to_funsor(v, arg.inputs[k]))
-            for k, v in subs
-            if k in arg.inputs and k is not v
+            (k, to_funsor(v, arg.inputs[k])) for k, v in subs if k in arg.inputs
+            #  (k, to_funsor(v, arg.inputs[k]))
+            #  for k, v in subs
+            #  if k in arg.inputs and k is not v
         )
-        if not subs:
-            return arg
+        #  if not subs:
+        #      return arg
         return super().__call__(arg, subs)
 
 
