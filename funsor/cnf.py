@@ -120,8 +120,7 @@ class Contraction(Funsor):
                 # binary choices symbolic.
                 terms = [
                     term.unscaled_sample(
-                        sampled_vars.intersection(term.inputs),
-                        sample_inputs,
+                        sampled_vars.intersection(term.inputs), sample_inputs
                     )
                     for term, rng_key in zip(self.terms, rng_keys)
                 ]
@@ -175,8 +174,7 @@ class Contraction(Funsor):
                 ):
                     sampled_terms = [
                         term.unscaled_sample(
-                            greedy_vars.intersection(term.value.inputs),
-                            sample_inputs,
+                            greedy_vars.intersection(term.value.inputs), sample_inputs
                         )
                         for term in greedy_terms
                         if isinstance(term, funsor.distribution.Distribution)
@@ -195,9 +193,7 @@ class Contraction(Funsor):
                         )
                     )
                 return result.unscaled_sample(
-                    sampled_vars - greedy_vars,
-                    sample_inputs,
-                    rng_keys[1],
+                    sampled_vars - greedy_vars, sample_inputs, rng_keys[1]
                 )
 
         raise TypeError(

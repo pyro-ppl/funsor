@@ -221,7 +221,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         sample_args = (
             (sample_shape,) if get_backend() == "torch" else (rng_key, sample_shape)
         )
-
         if raw_dist.has_rsample:
             raw_value = raw_dist.rsample(*sample_args)
         else:

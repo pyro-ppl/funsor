@@ -236,8 +236,7 @@ def partial_sum_product(
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
         for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            f = reduce(prod_op, group_factors)
-            f = f.reduce(sum_op, group_vars)
+            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate))
@@ -964,5 +963,4 @@ def eager_markov_product(sum_op, prod_op, trans, time, step, step_names):
     else:
         raise NotImplementedError("https://github.com/pyro-ppl/funsor/issues/233")
 
-    with funsor.terms.eager:
-        return Subs(result, step_names)
+    return Subs(result, step_names)
