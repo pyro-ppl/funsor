@@ -19,10 +19,9 @@ class MonteCarlo(StatefulInterpretation):
     :param rng_key:
     """
 
-    def __init__(self, *, rng_key=None, raw_value=None, **sample_inputs):
+    def __init__(self, *, rng_key=None, **sample_inputs):
         super().__init__("monte_carlo")
         self.rng_key = rng_key
-        self.raw_value = raw_value
         self.sample_inputs = OrderedDict(sample_inputs)
 
 
@@ -34,9 +33,7 @@ def monte_carlo_integrate(state, log_measure, integrand, reduced_vars):
 
         sample_options["rng_key"], state.rng_key = jax.random.split(state.rng_key)
 
-    sample = log_measure.sample(
-        reduced_vars, state.sample_inputs, raw_value=state.raw_value, **sample_options
-    )
+    sample = log_measure.sample(reduced_vars, state.sample_inputs, **sample_options)
     if sample is log_measure:
         return None  # cannot progress
     reduced_vars |= frozenset(

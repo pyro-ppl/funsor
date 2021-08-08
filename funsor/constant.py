@@ -3,7 +3,6 @@
 
 from collections import OrderedDict
 
-from funsor.distribution import Distribution
 from funsor.tensor import Tensor
 from funsor.terms import (
     Binary,
@@ -56,11 +55,12 @@ class Constant(Funsor, metaclass=ConstantMeta):
     :param dict const_inputs: A mapping from input name (str) to datatype (``funsor.domain.Domain``).
     :param funsor arg: A funsor that is constant wrt to const_inputs.
     """
+
     def __init__(self, const_inputs, arg):
         assert isinstance(arg, Funsor)
         assert isinstance(const_inputs, tuple)
-        assert set(const_inputs).isdisjoint(arg.inputs)
         const_inputs = OrderedDict(const_inputs)
+        assert set(const_inputs).isdisjoint(arg.inputs)
         inputs = const_inputs.copy()
         inputs.update(arg.inputs)
         output = arg.output
@@ -104,17 +104,21 @@ class Constant(Funsor, metaclass=ConstantMeta):
 @eager.register(Binary, BinaryOp, Constant, Constant)
 def eager_binary_constant_constant(op, lhs, rhs):
     const_inputs = OrderedDict(
-        (k, v) for k, v in lhs.const_inputs.items() if k not in rhs.const_inputs
+        (k, v)
+        for k, v in lhs.const_inputs.items()
+        if k not in frozenset(rhs.const_inputs) - frozenset(lhs.const_inputs)
     )
     const_inputs.update(
-        (k, v) for k, v in rhs.const_inputs.items() if k not in lhs.const_inputs
+        (k, v)
+        for k, v in rhs.const_inputs.items()
+        if k not in frozenset(lhs.const_inputs) - frozenset(rhs.const_inputs)
     )
     if const_inputs:
         return Constant(const_inputs, op(lhs.arg, rhs.arg))
     return op(lhs.arg, rhs.arg)
 
 
-@eager.register(Binary, BinaryOp, Constant, (Number, Tensor, Distribution))
+@eager.register(Binary, BinaryOp, Constant, (Number, Tensor))
 def eager_binary_constant_tensor(op, lhs, rhs):
     const_inputs = OrderedDict(
         (k, v) for k, v in lhs.const_inputs.items() if k not in rhs.inputs
@@ -124,7 +128,7 @@ def eager_binary_constant_tensor(op, lhs, rhs):
     return op(lhs.arg, rhs)
 
 
-@eager.register(Binary, BinaryOp, (Number, Tensor, Distribution), Constant)
+@eager.register(Binary, BinaryOp, (Number, Tensor), Constant)
 def eager_binary_tensor_constant(op, lhs, rhs):
     const_inputs = OrderedDict(
         (k, v) for k, v in rhs.const_inputs.items() if k not in lhs.inputs
@@ -135,7 +139,7 @@ def eager_binary_tensor_constant(op, lhs, rhs):
 
 
 @eager.register(Unary, UnaryOp, Constant)
-def eager_binary_tensor_constant(op, arg):
+def eager_unary(op, arg):
     return Constant(arg.const_inputs, op(arg.arg))
 
 
