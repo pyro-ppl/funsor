@@ -103,16 +103,10 @@ class Constant(Funsor, metaclass=ConstantMeta):
 
 @eager.register(Binary, BinaryOp, Constant, Constant)
 def eager_binary_constant_constant(op, lhs, rhs):
-    const_inputs = OrderedDict(
-        (k, v)
-        for k, v in lhs.const_inputs.items()
-        if k not in frozenset(rhs.const_inputs) - frozenset(lhs.const_inputs)
+    const_vars = (
+        (lhs.const_vars | rhs.const_vars) - lhs.arg.input_vars - rhs.arg.input_vars
     )
-    const_inputs.update(
-        (k, v)
-        for k, v in rhs.const_inputs.items()
-        if k not in frozenset(lhs.const_inputs) - frozenset(rhs.const_inputs)
-    )
+    const_inputs = OrderedDict((v.name, v.output) for v in const_vars)
     if const_inputs:
         return Constant(const_inputs, op(lhs.arg, rhs.arg))
     return op(lhs.arg, rhs.arg)

@@ -141,7 +141,8 @@ class Delta(Funsor, metaclass=DeltaMeta):
                 new_terms[value.name] = new_terms.pop(name)
                 continue
 
-            if value.input_vars == terms[name][0].input_vars:
+            var_diff = value.input_vars ^ terms[name][0].input_vars
+            if not any(d.output.dtype == "real" for d in var_diff):
                 point, point_log_density = new_terms.pop(name)
                 log_density += (value == point).all().log() + point_log_density
                 continue
@@ -154,9 +155,13 @@ class Delta(Funsor, metaclass=DeltaMeta):
             old_point, old_point_density = new_terms.pop(name)
             new_terms[new_name] = (new_point, old_point_density + point_log_density)
 
-        return (
-            Delta(tuple(new_terms.items())) + log_density if new_terms else log_density
-        )
+        if new_terms:
+            return (
+                Delta(tuple(new_terms.items())) + log_density
+                if log_density is not Number(0)
+                else Delta(tuple(new_terms.items()))
+            )
+        return log_density
 
     def eager_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)
@@ -215,7 +220,7 @@ def eager_add_multidelta(op, lhs, rhs):
 @eager.register(Binary, (AddOp, SubOp), Delta, (Funsor, Align))
 def eager_add_delta_funsor(op, lhs, rhs):
     if lhs.fresh.intersection(rhs.inputs):
-        if isinstance(rhs, funsor.constant.Constant):
+        if isinstance(rhs, funsor.Constant):
             return funsor.constant.eager_binary_tensor_constant(op, lhs, rhs)
         rhs = rhs(
             **{
@@ -232,7 +237,7 @@ def eager_add_delta_funsor(op, lhs, rhs):
 @eager.register(Binary, AddOp, (Funsor, Align), Delta)
 def eager_add_funsor_delta(op, lhs, rhs):
     if rhs.fresh.intersection(lhs.inputs):
-        if isinstance(lhs, funsor.constant.Constant):
+        if isinstance(lhs, funsor.Constant):
             return funsor.constant.eager_binary_constant_tensor(op, lhs, rhs)
         lhs = lhs(
             **{

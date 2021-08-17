@@ -58,8 +58,8 @@ class AdjointTape(Interpretation):
             )
             for arg in args
         ]
-        #  with self._old_interpretation:
-        #      self._eager_to_lazy[result] = reflect.interpret(cls, *lazy_args)
+        with self._old_interpretation:
+            self._eager_to_lazy[result] = reflect.interpret(cls, *lazy_args)
         return result
 
     def __enter__(self):
@@ -84,34 +84,34 @@ class AdjointTape(Interpretation):
                     continue
 
             # reverse the effects of alpha-renaming
-            #  with reflect:
-            #
-            #      lazy_output = self._eager_to_lazy[output]
-            #      lazy_fn = type(lazy_output)
-            #      lazy_inputs = lazy_output._ast_values
-            #      # TODO abstract this into a helper function
-            #      # FIXME make lazy_output linear instead of quadratic in the size of the tape
-            #      lazy_other_subs = tuple(
-            #          (name, to_funsor(name.split("__BOUND")[0], domain))
-            #          for name, domain in lazy_output.inputs.items()
-            #          if "__BOUND" in name
-            #      )
-            #      lazy_inputs = _alpha_unmangle(
-            #          substitute(lazy_fn(*lazy_inputs), lazy_other_subs)
-            #      )
-            #      lazy_output = type(lazy_output)(
-            #          *_alpha_unmangle(substitute(lazy_output, lazy_other_subs))
-            #      )
-            #
-            #      other_subs = tuple(
-            #          (name, to_funsor(name.split("__BOUND")[0], domain))
-            #          for name, domain in output.inputs.items()
-            #          if "__BOUND" in name
-            #      )
-            #      inputs = _alpha_unmangle(substitute(fn(*inputs), other_subs))
-            #      output = type(output)(*_alpha_unmangle(substitute(output, other_subs)))
-            #
-            #      self._eager_to_lazy[output] = lazy_output
+            with reflect:
+
+                lazy_output = self._eager_to_lazy[output]
+                lazy_fn = type(lazy_output)
+                lazy_inputs = lazy_output._ast_values
+                # TODO abstract this into a helper function
+                # FIXME make lazy_output linear instead of quadratic in the size of the tape
+                lazy_other_subs = tuple(
+                    (name, to_funsor(name.split("__BOUND")[0], domain))
+                    for name, domain in lazy_output.inputs.items()
+                    if "__BOUND" in name
+                )
+                lazy_inputs = _alpha_unmangle(
+                    substitute(lazy_fn(*lazy_inputs), lazy_other_subs)
+                )
+                lazy_output = type(lazy_output)(
+                    *_alpha_unmangle(substitute(lazy_output, lazy_other_subs))
+                )
+
+                other_subs = tuple(
+                    (name, to_funsor(name.split("__BOUND")[0], domain))
+                    for name, domain in output.inputs.items()
+                    if "__BOUND" in name
+                )
+                inputs = _alpha_unmangle(substitute(fn(*inputs), other_subs))
+                output = type(output)(*_alpha_unmangle(substitute(output, other_subs)))
+
+                self._eager_to_lazy[output] = lazy_output
 
             in_adjs = adjoint_ops(fn, sum_op, bin_op, adjoint_values[output], *inputs)
             for v, adjv in in_adjs:

@@ -32,15 +32,26 @@ class ProvenanceTensor(torch.Tensor):
             if isinstance(arg, ProvenanceTensor):
                 provenance |= arg._provenance
                 _args.append(arg._t)
+            elif isinstance(arg, tuple):
+                _arg = []
+                for a in arg:
+                    if isinstance(a, ProvenanceTensor):
+                        provenance |= a._provenance
+                        _arg.append(a._t)
+                    else:
+                        _arg.append(a)
+                _args.append(tuple(_arg))
             else:
                 _args.append(arg)
         ret = func(*_args, **kwargs)
         if isinstance(ret, torch.Tensor):
-            return ProvenanceTensor(ret, provenance=provenance)
+            if provenance:
+                return ProvenanceTensor(ret, provenance=provenance)
+            return ret
         if isinstance(ret, tuple):
             _ret = []
             for r in ret:
-                if isinstance(r, torch.Tensor):
+                if isinstance(r, torch.Tensor) and provenance:
                     _ret.append(ProvenanceTensor(r, provenance=provenance))
                 else:
                     _ret.append(r)
