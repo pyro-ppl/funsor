@@ -5,6 +5,12 @@ import torch
 
 
 class ProvenanceTensor(torch.Tensor):
+    """
+    Provenance tracking implementation in Pytorch.
+
+    Provenance of the output tensor is the union of provenances of input tensors.
+    """
+
     def __new__(cls, data, provenance=frozenset(), **kwargs):
         if not provenance:
             return data
@@ -26,7 +32,9 @@ class ProvenanceTensor(torch.Tensor):
     def __torch_function__(self, func, types, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
+        # collect provenance information
         provenance = frozenset()
+        # extract tensor data ._t from ProvenanceTensor args
         _args = []
         for arg in args:
             if isinstance(arg, ProvenanceTensor):
@@ -44,16 +52,15 @@ class ProvenanceTensor(torch.Tensor):
             else:
                 _args.append(arg)
         ret = func(*_args, **kwargs)
-        if isinstance(ret, torch.Tensor):
-            if provenance:
+        if provenance:
+            if isinstance(ret, torch.Tensor):
                 return ProvenanceTensor(ret, provenance=provenance)
-            return ret
-        if isinstance(ret, tuple):
-            _ret = []
-            for r in ret:
-                if isinstance(r, torch.Tensor) and provenance:
-                    _ret.append(ProvenanceTensor(r, provenance=provenance))
-                else:
-                    _ret.append(r)
-            return tuple(_ret)
+            if isinstance(ret, tuple):
+                _ret = []
+                for r in ret:
+                    if isinstance(r, torch.Tensor):
+                        _ret.append(ProvenanceTensor(r, provenance=provenance))
+                    else:
+                        _ret.append(r)
+                return tuple(_ret)
         return ret
