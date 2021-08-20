@@ -53,13 +53,16 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/adam.py --num-steps=21
 	@echo PASS
 else ifeq (${FUNSOR_BACKEND}, jax)
-	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi --ignore=test/test_distribution.py --ignore=test/test_distribution_generic.py
+	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi \
+		--ignore=test/test_distribution.py --ignore=test/test_distribution_generic.py \
+		--ignore=test/torch
 	pytest -v -n auto test/test_distribution.py
 	pytest -v -n auto test/test_distribution_generic.py
 	@echo PASS
 else
 	# default backend
-	pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi
+	pytest -v -n auto --ignore=test/examples --ignore=test/pyro \
+		--ignore=test/pyroapi --ignore=test/torch
 	@echo PASS
 endif
 
