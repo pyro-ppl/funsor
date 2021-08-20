@@ -32,9 +32,9 @@ class ProvenanceTensor(torch.Tensor):
     def __torch_function__(self, func, types, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
-        # collect provenance information
+        # collect provenance information from args
         provenance = frozenset()
-        # extract tensor data ._t from ProvenanceTensor args
+        # extract ProvenanceTensor._t data from args
         _args = []
         for arg in args:
             if isinstance(arg, ProvenanceTensor):
@@ -52,15 +52,14 @@ class ProvenanceTensor(torch.Tensor):
             else:
                 _args.append(arg)
         ret = func(*_args, **kwargs)
-        if provenance:
-            if isinstance(ret, torch.Tensor):
-                return ProvenanceTensor(ret, provenance=provenance)
-            if isinstance(ret, tuple):
-                _ret = []
-                for r in ret:
-                    if isinstance(r, torch.Tensor):
-                        _ret.append(ProvenanceTensor(r, provenance=provenance))
-                    else:
-                        _ret.append(r)
-                return tuple(_ret)
+        if isinstance(ret, torch.Tensor):
+            return ProvenanceTensor(ret, provenance=provenance)
+        if isinstance(ret, tuple):
+            _ret = []
+            for r in ret:
+                if isinstance(r, torch.Tensor):
+                    _ret.append(ProvenanceTensor(r, provenance=provenance))
+                else:
+                    _ret.append(r)
+            return tuple(_ret)
         return ret
