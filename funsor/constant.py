@@ -79,10 +79,11 @@ class Constant(Funsor, metaclass=ConstantMeta):
             # handle when subs is in self.arg.inputs
             if k in subs:
                 v = subs[k]
-                if isinstance(v, Variable):
-                    del subs[k]
-                    k = v.name
-                    const_inputs[k] = d
+                const_inputs.update(
+                    (name, value)
+                    for name, value in v.inputs.items()
+                    if name not in self.arg.inputs
+                )
             else:
                 const_inputs[k] = d
         if const_inputs:

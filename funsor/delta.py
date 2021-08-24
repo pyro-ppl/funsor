@@ -3,7 +3,6 @@
 
 from collections import OrderedDict
 
-import funsor
 from funsor.domains import Domain, Real
 from funsor.instrument import debug_logged
 from funsor.ops import AddOp, SubOp, TransformOp
@@ -141,8 +140,11 @@ class Delta(Funsor, metaclass=DeltaMeta):
                 new_terms[value.name] = new_terms.pop(name)
                 continue
 
-            var_diff = value.input_vars ^ terms[name][0].input_vars
-            if not any(d.output.dtype == "real" for d in var_diff):
+            if not any(
+                d.dtype == "real"
+                for side in (value, terms[name][0])
+                for d in side.inputs.values()
+            ):
                 point, point_log_density = new_terms.pop(name)
                 log_density += (value == point).all().log() + point_log_density
                 continue
@@ -216,8 +218,6 @@ def eager_add_multidelta(op, lhs, rhs):
 @eager.register(Binary, (AddOp, SubOp), Delta, (Funsor, Align))
 def eager_add_delta_funsor(op, lhs, rhs):
     if lhs.fresh.intersection(rhs.inputs):
-        if isinstance(rhs, funsor.Constant):
-            return funsor.constant.eager_binary_tensor_constant(op, lhs, rhs)
         rhs = rhs(
             **{
                 name: point
@@ -233,8 +233,6 @@ def eager_add_delta_funsor(op, lhs, rhs):
 @eager.register(Binary, AddOp, (Funsor, Align), Delta)
 def eager_add_funsor_delta(op, lhs, rhs):
     if rhs.fresh.intersection(lhs.inputs):
-        if isinstance(lhs, funsor.Constant):
-            return funsor.constant.eager_binary_constant_tensor(op, lhs, rhs)
         lhs = lhs(
             **{
                 name: point
