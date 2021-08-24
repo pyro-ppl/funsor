@@ -6,7 +6,6 @@ from typing import Union
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
-from funsor.constant import Constant
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian
 from funsor.interpretations import eager, normalize
@@ -103,30 +102,12 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
         and t.fresh.intersection(reduced_names, integrand.inputs)
     ]
     for delta in delta_terms:
-        integrand_inputs = integrand.inputs
         integrand = integrand(
             **{
                 name: point
                 for name, (point, log_density) in delta.terms
                 if name in reduced_names.intersection(integrand.inputs)
             }
-        )
-        const_inputs = OrderedDict(
-            {
-                name: point.output
-                for name, (point, log_density) in delta.terms
-                if name in integrand_inputs
-            }
-        )
-        log_measure = Constant(
-            const_inputs,
-            log_measure(
-                **{
-                    name: point
-                    for name, (point, log_density) in delta.terms
-                    if name in integrand_inputs
-                }
-            ),
         )
     return normalize_integrate(log_measure, integrand, reduced_vars)
 

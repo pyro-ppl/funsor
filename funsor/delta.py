@@ -155,13 +155,9 @@ class Delta(Funsor, metaclass=DeltaMeta):
             old_point, old_point_density = new_terms.pop(name)
             new_terms[new_name] = (new_point, old_point_density + point_log_density)
 
-        if new_terms:
-            return (
-                Delta(tuple(new_terms.items())) + log_density
-                if log_density is not Number(0)
-                else Delta(tuple(new_terms.items()))
-            )
-        return log_density
+        return (
+            Delta(tuple(new_terms.items())) + log_density if new_terms else log_density
+        )
 
     def eager_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)
