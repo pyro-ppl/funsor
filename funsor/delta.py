@@ -3,6 +3,7 @@
 
 from collections import OrderedDict
 
+import funsor
 from funsor.domains import Domain, Real
 from funsor.instrument import debug_logged
 from funsor.ops import AddOp, SubOp, TransformOp
@@ -184,11 +185,10 @@ class Delta(Funsor, metaclass=DeltaMeta):
             result_terms, scale = [], Number(0)
             for name, (point, log_density) in self.terms:
                 if name in reduced_vars:
-                    # XXX obscenely wasteful - need a lazy Zero term
                     if point.inputs:
-                        scale += (point == point).all().log()
+                        scale += funsor.Constant(point.inputs, Number(0))
                     if log_density.inputs:
-                        scale += log_density * 0.0
+                        scale += funsor.Constant(log_density.inputs, Number(0))
                 else:
                     result_terms.append((name, (point, log_density)))
 

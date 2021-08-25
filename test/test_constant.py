@@ -40,6 +40,11 @@ def test_unary_exp():
     assert_close(result.arg, c.arg.exp())
 
 
+def test_reduce():
+    c = Constant(OrderedDict(x=Bint[3], y=Bint[2]), Number(1))
+    assert c.reduce(ops.add, {"x", "y"}) is Number(6)
+
+
 def test_add_constant_funsor():
     x = Tensor(randn(3))["x"]
     z = Tensor(randn(2))["z"]
@@ -52,14 +57,6 @@ def test_add_constant_funsor():
     result = x + c
     assert result.const_inputs == OrderedDict(y=Real)
     assert_close(result.arg, x + c.arg)
-
-
-def test_reduce():
-    z = Tensor(randn(2))["z"]
-    c = Constant(OrderedDict(x=Bint[3], y=Real), z)
-    assert c.reduce(ops.add, {"x", "y"}) is z
-    assert c.reduce(ops.add, "x") is Constant(OrderedDict(y=Real), z)
-    assert c.reduce(ops.add, "y") is Constant(OrderedDict(x=Bint[3]), z)
 
 
 def test_add_constant_delta():
