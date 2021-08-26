@@ -15,10 +15,7 @@ from funsor.terms import (
     Unary,
     Variable,
     eager,
-    to_data,
-    to_funsor,
 )
-from funsor.torch.provenance import ProvenanceTensor
 
 
 class ConstantMeta(FunsorMeta):
@@ -37,7 +34,7 @@ class Constant(Funsor, metaclass=ConstantMeta):
     """
     Funsor that is constant wrt ``const_inputs``.
 
-    Constant can be used for provenance tracking.
+    ``Constant`` can be used for provenance tracking.
 
     Examples::
 
@@ -93,9 +90,7 @@ class Constant(Funsor, metaclass=ConstantMeta):
         return Constant(self.const_inputs, self.arg.reduce(op, reduced_vars))
 
 
-@eager.register(Reduce, ops.AddOp, Constant, frozenset)
-@eager.register(Reduce, ops.MulOp, Constant, frozenset)
-@eager.register(Reduce, ops.LogaddexpOp, Constant, frozenset)
+@eager.register(Reduce, (ops.AddOp, ops.MulOp, ops.LogaddexpOp), Constant, frozenset)
 def eager_reduce_add(op, arg, reduced_vars):
     # reduce Constant.arg.inputs
     result = arg.arg
@@ -157,16 +152,3 @@ def eager_binary_tensor_constant(op, lhs, rhs):
 @eager.register(Unary, ops.UnaryOp, Constant)
 def eager_unary(op, arg):
     return Constant(arg.const_inputs, op(arg.arg))
-
-
-@to_data.register(Constant)
-def constant_to_data(x, name_to_dim=None):
-    data = to_data(x.arg, name_to_dim=name_to_dim)
-    return ProvenanceTensor(data, provenance=frozenset(x.const_inputs.items()))
-
-
-@to_funsor.register(ProvenanceTensor)
-def provenance_to_funsor(x, output=None, dim_to_name=None):
-    if isinstance(x, ProvenanceTensor):
-        ret = to_funsor(x._t, output=output, dim_to_name=dim_to_name)
-        return Constant(OrderedDict(x._provenance), ret)
