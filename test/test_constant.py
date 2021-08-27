@@ -50,11 +50,11 @@ def test_add_constant_funsor():
     z = Tensor(randn(2))["z"]
     c = Constant(OrderedDict(x=Bint[3], y=Real), z)
 
-    result = c + x
+    result = c + x  # Constant(OrderedDict(y=Real), z + x)
     assert result.const_inputs == OrderedDict(y=Real)
     assert_close(result.arg, c.arg + x)
 
-    result = x + c
+    result = x + c  # Constant(OrderedDict(y=Real), x + z)
     assert result.const_inputs == OrderedDict(y=Real)
     assert_close(result.arg, x + c.arg)
 

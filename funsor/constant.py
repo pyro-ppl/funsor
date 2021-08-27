@@ -1,8 +1,8 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import math
 from collections import OrderedDict
-from functools import reduce
 
 import funsor.ops as ops
 from funsor.tensor import Tensor
@@ -26,7 +26,6 @@ class ConstantMeta(FunsorMeta):
     def __call__(cls, const_inputs, arg):
         if isinstance(const_inputs, dict):
             const_inputs = tuple(const_inputs.items())
-
         return super(ConstantMeta, cls).__call__(const_inputs, arg)
 
 
@@ -34,19 +33,19 @@ class Constant(Funsor, metaclass=ConstantMeta):
     """
     Funsor that is constant wrt ``const_inputs``.
 
-    ``Constant`` can be used for provenance tracking.
+    :class:`Constant` can be used for provenance tracking.
 
     Examples::
 
         a = Constant(OrderedDict(x=Real, y=Bint[3]), Number(0))
-        assert a(y=1) is Constant(OrderedDict(x=Real), Number(0))
-        assert a(x=2, y=1) is Number(0)
+        a(y=1)  # returns Constant(OrderedDict(x=Real), Number(0))
+        a(x=2, y=1)  # returns Number(0)
 
         d = Tensor(torch.tensor([1, 2, 3]))["y"]
-        assert (a + d) is Constant(OrderedDict(x=Real), Number(0) + d)
+        a + d  # returns Constant(OrderedDict(x=Real), d)
 
         c = Constant(OrderedDict(x=Bint[3]), Number(1))
-        assert c.reduce(ops.add, "x") is Number(3)
+        c.reduce(ops.add, "x")  # returns Number(3)
 
     :param dict const_inputs: A mapping from input name (str) to datatype (``funsor.domain.Domain``).
     :param funsor arg: A funsor that is constant wrt to const_inputs.
@@ -56,6 +55,7 @@ class Constant(Funsor, metaclass=ConstantMeta):
         assert isinstance(arg, Funsor)
         assert isinstance(const_inputs, tuple)
         const_inputs = OrderedDict(const_inputs)
+        # const_inputs and arg.inputs have to be disjoint
         assert set(const_inputs).isdisjoint(arg.inputs)
         inputs = const_inputs.copy()
         inputs.update(arg.inputs)
@@ -90,7 +90,9 @@ class Constant(Funsor, metaclass=ConstantMeta):
         return Constant(self.const_inputs, self.arg.reduce(op, reduced_vars))
 
 
-@eager.register(Reduce, (ops.AddOp, ops.MulOp, ops.LogaddexpOp), Constant, frozenset)
+@eager.register(Reduce, ops.AddOp, Constant, frozenset)
+@eager.register(Reduce, ops.MulOp, Constant, frozenset)
+@eager.register(Reduce, ops.LogaddexpOp, Constant, frozenset)
 def eager_reduce_add(op, arg, reduced_vars):
     # reduce Constant.arg.inputs
     result = arg.arg
@@ -100,8 +102,10 @@ def eager_reduce_add(op, arg, reduced_vars):
     # reduce Constant.const_inputs
     reduced_const_vars = reduced_vars & arg.const_vars
     if reduced_const_vars:
+        # only Bint types are supported
         assert all(var.output.dtype != "real" for var in reduced_const_vars)
-        size = reduce(ops.mul, (var.output.size for var in reduced_const_vars))
+        size = math.prod(var.output.size for var in reduced_const_vars)
+        # other ops like min/max can also be supported if necessary
         if op is ops.add:
             prod_op = ops.mul
         elif op is ops.mul:
