@@ -1,8 +1,8 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
-import math
 from collections import OrderedDict
+from functools import reduce
 
 import funsor.ops as ops
 from funsor.tensor import Tensor
@@ -104,7 +104,7 @@ def eager_reduce_add(op, arg, reduced_vars):
     if reduced_const_vars:
         # only Bint types are supported
         assert all(var.output.dtype != "real" for var in reduced_const_vars)
-        size = math.prod(var.output.size for var in reduced_const_vars)
+        size = reduce(ops.mul, (var.output.size for var in reduced_const_vars))
         # other ops like min/max can also be supported if necessary
         if op is ops.add:
             prod_op = ops.mul
