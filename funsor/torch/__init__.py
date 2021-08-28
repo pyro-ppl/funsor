@@ -28,16 +28,12 @@ def _quote(x, indent, out):
 
 @to_funsor.register(ProvenanceTensor)
 def provenance_to_funsor(x, output=None, dim_to_name=None):
-
-    if isinstance(x, ProvenanceTensor):
-        ret = to_funsor(x._t, output=output, dim_to_name=dim_to_name)
-        return Constant(OrderedDict(x._provenance), ret)
+    ret = to_funsor(x._t, output=output, dim_to_name=dim_to_name)
+    return Constant(OrderedDict(x._provenance), ret)
 
 
 @to_data.register(Constant)
 def constant_to_data(x, name_to_dim=None):
-    from funsor.torch.provenance import ProvenanceTensor
-
     data = to_data(x.arg, name_to_dim=name_to_dim)
     return ProvenanceTensor(data, provenance=frozenset(x.const_inputs.items()))
 
