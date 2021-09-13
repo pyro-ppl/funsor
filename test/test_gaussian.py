@@ -13,6 +13,7 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
+from funsor.interpretations import reflect
 from funsor.tensor import Einsum, Tensor, numeric_array
 from funsor.terms import Number, Variable
 from funsor.testing import (
@@ -661,3 +662,23 @@ def test_mc_plate_gaussian():
     res = Integrate(log_measure.sample("loc", rng_key=rng_key), integrand, "loc")
     res = res.reduce(ops.mul, "data")
     assert not ((res == float("inf")) | (res == float("-inf"))).any()
+
+
+@pytest.mark.xfail(reason="sample from Binary not implemented")
+def test_auto_gaussian_1():
+    """
+    def model(data):
+        a = pyro.sample("a", dist.Normal(0, 1))
+        b = pyro.sample("b", dist.Normal(0, 1))
+        c = pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
+    """
+    with reflect:
+        guide = (
+            random_gaussian(OrderedDict({"a": Real}))
+            + random_gaussian(OrderedDict({"b": Real}))
+            + random_gaussian(OrderedDict({"a": Real, "b": Real}))
+        )
+
+    z = guide.sample({"a", "b"})
+    logq = guide(**z)
+    assert not logq.inputs()
