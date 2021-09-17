@@ -473,12 +473,12 @@ class Funsor(object, metaclass=FunsorMeta):
         if sampled_vars.isdisjoint(self.inputs):
             return self
 
-        result = instrument.debug_logged(self.unscaled_sample)(
+        result = instrument.debug_logged(self._sample)(
             sampled_vars, sample_inputs, rng_key
         )
         return result
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
         """
         Internal method to draw an unscaled sample.
         This should be overridden by subclasses.
@@ -935,7 +935,7 @@ class Subs(Funsor, metaclass=SubsMeta):
         subs = tuple((str(alpha_subs.get(k, k)), v) for k, v in subs)
         return arg, subs
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
         if any(k in sample_inputs for k, v in self.subs.items()):
             raise NotImplementedError("TODO alpha-convert")
         subs_sampled_vars = set()
@@ -949,7 +949,7 @@ class Subs(Funsor, metaclass=SubsMeta):
                     if name in v.inputs:
                         subs_sampled_vars.add(k)
         subs_sampled_vars = frozenset(subs_sampled_vars)
-        arg = self.arg.unscaled_sample(subs_sampled_vars, sample_inputs, rng_key)
+        arg = self.arg._sample(subs_sampled_vars, sample_inputs, rng_key)
         return Subs(arg, tuple(self.subs.items()))
 
 
@@ -1805,13 +1805,13 @@ class Independent(Funsor):
         diag_var = str(alpha_subs.get(diag_var, diag_var))
         return fn, reals_var, bint_var, diag_var
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
             raise NotImplementedError("TODO alpha-convert")
         sampled_vars = frozenset(
             self.diag_var if v == self.reals_var else v for v in sampled_vars
         )
-        fn = self.fn.unscaled_sample(sampled_vars, sample_inputs, rng_key)
+        fn = self.fn._sample(sampled_vars, sample_inputs, rng_key)
         return Independent(fn, self.reals_var, self.bint_var, self.diag_var)
 
     def eager_subs(self, subs):

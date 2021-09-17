@@ -688,7 +688,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         return None  # defer to default implementation
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self

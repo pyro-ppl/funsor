@@ -206,7 +206,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             inputs.update(x.inputs)
         return log_prob.align(tuple(inputs))
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
 
         # note this should handle transforms correctly via distribution_to_data
         raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()

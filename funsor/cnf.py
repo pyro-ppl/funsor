@@ -102,7 +102,7 @@ class Contraction(Funsor):
             )
         return super().__str__()
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
@@ -119,9 +119,7 @@ class Contraction(Funsor):
                 # Design choice: we sample over logaddexp reductions, but leave logaddexp
                 # binary choices symbolic.
                 terms = [
-                    term.unscaled_sample(
-                        sampled_vars.intersection(term.inputs), sample_inputs
-                    )
+                    term._sample(sampled_vars.intersection(term.inputs), sample_inputs)
                     for term, rng_key in zip(self.terms, rng_keys)
                 ]
                 return Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
@@ -146,9 +144,7 @@ class Contraction(Funsor):
                     ).append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
-                    terms.append(
-                        term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0])
-                    )
+                    terms.append(term._sample(greedy_vars, sample_inputs, rng_keys[0]))
                     result = Contraction(
                         self.red_op, self.bin_op, self.reduced_vars, *terms
                     )
@@ -161,9 +157,7 @@ class Contraction(Funsor):
                     term = discrete + gaussian.log_normalizer
                     terms.append(gaussian)
                     terms.append(-gaussian.log_normalizer)
-                    terms.append(
-                        term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0])
-                    )
+                    terms.append(term._sample(greedy_vars, sample_inputs, rng_keys[0]))
                     result = Contraction(
                         self.red_op, self.bin_op, self.reduced_vars, *terms
                     )
@@ -173,7 +167,7 @@ class Contraction(Funsor):
                     for term in greedy_terms
                 ):
                     sampled_terms = [
-                        term.unscaled_sample(
+                        term._sample(
                             greedy_vars.intersection(term.value.inputs), sample_inputs
                         )
                         for term in greedy_terms
@@ -192,7 +186,7 @@ class Contraction(Funsor):
                             ", ".join(str(type(t)) for t in greedy_terms)
                         )
                     )
-                return result.unscaled_sample(
+                return result._sample(
                     sampled_vars - greedy_vars, sample_inputs, rng_keys[1]
                 )
 
