@@ -597,7 +597,8 @@ def test_integrate_variable(int_inputs, real_inputs):
     sampled_log_measure = log_measure.sample(
         reduced_vars, OrderedDict(particle=Bint[100000]), rng_key=rng_key
     )
-    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {"particle"})
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars)
+    approx = approx.reduce(ops.mean, "particle")
     assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
@@ -639,7 +640,8 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     sampled_log_measure = log_measure.sample(
         reduced_vars, OrderedDict(particle=Bint[100000]), rng_key=rng_key
     )
-    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {"particle"})
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars)
+    approx = approx.reduce(ops.mean, "particle")
     assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)

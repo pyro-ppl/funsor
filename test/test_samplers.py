@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import itertools
+import math
 from collections import OrderedDict
 from importlib import import_module
 
@@ -262,6 +263,7 @@ def test_tensor_distribution(event_inputs, batch_inputs, test_grad):
     def diff_fn(p_data):
         p = Tensor(p_data, be_inputs)
         q = p.sample(sampled_vars, sample_inputs, rng_key=rng_key)
+        q -= math.log(num_samples)
         mq = p.materialize(q).reduce(ops.logaddexp, "n")
         mq = mq.align(tuple(p.inputs))
 
@@ -307,6 +309,7 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
 
     rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
     q = p.sample(sampled_vars, sample_inputs, rng_key=rng_key)
+    q -= math.log(num_samples)
     p_vars = sampled_vars
     q_vars = sampled_vars | frozenset(["particle"])
     # Check zeroth moment.
@@ -352,6 +355,7 @@ def test_gaussian_mixture_distribution(batch_inputs, event_inputs):
 
     rng_key = None if get_backend() == "torch" else np.array([0, 1], dtype=np.uint32)
     q = p.sample(sampled_vars, sample_inputs, rng_key=rng_key)
+    q -= math.log(num_samples)
     q_marginal = q.reduce(ops.logaddexp, "e")
     q_marginal = p_marginal.materialize(q_marginal).reduce(ops.logaddexp, "particle")
     assert isinstance(q_marginal, Tensor)
@@ -372,7 +376,7 @@ def test_lognormal_distribution(moment):
     with MonteCarlo(particle=Bint[num_samples]):
         with xfail_if_not_implemented():
             actual = Integrate(log_measure, probe, frozenset(["x"]))
-        actual = actual.reduce(ops.mean, "particle")
+    actual = actual.reduce(ops.mean, "particle")
 
     _, (loc_data, scale_data) = align_tensors(loc, scale)
     samples = backend_dist.LogNormal(loc_data, scale_data).sample((num_samples,))

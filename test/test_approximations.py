@@ -39,14 +39,22 @@ monte_carlo_10 = MonteCarlo(
     particle=Bint[10],
 )
 particles_10 = frozenset([Variable("particle", Bint[10])])
-monte_carlo_1e5 = MonteCarlo(
+monte_carlo_1e6 = MonteCarlo(
     rng_key=np.array([0, 0], dtype=np.uint32),
-    particle=Bint[100000],
+    particle=Bint[int(1e6)],
 )
-particles_1e5 = frozenset([Variable("particle", Bint[100000])])
+particles_1e6 = frozenset([Variable("particle", Bint[int(1e6)])])
 
 
-@pytest.mark.parametrize("approximate", [eager, argmax_approximate, monte_carlo])
+@pytest.mark.parametrize(
+    "approximate",
+    [
+        eager,
+        argmax_approximate,
+        monte_carlo,
+        monte_carlo_10,
+    ],
+)
 def test_tensor_smoke(approximate):
     with normalize:
         model = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
@@ -55,7 +63,10 @@ def test_tensor_smoke(approximate):
     with approximate, xfail_if_not_implemented():
         q = reinterpret(p)
     assert q.output == p.output
-    assert q.input_vars.issubset(p.input_vars)
+    if approximate == monte_carlo_10:
+        assert q.input_vars.issubset(p.input_vars | particles_10)
+    else:
+        assert q.input_vars.issubset(p.input_vars)
 
 
 @pytest.mark.parametrize(
@@ -103,8 +114,8 @@ def test_tensor_linear(approximate):
         q2 = m2.approximate(ops.logaddexp, guide, "x")
     actual = q1 + s * q2
 
-    if approximate == monte_carlo_1e5:
-        actual = actual.reduce(ops.mean, particles_1e5)
+    if approximate == monte_carlo_1e6:
+        actual = actual.reduce(ops.mean, particles_1e6)
         assert_close(actual, expected, atol=0.1)
     elif approximate != monte_carlo:
         assert_close(actual, expected)
@@ -118,7 +129,7 @@ def test_tensor_linear(approximate):
         laplace_approximate,
         mean_approximate,
         monte_carlo,
-        monte_carlo_1e5,
+        monte_carlo_1e6,
     ],
 )
 def test_gaussian_linear(approximate):
@@ -132,8 +143,8 @@ def test_gaussian_linear(approximate):
         q2 = m2.approximate(ops.logaddexp, guide, "x")
     actual = q1 + s * q2
 
-    if approximate == monte_carlo_1e5:
-        actual = actual.reduce(ops.mean, particles_1e5)
+    if approximate == monte_carlo_1e6:
+        actual = actual.reduce(ops.mean, particles_1e6)
         assert_close(actual, expected, atol=0.1)
     elif approximate != monte_carlo:
         assert_close(actual, expected)

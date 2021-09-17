@@ -394,8 +394,9 @@ class Funsor(object, metaclass=FunsorMeta):
         if isinstance(op, ops.ReductionOp):
             if isinstance(op, ops.MeanOp):
                 reduced_vars &= self.input_vars
-                sizes = [v.output.num_elements for v in reduced_vars]
-                scale = 1.0 / reduce(ops.mul, sizes, 1.0)
+                if not reduced_vars:
+                    return self
+                scale = 1 / reduce(ops.mul, [v.output.size for v in reduced_vars], 1)
                 return self.reduce(ops.add, reduced_vars) * scale
             if isinstance(op, ops.VarOp):
                 diff = self - self.reduce(ops.mean, reduced_vars)
