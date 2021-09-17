@@ -771,24 +771,24 @@ def _get_stat_diff(
                 sample_value,
                 Variable("value", funsor_dist.inputs["value"]),
                 frozenset(["value"]),
-            ).reduce(ops.add, frozenset(sample_inputs))
+            ).reduce(ops.mean, frozenset(sample_inputs))
             expected_stat = funsor_dist.mean()
         elif statistic == "variance":
             actual_mean = Integrate(
                 sample_value,
                 Variable("value", funsor_dist.inputs["value"]),
                 frozenset(["value"]),
-            ).reduce(ops.add, frozenset(sample_inputs))
+            ).reduce(ops.mean, frozenset(sample_inputs))
             actual_stat = Integrate(
                 sample_value,
                 (Variable("value", funsor_dist.inputs["value"]) - actual_mean) ** 2,
                 frozenset(["value"]),
-            ).reduce(ops.add, frozenset(sample_inputs))
+            ).reduce(ops.mean, frozenset(sample_inputs))
             expected_stat = funsor_dist.variance()
         elif statistic == "entropy":
             actual_stat = -Integrate(
                 sample_value, funsor_dist, frozenset(["value"])
-            ).reduce(ops.add, frozenset(sample_inputs))
+            ).reduce(ops.mean, frozenset(sample_inputs))
             expected_stat = funsor_dist.entropy()
         else:
             raise ValueError("invalid test statistic")
@@ -1187,7 +1187,7 @@ def _assert_conjugate_density_ok(
     expected = Integrate(
         latent_samples, conditional(value=obs).exp(), frozenset(["prior"])
     )
-    expected = expected.reduce(ops.add, frozenset(sample_inputs))
+    expected = expected.reduce(ops.mean, frozenset(sample_inputs))
     actual = (
         (latent + conditional).reduce(ops.logaddexp, set(["prior"]))(value=obs).exp()
     )
