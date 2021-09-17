@@ -55,16 +55,6 @@ def monte_carlo_approximate(state, op, model, guide, approx_vars):
         return model  # cannot progress
     result = sample + model - guide
 
-    #--------------------------------------------------------------------------
-    # Note: an earlier version of Funsor eagerly reduced here, effectively
-    # implementing Tensor Monte Carlo. Funsor now introduces fresh variables.
-    #
-    # reduced_vars = frozenset(
-    #     v for v in sample.input_vars if v.name in state.sample_inputs
-    # )
-    # result = result.reduce(op, reduced_vars)
-    #--------------------------------------------------------------------------
-
     return result
 
 

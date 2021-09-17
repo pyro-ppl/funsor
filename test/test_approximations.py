@@ -22,7 +22,7 @@ from funsor.interpretations import eager, normalize, reflect
 from funsor.interpreter import reinterpret
 from funsor.montecarlo import MonteCarlo
 from funsor.tensor import Tensor
-from funsor.terms import Approximate
+from funsor.terms import Approximate, Variable
 from funsor.testing import (
     assert_close,
     make_einsum_example,
@@ -34,6 +34,16 @@ from funsor.testing import (
 from funsor.util import get_backend
 
 monte_carlo = MonteCarlo(rng_key=np.array([0, 0], dtype=np.uint32))
+monte_carlo_10 = MonteCarlo(
+    rng_key=np.array([0, 0], dtype=np.uint32),
+    particle=Bint[10],
+)
+particles_10 = frozenset([Variable("particle", Bint[10])])
+monte_carlo_1e5 = MonteCarlo(
+    rng_key=np.array([0, 0], dtype=np.uint32),
+    particle=Bint[100000],
+)
+particles_1e5 = frozenset([Variable("particle", Bint[100000])])
 
 
 @pytest.mark.parametrize("approximate", [eager, argmax_approximate, monte_carlo])
@@ -56,6 +66,7 @@ def test_tensor_smoke(approximate):
         laplace_approximate,
         xfail_param(mean_approximate, reason="alpha conversion bug"),
         monte_carlo,
+        monte_carlo_10,
     ],
 )
 def test_gaussian_smoke(approximate):
@@ -66,7 +77,10 @@ def test_gaussian_smoke(approximate):
     with approximate, xfail_if_not_implemented():
         q = reinterpret(p)
     assert q.output == p.output
-    assert q.input_vars.issubset(p.input_vars)
+    if approximate == monte_carlo_10:
+        assert q.input_vars.issubset(p.input_vars | particles_10)
+    else:
+        assert q.input_vars.issubset(p.input_vars)
 
 
 @pytest.mark.parametrize(
@@ -74,7 +88,8 @@ def test_gaussian_smoke(approximate):
     [
         eager,
         argmax_approximate,
-        xfail_param(monte_carlo, reason="only true in expectation"),
+        monte_carlo,
+        monte_carlo_10,
     ],
 )
 def test_tensor_linear(approximate):
@@ -87,7 +102,12 @@ def test_tensor_linear(approximate):
         q1 = m1.approximate(ops.logaddexp, guide, "x")
         q2 = m2.approximate(ops.logaddexp, guide, "x")
     actual = q1 + s * q2
-    assert_close(actual, expected)
+
+    if approximate == monte_carlo_1e5:
+        actual = actual.reduce(ops.mean, particles_1e5)
+        assert_close(actual, expected, atol=0.1)
+    elif approximate != monte_carlo:
+        assert_close(actual, expected)
 
 
 @pytest.mark.parametrize(
@@ -97,7 +117,8 @@ def test_tensor_linear(approximate):
         argmax_approximate,
         laplace_approximate,
         mean_approximate,
-        xfail_param(monte_carlo, reason="only true in expectation"),
+        monte_carlo,
+        monte_carlo_1e5,
     ],
 )
 def test_gaussian_linear(approximate):
@@ -110,7 +131,12 @@ def test_gaussian_linear(approximate):
         q1 = m1.approximate(ops.logaddexp, guide, "x")
         q2 = m2.approximate(ops.logaddexp, guide, "x")
     actual = q1 + s * q2
-    assert_close(actual, expected)
+
+    if approximate == monte_carlo_1e5:
+        actual = actual.reduce(ops.mean, particles_1e5)
+        assert_close(actual, expected, atol=0.1)
+    elif approximate != monte_carlo:
+        assert_close(actual, expected)
 
 
 def test_backward_argmax_simple_reduce():
