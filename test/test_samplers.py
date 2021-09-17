@@ -372,6 +372,7 @@ def test_lognormal_distribution(moment):
     with MonteCarlo(particle=Bint[num_samples]):
         with xfail_if_not_implemented():
             actual = Integrate(log_measure, probe, frozenset(["x"]))
+        actual = actual.reduce(ops.mean, "particle")
 
     _, (loc_data, scale_data) = align_tensors(loc, scale)
     samples = backend_dist.LogNormal(loc_data, scale_data).sample((num_samples,))
