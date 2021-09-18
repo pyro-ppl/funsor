@@ -606,6 +606,7 @@ def test_integrate_variable(int_inputs, real_inputs):
     assert_close(approx, exact, atol=0.1, rtol=0.1)
 
 
+@pytest.mark.xfail(get_backend() == "jax", reason="numerically unstable in jax backend")
 @pytest.mark.parametrize(
     "int_inputs",
     [
