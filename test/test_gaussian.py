@@ -8,13 +8,11 @@ from functools import reduce
 import numpy as np
 import pytest
 
-import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Bint, Real, Reals
 from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
 from funsor.integrate import Integrate
-from funsor.interpretations import reflect
 from funsor.tensor import Einsum, Tensor, numeric_array
 from funsor.terms import Number, Variable
 from funsor.testing import (

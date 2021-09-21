@@ -67,7 +67,9 @@ def extract_samples(discrete_density):
     This is useful for extracting sample tensors from a Monte Carlo
     computation.
     """
-    raise ValueError(f"Could not extract point from {discrete_density} at name {name}")
+    raise ValueError(
+        f"Could not extract support from {type(discrete_density).__name__}"
+    )
 
 
 @extract_samples.register(Delta)
