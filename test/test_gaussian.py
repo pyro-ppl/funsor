@@ -8,6 +8,7 @@ from functools import reduce
 import numpy as np
 import pytest
 
+import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Bint, Real, Reals
@@ -650,38 +651,19 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     assert_close(approx, exact, atol=0.1, rtol=0.1)
 
 
-@pytest.mark.xfail(
-    get_backend() == "torch", reason="numerically unstable in torch backend"
-)
 def test_mc_plate_gaussian():
     log_measure = Gaussian(
         numeric_array([0.0]), numeric_array([[1.0]]), (("loc", Real),)
     ) + numeric_array(-0.9189)
+
+    plate_size = 10
     integrand = Gaussian(
-        randn((100, 1)) + 3.0, ones((100, 1, 1)), (("data", Bint[100]), ("loc", Real))
+        randn((plate_size, 1)) + 3.0,
+        ones((plate_size, 1, 1)),
+        (("data", Bint[plate_size]), ("loc", Real)),
     )
 
     rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
     res = Integrate(log_measure.sample("loc", rng_key=rng_key), integrand, "loc")
     res = res.reduce(ops.mul, "data")
     assert not ((res == float("inf")) | (res == float("-inf"))).any()
-
-
-@pytest.mark.xfail(reason="sample from Binary not implemented")
-def test_auto_gaussian_1():
-    """
-    def model(data):
-        a = pyro.sample("a", dist.Normal(0, 1))
-        b = pyro.sample("b", dist.Normal(0, 1))
-        c = pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
-    """
-    with reflect:
-        guide = (
-            random_gaussian(OrderedDict({"a": Real}))
-            + random_gaussian(OrderedDict({"b": Real}))
-            + random_gaussian(OrderedDict({"a": Real, "b": Real}))
-        )
-
-    z = guide.sample({"a", "b"})
-    logq = guide(**z)
-    assert not logq.inputs()

@@ -1,11 +1,15 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import functools
 from collections import OrderedDict
 
+from funsor.cnf import Contraction
+from funsor.delta import Delta
 from funsor.integrate import Integrate
 from funsor.interpretations import StatefulInterpretation
-from funsor.terms import Approximate, Funsor
+from funsor.tensor import Tensor
+from funsor.terms import Approximate, Funsor, Number
 from funsor.util import get_backend
 
 from . import ops
@@ -54,6 +58,36 @@ def monte_carlo_approximate(state, op, model, guide, approx_vars):
     result = sample + model - guide
 
     return result
+
+
+@functools.singledispatch
+def extract_samples(discrete_density):
+    """
+    Extract sample values out of a funsor Delta, possibly scaled by Tensors.
+    This is useful for extracting sample tensors from a Monte Carlo
+    computation.
+    """
+    raise ValueError(f"Could not extract point from {discrete_density} at name {name}")
+
+
+@extract_samples.register(Delta)
+def _extract_samples_delta(discrete_density):
+    return {name: point for name, (point, log_density) in discrete_density.terms}
+
+
+@extract_samples.register(Contraction)
+def _extract_samples_contraction(discrete_density):
+    assert not discrete_density.reduced_vars
+    result = {}
+    for term in discrete_density.terms:
+        result.update(extract_samples(term))
+    return result
+
+
+@extract_samples.register(Number)
+@extract_samples.register(Tensor)
+def _extract_samples_scale(discrete_density):
+    return {}
 
 
 __all__ = [

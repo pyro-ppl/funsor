@@ -129,11 +129,17 @@ class AdjointTape(Interpretation):
         return {target: result[target] for target in targets}
 
 
-def adjoint(sum_op, bin_op, expr):
+def forward_backward(sum_op, bin_op, expr):
     with AdjointTape() as tape:
         # TODO fix traversal order in AdjointTape instead of using stack_reinterpret
-        root = stack_reinterpret(expr)
-    return tape.adjoint(sum_op, bin_op, root)
+        forward = stack_reinterpret(expr)
+    backward = tape.adjoint(sum_op, bin_op, forward)
+    return forward, backward
+
+
+def adjoint(sum_op, bin_op, expr):
+    forward, backward = forward_backward(sum_op, bin_op, expr)
+    return backward
 
 
 # logaddexp/add

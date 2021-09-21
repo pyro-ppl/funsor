@@ -28,6 +28,7 @@ Funsor is a tensor-like library for functions and distributions
    :maxdepth: 2
    :caption: Interfaces:
 
+   recipes
    pyro
    distributions
    minipyro
