@@ -93,7 +93,7 @@ def test_ffbr_1():
         a = pyro.sample("a", dist.Normal(0, 1))
         pyro.sample("b", dist.Normal(a, 1), obs=data)
     """
-    num_samples = 10000
+    num_samples = int(1e5)
 
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
@@ -120,7 +120,7 @@ def test_ffbr_2():
         b = pyro.sample("b", dist.Normal(0, 1))
         pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
     """
-    num_samples = 10000
+    num_samples = int(1e5)
 
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
@@ -150,7 +150,7 @@ def test_ffbr_3():
             b = pyro.sample("b", dist.Normal(0, 1))
             pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
     """
-    num_samples = 10000
+    num_samples = int(1e5)
 
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
@@ -183,7 +183,7 @@ def test_ffbr_4():
             with pyro.plate("j", 3):
                 pyro.sample("e", dist.Normal(c, d.exp()), obs=data)
     """
-    num_samples = 10000
+    num_samples = int(1e5)
 
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
@@ -222,7 +222,7 @@ def test_ffbr_5():
         d = pyro.sample("d", dist.MultivariateNormal(c, eye(2)))
         pyro.sample("e", dist.MultivariateNormal(d, eye(2)), obs=data)
     """
-    num_samples = 10000
+    num_samples = int(1e5)
 
     factors = {
         "a": random_gaussian(OrderedDict({"a": Reals[2]})),
@@ -263,7 +263,7 @@ def test_ffbr_intractable_1():
         with i_plate, j_plate:
             pyro.sample("c", dist.Normal(a, b), obs=data)
     """
-    num_samples = 10000
+    num_samples = int(1e5)
 
     factors = {
         "a": random_gaussian(OrderedDict({"i": Bint[2], "a": Real})),
@@ -295,7 +295,7 @@ def test_ffbr_intractable_2():
             a = pyro.sample("a", dist.Normal(0, 1))
         b = pyro.sample("b", dist.Normal(a.sum(), 1), obs=data)
     """
-    num_samples = 10000
+    num_samples = int(1e5)
 
     factors = {
         "a": random_gaussian(OrderedDict({"i": Bint[2], "a": Real})),
