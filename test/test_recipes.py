@@ -250,8 +250,45 @@ def test_ffbr_5():
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
-@pytest.mark.xfail(reason="TODO handle colliders via Lambda")
+@pytest.mark.xfail(reason="TODO handle intractable case")
 def test_ffbr_intractable_1():
+    """
+    def model(data):
+        i_plate = pyro.plate("i", 2, dim=-2)
+        j_plate = pyro.plate("j", 3, dim=-1)
+        with i_plate:
+            a = pyro.sample("a", dist.Normal(0, 1))
+        with i_plate:
+            b = pyro.sample("b", dist.Normal(0, 1))
+        with i_plate, j_plate:
+            pyro.sample("c", dist.Normal(a, b), obs=data)
+    """
+    num_samples = 10000
+
+    factors = {
+        "a": random_gaussian(OrderedDict({"i": Bint[2], "a": Real})),
+        "b": random_gaussian(OrderedDict({"j": Bint[2], "b": Real})),
+        "c": random_gaussian(
+            OrderedDict({"i": Bint[2], "j": Bint[2], "a": Real, "b": Real})
+        ),
+    }
+    eliminate = frozenset(["a", "b", "i", "j"])
+    plates = frozenset(["i", "j"])
+    sample_inputs = {"particle": Bint[num_samples]}
+    actual_samples, actual_log_prob = forward_filter_backward_rsample(
+        factors, eliminate, plates, sample_inputs
+    )
+    assert set(actual_samples) == {"a", "b"}
+    assert actual_samples["a"].output == Real
+    assert actual_samples["b"].output == Real
+    assert set(actual_samples["a"].inputs) == {"particle", "i"}
+    assert set(actual_samples["b"].inputs) == {"particle", "j"}
+
+    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
+
+
+@pytest.mark.xfail(reason="TODO handle colliders via Lambda")
+def test_ffbr_intractable_2():
     """
     def model(data):
         with pyro.plate("i", 2):
