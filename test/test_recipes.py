@@ -227,8 +227,8 @@ def test_ffbr_5():
     factors = {
         "a": random_gaussian(OrderedDict({"a": Reals[2]})),
         "b": random_gaussian(OrderedDict({"b": Reals[2], "a": Reals[2]})),
-        "c": random_gaussian(OrderedDict({"c": Reals[2], "c": Reals[2]})),
-        "d": random_gaussian(OrderedDict({"d": Reals[2], "d": Reals[2]})),
+        "c": random_gaussian(OrderedDict({"c": Reals[2], "b": Reals[2]})),
+        "d": random_gaussian(OrderedDict({"d": Reals[2], "c": Reals[2]})),
         "e": random_gaussian(OrderedDict({"d": Reals[2]})),
     }
     eliminate = frozenset(["a", "b", "c", "d"])
