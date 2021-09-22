@@ -66,7 +66,7 @@ def laplace_approximate_logaddexp(op, model, guide, approx_vars):
 ################################################################################
 # Computations.
 # TODO Consider either making these Funsor methods or making .sample() and
-# .unscaled_sample() singledispatch functions.
+# ._sample() singledispatch functions.
 
 
 @singledispatch

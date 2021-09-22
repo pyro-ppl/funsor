@@ -347,16 +347,16 @@ def test_reduce_moment_matching_moments():
     with moment_matching:
         approx = gaussian.reduce(ops.logaddexp, "j")
     with MonteCarlo(s=Bint[100000]):
-        actual = Integrate(approx, Number(1.0), "x")
-        expected = Integrate(gaussian, Number(1.0), {"j", "x"})
+        actual = Integrate(approx, Number(1.0), "x").reduce(ops.mean, "s")
+        expected = Integrate(gaussian, Number(1.0), {"j", "x"}).reduce(ops.mean, "s")
         assert_close(actual, expected, atol=1e-3, rtol=1e-3)
 
-        actual = Integrate(approx, x, "x")
-        expected = Integrate(gaussian, x, {"j", "x"})
+        actual = Integrate(approx, x, "x").reduce(ops.mean, "s")
+        expected = Integrate(gaussian, x, {"j", "x"}).reduce(ops.mean, "s")
         assert_close(actual, expected, atol=1e-2, rtol=1e-2)
 
-        actual = Integrate(approx, x * x, "x")
-        expected = Integrate(gaussian, x * x, {"j", "x"})
+        actual = Integrate(approx, x * x, "x").reduce(ops.mean, "s")
+        expected = Integrate(gaussian, x * x, {"j", "x"}).reduce(ops.mean, "s")
         assert_close(actual, expected, atol=1e-2, rtol=1e-2)
 
 

@@ -102,38 +102,31 @@ class Contraction(Funsor):
             )
         return super().__str__()
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
 
         if self.red_op in (ops.null, ops.logaddexp):
+            if rng_key is not None and get_backend() == "jax":
+                import jax
+
+                rng_keys = jax.random.split(rng_key, len(self.terms))
+            else:
+                rng_keys = [None] * len(self.terms)
+
             if self.bin_op in (ops.null, ops.logaddexp):
-                if rng_key is not None and get_backend() == "jax":
-                    import jax
-
-                    rng_keys = jax.random.split(rng_key, len(self.terms))
-                else:
-                    rng_keys = [None] * len(self.terms)
-
                 # Design choice: we sample over logaddexp reductions, but leave logaddexp
                 # binary choices symbolic.
                 terms = [
-                    term.unscaled_sample(
-                        sampled_vars.intersection(term.inputs), sample_inputs
+                    term._sample(
+                        sampled_vars.intersection(term.inputs), sample_inputs, rng_key
                     )
                     for term, rng_key in zip(self.terms, rng_keys)
                 ]
                 return Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
 
             if self.bin_op is ops.add:
-                if rng_key is not None and get_backend() == "jax":
-                    import jax
-
-                    rng_keys = jax.random.split(rng_key)
-                else:
-                    rng_keys = [None] * 2
-
                 # Sample variables greedily in order of the terms in which they appear.
                 for term in self.terms:
                     greedy_vars = sampled_vars.intersection(term.inputs)
@@ -146,9 +139,7 @@ class Contraction(Funsor):
                     ).append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
-                    terms.append(
-                        term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0])
-                    )
+                    terms.append(term._sample(greedy_vars, sample_inputs, rng_keys[0]))
                     result = Contraction(
                         self.red_op, self.bin_op, self.reduced_vars, *terms
                     )
@@ -161,9 +152,7 @@ class Contraction(Funsor):
                     term = discrete + gaussian.log_normalizer
                     terms.append(gaussian)
                     terms.append(-gaussian.log_normalizer)
-                    terms.append(
-                        term.unscaled_sample(greedy_vars, sample_inputs, rng_keys[0])
-                    )
+                    terms.append(term._sample(greedy_vars, sample_inputs, rng_keys[0]))
                     result = Contraction(
                         self.red_op, self.bin_op, self.reduced_vars, *terms
                     )
@@ -173,10 +162,12 @@ class Contraction(Funsor):
                     for term in greedy_terms
                 ):
                     sampled_terms = [
-                        term.unscaled_sample(
-                            greedy_vars.intersection(term.value.inputs), sample_inputs
+                        term._sample(
+                            greedy_vars.intersection(term.value.inputs),
+                            sample_inputs,
+                            rng_key,
                         )
-                        for term in greedy_terms
+                        for term, rng_key in zip(greedy_terms, rng_keys)
                         if isinstance(term, funsor.distribution.Distribution)
                         and not greedy_vars.isdisjoint(term.value.inputs)
                     ]
@@ -192,7 +183,7 @@ class Contraction(Funsor):
                             ", ".join(str(type(t)) for t in greedy_terms)
                         )
                     )
-                return result.unscaled_sample(
+                return result._sample(
                     sampled_vars - greedy_vars, sample_inputs, rng_keys[1]
                 )
 
