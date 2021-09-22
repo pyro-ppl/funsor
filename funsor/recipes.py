@@ -18,6 +18,7 @@ def forward_filter_backward_rsample(
     eliminate: FrozenSet[str],
     plates: FrozenSet[str],
     sample_inputs: Dict[str, funsor.domains.Domain] = {},
+    rng_key=None,
 ):
     """
     A forward-filter backward-batched-reparametrized-sample algorithm for use
@@ -31,6 +32,7 @@ def forward_filter_backward_rsample(
     :param plates: A set of names of plates to aggregate.
     :param dict sample_inputs: An optional dict of enclosing sample indices
         over which samples will be drawn in batch.
+    :param rng_key: A random number key for the JAX backend.
     :returns: A pair ``samples:Dict[str, Tensor], log_prob: Tensor`` of samples
         and log density evaluated at each of those samples. If ``sample_inputs``
         is nonempty, both outputs will be batched.
@@ -58,7 +60,7 @@ def forward_filter_backward_rsample(
         )
         log_Z = funsor.optimizer.apply_optimizer(log_Z)
     batch_vars = frozenset(funsor.Variable(k, v) for k, v in sample_inputs.items())
-    with funsor.montecarlo.MonteCarlo(**sample_inputs):
+    with funsor.montecarlo.MonteCarlo(**sample_inputs, rng_key=rng_key):
         log_Z, marginals = funsor.adjoint.forward_backward(
             funsor.ops.logaddexp, funsor.ops.add, log_Z, batch_vars=batch_vars
         )

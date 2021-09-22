@@ -4,6 +4,7 @@
 from collections import OrderedDict
 from typing import Dict, Tuple
 
+import numpy as np
 import pytest
 
 import funsor.ops as ops
@@ -12,6 +13,7 @@ from funsor.montecarlo import extract_samples
 from funsor.recipes import forward_filter_backward_rsample
 from funsor.terms import Lambda, Variable
 from funsor.testing import assert_close, random_gaussian
+from funsor.util import get_backend
 
 
 def get_moments(samples):
@@ -73,11 +75,14 @@ def check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob):
             v = Lambda(p, v)
         flat_samples["flat_" + k] = v
     expected_log_prob = flat_joint(**flat_samples) - log_Z
-    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=None)
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-4, rtol=None)
 
     # Check sample moments.
     sample_inputs = OrderedDict(particle=actual_log_prob.inputs["particle"])
-    flat_deltas = flat_joint.sample({"flat_" + k for k in flat_vars}, sample_inputs)
+    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+    flat_deltas = flat_joint.sample(
+        {"flat_" + k for k in flat_vars}, sample_inputs, rng_key
+    )
     flat_samples = extract_samples(flat_deltas)
     expected_samples = {
         k: flat_samples["flat_" + k][broken_plates[k]] for k in flat_vars
@@ -103,8 +108,9 @@ def test_ffbr_1():
     plates = frozenset()
     sample_inputs = OrderedDict(particle=Bint[num_samples])
 
+    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs
+        factors, eliminate, plates, sample_inputs, rng_key
     )
     assert set(actual_samples) == {"a"}
     assert actual_samples["a"].output == Real
@@ -130,8 +136,10 @@ def test_ffbr_2():
     eliminate = frozenset(["a", "b"])
     plates = frozenset()
     sample_inputs = {"particle": Bint[num_samples]}
+
+    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs
+        factors, eliminate, plates, sample_inputs, rng_key
     )
     assert set(actual_samples) == {"a", "b"}
     assert actual_samples["a"].output == Real
@@ -160,8 +168,10 @@ def test_ffbr_3():
     eliminate = frozenset(["a", "b", "i"])
     plates = frozenset(["i"])
     sample_inputs = {"particle": Bint[num_samples]}
+
+    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs
+        factors, eliminate, plates, sample_inputs, rng_key
     )
     assert set(actual_samples) == {"a", "b"}
     assert actual_samples["a"].output == Real
@@ -197,8 +207,10 @@ def test_ffbr_4():
     eliminate = frozenset(["a", "b", "c", "d", "i", "j"])
     plates = frozenset(["i", "j"])
     sample_inputs = {"particle": Bint[num_samples]}
+
+    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs
+        factors, eliminate, plates, sample_inputs, rng_key
     )
     assert set(actual_samples) == {"a", "b", "c", "d"}
     assert actual_samples["a"].output == Real
@@ -234,8 +246,10 @@ def test_ffbr_5():
     eliminate = frozenset(["a", "b", "c", "d"])
     plates = frozenset()
     sample_inputs = {"particle": Bint[num_samples]}
+
+    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs
+        factors, eliminate, plates, sample_inputs, rng_key
     )
     assert set(actual_samples) == {"a", "b", "c", "d"}
     assert actual_samples["a"].output == Reals[2]
@@ -275,8 +289,10 @@ def test_ffbr_intractable_1():
     eliminate = frozenset(["a", "b", "i", "j"])
     plates = frozenset(["i", "j"])
     sample_inputs = {"particle": Bint[num_samples]}
+
+    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs
+        factors, eliminate, plates, sample_inputs, rng_key
     )
     assert set(actual_samples) == {"a", "b"}
     assert actual_samples["a"].output == Real
@@ -304,8 +320,10 @@ def test_ffbr_intractable_2():
     eliminate = frozenset(["a", "i"])
     plates = frozenset(["i"])
     sample_inputs = {"particle": Bint[num_samples]}
+
+    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs
+        factors, eliminate, plates, sample_inputs, rng_key
     )
     assert set(actual_samples) == {"a"}
     assert set(actual_samples["a"].inputs) == {"particle", "i"}
