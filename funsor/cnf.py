@@ -170,9 +170,11 @@ class Contraction(Funsor):
                 ):
                     sampled_terms = [
                         term._sample(
-                            greedy_vars.intersection(term.value.inputs), sample_inputs
+                            greedy_vars.intersection(term.value.inputs),
+                            sample_inputs,
+                            rng_key,
                         )
-                        for term in greedy_terms
+                        for term, rng_key in zip(greedy_terms, rng_keys)
                         if isinstance(term, funsor.distribution.Distribution)
                         and not greedy_vars.isdisjoint(term.value.inputs)
                     ]
