@@ -108,14 +108,14 @@ class Contraction(Funsor):
             return self
 
         if self.red_op in (ops.null, ops.logaddexp):
+            if rng_key is not None and get_backend() == "jax":
+                import jax
+
+                rng_keys = jax.random.split(rng_key, len(self.terms))
+            else:
+                rng_keys = [None] * len(self.terms)
+
             if self.bin_op in (ops.null, ops.logaddexp):
-                if rng_key is not None and get_backend() == "jax":
-                    import jax
-
-                    rng_keys = jax.random.split(rng_key, len(self.terms))
-                else:
-                    rng_keys = [None] * len(self.terms)
-
                 # Design choice: we sample over logaddexp reductions, but leave logaddexp
                 # binary choices symbolic.
                 terms = [
@@ -127,13 +127,6 @@ class Contraction(Funsor):
                 return Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)
 
             if self.bin_op is ops.add:
-                if rng_key is not None and get_backend() == "jax":
-                    import jax
-
-                    rng_keys = jax.random.split(rng_key)
-                else:
-                    rng_keys = [None] * 2
-
                 # Sample variables greedily in order of the terms in which they appear.
                 for term in self.terms:
                     greedy_vars = sampled_vars.intersection(term.inputs)
