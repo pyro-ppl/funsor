@@ -37,6 +37,10 @@ def get_moments(samples):
 
 
 def check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob):
+    """
+    This can be seen as performing naive tensor variable elimination by
+    breaking all plates and creating a single flat joint distribution.
+    """
     assert "particle" not in plates
     flat_vars: Dict[str, Variable] = {}
     plate_vars: Dict[str, Variable] = {}
@@ -87,7 +91,7 @@ def test_ffbr_1():
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
-        b = pyro.sample("b", dist.Normal(a, 1), obs=data)
+        pyro.sample("b", dist.Normal(a, 1), obs=data)
     """
     num_samples = 10000
 
@@ -103,6 +107,7 @@ def test_ffbr_1():
         factors, eliminate, plates, sample_inputs
     )
     assert set(actual_samples) == {"a"}
+    assert actual_samples["a"].output == Real
     assert set(actual_samples["a"].inputs) == {"particle"}
 
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
@@ -113,7 +118,7 @@ def test_ffbr_2():
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
         b = pyro.sample("b", dist.Normal(0, 1))
-        c = pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
+        pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
     """
     num_samples = 10000
 
@@ -129,6 +134,8 @@ def test_ffbr_2():
         factors, eliminate, plates, sample_inputs
     )
     assert set(actual_samples) == {"a", "b"}
+    assert actual_samples["a"].output == Real
+    assert actual_samples["b"].output == Real
     assert set(actual_samples["a"].inputs) == {"particle"}
     assert set(actual_samples["b"].inputs) == {"particle"}
 
@@ -139,51 +146,131 @@ def test_ffbr_3():
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
-        with pyro.plate("plate", 2):
+        with pyro.plate("i", 2):
             b = pyro.sample("b", dist.Normal(0, 1))
-            c = pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
+            pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
     """
     num_samples = 10000
 
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
-        "b": random_gaussian(OrderedDict({"plate": Bint[2], "b": Real})),
-        "c": random_gaussian(OrderedDict({"plate": Bint[2], "a": Real, "b": Real})),
+        "b": random_gaussian(OrderedDict({"i": Bint[2], "b": Real})),
+        "c": random_gaussian(OrderedDict({"i": Bint[2], "a": Real, "b": Real})),
     }
-    eliminate = frozenset(["a", "b", "plate"])
-    plates = frozenset(["plate"])
+    eliminate = frozenset(["a", "b", "i"])
+    plates = frozenset(["i"])
     sample_inputs = {"particle": Bint[num_samples]}
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
         factors, eliminate, plates, sample_inputs
     )
     assert set(actual_samples) == {"a", "b"}
+    assert actual_samples["a"].output == Real
+    assert actual_samples["b"].output == Real
     assert set(actual_samples["a"].inputs) == {"particle"}
-    assert set(actual_samples["b"].inputs) == {"plate", "particle"}
+    assert set(actual_samples["b"].inputs) == {"particle", "i"}
+
+    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
+
+
+def test_ffbr_4():
+    """
+    def model(data):
+        a = pyro.sample("a", dist.Normal(0, 1))
+        b = pyro.sample("b", dist.Normal(0, 1))
+        with pyro.plate("i", 2):
+            c = pyro.sample("c", dist.Normal(a, 1))
+            d = pyro.sample("d", dist.Normal(b, 1))
+            with pyro.plate("j", 3):
+                pyro.sample("e", dist.Normal(c, d.exp()), obs=data)
+    """
+    num_samples = 10000
+
+    factors = {
+        "a": random_gaussian(OrderedDict({"a": Real})),
+        "b": random_gaussian(OrderedDict({"b": Real})),
+        "c": random_gaussian(OrderedDict({"i": Bint[2], "a": Real, "c": Real})),
+        "d": random_gaussian(OrderedDict({"i": Bint[2], "b": Real, "d": Real})),
+        "e": random_gaussian(
+            OrderedDict({"i": Bint[2], "j": Bint[3], "c": Real, "d": Real})
+        ),
+    }
+    eliminate = frozenset(["a", "b", "c", "d", "i", "j"])
+    plates = frozenset(["i", "j"])
+    sample_inputs = {"particle": Bint[num_samples]}
+    actual_samples, actual_log_prob = forward_filter_backward_rsample(
+        factors, eliminate, plates, sample_inputs
+    )
+    assert set(actual_samples) == {"a", "b", "c", "d"}
+    assert actual_samples["a"].output == Real
+    assert actual_samples["b"].output == Real
+    assert actual_samples["c"].output == Real
+    assert actual_samples["d"].output == Real
+    assert set(actual_samples["a"].inputs) == {"particle"}
+    assert set(actual_samples["b"].inputs) == {"particle"}
+    assert set(actual_samples["c"].inputs) == {"particle", "i"}
+    assert set(actual_samples["d"].inputs) == {"particle", "i"}
+
+    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
+
+
+def test_ffbr_5():
+    """
+    def model(data):
+        a = pyro.sample("a", dist.MultivariateNormal(zeros(2), eye(2)))
+        b = pyro.sample("b", dist.MultivariateNormal(a, eye(2)))
+        c = pyro.sample("c", dist.MultivariateNormal(b, eye(2)))
+        d = pyro.sample("d", dist.MultivariateNormal(c, eye(2)))
+        pyro.sample("e", dist.MultivariateNormal(d, eye(2)), obs=data)
+    """
+    num_samples = 10000
+
+    factors = {
+        "a": random_gaussian(OrderedDict({"a": Reals[2]})),
+        "b": random_gaussian(OrderedDict({"b": Reals[2], "a": Reals[2]})),
+        "c": random_gaussian(OrderedDict({"c": Reals[2], "c": Reals[2]})),
+        "d": random_gaussian(OrderedDict({"d": Reals[2], "d": Reals[2]})),
+        "e": random_gaussian(OrderedDict({"d": Reals[2]})),
+    }
+    eliminate = frozenset(["a", "b", "c", "d"])
+    plates = frozenset()
+    sample_inputs = {"particle": Bint[num_samples]}
+    actual_samples, actual_log_prob = forward_filter_backward_rsample(
+        factors, eliminate, plates, sample_inputs
+    )
+    assert set(actual_samples) == {"a", "b", "c", "d"}
+    assert actual_samples["a"].output == Reals[2]
+    assert actual_samples["b"].output == Reals[2]
+    assert actual_samples["c"].output == Reals[2]
+    assert actual_samples["d"].output == Reals[2]
+    assert set(actual_samples["a"].inputs) == {"particle"}
+    assert set(actual_samples["b"].inputs) == {"particle"}
+    assert set(actual_samples["c"].inputs) == {"particle"}
+    assert set(actual_samples["d"].inputs) == {"particle"}
 
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
 @pytest.mark.xfail(reason="TODO handle colliders via Lambda")
-def test_ffbr_4():
+def test_ffbr_intractable_1():
     """
     def model(data):
-        with pyro.plate("plate", 2):
+        with pyro.plate("i", 2):
             a = pyro.sample("a", dist.Normal(0, 1))
         b = pyro.sample("b", dist.Normal(a.sum(), 1), obs=data)
     """
     num_samples = 10000
 
     factors = {
-        "a": random_gaussian(OrderedDict({"plate": Bint[2], "a": Real})),
-        "b": random_gaussian(OrderedDict({"a_plate": Reals[2]})),
+        "a": random_gaussian(OrderedDict({"i": Bint[2], "a": Real})),
+        "b": random_gaussian(OrderedDict({"a_i": Reals[2]})),
     }
-    eliminate = frozenset(["a", "plate"])
-    plates = frozenset(["plate"])
+    eliminate = frozenset(["a", "i"])
+    plates = frozenset(["i"])
     sample_inputs = {"particle": Bint[num_samples]}
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
         factors, eliminate, plates, sample_inputs
     )
     assert set(actual_samples) == {"a"}
-    assert set(actual_samples["a"].inputs) == {"plate", "particle"}
+    assert set(actual_samples["a"].inputs) == {"particle", "i"}
 
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
