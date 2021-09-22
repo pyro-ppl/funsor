@@ -460,7 +460,8 @@ class Funsor(object, metaclass=FunsorMeta):
         :param OrderedDict sample_inputs: An optional mapping from variable
             name to :class:`~funsor.domains.Domain` over which samples will
             be batched.
-        :param rng_key: a PRNG state to be used by JAX backend to generate random samples
+        :param rng_key: a PRNG state to be used by JAX backend to generate
+            random samples
         :type rng_key: None or JAX's random.PRNGKey
         """
         assert self.output == Real

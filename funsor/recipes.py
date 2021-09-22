@@ -10,7 +10,7 @@ This module provides a number of high-level algorithms using Funsor.
 
 from typing import Dict, FrozenSet
 
-import funsor
+import funsor  # Let's use fully qualified names in this file.
 
 
 def forward_filter_backward_rsample(
@@ -36,6 +36,17 @@ def forward_filter_backward_rsample(
         is nonempty, both outputs will be batched.
     :rtype: tuple
     """
+    assert isinstance(factors, dict)
+    assert all(isinstance(k, str) for k in factors)
+    assert all(isinstance(v, funsor.Funsor) for v in factors.values())
+    assert isinstance(eliminate, frozenset)
+    assert all(isinstance(v, str) for v in eliminate)
+    assert isinstance(plates, frozenset)
+    assert all(isinstance(v, str) for v in plates)
+    assert isinstance(sample_inputs, dict)
+    assert all(isinstance(k, str) for k in sample_inputs)
+    assert all(isinstance(v, funsor.domains.Domain) for v in sample_inputs.values())
+
     # Perform tensor variable elimination.
     with funsor.interpretations.reflect:
         log_Z = funsor.sum_product.sum_product(
@@ -46,9 +57,10 @@ def forward_filter_backward_rsample(
             plates,
         )
         log_Z = funsor.optimizer.apply_optimizer(log_Z)
+    batch_vars = frozenset(funsor.Variable(k, v) for k, v in sample_inputs.items())
     with funsor.montecarlo.MonteCarlo(**sample_inputs):
         log_Z, marginals = funsor.adjoint.forward_backward(
-            funsor.ops.logaddexp, funsor.ops.add, log_Z
+            funsor.ops.logaddexp, funsor.ops.add, log_Z, batch_vars=batch_vars
         )
 
     # Extract sample tensors.

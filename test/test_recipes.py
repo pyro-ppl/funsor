@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import OrderedDict
+from typing import Dict, Tuple
 
 import pytest
 
@@ -9,11 +10,12 @@ import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
 from funsor.montecarlo import extract_samples
 from funsor.recipes import forward_filter_backward_rsample
+from funsor.terms import Lambda, Variable
 from funsor.testing import assert_close, random_gaussian
 
 
-def get_moments(samples, sample_inputs):
-    reduced_vars = frozenset(sample_inputs)
+def get_moments(samples):
+    reduced_vars = frozenset(["particle"])
     moments = OrderedDict()
 
     # Compute first moments.
@@ -34,21 +36,68 @@ def get_moments(samples, sample_inputs):
     return moments
 
 
+def check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob):
+    assert "particle" not in plates
+    flat_vars: Dict[str, Variable] = {}
+    plate_vars: Dict[str, Variable] = {}
+    broken_plates: Dict[str, Tuple[Variable]] = {}
+    for name, factor in factors.items():
+        for k, d in factor.inputs.items():
+            if k in plates:
+                plate_vars[k] = Variable(k, d)
+        if name in factor.inputs:  # i.e. if is latent
+            broken_plates[name] = tuple(
+                plate_vars[p] for p in sorted(plates.intersection(factor.inputs))
+            )
+            # I guess we could use Lambda here?
+            broken_shape = tuple(p.output.size for p in broken_plates[name])
+            domain = Reals[broken_shape + factor.inputs[name].shape]
+            flat_vars[name] = Variable("flat_" + name, domain)[broken_plates[name]]
+
+    flat_factors = []
+    for factor in factors.values():
+        f = factor(**flat_vars)
+        f = f.reduce(ops.add, plates.intersection(f.inputs))
+        flat_factors.append(f)
+
+    # Check log prob.
+    flat_joint = sum(flat_factors)
+    log_Z = flat_joint.reduce(ops.logaddexp)
+    flat_samples = {}
+    for k, v in actual_samples.items():
+        for p in reversed(broken_plates[k]):
+            v = Lambda(p, v)
+        flat_samples["flat_" + k] = v
+    expected_log_prob = flat_joint(**flat_samples) - log_Z
+    assert_close(actual_log_prob, expected_log_prob, atol=1e-5, rtol=None)
+
+    # Check sample moments.
+    sample_inputs = OrderedDict(particle=actual_log_prob.inputs["particle"])
+    flat_deltas = flat_joint.sample({"flat_" + k for k in flat_vars}, sample_inputs)
+    flat_samples = extract_samples(flat_deltas)
+    expected_samples = {
+        k: flat_samples["flat_" + k][broken_plates[k]] for k in flat_vars
+    }
+    expected_moments = get_moments(expected_samples)
+    actual_moments = get_moments(actual_samples)
+    assert_close(actual_moments, expected_moments, atol=0.02, rtol=None)
+
+
 def test_ffbr_1():
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
         b = pyro.sample("b", dist.Normal(a, 1), obs=data)
     """
-    num_samples = 1000
+    num_samples = 10000
 
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
         "b": random_gaussian(OrderedDict({"a": Real})),
     }
-    eliminate = frozenset(["a", "b"])
+    eliminate = frozenset(["a"])
     plates = frozenset()
-    sample_inputs = {"particle": Bint[num_samples]}
+    sample_inputs = OrderedDict(particle=Bint[num_samples])
 
     actual_samples, actual_log_prob = forward_filter_backward_rsample(
         factors, eliminate, plates, sample_inputs
@@ -56,17 +105,7 @@ def test_ffbr_1():
     assert set(actual_samples) == {"a"}
     assert set(actual_samples["a"].inputs) == {"particle"}
 
-    # Check log_prob.
-    guide = sum(factors.values())
-    expected_log_prob = guide(**actual_samples)
-    assert_close(actual_log_prob, expected_log_prob)
-
-    # Check sample moments.
-    joint = sum(factors.values())
-    expected_samples = extract_samples(joint.sample(**sample_inputs))
-    expected_moments = get_moments(expected_samples, sample_inputs)
-    actual_moments = get_moments(actual_samples, sample_inputs)
-    assert_close(actual_moments, expected_moments)
+    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
 def test_ffbr_2():
@@ -76,7 +115,7 @@ def test_ffbr_2():
         b = pyro.sample("b", dist.Normal(0, 1))
         c = pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
     """
-    num_samples = 1000
+    num_samples = 10000
 
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
@@ -93,17 +132,7 @@ def test_ffbr_2():
     assert set(actual_samples["a"].inputs) == {"particle"}
     assert set(actual_samples["b"].inputs) == {"particle"}
 
-    # Check log_prob.
-    guide = sum(factors.values())
-    expected_log_prob = guide(**actual_samples)
-    assert_close(actual_log_prob, expected_log_prob)
-
-    # Check sample moments.
-    joint = sum(factors.values())
-    expected_samples = extract_samples(joint.sample(**sample_inputs))
-    expected_moments = get_moments(expected_samples, sample_inputs)
-    actual_moments = get_moments(actual_samples, sample_inputs)
-    assert_close(actual_moments, expected_moments)
+    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
 def test_ffbr_3():
@@ -114,7 +143,7 @@ def test_ffbr_3():
             b = pyro.sample("b", dist.Normal(0, 1))
             c = pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
     """
-    num_samples = 1000
+    num_samples = 10000
 
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
@@ -131,17 +160,7 @@ def test_ffbr_3():
     assert set(actual_samples["a"].inputs) == {"particle"}
     assert set(actual_samples["b"].inputs) == {"plate", "particle"}
 
-    # Check log_prob.
-    guide = sum(factors.values())
-    expected_log_prob = guide(**actual_samples)
-    assert_close(actual_log_prob, expected_log_prob)
-
-    # Check sample moments.
-    joint = sum(factors.values())
-    expected_samples = extract_samples(joint.sample(**sample_inputs))
-    expected_moments = get_moments(expected_samples, sample_inputs)
-    actual_moments = get_moments(actual_samples, sample_inputs)
-    assert_close(actual_moments, expected_moments)
+    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
 @pytest.mark.xfail(reason="TODO handle colliders via Lambda")
@@ -152,7 +171,7 @@ def test_ffbr_4():
             a = pyro.sample("a", dist.Normal(0, 1))
         b = pyro.sample("b", dist.Normal(a.sum(), 1), obs=data)
     """
-    num_samples = 1000
+    num_samples = 10000
 
     factors = {
         "a": random_gaussian(OrderedDict({"plate": Bint[2], "a": Real})),
@@ -167,14 +186,4 @@ def test_ffbr_4():
     assert set(actual_samples) == {"a"}
     assert set(actual_samples["a"].inputs) == {"plate", "particle"}
 
-    # Check log_prob.
-    guide = sum(factors.values())
-    expected_log_prob = guide(**actual_samples)
-    assert_close(actual_log_prob, expected_log_prob)
-
-    # Check sample moments.
-    joint = sum(factors.values())
-    expected_samples = extract_samples(joint.sample(**sample_inputs))
-    expected_moments = get_moments(expected_samples, sample_inputs)
-    actual_moments = get_moments(actual_samples, sample_inputs)
-    assert_close(actual_moments, expected_moments)
+    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
