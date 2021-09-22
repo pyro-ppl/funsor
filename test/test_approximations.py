@@ -95,8 +95,8 @@ def test_gaussian_smoke(approximate):
         eager,
         argmax_approximate,
         monte_carlo,
-        monte_carlo_10,
     ],
+    ids=str,
 )
 def test_tensor_linear(approximate):
     m1 = random_tensor(OrderedDict(i=Bint[2], x=Bint[4]))
@@ -109,7 +109,9 @@ def test_tensor_linear(approximate):
         q2 = m2.approximate(ops.logaddexp, guide, "x")
     actual = q1 + s * q2
 
-    if approximate not in (monte_carlo, monte_carlo_10):
+    if approximate == monte_carlo:
+        assert actual.inputs == expected.inputs
+    else:
         assert_close(actual, expected)
 
 
@@ -121,8 +123,8 @@ def test_tensor_linear(approximate):
         laplace_approximate,
         mean_approximate,
         monte_carlo,
-        monte_carlo_10,
     ],
+    ids=str,
 )
 def test_gaussian_linear(approximate):
     m1 = random_gaussian(OrderedDict(i=Bint[2], x=Real))
@@ -135,7 +137,9 @@ def test_gaussian_linear(approximate):
         q2 = m2.approximate(ops.logaddexp, guide, "x")
     actual = q1 + s * q2
 
-    if approximate not in (monte_carlo, monte_carlo_10):
+    if approximate == monte_carlo:
+        assert actual.inputs == expected.inputs
+    else:
         assert_close(actual, expected)
 
 

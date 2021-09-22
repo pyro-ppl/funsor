@@ -102,7 +102,7 @@ class Contraction(Funsor):
             )
         return super().__str__()
 
-    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
@@ -119,7 +119,9 @@ class Contraction(Funsor):
                 # Design choice: we sample over logaddexp reductions, but leave logaddexp
                 # binary choices symbolic.
                 terms = [
-                    term._sample(sampled_vars.intersection(term.inputs), sample_inputs)
+                    term._sample(
+                        sampled_vars.intersection(term.inputs), sample_inputs, rng_key
+                    )
                     for term, rng_key in zip(self.terms, rng_keys)
                 ]
                 return Contraction(self.red_op, self.bin_op, self.reduced_vars, *terms)

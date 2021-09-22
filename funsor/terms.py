@@ -479,9 +479,9 @@ class Funsor(object, metaclass=FunsorMeta):
         )
         return result
 
-    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key):
         """
-        Internal method to draw an unscaled sample.
+        Internal method to draw samples.
         This should be overridden by subclasses.
         """
         assert self.output == Real
