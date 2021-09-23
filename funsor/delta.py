@@ -190,14 +190,14 @@ class Delta(Funsor, metaclass=DeltaMeta):
                             point.inputs,
                             funsor.Tensor(
                                 ops.new_zeros(funsor.tensor.get_default_prototype(), ())
-                            )
+                            ),
                         )
                     if log_density.inputs:
                         scale += funsor.Constant(
                             log_density.inputs,
                             funsor.Tensor(
                                 ops.new_zeros(funsor.tensor.get_default_prototype(), ())
-                            )
+                            ),
                         )
                 else:
                     result_terms.append((name, (point, log_density)))
