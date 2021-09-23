@@ -77,7 +77,7 @@ class Constant(Funsor, metaclass=ConstantMeta):
                 assert v.output == d
                 assert all(
                     v.inputs[k] == self.arg.inputs[k]
-                    for k in set(v.inputs).intersection(self.arg.inputs)
+                    for k in set(v.inputs).intersection(self.inputs)
                 )
                 const_inputs.update(
                     (name, value)
