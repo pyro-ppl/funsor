@@ -102,13 +102,8 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
         and t.fresh.intersection(reduced_names, integrand.inputs)
     ]
     for delta in delta_terms:
-        integrand = integrand(
-            **{
-                name: point
-                for name, (point, log_density) in delta.terms
-                if name in reduced_names.intersection(integrand.inputs)
-            }
-        )
+        args = delta, integrand, reduced_vars & delta.input_vars
+        integrand = eager.dispatch(Integrate, *args)(*args)
     return normalize_integrate(log_measure, integrand, reduced_vars)
 
 
