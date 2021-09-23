@@ -3,7 +3,6 @@
 
 import functools
 import itertools
-import math
 import numbers
 import typing
 import warnings
@@ -376,12 +375,13 @@ class Funsor(object, metaclass=FunsorMeta):
         Reduce along all or a subset of inputs.
 
         :param op: A reduction operation.
-        :type op: ~funsor.ops.AssociativeOp
+        :type op: ~funsor.ops.AssociativeOp or ~funsor.ops.ReductionOp
         :param reduced_vars: An optional input name or set of names to reduce.
             If unspecified, all inputs will be reduced.
         :type reduced_vars: str, Variable, or set or frozenset thereof.
         """
-        assert isinstance(op, AssociativeOp)
+        assert isinstance(op, (AssociativeOp, ops.ReductionOp))
+
         # Eagerly convert reduced_vars to appropriate things.
         if reduced_vars is None:
             # Empty reduced_vars means "reduce over everything".
@@ -389,6 +389,23 @@ class Funsor(object, metaclass=FunsorMeta):
         else:
             reduced_vars = _convert_reduced_vars(reduced_vars, self.inputs)
         assert isinstance(reduced_vars, frozenset), reduced_vars
+
+        # Attempt to convert ReductionOp to AssociativeOp.
+        if isinstance(op, ops.ReductionOp):
+            if isinstance(op, ops.MeanOp):
+                reduced_vars &= self.input_vars
+                if not reduced_vars:
+                    return self
+                scale = 1 / reduce(ops.mul, [v.output.size for v in reduced_vars], 1)
+                return self.reduce(ops.add, reduced_vars) * scale
+            if isinstance(op, ops.VarOp):
+                diff = self - self.reduce(ops.mean, reduced_vars)
+                return (diff * diff).reduce(ops.mean, reduced_vars)
+            if isinstance(op, ops.StdOp):
+                return self.reduce(ops.var, reduced_vars).sqrt()
+            raise NotImplementedError(f"Unsupported reduction op: {op}")
+        assert isinstance(op, AssociativeOp)
+
         if not reduced_vars:
             return self
         return Reduce(op, self, reduced_vars)
@@ -436,15 +453,15 @@ class Funsor(object, metaclass=FunsorMeta):
             exact = (x.exp() * integrand).reduce(ops.add)
             approx = (y.exp() * integrand).reduce(ops.add)
 
-        If ``sample_inputs`` is provided, this creates a batch of samples
-        scaled samples.
+        If ``sample_inputs`` is provided, this creates a batch of samples.
 
         :param sampled_vars: A set of input variables to sample.
         :type sampled_vars: str, Variable, or set or frozenset thereof.
         :param OrderedDict sample_inputs: An optional mapping from variable
             name to :class:`~funsor.domains.Domain` over which samples will
             be batched.
-        :param rng_key: a PRNG state to be used by JAX backend to generate random samples
+        :param rng_key: a PRNG state to be used by JAX backend to generate
+            random samples
         :type rng_key: None or JAX's random.PRNGKey
         """
         assert self.output == Real
@@ -457,21 +474,14 @@ class Funsor(object, metaclass=FunsorMeta):
         if sampled_vars.isdisjoint(self.inputs):
             return self
 
-        result = instrument.debug_logged(self.unscaled_sample)(
+        result = instrument.debug_logged(self._sample)(
             sampled_vars, sample_inputs, rng_key
         )
-        if sample_inputs is not None:
-            log_scale = 0
-            for var, domain in sample_inputs.items():
-                if var in result.inputs and var not in self.inputs:
-                    log_scale -= math.log(domain.dtype)
-            if log_scale != 0:
-                result += log_scale
         return result
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key):
         """
-        Internal method to draw an unscaled sample.
+        Internal method to draw samples.
         This should be overridden by subclasses.
         """
         assert self.output == Real
@@ -926,7 +936,7 @@ class Subs(Funsor, metaclass=SubsMeta):
         subs = tuple((str(alpha_subs.get(k, k)), v) for k, v in subs)
         return arg, subs
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
         if any(k in sample_inputs for k, v in self.subs.items()):
             raise NotImplementedError("TODO alpha-convert")
         subs_sampled_vars = set()
@@ -940,7 +950,7 @@ class Subs(Funsor, metaclass=SubsMeta):
                     if name in v.inputs:
                         subs_sampled_vars.add(k)
         subs_sampled_vars = frozenset(subs_sampled_vars)
-        arg = self.arg.unscaled_sample(subs_sampled_vars, sample_inputs, rng_key)
+        arg = self.arg._sample(subs_sampled_vars, sample_inputs, rng_key)
         return Subs(arg, tuple(self.subs.items()))
 
 
@@ -1796,13 +1806,13 @@ class Independent(Funsor):
         diag_var = str(alpha_subs.get(diag_var, diag_var))
         return fn, reals_var, bint_var, diag_var
 
-    def unscaled_sample(self, sampled_vars, sample_inputs, rng_key=None):
+    def _sample(self, sampled_vars, sample_inputs, rng_key=None):
         if self.bint_var in sampled_vars or self.bint_var in sample_inputs:
             raise NotImplementedError("TODO alpha-convert")
         sampled_vars = frozenset(
             self.diag_var if v == self.reals_var else v for v in sampled_vars
         )
-        fn = self.fn.unscaled_sample(sampled_vars, sample_inputs, rng_key)
+        fn = self.fn._sample(sampled_vars, sample_inputs, rng_key)
         return Independent(fn, self.reals_var, self.bint_var, self.diag_var)
 
     def eager_subs(self, subs):

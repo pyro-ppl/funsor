@@ -44,6 +44,7 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     joint,
     montecarlo,
     ops,
+    recipes,
     sum_product,
     terms,
     testing,
@@ -100,6 +101,7 @@ __all__ = [
     "pretty",
     "quote",
     "reals",
+    "recipes",
     "reinterpret",
     "set_backend",
     # 'minipyro',  # TODO: enable when minipyro is backend-agnostic

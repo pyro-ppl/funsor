@@ -596,7 +596,8 @@ def test_integrate_variable(int_inputs, real_inputs):
     sampled_log_measure = log_measure.sample(
         reduced_vars, OrderedDict(particle=Bint[100000]), rng_key=rng_key
     )
-    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {"particle"})
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars)
+    approx = approx.reduce(ops.mean, "particle")
     assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
@@ -604,6 +605,7 @@ def test_integrate_variable(int_inputs, real_inputs):
     assert_close(approx, exact, atol=0.1, rtol=0.1)
 
 
+@pytest.mark.xfail(get_backend() == "jax", reason="numerically unstable in jax backend")
 @pytest.mark.parametrize(
     "int_inputs",
     [
@@ -638,7 +640,8 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     sampled_log_measure = log_measure.sample(
         reduced_vars, OrderedDict(particle=Bint[100000]), rng_key=rng_key
     )
-    approx = Integrate(sampled_log_measure, integrand, reduced_vars | {"particle"})
+    approx = Integrate(sampled_log_measure, integrand, reduced_vars)
+    approx = approx.reduce(ops.mean, "particle")
     assert isinstance(approx, Tensor)
 
     exact = Integrate(log_measure, integrand, reduced_vars)
@@ -646,15 +649,16 @@ def test_integrate_gaussian(int_inputs, real_inputs):
     assert_close(approx, exact, atol=0.1, rtol=0.1)
 
 
-@pytest.mark.xfail(
-    get_backend() == "torch", reason="numerically unstable in torch backend"
-)
 def test_mc_plate_gaussian():
     log_measure = Gaussian(
         numeric_array([0.0]), numeric_array([[1.0]]), (("loc", Real),)
     ) + numeric_array(-0.9189)
+
+    plate_size = 10
     integrand = Gaussian(
-        randn((100, 1)) + 3.0, ones((100, 1, 1)), (("data", Bint[100]), ("loc", Real))
+        randn((plate_size, 1)) + 3.0,
+        ones((plate_size, 1, 1)),
+        (("data", Bint[plate_size]), ("loc", Real)),
     )
 
     rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)

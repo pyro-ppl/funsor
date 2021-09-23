@@ -1383,6 +1383,18 @@ def test_reduction(op, event_shape):
             )
 
 
+@pytest.mark.parametrize("batch_shape", [(), (4,), (3, 2)], ids=str)
+@pytest.mark.parametrize("event_shape", [(), (4,), (3, 2)], ids=str)
+def test_reduce_reduction(batch_shape, event_shape):
+    x = Tensor(randn(*batch_shape, 5, *event_shape))
+    for name in "abc"[: len(batch_shape)]:
+        x = x[name]
+
+    assert_close(x["i"].reduce(ops.mean, "i"), x.mean(0))
+    assert_close(x["i"].reduce(ops.var, "i"), x.var(0))
+    assert_close(x["i"].reduce(ops.std, "i"), x.std(0))
+
+
 @pytest.mark.parametrize(
     "op",
     [

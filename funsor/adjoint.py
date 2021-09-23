@@ -67,7 +67,9 @@ class AdjointTape(Interpretation):
         self._old_interpretation = interpreter.get_interpretation()
         return super().__enter__()
 
-    def adjoint(self, sum_op, bin_op, root, targets=None):
+    def adjoint(self, sum_op, bin_op, root, targets=None, *, batch_vars=frozenset()):
+        # TODO Replace this with root + Constant(...) after #548 merges.
+        root_vars = root.input_vars | batch_vars
 
         zero = to_funsor(ops.UNITS[sum_op])
         one = to_funsor(ops.UNITS[bin_op])
@@ -115,7 +117,9 @@ class AdjointTape(Interpretation):
 
             in_adjs = adjoint_ops(fn, sum_op, bin_op, adjoint_values[output], *inputs)
             for v, adjv in in_adjs:
-                agg_vars = adjv.input_vars - v.input_vars - root.input_vars
+                # Marginalize out message variables that don't appear in recipients.
+                agg_vars = adjv.input_vars - v.input_vars - root_vars
+                assert "particle" not in {var.name for var in agg_vars}  # DEBUG FIXME
                 old_value = adjoint_values[v]
                 adjoint_values[v] = sum_op(old_value, adjv.reduce(sum_op, agg_vars))
 
@@ -129,11 +133,17 @@ class AdjointTape(Interpretation):
         return {target: result[target] for target in targets}
 
 
-def adjoint(sum_op, bin_op, expr):
+def forward_backward(sum_op, bin_op, expr, *, batch_vars=frozenset()):
     with AdjointTape() as tape:
         # TODO fix traversal order in AdjointTape instead of using stack_reinterpret
-        root = stack_reinterpret(expr)
-    return tape.adjoint(sum_op, bin_op, root)
+        forward = stack_reinterpret(expr)
+    backward = tape.adjoint(sum_op, bin_op, forward, batch_vars=batch_vars)
+    return forward, backward
+
+
+def adjoint(sum_op, bin_op, expr):
+    forward, backward = forward_backward(sum_op, bin_op, expr)
+    return backward
 
 
 # logaddexp/add
