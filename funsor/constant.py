@@ -74,10 +74,15 @@ class Constant(Funsor, metaclass=ConstantMeta):
         for k, d in self.const_inputs.items():
             if k in subs:
                 v = subs[k]
+                assert v.output == d
+                assert all(
+                    v.inputs[k] == self.arg.inputs[k]
+                    for k in set(v.inputs).intersection(self.arg.inputs)
+                )
                 const_inputs.update(
                     (name, value)
                     for name, value in v.inputs.items()
-                    if name not in self.arg.inputs
+                    if name not in self.inputs
                 )
             else:
                 const_inputs[k] = d

@@ -186,9 +186,19 @@ class Delta(Funsor, metaclass=DeltaMeta):
             for name, (point, log_density) in self.terms:
                 if name in reduced_vars:
                     if point.inputs:
-                        scale += funsor.Constant(point.inputs, Number(0))
+                        scale += funsor.Constant(
+                            point.inputs,
+                            funsor.Tensor(
+                                ops.new_zeros(funsor.tensor.get_default_prototype(), ())
+                            )
+                        )
                     if log_density.inputs:
-                        scale += funsor.Constant(log_density.inputs, Number(0))
+                        scale += funsor.Constant(
+                            log_density.inputs,
+                            funsor.Tensor(
+                                ops.new_zeros(funsor.tensor.get_default_prototype(), ())
+                            )
+                        )
                 else:
                     result_terms.append((name, (point, log_density)))
 
