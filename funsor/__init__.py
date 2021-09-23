@@ -1,6 +1,7 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+from funsor.constant import Constant
 from funsor.domains import Array, Bint, Domain, Real, Reals, bint, find_domain, reals
 from funsor.factory import make_funsor
 from funsor.integrate import Integrate
@@ -30,6 +31,7 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     affine,
     approximations,
     cnf,
+    constant,
     delta,
     distribution,
     domains,
@@ -55,6 +57,7 @@ __all__ = [
     "Array",
     "Bint",
     "Cat",
+    "Constant",
     "Domain",
     "Funsor",
     "Independent",
@@ -75,6 +78,7 @@ __all__ = [
     "backward",
     "bint",
     "cnf",
+    "constant",
     "delta",
     "distribution",
     "domains",
