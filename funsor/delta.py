@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import OrderedDict
+from functools import reduce
 
 from funsor.domains import Domain, Real
 from funsor.instrument import debug_logged
@@ -132,34 +133,39 @@ class Delta(Funsor, metaclass=DeltaMeta):
         return Delta(new_terms)
 
     def eager_subs(self, subs):
-        terms = OrderedDict(self.terms)
-        new_terms = terms.copy()
-        log_density = Number(0)
-        for name, value in subs:
-            if isinstance(value, Variable):
-                new_terms[value.name] = new_terms.pop(name)
-                continue
+        subs = OrderedDict(subs)
+        new_terms = []
+        log_densities = []
+        for name, (point, log_density) in self.terms:
+            if name in subs:
+                value = subs[name]
+                assert value.output == point.output
+                if isinstance(value, Variable):
+                    new_terms.append((value.name, (point, log_density)))
+                    continue
 
-            if not any(
-                d.dtype == "real"
-                for side in (value, terms[name][0])
-                for d in side.inputs.values()
-            ):
-                point, point_log_density = new_terms.pop(name)
-                log_density += (value == point).all().log() + point_log_density
-                continue
+                var_diff = value.input_vars ^ point.input_vars
+                if not any(d.output.dtype == "real" for d in var_diff):
+                    log_densities.append((value == point).all().log() + log_density)
+                    continue
 
-            # Try to invert the substitution.
-            soln = solve(value, terms[name][0])
-            if soln is None:
-                return None  # lazily substitute
-            new_name, new_point, point_log_density = soln
-            old_point, old_point_density = new_terms.pop(name)
-            new_terms[new_name] = (new_point, old_point_density + point_log_density)
+                # Try to invert the substitution.
+                soln = solve(value, point)
+                if soln is None:
+                    return None  # lazily substitute
+                new_name, new_point, point_log_density = soln
+                new_terms.append(
+                    (new_name, (new_point, log_density + point_log_density))
+                )
+            else:
+                new_terms.append((name, (point, log_density)))
 
-        return (
-            Delta(tuple(new_terms.items())) + log_density if new_terms else log_density
-        )
+        if not log_densities:
+            return Delta(tuple(new_terms))
+        elif not new_terms:
+            return reduce(ops.add, log_densities)
+        else:
+            return Delta(tuple(new_terms)) + reduce(ops.add, log_densities)
 
     def eager_reduce(self, op, reduced_vars):
         assert reduced_vars.issubset(self.inputs)
