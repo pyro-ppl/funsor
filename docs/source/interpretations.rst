@@ -23,6 +23,13 @@ Monte Carlo
     :show-inheritance:
     :member-order: bysource
 
+Preconditioning
+---------------
+.. automodule:: funsor.precondition
+    :members:
+    :show-inheritance:
+    :member-order: bysource
+
 Approximations
 --------------
 .. automodule:: funsor.approximations

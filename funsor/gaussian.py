@@ -716,7 +716,19 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         if sampled_vars == frozenset(real_inputs):
             shape = sample_shape + self.info_vec.shape
             backend = get_backend()
-            if backend != "numpy":
+            info_vec = self.info_vec
+            precision_chol = self._precision_chol
+            if len(sample_inputs) == 1 and next(iter(sample_inputs)).dtype == "real":
+                # Lazily compute a sample as a function of white noise.
+                for k, d in sample_inputs.items():
+                    white_noise = Variable(k, d)[tuple(int_inputs)]
+                info_vec = Tensor(info_vec, int_inputs)
+                precision_chol = Tensor(precision_chol, int_inputs)
+            elif backend == "numpy":
+                # Eagerly draw noise.
+                white_noise = np.random.randn(*shape)
+            else:
+                # Eagerly draw noise.
                 from importlib import import_module
 
                 dist = import_module(
@@ -724,24 +736,24 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 )
                 sample_args = (shape,) if rng_key is None else (rng_key, shape)
                 white_noise = dist.Normal.dist_class(0, 1).sample(*sample_args)
-            else:
-                white_noise = np.random.randn(*shape)
-            white_noise = ops.unsqueeze(white_noise, -1)
 
-            white_vec = ops.triangular_solve(
-                self.info_vec[..., None], self._precision_chol
-            )
+            # Jointly sample.
+            white_vec = ops.triangular_solve(info_vec[..., None], precision_chol)
             sample = ops.triangular_solve(
-                white_noise + white_vec, self._precision_chol, transpose=True
+                white_noise[..., None] + white_vec, precision_chol, transpose=True
             )[..., 0]
+
+            # Extract shaped components.
             offsets, _ = _compute_offsets(real_inputs)
             results = []
             for key, domain in real_inputs.items():
-                data = sample[..., offsets[key] : offsets[key] + domain.num_elements]
-                data = data.reshape(shape[:-1] + domain.shape)
-                point = Tensor(data, inputs)
+                point = sample[..., offsets[key] : offsets[key] + domain.num_elements]
+                point = point.reshape(point.shape[:-1] + domain.shape)
+                if not isinstance(point, Tensor):  # I.e. when eagerly sampling.
+                    point = Tensor(point, inputs)
                 assert point.output == domain
                 results.append(Delta(key, point))
+
             results.append(self.log_normalizer)
             return reduce(ops.add, results)
 
