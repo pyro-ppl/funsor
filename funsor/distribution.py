@@ -232,7 +232,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             tuple(sample_inputs)
             + tuple(inp for inp in self.inputs if inp in funsor_value.inputs)
         )
-        result = funsor.delta.Delta(value_name, funsor_value)
         if not raw_dist.has_rsample:
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
             raw_log_prob = raw_dist.log_prob(raw_value)
@@ -241,7 +240,9 @@ class Distribution(Funsor, metaclass=DistributionMeta):
                 output=self.output,
                 dim_to_name=dim_to_name,
             )
-            result = result + dice_factor
+            result = funsor.delta.Delta(value_name, funsor_value, dice_factor)
+        else:
+            result = funsor.delta.Delta(value_name, funsor_value)
         return result
 
     def enumerate_support(self, expand=False):
