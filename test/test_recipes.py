@@ -9,10 +9,14 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
+from funsor.interpretations import Memoize
 from funsor.montecarlo import extract_samples
-from funsor.recipes import forward_filter_backward_rsample
+from funsor.recipes import (
+    forward_filter_backward_precondition,
+    forward_filter_backward_rsample,
+)
 from funsor.terms import Lambda, Variable
-from funsor.testing import assert_close, random_gaussian
+from funsor.testing import Tensor, assert_close, randn, random_gaussian
 from funsor.util import get_backend
 
 
@@ -115,6 +119,38 @@ def test_ffbr_1():
     assert set(actual_samples) == {"a"}
     assert actual_samples["a"].output == Real
     assert set(actual_samples["a"].inputs) == {"particle"}
+
+    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
+
+
+def test_ffbp_1():
+    """
+    def model(data):
+        a = pyro.sample("a", dist.Normal(0, 1))
+        pyro.sample("b", dist.Normal(a, 1), obs=data)
+    """
+    factors = {
+        "a": random_gaussian(OrderedDict({"a": Real})),
+        "b": random_gaussian(OrderedDict({"a": Real})),
+    }
+    eliminate = frozenset(["a"])
+    plates = frozenset()
+
+    actual_samples, actual_log_prob = forward_filter_backward_precondition(
+        factors, eliminate, plates
+    )
+    assert set(actual_samples) == {"a"}
+    assert actual_samples["a"].output == Real
+    assert set(actual_samples["a"].inputs) == {"aux"}
+    assert set(actual_log_prob.inputs) == {"aux"}
+
+    # Substitute aux = noise.
+    num_samples = int(1e5)
+    aux_numel = actual_log_prob.inputs["aux"].num_elements
+    noise = Tensor(randn(num_samples, aux_numel))["particle"]
+    with Memoize():
+        actual_samples = {k: v(aux=noise) for k, v in actual_samples.items()}
+        actual_log_prob = actual_log_prob(aux=noise)
 
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 

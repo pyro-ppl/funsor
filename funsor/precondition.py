@@ -13,6 +13,33 @@ from .terms import Approximate, Funsor, Variable
 class Precondition(StatefulInterpretation):
     """
     Preconditioning interpretation for adjoint computations.
+
+    This interpretation is intended to be used once, followed by a call to
+    :meth:`combine_subs` as follows::
+
+        # Lazily build a factor graph.
+        with reflect:
+            log_joint = Gaussian(...) + ... + Gaussian(...)
+            log_Z = log_joint.reduce(ops.logaddexp)
+
+        # Run a backward sampling under the precondition interpretation.
+        with Precondition() as p:
+            marginals = adjoint(
+                ops.logaddexp, ops.add, log_Z, batch_vars=p.sample_vars
+            )
+        combine_subs = p.combine_subs()
+
+        # Extract samples from Delta distributions.
+        samples = {
+            k: v(**combine_subs)
+            for name, delta in marginals.items()
+            for k, v in funsor.montecarlo.extract_samples(delta).items()
+        }
+
+    See :func:`~funsor.recipes.forward_filter_backward_precondition` for
+    complete usage.
+
+    :param str aux_name: Name of the auxiliary variable containing white noise.
     """
 
     def __init__(self, aux_name="aux"):
@@ -44,7 +71,7 @@ class Precondition(StatefulInterpretation):
 @Precondition.register(Approximate, ops.LogaddexpOp, Funsor, Gaussian, frozenset)
 def precondition_approximate(state, op, model, guide, approx_vars):
     # Eagerly winnow approx_vars.
-    approx_vars = approx_vars.intersection(guide.inputs)
+    approx_vars = approx_vars.intersection(guide.input_vars)
     if not approx_vars:
         return model
 
@@ -66,6 +93,7 @@ def precondition_approximate(state, op, model, guide, approx_vars):
     assert sample is not guide, "no progress"
 
     result = sample + model - guide
+    breakpoint()
     return result
 
 

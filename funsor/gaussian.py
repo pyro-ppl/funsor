@@ -703,7 +703,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         sample_inputs = OrderedDict(
             (k, d) for k, d in sample_inputs.items() if k not in self.inputs
         )
-        sample_shape = tuple(int(d.dtype) for d in sample_inputs.values())
+        sample_shape = tuple(
+            d.size for d in sample_inputs.values() if d.dtype != "real"
+        )
         int_inputs = OrderedDict(
             (k, d) for k, d in self.inputs.items() if d.dtype != "real"
         )
@@ -718,7 +720,10 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             backend = get_backend()
             info_vec = self.info_vec
             precision_chol = self._precision_chol
-            if len(sample_inputs) == 1 and next(iter(sample_inputs)).dtype == "real":
+            if (
+                len(sample_inputs) == 1
+                and next(iter(sample_inputs.values())).dtype == "real"
+            ):
                 # Lazily compute a sample as a function of white noise.
                 for k, d in sample_inputs.items():
                     white_noise = Variable(k, d)[tuple(int_inputs)]
@@ -738,15 +743,20 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 white_noise = dist.Normal.dist_class(0, 1).sample(*sample_args)
 
             # Jointly sample.
-            white_vec = ops.triangular_solve(info_vec[..., None], precision_chol)
+            white_vec = ops.triangular_solve(
+                ops.unsqueeze(info_vec, -1), precision_chol
+            )
             sample = ops.triangular_solve(
-                white_noise[..., None] + white_vec, precision_chol, transpose=True
+                ops.unsqueeze(white_noise, -1) + white_vec,
+                precision_chol,
+                transpose=True,
             )[..., 0]
 
             # Extract shaped components.
             offsets, _ = _compute_offsets(real_inputs)
             results = []
             for key, domain in real_inputs.items():
+                # TODO Support nontrivial slices in Funsor.__getitem__().
                 point = sample[..., offsets[key] : offsets[key] + domain.num_elements]
                 point = point.reshape(point.shape[:-1] + domain.shape)
                 if not isinstance(point, Tensor):  # I.e. when eagerly sampling.

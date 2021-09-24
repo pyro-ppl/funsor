@@ -730,6 +730,7 @@ class Funsor(object, metaclass=FunsorMeta):
         return Binary(ops.ge, self, to_funsor(other))
 
     def __getitem__(self, other):
+        # TODO handle unsqueezing via None.
         if type(other) is not tuple:
             other = to_funsor(other, Bint[self.output.shape[0]])
             return Binary(ops.getitem, self, other)
