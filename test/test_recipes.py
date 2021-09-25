@@ -9,7 +9,7 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
-from funsor.interpretations import Memoize
+from funsor.interpretations import memoize
 from funsor.montecarlo import extract_samples
 from funsor.recipes import (
     forward_filter_backward_precondition,
@@ -96,7 +96,22 @@ def check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob):
     assert_close(actual_moments, expected_moments, atol=0.02, rtol=None)
 
 
-def test_ffbr_1():
+def substitute_aux(samples, log_prob, num_samples):
+    assert all("aux" in v.inputs for v in samples.values())
+    assert set(log_prob.inputs) == {"aux"}
+
+    # Substitute noise for the aux value, as would happen each SVI step.
+    aux_numel = log_prob.inputs["aux"].num_elements
+    noise = Tensor(randn(num_samples, aux_numel))["particle"]
+    with memoize():
+        samples = {k: v(aux=noise) for k, v in samples.items()}
+        log_prob = log_prob(aux=noise)
+
+    return samples, log_prob
+
+
+@pytest.mark.parametrize("backward", ["sample", "precondition"])
+def test_ffb_1(backward):
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
@@ -110,52 +125,27 @@ def test_ffbr_1():
     }
     eliminate = frozenset(["a"])
     plates = frozenset()
-    sample_inputs = OrderedDict(particle=Bint[num_samples])
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
+    if backward == "sample":
+        sample_inputs = OrderedDict(particle=Bint[num_samples])
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+    elif backward == "precondition":
+        samples, log_prob = forward_filter_backward_precondition(
+            factors, eliminate, plates
+        )
+        actual_samples, actual_log_prob = substitute_aux(samples, log_prob, num_samples)
+
     assert set(actual_samples) == {"a"}
     assert actual_samples["a"].output == Real
     assert set(actual_samples["a"].inputs) == {"particle"}
-
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
-def test_ffbp_1():
-    """
-    def model(data):
-        a = pyro.sample("a", dist.Normal(0, 1))
-        pyro.sample("b", dist.Normal(a, 1), obs=data)
-    """
-    factors = {
-        "a": random_gaussian(OrderedDict({"a": Real})),
-        "b": random_gaussian(OrderedDict({"a": Real})),
-    }
-    eliminate = frozenset(["a"])
-    plates = frozenset()
-
-    actual_samples, actual_log_prob = forward_filter_backward_precondition(
-        factors, eliminate, plates
-    )
-    assert set(actual_samples) == {"a"}
-    assert actual_samples["a"].output == Real
-    assert set(actual_samples["a"].inputs) == {"aux"}
-    assert set(actual_log_prob.inputs) == {"aux"}
-
-    # Substitute aux = noise.
-    num_samples = int(1e5)
-    aux_numel = actual_log_prob.inputs["aux"].num_elements
-    noise = Tensor(randn(num_samples, aux_numel))["particle"]
-    with Memoize():
-        actual_samples = {k: v(aux=noise) for k, v in actual_samples.items()}
-        actual_log_prob = actual_log_prob(aux=noise)
-
-    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
-
-
-def test_ffbr_2():
+@pytest.mark.parametrize("backward", ["sample", "precondition"])
+def test_ffb_2(backward):
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
@@ -171,22 +161,29 @@ def test_ffbr_2():
     }
     eliminate = frozenset(["a", "b"])
     plates = frozenset()
-    sample_inputs = {"particle": Bint[num_samples]}
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
+    if backward == "sample":
+        sample_inputs = {"particle": Bint[num_samples]}
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+    elif backward == "precondition":
+        samples, log_prob = forward_filter_backward_precondition(
+            factors, eliminate, plates
+        )
+        actual_samples, actual_log_prob = substitute_aux(samples, log_prob, num_samples)
+
     assert set(actual_samples) == {"a", "b"}
     assert actual_samples["a"].output == Real
     assert actual_samples["b"].output == Real
     assert set(actual_samples["a"].inputs) == {"particle"}
     assert set(actual_samples["b"].inputs) == {"particle"}
-
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
-def test_ffbr_3():
+@pytest.mark.parametrize("backward", ["sample", "precondition"])
+def test_ffb_3(backward):
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
@@ -203,22 +200,29 @@ def test_ffbr_3():
     }
     eliminate = frozenset(["a", "b", "i"])
     plates = frozenset(["i"])
-    sample_inputs = {"particle": Bint[num_samples]}
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
+    if backward == "sample":
+        sample_inputs = {"particle": Bint[num_samples]}
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+    elif backward == "precondition":
+        samples, log_prob = forward_filter_backward_precondition(
+            factors, eliminate, plates
+        )
+        actual_samples, actual_log_prob = substitute_aux(samples, log_prob, num_samples)
+
     assert set(actual_samples) == {"a", "b"}
     assert actual_samples["a"].output == Real
     assert actual_samples["b"].output == Real
     assert set(actual_samples["a"].inputs) == {"particle"}
     assert set(actual_samples["b"].inputs) == {"particle", "i"}
-
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
-def test_ffbr_4():
+@pytest.mark.parametrize("backward", ["sample", "precondition"])
+def test_ffb_4(backward):
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
@@ -242,12 +246,19 @@ def test_ffbr_4():
     }
     eliminate = frozenset(["a", "b", "c", "d", "i", "j"])
     plates = frozenset(["i", "j"])
-    sample_inputs = {"particle": Bint[num_samples]}
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
+    if backward == "sample":
+        sample_inputs = {"particle": Bint[num_samples]}
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+    elif backward == "precondition":
+        samples, log_prob = forward_filter_backward_precondition(
+            factors, eliminate, plates
+        )
+        actual_samples, actual_log_prob = substitute_aux(samples, log_prob, num_samples)
+
     assert set(actual_samples) == {"a", "b", "c", "d"}
     assert actual_samples["a"].output == Real
     assert actual_samples["b"].output == Real
@@ -257,11 +268,11 @@ def test_ffbr_4():
     assert set(actual_samples["b"].inputs) == {"particle"}
     assert set(actual_samples["c"].inputs) == {"particle", "i"}
     assert set(actual_samples["d"].inputs) == {"particle", "i"}
-
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
-def test_ffbr_5():
+@pytest.mark.parametrize("backward", ["sample", "precondition"])
+def test_ffb_5(backward):
     """
     def model(data):
         a = pyro.sample("a", dist.MultivariateNormal(zeros(2), eye(2)))
@@ -281,12 +292,19 @@ def test_ffbr_5():
     }
     eliminate = frozenset(["a", "b", "c", "d"])
     plates = frozenset()
-    sample_inputs = {"particle": Bint[num_samples]}
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
+    if backward == "sample":
+        sample_inputs = {"particle": Bint[num_samples]}
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+    elif backward == "precondition":
+        samples, log_prob = forward_filter_backward_precondition(
+            factors, eliminate, plates
+        )
+        actual_samples, actual_log_prob = substitute_aux(samples, log_prob, num_samples)
+
     assert set(actual_samples) == {"a", "b", "c", "d"}
     assert actual_samples["a"].output == Reals[2]
     assert actual_samples["b"].output == Reals[2]
@@ -296,12 +314,12 @@ def test_ffbr_5():
     assert set(actual_samples["b"].inputs) == {"particle"}
     assert set(actual_samples["c"].inputs) == {"particle"}
     assert set(actual_samples["d"].inputs) == {"particle"}
-
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
 @pytest.mark.xfail(reason="TODO handle intractable case")
-def test_ffbr_intractable_1():
+@pytest.mark.parametrize("backward", ["sample", "precondition"])
+def test_ffb_intractable_1(backward):
     """
     def model(data):
         i_plate = pyro.plate("i", 2, dim=-2)
@@ -324,23 +342,30 @@ def test_ffbr_intractable_1():
     }
     eliminate = frozenset(["a", "b", "i", "j"])
     plates = frozenset(["i", "j"])
-    sample_inputs = {"particle": Bint[num_samples]}
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
+    if backward == "sample":
+        sample_inputs = {"particle": Bint[num_samples]}
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+    elif backward == "precondition":
+        samples, log_prob = forward_filter_backward_precondition(
+            factors, eliminate, plates
+        )
+        actual_samples, actual_log_prob = substitute_aux(samples, log_prob, num_samples)
+
     assert set(actual_samples) == {"a", "b"}
     assert actual_samples["a"].output == Real
     assert actual_samples["b"].output == Real
     assert set(actual_samples["a"].inputs) == {"particle", "i"}
     assert set(actual_samples["b"].inputs) == {"particle", "j"}
-
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
 
 @pytest.mark.xfail(reason="TODO handle colliders via Lambda")
-def test_ffbr_intractable_2():
+@pytest.mark.parametrize("backward", ["sample", "precondition"])
+def test_ffb_intractable_2(backward):
     """
     def model(data):
         with pyro.plate("i", 2):
@@ -355,13 +380,19 @@ def test_ffbr_intractable_2():
     }
     eliminate = frozenset(["a", "i"])
     plates = frozenset(["i"])
-    sample_inputs = {"particle": Bint[num_samples]}
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
+    if backward == "sample":
+        sample_inputs = {"particle": Bint[num_samples]}
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+    elif backward == "precondition":
+        samples, log_prob = forward_filter_backward_precondition(
+            factors, eliminate, plates
+        )
+        actual_samples, actual_log_prob = substitute_aux(samples, log_prob, num_samples)
+
     assert set(actual_samples) == {"a"}
     assert set(actual_samples["a"].inputs) == {"particle", "i"}
-
     check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)

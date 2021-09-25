@@ -445,7 +445,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 assert value.shape[-1] == self.inputs[k].num_elements
             values[k] = ops.expand(value, batch_shape + value.shape[-1:])
 
-        # Try to perform a complete substitution of all real variables, resulting in a Tensor.
+        # Try to perform a complete substitution of all real variables,
+        # resulting in a Tensor.
         if all(k in subs for k, d in self.inputs.items() if d.dtype == "real"):
             # Form the concatenated value.
             value = BlockVector(batch_shape + (event_size,))
@@ -461,8 +462,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             assert result.output == Real
             return Subs(result, remaining_subs) if remaining_subs else result
 
-        # Perform a partial substution of a subset of real variables, resulting in a Joint.
-        # We split real inputs into two sets: a for the preserved and b for the substituted.
+        # Perform a partial substution of a subset of real variables, resulting
+        # in a Joint. We split real inputs into two sets: a for the preserved
+        # and b for the substituted.
         b = frozenset(k for k, v in subs.items())
         a = frozenset(
             k for k, d in self.inputs.items() if d.dtype == "real" and k not in b
@@ -743,13 +745,10 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 white_noise = dist.Normal.dist_class(0, 1).sample(*sample_args)
 
             # Jointly sample.
-            white_vec = ops.triangular_solve(
-                ops.unsqueeze(info_vec, -1), precision_chol
-            )
+            # This section may involve either Funsors or backend arrays.
+            white_vec = ops.triangular_solve(info_vec[..., None], precision_chol)
             sample = ops.triangular_solve(
-                ops.unsqueeze(white_noise, -1) + white_vec,
-                precision_chol,
-                transpose=True,
+                white_noise[..., None] + white_vec, precision_chol, transpose=True
             )[..., 0]
 
             # Extract shaped components.
@@ -759,7 +758,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 # TODO Support nontrivial slices in Funsor.__getitem__().
                 point = sample[..., offsets[key] : offsets[key] + domain.num_elements]
                 point = point.reshape(point.shape[:-1] + domain.shape)
-                if not isinstance(point, Tensor):  # I.e. when eagerly sampling.
+                if not isinstance(point, Funsor):  # I.e. when eagerly sampling.
                     point = Tensor(point, inputs)
                 assert point.output == domain
                 results.append(Delta(key, point))

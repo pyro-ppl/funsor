@@ -93,7 +93,6 @@ def precondition_approximate(state, op, model, guide, approx_vars):
     assert sample is not guide, "no progress"
 
     result = sample + model - guide
-    breakpoint()
     return result
 
 

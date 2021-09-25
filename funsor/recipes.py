@@ -103,6 +103,10 @@ def forward_filter_backward_precondition(
         plates to aggregate.
     :param plates: A set of names of plates to aggregate.
     :param str aux_name: Name of the auxiliary variable containing white noise.
+    :returns: A pair ``samples:Dict[str, Tensor], log_prob: Tensor`` of samples
+        and log density evaluated at each of those samples. Both outputs depend
+        on a vector named by ``aux_name``, e.g. ``aux: Reals[d]`` where ``d``
+        is the total number of elements in eliminated variables.
     :rtype: tuple
     """
     assert isinstance(factors, dict)
