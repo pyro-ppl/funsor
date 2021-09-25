@@ -78,7 +78,9 @@ def parse_ellipsis(index):
     if not isinstance(index, tuple):
         index = (index,)
     left = []
-    for i, part in enumerate(index):
+    i = 0
+    for part in index:
+        i += 1
         if part is Ellipsis:
             break
         left.append(part)
@@ -91,9 +93,24 @@ def parse_ellipsis(index):
     return tuple(left), tuple(right)
 
 
+def normalize_ellipsis(index, size):
+    """
+    Expand Ellipses in an index to fill the given number of dimensions.
+
+    This should satisfy the equation::
+
+        x[i] == x[normalize_ellipsis(i, len(x.shape))]
+    """
+    left, right = parse_ellipsis(index)
+    if len(left) + len(right) > size:
+        raise ValueError(f"Index is too wide: {index}")
+    middle = (slice(None),) * (size - len(left) - len(right))
+    return left + middle + right
+
+
 def parse_slice(s, size):
     """
-    Helper to determine nonnegative integer start, stop, and step of a slice.
+    Helper to determine nonnegative integers (start, stop, step) of a slice.
 
     :param slice s: A slice.
     :param int size: The size of the array being indexed into.

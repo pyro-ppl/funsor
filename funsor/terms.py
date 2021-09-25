@@ -34,7 +34,7 @@ from funsor.interpretations import (
 )
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.ops.builtin import parse_ellipsis
+from funsor.ops.builtin import normalize_ellipsis, parse_ellipsis
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
 from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_args, get_origin
 from funsor.util import getargspec, lazy_property, pretty, quote
@@ -731,6 +731,11 @@ class Funsor(object, metaclass=FunsorMeta):
         return Binary(ops.ge, self, to_funsor(other))
 
     def __getitem__(self, other):
+        """
+        Helper to desugar into either ops.getitem (for advanced indexing
+        involving Funsors as indices) or ops.getslice (for simple indexing
+        involving only integers, slices, None, and Ellipsis).
+        """
         if type(other) is not tuple:
             if isinstance(other, ops.getslice.supported_types):
                 return ops.getslice(self, other)
@@ -1753,6 +1758,20 @@ def eager_getitem_lambda(op, lhs, rhs):
     return Lambda(lhs.var, expr)
 
 
+@eager.register(Unary, ops.GetsliceOp, Lambda)
+def eager_getslice_lambda(op, x):
+    index = normalize_ellipsis(op.defaults["index"], len(x.shape))
+    head, tail = index[0], index[1:]
+    expr = x.expr
+    if head != slice(None):
+        expr = expr(**{x.var.name: head})
+        if x.var.name not in expr.inputs:
+            return expr
+    if tail:
+        expr = ops.getslice(expr, tail)
+    return Lambda(x.var, expr)
+
+
 class Independent(Funsor):
     """
     Creates an independent diagonal distribution.
@@ -1882,6 +1901,21 @@ def tuple_to_funsor(args, output=None, dim_to_name=None):
 @eager.register(Binary, GetitemOp, Tuple, Number)
 def eager_getitem_tuple(op, lhs, rhs):
     return op(lhs.args, rhs.data)
+
+
+@lazy.register(Unary, ops.GetsliceOp, Tuple)
+@eager.register(Unary, ops.GetsliceOp, Tuple)
+def eager_getslice_tuple(op, x):
+    index = op.defaults["index"]
+    if isinstance(index, tuple):
+        assert len(index) == 1
+        index = index[0]
+    if isinstance(index, int):
+        return op(x.args)
+    elif isinstance(index, slice):
+        return Tuple(op(x.args))
+    else:
+        raise ValueError(index)
 
 
 def _symbolic(inputs, output, fn):

@@ -859,7 +859,7 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
-@eager.register(Binary, ops.GetsliceOp, Tensor)
+@eager.register(Unary, ops.GetsliceOp, Tensor)
 def eager_getslice_tensor(op, x):
     index = op.defaults["index"]
     if not isinstance(index, tuple):

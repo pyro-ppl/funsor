@@ -335,37 +335,51 @@ def _find_domain_getitem(op, lhs_domain, rhs_domain):
 @find_domain.register(ops.GetsliceOp)
 def _find_domain_getslice(op, domain):
     index = op.defaults["index"]
-    left, right = parse_ellipsis(index)
     if isinstance(domain, ArrayType):
         dtype = domain.dtype
         shape = list(domain.shape)
+        left, right = parse_ellipsis(index)
 
-        offset = len(shape)
-        for i, part in enumerate(left):
-            i -= offset
+        i = 0
+        for part in left:
             if part is None:
                 shape.insert(i, 1)
+                i += 1
             elif isinstance(part, int):
                 del shape[i]
             elif isinstance(part, slice):
                 start, stop, step = parse_slice(part, shape[i])
-                shape[i] = max(0, (stop - start) // step)
+                shape[i] = max(0, (stop - start + step - 1) // step)
+                i += 1
             else:
                 raise ValueError(part)
 
-        for i in range(-len(right), 0):
-            part = right[i]
+        i = -1
+        for part in reversed(right):
             if part is None:
-                shape.insert(len(shape) + i, 1)
+                shape.insert(len(shape) + i + 1, 1)
+                i -= 1
             elif isinstance(part, int):
                 del shape[i]
             elif isinstance(part, slice):
                 start, stop, step = parse_slice(part, shape[i])
-                shape[i] = max(0, (stop - start) // step)
+                shape[i] = max(0, (stop - start + step - 1) // step)
+                i -= 1
             else:
                 raise ValueError(part)
 
         return Array[dtype, tuple(shape)]
+
+    if isinstance(domain, ProductDomain):
+        if isinstance(index, tuple):
+            assert len(index) == 1
+            index = index[0]
+        if isinstance(index, int):
+            return domain.__args__[index]
+        elif isinstance(index, slice):
+            return Product[domain.__args__[index]]
+        else:
+            raise ValueError(index)
 
     raise NotImplementedError("TODO")
 
