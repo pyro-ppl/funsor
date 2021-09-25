@@ -608,6 +608,51 @@ def test_lambda_getitem():
     assert Lambda(i, y) is x
 
 
+class _Slice:
+    def __getitem__(self, index):
+        return index
+
+
+_slice = _Slice()
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        _slice[0],
+        _slice[1, 2],
+        _slice[None],
+        _slice[None, 1],
+        _slice[2, None],
+        _slice[None, 0, None],
+        _slice[:],
+        _slice[:, :],
+        _slice[1:],
+        _slice[1:3],
+        _slice[::2],
+        _slice[1::2],
+        _slice[:, None],
+        _slice[None, :],
+        _slice[None, :, 1],
+        _slice[...],
+        _slice[..., 0],
+        _slice[..., 0, 1],
+        _slice[..., 0, :],
+        _slice[..., None, :],
+        _slice[..., 1:-1:2, :],
+        _slice[:, 0, ...],
+        _slice[:, None, ...],
+        _slice[:, 1:-1:2, ...],
+    ],
+    ids=str,
+)
+def test_getslice_shape(index):
+    data = randn(6, 5, 4, 3)
+    expected = Tensor(data[index])
+    actual = Tensor(data)[index]
+    assert_close(actual, expected)
+
+
 REDUCE_OPS = [
     ops.add,
     ops.mul,
