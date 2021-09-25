@@ -61,7 +61,9 @@ def _(fn):
 
 @affine_inputs.register(Unary)
 def _(fn):
-    if fn.op in (ops.neg, ops.sum) or isinstance(fn.op, ops.ReshapeOp):
+    if fn.op in (ops.neg, ops.sum) or isinstance(
+        fn.op, (ops.ReshapeOp, ops.GetsliceOp)
+    ):
         return affine_inputs(fn.arg)
     return frozenset()
 

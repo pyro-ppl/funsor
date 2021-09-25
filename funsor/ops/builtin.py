@@ -13,6 +13,7 @@ from .op import (
     UNITS,
     BinaryOp,
     Op,
+    OpMeta,
     TransformOp,
     UnaryOp,
     declare_op_types,
@@ -41,6 +42,105 @@ def getitem(lhs, rhs, offset=0):
     if offset == 0:
         return lhs[rhs]
     return lhs[(slice(None),) * offset + (rhs,)]
+
+
+class GetsliceMeta(OpMeta):
+    """
+    Works around slice objects not being hashable.
+    """
+
+    def hash_args_kwargs(cls, args, kwargs):
+        index = args[0] if args else kwargs["index"]
+        if not isinstance(index, tuple):
+            index = (index,)
+        key = tuple(
+            (x.start, x.stop, x.step) if isinstance(x, slice) else x for x in index
+        )
+        return key
+
+
+@UnaryOp.make(metaclass=GetsliceMeta)
+def getslice(x, index=Ellipsis):
+    return x[index]
+
+
+getslice.supported_types = (type(None), type(Ellipsis), int, slice)
+
+
+def parse_ellipsis(index):
+    """
+    Helper to split a slice into parts left and right of Ellipses.
+
+    :param index: A tuple, or other object (None, int, slice, Funsor).
+    :returns: a pair of tuples ``left, right``.
+    :rtype: tuple
+    """
+    if not isinstance(index, tuple):
+        index = (index,)
+    left = []
+    i = 0
+    for part in index:
+        i += 1
+        if part is Ellipsis:
+            break
+        left.append(part)
+    right = []
+    for part in reversed(index[i:]):
+        if part is Ellipsis:
+            break
+        right.append(part)
+    right.reverse()
+    return tuple(left), tuple(right)
+
+
+def normalize_ellipsis(index, size):
+    """
+    Expand Ellipses in an index to fill the given number of dimensions.
+
+    This should satisfy the equation::
+
+        x[i] == x[normalize_ellipsis(i, len(x.shape))]
+    """
+    left, right = parse_ellipsis(index)
+    if len(left) + len(right) > size:
+        raise ValueError(f"Index is too wide: {index}")
+    middle = (slice(None),) * (size - len(left) - len(right))
+    return left + middle + right
+
+
+def parse_slice(s, size):
+    """
+    Helper to determine nonnegative integers (start, stop, step) of a slice.
+
+    :param slice s: A slice.
+    :param int size: The size of the array being indexed into.
+    :returns: A tuple of nonnegative integers ``start, stop, step``.
+    :rtype: tuple
+    """
+    start = s.start
+    if start is None:
+        start = 0
+    assert isinstance(start, int)
+    if start >= 0:
+        start = min(size, start)
+    else:
+        start = max(0, size + start)
+
+    stop = s.stop
+    if stop is None:
+        stop = size
+    assert isinstance(stop, int)
+    if stop >= 0:
+        stop = min(size, stop)
+    else:
+        stop = max(0, size + stop)
+
+    step = s.step
+    if step is None:
+        step = 1
+    assert isinstance(step, int)
+
+    return start, stop, step
 
 
 abs = UnaryOp.make(_builtin_abs)
@@ -194,6 +294,7 @@ __all__ = [
     "floordiv",
     "ge",
     "getitem",
+    "getslice",
     "gt",
     "invert",
     "le",

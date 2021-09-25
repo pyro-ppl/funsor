@@ -643,6 +643,10 @@ def test_funsor_tuple():
     assert xyz[0] is x
     assert xyz[1] is y
     assert xyz[2] is z
+    assert xyz[:] is xyz
+    assert xyz[1:] is Tuple((y, z))
+    assert xyz[:2] is Tuple((x, y))
+    assert xyz[::2] is Tuple((x, z))
 
     x1, y1, z1 = xyz
     assert x1 is x
