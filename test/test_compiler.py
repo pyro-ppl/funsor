@@ -33,14 +33,20 @@ def _(x):
 def check_compiler(expr):
     # Create a random substitution.
     subs = {k: randn(d.shape) for k, d in expr.inputs.items()}
-
-    # Create and execute a funsor program.
-    program = FunsorProgram(expr)
-    actual = program(**subs)
-
-    # Compare with funsor substitution.
     expected = expr(**subs)
     expected_data = extract_data(expected)
+
+    # Execute a funsor program.
+    program = FunsorProgram(expr)
+    actual = program(**subs)
+    assert_close(actual, expected_data)
+
+    # Execute a printed program.
+    code = program.as_code(name="program2")
+    print(code)
+    env = {}
+    exec(code, None, env)
+    actual = env["program2"](**subs)
     assert_close(actual, expected_data)
 
 
