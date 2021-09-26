@@ -1,15 +1,33 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import functools
+
 import funsor.ops as ops
 from funsor.compiler import FunsorProgram
-from funsor.domains import Reals
+from funsor.domains import Real, Reals
 from funsor.interpretations import reflect
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import sum_product
 from funsor.tensor import Tensor
-from funsor.terms import Number, Variable
+from funsor.terms import Number, Tuple, Variable
 from funsor.testing import assert_close, randn
+
+
+@functools.singledispatch
+def extract_data(x):
+    raise TypeError(type(x).__name__)
+
+
+@extract_data.register(Number)
+@extract_data.register(Tensor)
+def _(x):
+    return x.data
+
+
+@extract_data.register(Tuple)
+def _(x):
+    return tuple(extract_data(arg) for arg in x.args)
 
 
 def check_compiler(expr):
@@ -22,25 +40,32 @@ def check_compiler(expr):
 
     # Compare with funsor substitution.
     expected = expr(**subs)
-    assert isinstance(expected, (Number, Tensor))
-    assert_close(actual, expected.data)
+    expected_data = extract_data(expected)
+    assert_close(actual, expected_data)
 
 
-def test_simple_1():
+def test_lowered_1():
     x = Variable("x", Reals[3])
     check_compiler(x)
 
 
-def test_simple_2():
+def test_lowered_2():
     x = Variable("x", Reals[3])
     y = x * x
     check_compiler(y)
 
 
-def test_simple_3():
+def test_lowered_3():
     x = Variable("x", Reals[3])
     y = 1 + x * x
     z = y[0] * y[1] + y[2]
+    check_compiler(z)
+
+
+def test_lowered_4():
+    x = Variable("x", Real)
+    y = Variable("y", Real)
+    z = Tuple((Number(1), x, y, x * y))
     check_compiler(z)
 
 
@@ -55,5 +80,6 @@ def test_sum_product():
     with reflect:
         expr = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
         expr = apply_optimizer(expr)
+    assert set(expr.inputs) == {"f", "g", "h"}
 
     check_compiler(expr)

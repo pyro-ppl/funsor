@@ -197,6 +197,11 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert set(actual) == set(expected)
         for k, actual_v in actual.items():
             assert_close(actual_v, expected[k], atol=atol, rtol=rtol)
+    elif isinstance(actual, tuple):
+        assert isinstance(expected, tuple)
+        assert len(actual) == len(expected)
+        for actual_v, expected_v in zip(actual, expected):
+            assert_close(actual_v, expected_v, atol=atol, rtol=rtol)
     else:
         raise ValueError("cannot compare objects of type {}".format(type(actual)))
 

@@ -7,7 +7,7 @@ import funsor
 
 from .cnf import Contraction
 from .tensor import Tensor
-from .terms import Binary, Funsor, Number, Unary, Variable
+from .terms import Binary, Funsor, Number, Tuple, Unary, Variable
 
 
 class FunsorProgram:
@@ -47,7 +47,7 @@ class FunsorProgram:
         anf = list(funsor.interpreter.anf(lowered_expr))
         ids = {}
 
-        # Collect constants.
+        # Collect constants (leaves).
         constants = []
         for f in anf:
             if isinstance(f, (Number, Tensor)):
@@ -55,7 +55,7 @@ class FunsorProgram:
                 constants.append(f.data)
         self.constants = tuple(constants)
 
-        # Collect input variables (the leaves).
+        # Collect input variables (leaves).
         inputs = []
         for k, d in expr.inputs.items():
             f = Variable(k, d)
@@ -63,7 +63,7 @@ class FunsorProgram:
             inputs.append(k)
         self.inputs = tuple(inputs)
 
-        # Collect operations to be computed.
+        # Collect operations to be computed (internal nodes).
         operations = []
         for f in anf:
             if f in ids:
@@ -75,6 +75,11 @@ class FunsorProgram:
             elif isinstance(f, Binary):
                 arg_ids = (ids[f.lhs], ids[f.rhs])
                 operations.append((f.op, arg_ids))
+            elif isinstance(f, Tuple):
+                arg_ids = tuple(ids[arg] for arg in f.args)
+                operations.append((_tuple, arg_ids))
+            elif isinstance(f, tuple):
+                continue  # Skip from Tuple directly to its elements.
             else:
                 raise NotImplementedError(type(f).__name__)
         self.operations = tuple(operations)
@@ -82,26 +87,30 @@ class FunsorProgram:
     def __call__(self, **kwargs):
         funsor.set_backend(self.backend)
 
-        # Initialize state with constants.
-        state = list(self.constants)
+        # Initialize environment with constants.
+        env = list(self.constants)
 
         # Read inputs from kwargs.
         for name in self.inputs:
             value = kwargs.pop(name, None)
             if value is None:
                 raise ValueError(f"Missing kwarg: {repr(name)}")
-            state.append(value)
+            env.append(value)
         if kwargs:
             raise ValueError(f"Unrecognized kwargs: {set(kwargs)}")
 
         # Sequentially compute ops.
         for op, arg_ids in self.operations:
-            args = tuple(state[i] for i in arg_ids)
+            args = tuple(env[i] for i in arg_ids)
             value = op(*args)
-            state.append(value)
+            env.append(value)
 
-        result = state[-1]
+        result = env[-1]
         return result
+
+
+def _tuple(*args):
+    return args
 
 
 def lower(expr: Funsor) -> Funsor:
@@ -129,6 +138,12 @@ def _lower(x):
 @_lower.register(Variable)
 def _lower_atom(x):
     return x
+
+
+@_lower.register(Tuple)
+def _lower_tuple(x):
+    args = tuple(_lower(arg) for arg in x.args)
+    return Tuple(args)
 
 
 @_lower.register(Unary)
