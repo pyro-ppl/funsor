@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import funsor.ops as ops
+from funsor.compiler import FunsorProgram
 from funsor.domains import Reals
 from funsor.interpretations import reflect
 from funsor.optimizer import apply_optimizer
@@ -9,7 +10,6 @@ from funsor.sum_product import sum_product
 from funsor.tensor import Tensor
 from funsor.terms import Variable
 from funsor.testing import assert_close, randn
-from funsor.vm import FunsorProgram
 
 
 def test_sum_product():

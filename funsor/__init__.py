@@ -31,6 +31,7 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     affine,
     approximations,
     cnf,
+    compiler,
     constant,
     delta,
     distribution,
@@ -48,7 +49,6 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     sum_product,
     terms,
     testing,
-    vm,
 )
 
 __version__ = "0.4.0"
@@ -79,6 +79,7 @@ __all__ = [
     "backward",
     "bint",
     "cnf",
+    "compiler",
     "constant",
     "delta",
     "distribution",
@@ -112,5 +113,4 @@ __all__ = [
     "testing",
     "to_data",
     "to_funsor",
-    "vm",
 ]
