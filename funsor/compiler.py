@@ -16,7 +16,24 @@ class FunsorProgram:
 
     Programs depend on the funsor library only via ``funsor.ops`` and op
     registrations; program evaluation does not involve funsor interpretation or
-    rewriting.
+    rewriting. Programs can be pickled and unpickled.
+
+    Example::
+
+        # Create a lazy expression.
+        a = Variable("a", Reals[3, 3])
+        b = Variable("b", Reals[3])
+        x = Variable("x", Reals[3])
+        expr = a @ x + b
+
+        # Evaluate via Funsor substitution.
+        data = dict(a=randn(3, 3), b=randn(3), x=randn(3))
+        expected = expr(**data).data
+
+        # Alternatively evaluate via a program.
+        program = FunsorProgram(expr)
+        actual = program(**data)
+        assert (acutal == expected).all()
 
     :param Funsor expr: A funsor expression to evaluate.
     """
@@ -25,10 +42,9 @@ class FunsorProgram:
         assert isinstance(expr, Funsor)
         self.backend = funsor.get_backend()
 
-        # Lower and convert to A normal form.
-        with funsor.interpretations.reflect:
-            expr = lower(expr)
-        anf = list(funsor.interpreter.anf(expr))
+        # Lower and convert to A-normal form.
+        lowered_expr = lower(expr)
+        anf = list(funsor.interpreter.anf(lowered_expr))
         ids = {}
 
         # Collect constants.
@@ -88,32 +104,47 @@ class FunsorProgram:
         return result
 
 
+def lower(expr: Funsor) -> Funsor:
+    """
+    Lower a funsor expression:
+    - eliminate bound variables
+    - convert Contraction to Binary
+
+    :param Funsor expr: An arbitrary funsor expression.
+    :returns: A lowered funsor expression.
+    :rtype: Funsor
+    """
+    # FIXME should this be lazy? What about Lambda?
+    with funsor.interpretations.reflect:
+        return _lower(expr)
+
+
 @functools.singledispatch
-def lower(x):
+def _lower(x):
     raise NotImplementedError(type(x).__name__)
 
 
-@lower.register(Number)
-@lower.register(Tensor)
-@lower.register(Variable)
+@_lower.register(Number)
+@_lower.register(Tensor)
+@_lower.register(Variable)
 def _lower_atom(x):
     return x
 
 
-@lower.register(Unary)
+@_lower.register(Unary)
 def _lower_unary(x):
     arg = lower(x.arg)
     return Unary(x.op, arg)
 
 
-@lower.register(Binary)
+@_lower.register(Binary)
 def _lower_binary(x):
     lhs = lower(x.lhs)
     rhs = lower(x.rhs)
     return Binary(x.op, lhs, rhs)
 
 
-@lower.register(Contraction)
+@_lower.register(Contraction)
 def _lower_contraction(x):
     if x.reduced_vars:
         raise NotImplementedError("TODO")

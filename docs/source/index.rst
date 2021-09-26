@@ -33,6 +33,7 @@ Funsor is a tensor-like library for functions and distributions
    distributions
    minipyro
    einsum
+   compiler
 
 .. toctree::
    :maxdepth: 1
