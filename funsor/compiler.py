@@ -6,17 +6,15 @@ import functools
 import funsor
 
 from .cnf import Contraction
+from .ops.program import OpProgram, make_tuple
 from .tensor import Tensor
 from .terms import Binary, Funsor, Number, Tuple, Unary, Variable
 
 
-class FunsorProgram:
+def compile_funsor(expr: Funsor) -> OpProgram:
     """
-    Backend program for evaluating a symbolic funsor expression.
-
-    Programs depend on the funsor library only via ``funsor.ops`` and op
-    registrations; program evaluation does not involve funsor interpretation or
-    rewriting. Programs can be pickled and unpickled.
+    Compiles a symbolic :class:`~funsor.terms.Funsor` to an
+    :class:`~funsor.ops.program.OpProgram` that runs on backend values.
 
     Example::
 
@@ -31,127 +29,56 @@ class FunsorProgram:
         expected = expr(**data).data
 
         # Alternatively evaluate via a program.
-        program = FunsorProgram(expr)
+        program = OpProgram(expr)
         actual = program(**data)
         assert (acutal == expected).all()
 
     :param Funsor expr: A funsor expression to evaluate.
+    :returns: An op program.
+    :rtype: ~funsor.ops.program.OpProgram
     """
+    assert isinstance(expr, Funsor)
 
-    def __init__(self, expr: Funsor):
-        assert isinstance(expr, Funsor)
-        self.backend = funsor.get_backend()
+    # Lower and convert to A-normal form.
+    lowered_expr = lower(expr)
+    anf = list(funsor.interpreter.anf(lowered_expr))
+    ids = {}
 
-        # Lower and convert to A-normal form.
-        lowered_expr = lower(expr)
-        anf = list(funsor.interpreter.anf(lowered_expr))
-        ids = {}
-
-        # Collect constants (leaves).
-        constants = []
-        for f in anf:
-            if isinstance(f, (Number, Tensor)):
-                ids[f] = len(ids)
-                constants.append(f.data)
-        self.constants = tuple(constants)
-
-        # Collect input variables (leaves).
-        inputs = []
-        for k, d in expr.inputs.items():
-            f = Variable(k, d)
+    # Collect constants (leaves).
+    constants = []
+    for f in anf:
+        if isinstance(f, (Number, Tensor)):
             ids[f] = len(ids)
-            inputs.append(k)
-        self.inputs = tuple(inputs)
+            constants.append(f.data)
 
-        # Collect operations to be computed (internal nodes).
-        operations = []
-        for f in anf:
-            if f in ids:
-                continue  # constant or free variable
-            ids[f] = len(ids)
-            if isinstance(f, Unary):
-                arg_ids = (ids[f.arg],)
-                operations.append((f.op, arg_ids))
-            elif isinstance(f, Binary):
-                arg_ids = (ids[f.lhs], ids[f.rhs])
-                operations.append((f.op, arg_ids))
-            elif isinstance(f, Tuple):
-                arg_ids = tuple(ids[arg] for arg in f.args)
-                operations.append((_tuple, arg_ids))
-            elif isinstance(f, tuple):
-                continue  # Skip from Tuple directly to its elements.
-            else:
-                raise NotImplementedError(type(f).__name__)
-        self.operations = tuple(operations)
+    # Collect input variables (leaves).
+    inputs = []
+    for k, d in expr.inputs.items():
+        f = Variable(k, d)
+        ids[f] = len(ids)
+        inputs.append(k)
 
-    def __call__(self, **kwargs):
-        funsor.set_backend(self.backend)
+    # Collect operations to be computed (internal nodes).
+    operations = []
+    for f in anf:
+        if f in ids:
+            continue  # constant or free variable
+        ids[f] = len(ids)
+        if isinstance(f, Unary):
+            arg_ids = (ids[f.arg],)
+            operations.append((f.op, arg_ids))
+        elif isinstance(f, Binary):
+            arg_ids = (ids[f.lhs], ids[f.rhs])
+            operations.append((f.op, arg_ids))
+        elif isinstance(f, Tuple):
+            arg_ids = tuple(ids[arg] for arg in f.args)
+            operations.append((make_tuple, arg_ids))
+        elif isinstance(f, tuple):
+            continue  # Skip from Tuple directly to its elements.
+        else:
+            raise NotImplementedError(type(f).__name__)
 
-        # Initialize environment with constants.
-        env = list(self.constants)
-
-        # Read inputs from kwargs.
-        for name in self.inputs:
-            value = kwargs.pop(name, None)
-            if value is None:
-                raise ValueError(f"Missing kwarg: {repr(name)}")
-            env.append(value)
-        if kwargs:
-            raise ValueError(f"Unrecognized kwargs: {set(kwargs)}")
-
-        # Sequentially compute ops.
-        for op, arg_ids in self.operations:
-            args = tuple(env[i] for i in arg_ids)
-            value = op(*args)
-            env.append(value)
-
-        result = env[-1]
-        return result
-
-    def as_code(self, name="program"):
-        """
-        Returns Python code text defining a straight-line function equivalent
-        to this program.
-
-        :param str name: Optional name for the function, defaults to "program".
-        :returns: A string defining a python function equivalent to this program.
-        :rtype: str
-        """
-        lines = [
-            "# Automatically generated by funsor.compiler.FunsorProgram.as_code().",
-            "def {}({}):".format(name, ", ".join(self.inputs)),
-            "    from funsor import set_backend, ops",
-            f"    set_backend({repr(self.backend)})",
-        ]
-        start = len(lines)
-
-        def let(body):
-            i = len(lines) - start
-            lines.append(f"    v{i} = {body}")
-
-        for c in self.constants:
-            let(c)
-        for name in self.inputs:
-            let(name)
-        for op, arg_ids in self.operations:
-            op = _print_op(op)
-            args = ", ".join(f"v{arg_id}" for arg_id in arg_ids)
-            let(f"{op}({args},)")
-        lines.append(f"    return v{len(lines) - start - 1}")
-        return "\n".join(lines)
-
-
-def _tuple(*args):
-    return args
-
-
-def _print_op(op):
-    if op is _tuple:
-        return ""
-    if op.defaults and op.defaults != type(op)().defaults:
-        args = ", ".join(map(str, op.defaults.values()))
-        return f"ops.{type(op).__name__}({args})"
-    return repr(op)
+    return OpProgram(constants, inputs, operations)
 
 
 def lower(expr: Funsor) -> Funsor:
@@ -211,6 +138,5 @@ def _lower_contraction(x):
 
 
 __all__ = [
-    "FunsorProgram",
     "lower",
 ]
