@@ -133,14 +133,14 @@ def _lower_atom(x):
 
 @_lower.register(Unary)
 def _lower_unary(x):
-    arg = lower(x.arg)
+    arg = _lower(x.arg)
     return Unary(x.op, arg)
 
 
 @_lower.register(Binary)
 def _lower_binary(x):
-    lhs = lower(x.lhs)
-    rhs = lower(x.rhs)
+    lhs = _lower(x.lhs)
+    rhs = _lower(x.rhs)
     return Binary(x.op, lhs, rhs)
 
 
@@ -149,7 +149,7 @@ def _lower_contraction(x):
     if x.reduced_vars:
         raise NotImplementedError("TODO")
 
-    terms = [lower(term) for term in x.terms]
+    terms = [_lower(term) for term in x.terms]
     bin_op = functools.partial(Binary, x.bin_op)
     return functools.reduce(bin_op, terms)
 
