@@ -29,7 +29,7 @@ def compile_funsor(expr: Funsor) -> OpProgram:
         expected = expr(**data).data
 
         # Alternatively evaluate via a program.
-        program = OpProgram(expr)
+        program = compile_funsor(expr)
         actual = program(**data)
         assert (acutal == expected).all()
 
