@@ -5,11 +5,11 @@ import funsor.ops as ops
 from funsor.domains import Real
 from funsor.interpretations import reflect
 from funsor.op_factory import make_op
+from funsor.ops.tracer import trace_function
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import sum_product
 from funsor.tensor import Tensor
 from funsor.testing import assert_close, randn
-from funsor.tracer import trace_function
 
 
 def test_sum_product():
