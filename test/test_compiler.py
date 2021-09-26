@@ -3,6 +3,8 @@
 
 import functools
 
+import pytest
+
 import funsor.ops as ops
 from funsor.compiler import FunsorProgram
 from funsor.domains import Real, Reals
@@ -75,11 +77,12 @@ def test_lowered_4():
     check_compiler(z)
 
 
+@pytest.mark.xfail(reason="Bound variable lowering is not yet supported")
 def test_sum_product():
     factors = [
         Variable("f", Reals[5])["x"],
         Variable("g", Reals[5, 4])["x", "y"],
-        Variable("h", Reals[4, 3, 2])["x", "y", "i"],
+        Variable("h", Reals[4, 3, 2])["y", "z", "i"],
     ]
     eliminate = frozenset({"x", "y", "z", "i"})
     plates = frozenset({"i"})
