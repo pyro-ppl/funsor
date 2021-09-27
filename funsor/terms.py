@@ -17,6 +17,7 @@ import funsor.ops as ops
 from funsor.domains import (
     Array,
     Bint,
+    BintType,
     Domain,
     Product,
     ProductDomain,
@@ -34,7 +35,7 @@ from funsor.interpretations import (
 )
 from funsor.interpreter import PatternMissingError, interpret
 from funsor.ops import AssociativeOp, GetitemOp, Op
-from funsor.ops.builtin import normalize_ellipsis, parse_ellipsis
+from funsor.ops.builtin import normalize_ellipsis, parse_ellipsis, parse_slice
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
 from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_args, get_origin
 from funsor.util import getargspec, lazy_property, pretty, quote
@@ -1478,6 +1479,15 @@ class Slice(Funsor, metaclass=SliceMeta):
             )
 
 
+@to_funsor.register(slice)
+def slice_to_funsor(s, output=None, dim_to_name=None):
+    if not isinstance(output, BintType):
+        raise ValueError("Incompatible slice output: {output}")
+    start, stop, step = parse_slice(s, output.size)
+    i = Variable("slice", output)
+    return Lambda(i, Slice("slice", start, stop, step, output.size))
+
+
 class Align(Funsor):
     """
     Lazy call to ``.align(...)``.
@@ -1575,20 +1585,21 @@ class Stack(Funsor):
         index = subs[0][1]
 
         # Try to eagerly select an index.
-        assert index.output == Bint[len(self.parts)]
-
-        if isinstance(index, Number):
-            # Select a single part.
-            return self.parts[index.data]
-        elif isinstance(index, Variable):
-            # Rename the stacking dimension.
-            parts = self.parts
-            return Stack(index.name, parts)
-        elif isinstance(index, Slice):
-            parts = self.parts[index.slice]
-            return Stack(index.name, parts)
+        if index.output == Bint[len(self.parts)]:
+            if isinstance(index, Number):
+                # Select a single part.
+                return self.parts[index.data]
+            elif isinstance(index, Variable):
+                # Rename the stacking dimension.
+                parts = self.parts
+                return Stack(index.name, parts)
+            elif isinstance(index, Slice):
+                parts = self.parts[index.slice]
+                return Stack(index.name, parts)
+            else:
+                raise NotImplementedError("TODO support advanced indexing in Stack")
         else:
-            raise NotImplementedError("TODO support advanced indexing in Stack")
+            raise NotImplementedError("TODO support slicing in Stack")
 
     def eager_reduce(self, op, reduced_vars):
         parts = self.parts
@@ -1765,11 +1776,12 @@ def eager_getslice_lambda(op, x):
     expr = x.expr
     if head != slice(None):
         expr = expr(**{x.var.name: head})
-        if x.var.name not in expr.inputs:
-            return expr
     if tail:
         expr = ops.getslice(expr, tail)
-    return Lambda(x.var, expr)
+    if x.var.name in expr.inputs:  # dim is preserved, e.g. x[1:]
+        return Lambda(x.var, expr)
+    else:  # dim is eliminated, e.g. x[0]
+        return expr
 
 
 class Independent(Funsor):
