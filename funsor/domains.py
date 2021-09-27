@@ -10,6 +10,7 @@ from functools import reduce
 from weakref import WeakValueDictionary
 
 import funsor.ops as ops
+from funsor.ops.builtin import parse_ellipsis, parse_slice
 from funsor.util import broadcast_shape, get_backend, get_tracing_state, quote
 
 Domain = type
@@ -329,6 +330,58 @@ def _find_domain_getitem(op, lhs_domain, rhs_domain):
         raise NotImplementedError(
             "Cannot statically infer domain from: " f"{lhs_domain}[{rhs_domain}]"
         )
+
+
+@find_domain.register(ops.GetsliceOp)
+def _find_domain_getslice(op, domain):
+    index = op.defaults["index"]
+    if isinstance(domain, ArrayType):
+        dtype = domain.dtype
+        shape = list(domain.shape)
+        left, right = parse_ellipsis(index)
+
+        i = 0
+        for part in left:
+            if part is None:
+                shape.insert(i, 1)
+                i += 1
+            elif isinstance(part, int):
+                del shape[i]
+            elif isinstance(part, slice):
+                start, stop, step = parse_slice(part, shape[i])
+                shape[i] = max(0, (stop - start + step - 1) // step)
+                i += 1
+            else:
+                raise ValueError(part)
+
+        i = -1
+        for part in reversed(right):
+            if part is None:
+                shape.insert(len(shape) + i + 1, 1)
+                i -= 1
+            elif isinstance(part, int):
+                del shape[i]
+            elif isinstance(part, slice):
+                start, stop, step = parse_slice(part, shape[i])
+                shape[i] = max(0, (stop - start + step - 1) // step)
+                i -= 1
+            else:
+                raise ValueError(part)
+
+        return Array[dtype, tuple(shape)]
+
+    if isinstance(domain, ProductDomain):
+        if isinstance(index, tuple):
+            assert len(index) == 1
+            index = index[0]
+        if isinstance(index, int):
+            return domain.__args__[index]
+        elif isinstance(index, slice):
+            return Product[domain.__args__[index]]
+        else:
+            raise ValueError(index)
+
+    raise NotImplementedError("TODO")
 
 
 @find_domain.register(ops.BinaryOp)
