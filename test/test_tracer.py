@@ -27,7 +27,7 @@ def test_id():
     def fn(x):
         return x
 
-    data = dict(x=randn(2,3))
+    data = dict(x=randn(2, 3))
     check_tracer(fn, data)
 
 

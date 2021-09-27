@@ -9,9 +9,9 @@ import operator
 import weakref
 from collections import OrderedDict
 
+import funsor.instrument as instrument
 from funsor.registry import PartialDispatcher
 from funsor.util import methodof
-import funsor.instrument as instrument
 
 
 def apply(function, args, kwargs={}):
