@@ -175,7 +175,6 @@ class Op(metaclass=OpMeta):
         return self.__name__
 
     def __call__(self, *args, **kwargs):
-        global _TRACE
         raw_args = args
 
         # Normalize args, kwargs.
@@ -187,18 +186,12 @@ class Op(metaclass=OpMeta):
         assert len(args) >= cls.arity
         kwargs = bound.kwargs
 
-        # Dispatch, optionally tracing.
+        # Dispatch.
         fn = cls.dispatcher.partial_call(*args[: cls.arity])
-        if _TRACE is None:
-            result = fn(*args, **kwargs)
-        else:
-            try:
-                trace, _TRACE = _TRACE, None  # do not trace inside ops
-                result = fn(*args, **kwargs)
-            finally:
-                _TRACE = trace
-            _TRACE.setdefault(id(result), (result, self, raw_args))
+        result = fn(*args, **kwargs)
 
+        if _TRACE is not None:
+            _TRACE.setdefault(id(result), (result, self, raw_args))
         return result
 
     def register(self, *pattern):

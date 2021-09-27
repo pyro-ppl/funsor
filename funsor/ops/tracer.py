@@ -35,35 +35,34 @@ def trace_function(fn, kwargs: dict, *, allow_constants=False):
     """
     # Extract kwargs.
     assert isinstance(kwargs, dict)
-    assert not any(is_atom(v) for v in kwargs.values())
-    input_oids = {id(v) for v in kwargs.values()}
-    assert len(input_oids) == len(kwargs), "repeated inputs"
+    assert all(is_variable(v) for v in kwargs.values())
+    kwarg_ids = {id(v) for v in kwargs.values()}
+    assert len(kwarg_ids) == len(kwargs), "repeated inputs"
 
     # Trace the function.
     with trace_ops() as trace:
         root = fn(**kwargs)
-    assert not is_atom(root)
-    trace = list(reversed(trace.values()))  # backward
+    assert is_variable(root)
 
     # Extract relevant portion of trace.
-    dag = OrderedDict([(id(root), None)])
-    for result, op, args in trace:
-        if id(result) not in dag:
+    dag = OrderedDict({id(root): (root, None, None)})
+    for result, op, args in reversed(trace.values()):  # backward
+        if id(result) not in dag or not is_variable(result):
             continue  # not needed
         for arg in args:
             dag.setdefault(id(arg), (arg, None, None))
         dag[id(result)] = result, op, args
-    anf = list(reversed(dag.values()))  # forwards
+    anf = list(reversed(dag.values()))  # forward
 
     # Collect constants (leaves).
     ids = {}
     constants = []
     for result, op, args in anf:
-        if op is None and id(result) not in input_oids:
+        if op is None and id(result) not in kwarg_ids:
             ids[id(result)] = len(ids)
             constants.append(result)
-    if constants and not allow_constants:
-        raise ValueError(f"Found {len(constants)}")
+            if not allow_constants and is_variable(result):
+                raise ValueError(f"Found constant: {repr(result)}")
 
     # Collect inputs (leaves).
     inputs = []
@@ -76,6 +75,7 @@ def trace_function(fn, kwargs: dict, *, allow_constants=False):
     for result, op, args in anf:
         if id(result) in ids:
             continue  # constant or free variable
+        assert op is not None
         ids[id(result)] = len(ids)
         arg_ids = tuple(ids[id(arg)] for arg in args)
         operations.append((op, arg_ids))
@@ -84,23 +84,23 @@ def trace_function(fn, kwargs: dict, *, allow_constants=False):
 
 
 @singledispatch
-def is_atom(x):
+def is_variable(x):
     return is_numeric_array(x)
 
 
-@is_atom.register(int)
-def _is_atom_atom(x):
-    return type(x) is int  # avoid numpy types
+@is_variable.register(int)
+def _is_variable_atom(x):
+    return type(x) is not int  # allow numpy types
 
 
-@is_atom.register(float)
-def _is_atom_atom(x):
-    return type(x) is float  # avoid numpy types
+@is_variable.register(float)
+def _is_variable_atom(x):
+    return type(x) is not float  # allow numpy types
 
 
-@is_atom.register(tuple)
-def _is_atom_tuple(x):
-    return all(map(is_atom, x))
+@is_variable.register(tuple)
+def _is_variable_tuple(x):
+    return any(map(is_variable, x))
 
 
 __all__ = [

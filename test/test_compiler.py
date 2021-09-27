@@ -6,7 +6,7 @@ import functools
 import pytest
 
 import funsor.ops as ops
-from funsor.compiler import FunsorProgram
+from funsor.compiler import compile_funsor
 from funsor.domains import Real, Reals
 from funsor.interpretations import reflect
 from funsor.optimizer import apply_optimizer
@@ -39,7 +39,7 @@ def check_compiler(expr):
     expected_data = extract_data(expected)
 
     # Execute a funsor program.
-    program = FunsorProgram(expr)
+    program = compile_funsor(expr)
     actual = program(**subs)
     assert_close(actual, expected_data)
 
