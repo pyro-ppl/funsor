@@ -9,6 +9,10 @@ from .op import trace_ops
 from .program import OpProgram
 
 
+def _debug(x):
+    return f"{type(x).__module__.split('.')[0]}.{type(x).__name__}({hex(id(x))[2:]})"
+
+
 def trace_function(fn, kwargs: dict, *, allow_constants=False):
     """
     Traces function to an :class:`~funsor.ops.program.OpProgram` that runs on
@@ -17,7 +21,7 @@ def trace_function(fn, kwargs: dict, *, allow_constants=False):
     Example::
 
         # Create a function involving ops.
-        def fn(a, x, b):
+        def fn(a, b, x):
             return ops.add(ops.matmul(a, x), b)
 
         # Evaluate via Funsor substitution.
@@ -89,12 +93,12 @@ def is_variable(x):
 
 
 @is_variable.register(int)
-def _is_variable_atom(x):
+def _is_variable_int(x):
     return type(x) is not int  # allow numpy types
 
 
 @is_variable.register(float)
-def _is_variable_atom(x):
+def _is_variable_float(x):
     return type(x) is not float  # allow numpy types
 
 

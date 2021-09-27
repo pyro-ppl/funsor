@@ -11,6 +11,7 @@ from collections import OrderedDict
 
 from funsor.registry import PartialDispatcher
 from funsor.util import methodof
+import funsor.instrument as instrument
 
 
 def apply(function, args, kwargs={}):
@@ -188,7 +189,15 @@ class Op(metaclass=OpMeta):
 
         # Dispatch.
         fn = cls.dispatcher.partial_call(*args[: cls.arity])
-        result = fn(*args, **kwargs)
+        if instrument.DEBUG:
+            print(instrument.get_indent() + repr(self))
+            instrument.STACK_SIZE += 1
+            try:
+                result = fn(*args, **kwargs)
+            finally:
+                instrument.STACK_SIZE -= 1
+        else:
+            result = fn(*args, **kwargs)
 
         if _TRACE is not None:
             _TRACE.setdefault(id(result), (result, self, raw_args))
