@@ -44,7 +44,7 @@ def trace_function(fn, kwargs: dict, *, allow_constants=False):
     assert len(kwarg_ids) == len(kwargs), "repeated inputs"
 
     # Trace the function.
-    with trace_ops() as trace:
+    with trace_ops(is_variable) as trace:
         root = fn(**kwargs)
     assert is_variable(root)
 
@@ -89,6 +89,10 @@ def trace_function(fn, kwargs: dict, *, allow_constants=False):
 
 @singledispatch
 def is_variable(x):
+    """
+    An object is variable if it is either backend arrays or is a nested tuple
+    containing at least one backend array.
+    """
     return is_numeric_array(x)
 
 

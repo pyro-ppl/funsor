@@ -1,10 +1,13 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+from collections import OrderedDict
+
 import pytest
 
 import funsor.ops as ops
-from funsor.domains import Real
+from funsor.domains import Real, Reals
+from funsor.gaussian import Gaussian
 from funsor.interpretations import reflect
 from funsor.interpreter import reinterpret
 from funsor.op_factory import make_op
@@ -12,6 +15,7 @@ from funsor.ops.tracer import trace_function
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import sum_product
 from funsor.tensor import Tensor
+from funsor.terms import to_data, to_funsor
 from funsor.testing import assert_close, randn
 
 
@@ -54,6 +58,42 @@ def test_wrapped_op():
 
     data = dict(x=randn(()))
     check_tracer(fn, data)
+
+
+def test_use_funsor_interally_1():
+    def fn(x, y, z):
+        # Convert backend arrays -> to funsors.
+        x = to_funsor(x)
+        y = to_funsor(y)
+        z = to_funsor(z)
+
+        # Operate on funsors.
+        result = x @ y + z + 1
+
+        # Convert funsors -> to backend array.
+        return to_data(result)
+
+    data = dict(x=randn(2, 3), y=randn(3, 4), z=randn(2, 4))
+    check_tracer(fn, data)
+
+
+@pytest.mark.xfail(reason="TODO Gaussian directly uses backend, bypassing ops")
+def test_use_funsor_interally_2():
+    def gaussian_log_prob(info_vec, precision, value):
+        # Convert backend arrays -> to funsors.
+        g = Gaussian(info_vec, precision, OrderedDict(x=Reals[3]))
+        value = to_funsor(value)
+
+        # Operate on funsors.
+        log_prob = g(x=value) - g.reduce(ops.logaddexp)
+
+        # Convert funsors -> to backend array.
+        return to_data(log_prob)
+
+    p = randn(3, 3)
+    precision = p @ p.T
+    data = dict(info_vec=randn(3), precision=precision, value=randn(3))
+    check_tracer(gaussian_log_prob, data)
 
 
 @pytest.mark.xfail(reason="TODO support tuples for multiple outputs")

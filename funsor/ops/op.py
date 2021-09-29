@@ -9,7 +9,6 @@ import operator
 import weakref
 from collections import OrderedDict
 
-import funsor.instrument as instrument
 from funsor.registry import PartialDispatcher
 from funsor.util import methodof
 
@@ -64,17 +63,20 @@ class WeakPartial:
 
 
 _TRACE = None
+_TRACE_FILTER_ARGS = None
 
 
 @contextlib.contextmanager
-def trace_ops():
-    global _TRACE
+def trace_ops(filter_args):
+    global _TRACE, _TRACE_FILTER_ARGS
     assert _TRACE is None, "not reentrant"
     try:
         _TRACE = OrderedDict()
+        _TRACE_FILTER_ARGS = filter_args
         yield _TRACE
     finally:
         _TRACE = None
+        _TRACE_FILTER_ARGS = None
 
 
 class OpMeta(type):
@@ -176,6 +178,7 @@ class Op(metaclass=OpMeta):
         return self.__name__
 
     def __call__(self, *args, **kwargs):
+        global _TRACE, _TRACE_FILTER_ARGS
         raw_args = args
 
         # Normalize args, kwargs.
@@ -189,18 +192,17 @@ class Op(metaclass=OpMeta):
 
         # Dispatch.
         fn = cls.dispatcher.partial_call(*args[: cls.arity])
-        if instrument.DEBUG:
-            print(instrument.get_indent() + repr(self))
-            instrument.STACK_SIZE += 1
-            try:
-                result = fn(*args, **kwargs)
-            finally:
-                instrument.STACK_SIZE -= 1
-        else:
+        if _TRACE is None or not _TRACE_FILTER_ARGS(raw_args):
             result = fn(*args, **kwargs)
+        else:
+            # Trace this op but avoid tracing internal ops.
+            try:
+                trace, _TRACE = _TRACE, None
+                result = fn(*args, **kwargs)
+                trace.setdefault(id(result), (result, self, raw_args))
+            finally:
+                _TRACE = trace
 
-        if _TRACE is not None:
-            _TRACE.setdefault(id(result), (result, self, raw_args))
         return result
 
     def register(self, *pattern):
