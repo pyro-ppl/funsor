@@ -483,3 +483,20 @@ def iter_subsets(iterable, *, min_size=None, max_size=None):
         max_size = len(iterable)
     for size in range(min_size, max_size + 1):
         yield from itertools.combinations(iterable, size)
+
+
+class DesugarGetitem:
+    """
+    Helper to desugar ``.__getitem__()`` syntax.
+
+    Example::
+
+        >>> desugar_getitem[1:3, ..., None]
+        (slice(1, 3), Ellipsis, None)
+    """
+
+    def __getitem__(self, index):
+        return index
+
+
+desugar_getitem = DesugarGetitem()

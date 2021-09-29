@@ -859,6 +859,16 @@ def eager_getitem_tensor_tensor(op, lhs, rhs):
     return Tensor(data, inputs, lhs.dtype)
 
 
+@eager.register(Unary, ops.GetsliceOp, Tensor)
+def eager_getslice_tensor(op, x):
+    index = op.defaults["index"]
+    if not isinstance(index, tuple):
+        index = (index,)
+    index = (slice(None),) * len(x.inputs) + index
+    data = x.data[index]
+    return Tensor(data, x.inputs, x.dtype)
+
+
 @eager.register(
     Finitary, ops.StackOp, typing.Tuple[typing.Union[(Number, Tensor)], ...]
 )

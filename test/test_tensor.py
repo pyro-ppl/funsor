@@ -31,6 +31,7 @@ from funsor.testing import (
     assert_close,
     assert_equiv,
     check_funsor,
+    desugar_getitem,
     empty,
     iter_subsets,
     rand,
@@ -606,6 +607,60 @@ def test_lambda_getitem():
     i = Variable("i", Bint[2])
     assert x[i] is y
     assert Lambda(i, y) is x
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        desugar_getitem[0],
+        desugar_getitem[1, 2],
+        desugar_getitem[None],
+        desugar_getitem[None, 1],
+        desugar_getitem[2, None],
+        desugar_getitem[None, 0, None],
+        desugar_getitem[:],
+        desugar_getitem[:, :],
+        desugar_getitem[1:],
+        desugar_getitem[1:3],
+        desugar_getitem[::2],
+        desugar_getitem[1::2],
+        desugar_getitem[:, None],
+        desugar_getitem[None, :],
+        desugar_getitem[None, :, 1],
+        desugar_getitem[...],
+        desugar_getitem[..., 0],
+        desugar_getitem[..., 0, 1],
+        desugar_getitem[..., 0, :],
+        desugar_getitem[..., None, :],
+        desugar_getitem[..., 1:-1:2, :],
+        desugar_getitem[:, 0, ...],
+        desugar_getitem[:, None, ...],
+        desugar_getitem[:, 1:-1:2, ...],
+        desugar_getitem[None, ..., None],
+        desugar_getitem[:, None, ..., :, None],
+        desugar_getitem[:, None, ..., None, :],
+        desugar_getitem[None, :, ..., :, None],
+        desugar_getitem[None, :, ..., None, :],
+        desugar_getitem[0, None, ..., 0, None],
+        desugar_getitem[0, None, ..., None, 0],
+        desugar_getitem[None, 0, ..., 0, None],
+        desugar_getitem[None, 0, ..., None, 0],
+    ],
+    ids=str,
+)
+def test_getslice_shape(index):
+    shape = (6, 5, 4, 3)
+    data = randn(shape)
+    expected = Tensor(data[index])
+
+    # Check eager indexing.
+    actual = Tensor(data)[index]
+    assert_close(actual, expected)
+
+    # Check lazy find_domain.
+    actual = Variable("x", Reals[shape])[index]
+    assert actual.dtype == expected.dtype
+    assert actual.shape == expected.shape
 
 
 REDUCE_OPS = [

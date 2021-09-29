@@ -69,14 +69,14 @@ class Constant(Funsor, metaclass=ConstantMeta):
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        subs = OrderedDict((k, v) for k, v in subs)
+        subs = OrderedDict(subs)
         const_inputs = OrderedDict()
         for k, d in self.const_inputs.items():
             if k in subs:
                 v = subs[k]
                 assert v.output == d
                 assert all(
-                    v.inputs[k] == self.arg.inputs[k]
+                    v.inputs[k] == self.inputs[k]
                     for k in set(v.inputs).intersection(self.inputs)
                 )
                 const_inputs.update(

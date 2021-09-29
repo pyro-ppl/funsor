@@ -629,6 +629,35 @@ def test_stack_lambda(dtype):
     assert z[1] is x2
 
 
+@pytest.mark.parametrize("dtype", ["real", 4, 5])
+def test_stack_lambda_2(dtype):
+
+    x1 = Number(0, dtype)
+    x2 = Number(1, dtype)
+    x3 = Number(2, dtype)
+    x4 = Number(3, dtype)
+    x = [[x1, x2, x3], [x2, x3, x4]]
+
+    i = Variable("i", Bint[3])
+    y1 = Lambda(i, Stack("i", (x1, x2, x3)))
+    y2 = Lambda(i, Stack("i", (x2, x3, x4)))
+
+    j = Variable("j", Bint[2])
+    z = Lambda(j, Stack("j", (y1, y2)))
+    assert not z.inputs
+    assert z.output == Array[dtype, (2, 3)]
+
+    assert z[0] is y1
+    assert z[1] is y2
+    for i, j in itertools.product(range(2), range(3)):
+        assert z[i, j] is x[i][j]
+        assert z[:, j][i] is x[i][j]
+        assert z[i, :][j] is x[i][j]
+        # TODO support advanced slicing of Stack
+        # assert z[0:9, j][i] is x[i][j]
+        # assert z[i, 0:9][j] is x[i][j]
+
+
 def test_funsor_tuple():
     x = Number(1, 3)
     y = Number(2.5, "real")
@@ -643,6 +672,10 @@ def test_funsor_tuple():
     assert xyz[0] is x
     assert xyz[1] is y
     assert xyz[2] is z
+    assert xyz[:] is xyz
+    assert xyz[1:] is Tuple((y, z))
+    assert xyz[:2] is Tuple((x, y))
+    assert xyz[::2] is Tuple((x, z))
 
     x1, y1, z1 = xyz
     assert x1 is x
