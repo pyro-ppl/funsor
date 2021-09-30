@@ -158,11 +158,12 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
 def eager_reduce_exp(op, arg, reduced_vars):
     # x.exp().reduce(ops.add) == x.reduce(ops.logaddexp).exp()
     log_result = arg.arg.reduce(ops.logaddexp, reduced_vars)
-    if log_result is not normalize.interpret(
-        Reduce, ops.logaddexp, arg.arg, reduced_vars
-    ):
-        return log_result.exp()
-    return None
+    #  if log_result is not normalize.interpret(
+    #      Reduce, ops.logaddexp, arg.arg, reduced_vars
+    #  ):
+    #      return log_result.exp()
+    #  return None
+    return log_result.exp()
 
 
 @eager.register(
