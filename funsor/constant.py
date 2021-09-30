@@ -102,8 +102,9 @@ class Constant(Funsor, metaclass=ConstantMeta):
 
         const_names = names[: len(self.const_inputs)]
         arg_names = names[len(self.const_inputs) :]
-        assert tuple(self.const_inputs) == const_names
-        return Constant(self.const_inputs, self.arg.align(arg_names))
+        assert frozenset(self.const_inputs) == frozenset(const_names)
+        const_inputs = OrderedDict((name, self.inputs[name]) for name in const_names)
+        return Constant(const_inputs, self.arg.align(arg_names))
 
 
 @eager.register(Reduce, ops.AddOp, Constant, frozenset)
