@@ -3,6 +3,7 @@
 
 import functools
 import itertools
+import math
 import typing
 import warnings
 from collections import Counter, OrderedDict
@@ -636,6 +637,7 @@ def eager_scatter_number(op, subs, source, reduced_vars):
     return eager_scatter_tensor(op, subs, source, reduced_vars)
 
 
+# FIXME Does this blow out one-hot tensors, using unnecessarily much memory?
 @eager.register(Scatter, Op, tuple, Tensor, frozenset)
 def eager_scatter_tensor(op, subs, source, reduced_vars):
     if not all(isinstance(v, (Variable, Number, Slice, Tensor)) for k, v in subs):
@@ -676,7 +678,7 @@ def eager_scatter_tensor(op, subs, source, reduced_vars):
     # Construct a destination backend tensor.
     output = source.output
     shape = tuple(d.size for d in destin_inputs.values()) + output.shape
-    destin = ops.new_full(source.data, shape, ops.UNITS[op])
+    destin = ops.new_full(source.data, shape, ops.UNITS.get(op, math.nan))
 
     # TODO Add a check for injectivity and dispatch to scatter_add etc.
     data = ops.scatter(destin, indices, source_data)

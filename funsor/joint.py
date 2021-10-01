@@ -16,7 +16,7 @@ from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpretations import eager, moment_matching, normalize
 from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, align_tensor
-from funsor.terms import Funsor, Independent, Number, Reduce, Unary
+from funsor.terms import Funsor, Independent, Number, Reduce, Scatter, Unary
 from funsor.typing import Variadic
 
 
@@ -72,6 +72,26 @@ def eager_cat_homogeneous(name, part_name, *parts):
         discrete = ops.cat(discretes, dim)
         result = result + Tensor(discrete, int_inputs)
     return result
+
+
+# FIXME this is too aggressive, but does fix some numpyro tests in
+# motivated by https://github.com/pyro-ppl/numpyro/pull/991
+@eager.register(
+    Contraction,
+    AssociativeOp,
+    AssociativeOp,
+    frozenset,
+    Delta[Tuple[Tuple[str, Tuple[Tensor, Number]], ...]],
+    Tensor,
+)
+def eager_delta_to_scatter(red_op, bin_op, reduced_vars, delta, tensor):
+    source = tensor
+    subs = {}
+    for name, (point, log_density) in delta.terms:
+        subs[name] = point
+        source = bin_op(source, log_density)
+    subs = tuple(subs.items())
+    return Scatter(red_op, subs, source, reduced_vars)
 
 
 #################################
