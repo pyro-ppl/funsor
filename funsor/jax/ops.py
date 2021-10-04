@@ -286,7 +286,7 @@ def _safesub(x, y):
 
 @ops.scatter.register(array, tuple, array)
 def _scatter(dest, indices, src):
-    return index_update(dest, indices, src)
+    return np.asarray(dest).at(indices).set(src)
 
 
 @ops.stack.register(typing.Tuple[typing.Union[array + (int, float)], ...])
