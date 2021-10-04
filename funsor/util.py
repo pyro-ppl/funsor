@@ -205,6 +205,22 @@ def get_backend():
     return _FUNSOR_BACKEND
 
 
+def get_default_dtype():
+    backend = get_backend()
+    if backend == "torch":
+        torch = sys.modules.get("torch")
+
+        return str(torch.get_default_dtype()).split(".")[1]
+    elif backend == "numpy":
+        np = sys.modules.get("numpy")
+
+        return np.dtype(np.float_).name
+    elif backend == "jax":
+        np = sys.modules.get("jax")
+
+        return np.dtype(np.float_).name
+
+
 def get_tracing_state():
     torch = sys.modules.get("torch")
     if torch is not None:

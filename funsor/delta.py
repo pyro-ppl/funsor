@@ -21,6 +21,7 @@ from funsor.terms import (
     eager,
     to_funsor,
 )
+from funsor.util import get_default_dtype
 
 from . import ops
 
@@ -149,7 +150,9 @@ class Delta(Funsor, metaclass=DeltaMeta):
                     for side in (value, point)
                     for d in side.inputs.values()
                 ):
-                    log_densities.append((value == point).all().log() + log_density)
+                    dtype = get_default_dtype()
+                    is_equal = ops.astype((value == point).all(), dtype)
+                    log_densities.append(is_equal.log() + log_density)
                     continue
 
                 # Try to invert the substitution.

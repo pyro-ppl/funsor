@@ -278,6 +278,19 @@ def _find_domain_pointwise_unary_generic(op, domain):
     raise NotImplementedError
 
 
+@find_domain.register(ops.AstypeOp)
+def _find_domain_astype(op, domain):
+    if op.defaults["dtype"] in ("float", "double", "float32", "float64"):
+        dtype = "real"
+    elif op.defaults["dtype"] in ("bool"):
+        dtype = 2
+    elif op.defaults["dtype"] in ("int", "int8", "int16", "int32", "int64", "uint8"):
+        dtype = domain.dtype
+    else:
+        raise NotImplementedError
+    return Array[dtype, domain.shape]
+
+
 @find_domain.register(ops.LogOp)
 @find_domain.register(ops.ExpOp)
 def _find_domain_log_exp(op, domain):
