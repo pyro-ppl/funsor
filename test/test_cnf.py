@@ -22,7 +22,7 @@ from funsor.interpretations import eager, normalize, reflect
 from funsor.interpreter import reinterpret
 from funsor.optimizer import apply_optimizer
 from funsor.tensor import Tensor
-from funsor.terms import Number, Variable
+from funsor.terms import Number
 from funsor.testing import (
     assert_close,
     check_funsor,
@@ -139,28 +139,12 @@ def test_eager_contract_tensor_tensor(
 def test_normalize_integrate_contraction():
     data = random_tensor(OrderedDict([("i", Bint[2]), ("j", Bint[3])]))
     point = random_tensor(OrderedDict([("j", Bint[3])]))
-    log_measure = Contraction(
-        ops.null,
-        ops.add,
-        frozenset(),
-        (
-            Delta(
-                "x",
-                point,
-                Number(0.0),
-            ),
-            Constant(
-                (("i", Bint[2]), ("j", Bint[3])),
-                Number(0.0),
-            ),
-        ),
+    log_measure = Delta("x", point) + Constant(
+        (("i", Bint[2]), ("j", Bint[3])), Number(0.0)
     )
-    integrand = Constant(
-        (("x", Real),),
-        data,
-    )
+    integrand = Constant((("x", Real),), data)
     with reflect:
-        term = Integrate(log_measure, integrand, frozenset({Variable("x", Real)}))
+        term = Integrate(log_measure, integrand, "x")
         result = term.reduce(ops.add, {"i", "j"})
 
     with eager:
