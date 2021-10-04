@@ -9,7 +9,6 @@ import numpy as onp
 from jax import lax
 from jax.core import Tracer
 from jax.interpreters.xla import DeviceArray
-from jax.ops import index_update
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, gammaln, logsumexp
 
