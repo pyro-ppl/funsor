@@ -206,6 +206,12 @@ def get_backend():
 
 
 def get_default_dtype():
+    """
+    Get the current default floating point.
+
+    :return: floating point dtype.
+    :rtype: str
+    """
     backend = get_backend()
     if backend == "torch":
         torch = sys.modules.get("torch")
