@@ -39,7 +39,7 @@ setup(
     ],
     extras_require={
         "torch": ["pyro-ppl>=1.6.0", "torch>=1.9.0"],
-        "jax": ["numpyro>=0.2.4", "jax>=0.1.57", "jaxlib>=0.1.37"],
+        "jax": ["numpyro>=0.7.0", "jax>=0.2.13", "jaxlib>=0.1.65"],
         "test": [
             "black",
             "flake8",

@@ -94,6 +94,18 @@ class Constant(Funsor, metaclass=ConstantMeta):
         assert reduced_vars.issubset(self.arg.inputs)
         return Constant(self.const_inputs, self.arg.reduce(op, reduced_vars))
 
+    def align(self, names):
+        assert isinstance(names, tuple)
+        assert all(name in self.inputs for name in names)
+        if not names or names == tuple(self.inputs):
+            return self
+
+        const_names = names[: len(self.const_inputs)]
+        arg_names = names[len(self.const_inputs) :]
+        assert frozenset(self.const_inputs) == frozenset(const_names)
+        const_inputs = OrderedDict((name, self.inputs[name]) for name in const_names)
+        return Constant(const_inputs, self.arg.align(arg_names))
+
 
 @eager.register(Reduce, ops.AddOp, Constant, frozenset)
 @eager.register(Reduce, ops.MulOp, Constant, frozenset)

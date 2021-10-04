@@ -74,6 +74,18 @@ def test_add_constant_delta():
     assert d2 + c is d2 + c(y=point2)
 
 
+def test_align():
+    data = Tensor(randn((2, 3)), OrderedDict(i=Bint[2], j=Bint[3]))
+    x = Constant(OrderedDict(a=Real, b=Bint[4]), data)
+    y = x.align(("b", "a", "j", "i"))
+    assert isinstance(y, Constant)
+    assert tuple(y.inputs) == ("b", "a", "j", "i")
+    for b in range(4):
+        for i in range(2):
+            for j in range(3):
+                assert x(a=0, b=b, i=i, j=j) == y(a=0, b=b, i=i, j=j)
+
+
 @pytest.mark.skipif(
     get_backend() != "torch",
     reason="numpy/jax backend has not implemented ProvenanceTensor",

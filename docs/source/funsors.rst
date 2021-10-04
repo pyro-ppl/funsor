@@ -56,3 +56,11 @@ Integrate
     :undoc-members:
     :show-inheritance:
     :member-order: bysource
+
+Constant
+--------
+.. automodule:: funsor.constant
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
