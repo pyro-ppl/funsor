@@ -214,7 +214,7 @@ def get_default_dtype():
         np = sys.modules.get("numpy")
         return np.dtype(np.float_).name
     elif backend == "jax":
-        np = sys.modules.get("jax")
+        np = sys.modules.get("jax.numpy")
         return np.dtype(np.float_).name
 
 
