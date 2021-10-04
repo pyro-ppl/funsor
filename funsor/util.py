@@ -167,6 +167,8 @@ def set_backend(backend):
     :param str backend: either "numpy", "torch", or "jax".
     """
     global _FUNSOR_BACKEND, _JAX_LOADED
+    if _FUNSOR_BACKEND == backend:
+        return
 
     if backend == "numpy":
         if _JAX_LOADED:

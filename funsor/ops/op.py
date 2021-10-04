@@ -1,11 +1,13 @@
 # Copyright Contributors to the Pyro project.
 # SPDX-License-Identifier: Apache-2.0
 
+import contextlib
 import functools
 import inspect
 import math
 import operator
 import weakref
+from collections import OrderedDict
 
 from funsor.registry import PartialDispatcher
 from funsor.util import methodof
@@ -58,6 +60,23 @@ class WeakPartial:
     def __call__(self, *args, **kwargs):
         arg = self.weak_arg()
         return self.fn(arg, *args, **kwargs)
+
+
+_TRACE = None
+_TRACE_FILTER_ARGS = None
+
+
+@contextlib.contextmanager
+def trace_ops(filter_args):
+    global _TRACE, _TRACE_FILTER_ARGS
+    assert _TRACE is None, "not reentrant"
+    try:
+        _TRACE = OrderedDict()
+        _TRACE_FILTER_ARGS = filter_args
+        yield _TRACE
+    finally:
+        _TRACE = None
+        _TRACE_FILTER_ARGS = None
 
 
 class OpMeta(type):
@@ -159,6 +178,9 @@ class Op(metaclass=OpMeta):
         return self.__name__
 
     def __call__(self, *args, **kwargs):
+        global _TRACE, _TRACE_FILTER_ARGS
+        raw_args = args
+
         # Normalize args, kwargs.
         cls = type(self)
         bound = cls.signature.bind_partial(*args, **kwargs)
@@ -170,7 +192,18 @@ class Op(metaclass=OpMeta):
 
         # Dispatch.
         fn = cls.dispatcher.partial_call(*args[: cls.arity])
-        return fn(*args, **kwargs)
+        if _TRACE is None or not _TRACE_FILTER_ARGS(raw_args):
+            result = fn(*args, **kwargs)
+        else:
+            # Trace this op but avoid tracing internal ops.
+            try:
+                trace, _TRACE = _TRACE, None
+                result = fn(*args, **kwargs)
+                trace.setdefault(id(result), (result, self, raw_args))
+            finally:
+                _TRACE = trace
+
+        return result
 
     def register(self, *pattern):
         if len(pattern) != self.arity:
