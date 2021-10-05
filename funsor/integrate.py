@@ -6,6 +6,7 @@ from typing import Union
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
+from funsor.constant import Constant
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian
 from funsor.interpretations import eager, normalize
@@ -114,7 +115,7 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
     ops.MulOp,
     frozenset,
     Unary[ops.ExpOp, Union[GaussianMixture, Delta, Gaussian, Number, Tensor]],
-    (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture),
+    (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture, Constant),
 )
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
     reduced_names = frozenset(v.name for v in reduced_vars)
