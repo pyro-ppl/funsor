@@ -376,16 +376,6 @@ ops.stack.register(typing.Tuple[torch.Tensor, ...])(torch.stack)
 
 @ops.triangular_solve.register(torch.Tensor, torch.Tensor)
 def _triangular_solve(x, y, upper=False, transpose=False):
-    from timeit import default_timer
-
-    from funsor.instrument import COUNTERS
-
-    key = tuple(x.shape), tuple(y.shape)
-    start = default_timer()
     if y.size(-1) == 1:
-        result = x / y
-    else:
-        result = x.triangular_solve(y, upper, transpose).solution
-    COUNTERS["triangular_solve.time"][key] += default_timer() - start
-    COUNTERS["triangular_solve.count"][key] += 1
-    return result
+        return x / y
+    return x.triangular_solve(y, upper, transpose).solution
