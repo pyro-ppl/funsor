@@ -23,7 +23,11 @@ def _quote(x, indent, out):
     """
     Work around PyTorch not supporting reproducible repr.
     """
-    out.append((indent, "torch.tensor({}, dtype={})".format(repr(x.tolist()), x.dtype)))
+    if x.numel() >= quote.printoptions["threshold"]:
+        data = "..." + " x ".join(str(int(d)) for d in x.shape) + "..."
+    else:
+        data = repr(x.tolist())
+    out.append((indent, f"torch.tensor({data}, dtype={x.dtype})"))
 
 
 @to_funsor.register(ProvenanceTensor)

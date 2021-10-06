@@ -70,17 +70,29 @@ def quote(arg):
     return "\n".join(lines)
 
 
-def pretty(arg, maxlen=40):
+def pretty(arg, linewidth=75, threshold=1000):
     """
     Pretty print an expression. This is useful for debugging.
+
+    :param int linewidth: Maximum linewidth before summarization.
+    :param int threshold: Total number of array elements which trigger
+        summarization rather than full repr (default 1000). To always use the full
+        repr without summarization, pass sys.maxsize
+    :returns: A pretty string.
+    :rtype: str
     """
     out = []
-    _quote_inplace(arg, 0, out)
-    fill = u"   \u2502" * 100
+    try:
+        old = quote.printoptions.copy()
+        quote.printoptions["threshold"] = threshold
+        _quote_inplace(arg, 0, out)
+    finally:
+        quote.printoptions.update(old)
+    fill = "   \u2502" * 100
     lines = []
     for indent, line in out:
-        if len(line) > maxlen:
-            line = line[:maxlen] + "..."
+        if len(line) > linewidth:
+            line = line[: linewidth - 3] + "..."
         lines.append(fill[:indent] + line)
     return "\n".join(lines)
 
@@ -93,13 +105,31 @@ def _quote_inplace(arg, indent, out):
 
 quote.inplace = _quote_inplace
 quote.register = _quote_inplace.register
+quote.printoptions = {"threshold": sys.maxsize}
+quote.reprtypes = ()
+
+
+def _quote_repr(arg, indent, out):
+    out.append((indent, repr(arg)))
+
+
+def _quote_register_repr(typ):
+    quote.register(typ)(_quote_repr)
+    quote.reprtypes = tuple({typ}.union(quote.reprtypes))
+
+
+quote.register_repr = _quote_register_repr
+quote.register_repr(int)
+quote.register_repr(float)
+quote.register_repr(str)
 
 
 @quote.register(tuple)
 def _(arg, indent, out):
-    if not arg:
-        out.append((indent, "()"))
+    if all(isinstance(value, quote.reprtypes) for value in arg):
+        out.append((indent, repr(arg)))
         return
+
     for value in arg[:1]:
         temp = []
         quote.inplace(value, indent + 1, temp)
@@ -121,9 +151,11 @@ def _quote(arg, indent, out):
     """
     Work around NumPy ndarray not supporting reproducible repr.
     """
-    out.append(
-        (indent, "np.array({}, dtype=np.{})".format(repr(arg.tolist()), arg.dtype))
-    )
+    if arg.size >= quote.printoptions["threshold"]:
+        data = "..." + " x ".join(str(d) for d in arg.shape) + "..."
+    else:
+        data = repr(arg.tolist())
+    out.append((indent, f"np.array({data}, dtype=np.{arg.dtype})"))
 
 
 def broadcast_shape(*shapes, **kwargs):

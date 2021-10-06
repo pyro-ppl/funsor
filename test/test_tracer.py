@@ -117,7 +117,6 @@ def test_sum_product():
         with reflect:
             expr = sum_product(ops.logaddexp, ops.add, factors, eliminate, plates)
             expr = apply_optimizer(expr)
-        print(f"DEBUG\n{expr.pretty()}")
         expr = reinterpret(expr)
         return expr.data
 
