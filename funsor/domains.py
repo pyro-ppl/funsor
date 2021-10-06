@@ -254,11 +254,8 @@ class Dependent(metaclass=DependentMeta):
 ################################################################################
 # Function registration
 
-
-@quote.register(BintType)
-@quote.register(RealsType)
-def _(arg, indent, out):
-    out.append((indent, repr(arg)))
+quote.register_repr(BintType)
+quote.register_repr(RealsType)
 
 
 @functools.singledispatch

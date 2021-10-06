@@ -316,8 +316,8 @@ class Funsor(object, metaclass=FunsorMeta):
     def quote(self):
         return quote(self)
 
-    def pretty(self, maxlen=40):
-        return pretty(self, maxlen=maxlen)
+    def pretty(self, *args, **kwargs):
+        return pretty(self, *args, **kwargs)
 
     def __contains__(self, item):
         raise TypeError

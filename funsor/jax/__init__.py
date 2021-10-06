@@ -23,6 +23,8 @@ def _quote(x, indent, out):
     """
     Work around JAX's DeviceArray not supporting reproducible repr.
     """
-    out.append(
-        (indent, "np.array({}, dtype=np.{})".format(repr(x.copy().tolist()), x.dtype))
-    )
+    if x.size >= quote.printoptions["threshold"]:
+        data = "..." + " x ".join(str(d) for d in x.shape) + "..."
+    else:
+        data = repr(x.copy().tolist())
+    out.append((indent, f"np.array({data}, dtype=np.{x.dtype})"))
