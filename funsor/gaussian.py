@@ -29,8 +29,9 @@ from funsor.terms import (
 )
 from funsor.util import broadcast_shape, get_backend, get_tracing_state, lazy_property
 
-# Ratio of rank / dim above which prec_sqrt will be compressed.
-# The space-optimal value is 1.0, but we can avoid unnecessary ops by relaxing.
+# Ratio of rank / dim above which prec_sqrt will be compressed. The
+# space-optimal value is 1.0 (where prec_sqrt is at largest square), but we can
+# reduce computational cost by relaxing to a larger value.
 RANK_COMPRESSION_THRESHOLD = 1.5
 
 
@@ -114,28 +115,13 @@ def _parse_slices(index, value):
     return start_stops, value
 
 
-def _triangularize(A):
-    """
-    Transforms a matrix to a lower triangular matrix such that
-    ``A @ A.T = _triangualize(A) @ _triangularize(A).T`` .
-
-    :param A: input matrix
-    :param str method: either "cholesky" or "qr"
-    """
-    dim, rank = A.shape[-2:]
-    assert rank >= dim
-    return ops.cholesky(A @ ops.transpose(A, -1, -2))
-
-
 def _compress_prec_sqrt(prec_sqrt):
     """
     Compress a wide matrix to a square matrix while preserving its square.
     """
-    assert prec_sqrt.dim() >= 2
     dim, rank = prec_sqrt.shape[-2:]
     if rank <= dim * RANK_COMPRESSION_THRESHOLD:
         return prec_sqrt
-    # TODO Could we do this more cheaply via QR?
     precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
     prec_sqrt = ops.cholesky(precision)
     return prec_sqrt
@@ -272,13 +258,50 @@ def align_gaussian(new_inputs, old):
 
 class GaussianMeta(FunsorMeta):
     """
-    Wrapper to convert between OrderedDict and tuple.
+    Wrapper to convert from external to internal representations.
     """
 
-    def __call__(cls, info_vec, prec_sqrt, inputs):
+    def __call__(
+        cls,
+        info_vec=None,
+        prec_sqrt=None,
+        inputs=None,
+        *,
+        mean=None,
+        precision=None,
+        scale_tril=None,
+        covariance=None,
+    ):
+        # Convert inputs.
+        assert inputs is not None
         if isinstance(inputs, OrderedDict):
             inputs = tuple(inputs.items())
         assert isinstance(inputs, tuple)
+
+        # Convert prec_sqrt.
+        if prec_sqrt is not None:
+            prec_sqrt = _compress_prec_sqrt(prec_sqrt)
+        elif precision is not None:
+            prec_sqrt = ops.cholesky(precision)
+        elif scale_tril is not None:
+            prec_sqrt = ops.triangular_inv(scale_tril, upper=True, transpose=True)
+        elif covariance is not None:
+            scale_tril = ops.cholesky(covariance)
+            prec_sqrt = ops.triangular_inv(scale_tril, upper=True, transpose=True)
+        else:
+            raise ValueError(
+                "At least one of prec_sqrt, precision, scale_tril, or covariance "
+                "must be specified"
+            )
+
+        # Convert info_vec.
+        if info_vec is not None:
+            pass
+        elif mean is not None:
+            info_vec = _mmtv(prec_sqrt, prec_sqrt, mean)
+        else:
+            raise ValueError("At least one of info_vec or precision must be specified")
+
         return super().__call__(info_vec, prec_sqrt, inputs)
 
 
@@ -301,10 +324,15 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     low-dimensional observations on higher dimensional hidden state.
 
     :param torch.Tensor info_vec: An optional batched information vector,
-        where ``info_vec = prec_sqrt @ prec_sqrt.T @ mean``.
+        where ``info_vec = prec_sqrt @ prec_sqrt.T @ mean``. Alternatively
+        you can specify the kwarg ``mean``, which will be converted to
+        ``info_vec``.
     :param torch.Tensor prec_sqrt: A batched square root of the positive
         semidefinite precision matrix. This need not be square, and typically
         has shape ``prec_sqrt.shape == info_vec.shape + (rank,)``.
+        Alternatively you can specify one of the kwargs ``precision``,
+        ``covariance``, or ``scale_tril``, which will be converted to
+        ``prec_sqrt``.
     :param OrderedDict inputs: Mapping from name to
         :class:`~funsor.domains.Domain` .
     """
@@ -316,11 +344,11 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         # Compute total dimension of all real inputs.
         dim = sum(d.num_elements for d in inputs.values() if d.dtype == "real")
-        rank = prec_sqrt.shape[-1]
         if not get_tracing_state():
             assert dim
             assert len(prec_sqrt.shape) >= 2 and prec_sqrt.shape[-2] == dim
             assert len(info_vec.shape) >= 1 and info_vec.shape[-1] == dim
+            rank = prec_sqrt.shape[-1]
             assert rank <= dim * RANK_COMPRESSION_THRESHOLD
 
         # Compute total shape of all Bint inputs.
@@ -328,8 +356,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             d.dtype for d in inputs.values() if isinstance(d.dtype, int)
         )
         if not get_tracing_state():
-            assert prec_sqrt.shape == batch_shape + (dim, rank)
-            assert info_vec.shape == batch_shape + (dim,)
+            assert prec_sqrt.shape[:-2] == batch_shape
+            assert info_vec.shape[:-1] == batch_shape
 
         output = Real
         fresh = frozenset(inputs.keys())
@@ -515,7 +543,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         info_vec = info_a - _mv(prec_sqrt_a, value_bb)
         log_scale = _vv(value_b, info_b - 0.5 * _mv(prec_sqrt_b, value_bb))
         prec_sqrt = ops.expand(prec_sqrt_a, info_vec.shape + prec_sqrt_a.shape[-1:])
-        prec_sqrt = _compress_prec_sqrt(prec_sqrt)
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
             if k not in subs:
@@ -614,7 +641,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # where  P' = At P A  and  i' = At (i - P B)  parametrize a new Gaussian
         # and  C = < B | i - 1/2 P B >  parametrize a new Tensor.
         prec_sqrt = subs_matrix @ old_prec_sqrt
-        prec_sqrt = _compress_prec_sqrt(prec_sqrt)
         old_subs_vector = _mmtv(old_prec_sqrt, old_prec_sqrt, subs_vector)
         info_vec = _mv(subs_matrix, old_info_vec - old_subs_vector)
         const = _vv(subs_vector, old_info_vec - 0.5 * old_subs_vector)
@@ -720,7 +746,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             prec_sqrt = ops.permute(self.prec_sqrt, perm)
             prec_sqrt = prec_sqrt.reshape(prec_sqrt.shape[: len(kept_perm) + 1] + (-1,))
             assert prec_sqrt.shape[:-1] == info_vec.shape
-            prec_sqrt = _compress_prec_sqrt(prec_sqrt)
 
             return Gaussian(info_vec, prec_sqrt, inputs)
 
@@ -800,8 +825,10 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
 
     # Fuse aligned Gaussians.
     info_vec = lhs_info_vec + rhs_info_vec
+    shape = info_vec.shape + (-1,)
+    lhs_prec_sqrt = ops.expand(lhs_prec_sqrt, shape)
+    rhs_prec_sqrt = ops.expand(rhs_prec_sqrt, shape)
     prec_sqrt = ops.cat([lhs_prec_sqrt, rhs_prec_sqrt], -1)
-    prec_sqrt = _compress_prec_sqrt(prec_sqrt)
     return Gaussian(info_vec, prec_sqrt, inputs)
 
 

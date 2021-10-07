@@ -179,6 +179,9 @@ def test_block_matrix_batched(batch_shape, sparse):
     ],
 )
 def test_smoke(expr, expected_type):
+    if "-" in expr:
+        pytest.xfail(reason="not implemented")  # FIXME
+
     g1 = Gaussian(
         info_vec=numeric_array([[0.0, 0.1, 0.2], [2.0, 3.0, 4.0]]),
         prec_sqrt=ops.cholesky(
