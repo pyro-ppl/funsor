@@ -111,11 +111,13 @@ def test_smoke(expr, expected_type):
 
     g = Gaussian(
         info_vec=numeric_array([[0.0, 0.1, 0.2], [2.0, 3.0, 4.0]]),
-        precision=numeric_array(
-            [
-                [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
-                [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
-            ]
+        prec_sqrt=ops.cholesky(
+            numeric_array(
+                [
+                    [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
+                    [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
+                ]
+            )
         ),
         inputs=OrderedDict([("i", Bint[2]), ("x", Reals[3])]),
     )
@@ -254,8 +256,9 @@ def test_reduce_moment_matching_univariate():
     loc = numeric_array([[-s1], [s1]])
     precision = numeric_array([[[s2 ** -2]], [[s3 ** -2]]])
     info_vec = (precision @ ops.unsqueeze(loc, -1)).squeeze(-1)
+    prec_sqrt = ops.cholesky(precision)
     discrete = Tensor(ops.log(numeric_array([1 - p, p])) + t, int_inputs)
-    gaussian = Gaussian(info_vec, precision, inputs)
+    gaussian = Gaussian(info_vec, prec_sqrt, inputs)
     gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
     with moment_matching:
@@ -268,7 +271,8 @@ def test_reduce_moment_matching_univariate():
     expected_info_vec = (expected_precision @ ops.unsqueeze(expected_loc, -1)).squeeze(
         -1
     )
-    expected_gaussian = Gaussian(expected_info_vec, expected_precision, real_inputs)
+    expected_prec_sqrt = ops.cholesky(expected_precision)
+    expected_gaussian = Gaussian(expected_info_vec, expected_prec_sqrt, real_inputs)
     expected_gaussian -= expected_gaussian.log_normalizer
     expected_discrete = Tensor(numeric_array(t))
     expected = expected_discrete + expected_gaussian
@@ -290,9 +294,9 @@ def test_reduce_moment_matching_multivariate():
     real_inputs = OrderedDict(real_inputs)
 
     loc = numeric_array([[-10.0, -1.0], [+10.0, -1.0], [+10.0, +1.0], [-10.0, +1.0]])
-    precision = zeros(4, 1, 1) + ops.new_eye(loc, (2,))
+    prec_sqrt = zeros(4, 1, 1) + ops.new_eye(loc, (2,))
     discrete = Tensor(zeros(4), int_inputs)
-    gaussian = Gaussian(loc, precision, inputs)
+    gaussian = Gaussian(loc, prec_sqrt, inputs)
     gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
     with moment_matching:
@@ -301,8 +305,8 @@ def test_reduce_moment_matching_multivariate():
 
     expected_loc = zeros(2)
     expected_covariance = numeric_array([[101.0, 0.0], [0.0, 2.0]])
-    expected_precision = _inverse(expected_covariance)
-    expected_gaussian = Gaussian(expected_loc, expected_precision, real_inputs)
+    expected_prec_sqrt = ops.pow(expected_covariance, -0.5)
+    expected_gaussian = Gaussian(expected_loc, expected_prec_sqrt, real_inputs)
     expected_gaussian -= expected_gaussian.log_normalizer
     expected_discrete = Tensor(ops.log(numeric_array(4.0)))
     expected = expected_discrete + expected_gaussian

@@ -846,12 +846,12 @@ def eager_normal(loc, scale, value):
         return None  # lazy
 
     info_vec = ops.new_zeros(scale.data, scale.data.shape + (1,))
-    precision = ops.pow(scale.data, -2).reshape(scale.data.shape + (1, 1))
+    prec_sqrt = (1 / scale.data).reshape(scale.data.shape + (1, 1))
     log_prob = -0.5 * math.log(2 * math.pi) - ops.log(scale).sum()
     inputs = scale.inputs.copy()
     var = gensym("value")
     inputs[var] = Real
-    gaussian = log_prob + Gaussian(info_vec, precision, inputs)
+    gaussian = log_prob + Gaussian(info_vec, prec_sqrt, inputs)
     return gaussian(**{var: value - loc})
 
 
@@ -863,7 +863,7 @@ def eager_mvn(loc, scale_tril, value):
         return None  # lazy
 
     info_vec = ops.new_zeros(scale_tril.data, scale_tril.data.shape[:-1])
-    precision = ops.cholesky_inverse(scale_tril.data)
+    prec_sqrt = ops.triangular_inv(scale_tril.data, transpose=True)
     scale_diag = Tensor(ops.diagonal(scale_tril.data, -1, -2), scale_tril.inputs)
     log_prob = (
         -0.5 * scale_diag.shape[0] * math.log(2 * math.pi) - ops.log(scale_diag).sum()
@@ -871,7 +871,7 @@ def eager_mvn(loc, scale_tril, value):
     inputs = scale_tril.inputs.copy()
     var = gensym("value")
     inputs[var] = Reals[scale_diag.shape[0]]
-    gaussian = log_prob + Gaussian(info_vec, precision, inputs)
+    gaussian = log_prob + Gaussian(info_vec, prec_sqrt, inputs)
     return gaussian(**{var: value - loc})
 
 

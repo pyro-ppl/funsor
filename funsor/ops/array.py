@@ -428,6 +428,13 @@ def triangular_solve(x, y, upper=False, transpose=False):
 
 
 @UnaryOp.make
+def triangular_inv(x, upper=False, transpose=False):
+    if transpose:
+        x = np.swapaxes(x, -2, -1)
+    return np.linalg.inv(x)
+
+
+@UnaryOp.make
 def unsqueeze(x, dim):
     return np.expand_dims(x, axis=dim)
 
@@ -474,6 +481,7 @@ __all__ = [
     "std",
     "sum",
     "transpose",
+    "triangular_inv",
     "triangular_solve",
     "unsqueeze",
     "var",

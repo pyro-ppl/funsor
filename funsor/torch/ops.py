@@ -192,6 +192,17 @@ def _cholesky_inverse(x):
     return torch.eye(x.size(-1)).cholesky_solve(x)
 
 
+@ops.triangular_inv.register(torch.Tensor)
+def _triangular_inv(x, upper=False, transpose=False):
+    if x.size(-1) == 1:
+        return x.reciprocal()
+    return (
+        torch.eye(x.size(-1))
+        .triangular_solve(x, upper=upper, transpose=transpose)
+        .solution
+    )
+
+
 @ops.detach.register(torch.Tensor)
 def _detach(x):
     return x.detach()

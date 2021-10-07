@@ -36,7 +36,7 @@ def eager_cat_homogeneous(name, part_name, *parts):
     inputs.update(real_inputs)
     discretes = []
     info_vecs = []
-    precisions = []
+    prec_sqrts = []
     for part in parts:
         inputs[part_name] = part.inputs[part_name]
         int_inputs[part_name] = inputs[part_name]
@@ -52,19 +52,19 @@ def eager_cat_homogeneous(name, part_name, *parts):
         else:
             raise NotImplementedError("TODO")
         discretes.append(discrete)
-        info_vec, precision = align_gaussian(inputs, gaussian)
+        info_vec, prec_sqrt = align_gaussian(inputs, gaussian)
         info_vecs.append(ops.expand(info_vec, shape + (-1,)))
-        precisions.append(ops.expand(precision, shape + (-1, -1)))
+        prec_sqrts.append(ops.expand(prec_sqrt, shape + (-1, -1)))
     if part_name != name:
         del inputs[part_name]
         del int_inputs[part_name]
 
     dim = 0
     info_vec = ops.cat(info_vecs, dim)
-    precision = ops.cat(precisions, dim)
+    prec_sqrt = ops.cat(prec_sqrts, dim)
     inputs[name] = Bint[info_vec.shape[dim]]
     int_inputs[name] = inputs[name]
-    result = Gaussian(info_vec, precision, inputs)
+    result = Gaussian(info_vec, prec_sqrt, inputs)
     if any(d is not None for d in discretes):
         for i, d in enumerate(discretes):
             if d is None:

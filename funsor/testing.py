@@ -132,7 +132,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             assert_close(actual_log_density, expected_log_density, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
         assert_close(actual.info_vec, expected.info_vec, atol=atol, rtol=rtol)
-        assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)
+        assert_close(actual.prec_sqrt, expected.prec_sqrt, atol=atol, rtol=rtol)
     elif isinstance(actual, Contraction):
         assert actual.red_op == expected.red_op
         assert actual.bin_op == expected.bin_op
@@ -413,9 +413,10 @@ def random_gaussian(inputs):
     prec_sqrt = randn(batch_shape + event_shape + event_shape)
     precision = ops.matmul(prec_sqrt, ops.transpose(prec_sqrt, -1, -2))
     precision = precision + 0.5 * ops.new_eye(precision, event_shape[:1])
+    prec_sqrt = ops.cholesky(precision)
     loc = randn(batch_shape + event_shape)
     info_vec = ops.matmul(precision, ops.unsqueeze(loc, -1)).squeeze(-1)
-    return Gaussian(info_vec, precision, inputs)
+    return Gaussian(info_vec, prec_sqrt, inputs)
 
 
 def random_mvn(batch_shape, dim, diag=False):
