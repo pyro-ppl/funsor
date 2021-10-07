@@ -43,19 +43,15 @@ def _vv(vec1, vec2):
     """
     Computes the inner product ``< vec1 | vec 2 >``.
     """
-    return (
-        ops.matmul(ops.unsqueeze(vec1, -2), ops.unsqueeze(vec2, -1))
-        .squeeze(-1)
-        .squeeze(-1)
-    )
+    return (vec1[..., None, :] @ vec2[..., None])[..., 0, 0]
 
 
 def _mv(mat, vec):
-    return ops.matmul(mat, ops.unsqueeze(vec, -1)).squeeze(-1)
+    return (mat @ vec[..., None])[..., 0]
 
 
 def _mmtv(m1, m2, v):
-    return (m1 @ ops.transpose(m2, -1, -2) @ ops.unsqueeze(v, -1)).squeeze(-1)
+    return (m1 @ (ops.transpose(m2, -1, -2) @ v[..., None]))[..., 0]
 
 
 def _trace_mm(x, y):

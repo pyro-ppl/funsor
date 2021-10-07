@@ -132,7 +132,9 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             assert_close(actual_log_density, expected_log_density, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
         assert_close(actual.info_vec, expected.info_vec, atol=atol, rtol=rtol)
-        assert_close(actual.prec_sqrt, expected.prec_sqrt, atol=atol, rtol=rtol)
+        # Note prec_sqrts are expected to agree only up to an orthogonal factor,
+        # but precisions should agree exactly.
+        assert_close(actual._precision, expected._precision, atol=atol, rtol=rtol)
     elif isinstance(actual, Contraction):
         assert actual.red_op == expected.red_op
         assert actual.bin_op == expected.bin_op
