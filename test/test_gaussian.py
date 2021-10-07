@@ -181,11 +181,13 @@ def test_block_matrix_batched(batch_shape, sparse):
 def test_smoke(expr, expected_type):
     g1 = Gaussian(
         info_vec=numeric_array([[0.0, 0.1, 0.2], [2.0, 3.0, 4.0]]),
-        precision=numeric_array(
-            [
-                [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
-                [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
-            ]
+        prec_sqrt=ops.cholesky(
+            numeric_array(
+                [
+                    [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
+                    [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
+                ]
+            )
         ),
         inputs=OrderedDict([("i", Bint[2]), ("x", Reals[3])]),
     )
@@ -193,7 +195,9 @@ def test_smoke(expr, expected_type):
 
     g2 = Gaussian(
         info_vec=numeric_array([[0.0, 0.1], [2.0, 3.0]]),
-        precision=numeric_array([[[1.0, 0.2], [0.2, 1.0]], [[1.0, 0.2], [0.2, 1.0]]]),
+        prec_sqrt=ops.cholesky(
+            numeric_array([[[1.0, 0.2], [0.2, 1.0]], [[1.0, 0.2], [0.2, 1.0]]])
+        ),
         inputs=OrderedDict([("i", Bint[2]), ("y", Reals[2])]),
     )
     assert isinstance(g2, Gaussian)

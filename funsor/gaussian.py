@@ -248,7 +248,7 @@ def align_gaussian(new_inputs, old):
         old_prec_sqrt = ops.transpose(prec_sqrt, -1, -2)
         info_vec = BlockVector(old_info_vec.shape[:-1] + (new_dim,))
         # TODO
-        prec_sqrt = BlockVector(old_prec_sqrt.shape[:-1] + (new_dim, new_dim))
+        prec_sqrt = BlockVector(old_prec_sqrt.shape[:-1] + (new_dim,))
         for k, new_offset in new_offsets.items():
             if k not in old_offsets:
                 continue
@@ -316,7 +316,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             assert dim
             assert len(prec_sqrt.shape) >= 2 and prec_sqrt.shape[-2] == dim
             assert len(info_vec.shape) >= 1 and info_vec.shape[-1] == dim
-            assert rank <= dim * self.max_rank_ratio
 
         # Compute total shape of all Bint inputs.
         batch_shape = tuple(
@@ -535,7 +534,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         )
         tensors = [
             Tensor(self.info_vec, old_int_inputs),
-            Tensor(self.preq_sqrt, old_int_inputs),
+            Tensor(self.prec_sqrt, old_int_inputs),
         ]
         for const, coeffs in affine.values():
             tensors.append(const)
