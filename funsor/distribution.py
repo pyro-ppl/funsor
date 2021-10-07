@@ -703,13 +703,13 @@ def gaussian_to_data(funsor_dist, name_to_dim=None, normalized=False):
             funsor_dist.log_normalizer + funsor_dist, name_to_dim=name_to_dim
         )
     loc = ops.cholesky_solve(
-        ops.unsqueeze(funsor_dist.info_vec, -1), ops.cholesky(funsor_dist.precision)
+        ops.unsqueeze(funsor_dist.info_vec, -1), funsor_dist._precision_chol
     ).squeeze(-1)
     int_inputs = OrderedDict(
         (k, d) for k, d in funsor_dist.inputs.items() if d.dtype != "real"
     )
     loc = to_data(Tensor(loc, int_inputs), name_to_dim)
-    precision = to_data(Tensor(funsor_dist.precision, int_inputs), name_to_dim)
+    precision = to_data(Tensor(funsor_dist._precision, int_inputs), name_to_dim)
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     return backend_dist.MultivariateNormal.dist_class(loc, precision_matrix=precision)
 

@@ -29,6 +29,10 @@ from funsor.terms import (
 )
 from funsor.util import broadcast_shape, get_backend, get_tracing_state, lazy_property
 
+# Ratio of rank / dim above which prec_sqrt will be compressed.
+# The space-optimal value is 1.0, but we can avoid unnecessary ops by relaxing.
+RANK_COMPRESSION_THRESHOLD = 1.5
+
 
 def _log_det_tri(x):
     return ops.log(ops.diagonal(x, -1, -2)).sum(-1)
@@ -123,14 +127,15 @@ def _triangularize(A):
     return ops.cholesky(A @ ops.transpose(A, -1, -2))
 
 
-def _compress_prec_sqrt(prec_sqrt, threshold=1.5):
+def _compress_prec_sqrt(prec_sqrt):
     """
     Compress a wide matrix to a square matrix while preserving its square.
     """
     assert prec_sqrt.dim() >= 2
     dim, rank = prec_sqrt.shape[-2:]
-    if rank <= dim * threshold:
+    if rank <= dim * RANK_COMPRESSION_THRESHOLD:
         return prec_sqrt
+    # TODO Could we do this more cheaply via QR?
     precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
     prec_sqrt = ops.cholesky(precision)
     return prec_sqrt
@@ -316,6 +321,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             assert dim
             assert len(prec_sqrt.shape) >= 2 and prec_sqrt.shape[-2] == dim
             assert len(info_vec.shape) >= 1 and info_vec.shape[-1] == dim
+            assert rank <= dim * RANK_COMPRESSION_THRESHOLD
 
         # Compute total shape of all Bint inputs.
         batch_shape = tuple(
@@ -334,13 +340,15 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         self.batch_shape = batch_shape
         self.event_shape = (dim,)
 
+    # TODO Weak-memoize these so they persist through alpha conversion, e.g.
+    # https://github.com/pyro-ppl/pyro/blob/ac3c588/pyro/distributions/coalescent.py#L412
     @lazy_property
     def _precision(self):
         return self.prec_sqrt @ ops.transpose(self.prec_sqrt, -1, -2)
 
     @lazy_property
     def _precision_chol(self):
-        return _triangularize(self._precision)
+        return ops.cholesky(self._precision)
 
     @lazy_property
     def log_normalizer(self):
@@ -507,6 +515,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         info_vec = info_a - _mv(prec_sqrt_a, value_bb)
         log_scale = _vv(value_b, info_b - 0.5 * _mv(prec_sqrt_b, value_bb))
         prec_sqrt = ops.expand(prec_sqrt_a, info_vec.shape + prec_sqrt_a.shape[-1:])
+        prec_sqrt = _compress_prec_sqrt(prec_sqrt)
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
             if k not in subs:
@@ -605,6 +614,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         # where  P' = At P A  and  i' = At (i - P B)  parametrize a new Gaussian
         # and  C = < B | i - 1/2 P B >  parametrize a new Tensor.
         prec_sqrt = subs_matrix @ old_prec_sqrt
+        prec_sqrt = _compress_prec_sqrt(prec_sqrt)
         old_subs_vector = _mmtv(old_prec_sqrt, old_prec_sqrt, subs_vector)
         info_vec = _mv(subs_matrix, old_info_vec - old_subs_vector)
         const = _vv(subs_vector, old_info_vec - 0.5 * old_subs_vector)
@@ -630,76 +640,89 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 (k, d) for k, d in self.inputs.items() if k not in reduced_reals
             )
             if reduced_reals == real_vars:
-                result = self.log_normalizer
-            else:
-                int_inputs = OrderedDict(
-                    (k, v) for k, v in inputs.items() if v.dtype != "real"
-                )
-                offsets, _ = _compute_offsets(self.inputs)
+                return self.log_normalizer.reduce(ops.logaddexp, reduced_ints)
 
-                ########################################################
-                # FIXME can we make this cheaper?
-                a = []
-                b = []
-                for key, domain in self.inputs.items():
-                    if domain.dtype == "real":
-                        block = ops.new_arange(
-                            self.info_vec,
-                            offsets[key],
-                            offsets[key] + domain.num_elements,
-                            1,
-                        )
-                        (b if key in reduced_vars else a).append(block)
-                a = ops.cat(a, -1)
-                b = ops.cat(b, -1)
-                prec_aa = self.precision[..., a[..., None], a]
-                prec_ba = self.precision[..., b[..., None], a]
-                prec_bb = self.precision[..., b[..., None], b]
-                prec_b = ops.cholesky(prec_bb)
-                prec_a = ops.triangular_solve(prec_ba, prec_b)
-                prec_at = ops.transpose(prec_a, -1, -2)
-                precision = prec_aa - ops.matmul(prec_at, prec_a)
-                prec_sqrt = ops.cholesky(precision)  # FIXME is this full rank?
-                ##############################################################
+            int_inputs = OrderedDict(
+                (k, v) for k, v in inputs.items() if v.dtype != "real"
+            )
+            offsets, _ = _compute_offsets(self.inputs)
 
-                info_a = self.info_vec[..., a]
-                info_b = self.info_vec[..., b]
-                b_tmp = ops.triangular_solve(info_b[..., None], prec_b)
-                info_vec = info_a - ops.matmul(prec_at, b_tmp)[..., 0]
+            ########################################################
+            # FIXME can we make this cheaper?
+            a = []
+            b = []
+            for key, domain in self.inputs.items():
+                if domain.dtype == "real":
+                    block = ops.new_arange(
+                        self.info_vec,
+                        offsets[key],
+                        offsets[key] + domain.num_elements,
+                        1,
+                    )
+                    (b if key in reduced_vars else a).append(block)
+            a = ops.cat(a, -1)
+            b = ops.cat(b, -1)
+            prec_aa = self._precision[..., a[..., None], a]
+            prec_ba = self._precision[..., b[..., None], a]
+            prec_bb = self._precision[..., b[..., None], b]
+            prec_b = ops.cholesky(prec_bb)
+            prec_a = ops.triangular_solve(prec_ba, prec_b)
+            prec_at = ops.transpose(prec_a, -1, -2)
+            precision = prec_aa - ops.matmul(prec_at, prec_a)
+            prec_sqrt = ops.cholesky(precision)  # FIXME is this full rank?
+            ##############################################################
 
-                log_prob = Tensor(
-                    0.5 * len(b) * math.log(2 * math.pi)
-                    - _log_det_tri(prec_b)
-                    + 0.5 * (b_tmp[..., 0] ** 2).sum(-1),
-                    int_inputs,
-                )
-                result = log_prob + Gaussian(info_vec, prec_sqrt, inputs)
+            info_a = self.info_vec[..., a]
+            info_b = self.info_vec[..., b]
+            b_tmp = ops.triangular_solve(info_b[..., None], prec_b)
+            info_vec = info_a - ops.matmul(prec_at, b_tmp)[..., 0]
+
+            log_prob = Tensor(
+                0.5 * len(b) * math.log(2 * math.pi)
+                - _log_det_tri(prec_b)
+                + 0.5 * (b_tmp[..., 0] ** 2).sum(-1),
+                int_inputs,
+            )
+            result = log_prob + Gaussian(info_vec, prec_sqrt, inputs)
 
             return result.reduce(ops.logaddexp, reduced_ints)
 
         elif op is ops.add:
-            for v in reduced_vars:
-                if self.inputs[v].dtype == "real":
-                    raise ValueError(
-                        "Cannot sum along a real dimension: {}".format(repr(v))
-                    )
-
             # Fuse Gaussians along a plate. Compare to eager_add_gaussian_gaussian().
-            old_ints = OrderedDict(
-                (k, v) for k, v in self.inputs.items() if v.dtype != "real"
-            )
-            new_ints = OrderedDict(
-                (k, v) for k, v in old_ints.items() if k not in reduced_vars
-            )
-            inputs = OrderedDict(
-                (k, v) for k, v in self.inputs.items() if k not in reduced_vars
-            )
+            inputs = OrderedDict()
+            old_ints = OrderedDict()
+            new_ints = OrderedDict()
+            kept_perm = []
+            reduced_perm = []
+            for i, (k, v) in enumerate(self.inputs.items()):
+                if k not in reduced_vars:
+                    inputs[k] = v
+                if v.dtype == "real":
+                    if v in reduced_vars:
+                        raise ValueError(
+                            f"Cannot sum along a real dimension: {repr(v)}"
+                        )
+                else:
+                    old_ints[k] = v
+                    if k in reduced_vars:
+                        reduced_perm.append(i)
+                    else:
+                        kept_perm.append(i)
+                        new_ints[k] = v
 
             info_vec = Tensor(self.info_vec, old_ints).reduce(ops.add, reduced_vars)
-            prec_sqrt = Tensor(self.prec_sqrt, old_ints).reduce(ops.add, reduced_vars)
             assert info_vec.inputs == new_ints
-            assert prec_sqrt.inputs == new_ints
-            return Gaussian(info_vec.data, prec_sqrt.data, inputs)
+            info_vec = info_vec.data
+
+            # The square root information filter fuses via transpose and reshape.
+            n = len(kept_perm) + len(reduced_perm)
+            perm = kept_perm + [n] + reduced_perm + [n + 1]
+            prec_sqrt = ops.permute(self.prec_sqrt, perm)
+            prec_sqrt = prec_sqrt.reshape(prec_sqrt.shape[: len(kept_perm) + 1] + (-1,))
+            assert prec_sqrt.shape[:-1] == info_vec.shape
+            prec_sqrt = _compress_prec_sqrt(prec_sqrt)
+
+            return Gaussian(info_vec, prec_sqrt, inputs)
 
         return None  # defer to default implementation
 

@@ -154,7 +154,7 @@ def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
         (k, v) for k, v in gaussian.inputs.items() if v.dtype != "real"
     )
     inputs.update(real_inputs)
-    return discrete + Gaussian(gaussian.info_vec, gaussian.precision, inputs)
+    return discrete + Gaussian(gaussian.info_vec, gaussian.prec_sqrt, inputs)
 
 
 def funsor_to_mvn(gaussian, ndims, event_inputs=()):
