@@ -158,12 +158,11 @@ def test_block_matrix_batched(batch_shape, sparse):
 
 
 @pytest.mark.parametrize("batch_shape", [(), (3, 2), (4,)], ids=str)
-@pytest.mark.parametrize("dim", [1, 2, 3, 4, 5])
 @pytest.mark.parametrize("rank", [1, 2, 3, 4, 5, 8, 13])
+@pytest.mark.parametrize("dim", [1, 2, 3, 4, 5])
 def test_compress_rank(batch_shape, dim, rank):
     white_vec = randn(batch_shape + (rank,))
     prec_sqrt = randn(batch_shape + (dim, rank))
-    value = randn(batch_shape + (dim,))
 
     new_white_vec, new_prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
     if shift is None:
@@ -174,9 +173,16 @@ def test_compress_rank(batch_shape, dim, rank):
     new_rank = new_prec_sqrt.shape[-1]
     assert new_rank <= dim
 
-    expected = _norm2(_vm(value, prec_sqrt) - white_vec)
-    actual = _norm2(_vm(value, new_prec_sqrt) - new_white_vec) + shift
-    assert_close(actual, expected, rtol=None)
+    # Check precisions.
+    expected_precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
+    actual_precision = new_prec_sqrt @ ops.transpose(new_prec_sqrt, -1, -2)
+    assert_close(actual_precision, expected_precision, atol=1e-5, rtol=None)
+
+    # Check full evaluation.
+    probe = randn(batch_shape + (dim,))
+    expected = -0.5 * _norm2(_vm(probe, prec_sqrt) - white_vec)
+    actual = -0.5 * _norm2(_vm(probe, new_prec_sqrt) - new_white_vec) + shift
+    assert_close(actual, expected, atol=1e-4, rtol=None)
 
 
 @pytest.mark.parametrize(
@@ -190,8 +196,8 @@ def test_compress_rank(batch_shape, dim, rank):
         ("g1 + shift", Contraction),
         ("shift + g1", Contraction),
         ("shift - g1", Contraction),
-        ("g1 + g1", Gaussian),
-        ("(g1 + g2 + g2) - g2", Gaussian),
+        ("g1 + g1", Contraction),
+        ("(g1 + g2 + g2) - g2", Contraction),
         ("g1(i=i0)", Gaussian),
         ("g2(i=i0)", Gaussian),
         ("g1(i=i0) + g2(i=i0)", Gaussian),
@@ -208,11 +214,8 @@ def test_compress_rank(batch_shape, dim, rank):
     ],
 )
 def test_smoke(expr, expected_type):
-    if "-" in expr:
-        pytest.xfail(reason="not implemented")  # FIXME
-
     g1 = Gaussian(
-        info_vec=numeric_array([[0.0, 0.1, 0.2], [2.0, 3.0, 4.0]]),
+        white_vec=numeric_array([[0.0, 0.1, 0.2], [2.0, 3.0, 4.0]]),
         prec_sqrt=ops.cholesky(
             numeric_array(
                 [
@@ -222,15 +225,17 @@ def test_smoke(expr, expected_type):
             )
         ),
         inputs=OrderedDict([("i", Bint[2]), ("x", Reals[3])]),
+        negate=False,
     )
     assert isinstance(g1, Gaussian)
 
     g2 = Gaussian(
-        info_vec=numeric_array([[0.0, 0.1], [2.0, 3.0]]),
+        white_vec=numeric_array([[0.0, 0.1], [2.0, 3.0]]),
         prec_sqrt=ops.cholesky(
             numeric_array([[[1.0, 0.2], [0.2, 1.0]], [[1.0, 0.2], [0.2, 1.0]]])
         ),
         inputs=OrderedDict([("i", Bint[2]), ("y", Reals[2])]),
+        negate=False,
     )
     assert isinstance(g2, Gaussian)
 

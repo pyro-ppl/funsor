@@ -30,26 +30,6 @@ from funsor.terms import (
 from funsor.util import broadcast_shape, get_backend, get_tracing_state, lazy_property
 
 
-def _compress_rank(white_vec, prec_sqrt):
-    """
-    Compress a wide representation ``(white_vec, prec_sqrt)`` while preserving
-    the quadratic function ``||x @ prec_sqrt - white_vec||^2``.
-    """
-    dim, rank = prec_sqrt.shape[-2:]
-    if rank <= dim:
-        return white_vec, prec_sqrt, None
-    old_norm2 = _norm2(white_vec)
-    info_vec_ = prec_sqrt @ white_vec[..., None]
-    precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
-    prec_sqrt = ops.cholesky(precision)
-    white_vec = ops.triangular_solve(
-        info_vec_, prec_sqrt  # , upper=True, transpose=True
-    )[..., 0]
-    new_norm2 = _norm2(white_vec)
-    shift = 0.5 * (new_norm2 - old_norm2)
-    return white_vec, prec_sqrt, shift
-
-
 def _log_det_tri(x):
     return ops.log(ops.diagonal(x, -1, -2)).sum(-1)
 
@@ -73,6 +53,12 @@ def _vm(vec, mat):
     return (vec[..., None, :] @ mat)[..., 0, :]
 
 
+def _mmt(mat1, mat2=None):
+    if mat2 is None:
+        mat2 = mat1
+    return mat1 @ ops.transpose(mat2, -1, -2)
+
+
 def _mmtv(m1, m2, v):
     return (m1 @ (ops.transpose(m2, -1, -2) @ v[..., None]))[..., 0]
 
@@ -84,6 +70,39 @@ def _trace_mm(x, y):
     assert len(x.shape) >= 2
     assert len(y.shape) >= 2
     return (x * y).sum((-1, -2))
+
+
+def _compress_rank(white_vec, prec_sqrt):
+    """
+    Compress a wide representation ``(white_vec, prec_sqrt)`` while preserving
+    the quadratic function ``||x @ prec_sqrt - white_vec||^2 + const``.
+    """
+    dim, rank = prec_sqrt.shape[-2:]
+    if rank <= dim:
+        return white_vec, prec_sqrt, None
+
+    # Let A = prec_sqrt and b=white_vec define the original Gaussian
+    #
+    #   G(x;A,b) = -1/2 || x A - b ||^2
+    #            = -1/2 x A A' x' + x A b' -1/2 b b'
+    #
+    # We seek a compressed Gaussian G(x;Ac,bc) and constant C such that
+    #
+    #   G(x;A,b) = G(x;Ac,bc) + C
+    #            = -1/2 x Ac Ac' x' + x Ac bc' -1/2 bc bc' + C
+    #
+    # Choosing Ac = chol(A A'), we can match the remaining coefficients
+    #
+    #    Ac bc' = A b'  ==>  bc' = Ac \ A b'
+    #    C = 1/2 (bc bc' - b b')
+    old_norm2 = _norm2(white_vec)
+    info_vec_ = prec_sqrt @ white_vec[..., None]
+    precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
+    prec_sqrt = ops.cholesky(precision)
+    white_vec = ops.triangular_solve(info_vec_, prec_sqrt)[..., 0]
+    new_norm2 = _norm2(white_vec)
+    shift = 0.5 * (new_norm2 - old_norm2)
+    return white_vec, prec_sqrt, shift
 
 
 def _compute_offsets(inputs):
@@ -273,10 +292,13 @@ class GaussianMeta(FunsorMeta):
         negate=None,
         *,
         mean=None,
+        info_vec=None,
         precision=None,
         scale_tril=None,
         covariance=None,
     ):
+        assert isinstance(negate, bool), "missing negate arg to Gaussian()"
+
         # Convert inputs.
         assert inputs is not None
         if isinstance(inputs, OrderedDict):
@@ -302,6 +324,8 @@ class GaussianMeta(FunsorMeta):
         # Convert white_vec.
         if white_vec is not None:
             pass
+        elif info_vec is not None:
+            white_vec = ops.triangular_solve(info_vec[..., None], prec_sqrt)[..., 0]
         elif mean is not None:
             white_vec = (mean[..., None, :] @ prec_sqrt)[..., 0, :]
         else:
@@ -311,16 +335,13 @@ class GaussianMeta(FunsorMeta):
         white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
 
         # Create a Gaussian.
-        assert isinstance(negate, bool)
         result = super().__call__(white_vec, prec_sqrt, inputs, negate)
 
         # Add compression byproducts.
         if shift is not None:
             if negate:
                 shift = -shift
-            int_inputs = OrderedDict(
-                (k, v) for k, v in inputs.items() if v.dtype != "real"
-            )
+            int_inputs = OrderedDict((k, v) for k, v in inputs if v.dtype != "real")
             result += Tensor(shift, int_inputs)
 
         return result
@@ -349,7 +370,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     Not only are Gaussians non-normalized, but they may be rank deficient and
     non-normalizable, in which case sampling and marginalization are not
-    supported. See the :meth:`is_full_rank` property.
+    supported. See the :meth:`is_full_rank` and :meth:`is_normalizable`
+    properties.
 
     :param torch.Tensor white_vec: An batched white noise vector, where
         ``white_vec = prec_sqrt.T @ mean``. Alternatively you can specify the
@@ -363,10 +385,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         be converted to ``prec_sqrt``.
     :param OrderedDict inputs: Mapping from name to
         :class:`~funsor.domains.Domain` .
-    :param bool negate: If false this represents a concave density 🙁. If true,
-        this represents a convex density 🙂. Convex densities are not
-        normalizable and do not support marginalization or sampling. Defaults
-        to False (concave).
+    :param bool negate: If false this represents a concave function 🙁. If true,
+        this represents a convex function 🙂. Convex log densities are not
+        normalizable and do not support marginalization or sampling.
     """
 
     def __init__(self, white_vec, prec_sqrt, inputs, negate):
@@ -408,8 +429,17 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     @property
     def is_full_rank(self):
+        if self.negate:
+            return False
         dim, rank = self.prec_sqrt.shape[-2:]
         return rank == dim
+
+    @property
+    def is_normalizable(self):
+        """
+        Whether this Gaussian is full rank and not negated.
+        """
+        return self.is_full_rank and not self.negate
 
     # TODO Consider weak-memoizing these so they persist through alpha conversion.
     # https://github.com/pyro-ppl/pyro/blob/ac3c588/pyro/distributions/coalescent.py#L412
@@ -569,9 +599,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             value = value.as_tensor()
 
             # Evaluate the non-normalized log density.
-            result = _norm2(_vm(value, prec_sqrt) - white_vec)
-            result = (0.5 if self.negate else -0.5)
-
+            result = (0.5 if self.negate else -0.5) * _norm2(
+                _vm(value, prec_sqrt) - white_vec
+            )
             result = Tensor(result, int_inputs)
             assert result.output == Real
             return Subs(result, remaining_subs) if remaining_subs else result
@@ -698,7 +728,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         assert reduced_vars.issubset(self.inputs)
         if op is ops.logaddexp:
             # Marginalize out real variables, but keep mixtures lazy.
-            assert not self.negate
+            assert self.is_normalizable
             assert all(v in self.inputs for v in reduced_vars)
             real_vars = frozenset(
                 k for k, d in self.inputs.items() if d.dtype == "real"
@@ -724,7 +754,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             for key, domain in self.inputs.items():
                 if domain.dtype == "real":
                     block = ops.new_arange(
-                        self.info_vec,
+                        self.white_vec,
                         offsets[key],
                         offsets[key] + domain.num_elements,
                         1,
@@ -796,15 +826,10 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return None  # defer to default implementation
 
     def _sample(self, sampled_vars, sample_inputs, rng_key):
-        if not self.is_full_rank:
-            raise ValueError(
-                "Cannot sample from a rank deficient Gaussian. "
-                "Consider adding a prior."
-            )
-
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
+        assert self.is_normalizable
         if any(self.inputs[k].dtype != "real" for k in sampled_vars):
             raise ValueError(
                 "Sampling from non-normalized Gaussian mixtures is intentionally "
@@ -872,12 +897,28 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     rhs_white_vec, rhs_prec_sqrt = align_gaussian(inputs, rhs, expand=True)
 
     if lhs.negate == rhs.negate:
-        # Fuse aligned Gaussians.
+        # Fuse aligned Gaussians via concatenation.
         white_vec = ops.cat([lhs_white_vec, rhs_white_vec], -1)
         prec_sqrt = ops.cat([lhs_prec_sqrt, rhs_prec_sqrt], -1)
         return Gaussian(white_vec, prec_sqrt, inputs, lhs.negate)
 
-    raise NotImplementedError("TODO")
+    # Subtract Gaussians.
+    lhs_info_vec = _mv(lhs_prec_sqrt, lhs_white_vec)
+    rhs_info_vec = _mv(rhs_prec_sqrt, rhs_white_vec)
+    lhs_precision = _mmt(lhs_prec_sqrt)
+    rhs_precision = _mmt(rhs_prec_sqrt)
+    if lhs.negate:
+        info_vec = rhs_info_vec - lhs_info_vec
+        precision = rhs_precision - lhs_precision
+    else:
+        info_vec = lhs_info_vec - rhs_info_vec
+        precision = lhs_precision - rhs_precision
+    return Gaussian(
+        info_vec=info_vec,
+        precision=precision,
+        inputs=inputs,
+        negate=False,
+    )
 
 
 @eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
