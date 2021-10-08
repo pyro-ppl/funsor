@@ -9,7 +9,8 @@ from math import gcd
 import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.domains import Bint
+from funsor.domains import Bint, Reals
+from funsor.interpreter import gensym
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import (
     Cat,
@@ -231,11 +232,14 @@ def partial_sum_product(
         ordinal_to_vars[ordinal].add(var)
 
     results = []
+
     while ordinal_to_factors:
-        leaf = max(ordinal_to_factors, key=len)
+        leaf = max(ordinal_to_factors, key=len)  # CHOICE
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
+        for (group_factors, group_vars) in _partition(
+            leaf_factors, leaf_reduce_vars
+        ):  # CHOICE
             f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
@@ -245,7 +249,42 @@ def partial_sum_product(
                     *(var_to_ordinal[v] for v in remaining_sum_vars)
                 )
                 if new_plates == leaf:
-                    raise ValueError("intractable!")
+                    # Arbitrarily choose one plate to eliminate.
+                    plate = next(iter(leaf & eliminate))
+                    new_plates = leaf - {plate}
+                    plate_shape = (f.inputs[plate].size,)
+                    subs = {}
+                    for v in remaining_sum_vars:
+                        if plate in var_to_ordinal[v]:
+                            if f.inputs[v].dtype != "real":
+                                raise ValueError("intractable!")
+                            v_ = Variable(
+                                gensym(v), Reals[plate_shape + f.inputs[v].shape]
+                            )
+                            v_ordinal = var_to_ordinal[v] - {plate}
+                            var_to_ordinal[v_.name] = v_ordinal
+                            ordinal_to_vars[v_ordinal].add(v_.name)
+                            eliminate = eliminate - {v} | {v_.name}
+                            subs[v] = v_[plate]
+                    f = f(**subs)
+                    for o, gs in list(ordinal_to_factors.items()):
+                        if plate not in o:
+                            assert all(set(g.inputs).isdisjoint(subs) for g in gs)
+                            continue  # nothing to do below
+                        remaining = []
+                        for g in gs:
+                            if set(subs).intersection(g.inputs):
+                                g = g(**subs)
+                                assert all(
+                                    plate not in var_to_ordinal[u]
+                                    for u in g.inputs
+                                    if u not in plates
+                                )
+                                g = g.reduce(prod_op, plate)
+                                ordinal_to_factors[o - {plate}].append(g)
+                            else:
+                                remaining.append(g)
+                        ordinal_to_factors[o] = remaining
                 f = f.reduce(prod_op, leaf - new_plates)
                 ordinal_to_factors[new_plates].append(f)
 
