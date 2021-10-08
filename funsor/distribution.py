@@ -697,18 +697,11 @@ def indep_to_data(funsor_dist, name_to_dim=None):
 
 
 @to_data.register(Gaussian)
-def gaussian_to_data(funsor_dist, name_to_dim=None, normalized=False):
-    if normalized:
-        return to_data(
-            funsor_dist.log_normalizer + funsor_dist, name_to_dim=name_to_dim
-        )
-    loc = ops.cholesky_solve(
-        ops.unsqueeze(funsor_dist.info_vec, -1), funsor_dist._precision_chol
-    ).squeeze(-1)
+def gaussian_to_data(funsor_dist, name_to_dim=None):
     int_inputs = OrderedDict(
         (k, d) for k, d in funsor_dist.inputs.items() if d.dtype != "real"
     )
-    loc = to_data(Tensor(loc, int_inputs), name_to_dim)
+    loc = to_data(Tensor(funsor_dist._mean, int_inputs), name_to_dim)
     precision = to_data(Tensor(funsor_dist._precision, int_inputs), name_to_dim)
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     return backend_dist.MultivariateNormal.dist_class(loc, precision_matrix=precision)
@@ -845,14 +838,19 @@ def eager_normal(loc, scale, value):
     if not is_affine(loc) or not is_affine(value):
         return None  # lazy
 
-    info_vec = ops.new_zeros(scale.data, scale.data.shape + (1,))
-    prec_sqrt = (1 / scale.data).reshape(scale.data.shape + (1, 1))
-    log_prob = -0.5 * math.log(2 * math.pi) - ops.log(scale).sum()
+    white_vec = (loc.data / scale.data)[..., None]
+    prec_sqrt = (1 / scale.data)[..., None, None]
+    log_prob = -0.5 * math.log(2 * math.pi) - ops.log(scale)
     inputs = scale.inputs.copy()
     var = gensym("value")
     inputs[var] = Real
-    gaussian = log_prob + Gaussian(info_vec, prec_sqrt, inputs)
-    return gaussian(**{var: value - loc})
+    gaussian = log_prob + Gaussian(
+        white_vec=white_vec,
+        prec_sqrt=prec_sqrt,
+        inputs=inputs,
+        negate=False,
+    )
+    return gaussian(**{var: value})
 
 
 def eager_mvn(loc, scale_tril, value):
@@ -862,7 +860,7 @@ def eager_mvn(loc, scale_tril, value):
     if not is_affine(loc) or not is_affine(value):
         return None  # lazy
 
-    info_vec = ops.new_zeros(scale_tril.data, scale_tril.data.shape[:-1])
+    white_vec = ops.triangular_solve(loc.data[..., None], scale_tril.data)[..., 0]
     prec_sqrt = ops.triangular_inv(scale_tril.data, transpose=True)
     scale_diag = Tensor(ops.diagonal(scale_tril.data, -1, -2), scale_tril.inputs)
     log_prob = (
@@ -871,8 +869,13 @@ def eager_mvn(loc, scale_tril, value):
     inputs = scale_tril.inputs.copy()
     var = gensym("value")
     inputs[var] = Reals[scale_diag.shape[0]]
-    gaussian = log_prob + Gaussian(info_vec, prec_sqrt, inputs)
-    return gaussian(**{var: value - loc})
+    gaussian = log_prob + Gaussian(
+        white_vec=white_vec,
+        prec_sqrt=prec_sqrt,
+        inputs=inputs,
+        negate=False,
+    )
+    return gaussian(**{var: value})
 
 
 def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):

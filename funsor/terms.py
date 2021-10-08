@@ -1800,7 +1800,7 @@ class Independent(Funsor):
         assert 'i' not in g.inputs
 
         x = Variable('x', Reals[3, 4, 5])
-        g == f(x_i=x['i']).reduce(ops.logaddexp, 'i')
+        g == f(x_i=x['i']).reduce(ops.add, 'i')
 
     :param Funsor fn: A funsor.
     :param str reals_var: The name of a real-tensor input.
