@@ -11,7 +11,14 @@ import pytest
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Bint, Real, Reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
+from funsor.gaussian import (
+    BlockMatrix,
+    BlockVector,
+    Gaussian,
+    _compress_rank,
+    _norm2,
+    _vm,
+)
 from funsor.integrate import Integrate
 from funsor.tensor import Einsum, Tensor, numeric_array
 from funsor.terms import Number, Variable
@@ -148,6 +155,28 @@ def test_block_matrix_batched(batch_shape, sparse):
     actual[..., 3:5, 3:5] = expected[..., 3:5, 3:5]
 
     assert_close(actual.as_tensor(), expected)
+
+
+@pytest.mark.parametrize("batch_shape", [(), (3, 2), (4,)], ids=str)
+@pytest.mark.parametrize("dim", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("rank", [1, 2, 3, 4, 5, 8, 13])
+def test_compress_rank(batch_shape, dim, rank):
+    white_vec = randn(batch_shape + (rank,))
+    prec_sqrt = randn(batch_shape + (dim, rank))
+    value = randn(batch_shape + (dim,))
+
+    new_white_vec, new_prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+    if shift is None:
+        shift = 0
+    assert new_prec_sqrt.shape[:-1] == batch_shape + (dim,)
+    assert new_white_vec.shape[:-1] == batch_shape
+    assert new_prec_sqrt.shape[-1] == new_white_vec.shape[-1]
+    new_rank = new_prec_sqrt.shape[-1]
+    assert new_rank <= dim
+
+    expected = _norm2(_vm(value, prec_sqrt) - white_vec)
+    actual = _norm2(_vm(value, new_prec_sqrt) - new_white_vec) + shift
+    assert_close(actual, expected, rtol=None)
 
 
 @pytest.mark.parametrize(

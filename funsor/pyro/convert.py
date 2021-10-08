@@ -327,6 +327,12 @@ def matrix_and_mvn_to_funsor(
 
     # Handle diagonal normal distributions as an efficient special case.
     if isinstance(mvn, torch.distributions.Independent):
+        # TODO
+        # matrix_x = ops.transpose(matrix, -1, -2)
+        # matrix_y = ops.new_full(matrix_x, matrix_x.shape[:-1] + (1,), -1.0)
+        # matrix_xy = ops.cat([matrix_x, matrix_y], -1)
+        # prec_sqrt = matrix_xy / mvn_base_dist.scale[..., None]
+        # loc = mvn.base_dist.loc
         return AffineNormal(
             tensor_to_funsor(matrix, event_dims, 2),
             tensor_to_funsor(mvn.base_dist.loc, event_dims, 1),

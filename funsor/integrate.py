@@ -181,10 +181,8 @@ def eager_integrate(log_measure, integrand, reduced_vars):
     if real_vars == frozenset([integrand]):
         if real_vars != real_input_vars:
             return None  # TODO implement this
-        loc = ops.cholesky_solve(
-            ops.unsqueeze(log_measure.info_vec, -1), log_measure._precision_chol
-        ).squeeze(-1)
-        data = loc * ops.unsqueeze(ops.exp(log_measure.log_normalizer.data), -1)
+        loc = log_measure._mean
+        data = loc * ops.unsqueeze(ops.exp(log_measure._log_normalizer), -1)
         data = data.reshape(loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict(
             (k, d) for k, d in log_measure.inputs.items() if d.dtype != "real"
@@ -196,6 +194,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
 def eager_integrate(log_measure, integrand, reduced_vars):
+    assert not log_measure.negate
     reduced_names = frozenset(v.name for v in reduced_vars)
     real_vars = frozenset(v.name for v in reduced_vars if v.dtype == "real")
     if real_vars:
@@ -210,19 +209,18 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             inputs = OrderedDict(
                 (k, d) for t in (log_measure, integrand) for k, d in t.inputs.items()
             )
-            lhs_info_vec, lhs_prec_sqrt = align_gaussian(inputs, log_measure)
-            rhs_info_vec, rhs_prec_sqrt = align_gaussian(inputs, integrand)
-            lhs = Gaussian(lhs_info_vec, lhs_prec_sqrt, inputs)
+            lhs_white_vec, lhs_prec_sqrt = align_gaussian(inputs, log_measure)
+            rhs_white_vec, rhs_prec_sqrt = align_gaussian(inputs, integrand)
+            lhs = Gaussian(lhs_white_vec, lhs_prec_sqrt, inputs)
 
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
-            norm = ops.exp(lhs.log_normalizer.data)
-            lhs_cov = ops.cholesky_inverse(lhs._precision_chol)
-            lhs_loc = ops.cholesky_solve(
-                ops.unsqueeze(lhs.info_vec, -1), lhs._precision_chol
-            ).squeeze(-1)
+            norm = ops.exp(lhs._log_normalizer)
+            lhs_cov = lhs._covariance
+            lhs_loc = lhs._mean
             rhs_precision = rhs_prec_sqrt @ ops.transpose(rhs_prec_sqrt, -1, -2)
+            # FIXME
             vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
             data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
             inputs = OrderedDict(
