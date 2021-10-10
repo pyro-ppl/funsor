@@ -220,7 +220,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             lhs_cov = lhs._covariance
             lhs_loc = lhs._mean
             rhs_precision = rhs_prec_sqrt @ ops.transpose(rhs_prec_sqrt, -1, -2)
-            # FIXME
+            raise NotImplementedError("TODO")
             vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
             data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
             inputs = OrderedDict(

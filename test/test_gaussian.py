@@ -185,6 +185,36 @@ def test_compress_rank(batch_shape, dim, rank):
     assert_close(actual, expected, atol=1e-4, rtol=None)
 
 
+@pytest.mark.parametrize("int_inputs", ["", "i", "j", "ij"])
+@pytest.mark.parametrize("real_inputs", ["x", "y", "z", "xy", "xz", "yz", "xyz"])
+def test_meta(int_inputs, real_inputs):
+    inputs = OrderedDict(
+        (k, d)
+        for k, d in [
+            ("i", Bint[2]),
+            ("j", Bint[3]),
+            ("x", Real),
+            ("y", Reals[4]),
+            ("z", Reals[3, 2]),
+        ]
+        if k in int_inputs + real_inputs
+    )
+    g = random_gaussian(inputs)
+
+    for scale in ["prec_sqrt", "_covariance", "_scale_tril", "_precision"]:
+        for loc in ["white_vec", "_mean", "_info_vec"]:
+            kwargs = {
+                scale.strip("_"): getattr(g, scale),
+                loc.strip("_"): getattr(g, loc),
+                "inputs": g.inputs,
+                "negate": False,
+            }
+            actual = Gaussian(**kwargs)
+            assert_close(actual, g)
+            assert_close(actual.white_vec, g.white_vec)
+            assert_close(actual.prec_sqrt, g.prec_sqrt)
+
+
 @pytest.mark.parametrize(
     "expr,expected_type",
     [

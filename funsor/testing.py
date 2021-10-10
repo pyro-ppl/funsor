@@ -106,8 +106,6 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert isinstance(expected, Contraction) and isinstance(
             expected.terms[0], Delta
         ), msg
-    elif isinstance(actual, Gaussian) and is_array(actual.info_vec):
-        assert isinstance(expected, Gaussian) and is_array(expected.info_vec), msg
     else:
         assert type(actual) == type(expected), msg
 
@@ -131,9 +129,9 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             assert_close(actual_point, expected_point, atol=atol, rtol=rtol)
             assert_close(actual_log_density, expected_log_density, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
-        assert_close(actual.info_vec, expected.info_vec, atol=atol, rtol=rtol)
-        # Note prec_sqrts are expected to agree only up to an orthogonal factor,
-        # but precisions should agree exactly.
+        # Note white_vec and prec_sqrt are expected to agree only up to an
+        # orthogonal factor, but precision and info_vec should agree exactly.
+        assert_close(actual._info_vec, expected._info_vec, atol=atol, rtol=rtol)
         assert_close(actual._precision, expected._precision, atol=atol, rtol=rtol)
     elif isinstance(actual, Contraction):
         assert actual.red_op == expected.red_op
@@ -417,8 +415,8 @@ def random_gaussian(inputs):
     precision = precision + 0.5 * ops.new_eye(precision, event_shape[:1])
     prec_sqrt = ops.cholesky(precision)
     loc = randn(batch_shape + event_shape)
-    info_vec = ops.matmul(precision, ops.unsqueeze(loc, -1)).squeeze(-1)
-    return Gaussian(info_vec, prec_sqrt, inputs)
+    white_vec = ops.matmul(prec_sqrt, ops.unsqueeze(loc, -1)).squeeze(-1)
+    return Gaussian(white_vec, prec_sqrt, inputs, False)
 
 
 def random_mvn(batch_shape, dim, diag=False):
