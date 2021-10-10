@@ -8,7 +8,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.constant import Constant
 from funsor.delta import Delta
-from funsor.gaussian import Gaussian, _vm, _vv, align_gaussian
+from funsor.gaussian import Gaussian, _norm2, _vm, align_gaussian
 from funsor.interpretations import eager, normalize
 from funsor.tensor import Tensor
 from funsor.terms import (
@@ -211,7 +211,12 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             )
             lhs_white_vec, lhs_prec_sqrt = align_gaussian(inputs, log_measure)
             rhs_white_vec, rhs_prec_sqrt = align_gaussian(inputs, integrand)
-            lhs = Gaussian(lhs_white_vec, lhs_prec_sqrt, inputs)
+            lhs = Gaussian(
+                white_vec=lhs_white_vec,
+                prec_sqrt=lhs_prec_sqrt,
+                inputs=inputs,
+                negate=False,
+            )
 
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
@@ -224,7 +229,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             cov = ops.transpose(rhs_prec_sqrt, -1, -2) @ lhs._covariance @ rhs_prec_sqrt
             norm = ops.exp(lhs._log_normalizer)
             # Then in rhs's whitened space, A = I so Tr(A cov) = Tr(cov).
-            vmv_term = _vv(rhs_white_vec - mean)
+            vmv_term = _norm2(rhs_white_vec - mean)
             trace_term = ops.diagonal(cov, -1, -2).sum(-1)
             data = (-0.5) * norm * (vmv_term + trace_term)
 

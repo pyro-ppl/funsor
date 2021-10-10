@@ -347,6 +347,8 @@ class GaussianMeta(FunsorMeta):
         assert isinstance(inputs, tuple)
 
         # Convert prec_sqrt.
+        if prec_sqrt is None and white_vec is not None:
+            raise ValueError("Cannot specify white_vec without prec_sqrt")
         if prec_sqrt is not None:
             pass
         elif precision is not None:
@@ -366,9 +368,10 @@ class GaussianMeta(FunsorMeta):
         if white_vec is not None:
             pass
         elif info_vec is not None:
+            prec_sqrt = ops.cholesky(_mmt(prec_sqrt))  # triangularize
             white_vec = ops.triangular_solve(info_vec[..., None], prec_sqrt)[..., 0]
         elif mean is not None:
-            white_vec = (mean[..., None, :] @ prec_sqrt)[..., 0, :]
+            white_vec = _vm(mean, prec_sqrt)
         else:
             raise ValueError(
                 "At least one of white_vec, mean, or info_vec must be specified"
@@ -497,17 +500,20 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     @lazy_property
     def _precision_chol(self):
+        assert self.is_full_rank
         return ops.cholesky(self._precision)
 
     @lazy_property
     def _covariance(self):
-        assert self.is_full_rank
         return ops.cholesky_inverse(self._precision_chol)
 
     @lazy_property
     def _mean(self):
         return ops.triangular_solve(
-            self.white_vec[..., None], self._precision_chol, transpose=True
+            self.white_vec[..., None],
+            self._precision_chol,
+            upper=True,
+            transpose=True,
         )[..., 0]
 
     @lazy_property
@@ -950,6 +956,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 (white_noise + self.white_vec)[..., None],
                 self._precision_chol,
                 transpose=True,
+                upper=True,
             )[..., 0]
             offsets, _ = _compute_offsets(real_inputs)
             results = []

@@ -220,18 +220,19 @@ def test_meta(int_inputs, real_inputs):
     )
     g = random_gaussian(inputs)
 
-    for scale in ["prec_sqrt", "_covariance", "_scale_tril", "_precision"]:
-        for loc in ["white_vec", "_mean", "_info_vec"]:
+    for loc in ["white_vec", "_mean", "_info_vec"]:
+        for scale in ["prec_sqrt", "_covariance", "_scale_tril", "_precision"]:
+            if loc == "white_vec" and scale != "prec_sqrt":
+                continue  # nonsense
             kwargs = {
                 scale.strip("_"): getattr(g, scale),
                 loc.strip("_"): getattr(g, loc),
                 "inputs": g.inputs,
                 "negate": False,
             }
+            print(list(kwargs))
             actual = Gaussian(**kwargs)
             assert_close(actual, g)
-            assert_close(actual.white_vec, g.white_vec)
-            assert_close(actual.prec_sqrt, g.prec_sqrt)
 
 
 @pytest.mark.parametrize(
@@ -360,19 +361,27 @@ def test_align(int_inputs, real_inputs):
     ],
     ids=id_from_inputs,
 )
-def test_eager_subs_origin(int_inputs, real_inputs):
+def test_eager_subs_mean(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
     g = random_gaussian(inputs)
 
-    # Check that Gaussian log density at origin is zero.
-    origin = {k: zeros(d.shape) for k, d in real_inputs.items()}
-    actual = g(**origin)
+    # Check that Gaussian log density at its mean is zero.
+    mean = g._mean
+    means = {}
+    start = 0
+    for k, d in g.inputs.items():
+        if d.dtype == "real":
+            stop = start + d.num_elements
+            data = mean[..., start:stop].reshape(mean.shape[:-1] + d.shape)
+            means[k] = Tensor(data, int_inputs)
+            start = stop
+    actual = g(**means)
     expected_data = zeros(tuple(d.size for d in int_inputs.values()))
     expected = Tensor(expected_data, int_inputs)
-    assert_close(actual, expected)
+    assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
 @pytest.mark.parametrize(
@@ -428,18 +437,18 @@ def test_eager_subs_variable():
 
     g2 = g1(x="z")
     assert set(g2.inputs) == {"i", "y", "z"}
-    assert g2.info_vec is g1.info_vec
+    assert g2.white_vec is g1.white_vec
     assert g2.prec_sqrt is g1.prec_sqrt
 
     g2 = g1(x="y", y="x")
     assert set(g2.inputs) == {"i", "x", "y"}
     assert g2.inputs["x"] == Reals[2]
-    assert g2.info_vec is g1.info_vec
+    assert g2.white_vec is g1.white_vec
     assert g2.prec_sqrt is g1.prec_sqrt
 
     g2 = g1(i="j")
     assert set(g2.inputs) == {"j", "x", "y"}
-    assert g2.info_vec is g1.info_vec
+    assert g2.white_vec is g1.white_vec
     assert g2.prec_sqrt is g1.prec_sqrt
 
 
@@ -482,7 +491,7 @@ def test_eager_subs_affine(subs, g_ints, subs_ints):
     ground_subs = {k: v(**grounding_subs) for k, v in subs.items()}
 
     g_subs = g(**subs)
-    assert issubclass(type(g_subs), GaussianMixture)
+    assert issubclass(type(g_subs), (Gaussian, GaussianMixture))
     actual = g_subs(**grounding_subs)
     expected = g(**ground_subs)(**grounding_subs)
     assert_close(actual, expected, atol=1e-3, rtol=2e-4)
@@ -620,7 +629,7 @@ def test_reduce_add(inputs):
 
     gs = [g(i=i) for i in range(g.inputs["i"].dtype)]
     expected = reduce(ops.add, gs)
-    assert_close(actual, expected)
+    assert_close(actual, expected, rtol=None)
 
 
 @pytest.mark.parametrize(
@@ -741,14 +750,18 @@ def test_integrate_gaussian(int_inputs, real_inputs):
 
 def test_mc_plate_gaussian():
     log_measure = Gaussian(
-        numeric_array([0.0]), numeric_array([[1.0]]), (("loc", Real),)
+        white_vec=numeric_array([0.0]),
+        prec_sqrt=numeric_array([[1.0]]),
+        inputs=(("loc", Real),),
+        negate=False,
     ) + numeric_array(-0.9189)
 
     plate_size = 10
     integrand = Gaussian(
-        randn((plate_size, 1)) + 3.0,
-        ones((plate_size, 1, 1)),
-        (("data", Bint[plate_size]), ("loc", Real)),
+        white_vec=randn((plate_size, 1)) + 3.0,
+        prec_sqrt=ones((plate_size, 1, 1)),
+        inputs=(("data", Bint[plate_size]), ("loc", Real)),
+        negate=False,
     )
 
     rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
