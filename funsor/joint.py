@@ -114,36 +114,29 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
     )
     probs = (discrete - new_discrete.clamp_finite()).exp()
 
-    old_loc = Tensor(
-        ops.cholesky_solve(
-            ops.unsqueeze(gaussian.info_vec, -1), gaussian._precision_chol
-        ).squeeze(-1),
-        int_inputs,
-    )
+    old_loc = Tensor(gaussian._mean, int_inputs)
     new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
-    old_cov = Tensor(ops.cholesky_inverse(gaussian._precision_chol), int_inputs)
+    old_cov = Tensor(gaussian._covariance, int_inputs)
     diff = old_loc - new_loc
-    outers = Tensor(
-        ops.unsqueeze(diff.data, -1) * ops.unsqueeze(diff.data, -2), diff.inputs
-    )
-    new_cov = (probs * old_cov).reduce(ops.add, approx_vars) + (probs * outers).reduce(
-        ops.add, approx_vars
-    )
+    outers = Tensor(diff.data[..., None] * diff.data[..., None, :], diff.inputs)
+    new_cov = (
+        (probs * old_cov).reduce(ops.add, approx_vars)
+        + (probs * outers).reduce(ops.add, approx_vars)
+    ).data
 
     # Numerically stabilize by adding bogus precision to empty components.
     total = probs.reduce(ops.add, approx_vars)
     mask = ops.unsqueeze(ops.unsqueeze((total.data == 0), -1), -1)
-    new_cov.data = new_cov.data + mask * ops.new_eye(
-        new_cov.data, new_cov.data.shape[-1:]
-    )
+    new_cov = new_cov + mask * ops.new_eye(new_cov, new_cov.shape[-1:])
 
-    new_precision = Tensor(
-        ops.cholesky_inverse(ops.cholesky(new_cov.data)), new_cov.inputs
-    )
-    new_info_vec = (new_precision.data @ ops.unsqueeze(new_loc.data, -1)).squeeze(-1)
     new_inputs = new_loc.inputs.copy()
     new_inputs.update((k, d) for k, d in gaussian.inputs.items() if d.dtype == "real")
-    new_gaussian = Gaussian(new_info_vec, new_precision.data, new_inputs)
+    new_gaussian = Gaussian(
+        mean=new_loc.data,
+        covariance=new_cov,
+        inputs=new_inputs,
+        negate=False,
+    )
     new_discrete -= new_gaussian.log_normalizer
 
     return new_discrete + new_gaussian

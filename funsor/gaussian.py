@@ -69,15 +69,6 @@ def _mmtv(m1, m2, v):
     return (m1 @ (ops.transpose(m2, -1, -2) @ v[..., None]))[..., 0]
 
 
-def _trace_mm(x, y):
-    """
-    Computes ``trace(x.T @ y)``.
-    """
-    assert len(x.shape) >= 2
-    assert len(y.shape) >= 2
-    return (x * y).sum((-1, -2))
-
-
 def _compress_rank(white_vec, prec_sqrt):
     """
     Compress a wide representation ``(white_vec, prec_sqrt)`` while preserving
@@ -867,7 +858,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 proj_b = _mtm(ops.triangular_solve(prec_sqrt_b, precision_chol_b))
                 prec_sqrt = prec_sqrt_a - prec_sqrt_a @ proj_b
                 white_vec = self.white_vec - _vm(self.white_vec, proj_b)
-                result = b_log_normalizer + Gaussian(white_vec, prec_sqrt, inputs, False)
+                result = b_log_normalizer + Gaussian(
+                    white_vec, prec_sqrt, inputs, False
+                )
             else:
                 raise NotImplementedError(
                     f"rank = {self.rank:d}, marginalised_dim = {dim_b:d}, "

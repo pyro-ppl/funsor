@@ -314,7 +314,10 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
     q_vars = sampled_vars | frozenset(["particle"])
     # Check zeroth moment.
     assert_close(
-        q.reduce(ops.logaddexp, q_vars), p.reduce(ops.logaddexp, p_vars), atol=1e-6
+        q.reduce(ops.logaddexp, q_vars),
+        p.reduce(ops.logaddexp, p_vars),
+        atol=1e-6,
+        rtol=None,
     )
     for k1, d1 in event_inputs.items():
         x = Variable(k1, d1)

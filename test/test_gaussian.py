@@ -17,6 +17,7 @@ from funsor.gaussian import (
     Gaussian,
     _compress_rank,
     _norm2,
+    _split_real_inputs,
     _vm,
 )
 from funsor.integrate import Integrate
@@ -81,6 +82,24 @@ def test_cholesky_inverse(batch_shape, size, requires_grad):
     assert_close(ops.cholesky_inverse(u), naive_cholesky_inverse(u))
     if requires_grad:
         ops.cholesky_inverse(u).sum().backward()
+
+
+def test_split_real_inputs():
+    inputs = OrderedDict(i=Bint[5], a=Real, b=Reals[4], c=Reals[3, 1], d=Reals[1, 2])
+    prototype = randn(())
+    g = random_gaussian(inputs)
+    for lhs_keys in "a b c d ab ac ad bc bd abc abd acd bcd".split():
+        a, b = _split_real_inputs(inputs, lhs_keys, prototype)
+        prec_sqrt_a = g.prec_sqrt[..., a, :]
+        prec_sqrt_b = g.prec_sqrt[..., b, :]
+        assert prec_sqrt_a.shape[-2] == sum(
+            d.num_elements for k, d in inputs.items() if k in lhs_keys
+        )
+        assert prec_sqrt_a.shape[-2] == sum(
+            d.num_elements for k, d in inputs.items() if k in lhs_keys
+        )
+        prec_sqrt_ab = ops.cat([prec_sqrt_a, prec_sqrt_b], -2)
+        assert prec_sqrt_ab.shape == g.prec_sqrt.shape
 
 
 def test_block_vector():

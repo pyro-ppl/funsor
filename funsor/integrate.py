@@ -8,7 +8,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.constant import Constant
 from funsor.delta import Delta
-from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian
+from funsor.gaussian import Gaussian, _vm, _vv, align_gaussian
 from funsor.interpretations import eager, normalize
 from funsor.tensor import Tensor
 from funsor.terms import (
@@ -216,13 +216,18 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
+            # If x ~ N(mean,cov) then
+            #   E[(x-m)' A (x-m)] = (m-mean)'A(m-mean) + Tr(A cov)     # eq. 380
+            # To perform this computation in rhs's internal space, we first transform
+            # lhs to rhs's whitened space
+            mean = _vm(lhs._mean, rhs_prec_sqrt)
+            cov = ops.transpose(rhs_prec_sqrt, -1, -2) @ lhs._covariance @ rhs_prec_sqrt
             norm = ops.exp(lhs._log_normalizer)
-            lhs_cov = lhs._covariance
-            lhs_loc = lhs._mean
-            rhs_precision = rhs_prec_sqrt @ ops.transpose(rhs_prec_sqrt, -1, -2)
-            raise NotImplementedError("TODO")
-            vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
-            data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
+            # Then in rhs's whitened space, A = I so Tr(A cov) = Tr(cov).
+            vmv_term = _vv(rhs_white_vec - mean)
+            trace_term = ops.diagonal(cov, -1, -2).sum(-1)
+            data = (-0.5) * norm * (vmv_term + trace_term)
+
             inputs = OrderedDict(
                 (k, d) for k, d in inputs.items() if k not in reduced_names
             )

@@ -52,8 +52,8 @@ SMOKE_TESTS = [
     ("g - t", Contraction),
     ("t + g", Contraction),
     ("t - g", Contraction),
-    ("g + g", Gaussian),
-    ("-(g + g)", Gaussian),
+    ("g + g", Contraction),
+    ("-(g + g)", Contraction),
     ("(dx + dy)(i=i0)", Delta),
     ("(dx + g)(i=i0)", Contraction),
     ("(dy + g)(i=i0)", Contraction),
@@ -71,7 +71,7 @@ SMOKE_TESTS = [
     ("(g + t)(i=i0)", Contraction),
     ("(g - t)(i=i0)", Contraction),
     ("(t + g)(i=i0)", Contraction),
-    ("(g + g)(i=i0)", Gaussian),
+    ("(g + g)(i=i0)", Contraction),
     ("(dx + dy)(x=x0)", Contraction),
     ("(dx + g)(x=x0)", Tensor),
     ("(dy + g)(x=x0)", Contraction),
@@ -110,7 +110,7 @@ def test_smoke(expr, expected_type):
     assert isinstance(t, Tensor)
 
     g = Gaussian(
-        info_vec=numeric_array([[0.0, 0.1, 0.2], [2.0, 3.0, 4.0]]),
+        white_vec=numeric_array([[0.0, 0.1, 0.2], [2.0, 3.0, 4.0]]),
         prec_sqrt=ops.cholesky(
             numeric_array(
                 [
@@ -120,6 +120,7 @@ def test_smoke(expr, expected_type):
             )
         ),
         inputs=OrderedDict([("i", Bint[2]), ("x", Reals[3])]),
+        negate=False,
     )
     assert isinstance(g, Gaussian)
 
@@ -255,10 +256,15 @@ def test_reduce_moment_matching_univariate():
     s1, s2, s3 = 2.0, 3.0, 4.0
     loc = numeric_array([[-s1], [s1]])
     precision = numeric_array([[[s2 ** -2]], [[s3 ** -2]]])
-    info_vec = (precision @ ops.unsqueeze(loc, -1)).squeeze(-1)
     prec_sqrt = ops.cholesky(precision)
+    white_vec = (loc[..., None, :] @ prec_sqrt)[..., 0, :]
     discrete = Tensor(ops.log(numeric_array([1 - p, p])) + t, int_inputs)
-    gaussian = Gaussian(info_vec, prec_sqrt, inputs)
+    gaussian = Gaussian(
+        white_vec=white_vec,
+        prec_sqrt=prec_sqrt,
+        inputs=inputs,
+        negate=False,
+    )
     gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
     with moment_matching:
@@ -268,11 +274,14 @@ def test_reduce_moment_matching_univariate():
     expected_loc = numeric_array([(2 * p - 1) * s1])
     expected_variance = 4 * p * (1 - p) * s1 ** 2 + (1 - p) * s2 ** 2 + p * s3 ** 2
     expected_precision = numeric_array([[1 / expected_variance]])
-    expected_info_vec = (expected_precision @ ops.unsqueeze(expected_loc, -1)).squeeze(
-        -1
-    )
     expected_prec_sqrt = ops.cholesky(expected_precision)
-    expected_gaussian = Gaussian(expected_info_vec, expected_prec_sqrt, real_inputs)
+    expected_white_vec = (expected_loc[..., None, :] @ expected_prec_sqrt)[..., 0, :]
+    expected_gaussian = Gaussian(
+        white_vec=expected_white_vec,
+        prec_sqrt=expected_prec_sqrt,
+        inputs=real_inputs,
+        negate=False,
+    )
     expected_gaussian -= expected_gaussian.log_normalizer
     expected_discrete = Tensor(numeric_array(t))
     expected = expected_discrete + expected_gaussian
@@ -295,18 +304,29 @@ def test_reduce_moment_matching_multivariate():
 
     loc = numeric_array([[-10.0, -1.0], [+10.0, -1.0], [+10.0, +1.0], [-10.0, +1.0]])
     prec_sqrt = zeros(4, 1, 1) + ops.new_eye(loc, (2,))
+    white_vec = (loc[..., None, :] @ prec_sqrt)[..., 0, :]
     discrete = Tensor(zeros(4), int_inputs)
-    gaussian = Gaussian(loc, prec_sqrt, inputs)
+    gaussian = Gaussian(
+        white_vec=white_vec,
+        prec_sqrt=prec_sqrt,
+        inputs=inputs,
+        negate=False,
+    )
     gaussian -= gaussian.log_normalizer
     joint = discrete + gaussian
     with moment_matching:
         actual = joint.reduce(ops.logaddexp, "i")
     assert_close(actual.reduce(ops.logaddexp), joint.reduce(ops.logaddexp))
 
-    expected_loc = zeros(2)
-    expected_covariance = numeric_array([[101.0, 0.0], [0.0, 2.0]])
-    expected_prec_sqrt = ops.pow(expected_covariance, -0.5)
-    expected_gaussian = Gaussian(expected_loc, expected_prec_sqrt, real_inputs)
+    expected_white_vec = zeros(2)
+    expected_precision = numeric_array([[1 / 101.0, 0.0], [0.0, 1 / 2.0]])
+    expected_prec_sqrt = ops.pow(expected_precision, 0.5)
+    expected_gaussian = Gaussian(
+        white_vec=expected_white_vec,
+        prec_sqrt=expected_prec_sqrt,
+        inputs=real_inputs,
+        negate=False,
+    )
     expected_gaussian -= expected_gaussian.log_normalizer
     expected_discrete = Tensor(ops.log(numeric_array(4.0)))
     expected = expected_discrete + expected_gaussian
