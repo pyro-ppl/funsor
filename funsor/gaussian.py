@@ -69,6 +69,17 @@ def _mmtv(m1, m2, v):
     return (m1 @ (ops.transpose(m2, -1, -2) @ v[..., None]))[..., 0]
 
 
+def _inverse_cholesky(P):
+    """
+    Computes a Cholesky decomposition of the inverse of a posdef matrix.
+    """
+    # Ref: https://nbviewer.jupyter.org/gist/fehiepsi/5ef8e09e61604f10607380467eb82006#Precision-to-scale_tril
+    Lf = ops.cholesky(ops.flip(P, (-2, -1)))
+    L_inv = ops.transpose(ops.flip(Lf, (-2, -1)), -2, -1)
+    L = ops.triangular_inv(L_inv)
+    return L
+
+
 def _compress_rank(white_vec, prec_sqrt):
     """
     Compress a wide representation ``(white_vec, prec_sqrt)`` while preserving
@@ -346,38 +357,42 @@ class GaussianMeta(FunsorMeta):
             inputs = tuple(inputs.items())
         assert isinstance(inputs, tuple)
 
-        # Convert prec_sqrt.
+        # Convert scale parameter to prec_sqrt.
         if prec_sqrt is None and white_vec is not None:
             raise ValueError("Cannot specify white_vec without prec_sqrt")
         if prec_sqrt is not None:
-            pass
+            is_tril = False
         elif precision is not None:
             prec_sqrt = ops.cholesky(precision)
-        elif scale_tril is not None:
-            prec_sqrt = ops.triangular_inv(scale_tril, upper=True, transpose=True)
+            is_tril = True
         elif covariance is not None:
-            scale_tril = ops.cholesky(covariance)
-            prec_sqrt = ops.triangular_inv(scale_tril, upper=True, transpose=True)
+            prec_sqrt = _inverse_cholesky(covariance)
+            is_tril = True
+        elif scale_tril is not None:
+            prec_sqrt = ops.transpose(ops.triangular_inv(scale_tril), -1, -2)
+            is_tril = False
         else:
             raise ValueError(
                 "At least one of prec_sqrt, precision, scale_tril, or covariance "
                 "must be specified"
             )
 
-        # Convert white_vec.
+        # Convert location parameter to white_vec.
         if white_vec is not None:
             pass
-        elif info_vec is not None:
-            prec_sqrt = ops.cholesky(_mmt(prec_sqrt))  # triangularize
-            white_vec = ops.triangular_solve(info_vec[..., None], prec_sqrt)[..., 0]
         elif mean is not None:
             white_vec = _vm(mean, prec_sqrt)
+        elif info_vec is not None:
+            if not is_tril:
+                prec_sqrt = ops.cholesky(_mmt(prec_sqrt))  # triangularize
+                is_tril = True
+            white_vec = ops.triangular_solve(info_vec[..., None], prec_sqrt)[..., 0]
         else:
             raise ValueError(
                 "At least one of white_vec, mean, or info_vec must be specified"
             )
 
-        # Compress wide representations.
+        # Compress wide representations to at most square.
         white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
 
         # Create a Gaussian.
@@ -500,6 +515,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     @lazy_property
     def _precision_chol(self):
+        # Note self.prec_sqrt may be neither lower triangular nor square.
         assert self.is_full_rank
         return ops.cholesky(self._precision)
 
@@ -508,17 +524,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return ops.cholesky_inverse(self._precision_chol)
 
     @lazy_property
-    def _mean(self):
-        return ops.triangular_solve(
-            self.white_vec[..., None],
-            self._precision_chol,
-            upper=True,
-            transpose=True,
-        )[..., 0]
+    def _scale_tril(self):
+        return _inverse_cholesky(self._precision)
 
     @lazy_property
-    def _scale_tril(self):
-        return ops.cholesky(self._covariance)
+    def _mean(self):
+        return ops.cholesky_solve(
+            self._info_vec[..., None], self._precision_chol
+        )[..., 0]
 
     @lazy_property
     def _info_vec(self):
@@ -956,7 +969,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 (white_noise + self.white_vec)[..., None],
                 self._precision_chol,
                 transpose=True,
-                upper=True,
             )[..., 0]
             offsets, _ = _compute_offsets(real_inputs)
             results = []

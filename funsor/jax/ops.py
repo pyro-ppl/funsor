@@ -30,6 +30,7 @@ ops.sigmoid.register(array)(expit)
 ops.sqrt.register(array)(np.sqrt)
 ops.tanh.register(array)(np.tanh)
 ops.transpose.register(array)(np.swapaxes)
+ops.flip.register(array)(np.flip)
 ops.unsqueeze.register(array)(np.expand_dims)
 
 
@@ -348,8 +349,8 @@ def _triangular_solve(x, y, upper=False, transpose=False):
 
 
 @ops.triangular_inv.register(array)
-def _triangular_inv(x, upper=False, transpose=False):
+def _triangular_inv(x, upper=False):
     if x.shape[-1] == 1:
         return 1 / x
     eye = _new_eye(x, x.shape[:-1])
-    return _triangular_solve(eye, x, upper=upper, transpose=transpose)
+    return _triangular_solve(eye, x, upper=upper)

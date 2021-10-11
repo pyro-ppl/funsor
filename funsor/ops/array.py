@@ -420,6 +420,11 @@ def transpose(array, axis1, axis2):
 transpose.register(array)(np.swapaxes)
 
 
+@UnaryOp.make
+def flip(array, axis):
+    return np.flip(array, axis)
+
+
 @BinaryOp.make
 def triangular_solve(x, y, upper=False, transpose=False):
     if transpose:
@@ -428,9 +433,7 @@ def triangular_solve(x, y, upper=False, transpose=False):
 
 
 @UnaryOp.make
-def triangular_inv(x, upper=False, transpose=False):
-    if transpose:
-        x = np.swapaxes(x, -2, -1)
+def triangular_inv(x, upper=False):
     return np.linalg.inv(x)
 
 
@@ -462,6 +465,7 @@ __all__ = [
     "einsum",
     "expand",
     "finfo",
+    "flip",
     "full_like",
     "is_numeric_array",
     "isnan",

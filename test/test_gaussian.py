@@ -16,6 +16,7 @@ from funsor.gaussian import (
     BlockVector,
     Gaussian,
     _compress_rank,
+    _inverse_cholesky,
     _norm2,
     _split_real_inputs,
     _vm,
@@ -82,6 +83,22 @@ def test_cholesky_inverse(batch_shape, size, requires_grad):
     assert_close(ops.cholesky_inverse(u), naive_cholesky_inverse(u))
     if requires_grad:
         ops.cholesky_inverse(u).sum().backward()
+
+
+@pytest.mark.parametrize("size", [1, 2, 3], ids=str)
+@pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+def test_inverse_cholesky(batch_shape, size):
+    prec_sqrt = randn((size, size))
+    precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
+
+    # The naive computation requires two Choleskys + two triangular_solves.
+    precision_chol = ops.cholesky(precision)
+    covariance = ops.cholesky_inverse(precision_chol)
+    expected = ops.cholesky(covariance)
+
+    # Du's trick requires only a single Cholesky + single triangular_solve.
+    actual = _inverse_cholesky(precision)
+    assert_close(actual, expected, atol=1e-5, rtol=1e-4)
 
 
 def test_split_real_inputs():
@@ -204,35 +221,44 @@ def test_compress_rank(batch_shape, dim, rank):
     assert_close(actual, expected, atol=1e-4, rtol=None)
 
 
-@pytest.mark.parametrize("int_inputs", ["", "i", "j", "ij"])
-@pytest.mark.parametrize("real_inputs", ["x", "y", "z", "xy", "xz", "yz", "xyz"])
-def test_meta(int_inputs, real_inputs):
-    inputs = OrderedDict(
-        (k, d)
-        for k, d in [
-            ("i", Bint[2]),
-            ("j", Bint[3]),
-            ("x", Real),
-            ("y", Reals[4]),
-            ("z", Reals[3, 2]),
-        ]
-        if k in int_inputs + real_inputs
-    )
-    g = random_gaussian(inputs)
+@pytest.mark.parametrize(
+    "loc, scale",
+    [
+        ("white_vec", "prec_sqrt"),
+        ("_mean", "prec_sqrt"),
+        ("_mean", "_covariance"),
+        ("_mean", "_scale_tril"),
+        ("_mean", "_precision"),
+        ("_info_vec", "prec_sqrt"),
+        ("_info_vec", "_covariance"),
+        ("_info_vec", "_scale_tril"),
+        ("_info_vec", "_precision"),
+    ],
+)
+def test_meta(loc, scale):
+    names = "ijxyz"
+    shapes = [Bint[2], Bint[3], Real, Reals[4], Reals[3, 2]]
+    for real_inputs in ["x", "y", "z", "xy", "xz", "yz", "xyz"]:
+        for int_inputs in ["", "i", "j", "ij"]:
+            inputs = OrderedDict(
+                (k, d) for k, d in zip(names, shapes) if k in int_inputs + real_inputs
+            )
+            expected = random_gaussian(inputs)
 
-    for loc in ["white_vec", "_mean", "_info_vec"]:
-        for scale in ["prec_sqrt", "_covariance", "_scale_tril", "_precision"]:
-            if loc == "white_vec" and scale != "prec_sqrt":
-                continue  # nonsense
             kwargs = {
-                scale.strip("_"): getattr(g, scale),
-                loc.strip("_"): getattr(g, loc),
-                "inputs": g.inputs,
+                scale.strip("_"): getattr(expected, scale),
+                loc.strip("_"): getattr(expected, loc),
+                "inputs": expected.inputs,
                 "negate": False,
             }
-            print(list(kwargs))
             actual = Gaussian(**kwargs)
-            assert_close(actual, g)
+            assert_close(
+                getattr(actual, loc), getattr(expected, loc), atol=1e-3, rtol=1e-3
+            )
+            assert_close(
+                getattr(actual, scale), getattr(expected, scale), atol=1e-3, rtol=1e-3
+            )
+            assert_close(actual, expected, rtol=1e-3)
 
 
 @pytest.mark.parametrize(
@@ -749,12 +775,15 @@ def test_integrate_gaussian(int_inputs, real_inputs):
 
 
 def test_mc_plate_gaussian():
-    log_measure = Gaussian(
-        white_vec=numeric_array([0.0]),
-        prec_sqrt=numeric_array([[1.0]]),
-        inputs=(("loc", Real),),
-        negate=False,
-    ) + numeric_array(-0.9189)
+    log_measure = (
+        Gaussian(
+            white_vec=numeric_array([0.0]),
+            prec_sqrt=numeric_array([[1.0]]),
+            inputs=(("loc", Real),),
+            negate=False,
+        )
+        + numeric_array(-0.9189)
+    )
 
     plate_size = 10
     integrand = Gaussian(
