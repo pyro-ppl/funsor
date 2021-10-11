@@ -838,7 +838,7 @@ def eager_normal(loc, scale, value):
     if not is_affine(loc) or not is_affine(value):
         return None  # lazy
 
-    white_vec = (loc.data / scale.data)[..., None]
+    white_vec = ops.new_zeros(scale.data, scale.data.shape + (1,))
     prec_sqrt = (1 / scale.data)[..., None, None]
     log_prob = -0.5 * math.log(2 * math.pi) - ops.log(scale)
     inputs = scale.inputs.copy()
@@ -850,7 +850,7 @@ def eager_normal(loc, scale, value):
         inputs=inputs,
         negate=False,
     )
-    return gaussian(**{var: value})
+    return gaussian(**{var: value - loc})
 
 
 def eager_mvn(loc, scale_tril, value):
@@ -860,8 +860,8 @@ def eager_mvn(loc, scale_tril, value):
     if not is_affine(loc) or not is_affine(value):
         return None  # lazy
 
-    white_vec = ops.triangular_solve(loc.data[..., None], scale_tril.data)[..., 0]
-    prec_sqrt = ops.triangular_inv(scale_tril.data, transpose=True)
+    white_vec = ops.new_zeros(scale_tril.data, scale_tril.data.shape[:-1])
+    prec_sqrt = ops.transpose(ops.triangular_inv(scale_tril.data), -1, -2)
     scale_diag = Tensor(ops.diagonal(scale_tril.data, -1, -2), scale_tril.inputs)
     log_prob = (
         -0.5 * scale_diag.shape[0] * math.log(2 * math.pi) - ops.log(scale_diag).sum()
@@ -875,7 +875,7 @@ def eager_mvn(loc, scale_tril, value):
         inputs=inputs,
         negate=False,
     )
-    return gaussian(**{var: value})
+    return gaussian(**{var: value - loc})
 
 
 def eager_beta_bernoulli(red_op, bin_op, reduced_vars, x, y):

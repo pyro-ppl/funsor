@@ -529,9 +529,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
     @lazy_property
     def _mean(self):
-        return ops.cholesky_solve(
-            self._info_vec[..., None], self._precision_chol
-        )[..., 0]
+        return ops.cholesky_solve(self._info_vec[..., None], self._precision_chol)[
+            ..., 0
+        ]
 
     @lazy_property
     def _info_vec(self):
