@@ -23,7 +23,7 @@ from funsor.gaussian import (
 )
 from funsor.integrate import Integrate
 from funsor.tensor import Einsum, Tensor, numeric_array
-from funsor.terms import Number, Variable
+from funsor.terms import Number, Unary, Variable
 from funsor.testing import (
     assert_close,
     id_from_inputs,
@@ -249,7 +249,6 @@ def test_meta(loc, scale):
                 scale.strip("_"): getattr(expected, scale),
                 loc.strip("_"): getattr(expected, loc),
                 "inputs": expected.inputs,
-                "negate": False,
             }
             actual = Gaussian(**kwargs)
             assert_close(
@@ -264,7 +263,7 @@ def test_meta(loc, scale):
 @pytest.mark.parametrize(
     "expr,expected_type",
     [
-        ("-g1", Gaussian),
+        ("-g1", Unary),
         ("g1 + 1", Contraction),
         ("g1 - 1", Contraction),
         ("1 + g1", Contraction),
@@ -301,7 +300,6 @@ def test_smoke(expr, expected_type):
             )
         ),
         inputs=OrderedDict([("i", Bint[2]), ("x", Reals[3])]),
-        negate=False,
     )
     assert isinstance(g1, Gaussian)
 
@@ -311,7 +309,6 @@ def test_smoke(expr, expected_type):
             numeric_array([[[1.0, 0.2], [0.2, 1.0]], [[1.0, 0.2], [0.2, 1.0]]])
         ),
         inputs=OrderedDict([("i", Bint[2]), ("y", Reals[2])]),
-        negate=False,
     )
     assert isinstance(g2, Gaussian)
 
@@ -780,7 +777,6 @@ def test_mc_plate_gaussian():
             white_vec=numeric_array([0.0]),
             prec_sqrt=numeric_array([[1.0]]),
             inputs=(("loc", Real),),
-            negate=False,
         )
         + numeric_array(-0.9189)
     )
@@ -790,7 +786,6 @@ def test_mc_plate_gaussian():
         white_vec=randn((plate_size, 1)) + 3.0,
         prec_sqrt=ones((plate_size, 1, 1)),
         inputs=(("data", Bint[plate_size]), ("loc", Real)),
-        negate=False,
     )
 
     rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)

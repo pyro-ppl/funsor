@@ -194,7 +194,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
 def eager_integrate(log_measure, integrand, reduced_vars):
-    assert not log_measure.negate
+    assert log_measure.is_full_rank
     reduced_names = frozenset(v.name for v in reduced_vars)
     real_vars = frozenset(v.name for v in reduced_vars if v.dtype == "real")
     if real_vars:
@@ -212,10 +212,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             lhs_white_vec, lhs_prec_sqrt = align_gaussian(inputs, log_measure)
             rhs_white_vec, rhs_prec_sqrt = align_gaussian(inputs, integrand)
             lhs = Gaussian(
-                white_vec=lhs_white_vec,
-                prec_sqrt=lhs_prec_sqrt,
-                inputs=inputs,
-                negate=False,
+                white_vec=lhs_white_vec, prec_sqrt=lhs_prec_sqrt, inputs=inputs
             )
 
             # Compute the expectation of a non-normalized quadratic form.

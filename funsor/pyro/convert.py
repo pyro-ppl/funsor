@@ -154,10 +154,7 @@ def mvn_to_funsor(pyro_dist, event_inputs=(), real_inputs=OrderedDict()):
     )
     inputs.update(real_inputs)
     return discrete + Gaussian(
-        white_vec=gaussian.white_vec,
-        prec_sqrt=gaussian.prec_sqrt,
-        inputs=inputs,
-        negate=False,
+        white_vec=gaussian.white_vec, prec_sqrt=gaussian.prec_sqrt, inputs=inputs
     )
 
 
@@ -265,12 +262,7 @@ def matrix_and_mvn_to_funsor(
         inputs[i.name] = i.dtype
         inputs[x_name] = Reals[x_size]
         inputs[y_i.name] = Real
-        g_i = Gaussian(
-            white_vec=white_vec,
-            prec_sqrt=prec_sqrt,
-            inputs=inputs,
-            negate=False,
-        )
+        g_i = Gaussian(white_vec=white_vec, prec_sqrt=prec_sqrt, inputs=inputs)
 
         # Convert to a joint Gaussian over x and y, possibly lazily.
         # This expands the y part of the matrix from linear to square,
@@ -304,6 +296,5 @@ def matrix_and_mvn_to_funsor(
         white_vec=white_vec.expand(batch_shape + (-1,)),
         prec_sqrt=prec_sqrt.expand(batch_shape + (-1, -1)),
         inputs=inputs,
-        negate=False,
     )
     return g + log_prob

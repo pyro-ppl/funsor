@@ -131,12 +131,7 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
 
     new_inputs = new_loc.inputs.copy()
     new_inputs.update((k, d) for k, d in gaussian.inputs.items() if d.dtype == "real")
-    new_gaussian = Gaussian(
-        mean=new_loc.data,
-        covariance=new_cov,
-        inputs=new_inputs,
-        negate=False,
-    )
+    new_gaussian = Gaussian(mean=new_loc.data, covariance=new_cov, inputs=new_inputs)
     new_discrete -= new_gaussian.log_normalizer
 
     return new_discrete + new_gaussian

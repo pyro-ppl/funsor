@@ -416,7 +416,7 @@ def random_gaussian(inputs):
     prec_sqrt = ops.cholesky(precision)
     loc = randn(batch_shape + event_shape)
     white_vec = ops.matmul(prec_sqrt, ops.unsqueeze(loc, -1)).squeeze(-1)
-    return Gaussian(white_vec, prec_sqrt, inputs, False)
+    return Gaussian(white_vec=white_vec, prec_sqrt=prec_sqrt, inputs=inputs)
 
 
 def random_mvn(batch_shape, dim, diag=False):

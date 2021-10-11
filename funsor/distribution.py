@@ -848,7 +848,6 @@ def eager_normal(loc, scale, value):
         white_vec=white_vec,
         prec_sqrt=prec_sqrt,
         inputs=inputs,
-        negate=False,
     )
     return gaussian(**{var: value - loc})
 
@@ -870,10 +869,7 @@ def eager_mvn(loc, scale_tril, value):
     var = gensym("value")
     inputs[var] = Reals[scale_diag.shape[0]]
     gaussian = log_prob + Gaussian(
-        white_vec=white_vec,
-        prec_sqrt=prec_sqrt,
-        inputs=inputs,
-        negate=False,
+        white_vec=white_vec, prec_sqrt=prec_sqrt, inputs=inputs
     )
     return gaussian(**{var: value - loc})
 
