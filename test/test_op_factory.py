@@ -11,8 +11,7 @@ from funsor.domains import Array, Bint, Dependent, Product, Reals
 from funsor.op_factory import make_op
 from funsor.tensor import Tensor
 from funsor.terms import Binary, Tuple, Unary, Variable
-from funsor.testing import assert_close, randn
-from funsor.util import get_backend
+from funsor.testing import assert_close, randn, requires_backend
 
 
 @pytest.mark.parametrize("batch_shape", [(), (10,)], ids=str)
@@ -122,7 +121,7 @@ def test_make_op_3(batch_shape):
         assert_close(actual, Tensor(actual_data, inputs))
 
 
-@pytest.mark.skipif(get_backend() != "torch", reason="requires nn.Module")
+@requires_backend("torch", reason="requires nn.Module")
 @pytest.mark.parametrize("batch_shape", [(), (10,)], ids=str)
 def test_nn_module(batch_shape):
     import torch
