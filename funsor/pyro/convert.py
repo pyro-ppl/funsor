@@ -28,7 +28,6 @@ from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import Tensor
 from funsor.terms import Independent, Variable, to_data, to_funsor
-from funsor.util import broadcast_shape
 
 # Conversion functions use fixed names for Pyro batch dims, but
 # accept an event_inputs tuple for custom event dim names.
@@ -250,16 +249,16 @@ def matrix_and_mvn_to_funsor(
         ) - mvn.base_dist.scale.log().sum(-1)
         log_prob = tensor_to_funsor(log_prob, event_dims)
 
-        matrix_x = ops.transpose(matrix, -1, -2)
-        matrix_y = ops.new_full(matrix_x, matrix_x.shape[:-1] + (1,), -1.0)
-        matrix_xy = ops.cat([matrix_x, matrix_y], -1)
-        prec_sqrt = matrix_xy / mvn.base_dist.scale[..., None]
+        matrix_x = ops.transpose(matrix, -1, -2)  # [...,Y,X]
+        matrix_y = ops.new_full(matrix_x, matrix_x.shape[:-1] + (1,), -1.0)  # [...,Y,1]
+        matrix_xy = ops.cat([matrix_x, matrix_y], -1)  # [...,Y,X+1]
+        prec_sqrt = (matrix_xy / mvn.base_dist.scale[..., None])[..., None]
         white_vec = (mvn.base_dist.loc / mvn.base_dist.scale)[..., None]
 
         i = Variable(gensym("i"), Bint[y_size])
         y_i = Variable(gensym(f"{y_name}_i"), Real)
         inputs = log_prob.inputs.copy()
-        inputs[i.name] = i.dtype
+        inputs[i.name] = i.output
         inputs[x_name] = Reals[x_size]
         inputs[y_i.name] = Real
         g_i = Gaussian(white_vec=white_vec, prec_sqrt=prec_sqrt, inputs=inputs)
@@ -282,19 +281,15 @@ def matrix_and_mvn_to_funsor(
     ).log().sum(-1)
     log_prob = tensor_to_funsor(log_prob, event_dims)
 
-    matrix_x = matrix
-    matrix_y = -ops.new_eye(matrix, matrix.shape[:-2] + (y_size,))
-    matrix_xy = ops.cat([matrix_x, matrix_y], -2)
-    prec_sqrt = ops.triangular_solve(matrix_xy, mvn.scale_tril)
-    white_vec = ops.triangular_solve(mvn.loc[..., None], mvn.scale_tril)[..., 0]
+    prec_sqrt_y = ops.transpose(ops.triangular_inv(mvn.scale_tril), -1, -2)
+    prec_sqrt_xy = matrix @ prec_sqrt_y
+    prec_sqrt_yy = (-prec_sqrt_y).expand(prec_sqrt_xy.shape[:-2] + (-1, -1))
+    prec_sqrt = ops.cat([prec_sqrt_xy, prec_sqrt_yy], -2)
+    white_vec = (mvn.loc[..., None, :] @ prec_sqrt_y)[..., 0, :]
+    white_vec = white_vec.expand(prec_sqrt.shape[:-2] + (-1,))
 
-    batch_shape = broadcast_shape(matrix.shape[:-2], mvn.batch_shape)
-    inputs = log_prob.inputs.copy()
+    inputs = tensor_to_funsor(white_vec, event_dims, 1).inputs.copy()
     inputs[x_name] = Reals[x_size]
     inputs[y_name] = Reals[y_size]
-    g = Gaussian(
-        white_vec=white_vec.expand(batch_shape + (-1,)),
-        prec_sqrt=prec_sqrt.expand(batch_shape + (-1, -1)),
-        inputs=inputs,
-    )
+    g = Gaussian(white_vec=white_vec, prec_sqrt=prec_sqrt, inputs=inputs)
     return g + log_prob

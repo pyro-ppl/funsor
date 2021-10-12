@@ -12,9 +12,10 @@ import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import Real, Reals
-from funsor.ops import AddOp
+from funsor.ops import AddOp, SubOp
 from funsor.tensor import Tensor, align_tensor, align_tensors
 from funsor.terms import (
+    Align,
     Binary,
     Funsor,
     FunsorMeta,
@@ -61,10 +62,6 @@ def _mtm(mat1, mat2=None):
     if mat2 is None:
         mat2 = mat1
     return ops.transpose(mat1, -1, -2) @ mat2
-
-
-def _mmtv(m1, m2, v):
-    return (m1 @ (ops.transpose(m2, -1, -2) @ v[..., None]))[..., 0]
 
 
 def _inverse_cholesky(P):
@@ -968,6 +965,12 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     white_vec = ops.cat([lhs_white_vec, rhs_white_vec], -1)
     prec_sqrt = ops.cat([lhs_prec_sqrt, rhs_prec_sqrt], -1)
     return Gaussian(white_vec, prec_sqrt, inputs)
+
+
+@eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
+@eager.register(Binary, SubOp, (Funsor, Align, Delta), Gaussian)
+def eager_sub(op, lhs, rhs):
+    return lhs + -rhs
 
 
 __all__ = [
