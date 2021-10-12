@@ -770,7 +770,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         assert reduced_vars.issubset(self.inputs)
         if op is ops.logaddexp:
             # Marginalize out real variables, but keep mixtures lazy.
-            assert self.is_full_rank
             assert all(v in self.inputs for v in reduced_vars)
             real_vars = frozenset(
                 k for k, d in self.inputs.items() if d.dtype == "real"
@@ -894,7 +893,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
-        assert self.is_full_rank
         if any(self.inputs[k].dtype != "real" for k in sampled_vars):
             raise ValueError(
                 "Sampling from non-normalized Gaussian mixtures is intentionally "

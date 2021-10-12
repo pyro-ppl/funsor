@@ -698,6 +698,37 @@ def test_reduce_logsumexp(int_inputs, real_inputs):
     )
 
 
+@pytest.mark.parametrize(
+    "int_inputs",
+    [
+        OrderedDict(),
+        OrderedDict([("i", Bint[2])]),
+        OrderedDict([("i", Bint[2]), ("j", Bint[3])]),
+    ],
+    ids=id_from_inputs,
+)
+def test_reduce_logsumexp_subs(int_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(
+        [("w", Reals[2]), ("x", Reals[4]), ("y", Reals[2, 3]), ("z", Real)]
+    )
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+
+    g = random_gaussian(inputs)
+    batch_shape = tuple(d.size for d in int_inputs.values())
+    all_values = {
+        k: Tensor(randn(batch_shape + v.shape), int_inputs)
+        for k, v in real_inputs.items()
+    }
+    subsets = "w x y z wx wy wz xy xz yz wxy wxz wyz xyz".split()
+    for reduced_vars in map(frozenset, subsets):
+        values = {k: v for k, v in all_values.items() if k not in reduced_vars}
+        actual = g.reduce(ops.logaddexp, reduced_vars)(**all_values)
+        expected = g(**values).reduce(ops.logaddexp, reduced_vars)
+        assert_close(actual, expected, atol=1e-4, rtol=None)
+
+
 @pytest.mark.parametrize("int_inputs", [{}, {"i": Bint[2]}], ids=id_from_inputs)
 @pytest.mark.parametrize(
     "real_inputs",
