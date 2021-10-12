@@ -117,9 +117,9 @@ class Constant(Funsor, metaclass=ConstantMeta):
         assert isinstance(x, Funsor)
         if isinstance(x, (Number, Tensor)):
             return x
-        if isinstance(self.arg, Tensor):
-            return self.arg.materialize(x)
-        raise NotImplementedError
+
+        assert isinstance(self.arg, Tensor)
+        return self.arg.materialize(x)
 
 
 @eager.register(Reduce, ops.AddOp, Constant, frozenset)
