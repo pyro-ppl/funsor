@@ -13,8 +13,7 @@ from funsor.interpretations import reflect
 from funsor.interpreter import reinterpret
 from funsor.tensor import Tensor
 from funsor.terms import Cat, Funsor, Lambda, Number, eager
-from funsor.testing import assert_close, check_funsor, random_tensor
-from funsor.util import get_backend
+from funsor.testing import assert_close, check_funsor, random_tensor, requires_backend
 
 
 def test_lambda_lambda():
@@ -173,7 +172,7 @@ def test_normal():
     check_funsor(actual, {"i": Bint[3]}, Real)
 
 
-@pytest.mark.skipif(get_backend() != "torch", reason="requires nn.Module")
+@requires_backend("torch", reason="requires nn.Module")
 def test_nn_module():
     import torch
 
