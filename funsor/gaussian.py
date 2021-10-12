@@ -75,13 +75,14 @@ def _inverse_cholesky(P):
     return L
 
 
-def _compress_rank(white_vec, prec_sqrt):
+def _compress_rank(white_vec, prec_sqrt, *, threshold=1):
     """
     Compress a wide representation ``(white_vec, prec_sqrt)`` while preserving
     the quadratic function ``||x @ prec_sqrt - white_vec||^2 + const``.
     """
+    assert threshold >= 1
     dim, rank = prec_sqrt.shape[-2:]
-    if rank <= dim:
+    if rank <= dim * threshold:
         return white_vec, prec_sqrt, None
 
     # Let P = prec_sqrt and w = white_vec define the original Gaussian
@@ -377,8 +378,10 @@ class GaussianMeta(FunsorMeta):
                 "At least one of white_vec, mean, or info_vec must be specified"
             )
 
-        # Compress wide representations to at most square.
-        white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+        # Compress wide representations.
+        white_vec, prec_sqrt, shift = _compress_rank(
+            white_vec, prec_sqrt, threshold=cls.compress_rank_threshold
+        )
 
         # Create a Gaussian.
         result = super().__call__(white_vec, prec_sqrt, inputs)
@@ -431,6 +434,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         :class:`~funsor.domains.Domain` .
     """
 
+    # To save space we compress wide matrices down to square. The space optimal
+    # setting is compress_rank_threshold = 1. However compression uses a
+    # Cholesky factorization, so the resulting matrix needs to be full rank. To
+    # relax the full rank requirement we could instead use a QR factorization;
+    # instead we set a higher threshold and hope that enough information has
+    # accumulated by the time we compress that the matrix has full rank. 🤞
+    compress_rank_threshold = 2
+
     def __init__(self, white_vec, prec_sqrt, inputs):
         assert ops.is_numeric_array(white_vec) and ops.is_numeric_array(prec_sqrt)
         assert isinstance(inputs, tuple)
@@ -443,7 +454,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             assert len(prec_sqrt.shape) >= 2 and prec_sqrt.shape[-2] == dim
             rank = prec_sqrt.shape[-1]
             assert len(white_vec.shape) >= 1 and white_vec.shape[-1] == rank
-            assert rank <= dim
+            assert rank <= dim * self.compress_rank_threshold
 
         # Compute total shape of all Bint inputs.
         batch_shape = tuple(
@@ -474,7 +485,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     @property
     def is_full_rank(self):
         dim, rank = self.prec_sqrt.shape[-2:]
-        return rank == dim
+        return rank >= dim
 
     # TODO Consider weak-memoizing these so they persist through alpha conversion.
     # https://github.com/pyro-ppl/pyro/blob/ac3c588/pyro/distributions/coalescent.py#L412
@@ -510,7 +521,17 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     def _log_normalizer(self):
         dim = self.prec_sqrt.shape[-2]
         log_det_term = _log_det_tri(self._precision_chol)
-        return 0.5 * dim * math.log(2 * math.pi) - log_det_term
+        result = 0.5 * dim * math.log(2 * math.pi) - log_det_term
+        if self.rank == dim:
+            return result
+        # Shift, as in logic in _compress_rank().
+        old_norm2 = _norm2(self.white_vec)
+        white_vec = ops.triangular_solve(
+            self._info_vec[..., None], self._precision_chol
+        )[..., 0]
+        new_norm2 = _norm2(white_vec)
+        shift = 0.5 * (new_norm2 - old_norm2)
+        return result + shift
 
     @lazy_property
     def log_normalizer(self):
@@ -817,16 +838,12 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             #
             #   S S' = I - Pb' inv(Pb Pb') Pb = I - (Qb\Pb)' (Qb\Pb) = S
             #
-            # We implement only the two cases that arise in Bayesian models:
-            # Case 1: If rank == dim(xb) then the projection matrix is zero,
-            #         and the degenerate Gaussian G(xa; wa, Qa) can be dropped.
-            # Case 2: If rank == dim(xb) + dim(xa) then S will be
-            #         rank-deficient, but Pa R should be full rank.
+            # Note if rank == dim(xb), then the projection matrix is zero,
+            # and the Gaussian G(xa; wa, Qa) is zero can be dropped.
             b, a = _split_real_inputs(self.inputs, reduced_vars, self.white_vec)
             prec_sqrt_a = self.prec_sqrt[..., a, :]
             prec_sqrt_b = self.prec_sqrt[..., b, :]
             dim_b = prec_sqrt_b.shape[-2]
-            dim_a = prec_sqrt_a.shape[-2]
             if self.rank < dim_b:
                 raise ValueError(
                     f"Too little information to marginalize over {set(reduced_vars)}. "
@@ -837,18 +854,12 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 dim_b * math.log(2 * math.pi) / 2 - _log_det_tri(precision_chol_b),
                 int_inputs,
             )
-            if self.rank == dim_b:  # Case 1: Gaussian over xa is degenerate.
-                result = b_log_normalizer
-            elif self.rank == dim_b + dim_a:  # Case 2: Gaussian over xa is full rank.
+            result = b_log_normalizer
+            if self.rank > dim_b:  # otherwise the Gaussian over xa is zero.
                 proj_b = _mtm(ops.triangular_solve(prec_sqrt_b, precision_chol_b))
                 prec_sqrt = prec_sqrt_a - prec_sqrt_a @ proj_b
                 white_vec = self.white_vec - _vm(self.white_vec, proj_b)
-                result = b_log_normalizer + Gaussian(white_vec, prec_sqrt, inputs)
-            else:
-                raise NotImplementedError(
-                    f"rank = {self.rank:d}, marginalised_dim = {dim_b:d}, "
-                    f"remaining_dim = {dim_a:d}"
-                )
+                result += Gaussian(white_vec, prec_sqrt, inputs)
             return result.reduce(ops.logaddexp, reduced_ints)
 
         elif op is ops.add:

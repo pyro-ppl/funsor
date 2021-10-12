@@ -3,6 +3,7 @@
 
 import itertools
 import pprint
+import unittest.mock
 from collections import OrderedDict
 from functools import reduce
 
@@ -219,6 +220,39 @@ def test_compress_rank(batch_shape, dim, rank):
     assert_close(actual, expected, atol=1e-4, rtol=None)
 
 
+@unittest.mock.patch("funsor.gaussian.Gaussian.compress_rank_threshold", 999)
+@pytest.mark.parametrize(
+    "dim, rank", [(d, r) for d in range(1, 6) for r in range(1, 21) if d < r]
+)
+def test_compress_rank_gaussian(dim, rank):
+    inputs = OrderedDict(x=Reals[dim])
+    white_vec = randn((rank,))
+    prec_sqrt = randn((dim, rank))
+    g1 = Gaussian(white_vec, prec_sqrt, inputs)
+    assert isinstance(g1, Gaussian)
+    assert g1.rank == rank
+
+    white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+    assert white_vec.shape == (dim,)
+    assert prec_sqrt.shape == (dim, dim)
+    assert shift is not None
+    g2 = Gaussian(white_vec, prec_sqrt, inputs)
+    assert isinstance(g2, Gaussian)
+    assert g2.rank == dim
+
+    assert_close(g1._mean, g2._mean, atol=1e-5, rtol=1e-5)
+    assert_close(g1._precision, g2._precision, atol=1e-5, rtol=1e-5)
+
+    actual = g1.reduce(ops.logaddexp)
+    expected = g2.reduce(ops.logaddexp) + shift
+    assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+
+    data = randn((dim,))
+    actual = g1(x=data)
+    expected = g2(x=data) + shift
+    assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+
+
 @pytest.mark.parametrize(
     "loc, scale",
     [
@@ -269,7 +303,7 @@ def test_meta(loc, scale):
         ("g1 + shift", Contraction),
         ("shift + g1", Contraction),
         ("shift - g1", Contraction),
-        ("g1 + g1", Contraction),
+        ("g1 + g1", (Gaussian, Contraction)),
         ("(g1 + g2 + g2) - g2", Contraction),
         ("g1(i=i0)", Gaussian),
         ("g2(i=i0)", Gaussian),
@@ -285,6 +319,7 @@ def test_meta(loc, scale):
         ('(g1 + g2).reduce(ops.logaddexp, "y")', Contraction),
         ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
     ],
+    ids=str,
 )
 def test_smoke(expr, expected_type):
     g1 = Gaussian(

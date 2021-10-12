@@ -59,6 +59,19 @@ def eager_cat_homogeneous(name, part_name, *parts):
         del inputs[part_name]
         del int_inputs[part_name]
 
+    # Pad to ensure ranks agree.
+    max_rank = max(w.shape[-1] for w in white_vecs)
+    for i, (white_vec, prec_sqrt) in enumerate(zip(white_vecs, prec_sqrts)):
+        pad = max_rank - white_vec.shape[-1]
+        if pad:
+            zero = ops.new_zeros(white_vec, ())
+            white_vecs[i] = ops.cat(
+                [white_vec, zero.expand(white_vec.shape[:-1] + (pad,))], -1
+            )
+            prec_sqrts[i] = ops.cat(
+                [prec_sqrt, zero.expand(prec_sqrt.shape[:-1] + (pad,))], -1
+            )
+
     dim = 0
     white_vec = ops.cat(white_vecs, dim)
     prec_sqrt = ops.cat(prec_sqrts, dim)
