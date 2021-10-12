@@ -253,7 +253,7 @@ def matrix_and_mvn_to_funsor(
         matrix_y = ops.new_full(matrix_x, matrix_x.shape[:-1] + (1,), -1.0)  # [...,Y,1]
         matrix_xy = ops.cat([matrix_x, matrix_y], -1)  # [...,Y,X+1]
         prec_sqrt = (matrix_xy / mvn.base_dist.scale[..., None])[..., None]
-        white_vec = (mvn.base_dist.loc / mvn.base_dist.scale)[..., None]
+        white_vec = (-mvn.base_dist.loc / mvn.base_dist.scale)[..., None]
 
         i = Variable(gensym("i"), Bint[y_size])
         y_i = Variable(gensym(f"{y_name}_i"), Real)
@@ -285,7 +285,7 @@ def matrix_and_mvn_to_funsor(
     prec_sqrt_xy = matrix @ prec_sqrt_y
     prec_sqrt_yy = (-prec_sqrt_y).expand(prec_sqrt_xy.shape[:-2] + (-1, -1))
     prec_sqrt = ops.cat([prec_sqrt_xy, prec_sqrt_yy], -2)
-    white_vec = (mvn.loc[..., None, :] @ prec_sqrt_y)[..., 0, :]
+    white_vec = (-mvn.loc[..., None, :] @ prec_sqrt_y)[..., 0, :]
     white_vec = white_vec.expand(prec_sqrt.shape[:-2] + (-1,))
 
     # Note the round trip tensor_to_funsor(...).data strips leading 1's from the shape.
