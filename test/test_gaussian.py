@@ -861,3 +861,15 @@ def test_mc_plate_gaussian():
     res = Integrate(log_measure.sample("loc", rng_key=rng_key), integrand, "loc")
     res = res.reduce(ops.mul, "data")
     assert not ((res == float("inf")) | (res == float("-inf"))).any()
+
+
+def test_eager_add():
+    g1 = Gaussian(randn((2,)), randn((1, 2)), OrderedDict(a=Real))
+    g2 = Gaussian(randn((1,)), randn((1, 1)), OrderedDict(a=Real))
+    a = Variable("a", Real)
+
+    # actual = (g1 + g2).reduce(ops.logaddexp)
+    # assert isinstance(actual, Tensor)
+
+    actual = Contraction(ops.logaddexp, ops.add, frozenset({a}), (g1, g2))
+    assert isinstance(actual, Tensor)
