@@ -288,8 +288,11 @@ def matrix_and_mvn_to_funsor(
     white_vec = (mvn.loc[..., None, :] @ prec_sqrt_y)[..., 0, :]
     white_vec = white_vec.expand(prec_sqrt.shape[:-2] + (-1,))
 
-    inputs = tensor_to_funsor(white_vec, event_dims, 1).inputs.copy()
+    # Note the round trip tensor_to_funsor(...).data strips leading 1's from the shape.
+    white_vec = tensor_to_funsor(white_vec, event_dims, 1)
+    prec_sqrt = tensor_to_funsor(prec_sqrt, event_dims, 2)
+    inputs = white_vec.inputs.copy()
     inputs[x_name] = Reals[x_size]
     inputs[y_name] = Reals[y_size]
-    g = Gaussian(white_vec=white_vec, prec_sqrt=prec_sqrt, inputs=inputs)
+    g = Gaussian(white_vec=white_vec.data, prec_sqrt=prec_sqrt.data, inputs=inputs)
     return g + log_prob
