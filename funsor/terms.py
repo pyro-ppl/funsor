@@ -319,10 +319,6 @@ class Funsor(object, metaclass=FunsorMeta):
     def pretty(self, *args, **kwargs):
         return pretty(self, *args, **kwargs)
 
-    @property
-    def pp(self):
-        print(self.pretty())
-
     def __contains__(self, item):
         raise TypeError
 
