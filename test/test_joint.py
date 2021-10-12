@@ -15,7 +15,7 @@ from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.montecarlo import MonteCarlo
 from funsor.tensor import Tensor, numeric_array
-from funsor.terms import Number, Variable, eager, moment_matching
+from funsor.terms import Number, Unary, Variable, eager, moment_matching
 from funsor.testing import (
     assert_close,
     randn,
@@ -52,8 +52,8 @@ SMOKE_TESTS = [
     ("g - t", Contraction),
     ("t + g", Contraction),
     ("t - g", Contraction),
-    ("g + g", Contraction),
-    ("-(g + g)", Contraction),
+    ("g + g", (Contraction, Gaussian)),
+    ("-(g + g)", (Contraction, Unary)),
     ("(dx + dy)(i=i0)", Delta),
     ("(dx + g)(i=i0)", Contraction),
     ("(dy + g)(i=i0)", Contraction),
@@ -71,7 +71,7 @@ SMOKE_TESTS = [
     ("(g + t)(i=i0)", Contraction),
     ("(g - t)(i=i0)", Contraction),
     ("(t + g)(i=i0)", Contraction),
-    ("(g + g)(i=i0)", Contraction),
+    ("(g + g)(i=i0)", (Contraction, Gaussian)),
     ("(dx + dy)(x=x0)", Contraction),
     ("(dx + g)(x=x0)", Tensor),
     ("(dy + g)(x=x0)", Contraction),
@@ -175,9 +175,7 @@ def test_reduce_logaddexp(int_inputs, real_inputs):
     actual = state.reduce(ops.logaddexp, frozenset(truth))
 
     expected = t + g(**truth)
-    assert_close(
-        actual, expected, atol=1e-5, rtol=1e-4 if get_backend() == "jax" else 1e-5
-    )
+    assert_close(actual, expected, atol=1e-5, rtol=1e-4)
 
 
 def test_reduce_logaddexp_deltas_lazy():
