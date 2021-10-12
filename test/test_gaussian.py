@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import itertools
+import pprint
 from collections import OrderedDict
 from functools import reduce
 
@@ -211,6 +212,9 @@ def test_smoke(expr, expected_type):
 
     result = eval(expr)
     assert isinstance(result, expected_type)
+
+    print("Pretty:")
+    pprint.pprint(result)
 
 
 @pytest.mark.parametrize(

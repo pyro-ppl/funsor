@@ -5,6 +5,7 @@ import copy
 import io
 import itertools
 import pickle
+import pprint
 import typing
 from collections import OrderedDict
 from functools import reduce
@@ -147,6 +148,15 @@ EXPR_STRINGS = [
     "Cat('i', (Stack('i', (Number(0),)), Stack('i', (Number(1), Number(2)))))",
     "Stack('t', (Number(1), Variable('x', Real))).reduce(ops.logaddexp, 't')",
 ]
+
+
+@pytest.mark.parametrize("expr", EXPR_STRINGS)
+def test_pprint_smoke(expr):
+    x = eval(expr)
+    print("Pretty:")
+    pprint.pprint(x)
+    pprint.pprint([x])
+    pprint.pprint({"foo": x})
 
 
 @pytest.mark.parametrize("expr", EXPR_STRINGS)
