@@ -361,6 +361,7 @@ eager.register(Beta, Funsor, Funsor, Funsor)(eager_beta)  # noqa: F821)
 eager.register(Binomial, Funsor, Funsor, Funsor)(eager_binomial)  # noqa: F821
 eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: F821)
 eager.register(Categorical, Funsor, Tensor)(eager_categorical_funsor)  # noqa: F821)
+eager.register(Categorical, Tensor, Variable)(eager_categorical_tensor)  # noqa: F821)
 eager.register(Delta, Tensor, Tensor, Tensor)(eager_delta_tensor)  # noqa: F821
 eager.register(Delta, Funsor, Funsor, Variable)(
     eager_delta_funsor_variable
