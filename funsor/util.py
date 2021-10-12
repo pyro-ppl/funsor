@@ -3,6 +3,7 @@
 
 import functools
 import inspect
+import pprint
 import re
 import sys
 
@@ -95,6 +96,33 @@ def pretty(arg, linewidth=75, threshold=1000):
             line = line[: linewidth - 3] + "..."
         lines.append(fill[:indent] + line)
     return "\n".join(lines)
+
+
+def _pprint_funsor(pprinter, object, stream, indent, allowance, context, level):
+    out = []
+    try:
+        old = quote.printoptions.copy()
+        quote.printoptions["threshold"] = 0  # Omit arrays from pprint.
+        _quote_inplace(object, 0, out)
+    finally:
+        quote.printoptions.update(old)
+
+    # This depends on internals of the pprint.PrettyPrinter class.
+    write = stream.write
+    for i, (extra_indent, line) in enumerate(out):
+        max_width = pprinter._width - indent - extra_indent
+        if len(line) > max_width:
+            line = line[: max_width - 3] + "..."
+        if i > 0:
+            write("\n")
+            write(" " * (indent + extra_indent))
+        write(line)
+
+
+def register_pprint(cls):
+    if hasattr(cls, "__repr__"):
+        # This depends on internals of the pprint.PrettyPrinter class.
+        pprint.PrettyPrinter._dispatch[cls.__repr__] = _pprint_funsor
 
 
 @functools.singledispatch
