@@ -33,10 +33,12 @@ from funsor.testing import (
     check_funsor,
     desugar_getitem,
     empty,
+    excludes_backend,
     iter_subsets,
     rand,
     randn,
     random_tensor,
+    requires_backend,
     zeros,
 )
 from funsor.util import get_backend
@@ -1046,9 +1048,7 @@ def test_funsor_stack(output):
         assert_close(xyz(t=2, j=j), z)
 
 
-@pytest.mark.skipif(
-    get_backend() == "torch", reason="torck.stack does not support Python scalars"
-)
+@excludes_backend("torch", reason="torck.stack does not support Python scalars")
 def test_number_stack():
     actual = ops.stack((Number(2.0), Number(3)))
     assert_close(actual, Tensor(numeric_array([2.0, 3.0])))
@@ -1092,7 +1092,7 @@ def test_tensor_to_funsor_ambiguous_output():
     assert f.output.shape == () == f2.output.shape
 
 
-@pytest.mark.skipif(get_backend() != "torch", reason="torch-specific regression")
+@requires_backend("torch")
 def test_log_correct_dtype():
     import torch
 
@@ -1105,7 +1105,7 @@ def test_log_correct_dtype():
         torch.set_default_dtype(old_dtype)
 
 
-@pytest.mark.skipif(get_backend() != "numpy", reason="backend-specific")
+@requires_backend("numpy")
 def test_pickle():
     x = Tensor(randn(2, 3))
     f = io.BytesIO()
@@ -1115,7 +1115,7 @@ def test_pickle():
     assert_close(x, y)
 
 
-@pytest.mark.skipif(get_backend() != "torch", reason="backend-specific")
+@requires_backend("torch")
 def test_torch_save():
     import torch
 
@@ -1127,7 +1127,7 @@ def test_torch_save():
     assert_close(x, y)
 
 
-@pytest.mark.skipif(get_backend() != "torch", reason="backend-specific")
+@requires_backend("torch")
 def test_detach():
     import torch
 

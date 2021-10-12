@@ -23,6 +23,7 @@ from funsor.terms import Independent, Variable, to_funsor
 from funsor.testing import (
     assert_close,
     check_funsor,
+    excludes_backend,
     rand,
     randint,
     randn,
@@ -34,9 +35,7 @@ from funsor.testing import (
 )
 from funsor.util import get_backend
 
-pytestmark = pytest.mark.skipif(
-    get_backend() == "numpy", reason="numpy does not have distributions backend"
-)
+pytestmark = excludes_backend("numpy", reason="requires a distributions library")
 if get_backend() != "numpy":
     dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     backend_dist = dist.dist

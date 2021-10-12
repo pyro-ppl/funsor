@@ -4,10 +4,9 @@
 import pytest
 
 import funsor.ops as ops
-from funsor.testing import assert_close
-from funsor.util import get_backend
+from funsor.testing import assert_close, requires_backend
 
-pytestmark = pytest.mark.skipif(get_backend() != "torch", reason="torch specific")
+pytestmark = requires_backend("torch")
 
 
 @pytest.mark.parametrize("batch_shape", [(), (4,), (3, 2)], ids=str)

@@ -11,7 +11,7 @@ from funsor.interpretations import memoize
 from funsor.interpreter import reinterpret
 from funsor.tensor import numeric_array
 from funsor.terms import reflect
-from funsor.testing import make_einsum_example, xfail_param
+from funsor.testing import excludes_backend, make_einsum_example, xfail_param
 from funsor.util import get_backend
 
 EINSUM_EXAMPLES = [
@@ -113,6 +113,7 @@ def test_einsum_complete_sharing_reuse_cache(
     assert expr1 is not expr3
 
 
+@excludes_backend("numpy", reason="no distributions library")
 @pytest.mark.parametrize(
     "check_sample",
     [
@@ -121,9 +122,6 @@ def test_einsum_complete_sharing_reuse_cache(
             True, reason="Joint.sample cannot directly be memoized in this way yet"
         ),
     ],
-)
-@pytest.mark.skipif(
-    get_backend() == "numpy", reason="there is no numpy distributions backend"
 )
 def test_memoize_sample(check_sample):
     if get_backend() == "jax":

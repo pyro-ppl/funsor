@@ -46,6 +46,22 @@ def xfail_if_not_found(msg="Not implemented"):
         pytest.xfail(reason="{}:\n{}".format(msg, e))
 
 
+def requires_backend(*backends, reason=None):
+    import pytest
+
+    if reason is None:
+        reason = "Test requires backend {}".format(" or ".join(backends))
+    return pytest.mark.skipif(get_backend() not in backends, reason=reason)
+
+
+def excludes_backend(*backends, reason=None):
+    import pytest
+
+    if reason is None:
+        reason = "Test excludes backend {}".format(" and ".join(backends))
+    return pytest.mark.skipif(get_backend() in backends, reason=reason)
+
+
 class ActualExpected(namedtuple("LazyComparison", ["actual", "expected"])):
     """
     Lazy string formatter for test assertions.
