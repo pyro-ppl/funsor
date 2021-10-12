@@ -106,6 +106,21 @@ class Constant(Funsor, metaclass=ConstantMeta):
         const_inputs = OrderedDict((name, self.inputs[name]) for name in const_names)
         return Constant(const_inputs, self.arg.align(arg_names))
 
+    def materialize(self, x):
+        """
+        Attempt to convert a Funsor to a :class:`~funsor.terms.Number` or
+        :class:`Tensor` by substituting :func:`arange` s into its free variables.
+
+        :arg Funsor x: A funsor.
+        :rtype: Funsor
+        """
+        assert isinstance(x, Funsor)
+        if isinstance(x, (Number, Tensor)):
+            return x
+
+        assert isinstance(self.arg, Tensor)
+        return self.arg.materialize(x)
+
 
 @eager.register(Reduce, ops.AddOp, Constant, frozenset)
 @eager.register(Reduce, ops.MulOp, Constant, frozenset)
