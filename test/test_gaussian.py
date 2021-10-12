@@ -199,9 +199,11 @@ def test_compress_rank(batch_shape, dim, rank):
     white_vec = randn(batch_shape + (rank,))
     prec_sqrt = randn(batch_shape + (dim, rank))
 
-    new_white_vec, new_prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
-    if shift is None:
-        shift = 0
+    shift = 0
+    new_white_vec = white_vec
+    new_prec_sqrt = prec_sqrt
+    if rank > dim:
+        new_white_vec, new_prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
     assert new_prec_sqrt.shape[:-1] == batch_shape + (dim,)
     assert new_white_vec.shape[:-1] == batch_shape
     assert new_prec_sqrt.shape[-1] == new_white_vec.shape[-1]

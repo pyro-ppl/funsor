@@ -75,16 +75,11 @@ def _inverse_cholesky(P):
     return L
 
 
-def _compress_rank(white_vec, prec_sqrt, *, threshold=1):
+def _compress_rank(white_vec, prec_sqrt):
     """
     Compress a wide representation ``(white_vec, prec_sqrt)`` while preserving
     the quadratic function ``||x @ prec_sqrt - white_vec||^2 + const``.
     """
-    assert threshold >= 1
-    dim, rank = prec_sqrt.shape[-2:]
-    if rank <= dim * threshold:
-        return white_vec, prec_sqrt, None
-
     # Let P = prec_sqrt and w = white_vec define the original Gaussian
     #
     #   G(x;w,P) = -1/2 || x P - w ||^2
@@ -379,9 +374,10 @@ class GaussianMeta(FunsorMeta):
             )
 
         # Compress wide representations.
-        white_vec, prec_sqrt, shift = _compress_rank(
-            white_vec, prec_sqrt, threshold=cls.compress_rank_threshold
-        )
+        shift = None
+        dim, rank = prec_sqrt.shape[-2:]
+        if rank > dim * cls.compress_rank_threshold:
+            white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
 
         # Create a Gaussian.
         result = super().__call__(white_vec, prec_sqrt, inputs)
@@ -926,7 +922,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         inputs.update(int_inputs)
 
         if sampled_vars == frozenset(real_inputs):
-            shape = sample_shape + self.white_vec.shape
+            # Call _compress_rank() first to triangularize.
+            white_vec, prec_sqrt, _ = _compress_rank(self.white_vec, self.prec_sqrt)
+            shape = sample_shape + white_vec.shape
             backend = get_backend()
             if backend != "numpy":
                 from importlib import import_module
@@ -940,9 +938,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 white_noise = np.random.randn(*shape)
 
             sample = ops.triangular_solve(
-                (white_noise + self.white_vec)[..., None],
-                self._precision_chol,
-                transpose=True,
+                (white_noise + white_vec)[..., None], prec_sqrt, transpose=True
             )[..., 0]
             offsets, _ = _compute_offsets(real_inputs)
             results = []
