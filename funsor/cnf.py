@@ -312,8 +312,7 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     args = bin_op, lhs, rhs
     result = eager.dispatch(Binary, *args)(*args)
     if result is not None and reduced_vars:
-        args = red_op, result, reduced_vars
-        result = eager.dispatch(Reduce, *args)(*args)
+        result = eager.interpret(Reduce, red_op, result, reduced_vars)
     return result
 
 
