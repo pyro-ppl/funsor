@@ -245,8 +245,10 @@ def test_compress_rank_gaussian(dim, rank):
     inputs = OrderedDict(x=Reals[dim])
     white_vec = randn((rank,))
     prec_sqrt = randn((dim, rank))
+    data = randn((dim,))
     with Gaussian.set_compression_threshold(999):
         g1 = Gaussian(white_vec, prec_sqrt, inputs)
+        g1_data = g1(x=data)
     assert isinstance(g1, Gaussian)
     assert g1.rank == rank
 
@@ -254,20 +256,19 @@ def test_compress_rank_gaussian(dim, rank):
     assert white_vec.shape == (dim,)
     assert prec_sqrt.shape == (dim, dim)
     g2 = Gaussian(white_vec, prec_sqrt, inputs)
+    g2_data = g2(x=data)
     assert isinstance(g2, Gaussian)
     assert g2.rank == dim
 
-    assert_close(g1._mean, g2._mean, atol=1e-5, rtol=1e-5)
+    assert_close(g1._mean, g2._mean, atol=1e-4, rtol=1e-4)
     assert_close(g1._precision, g2._precision, atol=1e-4, rtol=1e-3)
 
     actual = g1.reduce(ops.logaddexp)
     expected = g2.reduce(ops.logaddexp) + shift
-    assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+    assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
-    data = randn((dim,))
-    with Gaussian.set_compression_threshold(999):
-        actual = g1(x=data)
-    expected = g2(x=data) + shift
+    actual = g1_data
+    expected = g2_data + shift
     assert_close(actual, expected, atol=1e-5, rtol=1e-5)
 
 
