@@ -199,7 +199,7 @@ def test_compress_rank(batch_shape, dim, rank):
     white_vec = randn(batch_shape + (rank,))
     prec_sqrt = randn(batch_shape + (dim, rank))
 
-    shift = 0
+    shift = zeros(batch_shape)
     new_white_vec = white_vec
     new_prec_sqrt = prec_sqrt
     if rank > dim:
@@ -207,6 +207,7 @@ def test_compress_rank(batch_shape, dim, rank):
     assert new_prec_sqrt.shape[:-1] == batch_shape + (dim,)
     assert new_white_vec.shape[:-1] == batch_shape
     assert new_prec_sqrt.shape[-1] == new_white_vec.shape[-1]
+    assert shift.shape == batch_shape
     new_rank = new_prec_sqrt.shape[-1]
     assert new_rank <= dim
 
@@ -220,6 +221,20 @@ def test_compress_rank(batch_shape, dim, rank):
     expected = -0.5 * _norm2(_vm(probe, prec_sqrt) - white_vec)
     actual = -0.5 * _norm2(_vm(probe, new_prec_sqrt) - new_white_vec) + shift
     assert_close(actual, expected, atol=1e-4, rtol=None)
+
+
+@pytest.mark.xfail(reason="the Cholesky solve in _compress_rank requires full rank")
+@pytest.mark.parametrize("batch_shape", [(), (3, 2), (4,)], ids=str)
+@pytest.mark.parametrize("dim", [1, 2, 3, 4, 5])
+def test_compress_rank_singular(batch_shape, dim):
+    rank = dim + 1
+    white_vec = zeros(batch_shape + (rank,))
+    prec_sqrt = zeros(batch_shape + (dim, rank))
+
+    # Check that _compress_rank can handle singular prec_sqrt.
+    white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+    assert_close(white_vec, zeros(batch_shape + (dim,)))
+    assert_close(prec_sqrt, zeros(batch_shape + (dim, dim)))
 
 
 @unittest.mock.patch("funsor.gaussian.Gaussian.compress_rank_threshold", 999)
@@ -237,7 +252,6 @@ def test_compress_rank_gaussian(dim, rank):
     white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
     assert white_vec.shape == (dim,)
     assert prec_sqrt.shape == (dim, dim)
-    assert shift is not None
     g2 = Gaussian(white_vec, prec_sqrt, inputs)
     assert isinstance(g2, Gaussian)
     assert g2.rank == dim

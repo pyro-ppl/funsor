@@ -228,7 +228,6 @@ def recursion_reinterpret(x):
     :return: A reinterpreted version of the input.
     :raises: ValueError
     """
-    print("DEBUG", type(x))
     if is_atom(x):
         return x
     elif isinstance(x, (tuple, frozenset)):

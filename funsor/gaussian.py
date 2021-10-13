@@ -98,7 +98,12 @@ def _compress_rank(white_vec, prec_sqrt):
     old_norm2 = _norm2(white_vec)
     info_vec_ = prec_sqrt @ white_vec[..., None]
     precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
+
+    # TODO Catch errors here and fall back to more expensive QR in case
+    # precision is not positive definite. This also requires raising errors in
+    # the 1x1 special case implementations of ops.cholesky.
     prec_sqrt = ops.cholesky(precision)
+
     white_vec = ops.triangular_solve(info_vec_, prec_sqrt)[..., 0]
     new_norm2 = _norm2(white_vec)
     shift = 0.5 * (new_norm2 - old_norm2)
