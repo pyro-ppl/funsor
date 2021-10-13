@@ -2458,6 +2458,9 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
     assert dict(actual.inputs) == expected_inputs
 
     actual = actual.align(tuple(expected.inputs.keys()))
+    with compress_gaussians:
+        actual = reinterpret(actual)
+        expected = reinterpret(expected)
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
