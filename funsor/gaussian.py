@@ -108,7 +108,7 @@ def _compress_rank(white_vec, prec_sqrt, assume_full_rank=False):
         #   P' = Q [ R ]     P = [ R'  0 ] Q'
         #          [ 0 ]
         #
-        # where Q us orthogonal and R is upper triangular of shape (dim,dim).
+        # where Q is orthogonal and R is upper triangular of shape (dim,dim).
         # Then splitting along the new dimension,
         #
         #   G(x;w,P) = -1/2 || x [R' 0] Q' - w ||^2
@@ -121,6 +121,7 @@ def _compress_rank(white_vec, prec_sqrt, assume_full_rank=False):
         #   wc = (w Q)[...,:dim]
         #   Pc = R'
         Q, R = ops.qr(ops.transpose(prec_sqrt, -1, -2))
+        assert Q.shape[-2:] == (rank, dim)  # note only part of Q is returned
         assert R.shape[-2:] == (dim, dim)
         prec_sqrt = ops.transpose(R, -1, -2)
         white_vec = _vm(white_vec, Q)
