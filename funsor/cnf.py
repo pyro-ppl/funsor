@@ -12,7 +12,6 @@ import opt_einsum
 import funsor
 import funsor.ops as ops
 from funsor.affine import affine_inputs
-from funsor.constant import Constant
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
