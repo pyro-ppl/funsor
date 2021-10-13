@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import OrderedDict
+from functools import reduce
 from typing import Tuple, Union
 
 import funsor.ops as ops
@@ -110,7 +111,16 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
 
 
 EagerConstant = Constant[
-    Tuple, Union[Variable, Delta, Gaussian, Number, Tensor, GaussianMixture]
+    Tuple,
+    Union[
+        Variable,
+        Delta,
+        Gaussian,
+        Unary[ops.NegOp, Gaussian],
+        Number,
+        Tensor,
+        GaussianMixture,
+    ],
 ]
 
 
@@ -120,7 +130,16 @@ EagerConstant = Constant[
     ops.MulOp,
     frozenset,
     Unary[ops.ExpOp, Union[GaussianMixture, Delta, Gaussian, Number, Tensor]],
-    (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture, EagerConstant),
+    (
+        Variable,
+        Delta,
+        Gaussian,
+        Unary[ops.NegOp, Gaussian],
+        Number,
+        Tensor,
+        GaussianMixture,
+        EagerConstant,
+    ),
 )
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
     reduced_names = frozenset(v.name for v in reduced_vars)
@@ -175,7 +194,7 @@ def eager_integrate(delta, integrand, reduced_vars):
 
 
 @eager.register(Integrate, Gaussian, Variable, frozenset)
-def eager_integrate(log_measure, integrand, reduced_vars):
+def eager_integrate_gaussian_variable(log_measure, integrand, reduced_vars):
     real_input_vars = frozenset(v for v in log_measure.input_vars if v.dtype == "real")
     real_vars = reduced_vars & real_input_vars
     if real_vars == frozenset([integrand]):
@@ -193,7 +212,7 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
-def eager_integrate(log_measure, integrand, reduced_vars):
+def eager_integrate_gaussian_gaussian(log_measure, integrand, reduced_vars):
     assert log_measure.is_full_rank
     reduced_names = frozenset(v.name for v in reduced_vars)
     real_vars = frozenset(v.name for v in reduced_vars if v.dtype == "real")
@@ -239,6 +258,34 @@ def eager_integrate(log_measure, integrand, reduced_vars):
         raise NotImplementedError("TODO implement partial integration")
 
     return None  # defer to default implementation
+
+
+@eager.register(Integrate, Gaussian, Unary[ops.NegOp, Gaussian], frozenset)
+def eager_integrate_neg_gaussian(log_measure, integrand, reduced_vars):
+    return -Integrate(log_measure, integrand.arg, reduced_vars)
+
+
+@eager.register(
+    Integrate,
+    Gaussian,
+    Contraction[
+        ops.NullOp,
+        ops.AddOp,
+        frozenset,
+        Tuple[Union[Gaussian, Unary[ops.NegOp, Gaussian]], ...],
+    ],
+    frozenset,
+)
+def eager_distribute_integrate(log_measure, integrand, reduced_vars):
+    return reduce(
+        ops.add,
+        [
+            -Integrate(log_measure, term.arg, reduced_vars)
+            if isinstance(term, Unary)
+            else Integrate(log_measure, term, reduced_vars)
+            for term in integrand.terms
+        ],
+    )
 
 
 __all__ = [

@@ -458,13 +458,13 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         :class:`~funsor.domains.Domain` .
     """
 
-    # To save space we compress wide matrices down to square. The space optimal
+    # To save space w: compress wide matrices down to square. The space optimal
     # setting is compress_rank_threshold = 1, compressing even slightly wide
     # matrices down to square. However at the point of compression we cannot
     # guarantee full rank and therefoe need to use an expensive QR
-    # factorization. To balance space and time costs, we allow matrices to grow
+    # decomposition. To balance space and time costs, we allow matrices to grow
     # wider than square before compressing. In some cases this entirely avoids
-    # QR factorization, since at the point of subsequent operations
+    # QR decomposition, since at the point of subsequent operations
     # (marginalizing, sampling) we can guarantee full-rank normalizable
     # Gaussians and can use a cheaper Cholesky factorization.
     compress_rank_threshold = 2
@@ -876,7 +876,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                     f"Too little information to marginalize over {set(reduced_vars)}. "
                     "Consider adding a prior."
                 )
-            precision_chol_b = ops.cholesky(_mmt(prec_sqrt_b))  # should be full rank
+            precision_chol_b = ops.cholesky(_mmt(prec_sqrt_b))  # assume full rank
             b_log_normalizer = Tensor(
                 dim_b * math.log(2 * math.pi) / 2 - _log_det_tri(precision_chol_b),
                 int_inputs,
