@@ -458,7 +458,6 @@ def test_switching_linear_hmm_log_prob_alternating(exact, num_steps, num_compone
     assert_close(actual_log_prob, expected_log_prob, atol=1e-2, rtol=None)
 
 
-@pytest.mark.xfail(reason="the Cholesky solve in _compress_rank requires full rank")
 @pytest.mark.parametrize("hidden_dim", [2, 3])
 @pytest.mark.parametrize(
     "init_shape,trans_mat_shape,trans_mvn_shape,obs_mvn_shape",

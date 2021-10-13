@@ -221,6 +221,11 @@ def cholesky_solve(x, y):
 
 
 @UnaryOp.make
+def qr(x, mode="reduced"):
+    return np.linalg.qr(x, mode=mode)
+
+
+@UnaryOp.make
 def detach(x):
     return x
 
@@ -478,6 +483,7 @@ __all__ = [
     "new_zeros",
     "permute",
     "prod",
+    "qr",
     "sample",
     "scatter",
     "scatter_add",

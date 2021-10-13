@@ -25,6 +25,7 @@ ops.tanh.register(torch.Tensor)(torch.tanh)
 ops.transpose.register(torch.Tensor)(torch.transpose)
 ops.flip.register(torch.Tensor)(torch.flip)
 ops.unsqueeze.register(torch.Tensor)(torch.unsqueeze)
+ops.qr.register(torch.Tensor)(torch.linalg.qr)
 
 
 ###########################################

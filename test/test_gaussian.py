@@ -195,15 +195,18 @@ def test_block_matrix_batched(batch_shape, sparse):
 @pytest.mark.parametrize("batch_shape", [(), (3, 2), (4,)], ids=str)
 @pytest.mark.parametrize("rank", [1, 2, 3, 4, 5, 8, 13])
 @pytest.mark.parametrize("dim", [1, 2, 3, 4, 5])
-def test_compress_rank(batch_shape, dim, rank):
+@pytest.mark.parametrize("method", ["cholesky", "qr"])
+def test_compress_rank(batch_shape, dim, rank, method):
     white_vec = randn(batch_shape + (rank,))
     prec_sqrt = randn(batch_shape + (dim, rank))
 
     shift = zeros(batch_shape)
     new_white_vec = white_vec
     new_prec_sqrt = prec_sqrt
-    if rank > dim:
-        new_white_vec, new_prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+    if rank >= dim:
+        new_white_vec, new_prec_sqrt, shift = _compress_rank(
+            white_vec, prec_sqrt, method
+        )
     assert new_prec_sqrt.shape[:-1] == batch_shape + (dim,)
     assert new_white_vec.shape[:-1] == batch_shape
     assert new_prec_sqrt.shape[-1] == new_white_vec.shape[-1]
@@ -223,7 +226,6 @@ def test_compress_rank(batch_shape, dim, rank):
     assert_close(actual, expected, atol=1e-4, rtol=None)
 
 
-@pytest.mark.xfail(reason="the Cholesky solve in _compress_rank requires full rank")
 @pytest.mark.parametrize("batch_shape", [(), (3, 2), (4,)], ids=str)
 @pytest.mark.parametrize("dim", [1, 2, 3, 4, 5])
 def test_compress_rank_singular(batch_shape, dim):
@@ -257,7 +259,7 @@ def test_compress_rank_gaussian(dim, rank):
     assert g2.rank == dim
 
     assert_close(g1._mean, g2._mean, atol=1e-5, rtol=1e-5)
-    assert_close(g1._precision, g2._precision, atol=1e-5, rtol=1e-5)
+    assert_close(g1._precision, g2._precision, atol=1e-4, rtol=1e-3)
 
     actual = g1.reduce(ops.logaddexp)
     expected = g2.reduce(ops.logaddexp) + shift

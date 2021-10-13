@@ -76,11 +76,15 @@ def _inverse_cholesky(P):
     return L
 
 
-def _compress_rank(white_vec, prec_sqrt):
+def _compress_rank(white_vec, prec_sqrt, assume_full_rank=False):
     """
     Compress a wide representation ``(white_vec, prec_sqrt)`` while preserving
     the quadratic function ``||x @ prec_sqrt - white_vec||^2 + const``.
     """
+    dim, rank = prec_sqrt.shape[-2:]
+    assert rank >= dim
+    old_norm2 = _norm2(white_vec)
+
     # Let P = prec_sqrt and w = white_vec define the original Gaussian
     #
     #   G(x;w,P) = -1/2 || x P - w ||^2
@@ -90,21 +94,39 @@ def _compress_rank(white_vec, prec_sqrt):
     #
     #   G(x;w,P) = G(x;wc,Pc) + C
     #            = -1/2 x Pc Pc' x' + x Pc wc' -1/2 wc wc' + C
+    if assume_full_rank:
+        # Cholesky factorizing Pc = chol(P P'), we match remaining coefficients
+        #
+        #    Pc wc' = P w'  ==>  wc' = Pc \ P w'
+        info_vec_ = prec_sqrt @ white_vec[..., None]
+        precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
+        prec_sqrt = ops.cholesky(precision)
+        white_vec = ops.triangular_solve(info_vec_, prec_sqrt)[..., 0]
+    else:
+        # Computing a reduced QR representation of P' of shape (rank,dim)
+        #
+        #   P' = Q [ R ]     P = [ R'  0 ] Q'
+        #          [ 0 ]
+        #
+        # where Q us orthogonal and R is upper triangular of shape (dim,dim).
+        # Then splitting along the new dimension,
+        #
+        #   G(x;w,P) = -1/2 || x [R' 0] Q' - w ||^2
+        #            = -1/2 || x [R' 0] - w Q ||^2
+        #            = -1/2 || x R' - (w Q)[...,:dim] ||^2
+        #              -1/2 || (w Q)[...,dim:] ||^2
+        #            =: G(x;wc,Pc) + C
+        # where
+        #
+        #   wc = (w Q)[...,:dim]
+        #   Pc = R'
+        Q, R = ops.qr(ops.transpose(prec_sqrt, -1, -2))
+        assert R.shape[-2:] == (dim, dim)
+        prec_sqrt = ops.transpose(R, -1, -2)
+        white_vec = _vm(white_vec, Q)
+    # Finally the shifting constant is
     #
-    # Choosing Pc = chol(P P'), we can match the remaining coefficients
-    #
-    #    Pc wc' = P w'  ==>  wc' = Pc \ P w'
     #    C = 1/2 (wc wc' - w w')
-    old_norm2 = _norm2(white_vec)
-    info_vec_ = prec_sqrt @ white_vec[..., None]
-    precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
-
-    # TODO Catch errors here and fall back to more expensive QR in case
-    # precision is not positive definite. This also requires raising errors in
-    # the 1x1 special case implementations of ops.cholesky.
-    prec_sqrt = ops.cholesky(precision)
-
-    white_vec = ops.triangular_solve(info_vec_, prec_sqrt)[..., 0]
     new_norm2 = _norm2(white_vec)
     shift = 0.5 * (new_norm2 - old_norm2)
     return white_vec, prec_sqrt, shift
@@ -437,11 +459,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     """
 
     # To save space we compress wide matrices down to square. The space optimal
-    # setting is compress_rank_threshold = 1. However compression uses a
-    # Cholesky factorization, so the resulting matrix needs to be full rank. To
-    # relax the full rank requirement we could instead use a QR factorization;
-    # instead we set a higher threshold and hope that enough information has
-    # accumulated by the time we compress that the matrix has full rank. 🤞
+    # setting is compress_rank_threshold = 1, compressing even slightly wide
+    # matrices down to square. However at the point of compression we cannot
+    # guarantee full rank and therefoe need to use an expensive QR
+    # factorization. To balance space and time costs, we allow matrices to grow
+    # wider than square before compressing. In some cases this entirely avoids
+    # QR factorization, since at the point of subsequent operations
+    # (marginalizing, sampling) we can guarantee full-rank normalizable
+    # Gaussians and can use a cheaper Cholesky factorization.
     compress_rank_threshold = 2
 
     def __init__(self, white_vec, prec_sqrt, inputs):
@@ -928,8 +953,10 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         inputs.update(int_inputs)
 
         if sampled_vars == frozenset(real_inputs):
-            # Call _compress_rank() first to triangularize.
-            white_vec, prec_sqrt, _ = _compress_rank(self.white_vec, self.prec_sqrt)
+            # Call _compress_rank() to triangularize.
+            white_vec, prec_sqrt, _ = _compress_rank(
+                self.white_vec, self.prec_sqrt, assume_full_rank=True
+            )
             shape = sample_shape + white_vec.shape
             backend = get_backend()
             if backend != "numpy":

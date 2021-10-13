@@ -32,6 +32,7 @@ ops.tanh.register(array)(np.tanh)
 ops.transpose.register(array)(np.swapaxes)
 ops.flip.register(array)(np.flip)
 ops.unsqueeze.register(array)(np.expand_dims)
+ops.qr.register(array)(np.linalg.qr)
 
 
 ###########################################
