@@ -12,6 +12,7 @@ import opt_einsum
 import funsor
 import funsor.ops as ops
 from funsor.affine import affine_inputs
+from funsor.constant import Constant
 from funsor.delta import Delta
 from funsor.domains import find_domain
 from funsor.gaussian import Gaussian
@@ -312,8 +313,7 @@ def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
     args = bin_op, lhs, rhs
     result = eager.dispatch(Binary, *args)(*args)
     if result is not None and reduced_vars:
-        args = red_op, result, reduced_vars
-        result = eager.dispatch(Reduce, *args)(*args)
+        result = eager.interpret(Reduce, red_op, result, reduced_vars)
     return result
 
 
