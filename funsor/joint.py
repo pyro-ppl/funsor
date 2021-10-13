@@ -66,10 +66,10 @@ def eager_cat_homogeneous(name, part_name, *parts):
         if pad:
             zero = ops.new_zeros(white_vec, ())
             white_vecs[i] = ops.cat(
-                [white_vec, zero.expand(white_vec.shape[:-1] + (pad,))], -1
+                [white_vec, ops.expand(zero, white_vec.shape[:-1] + (pad,))], -1
             )
             prec_sqrts[i] = ops.cat(
-                [prec_sqrt, zero.expand(prec_sqrt.shape[:-1] + (pad,))], -1
+                [prec_sqrt, ops.expand(zero, prec_sqrt.shape[:-1] + (pad,))], -1
             )
 
     dim = 0
