@@ -306,7 +306,7 @@ def test_meta(loc, scale):
             assert_close(
                 getattr(actual, scale), getattr(expected, scale), atol=1e-3, rtol=1e-3
             )
-            assert_close(actual, expected, rtol=1e-3)
+            assert_close(actual, expected, atol=1e-3, rtol=1e-3)
 
 
 @pytest.mark.parametrize(

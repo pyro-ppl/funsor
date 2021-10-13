@@ -276,7 +276,7 @@ def test_reduce_moment_matching_univariate():
     expected_gaussian -= expected_gaussian.log_normalizer
     expected_discrete = Tensor(numeric_array(t))
     expected = expected_discrete + expected_gaussian
-    assert_close(actual, expected, atol=1e-5, rtol=None)
+    assert_close(actual, expected, atol=1e-4, rtol=None)
 
 
 def _inverse(x):
