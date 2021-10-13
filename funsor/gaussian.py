@@ -422,9 +422,10 @@ class GaussianMeta(FunsorMeta):
 
 class Gaussian(Funsor, metaclass=GaussianMeta):
     r"""
-    Funsor representing a batched joint Gaussian distribution as a log-density
-    function.
+    Funsor representing a batched Gaussian log-density function.
 
+    Gaussians are the internal representation for joint and conditional
+    multivariate normal distributions and multivariate normal likelihoods.
     Mathematically, a Gaussian represents the quadratic log density function::
 
         f(x) = -0.5 * || x @ prec_sqrt - white_vec ||^2
@@ -432,18 +433,21 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
              = -0.5 * < x | prec_sqrt @ prec_sqrt.T | x>
                + < x | prec_sqrt | white_vec > - 0.5 ||white_vec||^2
 
+    Internally Gaussians use a square root information filter (SRIF)
+    representation consisting of a square root of the precision matrix
+    ``prec_sqrt`` and a vector in the whitened space ``white_vec``. This
+    representation allows space-efficient construction of Gaussians with
+    incomplete information, i.e. with zero eigenvalues in the precision matrix.
+    These incomplete log densities arise when making low-dimensional
+    observations of higher-dimensional hidden state. Sampling and
+    marginalization are supported only for full-rank Gaussians. See the
+    :meth:`rank` and :meth:`is_full_rank` properties.
+
     .. note:: :class:`Gaussian` s are not normalized probability distributions,
         rather they are canonicalized to evaluate to zero log density at their
-        extremum: ``f(prec_sqrt \ white_vec) = 0``. This canonical form is
-        useful in combination with the square root information filter (SRIF)
-        representation because it allows :class:`Gaussian` s with incomplete
-        information, i.e. with zero eigenvalues in the precision matrix. These
-        incomplete distributions arise when making low-dimensional observations
-        on higher-dimensional hidden state.
-
-        Not only are Gaussians non-normalized, but they may be rank deficient
-        and non-normalizable, in which case sampling and marginalization are
-        not supported. See the :meth:`rank` and :meth:`is_full_rank` properties.
+        maximum: ``f(prec_sqrt \ white_vec) = 0``. Not only are Gaussians
+        non-normalized, but they may be rank deficient and non-normalizable, in
+        which case sampling and marginalization are not supported.
 
     :param torch.Tensor white_vec: An batched white noise vector, where
         ``white_vec = prec_sqrt.T @ mean``. Alternatively you can specify one
@@ -508,7 +512,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         ``threshold``.
 
         :param float threshold: Defaults to 2. To optimize for space, set
-            ``threshold = 1``. To otimize for fewest QR decompositions, set
+            ``threshold = 1``. To optimize for fewest QR decompositions, set
             ``threshold = math.inf``.
         """
         assert isinstance(threshold, (int, float))
