@@ -894,6 +894,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             b, a = _split_real_inputs(self.inputs, reduced_vars, self.white_vec)
             prec_sqrt_a = self.prec_sqrt[..., a, :]
             prec_sqrt_b = self.prec_sqrt[..., b, :]
+            dim_a = prec_sqrt_a.shape[-2]
             dim_b = prec_sqrt_b.shape[-2]
             if self.rank < dim_b:
                 raise ValueError(
@@ -906,10 +907,21 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 int_inputs,
             )
             result = b_log_normalizer
-            if self.rank > dim_b:  # otherwise the Gaussian over xa is zero.
+            if self.rank > dim_b:
                 proj_b = _mtm(ops.triangular_solve(prec_sqrt_b, precision_chol_b))
                 prec_sqrt = prec_sqrt_a - prec_sqrt_a @ proj_b
                 white_vec = self.white_vec - _vm(self.white_vec, proj_b)
+                result += Gaussian(white_vec, prec_sqrt, inputs)
+            else:  # The Gaussian over xa is zero.
+                # TODO switch from an empty Gaussian to a Constant once this works:
+                # from .constant import Constant
+                # const_inputs = OrderedDict(
+                #     (k, v) for k, v in inputs.items() if k not in result.inputs
+                # )
+                # result = Constant(const_inputs, result)
+                batch_shape = self.white_vec.shape[:-1]
+                white_vec = ops.new_zeros(self.white_vec, batch_shape + (0,))
+                prec_sqrt = ops.new_zeros(self.white_vec, batch_shape + (dim_a, 0))
                 result += Gaussian(white_vec, prec_sqrt, inputs)
             return result.reduce(ops.logaddexp, reduced_ints)
 
