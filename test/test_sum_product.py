@@ -10,7 +10,15 @@ import pytest
 
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
-from funsor.interpretations import eager, eager_or_die, lazy, moment_matching, reflect
+from funsor.interpretations import (
+    compress_gaussians,
+    eager,
+    eager_or_die,
+    lazy,
+    moment_matching,
+    reflect,
+)
+from funsor.interpreter import reinterpret
 from funsor.optimizer import apply_optimizer
 from funsor.sum_product import (
     MarkovProduct,
@@ -2288,7 +2296,10 @@ def test_sequential_sum_product(
     expected = apply_optimizer(expected)
     expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
     expected = expected.align(tuple(actual.inputs.keys()))
-    assert_close(actual, expected, rtol=5e-4 * num_steps)
+    with compress_gaussians:  # since actual,expected may differ only in rank
+        actual = reinterpret(actual)
+        expected = reinterpret(expected)
+    assert_close(actual, expected, atol=1e-3 * num_steps, rtol=1e-3 * num_steps)
 
 
 @pytest.mark.parametrize("num_steps", [None] + list(range(1, 6)))

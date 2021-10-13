@@ -12,6 +12,7 @@ import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import Real, Reals
+from funsor.interpretations import compress_gaussians
 from funsor.ops import AddOp, SubOp
 from funsor.tensor import Tensor, align_tensor, align_tensors
 from funsor.terms import (
@@ -952,6 +953,16 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             return reduce(ops.add, results)
 
         raise NotImplementedError("TODO implement partial sampling of real variables")
+
+
+@compress_gaussians.register(Gaussian, object, object, tuple)
+def _compress_gaussians(white_vec, prec_sqrt, inputs):
+    dim, rank = prec_sqrt.shape[-2:]
+    if rank <= dim:
+        return None
+    white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+    int_inputs = OrderedDict((k, v) for k, v in inputs if v.dtype != "real")
+    return Gaussian(white_vec, prec_sqrt, inputs) + Tensor(shift, int_inputs)
 
 
 @eager.register(Binary, AddOp, Gaussian, Gaussian)
