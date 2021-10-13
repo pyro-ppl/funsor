@@ -265,7 +265,8 @@ def test_compress_rank_gaussian(dim, rank):
     assert_close(actual, expected, atol=1e-5, rtol=1e-5)
 
     data = randn((dim,))
-    actual = g1(x=data)
+    with Gaussian.set_compression_threshold(999):
+        actual = g1(x=data)
     expected = g2(x=data) + shift
     assert_close(actual, expected, atol=1e-5, rtol=1e-5)
 

@@ -222,7 +222,19 @@ def cholesky_solve(x, y):
 
 @UnaryOp.make
 def qr(x, mode="reduced"):
-    return np.linalg.qr(x, mode=mode)
+    if len(x.shape) == 2:
+        return np.linalg.qr(x, mode=mode)
+    # Manually vectorize.
+    batch_shape, event_shape = x.shape[:-2], x.shape[-2:]
+    flat_Qs = []
+    flat_Rs = []
+    for col in x.reshape((-1,) + event_shape):
+        flat_Q, flat_R = np.linalg.qr(col, mode=mode)
+        flat_Qs.append(flat_Q)
+        flat_Rs.append(flat_R)
+    Q = np.stack(flat_Qs).reshape(batch_shape + flat_Qs[0].shape[-2:])
+    R = np.stack(flat_Rs).reshape(batch_shape + flat_Rs[0].shape[-2:])
+    return Q, R
 
 
 @UnaryOp.make
