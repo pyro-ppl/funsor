@@ -2461,7 +2461,7 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
     with compress_gaussians:
         actual = reinterpret(actual)
         expected = reinterpret(expected)
-    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+    assert_close(actual, expected, atol=1e-3, rtol=1e-3)
 
 
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])

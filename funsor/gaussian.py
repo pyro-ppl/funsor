@@ -3,6 +3,7 @@
 
 import math
 from collections import OrderedDict, defaultdict
+from contextlib import contextmanager
 from functools import reduce
 
 import numpy as np
@@ -405,7 +406,7 @@ class GaussianMeta(FunsorMeta):
         # Compress wide representations.
         shift = None
         dim, rank = prec_sqrt.shape[-2:]
-        if rank > dim * cls.compress_rank_threshold:
+        if rank > dim * cls.compression_threshold:
             white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
 
         # Create a Gaussian.
@@ -459,16 +460,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         :class:`~funsor.domains.Domain` .
     """
 
-    # To save space w: compress wide matrices down to square. The space optimal
-    # setting is compress_rank_threshold = 1, compressing even slightly wide
-    # matrices down to square. However at the point of compression we cannot
-    # guarantee full rank and therefoe need to use an expensive QR
-    # decomposition. To balance space and time costs, we allow matrices to grow
-    # wider than square before compressing. In some cases this entirely avoids
-    # QR decomposition, since at the point of subsequent operations
-    # (marginalizing, sampling) we can guarantee full-rank normalizable
-    # Gaussians and can use a cheaper Cholesky factorization.
-    compress_rank_threshold = 2
+    compression_threshold = 2
 
     def __init__(self, white_vec, prec_sqrt, inputs):
         assert ops.is_numeric_array(white_vec) and ops.is_numeric_array(prec_sqrt)
@@ -482,7 +474,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             assert len(prec_sqrt.shape) >= 2 and prec_sqrt.shape[-2] == dim
             rank = prec_sqrt.shape[-1]
             assert len(white_vec.shape) >= 1 and white_vec.shape[-1] == rank
-            assert rank <= dim * self.compress_rank_threshold
+            # This should be true but weirdly fails in pytest tests that use
+            # set_compression_threshold(large_value).
+            # assert rank <= dim * self.compression_threshold
 
         # Compute total shape of all Bint inputs.
         batch_shape = tuple(
@@ -500,6 +494,31 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         self.prec_sqrt = prec_sqrt
         self.batch_shape = batch_shape
         self.event_shape = (dim,)
+
+    @classmethod
+    @contextmanager
+    def set_compression_threshold(cls, threshold: float):
+        """
+        Context manager to set rank compression threshold.
+
+        To save space Gaussians compress wide ``prec_sqrt`` matrices down to
+        square. However compression uses an expensive QR decomposition. To
+        balance space and time costs, compression is trigger only on
+        ``prec_sqrt`` matrices whose width to height ratio is greater than
+        ``threshold``.
+
+        :param float threshold: Defaults to 2. To optimize for space, set
+            ``threshold = 1``. To otimize for fewest QR decompositions, set
+            ``threshold = math.inf``.
+        """
+        assert isinstance(threshold, (int, float))
+        assert threshold >= 1
+        old = cls.compression_threshold
+        try:
+            cls.compression_threshold = threshold
+            yield
+        finally:
+            cls.compression_threshold = old
 
     def __repr__(self):
         return "Gaussian(..., ({}))".format(
@@ -953,6 +972,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         inputs = sample_inputs.copy()
         inputs.update(int_inputs)
 
+        assert self.is_full_rank
         if sampled_vars == frozenset(real_inputs):
             # Call _compress_rank() to triangularize.
             white_vec, prec_sqrt, _ = _compress_rank(

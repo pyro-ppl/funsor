@@ -3,7 +3,6 @@
 
 import itertools
 import pprint
-import unittest.mock
 from collections import OrderedDict
 from functools import reduce
 
@@ -239,7 +238,6 @@ def test_compress_rank_singular(batch_shape, dim):
     assert_close(prec_sqrt, zeros(batch_shape + (dim, dim)))
 
 
-@unittest.mock.patch("funsor.gaussian.Gaussian.compress_rank_threshold", 999)
 @pytest.mark.parametrize(
     "dim, rank", [(d, r) for d in range(1, 6) for r in range(1, 21) if d < r]
 )
@@ -247,7 +245,8 @@ def test_compress_rank_gaussian(dim, rank):
     inputs = OrderedDict(x=Reals[dim])
     white_vec = randn((rank,))
     prec_sqrt = randn((dim, rank))
-    g1 = Gaussian(white_vec, prec_sqrt, inputs)
+    with Gaussian.set_compression_threshold(999):
+        g1 = Gaussian(white_vec, prec_sqrt, inputs)
     assert isinstance(g1, Gaussian)
     assert g1.rank == rank
 
@@ -884,8 +883,8 @@ def test_eager_add():
     g2 = Gaussian(randn((1,)), randn((1, 1)), OrderedDict(a=Real))
     a = Variable("a", Real)
 
-    # actual = (g1 + g2).reduce(ops.logaddexp)
-    # assert isinstance(actual, Tensor)
+    actual = (g1 + g2).reduce(ops.logaddexp)
+    assert isinstance(actual, Tensor)
 
     actual = Contraction(ops.logaddexp, ops.add, frozenset({a}), (g1, g2))
     assert isinstance(actual, Tensor)
