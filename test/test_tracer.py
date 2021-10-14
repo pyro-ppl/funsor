@@ -79,9 +79,9 @@ def test_use_funsor_interally_1():
 
 @pytest.mark.xfail(reason="TODO Gaussian directly uses backend, bypassing ops")
 def test_use_funsor_interally_2():
-    def gaussian_log_prob(info_vec, precision, value):
+    def gaussian_log_prob(white_vec, prec_sqrt, value):
         # Convert backend arrays -> to funsors.
-        g = Gaussian(info_vec, precision, OrderedDict(x=Reals[3]))
+        g = Gaussian(white_vec, prec_sqrt, OrderedDict(x=Reals[3]))
         value = to_funsor(value)
 
         # Operate on funsors.
@@ -90,9 +90,8 @@ def test_use_funsor_interally_2():
         # Convert funsors -> to backend array.
         return to_data(log_prob)
 
-    p = randn(3, 3)
-    precision = p @ p.T
-    data = dict(info_vec=randn(3), precision=precision, value=randn(3))
+    prec_sqrt = randn(3, 3)
+    data = dict(white_vec=randn(3), prec_sqrt=prec_sqrt, value=randn(3))
     check_tracer(gaussian_log_prob, data)
 
 

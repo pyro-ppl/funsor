@@ -122,8 +122,10 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert isinstance(expected, Contraction) and isinstance(
             expected.terms[0], Delta
         ), msg
-    elif isinstance(actual, Gaussian) and is_array(actual.info_vec):
-        assert isinstance(expected, Gaussian) and is_array(expected.info_vec), msg
+    elif is_array(actual):
+        assert is_array(expected)  # allow jax/numpy ambiguity
+    elif isinstance(actual, Gaussian):
+        assert isinstance(expected, Gaussian)
     else:
         assert type(actual) == type(expected), msg
 
@@ -147,8 +149,10 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             assert_close(actual_point, expected_point, atol=atol, rtol=rtol)
             assert_close(actual_log_density, expected_log_density, atol=atol, rtol=rtol)
     elif isinstance(actual, Gaussian):
-        assert_close(actual.info_vec, expected.info_vec, atol=atol, rtol=rtol)
-        assert_close(actual.precision, expected.precision, atol=atol, rtol=rtol)
+        # Note white_vec and prec_sqrt are expected to agree only up to an
+        # orthogonal factor, but precision and info_vec should agree exactly.
+        assert_close(actual._info_vec, expected._info_vec, atol=atol, rtol=rtol)
+        assert_close(actual._precision, expected._precision, atol=atol, rtol=rtol)
     elif isinstance(actual, Contraction):
         assert actual.red_op == expected.red_op
         assert actual.bin_op == expected.bin_op
@@ -429,9 +433,10 @@ def random_gaussian(inputs):
     prec_sqrt = randn(batch_shape + event_shape + event_shape)
     precision = ops.matmul(prec_sqrt, ops.transpose(prec_sqrt, -1, -2))
     precision = precision + 0.5 * ops.new_eye(precision, event_shape[:1])
+    prec_sqrt = ops.cholesky(precision)
     loc = randn(batch_shape + event_shape)
-    info_vec = ops.matmul(precision, ops.unsqueeze(loc, -1)).squeeze(-1)
-    return Gaussian(info_vec, precision, inputs)
+    white_vec = ops.matmul(prec_sqrt, ops.unsqueeze(loc, -1)).squeeze(-1)
+    return Gaussian(white_vec=white_vec, prec_sqrt=prec_sqrt, inputs=inputs)
 
 
 def random_mvn(batch_shape, dim, diag=False):

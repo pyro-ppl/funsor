@@ -13,7 +13,8 @@ jobs:
     strategy:
       matrix:
         python-version: [3.6, 3.7, 3.8, 3.9]
-
+    env:
+      CI: 1
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
@@ -29,8 +30,7 @@ jobs:
         pip install .[test]
         pip freeze
     - name: Run test
-      run: |
-        make test
+      run: make test
 
 
   torch:
@@ -39,7 +39,9 @@ jobs:
     strategy:
       matrix:
         python-version: [3.6]
-
+    env:
+      CI: 1
+      FUNSOR_BACKEND: torch
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
@@ -57,9 +59,7 @@ jobs:
         pip install .[test,torch]
         pip freeze
     - name: Run test
-      run: |
-        make test
-        FUNSOR_BACKEND=torch make test
+      run: make test
 
 
   jax:
@@ -68,7 +68,9 @@ jobs:
     strategy:
       matrix:
         python-version: [3.6]
-
+    env:
+      CI: 1
+      FUNSOR_BACKEND: jax
     steps:
     - uses: actions/checkout@v2
     - name: Set up Python ${{ matrix.python-version }}
@@ -85,5 +87,4 @@ jobs:
         pip install .[test,jax]
         pip freeze
     - name: Run test
-      run: |
-        CI=1 FUNSOR_BACKEND=jax make test
+      run: make test
