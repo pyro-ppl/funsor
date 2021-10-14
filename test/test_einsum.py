@@ -20,7 +20,12 @@ from funsor.interpreter import reinterpret
 from funsor.optimizer import apply_optimizer
 from funsor.tensor import Tensor
 from funsor.terms import Variable
-from funsor.testing import assert_close, make_einsum_example
+from funsor.testing import (
+    assert_close,
+    excludes_backend,
+    make_einsum_example,
+    requires_backend,
+)
 from funsor.util import get_backend
 
 EINSUM_EXAMPLES = [
@@ -72,11 +77,8 @@ def test_einsum(equation, backend):
             assert actual.inputs[output_dim].dtype == sizes[output_dim]
 
 
+@excludes_backend("numpy", reason="requires a distributions library")
 @pytest.mark.parametrize("equation", EINSUM_EXAMPLES)
-@pytest.mark.skipif(
-    get_backend() == "numpy",
-    reason="funsor.distribution does not support numpy backend",
-)
 def test_einsum_categorical(equation):
     if get_backend() == "jax":
         from funsor.jax.distributions import Categorical
@@ -136,6 +138,7 @@ PLATED_EINSUM_EXAMPLES = [
 ]
 
 
+@requires_backend("torch", reason="requires pyro.ops.contract.einsum")
 @pytest.mark.parametrize("equation,plates", PLATED_EINSUM_EXAMPLES)
 @pytest.mark.parametrize(
     "backend",
@@ -144,10 +147,6 @@ PLATED_EINSUM_EXAMPLES = [
         BACKEND_TO_LOGSUMEXP_BACKEND[get_backend()],
         BACKEND_TO_MAP_BACKEND[get_backend()],
     ],
-)
-@pytest.mark.skipif(
-    get_backend() != "torch",
-    reason="pyro.ops.contract.einsum does not work with numpy/jax backend.",
 )
 def test_plated_einsum(equation, plates, backend):
     from pyro.ops.contract import einsum as pyro_einsum

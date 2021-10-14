@@ -38,7 +38,7 @@ from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.ops.builtin import normalize_ellipsis, parse_ellipsis, parse_slice
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
 from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_args, get_origin
-from funsor.util import getargspec, lazy_property, pretty, quote
+from funsor.util import getargspec, lazy_property, pretty, quote, register_pprint
 
 from . import instrument, interpreter, ops
 
@@ -182,7 +182,8 @@ class FunsorMeta(GenericTypeMeta):
     """
 
     def __init__(cls, name, bases, dct):
-        super(FunsorMeta, cls).__init__(name, bases, dct)
+        super().__init__(name, bases, dct)
+        register_pprint(cls)
         if not cls.__args__:
             cls._ast_fields = getargspec(cls.__init__)[0][1:]
             cls._cons_cache = WeakValueDictionary()
@@ -316,8 +317,8 @@ class Funsor(object, metaclass=FunsorMeta):
     def quote(self):
         return quote(self)
 
-    def pretty(self, maxlen=40):
-        return pretty(self, maxlen=maxlen)
+    def pretty(self, *args, **kwargs):
+        return pretty(self, *args, **kwargs)
 
     def __contains__(self, item):
         raise TypeError

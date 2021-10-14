@@ -376,4 +376,6 @@ ops.stack.register(typing.Tuple[torch.Tensor, ...])(torch.stack)
 
 @ops.triangular_solve.register(torch.Tensor, torch.Tensor)
 def _triangular_solve(x, y, upper=False, transpose=False):
+    if y.size(-1) == 1:
+        return x / y
     return x.triangular_solve(y, upper, transpose).solution

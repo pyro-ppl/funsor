@@ -13,10 +13,14 @@ from funsor.cnf import (
     BACKEND_TO_LOGSUMEXP_BACKEND,
     Contraction,
 )
-from funsor.domains import Array, Bint, Reals  # noqa: F401
+from funsor.constant import Constant
+from funsor.delta import Delta
+from funsor.domains import Array, Bint, Real, Reals  # noqa: F401
 from funsor.einsum import einsum, naive_plated_einsum
+from funsor.integrate import Integrate
 from funsor.interpretations import eager, normalize, reflect
 from funsor.interpreter import reinterpret
+from funsor.optimizer import apply_optimizer
 from funsor.tensor import Tensor
 from funsor.terms import Number
 from funsor.testing import (
@@ -130,3 +134,21 @@ def test_eager_contract_tensor_tensor(
             assert_close(
                 actual, expected, atol=1e-4, rtol=1e-3 if backend == "jax" else 1e-4
             )
+
+
+def test_normalize_integrate_contraction():
+    data = random_tensor(OrderedDict([("i", Bint[2]), ("j", Bint[3])]))
+    point = random_tensor(OrderedDict([("j", Bint[3])]))
+    log_measure = Delta("x", point) + Constant(
+        (("i", Bint[2]), ("j", Bint[3])), Number(0.0)
+    )
+    integrand = Constant((("x", Real),), data)
+    with reflect:
+        term = Integrate(log_measure, integrand, "x")
+        result = term.reduce(ops.add, {"i", "j"})
+
+    with eager:
+        expected = reinterpret(result)
+
+    actual = apply_optimizer(result)
+    assert_close(actual, expected)

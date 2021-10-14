@@ -22,6 +22,7 @@ from funsor.terms import to_data, to_funsor
 from funsor.testing import (  # noqa: F401
     assert_close,
     check_funsor,
+    excludes_backend,
     rand,
     randint,
     randn,
@@ -32,8 +33,8 @@ from funsor.testing import (  # noqa: F401
 )
 from funsor.util import get_backend
 
-pytestmark = pytest.mark.skipif(
-    get_backend() == "numpy", reason="numpy does not have distributions backend"
+pytestmark = excludes_backend(
+    "numpy", reason="numpy does not have distributions backend"
 )
 if get_backend() != "numpy":
     dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
@@ -748,11 +749,7 @@ def test_generic_sample(case, sample_shape):
         "variance",
         pytest.param(
             "entropy",
-            marks=[
-                pytest.mark.skipif(
-                    get_backend() == "jax", reason="entropy not implemented"
-                )
-            ],
+            marks=[excludes_backend("jax", reason="entropy not implemented")],
         ),
     ],
 )

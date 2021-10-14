@@ -254,11 +254,8 @@ class Dependent(metaclass=DependentMeta):
 ################################################################################
 # Function registration
 
-
-@quote.register(BintType)
-@quote.register(RealsType)
-def _(arg, indent, out):
-    out.append((indent, repr(arg)))
+quote.register_repr(BintType)
+quote.register_repr(RealsType)
 
 
 @functools.singledispatch
@@ -276,6 +273,19 @@ def _find_domain_pointwise_unary_generic(op, domain):
     if isinstance(domain, ArrayType):
         return Array[domain.dtype, domain.shape]
     raise NotImplementedError
+
+
+@find_domain.register(ops.AstypeOp)
+def _find_domain_astype(op, domain):
+    if op.defaults["dtype"] in ("float", "double", "float32", "float64"):
+        dtype = "real"
+    elif op.defaults["dtype"] in ("bool"):
+        dtype = 2
+    elif op.defaults["dtype"] in ("int", "int8", "int16", "int32", "int64", "uint8"):
+        dtype = domain.dtype
+    else:
+        raise NotImplementedError
+    return Array[dtype, domain.shape]
 
 
 @find_domain.register(ops.LogOp)

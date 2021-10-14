@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import itertools
+import pprint
 from collections import OrderedDict
 from functools import reduce
 
@@ -22,6 +23,7 @@ from funsor.testing import (
     randn,
     random_gaussian,
     random_tensor,
+    requires_backend,
     zeros,
 )
 from funsor.util import get_backend
@@ -29,11 +31,9 @@ from funsor.util import get_backend
 assert Einsum  # flake8
 
 
+@requires_backend("torch")
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
-@pytest.mark.skipif(
-    get_backend() != "torch", reason="The test is specific to 'torch' backend"
-)
 def test_cholesky_solve(batch_shape, size):
     import torch
 
@@ -57,12 +57,10 @@ def naive_cholesky_inverse(u):
     ).reshape(shape)
 
 
+@requires_backend("torch")
 @pytest.mark.parametrize("requires_grad", [False, True])
 @pytest.mark.parametrize("size", [1, 2, 3], ids=str)
 @pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
-@pytest.mark.skipif(
-    get_backend() != "torch", reason="The test is specific to 'torch' backend"
-)
 def test_cholesky_inverse(batch_shape, size, requires_grad):
     import torch
 
@@ -214,6 +212,9 @@ def test_smoke(expr, expected_type):
 
     result = eval(expr)
     assert isinstance(result, expected_type)
+
+    print("Pretty:")
+    pprint.pprint(result)
 
 
 @pytest.mark.parametrize(
