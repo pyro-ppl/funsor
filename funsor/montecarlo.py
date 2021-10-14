@@ -10,7 +10,7 @@ from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpretations import StatefulInterpretation
 from funsor.tensor import Tensor
-from funsor.terms import Approximate, Funsor, Number, Subs
+from funsor.terms import Approximate, Funsor, Number, Subs, Unary
 from funsor.util import get_backend
 
 from . import ops
@@ -91,6 +91,7 @@ def _extract_samples_contraction(discrete_density):
 @extract_samples.register(Number)
 @extract_samples.register(Tensor)
 @extract_samples.register(Gaussian)
+@extract_samples.register(Unary)
 def _extract_samples_scale(discrete_density):
     return {}
 

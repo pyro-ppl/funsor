@@ -65,6 +65,7 @@ class Precondition(StatefulInterpretation):
         for k, v in self.sample_inputs.items():
             stop = start + v.num_elements
             subs[k] = aux[start:stop].reshape(v.shape)
+            start = stop
         return subs
 
 
