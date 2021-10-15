@@ -17,13 +17,13 @@ from funsor.interpretations import compress_gaussians
 from funsor.ops import AddOp, SubOp
 from funsor.tensor import Tensor, align_tensor, align_tensors
 from funsor.terms import (
-    Align,
     Binary,
     Funsor,
     FunsorMeta,
     Number,
     Slice,
     Subs,
+    Unary,
     Variable,
     eager,
     reflect,
@@ -1068,10 +1068,32 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     return Gaussian(white_vec, prec_sqrt, inputs)
 
 
-@eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
-@eager.register(Binary, SubOp, (Funsor, Align, Delta), Gaussian)
+@eager.register(Binary, SubOp, Gaussian, Gaussian)
 def eager_sub(op, lhs, rhs):
-    return lhs + -rhs
+    # Fuse two Gaussians by subtracting their log-densities pointwise.
+    # This is similar to a Kalman filter update, but also keeps track of
+    # the marginal likelihood which accumulates into a Tensor.
+    rhs_real_vars = frozenset(v for v in rhs.input_vars if v.dtype == "real")
+    if not rhs_real_vars.issubset(lhs.input_vars):
+        return None  # cannot eagerly compute
+
+    # Align data.
+    inputs = lhs.inputs.copy()
+    inputs.update(rhs.inputs)
+    lhs_white_vec, lhs_prec_sqrt = align_gaussian(inputs, lhs, expand=True)
+    rhs_white_vec, rhs_prec_sqrt = align_gaussian(inputs, rhs, expand=True)
+
+    # Leverage GaussianMeta and properties.
+    lhs = Gaussian(lhs_white_vec, lhs_prec_sqrt, inputs)
+    rhs = Gaussian(rhs_white_vec, rhs_prec_sqrt, inputs)
+    precision = lhs._precision - rhs._precision
+    info_vec = lhs._info_vec - rhs._info_vec
+    return Gaussian(info_vec=info_vec, precision=precision, inputs=inputs)
+
+
+@eager.register(Binary, AddOp, Unary[ops.NegOp, Gaussian], Gaussian)
+def eager_add_neg_gaussian_gaussian(op, lhs, rhs):
+    return eager_sub(ops.neg, rhs, lhs.arg)
 
 
 __all__ = [

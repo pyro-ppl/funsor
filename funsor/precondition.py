@@ -4,6 +4,7 @@
 from collections import OrderedDict
 
 from . import ops
+from .cnf import Contraction, GaussianMixture
 from .domains import Reals
 from .gaussian import Gaussian
 from .interpretations import StatefulInterpretation
@@ -69,8 +70,43 @@ class Precondition(StatefulInterpretation):
         return subs
 
 
+@Precondition.register(Approximate, ops.LogaddexpOp, Funsor, Funsor, frozenset)
+def precondition_approximate_todo(state, op, model, guide, approx_vars):
+    if approx_vars.isdisjoint(guide.input_vars):
+        return
+    raise NotImplementedError("TODO handle:\n" + guide.pretty(100, 0))
+
+
+@Precondition.register(
+    Approximate,
+    ops.LogaddexpOp,
+    Funsor,
+    Contraction[ops.NullOp, ops.AddOp, frozenset, tuple],
+    frozenset,
+)
+def precondition_approximate_contraction(state, op, model, guide, approx_vars):
+    # Eagerly winnow approx_vars.
+    approx_vars = approx_vars.intersection(guide.input_vars)
+    if not approx_vars:
+        return model
+
+    terms = [
+        term for term in guide.terms if not approx_vars.isdisjoint(term.input_vars)
+    ]
+    if len(terms) == 1:
+        guide = terms[0]
+        return Approximate(ops.logaddexp, model, guide, approx_vars)
+    raise NotImplementedError("TODO")
+
+
+@Precondition.register(Approximate, ops.LogaddexpOp, Funsor, GaussianMixture, frozenset)
+def precondition_approximate_gaussian_mixture(state, op, model, guide, approx_vars):
+    tensor, gaussian = guide.terms
+    return precondition_approximate_gaussian(state, op, model, gaussian, approx_vars)
+
+
 @Precondition.register(Approximate, ops.LogaddexpOp, Funsor, Gaussian, frozenset)
-def precondition_approximate(state, op, model, guide, approx_vars):
+def precondition_approximate_gaussian(state, op, model, guide, approx_vars):
     # Eagerly winnow approx_vars.
     approx_vars = approx_vars.intersection(guide.input_vars)
     if not approx_vars:
@@ -92,7 +128,6 @@ def precondition_approximate(state, op, model, guide, approx_vars):
     # Precondition this factor.
     sample = guide.sample(approx_vars, OrderedDict([(name, Reals[shape])]))
     assert sample is not guide, "no progress"
-
     result = sample + model - guide
     return result
 

@@ -890,3 +890,18 @@ def test_eager_add():
 
     actual = Contraction(ops.logaddexp, ops.add, frozenset({a}), (g1, g2))
     assert isinstance(actual, Tensor)
+
+
+def test_eager_subs():
+    inputs = OrderedDict(a=Real)
+    g1 = random_gaussian(inputs)
+    g2 = random_gaussian(inputs)
+
+    # Add them to ensure the following is well conditioned.
+    g12 = g1 + g2
+    assert isinstance(g12, (Gaussian, GaussianMixture))
+
+    expected = g1.reduce(ops.logaddexp)
+    actual = (g12 - g2).reduce(ops.logaddexp)
+    assert isinstance(actual, Tensor)
+    assert_close(actual, expected)
