@@ -122,8 +122,6 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
         assert isinstance(expected, Contraction) and isinstance(
             expected.terms[0], Delta
         ), msg
-    elif is_array(actual):
-        assert is_array(expected)  # allow jax/numpy ambiguity
     elif isinstance(actual, Gaussian):
         assert isinstance(expected, Gaussian)
     else:

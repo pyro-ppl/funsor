@@ -242,11 +242,14 @@ def eager_integrate_gaussian_gaussian(log_measure, integrand, reduced_vars):
             # To perform this computation in rhs's internal space, we first transform
             # lhs to rhs's whitened space
             mean = _vm(lhs._mean, rhs_prec_sqrt)
-            cov = ops.transpose(rhs_prec_sqrt, -1, -2) @ lhs._covariance @ rhs_prec_sqrt
             norm = ops.exp(lhs._log_normalizer)
             # Then in rhs's whitened space, A = I so Tr(A cov) = Tr(cov).
             vmv_term = _norm2(rhs_white_vec - mean)
-            trace_term = ops.diagonal(cov, -1, -2).sum(-1)
+            trace_term = (
+                (ops.triangular_solve(rhs_prec_sqrt, lhs._precision_chol) ** 2)
+                .sum(-1)
+                .sum(-1)
+            )
             data = (-0.5) * norm * (vmv_term + trace_term)
 
             inputs = OrderedDict(
