@@ -237,7 +237,7 @@ class BlockVector(object):
 
     def as_tensor(self):
         # TODO optimize this to use backend-specific block setters:
-        # .__setitem__ for numy and torch; .at(...).set(...) for jax.
+        # .__setitem__ for numpy and torch; .at(...).set(...) for jax.
 
         # Fill gaps with zeros.
         prototype = next(iter(self.parts.values()))
@@ -279,7 +279,7 @@ class BlockMatrix(object):
 
     def as_tensor(self):
         # TODO optimize this to use backend-specific block setters:
-        # .__setitem__ for numy and torch; .at(...).set(...) for jax.
+        # .__setitem__ for numpy and torch; .at(...).set(...) for jax.
 
         # Fill gaps with zeros.
         arbitrary_row = next(iter(self.parts.values()))
@@ -440,14 +440,16 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
     incomplete information, i.e. with zero eigenvalues in the precision matrix.
     These incomplete log densities arise when making low-dimensional
     observations of higher-dimensional hidden state. Sampling and
-    marginalization are supported only for full-rank Gaussians. See the
-    :meth:`rank` and :meth:`is_full_rank` properties.
+    marginalization are supported only for full-rank Gaussians or full-rank
+    subsets of Gaussians. See the :meth:`rank` and :meth:`is_full_rank`
+    properties.
 
     .. note:: :class:`Gaussian` s are not normalized probability distributions,
         rather they are canonicalized to evaluate to zero log density at their
         maximum: ``f(prec_sqrt \ white_vec) = 0``. Not only are Gaussians
         non-normalized, but they may be rank deficient and non-normalizable, in
-        which case sampling and marginalization are not supported.
+        which case sampling and marginalization are supported only un full-rank
+        subsets of variables.
 
     :param torch.Tensor white_vec: An batched white noise vector, where
         ``white_vec = prec_sqrt.T @ mean``. Alternatively you can specify one
@@ -506,14 +508,16 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         Context manager to set rank compression threshold.
 
         To save space Gaussians compress wide ``prec_sqrt`` matrices down to
-        square. However compression uses an expensive QR decomposition. To
-        balance space and time costs, compression is trigger only on
-        ``prec_sqrt`` matrices whose width to height ratio is greater than
-        ``threshold``.
+        square. However compression uses a QR decomposition which can be
+        expensive and which has unstable gradients when the resulting precision
+        matrix is rank deficient. To balance space and time costs and numerical
+        stability, compression is trigger only on ``prec_sqrt`` matrices whose
+        width to height ratio is greater than ``threshold``.
 
-        :param float threshold: Defaults to 2. To optimize for space, set
-            ``threshold = 1``. To optimize for fewest QR decompositions, set
-            ``threshold = math.inf``.
+        :param float threshold: Defaults to 2. To optimize for space and
+            deterministic computations, set ``threshold = 1``. To optimize for
+            fewest QR decompositions and numerical stability, set ``threshold =
+            math.inf``.
         """
         assert isinstance(threshold, (int, float))
         assert threshold >= 1
