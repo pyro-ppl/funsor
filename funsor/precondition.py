@@ -8,7 +8,7 @@ from .cnf import Contraction, GaussianMixture
 from .domains import Reals
 from .gaussian import Gaussian
 from .interpretations import StatefulInterpretation
-from .terms import Approximate, Funsor, Variable
+from .terms import Approximate, Funsor, Subs, Variable
 
 
 class Precondition(StatefulInterpretation):
@@ -106,6 +106,9 @@ def precondition_approximate_gaussian_mixture(state, op, model, guide, approx_va
 
 
 @Precondition.register(Approximate, ops.LogaddexpOp, Funsor, Gaussian, frozenset)
+@Precondition.register(
+    Approximate, ops.LogaddexpOp, Funsor, Subs[Gaussian, tuple], frozenset
+)
 def precondition_approximate_gaussian(state, op, model, guide, approx_vars):
     # Eagerly winnow approx_vars.
     approx_vars = approx_vars.intersection(guide.input_vars)
@@ -115,11 +118,12 @@ def precondition_approximate_gaussian(state, op, model, guide, approx_vars):
     # Determine how much white noise is needed to generate a sample.
     batch_shape = []
     event_numel = 0
-    for k, v in guide.inputs.items():
-        if v.dtype == "real":
-            event_numel += v.num_elements
+    for k, d in guide.inputs.items():
+        if d.dtype == "real":
+            if Variable(k, d) in approx_vars:
+                event_numel += d.num_elements
         else:
-            batch_shape += v.size
+            batch_shape += d.size
     shape = tuple(batch_shape) + (event_numel,)
     name = f"{state.aux_name}_{len(state.sample_inputs)}"
     state.sample_inputs[name] = Reals[shape]
