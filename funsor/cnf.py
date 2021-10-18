@@ -401,7 +401,7 @@ def _(fn):
 # Normalizing Contractions
 ##########################################
 
-ORDERING = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
+ORDERING = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4, Unary[ops.NegOp, Gaussian]: 5}
 GROUND_TERMS = tuple(ORDERING)
 
 

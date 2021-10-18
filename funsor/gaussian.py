@@ -1156,9 +1156,9 @@ def eager_sub(op, lhs, rhs):
     return Gaussian(info_vec=info_vec, precision=precision, inputs=inputs)
 
 
-@eager.register(Binary, AddOp, Unary[ops.NegOp, Gaussian], Gaussian)
-def eager_add_neg_gaussian_gaussian(op, lhs, rhs):
-    return eager_sub(ops.sub, rhs, lhs.arg)
+@eager.register(Binary, AddOp, Gaussian, Unary[ops.NegOp, Gaussian])
+def eager_add_gaussian_neg_gaussian(op, lhs, rhs):
+    return eager_sub(ops.sub, lhs, rhs.arg)
 
 
 __all__ = [
