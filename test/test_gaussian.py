@@ -839,8 +839,8 @@ def test_sample_partial(int_inputs):
         g2 = g.sample(sampled_vars, sample_inputs, rng_keys[1])
         samples = g2.sample(all_vars, sample_inputs, rng_keys[2])
         actual_mean, actual_cov = compute_moments(samples)
-        assert_close(actual_mean, expected_mean, atol=1e-2, rtol=1e-2)
-        assert_close(actual_cov, expected_cov, atol=1e-2, rtol=1e-2)
+        assert_close(actual_mean, expected_mean, atol=1e-1, rtol=1e-1)
+        assert_close(actual_cov, expected_cov, atol=1e-1, rtol=1e-1)
 
 
 @pytest.mark.parametrize("int_inputs", [{}, {"i": Bint[2]}], ids=id_from_inputs)

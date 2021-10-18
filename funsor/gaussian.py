@@ -983,8 +983,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
             # Jointly sample.
             # This section may involve either Funsors or backend arrays.
+            dim = prec_sqrt.shape[-1]
             white_noise = _sample_white_noise(
-                sample_inputs, int_inputs, white_vec, rng_key
+                sample_inputs, int_inputs, dim, self.white_vec, rng_key
             )
             if isinstance(white_noise, Funsor):
                 white_vec = Tensor(white_vec, int_inputs)
@@ -1001,30 +1002,36 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             a, b = _split_real_inputs(self.inputs, sampled_vars, self.white_vec)
             prec_sqrt_a = self.prec_sqrt[..., a, :]
             prec_sqrt_b = self.prec_sqrt[..., b, :]
+            dim_a = prec_sqrt_a.shape[-2]
 
-            # Accumulate lazy effect of b on a.
-            white_vec = Tensor(self.white_vec, int_inputs)
+            # Compute white_vec of a lazily conditioned on b's variables.
+            # This requires Funsors rather than backend arrays.
             flat = ops.cat(
                 [
                     Variable(k, d).reshape((d.num_elements,))
                     for k, d in remaining_real_inputs.items()
                 ]
             )
-            white_vec -= (flat[None] @ Tensor(prec_sqrt_b, int_inputs))[0]
+            white_vec_a = (
+                Tensor(self.white_vec, int_inputs)
+                - (flat[None] @ Tensor(prec_sqrt_b, int_inputs))[0]
+            )
 
             # Triangularize.
             precision_chol_a = Tensor(ops.cholesky(_mmt(prec_sqrt_a)), int_inputs)
             white_vec_a = ops.triangular_solve(
-                Tensor(prec_sqrt_a, int_inputs) @ white_vec[..., None],
+                Tensor(prec_sqrt_a, int_inputs) @ white_vec_a[..., None],
                 precision_chol_a,
             )[..., 0]
 
             # Jointly sample.
             white_noise = _sample_white_noise(
-                sample_inputs, int_inputs, white_vec_a, rng_key
+                sample_inputs, int_inputs, dim_a, self.white_vec, rng_key
             )
             if not isinstance(white_noise, Funsor):
-                white_noise = Tensor(white_noise, int_inputs)
+                inputs = sample_inputs.copy()
+                inputs.update(int_inputs)
+                white_noise = Tensor(white_noise, inputs)
             sample = ops.triangular_solve(
                 (white_noise + white_vec_a)[..., None], precision_chol_a, transpose=True
             )[..., 0]
@@ -1084,15 +1091,18 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         return result
 
 
-def _sample_white_noise(sample_inputs, int_inputs, white_vec, rng_key):
-    sample_shape = tuple(d.size for d in sample_inputs.values() if d.dtype != "real")
-    shape = sample_shape + white_vec.shape
+def _sample_white_noise(sample_inputs, int_inputs, dim, prototype, rng_key):
     if [v.dtype for v in sample_inputs.values()] == ["real"]:
         # Lazily compute a sample as a function of white noise.
         k, d = next(iter(sample_inputs.items()))
         return Variable(k, d)[tuple(int_inputs)]
+
     # Eagerly draw noise.
-    return ops.randn(white_vec, shape, rng_key)
+    shape = tuple(d.size for d in sample_inputs.values() if d.dtype != "real")
+    shape += tuple(d.size for d in int_inputs.values())
+    shape += (dim,)
+    assert ops.is_numeric_array(prototype)
+    return ops.randn(prototype, shape, rng_key)
 
 
 @compress_gaussians.register(Gaussian, object, object, tuple)
