@@ -1158,7 +1158,7 @@ def eager_sub(op, lhs, rhs):
 
 @eager.register(Binary, AddOp, Unary[ops.NegOp, Gaussian], Gaussian)
 def eager_add_neg_gaussian_gaussian(op, lhs, rhs):
-    return eager_sub(ops.neg, rhs, lhs.arg)
+    return eager_sub(ops.sub, rhs, lhs.arg)
 
 
 __all__ = [
