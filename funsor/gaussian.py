@@ -1020,6 +1020,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             sample = ops.triangular_solve(
                 (white_noise + white_vec_a)[..., None], precision_chol_a, transpose=True
             )[..., 0]
+            if isinstance(white_noise, Funsor):
+                precision_chol_a = precision_chol_a.data
 
             # Compute the remaining Gaussian, equivalent to
             # self.reduce(ops.logaddexp, sampled_vars), but avoiding duplicate work.
