@@ -23,6 +23,7 @@ from funsor.gaussian import (
     _vm,
 )
 from funsor.integrate import Integrate
+from funsor.montecarlo import extract_samples
 from funsor.tensor import Einsum, Tensor, numeric_array
 from funsor.terms import Number, Unary, Variable
 from funsor.testing import (
@@ -323,7 +324,7 @@ def test_meta(loc, scale):
         ("shift + g1", Contraction),
         ("shift - g1", Contraction),
         ("g1 + g1", (Gaussian, Contraction)),
-        ("(g1 + g2 + g2) - g2", Contraction),
+        ("(g1 + g2 + g2) - g2", (Gaussian, Contraction)),
         ("g1(i=i0)", Gaussian),
         ("g2(i=i0)", Gaussian),
         ("g1(i=i0) + g2(i=i0)", Gaussian),
@@ -762,7 +763,7 @@ def test_reduce_logsumexp(int_inputs, real_inputs):
     ],
     ids=id_from_inputs,
 )
-def test_reduce_logsumexp_subs(int_inputs):
+def test_reduce_logsumexp_partial(int_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(
         [("w", Reals[2]), ("x", Reals[4]), ("y", Reals[2, 3]), ("z", Real)]
@@ -776,12 +777,70 @@ def test_reduce_logsumexp_subs(int_inputs):
         k: Tensor(randn(batch_shape + v.shape), int_inputs)
         for k, v in real_inputs.items()
     }
+    real_vars = frozenset("wxyz")
     subsets = "w x y z wx wy wz xy xz yz wxy wxz wyz xyz".split()
     for reduced_vars in map(frozenset, subsets):
         values = {k: v for k, v in all_values.items() if k not in reduced_vars}
-        actual = g.reduce(ops.logaddexp, reduced_vars)(**all_values)
-        expected = g(**values).reduce(ops.logaddexp, reduced_vars)
+
+        # Check two ways of completely marginalizing.
+        expected = g.reduce(ops.logaddexp, real_vars)
+        actual = g.reduce(ops.logaddexp, reduced_vars).reduce(
+            ops.logaddexp, real_vars - reduced_vars
+        )
         assert_close(actual, expected, atol=1e-4, rtol=None)
+
+        # Check two ways of substituting.
+        expected = g(**values).reduce(ops.logaddexp, reduced_vars)
+        actual = g.reduce(ops.logaddexp, reduced_vars)(**all_values)
+        assert_close(actual, expected, atol=1e-4, rtol=None)
+
+
+@pytest.mark.parametrize(
+    "int_inputs",
+    [
+        OrderedDict(),
+        OrderedDict([("i", Bint[2])]),
+        OrderedDict([("i", Bint[2]), ("j", Bint[3])]),
+    ],
+    ids=id_from_inputs,
+)
+def test_sample_partial(int_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(
+        [("w", Reals[2]), ("x", Reals[4]), ("y", Reals[2, 3]), ("z", Real)]
+    )
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+    flat = ops.cat(
+        [Variable(k, d).reshape((d.num_elements,)) for k, d in real_inputs.items()]
+    )
+
+    def compute_moments(samples):
+        flat_samples = flat(**extract_samples(samples))
+        mean = flat_samples.reduce(ops.mean)
+        diff = flat_samples - mean
+        cov = (diff[:, None] - diff[None, :]).reduce(ops.mean)
+        return mean, cov
+
+    sample_inputs = OrderedDict(particle=Bint[10000])
+    rng_keys = [None] * 3
+    if get_backend() == "jax":
+        import jax.random
+
+        rng_keys = jax.random.split(np.array([0, 0], dtype=np.uint32), 3)
+
+    g = random_gaussian(inputs)
+    all_vars = frozenset("wxyz")
+    samples = g.sample(all_vars, sample_inputs, rng_keys[0])
+    expected_mean, expected_cov = compute_moments(samples)
+    subsets = "w x y z wx wy wz xy xz yz wxy wxz wyz xyz".split()
+    for sampled_vars in map(frozenset, subsets):
+        samples = g.sample(sampled_vars, sample_inputs, rng_keys[1]).sample(
+            all_vars, sample_inputs, rng_keys[2]
+        )
+        actual_mean, actual_cov = compute_moments(samples)
+        assert_close(actual_mean, expected_mean, atol=1e-2, rtol=1e-2)
+        assert_close(actual_cov, expected_cov, atol=1e-2, rtol=1e-2)
 
 
 @pytest.mark.parametrize("int_inputs", [{}, {"i": Bint[2]}], ids=id_from_inputs)

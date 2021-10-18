@@ -5,6 +5,7 @@ import numbers
 import typing
 
 import jax.numpy as np
+import jax.random
 import numpy as onp
 from jax import lax
 from jax.core import Tracer
@@ -257,6 +258,12 @@ def _new_eye(x, shape):
 @ops.new_zeros.register(array)
 def _new_zeros(x, shape):
     return onp.zeros(shape, dtype=np.result_type(x))
+
+
+@ops.randn.register(array)
+def _randn(prototype, shape, rng_key=None):
+    assert isinstance(shape, tuple)
+    return jax.random.randn(rng_key, shape, dtype=prototype.dtype)
 
 
 @ops.reciprocal.register(array)

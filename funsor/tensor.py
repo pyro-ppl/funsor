@@ -883,6 +883,19 @@ def eager_finitary_stack(op, parts):
     return Tensor(raw_result, inputs, parts[0].dtype)
 
 
+@eager.register(Finitary, ops.CatOp, typing.Tuple[Tensor, ...])
+def eager_finitary_cat(op, parts):
+    dim = op.defaults["axis"]
+    if dim >= 0:
+        event_dims = {len(part.output.shape) for part in parts}
+        assert len(event_dims) == 1, "undefined"
+        dim = dim - next(iter(event_dims))
+    assert dim < 0
+    inputs, raw_parts = align_tensors(*parts)
+    raw_result = ops.cat(raw_parts, dim)
+    return Tensor(raw_result, inputs, parts[0].dtype)
+
+
 @eager.register(Finitary, FinitaryOp, typing.Tuple[typing.Union[(Number, Tensor)], ...])
 def eager_finitary_generic_tensors(op, args):
     inputs, raw_args = align_tensors(*args)

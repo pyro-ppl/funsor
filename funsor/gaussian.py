@@ -6,9 +6,6 @@ from collections import OrderedDict, defaultdict
 from contextlib import contextmanager
 from functools import reduce
 
-import numpy as np
-
-import funsor
 import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
@@ -28,7 +25,7 @@ from funsor.terms import (
     eager,
     reflect,
 )
-from funsor.util import broadcast_shape, get_backend, get_tracing_state, lazy_property
+from funsor.util import broadcast_shape, get_tracing_state, lazy_property
 
 
 def _log_det_tri(x):
@@ -854,13 +851,12 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             reduced_ints = reduced_vars - real_vars
             if not reduced_reals:
                 return None  # defer to default implementation
+            if reduced_reals == real_vars:
+                return self.log_normalizer.reduce(ops.logaddexp, reduced_ints)
 
             inputs = OrderedDict(
                 (k, d) for k, d in self.inputs.items() if k not in reduced_reals
             )
-            if reduced_reals == real_vars:
-                return self.log_normalizer.reduce(ops.logaddexp, reduced_ints)
-
             int_inputs = OrderedDict(
                 (k, v) for k, v in inputs.items() if v.dtype != "real"
             )
@@ -898,7 +894,6 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             b, a = _split_real_inputs(self.inputs, reduced_vars, self.white_vec)
             prec_sqrt_a = self.prec_sqrt[..., a, :]
             prec_sqrt_b = self.prec_sqrt[..., b, :]
-            dim_a = prec_sqrt_a.shape[-2]
             dim_b = prec_sqrt_b.shape[-2]
             if self.rank < dim_b:
                 raise ValueError(
@@ -906,27 +901,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                     "Consider adding a prior."
                 )
             precision_chol_b = ops.cholesky(_mmt(prec_sqrt_b))  # assume full rank
-            b_log_normalizer = Tensor(
-                dim_b * math.log(2 * math.pi) / 2 - _log_det_tri(precision_chol_b),
-                int_inputs,
+            result = self._marginalize_after_split(
+                inputs, int_inputs, prec_sqrt_b, prec_sqrt_a, precision_chol_b
             )
-            result = b_log_normalizer
-            if self.rank > dim_b:
-                proj_b = _mtm(ops.triangular_solve(prec_sqrt_b, precision_chol_b))
-                prec_sqrt = prec_sqrt_a - prec_sqrt_a @ proj_b
-                white_vec = self.white_vec - _vm(self.white_vec, proj_b)
-                result += Gaussian(white_vec, prec_sqrt, inputs)
-            else:  # The Gaussian over xa is zero.
-                # TODO switch from an empty Gaussian to a Constant once this works:
-                # from .constant import Constant
-                # const_inputs = OrderedDict(
-                #     (k, v) for k, v in inputs.items() if k not in result.inputs
-                # )
-                # result = Constant(const_inputs, result)
-                batch_shape = self.white_vec.shape[:-1]
-                white_vec = ops.new_zeros(self.white_vec, batch_shape + (0,))
-                prec_sqrt = ops.new_zeros(self.white_vec, batch_shape + (dim_a, 0))
-                result += Gaussian(white_vec, prec_sqrt, inputs)
             return result.reduce(ops.logaddexp, reduced_ints)
 
         elif op is ops.add:
@@ -982,66 +959,132 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         sample_inputs = OrderedDict(
             (k, d) for k, d in sample_inputs.items() if k not in self.inputs
         )
-        sample_shape = tuple(
-            d.size for d in sample_inputs.values() if d.dtype != "real"
-        )
-        int_inputs = OrderedDict(
-            (k, d) for k, d in self.inputs.items() if d.dtype != "real"
-        )
-        real_inputs = OrderedDict(
-            (k, d) for k, d in self.inputs.items() if d.dtype == "real"
-        )
-        inputs = sample_inputs.copy()
-        inputs.update(int_inputs)
+        int_inputs = OrderedDict()
+        sampled_real_inputs = OrderedDict()
+        remaining_real_inputs = OrderedDict()
+        for k, d in self.inputs.items():
+            if d.dtype != "real":
+                int_inputs[k] = d
+            elif k in sampled_vars:
+                sampled_real_inputs[k] = d
+            else:
+                remaining_real_inputs[k] = d
+        if self.rank < sum(d.num_elements for d in sampled_real_inputs.values()):
+            raise ValueError(
+                f"Too little information to sample over {set(sampled_vars)}. "
+                "Consider adding a prior."
+            )
 
-        assert self.is_full_rank
-        if sampled_vars == frozenset(real_inputs):
-            # Call _compress_rank() to triangularize.
+        if not remaining_real_inputs:  # Sample all variables.
+            # Triangularize via _compress_rank().
             white_vec, prec_sqrt, _ = _compress_rank(
                 self.white_vec, self.prec_sqrt, assume_full_rank=True
             )
-            shape = sample_shape + white_vec.shape
-            backend = get_backend()
-            if [v.dtype for v in sample_inputs.values()] == ["real"]:
-                # Lazily compute a sample as a function of white noise.
-                for k, d in sample_inputs.items():
-                    white_noise = Variable(k, d)[tuple(int_inputs)]
-                white_vec = Tensor(white_vec, int_inputs)
-                prec_sqrt = Tensor(prec_sqrt, int_inputs)
-            elif backend == "numpy":
-                # Eagerly draw noise.
-                white_noise = np.random.randn(*shape)
-            else:
-                # Eagerly draw noise.
-                from importlib import import_module
-
-                dist = import_module(
-                    funsor.distribution.BACKEND_TO_DISTRIBUTIONS_BACKEND[backend]
-                )
-                sample_args = (shape,) if rng_key is None else (rng_key, shape)
-                white_noise = dist.Normal.dist_class(0, 1).sample(*sample_args)
 
             # Jointly sample.
             # This section may involve either Funsors or backend arrays.
+            white_noise = _sample_white_noise(
+                sample_inputs, int_inputs, white_vec, rng_key
+            )
+            if isinstance(white_noise, Funsor):
+                white_vec = Tensor(white_vec, int_inputs)
+                prec_sqrt = Tensor(prec_sqrt, int_inputs)
             sample = ops.triangular_solve(
                 (white_noise + white_vec)[..., None], prec_sqrt, transpose=True
             )[..., 0]
 
-            # Extract shaped components.
-            offsets, _ = _compute_offsets(real_inputs)
-            results = []
-            for key, domain in real_inputs.items():
-                point = sample[..., offsets[key] : offsets[key] + domain.num_elements]
-                point = point.reshape(point.shape[:-1] + domain.shape)
-                if not isinstance(point, Funsor):  # I.e. when eagerly sampling.
-                    point = Tensor(point, inputs)
-                assert point.output == domain
-                results.append(Delta(key, point))
+            # Compute the remaining Tensor.
+            remaining = self.log_normalizer
 
-            results.append(self.log_normalizer)
-            return reduce(ops.add, results)
+        else:  # Sample only a subset of real variables.
+            # Split into sampled variables a and remaining variables b.
+            a, b = _split_real_inputs(self.inputs, sampled_vars, self.white_vec)
+            prec_sqrt_a = self.prec_sqrt[..., a, :]
+            prec_sqrt_b = self.prec_sqrt[..., b, :]
+            white_vec = self.white_vec
 
-        raise NotImplementedError("TODO implement partial sampling of real variables")
+            # Triangularize.
+            precision_chol_a = ops.cholesky(_mmt(prec_sqrt_a))
+            white_vec_a = ops.triangular_solve(
+                prec_sqrt_a @ self.white_vec[..., None], precision_chol_a
+            )[..., 0]
+
+            # Jointly sample.
+            # This section may involve either Funsors or backend arrays.
+            white_noise = _sample_white_noise(
+                sample_inputs, int_inputs, white_vec_a, rng_key
+            )
+            if isinstance(white_noise, Funsor):
+                white_vec_a = Tensor(white_vec_a, int_inputs)
+                precision_chol_a = Tensor(precision_chol_a, int_inputs)
+            sample = ops.triangular_solve(
+                (white_noise + white_vec_a)[..., None], precision_chol_a, transpose=True
+            )[..., 0]
+
+            # Compute the remaining Gaussian, equivalent to
+            # self.reduce(ops.logaddexp, sampled_vars), but avoiding duplicate work.
+            inputs = int_inputs.copy()
+            inputs.update(remaining_real_inputs)
+            remaining = self._marginalize_after_split(
+                inputs, int_inputs, prec_sqrt_a, prec_sqrt_b, precision_chol_a
+            )
+
+        # Extract shaped components of the flat concatenated sample.
+        results = [remaining]
+        offsets, _ = _compute_offsets(sampled_real_inputs)
+        for key, domain in sampled_real_inputs.items():
+            point = sample[..., offsets[key] : offsets[key] + domain.num_elements]
+            point = point.reshape(point.shape[:-1] + domain.shape)
+            if not isinstance(point, Funsor):  # I.e. when eagerly sampling.
+                inputs = sample_inputs.copy()
+                inputs.update(int_inputs)
+                point = Tensor(point, inputs)
+            assert point.output == domain
+            results.append(Delta(key, point))
+
+        return reduce(ops.add, results)
+
+    def _marginalize_after_split(
+        self, inputs, int_inputs, prec_sqrt_a, prec_sqrt_b, precision_chol_a
+    ):
+        """
+        Helper used in partial reduction and partial sampling.
+        This marginalizes over a and returns a shifted Gaussian over b.
+        """
+        dim_a = prec_sqrt_a.shape[-2]
+        dim_b = prec_sqrt_b.shape[-2]
+        result = Tensor(
+            dim_a * math.log(2 * math.pi) / 2 - _log_det_tri(precision_chol_a),
+            int_inputs,
+        )
+        if self.rank > dim_a:
+            proj_a = _mtm(ops.triangular_solve(prec_sqrt_a, precision_chol_a))
+            prec_sqrt = prec_sqrt_b - prec_sqrt_b @ proj_a
+            white_vec = self.white_vec - _vm(self.white_vec, proj_a)
+            result += Gaussian(white_vec, prec_sqrt, inputs)
+        else:  # The Gaussian over xa is zero.
+            # TODO switch from an empty Gaussian to a Constant once this works:
+            # from .constant import Constant
+            # const_inputs = OrderedDict(
+            #     (k, v) for k, v in inputs.items() if k not in result.inputs
+            # )
+            # result = Constant(const_inputs, result)
+            batch_shape = self.white_vec.shape[:-1]
+            white_vec = ops.new_zeros(self.white_vec, batch_shape + (0,))
+            prec_sqrt = ops.new_zeros(self.white_vec, batch_shape + (dim_b, 0))
+            result += Gaussian(white_vec, prec_sqrt, inputs)
+        return result
+
+
+def _sample_white_noise(sample_inputs, int_inputs, white_vec, rng_key):
+    sample_shape = tuple(d.size for d in sample_inputs.values() if d.dtype != "real")
+    shape = sample_shape + white_vec.shape
+    if [v.dtype for v in sample_inputs.values()] == ["real"]:
+        # Lazily compute a sample as a function of white noise.
+        k, d = next(iter(sample_inputs.items()))
+        return Variable(k, d)[tuple(int_inputs)]
+    # Eagerly draw noise.
+    return ops.randn(white_vec, shape, rng_key)
 
 
 @compress_gaussians.register(Gaussian, object, object, tuple)
