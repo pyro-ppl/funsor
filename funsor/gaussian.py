@@ -1001,34 +1001,40 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             a, b = _split_real_inputs(self.inputs, sampled_vars, self.white_vec)
             prec_sqrt_a = self.prec_sqrt[..., a, :]
             prec_sqrt_b = self.prec_sqrt[..., b, :]
-            white_vec = self.white_vec
+
+            # Accumulate lazy effect of b on a.
+            white_vec = Tensor(self.white_vec, int_inputs)
+            flat = ops.cat(
+                [
+                    Variable(k, d).reshape((d.num_elements,))
+                    for k, d in remaining_real_inputs.items()
+                ]
+            )
+            white_vec -= (flat[None] @ Tensor(prec_sqrt_b, int_inputs))[0]
 
             # Triangularize.
-            precision_chol_a = ops.cholesky(_mmt(prec_sqrt_a))
+            precision_chol_a = Tensor(ops.cholesky(_mmt(prec_sqrt_a)), int_inputs)
             white_vec_a = ops.triangular_solve(
-                prec_sqrt_a @ self.white_vec[..., None], precision_chol_a
+                Tensor(prec_sqrt_a, int_inputs) @ white_vec[..., None],
+                precision_chol_a,
             )[..., 0]
 
             # Jointly sample.
-            # This section may involve either Funsors or backend arrays.
             white_noise = _sample_white_noise(
                 sample_inputs, int_inputs, white_vec_a, rng_key
             )
-            if isinstance(white_noise, Funsor):
-                white_vec_a = Tensor(white_vec_a, int_inputs)
-                precision_chol_a = Tensor(precision_chol_a, int_inputs)
+            if not isinstance(white_noise, Funsor):
+                white_noise = Tensor(white_noise, int_inputs)
             sample = ops.triangular_solve(
                 (white_noise + white_vec_a)[..., None], precision_chol_a, transpose=True
             )[..., 0]
-            if isinstance(white_noise, Funsor):
-                precision_chol_a = precision_chol_a.data
 
             # Compute the remaining Gaussian, equivalent to
             # self.reduce(ops.logaddexp, sampled_vars), but avoiding duplicate work.
             inputs = int_inputs.copy()
             inputs.update(remaining_real_inputs)
             remaining = self._marginalize_after_split(
-                inputs, int_inputs, prec_sqrt_a, prec_sqrt_b, precision_chol_a
+                inputs, int_inputs, prec_sqrt_a, prec_sqrt_b, precision_chol_a.data
             )
 
         # Extract shaped components of the flat concatenated sample.

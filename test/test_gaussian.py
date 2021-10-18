@@ -817,6 +817,7 @@ def test_sample_partial(int_inputs):
 
     def compute_moments(samples):
         flat_samples = flat(**extract_samples(samples))
+        assert set(flat_samples.inputs) == {"particle"} | set(int_inputs)
         mean = flat_samples.reduce(ops.mean)
         diff = flat_samples - mean
         cov = (diff[:, None] - diff[None, :]).reduce(ops.mean)
@@ -836,7 +837,7 @@ def test_sample_partial(int_inputs):
     subsets = "w x y z wx wy wz xy xz yz wxy wxz wyz xyz".split()
     for sampled_vars in map(frozenset, subsets):
         g2 = g.sample(sampled_vars, sample_inputs, rng_keys[1])
-        actual = g2.sample(all_vars, sample_inputs, rng_keys[2])
+        samples = g2.sample(all_vars, sample_inputs, rng_keys[2])
         actual_mean, actual_cov = compute_moments(samples)
         assert_close(actual_mean, expected_mean, atol=1e-2, rtol=1e-2)
         assert_close(actual_cov, expected_cov, atol=1e-2, rtol=1e-2)
