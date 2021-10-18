@@ -3,6 +3,7 @@
 
 import math
 from collections import OrderedDict, defaultdict
+from contextlib import contextmanager
 from functools import reduce
 
 import numpy as np
@@ -12,7 +13,8 @@ import funsor.ops as ops
 from funsor.affine import affine_inputs, extract_affine, is_affine
 from funsor.delta import Delta
 from funsor.domains import Real, Reals
-from funsor.ops import AddOp, NegOp, SubOp
+from funsor.interpretations import compress_gaussians
+from funsor.ops import AddOp, SubOp
 from funsor.tensor import Tensor, align_tensor, align_tensors
 from funsor.terms import (
     Align,
@@ -22,7 +24,6 @@ from funsor.terms import (
     Number,
     Slice,
     Subs,
-    Unary,
     Variable,
     eager,
     reflect,
@@ -38,24 +39,99 @@ def _vv(vec1, vec2):
     """
     Computes the inner product ``< vec1 | vec 2 >``.
     """
-    return (
-        ops.matmul(ops.unsqueeze(vec1, -2), ops.unsqueeze(vec2, -1))
-        .squeeze(-1)
-        .squeeze(-1)
-    )
+    return (vec1[..., None, :] @ vec2[..., None])[..., 0, 0]
+
+
+def _norm2(vec):
+    return _vv(vec, vec)
 
 
 def _mv(mat, vec):
-    return ops.matmul(mat, ops.unsqueeze(vec, -1)).squeeze(-1)
+    return (mat @ vec[..., None])[..., 0]
 
 
-def _trace_mm(x, y):
+def _vm(vec, mat):
+    return (vec[..., None, :] @ mat)[..., 0, :]
+
+
+def _mmt(mat1, mat2=None):
+    if mat2 is None:
+        mat2 = mat1
+    return mat1 @ ops.transpose(mat2, -1, -2)
+
+
+def _mtm(mat1, mat2=None):
+    if mat2 is None:
+        mat2 = mat1
+    return ops.transpose(mat1, -1, -2) @ mat2
+
+
+def _inverse_cholesky(P):
     """
-    Computes ``trace(x.T @ y)``.
+    Computes a Cholesky decomposition of the inverse of a posdef matrix.
     """
-    assert len(x.shape) >= 2
-    assert len(y.shape) >= 2
-    return (x * y).sum((-1, -2))
+    # Ref: https://nbviewer.jupyter.org/gist/fehiepsi/5ef8e09e61604f10607380467eb82006#Precision-to-scale_tril
+    Lf = ops.cholesky(ops.flip(P, (-2, -1)))
+    L_inv = ops.transpose(ops.flip(Lf, (-2, -1)), -2, -1)
+    L = ops.triangular_inv(L_inv)
+    return L
+
+
+def _compress_rank(white_vec, prec_sqrt, assume_full_rank=False):
+    """
+    Compress a wide representation ``(white_vec, prec_sqrt)`` while preserving
+    the quadratic function ``||x @ prec_sqrt - white_vec||^2 + const``.
+    """
+    dim, rank = prec_sqrt.shape[-2:]
+    assert rank >= dim
+    old_norm2 = _norm2(white_vec)
+
+    # Let P = prec_sqrt and w = white_vec define the original Gaussian
+    #
+    #   G(x;w,P) = -1/2 || x P - w ||^2
+    #            = -1/2 x P P' x' + x P w' -1/2 w w'
+    #
+    # We seek a compressed Gaussian G(x;wc,Pc) and constant C such that
+    #
+    #   G(x;w,P) = G(x;wc,Pc) + C
+    #            = -1/2 x Pc Pc' x' + x Pc wc' -1/2 wc wc' + C
+    if assume_full_rank:
+        # Cholesky factorizing Pc = chol(P P'), we match remaining coefficients
+        #
+        #    Pc wc' = P w'  ==>  wc' = Pc \ P w'
+        info_vec_ = prec_sqrt @ white_vec[..., None]
+        precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
+        prec_sqrt = ops.cholesky(precision)
+        white_vec = ops.triangular_solve(info_vec_, prec_sqrt)[..., 0]
+    else:
+        # Computing a reduced QR representation of P' of shape (rank,dim)
+        #
+        #   P' = Q [ R ]     P = [ R'  0 ] Q'
+        #          [ 0 ]
+        #
+        # where Q is orthogonal and R is upper triangular of shape (dim,dim).
+        # Then splitting along the new dimension,
+        #
+        #   G(x;w,P) = -1/2 || x [R' 0] Q' - w ||^2
+        #            = -1/2 || x [R' 0] - w Q ||^2
+        #            = -1/2 || x R' - (w Q)[...,:dim] ||^2
+        #              -1/2 || (w Q)[...,dim:] ||^2
+        #            =: G(x;wc,Pc) + C
+        # where
+        #
+        #   wc = (w Q)[...,:dim]
+        #   Pc = R'
+        Q, R = ops.qr(ops.transpose(prec_sqrt, -1, -2))
+        assert Q.shape[-2:] == (rank, dim)  # note only part of Q is returned
+        assert R.shape[-2:] == (dim, dim)
+        prec_sqrt = ops.transpose(R, -1, -2)
+        white_vec = _vm(white_vec, Q)
+    # Finally the shifting constant is
+    #
+    #    C = 1/2 (wc wc' - w w')
+    new_norm2 = _norm2(white_vec)
+    shift = 0.5 * (new_norm2 - old_norm2)
+    return white_vec, prec_sqrt, shift
 
 
 def _compute_offsets(inputs):
@@ -77,6 +153,39 @@ def _compute_offsets(inputs):
             offsets[key] = total
             total += domain.num_elements
     return offsets, total
+
+
+def _split_real_inputs(inputs, lhs_keys, prototype):
+    """
+    Finds a splitting set of indices ``(lhs, rhs)`` into the flat real
+    dimension such that ``lhs`` indexes into real inputs in ``lhs_keys`` and
+    ``rhs`` indexes into everything else.
+    """
+    lhs_blocks = []
+    rhs_blocks = []
+    start = 0
+    for key, domain in inputs.items():
+        if domain.dtype == "real":
+            stop = start + domain.num_elements
+            (lhs_blocks if key in lhs_keys else rhs_blocks).append(slice(start, stop))
+            start = stop
+
+    # There are three cases: lhs left of rhs (cheap slices), lhs right of rhs
+    # (cheap slices), and interleaved (expensive advanced indexing tensors).
+    lhs_start = min(b.start for b in lhs_blocks)
+    rhs_start = min(b.start for b in rhs_blocks)
+    lhs_stop = max(b.stop for b in lhs_blocks)
+    rhs_stop = max(b.stop for b in rhs_blocks)
+    if lhs_stop <= rhs_start or rhs_stop <= lhs_start:
+        # Construct cheap slices.
+        lhs = slice(lhs_start, lhs_stop)
+        rhs = slice(rhs_start, rhs_stop)
+        return lhs, rhs
+
+    # Construct interleaving indices.
+    lhs = ops.cat([ops.new_arange(prototype, b.start, b.stop) for b in lhs_blocks])
+    rhs = ops.cat([ops.new_arange(prototype, b.start, b.stop) for b in rhs_blocks])
+    return lhs, rhs
 
 
 def _find_intervals(intervals, end):
@@ -127,6 +236,9 @@ class BlockVector(object):
         self.parts[i] = value
 
     def as_tensor(self):
+        # TODO optimize this to use backend-specific block setters:
+        # .__setitem__ for numpy and torch; .at(...).set(...) for jax.
+
         # Fill gaps with zeros.
         prototype = next(iter(self.parts.values()))
         for i in _find_intervals(self.parts.keys(), self.shape[-1]):
@@ -166,6 +278,9 @@ class BlockMatrix(object):
         self.parts[i][j] = value
 
     def as_tensor(self):
+        # TODO optimize this to use backend-specific block setters:
+        # .__setitem__ for numpy and torch; .at(...).set(...) for jax.
+
         # Fill gaps with zeros.
         arbitrary_row = next(iter(self.parts.values()))
         prototype = next(iter(arbitrary_row.values()))
@@ -179,8 +294,6 @@ class BlockMatrix(object):
                     self.parts[i][j] = ops.new_zeros(prototype, shape)
 
         # Concatenate parts.
-        # TODO This could be optimized into a single .reshape().cat().reshape() if
-        #   all inputs are contiguous, thereby saving a memcopy.
         columns = {
             i: ops.cat([v for j, v in sorted(part.items())], -1)
             for i, part in self.parts.items()
@@ -191,97 +304,172 @@ class BlockMatrix(object):
         return result
 
 
-def align_gaussian(new_inputs, old):
+def align_gaussian(new_inputs, old, expand=False):
     """
     Align data of a Gaussian distribution to a new ``inputs`` shape.
     """
     assert isinstance(new_inputs, OrderedDict)
     assert isinstance(old, Gaussian)
-    info_vec = old.info_vec
-    precision = old.precision
+    white_vec = old.white_vec
+    prec_sqrt = old.prec_sqrt
 
     # Align int inputs.
     # Since these are are managed as in Tensor, we can defer to align_tensor().
     new_ints = OrderedDict((k, d) for k, d in new_inputs.items() if d.dtype != "real")
     old_ints = OrderedDict((k, d) for k, d in old.inputs.items() if d.dtype != "real")
     if new_ints != old_ints:
-        info_vec = align_tensor(new_ints, Tensor(info_vec, old_ints))
-        precision = align_tensor(new_ints, Tensor(precision, old_ints))
+        white_vec = align_tensor(new_ints, Tensor(white_vec, old_ints), expand=expand)
+        prec_sqrt = align_tensor(new_ints, Tensor(prec_sqrt, old_ints), expand=expand)
 
     # Align real inputs, which are all concatenated in the rightmost dims.
     new_offsets, new_dim = _compute_offsets(new_inputs)
     old_offsets, old_dim = _compute_offsets(old.inputs)
-    assert info_vec.shape[-1:] == (old_dim,)
-    assert precision.shape[-2:] == (old_dim, old_dim)
+    assert prec_sqrt.shape[-2:-1] == (old_dim,)
     if new_offsets != old_offsets:
-        old_info_vec = info_vec
-        old_precision = precision
-        info_vec = BlockVector(old_info_vec.shape[:-1] + (new_dim,))
-        precision = BlockMatrix(old_info_vec.shape[:-1] + (new_dim, new_dim))
-        for k1, new_offset1 in new_offsets.items():
-            if k1 not in old_offsets:
+        old_prec_sqrt = ops.transpose(prec_sqrt, -1, -2)
+        prec_sqrt = BlockVector(old_prec_sqrt.shape[:-1] + (new_dim,))
+        for k, new_offset in new_offsets.items():
+            if k not in old_offsets:
                 continue
-            offset1 = old_offsets[k1]
-            num_elements1 = old.inputs[k1].num_elements
-            old_slice1 = slice(offset1, offset1 + num_elements1)
-            new_slice1 = slice(new_offset1, new_offset1 + num_elements1)
-            info_vec[..., new_slice1] = old_info_vec[..., old_slice1]
-            for k2, new_offset2 in new_offsets.items():
-                if k2 not in old_offsets:
-                    continue
-                offset2 = old_offsets[k2]
-                num_elements2 = old.inputs[k2].num_elements
-                old_slice2 = slice(offset2, offset2 + num_elements2)
-                new_slice2 = slice(new_offset2, new_offset2 + num_elements2)
-                precision[..., new_slice1, new_slice2] = old_precision[
-                    ..., old_slice1, old_slice2
-                ]
-        info_vec = info_vec.as_tensor()
-        precision = precision.as_tensor()
+            offset = old_offsets[k]
+            num_elements = old.inputs[k].num_elements
+            old_slice = slice(offset, offset + num_elements)
+            new_slice = slice(new_offset, new_offset + num_elements)
+            prec_sqrt[..., new_slice] = old_prec_sqrt[..., old_slice]
+        prec_sqrt = prec_sqrt.as_tensor()
+        prec_sqrt = ops.transpose(prec_sqrt, -1, -2)
 
-    return info_vec, precision
+    return white_vec, prec_sqrt
 
 
 class GaussianMeta(FunsorMeta):
     """
-    Wrapper to convert between OrderedDict and tuple.
+    Wrapper to convert from external to internal compressed representation.
+
+    This may return either a Gaussian or a Gaussian + Tensor, where the Tensor
+    represents byproducts of compression.
     """
 
-    def __call__(cls, info_vec, precision, inputs):
+    def __call__(
+        cls,
+        white_vec=None,
+        prec_sqrt=None,
+        inputs=None,
+        *,
+        mean=None,
+        info_vec=None,
+        precision=None,
+        scale_tril=None,
+        covariance=None,
+    ):
+        # Convert inputs.
+        assert inputs is not None
         if isinstance(inputs, OrderedDict):
             inputs = tuple(inputs.items())
         assert isinstance(inputs, tuple)
-        return super(GaussianMeta, cls).__call__(info_vec, precision, inputs)
+
+        # Convert scale parameter to prec_sqrt.
+        if prec_sqrt is None and white_vec is not None:
+            raise ValueError("Cannot specify white_vec without prec_sqrt")
+        if prec_sqrt is not None:
+            is_tril = False
+        elif precision is not None:
+            prec_sqrt = ops.cholesky(precision)
+            is_tril = True
+        elif covariance is not None:
+            prec_sqrt = _inverse_cholesky(covariance)
+            is_tril = True
+        elif scale_tril is not None:
+            prec_sqrt = ops.transpose(ops.triangular_inv(scale_tril), -1, -2)
+            is_tril = False
+        else:
+            raise ValueError(
+                "At least one of prec_sqrt, precision, scale_tril, or covariance "
+                "must be specified"
+            )
+
+        # Convert location parameter to white_vec.
+        if white_vec is not None:
+            pass
+        elif mean is not None:
+            white_vec = _vm(mean, prec_sqrt)
+        elif info_vec is not None:
+            if not is_tril:
+                prec_sqrt = ops.cholesky(_mmt(prec_sqrt))  # triangularize
+                is_tril = True
+            white_vec = ops.triangular_solve(info_vec[..., None], prec_sqrt)[..., 0]
+        else:
+            raise ValueError(
+                "At least one of white_vec, mean, or info_vec must be specified"
+            )
+
+        # Compress wide representations.
+        shift = None
+        dim, rank = prec_sqrt.shape[-2:]
+        if rank > dim * cls.compression_threshold:
+            white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+
+        # Create a Gaussian.
+        result = super().__call__(white_vec, prec_sqrt, inputs)
+
+        # Add compression byproducts.
+        if shift is not None:
+            int_inputs = OrderedDict((k, v) for k, v in inputs if v.dtype != "real")
+            result += Tensor(shift, int_inputs)
+
+        return result
 
 
 class Gaussian(Funsor, metaclass=GaussianMeta):
-    """
-    Funsor representing a batched joint Gaussian distribution as a log-density
-    function.
+    r"""
+    Funsor representing a batched Gaussian log-density function.
 
-    Mathematically, a Gaussian represents the density function::
+    Gaussians are the internal representation for joint and conditional
+    multivariate normal distributions and multivariate normal likelihoods.
+    Mathematically, a Gaussian represents the quadratic log density function::
 
-        f(x) = < x | info_vec > - 0.5 * < x | precision | x >
-             = < x | info_vec - 0.5 * precision @ x >
+        f(x) = -0.5 * || x @ prec_sqrt - white_vec ||^2
+             = -0.5 * < x @ prec_sqrt - white_vec | x @ prec_sqrt - white_vec >
+             = -0.5 * < x | prec_sqrt @ prec_sqrt.T | x>
+               + < x | prec_sqrt | white_vec > - 0.5 ||white_vec||^2
 
-    Note that :class:`Gaussian` s are not normalized, rather they are
-    canonicalized to evaluate to zero log density at the origin: ``f(0) = 0``.
-    This canonical form is useful in combination with the information filter
-    representation because it allows :class:`Gaussian` s with incomplete
-    information, i.e.  zero eigenvalues in the precision matrix.  These
-    incomplete distributions arise when making low-dimensional observations on
-    higher dimensional hidden state.
+    Internally Gaussians use a square root information filter (SRIF)
+    representation consisting of a square root of the precision matrix
+    ``prec_sqrt`` and a vector in the whitened space ``white_vec``. This
+    representation allows space-efficient construction of Gaussians with
+    incomplete information, i.e. with zero eigenvalues in the precision matrix.
+    These incomplete log densities arise when making low-dimensional
+    observations of higher-dimensional hidden state. Sampling and
+    marginalization are supported only for full-rank Gaussians or full-rank
+    subsets of Gaussians. See the :meth:`rank` and :meth:`is_full_rank`
+    properties.
 
-    :param torch.Tensor info_vec: An optional batched information vector,
-        where ``info_vec = precision @ mean``.
-    :param torch.Tensor precision: A batched positive semidefinite precision
-        matrix.
+    .. note:: :class:`Gaussian` s are not normalized probability distributions,
+        rather they are canonicalized to evaluate to zero log density at their
+        maximum: ``f(prec_sqrt \ white_vec) = 0``. Not only are Gaussians
+        non-normalized, but they may be rank deficient and non-normalizable, in
+        which case sampling and marginalization are supported only un full-rank
+        subsets of variables.
+
+    :param torch.Tensor white_vec: An batched white noise vector, where
+        ``white_vec = prec_sqrt.T @ mean``. Alternatively you can specify one
+        of the kwargs ``mean`` or ``info_vec``, which will be converted to
+        ``white_vec``.
+    :param torch.Tensor prec_sqrt: A batched square root of the positive
+        semidefinite precision matrix. This need not be square, and typically
+        has shape ``prec_sqrt.shape == white_vec.shape[:-1] + (dim, rank)``,
+        where ``dim`` is the total flattened size of real inputs and
+        ``rank = white_vec.shape[-1]``.  Alternatively you can specify one of
+        the kwargs ``precision``, ``covariance``, or ``scale_tril``, which will
+        be converted to ``prec_sqrt``.
     :param OrderedDict inputs: Mapping from name to
         :class:`~funsor.domains.Domain` .
     """
 
-    def __init__(self, info_vec, precision, inputs):
-        assert ops.is_numeric_array(info_vec) and ops.is_numeric_array(precision)
+    compression_threshold = 2
+
+    def __init__(self, white_vec, prec_sqrt, inputs):
+        assert ops.is_numeric_array(white_vec) and ops.is_numeric_array(prec_sqrt)
         assert isinstance(inputs, tuple)
         inputs = OrderedDict(inputs)
 
@@ -289,48 +477,123 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         dim = sum(d.num_elements for d in inputs.values() if d.dtype == "real")
         if not get_tracing_state():
             assert dim
-            assert len(precision.shape) >= 2 and precision.shape[-2:] == (dim, dim)
-            assert len(info_vec.shape) >= 1 and info_vec.shape[-1] == dim
+            assert len(prec_sqrt.shape) >= 2 and prec_sqrt.shape[-2] == dim
+            rank = prec_sqrt.shape[-1]
+            assert len(white_vec.shape) >= 1 and white_vec.shape[-1] == rank
+            # This should be true but weirdly fails in pytest tests that use
+            # set_compression_threshold(large_value).
+            # assert rank <= dim * self.compression_threshold
 
         # Compute total shape of all Bint inputs.
         batch_shape = tuple(
             d.dtype for d in inputs.values() if isinstance(d.dtype, int)
         )
         if not get_tracing_state():
-            assert precision.shape == batch_shape + (dim, dim)
-            assert info_vec.shape == batch_shape + (dim,)
+            assert prec_sqrt.shape[:-2] == batch_shape
+            assert white_vec.shape[:-1] == batch_shape
 
         output = Real
         fresh = frozenset(inputs.keys())
         bound = {}
-        super(Gaussian, self).__init__(inputs, output, fresh, bound)
-        self.info_vec = info_vec
-        self.precision = precision
+        super().__init__(inputs, output, fresh, bound)
+        self.white_vec = white_vec
+        self.prec_sqrt = prec_sqrt
         self.batch_shape = batch_shape
         self.event_shape = (dim,)
 
-    @lazy_property
-    def _precision_chol(self):
-        return ops.cholesky(self.precision)
+    @classmethod
+    @contextmanager
+    def set_compression_threshold(cls, threshold: float):
+        """
+        Context manager to set rank compression threshold.
 
-    @lazy_property
-    def log_normalizer(self):
-        dim = self.precision.shape[-1]
-        log_det_term = _log_det_tri(self._precision_chol)
-        loc_info_vec_term = 0.5 * (
-            ops.triangular_solve(self.info_vec[..., None], self._precision_chol)[..., 0]
-            ** 2
-        ).sum(-1)
-        data = 0.5 * dim * math.log(2 * math.pi) - log_det_term + loc_info_vec_term
-        inputs = OrderedDict(
-            (k, v) for k, v in self.inputs.items() if v.dtype != "real"
-        )
-        return Tensor(data, inputs)
+        To save space Gaussians compress wide ``prec_sqrt`` matrices down to
+        square. However compression uses a QR decomposition which can be
+        expensive and which has unstable gradients when the resulting precision
+        matrix is rank deficient. To balance space and time costs and numerical
+        stability, compression is trigger only on ``prec_sqrt`` matrices whose
+        width to height ratio is greater than ``threshold``.
+
+        :param float threshold: Defaults to 2. To optimize for space and
+            deterministic computations, set ``threshold = 1``. To optimize for
+            fewest QR decompositions and numerical stability, set ``threshold =
+            math.inf``.
+        """
+        assert isinstance(threshold, (int, float))
+        assert threshold >= 1
+        old = cls.compression_threshold
+        try:
+            cls.compression_threshold = threshold
+            yield
+        finally:
+            cls.compression_threshold = old
 
     def __repr__(self):
         return "Gaussian(..., ({}))".format(
             " ".join("({}, {}),".format(*kv) for kv in self.inputs.items())
         )
+
+    @property
+    def rank(self):
+        return self.prec_sqrt.shape[-1]
+
+    @property
+    def is_full_rank(self):
+        dim, rank = self.prec_sqrt.shape[-2:]
+        return rank >= dim
+
+    # TODO Consider weak-memoizing these so they persist through alpha conversion.
+    # https://github.com/pyro-ppl/pyro/blob/ac3c588/pyro/distributions/coalescent.py#L412
+    @lazy_property
+    def _precision(self):
+        return self.prec_sqrt @ ops.transpose(self.prec_sqrt, -1, -2)
+
+    @lazy_property
+    def _precision_chol(self):
+        # Note self.prec_sqrt may be neither lower triangular nor square.
+        assert self.is_full_rank
+        return ops.cholesky(self._precision)
+
+    @lazy_property
+    def _covariance(self):
+        return ops.cholesky_inverse(self._precision_chol)
+
+    @lazy_property
+    def _scale_tril(self):
+        return _inverse_cholesky(self._precision)
+
+    @lazy_property
+    def _mean(self):
+        return ops.cholesky_solve(self._info_vec[..., None], self._precision_chol)[
+            ..., 0
+        ]
+
+    @lazy_property
+    def _info_vec(self):
+        return _mv(self.prec_sqrt, self.white_vec)
+
+    @lazy_property
+    def _log_normalizer(self):
+        dim = self.prec_sqrt.shape[-2]
+        log_det_term = _log_det_tri(self._precision_chol)
+        result = 0.5 * dim * math.log(2 * math.pi) - log_det_term
+        if self.rank == dim:
+            return result
+        # Shift, as in logic in _compress_rank().
+        old_norm2 = _norm2(self.white_vec)
+        white_vec = ops.triangular_solve(
+            self._info_vec[..., None], self._precision_chol
+        )[..., 0]
+        new_norm2 = _norm2(white_vec)
+        shift = 0.5 * (new_norm2 - old_norm2)
+        return result + shift
+
+    @lazy_property
+    def log_normalizer(self):
+        inputs = OrderedDict(
+            (k, v) for k, v in self.inputs.items() if v.dtype != "real"
+        )
+        return Tensor(self._log_normalizer, inputs)
 
     def align(self, names):
         assert isinstance(names, tuple)
@@ -340,12 +603,12 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
         inputs = OrderedDict((name, self.inputs[name]) for name in names)
         inputs.update(self.inputs)
-        info_vec, precision = align_gaussian(inputs, self)
-        return Gaussian(info_vec, precision, inputs)
+        white_vec, prec_sqrt = align_gaussian(inputs, self)
+        return Gaussian(white_vec, prec_sqrt, inputs)
 
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
-        prototype = Tensor(self.info_vec)
+        prototype = Tensor(self.white_vec)
         subs = tuple(
             (k, v if isinstance(v, (Variable, Slice)) else prototype.materialize(v))
             for k, v in subs
@@ -398,7 +661,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         inputs = OrderedDict((rename.get(k, k), d) for k, d in self.inputs.items())
         if len(inputs) != len(self.inputs):
             raise ValueError("Variable substitution name conflict")
-        var_result = Gaussian(self.info_vec, self.precision, inputs)
+        var_result = Gaussian(self.white_vec, self.prec_sqrt, inputs)
         return Subs(var_result, remaining_subs) if remaining_subs else var_result
 
     def _eager_subs_int(self, subs, remaining_subs):
@@ -409,7 +672,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         real_inputs = OrderedDict(
             (k, d) for k, d in self.inputs.items() if d.dtype == "real"
         )
-        tensors = [self.info_vec, self.precision]
+        tensors = [self.white_vec, self.prec_sqrt]
         funsors = [Subs(Tensor(x, int_inputs), subs) for x in tensors]
         inputs = funsors[0].inputs.copy()
         inputs.update(real_inputs)
@@ -423,14 +686,14 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             (k, d) for k, d in self.inputs.items() if d.dtype != "real"
         )
         tensors = [
-            Tensor(self.info_vec, int_inputs),
-            Tensor(self.precision, int_inputs),
+            Tensor(self.white_vec, int_inputs),
+            Tensor(self.prec_sqrt, int_inputs),
         ]
         tensors.extend(subs.values())
         int_inputs, tensors = align_tensors(*tensors)
         batch_dim = len(tensors[0].shape) - 1
         batch_shape = broadcast_shape(*(x.shape[:batch_dim] for x in tensors))
-        (info_vec, precision), values = tensors[:2], tensors[2:]
+        (white_vec, prec_sqrt), values = tensors[:2], tensors[2:]
         offsets, event_size = _compute_offsets(self.inputs)
         slices = [
             (k, slice(offset, offset + self.inputs[k].num_elements))
@@ -445,7 +708,8 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 assert value.shape[-1] == self.inputs[k].num_elements
             values[k] = ops.expand(value, batch_shape + value.shape[-1:])
 
-        # Try to perform a complete substitution of all real variables, resulting in a Tensor.
+        # Try to perform a complete substitution of all real variables,
+        # resulting in a Tensor.
         if all(k in subs for k, d in self.inputs.items() if d.dtype == "real"):
             # Form the concatenated value.
             value = BlockVector(batch_shape + (event_size,))
@@ -455,53 +719,32 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             value = value.as_tensor()
 
             # Evaluate the non-normalized log density.
-            result = _vv(value, info_vec - 0.5 * _mv(precision, value))
-
+            result = -0.5 * _norm2(_vm(value, prec_sqrt) - white_vec)
             result = Tensor(result, int_inputs)
             assert result.output == Real
             return Subs(result, remaining_subs) if remaining_subs else result
 
-        # Perform a partial substution of a subset of real variables, resulting in a Joint.
-        # We split real inputs into two sets: a for the preserved and b for the substituted.
+        # Perform a partial substution of a subset of real variables, resulting
+        # in a Joint. We split real inputs into two sets: a for the preserved
+        # and b for the substituted.
+        #   G([xa xb]; w, [ Pa ]) = -0.5 || xa Pa + xb Pb - w||2
+        #                 [ Pb ]
+        #                         = G(xa; w - xb Pb, Pa)
+        # where  wa := w - xb Pb  is the new white_vec.
         b = frozenset(k for k, v in subs.items())
         a = frozenset(
             k for k, d in self.inputs.items() if d.dtype == "real" and k not in b
         )
-        prec_aa = ops.cat(
-            [
-                ops.cat([precision[..., i1, i2] for k2, i2 in slices if k2 in a], -1)
-                for k1, i1 in slices
-                if k1 in a
-            ],
-            -2,
-        )
-        prec_ab = ops.cat(
-            [
-                ops.cat([precision[..., i1, i2] for k2, i2 in slices if k2 in b], -1)
-                for k1, i1 in slices
-                if k1 in a
-            ],
-            -2,
-        )
-        prec_bb = ops.cat(
-            [
-                ops.cat([precision[..., i1, i2] for k2, i2 in slices if k2 in b], -1)
-                for k1, i1 in slices
-                if k1 in b
-            ],
-            -2,
-        )
-        info_a = ops.cat([info_vec[..., i] for k, i in slices if k in a], -1)
-        info_b = ops.cat([info_vec[..., i] for k, i in slices if k in b], -1)
+        prec_sqrt_a = ops.cat([prec_sqrt[..., i, :] for k, i in slices if k in a], -2)
+        prec_sqrt_b = ops.cat([prec_sqrt[..., i, :] for k, i in slices if k in b], -2)
         value_b = ops.cat([values[k] for k, i in slices if k in b], -1)
-        info_vec = info_a - _mv(prec_ab, value_b)
-        log_scale = _vv(value_b, info_b - 0.5 * _mv(prec_bb, value_b))
-        precision = ops.expand(prec_aa, info_vec.shape + info_vec.shape[-1:])
+        white_vec_a = white_vec - _vm(value_b, prec_sqrt_b)
+        prec_sqrt_a = ops.expand(prec_sqrt_a, white_vec_a.shape[:-1] + (-1, -1))
         inputs = int_inputs.copy()
         for k, d in self.inputs.items():
             if k not in subs:
                 inputs[k] = d
-        result = Gaussian(info_vec, precision, inputs) + Tensor(log_scale, int_inputs)
+        result = Gaussian(white_vec_a, prec_sqrt_a, inputs)
         return Subs(result, remaining_subs) if remaining_subs else result
 
     def _eager_subs_affine(self, subs, remaining_subs):
@@ -523,23 +766,23 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
             (k, v) for k, v in self.inputs.items() if v.dtype != "real"
         )
         tensors = [
-            Tensor(self.info_vec, old_int_inputs),
-            Tensor(self.precision, old_int_inputs),
+            Tensor(self.white_vec, old_int_inputs),
+            Tensor(self.prec_sqrt, old_int_inputs),
         ]
         for const, coeffs in affine.values():
             tensors.append(const)
             tensors.extend(coeff for coeff, _ in coeffs.values())
         new_int_inputs, tensors = align_tensors(*tensors, expand=True)
         tensors = (Tensor(x, new_int_inputs) for x in tensors)
-        old_info_vec = next(tensors).data
-        old_precision = next(tensors).data
+        white_vec = next(tensors).data
+        prec_sqrt = next(tensors).data
         for old_k, (const, coeffs) in affine.items():
             const = next(tensors)
             for new_k, (coeff, eqn) in coeffs.items():
                 coeff = next(tensors)
                 coeffs[new_k] = coeff, eqn
             affine[old_k] = const, coeffs
-        batch_shape = old_info_vec.shape[:-1]
+        batch_shape = white_vec.shape[:-1]
 
         # Align real dimensions.
         old_real_inputs = OrderedDict(
@@ -566,7 +809,7 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 new_offset = new_offsets[old_k]
                 new_slice = slice(new_offset, new_offset + old_size)
                 subs_matrix[..., new_slice, old_slice] = ops.new_eye(
-                    self.info_vec, batch_shape + (old_size,)
+                    self.white_vec, batch_shape + (old_size,)
                 )
                 continue
             const, coeffs = affine[old_k]
@@ -584,23 +827,19 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                     )
         subs_vector = subs_vector.as_tensor()
         subs_matrix = subs_matrix.as_tensor()
-        subs_matrix_t = ops.transpose(subs_matrix, -1, -2)
 
-        # Construct the new funsor. Suppose the old Gaussian funsor g has density
-        #   g(x) = < x | i - 1/2 P x>
-        # Now define a new funsor f by substituting x = A y + B:
-        #   f(y) = g(A y + B)
-        #        = < A y + B | i - 1/2 P (A y + B) >
-        #        = < y | At (i - P B) - 1/2 At P A y > + < B | i - 1/2 P B >
-        #        =: < y | i' - 1/2 P' y > + C
-        # where  P' = At P A  and  i' = At (i - P B)  parametrize a new Gaussian
-        # and  C = < B | i - 1/2 P B >  parametrize a new Tensor.
-        precision = subs_matrix @ old_precision @ subs_matrix_t
-        info_vec = _mv(subs_matrix, old_info_vec - _mv(old_precision, subs_vector))
-        const = _vv(subs_vector, old_info_vec - 0.5 * _mv(old_precision, subs_vector))
-        result = Gaussian(info_vec, precision, new_inputs) + Tensor(
-            const, new_int_inputs
-        )
+        # Construct the new Gaussian. Suppose the old Gaussian funsor g has density
+        #   G(x;w,P) = -1/2 || x P - w ||^2
+        # Now define a new Gaussian by substituting x = A y + b:
+        #   G(y;w',P') = G(y A + b; w, P)
+        #              = -1/2 || (y A + b) P - w ||^2
+        #              = -1/2 || y A P - w + b P ||^2
+        #              =: -1/2 || y P' - w' ||^2
+        #              = G(y; w - b P, A P)
+        # where  P' = A P  and  w' = w - b P  parametrize the new Gaussian.
+        white_vec = white_vec - _vm(subs_vector, prec_sqrt)
+        prec_sqrt = subs_matrix @ prec_sqrt
+        result = Gaussian(white_vec, prec_sqrt, new_inputs)
         return Subs(result, remaining_subs) if remaining_subs else result
 
     def eager_reduce(self, op, reduced_vars):
@@ -620,71 +859,111 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 (k, d) for k, d in self.inputs.items() if k not in reduced_reals
             )
             if reduced_reals == real_vars:
-                result = self.log_normalizer
-            else:
-                int_inputs = OrderedDict(
-                    (k, v) for k, v in inputs.items() if v.dtype != "real"
+                return self.log_normalizer.reduce(ops.logaddexp, reduced_ints)
+
+            int_inputs = OrderedDict(
+                (k, v) for k, v in inputs.items() if v.dtype != "real"
+            )
+
+            # Let x = [xa xb] where xb will be marginalized out and will xa
+            # remain. Following the formula in _compress_rank, we can rewrite
+            # the joint Gaussian as a Gaussian in xb plus a term C that does
+            # not depend on xb:
+            #
+            #   log integral exp G([xa xb]; w, [ Pa ]) dxb
+            #                                  [ Pb ]
+            #     =: G(xb; wb, Qb).log_normalizer + C
+            #
+            # In normalizable models, rank >= dim(xb), so we can choose Qb to
+            # be the Cholesky square root, making it easy to compute a
+            # determinant and solve for wb.
+            #
+            #    Qb = chol(Pb Pb')
+            #   wb' = Qb \ Pb (w - xa Pa)'
+            #
+            # Next we match moments of C to a Gaussian in xa:
+            #
+            #   C = 1/2 (wb wb' - w w')  # from _compress_rank
+            #     = 1/2 (xa Pa - w) Pb' inv(Qb Qb') Pb (xa Pa - w)'
+            #     - 1/2 (xa Pa - w) (xa Pa - w)'
+            #     =: G(xa; wa, Qa)
+            #
+            # whence  Qa = Pa S  and  wa = w S, where S is a square root of the
+            # rank-by-rank projection matrix (S = S S' by idempotence):
+            #
+            #   S S' = I - Pb' inv(Pb Pb') Pb = I - (Qb\Pb)' (Qb\Pb) = S
+            #
+            # Note if rank == dim(xb), then the projection matrix is zero,
+            # and the Gaussian G(xa; wa, Qa) is zero can be dropped.
+            b, a = _split_real_inputs(self.inputs, reduced_vars, self.white_vec)
+            prec_sqrt_a = self.prec_sqrt[..., a, :]
+            prec_sqrt_b = self.prec_sqrt[..., b, :]
+            dim_a = prec_sqrt_a.shape[-2]
+            dim_b = prec_sqrt_b.shape[-2]
+            if self.rank < dim_b:
+                raise ValueError(
+                    f"Too little information to marginalize over {set(reduced_vars)}. "
+                    "Consider adding a prior."
                 )
-                offsets, _ = _compute_offsets(self.inputs)
-                a = []
-                b = []
-                for key, domain in self.inputs.items():
-                    if domain.dtype == "real":
-                        block = ops.new_arange(
-                            self.info_vec,
-                            offsets[key],
-                            offsets[key] + domain.num_elements,
-                            1,
-                        )
-                        (b if key in reduced_vars else a).append(block)
-                a = ops.cat(a, -1)
-                b = ops.cat(b, -1)
-                prec_aa = self.precision[..., a[..., None], a]
-                prec_ba = self.precision[..., b[..., None], a]
-                prec_bb = self.precision[..., b[..., None], b]
-                prec_b = ops.cholesky(prec_bb)
-                prec_a = ops.triangular_solve(prec_ba, prec_b)
-                prec_at = ops.transpose(prec_a, -1, -2)
-                precision = prec_aa - ops.matmul(prec_at, prec_a)
-
-                info_a = self.info_vec[..., a]
-                info_b = self.info_vec[..., b]
-                b_tmp = ops.triangular_solve(info_b[..., None], prec_b)
-                info_vec = info_a - ops.matmul(prec_at, b_tmp)[..., 0]
-
-                log_prob = Tensor(
-                    0.5 * len(b) * math.log(2 * math.pi)
-                    - _log_det_tri(prec_b)
-                    + 0.5 * (b_tmp[..., 0] ** 2).sum(-1),
-                    int_inputs,
-                )
-                result = log_prob + Gaussian(info_vec, precision, inputs)
-
+            precision_chol_b = ops.cholesky(_mmt(prec_sqrt_b))  # assume full rank
+            b_log_normalizer = Tensor(
+                dim_b * math.log(2 * math.pi) / 2 - _log_det_tri(precision_chol_b),
+                int_inputs,
+            )
+            result = b_log_normalizer
+            if self.rank > dim_b:
+                proj_b = _mtm(ops.triangular_solve(prec_sqrt_b, precision_chol_b))
+                prec_sqrt = prec_sqrt_a - prec_sqrt_a @ proj_b
+                white_vec = self.white_vec - _vm(self.white_vec, proj_b)
+                result += Gaussian(white_vec, prec_sqrt, inputs)
+            else:  # The Gaussian over xa is zero.
+                # TODO switch from an empty Gaussian to a Constant once this works:
+                # from .constant import Constant
+                # const_inputs = OrderedDict(
+                #     (k, v) for k, v in inputs.items() if k not in result.inputs
+                # )
+                # result = Constant(const_inputs, result)
+                batch_shape = self.white_vec.shape[:-1]
+                white_vec = ops.new_zeros(self.white_vec, batch_shape + (0,))
+                prec_sqrt = ops.new_zeros(self.white_vec, batch_shape + (dim_a, 0))
+                result += Gaussian(white_vec, prec_sqrt, inputs)
             return result.reduce(ops.logaddexp, reduced_ints)
 
         elif op is ops.add:
-            for v in reduced_vars:
-                if self.inputs[v].dtype == "real":
-                    raise ValueError(
-                        "Cannot sum along a real dimension: {}".format(repr(v))
-                    )
-
             # Fuse Gaussians along a plate. Compare to eager_add_gaussian_gaussian().
-            old_ints = OrderedDict(
-                (k, v) for k, v in self.inputs.items() if v.dtype != "real"
-            )
-            new_ints = OrderedDict(
-                (k, v) for k, v in old_ints.items() if k not in reduced_vars
-            )
-            inputs = OrderedDict(
-                (k, v) for k, v in self.inputs.items() if k not in reduced_vars
-            )
+            inputs = OrderedDict()
+            old_ints = OrderedDict()
+            new_ints = OrderedDict()
+            kept_perm = []
+            reduced_perm = []
+            for i, (k, v) in enumerate(self.inputs.items()):
+                if k not in reduced_vars:
+                    inputs[k] = v
+                if v.dtype == "real":
+                    if v in reduced_vars:
+                        raise ValueError(
+                            f"Cannot sum along a real dimension: {repr(v)}"
+                        )
+                else:
+                    old_ints[k] = v
+                    if k in reduced_vars:
+                        reduced_perm.append(i)
+                    else:
+                        kept_perm.append(i)
+                        new_ints[k] = v
+            n = len(kept_perm) + len(reduced_perm)
 
-            info_vec = Tensor(self.info_vec, old_ints).reduce(ops.add, reduced_vars)
-            precision = Tensor(self.precision, old_ints).reduce(ops.add, reduced_vars)
-            assert info_vec.inputs == new_ints
-            assert precision.inputs == new_ints
-            return Gaussian(info_vec.data, precision.data, inputs)
+            # The square root information filter fuses via transpose and reshape.
+            perm = kept_perm + reduced_perm + [n]
+            white_vec = ops.permute(self.white_vec, perm)
+            white_vec = white_vec.reshape(white_vec.shape[: len(kept_perm)] + (-1,))
+            perm = kept_perm + [n] + reduced_perm + [n + 1]
+            prec_sqrt = ops.permute(self.prec_sqrt, perm)
+            prec_sqrt = prec_sqrt.reshape(prec_sqrt.shape[: len(kept_perm) + 1] + (-1,))
+            assert prec_sqrt.shape[:-2] == white_vec.shape[:-1]
+            assert prec_sqrt.shape[-1] == white_vec.shape[-1]
+
+            return Gaussian(white_vec, prec_sqrt, inputs)
 
         return None  # defer to default implementation
 
@@ -713,8 +992,13 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         inputs = sample_inputs.copy()
         inputs.update(int_inputs)
 
+        assert self.is_full_rank
         if sampled_vars == frozenset(real_inputs):
-            shape = sample_shape + self.info_vec.shape
+            # Call _compress_rank() to triangularize.
+            white_vec, prec_sqrt, _ = _compress_rank(
+                self.white_vec, self.prec_sqrt, assume_full_rank=True
+            )
+            shape = sample_shape + white_vec.shape
             backend = get_backend()
             if backend != "numpy":
                 from importlib import import_module
@@ -726,13 +1010,9 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
                 white_noise = dist.Normal.dist_class(0, 1).sample(*sample_args)
             else:
                 white_noise = np.random.randn(*shape)
-            white_noise = ops.unsqueeze(white_noise, -1)
 
-            white_vec = ops.triangular_solve(
-                self.info_vec[..., None], self._precision_chol
-            )
             sample = ops.triangular_solve(
-                white_noise + white_vec, self._precision_chol, transpose=True
+                (white_noise + white_vec)[..., None], prec_sqrt, transpose=True
             )[..., 0]
             offsets, _ = _compute_offsets(real_inputs)
             results = []
@@ -748,6 +1028,16 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
         raise NotImplementedError("TODO implement partial sampling of real variables")
 
 
+@compress_gaussians.register(Gaussian, object, object, tuple)
+def _compress_gaussians(white_vec, prec_sqrt, inputs):
+    dim, rank = prec_sqrt.shape[-2:]
+    if rank <= dim:
+        return None
+    white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+    int_inputs = OrderedDict((k, v) for k, v in inputs if v.dtype != "real")
+    return Gaussian(white_vec, prec_sqrt, inputs) + Tensor(shift, int_inputs)
+
+
 @eager.register(Binary, AddOp, Gaussian, Gaussian)
 def eager_add_gaussian_gaussian(op, lhs, rhs):
     # Fuse two Gaussians by adding their log-densities pointwise.
@@ -757,26 +1047,19 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
     # Align data.
     inputs = lhs.inputs.copy()
     inputs.update(rhs.inputs)
-    lhs_info_vec, lhs_precision = align_gaussian(inputs, lhs)
-    rhs_info_vec, rhs_precision = align_gaussian(inputs, rhs)
+    lhs_white_vec, lhs_prec_sqrt = align_gaussian(inputs, lhs, expand=True)
+    rhs_white_vec, rhs_prec_sqrt = align_gaussian(inputs, rhs, expand=True)
 
-    # Fuse aligned Gaussians.
-    info_vec = lhs_info_vec + rhs_info_vec
-    precision = lhs_precision + rhs_precision
-    return Gaussian(info_vec, precision, inputs)
+    # Fuse aligned Gaussians via concatenation.
+    white_vec = ops.cat([lhs_white_vec, rhs_white_vec], -1)
+    prec_sqrt = ops.cat([lhs_prec_sqrt, rhs_prec_sqrt], -1)
+    return Gaussian(white_vec, prec_sqrt, inputs)
 
 
 @eager.register(Binary, SubOp, Gaussian, (Funsor, Align, Gaussian))
 @eager.register(Binary, SubOp, (Funsor, Align, Delta), Gaussian)
 def eager_sub(op, lhs, rhs):
     return lhs + -rhs
-
-
-@eager.register(Unary, NegOp, Gaussian)
-def eager_neg(op, arg):
-    info_vec = -arg.info_vec
-    precision = -arg.precision
-    return Gaussian(info_vec, precision, arg.inputs)
 
 
 __all__ = [

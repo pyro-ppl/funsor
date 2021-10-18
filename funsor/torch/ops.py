@@ -23,7 +23,9 @@ ops.sigmoid.register(torch.Tensor)(torch.sigmoid)
 ops.sqrt.register(torch.Tensor)(torch.sqrt)
 ops.tanh.register(torch.Tensor)(torch.tanh)
 ops.transpose.register(torch.Tensor)(torch.transpose)
+ops.flip.register(torch.Tensor)(torch.flip)
 ops.unsqueeze.register(torch.Tensor)(torch.unsqueeze)
+ops.qr.register(torch.Tensor)(torch.linalg.qr)
 
 
 ###########################################
@@ -190,6 +192,13 @@ def _cholesky_inverse(x):
     if x.dim() == 2:
         return x.cholesky_inverse()
     return torch.eye(x.size(-1)).cholesky_solve(x)
+
+
+@ops.triangular_inv.register(torch.Tensor)
+def _triangular_inv(x, upper=False):
+    if x.size(-1) == 1:
+        return x.reciprocal()
+    return torch.eye(x.size(-1)).triangular_solve(x, upper=upper).solution
 
 
 @ops.detach.register(torch.Tensor)

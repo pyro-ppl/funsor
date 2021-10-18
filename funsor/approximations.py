@@ -152,10 +152,7 @@ def compute_argmax_gaussian(model, approx_vars):
 
     approx_names = frozenset(v.name for v in approx_vars)
     if approx_names == frozenset(real_inputs):
-        x = model.info_vec[..., None]
-        x = ops.triangular_solve(x, model._precision_chol)
-        x = ops.triangular_solve(x, model._precision_chol, transpose=True)
-        mode = x[..., 0]
+        mode = model._mean
         offsets, _ = _compute_offsets(real_inputs)
         result = {}
         for key, domain in real_inputs.items():

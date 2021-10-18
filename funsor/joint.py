@@ -35,8 +35,8 @@ def eager_cat_homogeneous(name, part_name, *parts):
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
     discretes = []
-    info_vecs = []
-    precisions = []
+    white_vecs = []
+    prec_sqrts = []
     for part in parts:
         inputs[part_name] = part.inputs[part_name]
         int_inputs[part_name] = inputs[part_name]
@@ -52,23 +52,36 @@ def eager_cat_homogeneous(name, part_name, *parts):
         else:
             raise NotImplementedError("TODO")
         discretes.append(discrete)
-        info_vec, precision = align_gaussian(inputs, gaussian)
-        info_vecs.append(ops.expand(info_vec, shape + (-1,)))
-        precisions.append(ops.expand(precision, shape + (-1, -1)))
+        white_vec, prec_sqrt = align_gaussian(inputs, gaussian)
+        white_vecs.append(ops.expand(white_vec, shape + (-1,)))
+        prec_sqrts.append(ops.expand(prec_sqrt, shape + (-1, -1)))
     if part_name != name:
         del inputs[part_name]
         del int_inputs[part_name]
 
+    # Pad to ensure ranks agree.
+    max_rank = max(w.shape[-1] for w in white_vecs)
+    for i, (white_vec, prec_sqrt) in enumerate(zip(white_vecs, prec_sqrts)):
+        pad = max_rank - white_vec.shape[-1]
+        if pad:
+            zero = ops.new_zeros(white_vec, ())
+            white_vecs[i] = ops.cat(
+                [white_vec, ops.expand(zero, white_vec.shape[:-1] + (pad,))], -1
+            )
+            prec_sqrts[i] = ops.cat(
+                [prec_sqrt, ops.expand(zero, prec_sqrt.shape[:-1] + (pad,))], -1
+            )
+
     dim = 0
-    info_vec = ops.cat(info_vecs, dim)
-    precision = ops.cat(precisions, dim)
-    inputs[name] = Bint[info_vec.shape[dim]]
+    white_vec = ops.cat(white_vecs, dim)
+    prec_sqrt = ops.cat(prec_sqrts, dim)
+    inputs[name] = Bint[white_vec.shape[dim]]
     int_inputs[name] = inputs[name]
-    result = Gaussian(info_vec, precision, inputs)
+    result = Gaussian(white_vec, prec_sqrt, inputs)
     if any(d is not None for d in discretes):
         for i, d in enumerate(discretes):
             if d is None:
-                discretes[i] = ops.new_zeros(info_vecs[i], info_vecs[i].shape[:-1])
+                discretes[i] = ops.new_zeros(white_vecs[i], white_vecs[i].shape[:-1])
         discrete = ops.cat(discretes, dim)
         result = result + Tensor(discrete, int_inputs)
     return result
@@ -114,36 +127,24 @@ def moment_matching_contract_joint(red_op, bin_op, reduced_vars, discrete, gauss
     )
     probs = (discrete - new_discrete.clamp_finite()).exp()
 
-    old_loc = Tensor(
-        ops.cholesky_solve(
-            ops.unsqueeze(gaussian.info_vec, -1), gaussian._precision_chol
-        ).squeeze(-1),
-        int_inputs,
-    )
+    old_loc = Tensor(gaussian._mean, int_inputs)
     new_loc = (probs * old_loc).reduce(ops.add, approx_vars)
-    old_cov = Tensor(ops.cholesky_inverse(gaussian._precision_chol), int_inputs)
+    old_cov = Tensor(gaussian._covariance, int_inputs)
     diff = old_loc - new_loc
-    outers = Tensor(
-        ops.unsqueeze(diff.data, -1) * ops.unsqueeze(diff.data, -2), diff.inputs
-    )
-    new_cov = (probs * old_cov).reduce(ops.add, approx_vars) + (probs * outers).reduce(
-        ops.add, approx_vars
-    )
+    outers = Tensor(diff.data[..., None] * diff.data[..., None, :], diff.inputs)
+    new_cov = (
+        (probs * old_cov).reduce(ops.add, approx_vars)
+        + (probs * outers).reduce(ops.add, approx_vars)
+    ).data
 
     # Numerically stabilize by adding bogus precision to empty components.
     total = probs.reduce(ops.add, approx_vars)
     mask = ops.unsqueeze(ops.unsqueeze((total.data == 0), -1), -1)
-    new_cov.data = new_cov.data + mask * ops.new_eye(
-        new_cov.data, new_cov.data.shape[-1:]
-    )
+    new_cov = new_cov + mask * ops.new_eye(new_cov, new_cov.shape[-1:])
 
-    new_precision = Tensor(
-        ops.cholesky_inverse(ops.cholesky(new_cov.data)), new_cov.inputs
-    )
-    new_info_vec = (new_precision.data @ ops.unsqueeze(new_loc.data, -1)).squeeze(-1)
     new_inputs = new_loc.inputs.copy()
     new_inputs.update((k, d) for k, d in gaussian.inputs.items() if d.dtype == "real")
-    new_gaussian = Gaussian(new_info_vec, new_precision.data, new_inputs)
+    new_gaussian = Gaussian(mean=new_loc.data, covariance=new_cov, inputs=new_inputs)
     new_discrete -= new_gaussian.log_normalizer
 
     return new_discrete + new_gaussian

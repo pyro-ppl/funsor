@@ -12,10 +12,19 @@ import pytest
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Bint, Real, Reals
-from funsor.gaussian import BlockMatrix, BlockVector, Gaussian
+from funsor.gaussian import (
+    BlockMatrix,
+    BlockVector,
+    Gaussian,
+    _compress_rank,
+    _inverse_cholesky,
+    _norm2,
+    _split_real_inputs,
+    _vm,
+)
 from funsor.integrate import Integrate
 from funsor.tensor import Einsum, Tensor, numeric_array
-from funsor.terms import Number, Variable
+from funsor.terms import Number, Unary, Variable
 from funsor.testing import (
     assert_close,
     id_from_inputs,
@@ -72,6 +81,40 @@ def test_cholesky_inverse(batch_shape, size, requires_grad):
     assert_close(ops.cholesky_inverse(u), naive_cholesky_inverse(u))
     if requires_grad:
         ops.cholesky_inverse(u).sum().backward()
+
+
+@pytest.mark.parametrize("size", [1, 2, 3], ids=str)
+@pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
+def test_inverse_cholesky(batch_shape, size):
+    prec_sqrt = randn((size, size))
+    precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
+
+    # The naive computation requires two Choleskys + two triangular_solves.
+    precision_chol = ops.cholesky(precision)
+    covariance = ops.cholesky_inverse(precision_chol)
+    expected = ops.cholesky(covariance)
+
+    # Du's trick requires only a single Cholesky + single triangular_solve.
+    actual = _inverse_cholesky(precision)
+    assert_close(actual, expected, atol=1e-5, rtol=1e-4)
+
+
+def test_split_real_inputs():
+    inputs = OrderedDict(i=Bint[5], a=Real, b=Reals[4], c=Reals[3, 1], d=Reals[1, 2])
+    prototype = randn(())
+    g = random_gaussian(inputs)
+    for lhs_keys in "a b c d ab ac ad bc bd abc abd acd bcd".split():
+        a, b = _split_real_inputs(inputs, lhs_keys, prototype)
+        prec_sqrt_a = g.prec_sqrt[..., a, :]
+        prec_sqrt_b = g.prec_sqrt[..., b, :]
+        assert prec_sqrt_a.shape[-2] == sum(
+            d.num_elements for k, d in inputs.items() if k in lhs_keys
+        )
+        assert prec_sqrt_a.shape[-2] == sum(
+            d.num_elements for k, d in inputs.items() if k in lhs_keys
+        )
+        prec_sqrt_ab = ops.cat([prec_sqrt_a, prec_sqrt_b], -2)
+        assert prec_sqrt_ab.shape == g.prec_sqrt.shape
 
 
 def test_block_vector():
@@ -148,10 +191,130 @@ def test_block_matrix_batched(batch_shape, sparse):
     assert_close(actual.as_tensor(), expected)
 
 
+@pytest.mark.parametrize("batch_shape", [(), (3, 2), (4,)], ids=str)
+@pytest.mark.parametrize("rank", [1, 2, 3, 4, 5, 8, 13])
+@pytest.mark.parametrize("dim", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("method", ["cholesky", "qr"])
+def test_compress_rank(batch_shape, dim, rank, method):
+    white_vec = randn(batch_shape + (rank,))
+    prec_sqrt = randn(batch_shape + (dim, rank))
+
+    shift = zeros(batch_shape)
+    new_white_vec = white_vec
+    new_prec_sqrt = prec_sqrt
+    if rank >= dim:
+        new_white_vec, new_prec_sqrt, shift = _compress_rank(
+            white_vec, prec_sqrt, method
+        )
+    assert new_prec_sqrt.shape[:-1] == batch_shape + (dim,)
+    assert new_white_vec.shape[:-1] == batch_shape
+    assert new_prec_sqrt.shape[-1] == new_white_vec.shape[-1]
+    assert shift.shape == batch_shape
+    new_rank = new_prec_sqrt.shape[-1]
+    assert new_rank <= dim
+
+    # Check precisions.
+    expected_precision = prec_sqrt @ ops.transpose(prec_sqrt, -1, -2)
+    actual_precision = new_prec_sqrt @ ops.transpose(new_prec_sqrt, -1, -2)
+    assert_close(actual_precision, expected_precision, atol=1e-5, rtol=None)
+
+    # Check full evaluation.
+    probe = randn(batch_shape + (dim,))
+    expected = -0.5 * _norm2(_vm(probe, prec_sqrt) - white_vec)
+    actual = -0.5 * _norm2(_vm(probe, new_prec_sqrt) - new_white_vec) + shift
+    assert_close(actual, expected, atol=1e-4, rtol=None)
+
+
+@pytest.mark.parametrize("batch_shape", [(), (3, 2), (4,)], ids=str)
+@pytest.mark.parametrize("dim", [1, 2, 3, 4, 5])
+def test_compress_rank_singular(batch_shape, dim):
+    rank = dim + 1
+    white_vec = zeros(batch_shape + (rank,))
+    prec_sqrt = zeros(batch_shape + (dim, rank))
+
+    # Check that _compress_rank can handle singular prec_sqrt.
+    white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+    assert_close(white_vec, zeros(batch_shape + (dim,)))
+    assert_close(prec_sqrt, zeros(batch_shape + (dim, dim)))
+
+
+@pytest.mark.parametrize(
+    "dim, rank", [(d, r) for d in range(1, 6) for r in range(1, 21) if d < r]
+)
+def test_compress_rank_gaussian(dim, rank):
+    inputs = OrderedDict(x=Reals[dim])
+    white_vec = randn((rank,))
+    prec_sqrt = randn((dim, rank))
+    data = randn((dim,))
+    with Gaussian.set_compression_threshold(999):
+        g1 = Gaussian(white_vec, prec_sqrt, inputs)
+        g1_data = g1(x=data)
+    assert isinstance(g1, Gaussian)
+    assert g1.rank == rank
+
+    white_vec, prec_sqrt, shift = _compress_rank(white_vec, prec_sqrt)
+    assert white_vec.shape == (dim,)
+    assert prec_sqrt.shape == (dim, dim)
+    g2 = Gaussian(white_vec, prec_sqrt, inputs)
+    g2_data = g2(x=data)
+    assert isinstance(g2, Gaussian)
+    assert g2.rank == dim
+
+    assert_close(g1._mean, g2._mean, atol=1e-4, rtol=1e-4)
+    assert_close(g1._precision, g2._precision, atol=1e-4, rtol=1e-3)
+
+    actual = g1.reduce(ops.logaddexp)
+    expected = g2.reduce(ops.logaddexp) + shift
+    assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+
+    actual = g1_data
+    expected = g2_data + shift
+    assert_close(actual, expected, atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "loc, scale",
+    [
+        ("white_vec", "prec_sqrt"),
+        ("_mean", "prec_sqrt"),
+        ("_mean", "_covariance"),
+        ("_mean", "_scale_tril"),
+        ("_mean", "_precision"),
+        ("_info_vec", "prec_sqrt"),
+        ("_info_vec", "_covariance"),
+        ("_info_vec", "_scale_tril"),
+        ("_info_vec", "_precision"),
+    ],
+)
+def test_meta(loc, scale):
+    names = "ijxyz"
+    shapes = [Bint[2], Bint[3], Real, Reals[4], Reals[3, 2]]
+    for real_inputs in ["x", "y", "z", "xy", "xz", "yz", "xyz"]:
+        for int_inputs in ["", "i", "j", "ij"]:
+            inputs = OrderedDict(
+                (k, d) for k, d in zip(names, shapes) if k in int_inputs + real_inputs
+            )
+            expected = random_gaussian(inputs)
+
+            kwargs = {
+                scale.strip("_"): getattr(expected, scale),
+                loc.strip("_"): getattr(expected, loc),
+                "inputs": expected.inputs,
+            }
+            actual = Gaussian(**kwargs)
+            assert_close(
+                getattr(actual, loc), getattr(expected, loc), atol=1e-3, rtol=1e-3
+            )
+            assert_close(
+                getattr(actual, scale), getattr(expected, scale), atol=1e-3, rtol=1e-3
+            )
+            assert_close(actual, expected, atol=1e-3, rtol=1e-3)
+
+
 @pytest.mark.parametrize(
     "expr,expected_type",
     [
-        ("-g1", Gaussian),
+        ("-g1", Unary),
         ("g1 + 1", Contraction),
         ("g1 - 1", Contraction),
         ("1 + g1", Contraction),
@@ -159,8 +322,8 @@ def test_block_matrix_batched(batch_shape, sparse):
         ("g1 + shift", Contraction),
         ("shift + g1", Contraction),
         ("shift - g1", Contraction),
-        ("g1 + g1", Gaussian),
-        ("(g1 + g2 + g2) - g2", Gaussian),
+        ("g1 + g1", (Gaussian, Contraction)),
+        ("(g1 + g2 + g2) - g2", Contraction),
         ("g1(i=i0)", Gaussian),
         ("g2(i=i0)", Gaussian),
         ("g1(i=i0) + g2(i=i0)", Gaussian),
@@ -175,23 +338,28 @@ def test_block_matrix_batched(batch_shape, sparse):
         ('(g1 + g2).reduce(ops.logaddexp, "y")', Contraction),
         ('(g1 + g2).reduce(ops.logaddexp, frozenset(["x", "y"]))', Tensor),
     ],
+    ids=str,
 )
 def test_smoke(expr, expected_type):
     g1 = Gaussian(
-        info_vec=numeric_array([[0.0, 0.1, 0.2], [2.0, 3.0, 4.0]]),
-        precision=numeric_array(
-            [
-                [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
-                [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
-            ]
+        white_vec=numeric_array([[0.0, 0.1, 0.2], [2.0, 3.0, 4.0]]),
+        prec_sqrt=ops.cholesky(
+            numeric_array(
+                [
+                    [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
+                    [[1.0, 0.1, 0.2], [0.1, 1.0, 0.3], [0.2, 0.3, 1.0]],
+                ]
+            )
         ),
         inputs=OrderedDict([("i", Bint[2]), ("x", Reals[3])]),
     )
     assert isinstance(g1, Gaussian)
 
     g2 = Gaussian(
-        info_vec=numeric_array([[0.0, 0.1], [2.0, 3.0]]),
-        precision=numeric_array([[[1.0, 0.2], [0.2, 1.0]], [[1.0, 0.2], [0.2, 1.0]]]),
+        white_vec=numeric_array([[0.0, 0.1], [2.0, 3.0]]),
+        prec_sqrt=ops.cholesky(
+            numeric_array([[[1.0, 0.2], [0.2, 1.0]], [[1.0, 0.2], [0.2, 1.0]]])
+        ),
         inputs=OrderedDict([("i", Bint[2]), ("y", Reals[2])]),
     )
     assert isinstance(g2, Gaussian)
@@ -271,19 +439,27 @@ def test_align(int_inputs, real_inputs):
     ],
     ids=id_from_inputs,
 )
-def test_eager_subs_origin(int_inputs, real_inputs):
+def test_eager_subs_mean(int_inputs, real_inputs):
     int_inputs = OrderedDict(sorted(int_inputs.items()))
     real_inputs = OrderedDict(sorted(real_inputs.items()))
     inputs = int_inputs.copy()
     inputs.update(real_inputs)
     g = random_gaussian(inputs)
 
-    # Check that Gaussian log density at origin is zero.
-    origin = {k: zeros(d.shape) for k, d in real_inputs.items()}
-    actual = g(**origin)
+    # Check that Gaussian log density at its mean is zero.
+    mean = g._mean
+    means = {}
+    start = 0
+    for k, d in g.inputs.items():
+        if d.dtype == "real":
+            stop = start + d.num_elements
+            data = mean[..., start:stop].reshape(mean.shape[:-1] + d.shape)
+            means[k] = Tensor(data, int_inputs)
+            start = stop
+    actual = g(**means)
     expected_data = zeros(tuple(d.size for d in int_inputs.values()))
     expected = Tensor(expected_data, int_inputs)
-    assert_close(actual, expected)
+    assert_close(actual, expected, atol=1e-5, rtol=None)
 
 
 @pytest.mark.parametrize(
@@ -339,19 +515,19 @@ def test_eager_subs_variable():
 
     g2 = g1(x="z")
     assert set(g2.inputs) == {"i", "y", "z"}
-    assert g2.info_vec is g1.info_vec
-    assert g2.precision is g1.precision
+    assert g2.white_vec is g1.white_vec
+    assert g2.prec_sqrt is g1.prec_sqrt
 
     g2 = g1(x="y", y="x")
     assert set(g2.inputs) == {"i", "x", "y"}
     assert g2.inputs["x"] == Reals[2]
-    assert g2.info_vec is g1.info_vec
-    assert g2.precision is g1.precision
+    assert g2.white_vec is g1.white_vec
+    assert g2.prec_sqrt is g1.prec_sqrt
 
     g2 = g1(i="j")
     assert set(g2.inputs) == {"j", "x", "y"}
-    assert g2.info_vec is g1.info_vec
-    assert g2.precision is g1.precision
+    assert g2.white_vec is g1.white_vec
+    assert g2.prec_sqrt is g1.prec_sqrt
 
 
 @pytest.mark.parametrize(
@@ -393,7 +569,7 @@ def test_eager_subs_affine(subs, g_ints, subs_ints):
     ground_subs = {k: v(**grounding_subs) for k, v in subs.items()}
 
     g_subs = g(**subs)
-    assert issubclass(type(g_subs), GaussianMixture)
+    assert issubclass(type(g_subs), (Gaussian, GaussianMixture))
     actual = g_subs(**grounding_subs)
     expected = g(**ground_subs)(**grounding_subs)
     assert_close(actual, expected, atol=1e-3, rtol=2e-4)
@@ -531,7 +707,7 @@ def test_reduce_add(inputs):
 
     gs = [g(i=i) for i in range(g.inputs["i"].dtype)]
     expected = reduce(ops.add, gs)
-    assert_close(actual, expected)
+    assert_close(actual, expected, rtol=None)
 
 
 @pytest.mark.parametrize(
@@ -575,6 +751,37 @@ def test_reduce_logsumexp(int_inputs, real_inputs):
         atol=1e-3,
         rtol=None,
     )
+
+
+@pytest.mark.parametrize(
+    "int_inputs",
+    [
+        OrderedDict(),
+        OrderedDict([("i", Bint[2])]),
+        OrderedDict([("i", Bint[2]), ("j", Bint[3])]),
+    ],
+    ids=id_from_inputs,
+)
+def test_reduce_logsumexp_subs(int_inputs):
+    int_inputs = OrderedDict(sorted(int_inputs.items()))
+    real_inputs = OrderedDict(
+        [("w", Reals[2]), ("x", Reals[4]), ("y", Reals[2, 3]), ("z", Real)]
+    )
+    inputs = int_inputs.copy()
+    inputs.update(real_inputs)
+
+    g = random_gaussian(inputs)
+    batch_shape = tuple(d.size for d in int_inputs.values())
+    all_values = {
+        k: Tensor(randn(batch_shape + v.shape), int_inputs)
+        for k, v in real_inputs.items()
+    }
+    subsets = "w x y z wx wy wz xy xz yz wxy wxz wyz xyz".split()
+    for reduced_vars in map(frozenset, subsets):
+        values = {k: v for k, v in all_values.items() if k not in reduced_vars}
+        actual = g.reduce(ops.logaddexp, reduced_vars)(**all_values)
+        expected = g(**values).reduce(ops.logaddexp, reduced_vars)
+        assert_close(actual, expected, atol=1e-4, rtol=None)
 
 
 @pytest.mark.parametrize("int_inputs", [{}, {"i": Bint[2]}], ids=id_from_inputs)
@@ -651,18 +858,35 @@ def test_integrate_gaussian(int_inputs, real_inputs):
 
 
 def test_mc_plate_gaussian():
-    log_measure = Gaussian(
-        numeric_array([0.0]), numeric_array([[1.0]]), (("loc", Real),)
-    ) + numeric_array(-0.9189)
+    log_measure = (
+        Gaussian(
+            white_vec=numeric_array([0.0]),
+            prec_sqrt=numeric_array([[1.0]]),
+            inputs=(("loc", Real),),
+        )
+        + numeric_array(-0.9189)
+    )
 
     plate_size = 10
     integrand = Gaussian(
-        randn((plate_size, 1)) + 3.0,
-        ones((plate_size, 1, 1)),
-        (("data", Bint[plate_size]), ("loc", Real)),
+        white_vec=randn((plate_size, 1)) + 3.0,
+        prec_sqrt=ones((plate_size, 1, 1)),
+        inputs=(("data", Bint[plate_size]), ("loc", Real)),
     )
 
     rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
     res = Integrate(log_measure.sample("loc", rng_key=rng_key), integrand, "loc")
     res = res.reduce(ops.mul, "data")
     assert not ((res == float("inf")) | (res == float("-inf"))).any()
+
+
+def test_eager_add():
+    g1 = Gaussian(randn((2,)), randn((1, 2)), OrderedDict(a=Real))
+    g2 = Gaussian(randn((1,)), randn((1, 1)), OrderedDict(a=Real))
+    a = Variable("a", Real)
+
+    actual = (g1 + g2).reduce(ops.logaddexp)
+    assert isinstance(actual, Tensor)
+
+    actual = Contraction(ops.logaddexp, ops.add, frozenset({a}), (g1, g2))
+    assert isinstance(actual, Tensor)

@@ -354,6 +354,11 @@ back to :class:`eager` in other cases.
 push_interpretation(reflect)  # Set for optional type checking.
 push_interpretation(eager)  # Use eager interpretation by default.
 
+compress_gaussians_base = DispatchedInterpretation("compress_gaussians")
+compress_gaussians = PrioritizedInterpretation(
+    compress_gaussians_base, eager_base, normalize_base, reflect
+)
+
 
 __all__ = [
     "CallableInterpretation",
@@ -361,6 +366,7 @@ __all__ = [
     "Interpretation",
     "Memoize",
     "StatefulInterpretation",
+    "compress_gaussians",
     "die",
     "eager",
     "lazy",
