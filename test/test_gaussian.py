@@ -23,9 +23,10 @@ from funsor.gaussian import (
     _vm,
 )
 from funsor.integrate import Integrate
+from funsor.interpretations import eager, lazy
 from funsor.montecarlo import extract_samples
 from funsor.tensor import Einsum, Tensor, numeric_array
-from funsor.terms import Number, Unary, Variable
+from funsor.terms import Number, Subs, Unary, Variable
 from funsor.testing import (
     assert_close,
     id_from_inputs,
@@ -964,3 +965,27 @@ def test_eager_subs():
     actual = (g12 - g2).reduce(ops.logaddexp)
     assert isinstance(actual, Tensor)
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize("interp", [eager, lazy])
+def test_nested_subs_1(interp):
+    with interp:
+        g = Gaussian(randn(3), randn(2, 3), OrderedDict([("b", Real), ("a", Real)]))
+        a = ops.abs(Variable("aux_0", Real))
+        b = ops.abs(Variable("aux_1", Real))
+        g_ab = g(a=a, b=b)
+        g_a_b = g(a=a)(b=b)
+        g_b_a = g(b=b)(a=a)
+
+    # Test subs fusion.
+    assert isinstance(g_ab, Subs)
+    assert isinstance(g_ab.arg, Gaussian)
+    assert isinstance(g_a_b, Subs)
+    assert isinstance(g_a_b.arg, Gaussian)
+    assert isinstance(g_b_a, Subs)
+    assert isinstance(g_b_a.arg, Gaussian)
+
+    # Compare on ground data.
+    subs = {"aux_0": randn(()), "aux_1": randn(())}
+    assert_close(g_ab(**subs), g_a_b(**subs))
+    assert_close(g_ab(**subs), g_b_a(**subs))
