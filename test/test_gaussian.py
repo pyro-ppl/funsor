@@ -968,7 +968,7 @@ def test_eager_subs():
 
 
 @pytest.mark.parametrize("interp", [eager, lazy])
-def test_nested_subs_1(interp):
+def test_nested_subs(interp):
     with interp:
         g = Gaussian(randn(3), randn(2, 3), OrderedDict([("b", Real), ("a", Real)]))
         a = ops.abs(Variable("aux_0", Real))
@@ -987,5 +987,5 @@ def test_nested_subs_1(interp):
 
     # Compare on ground data.
     subs = {"aux_0": randn(()), "aux_1": randn(())}
-    assert_close(g_ab(**subs), g_a_b(**subs))
-    assert_close(g_ab(**subs), g_b_a(**subs))
+    assert_close(g_ab(**subs), g_a_b(**subs), atol=1e-3, rtol=1e-3)
+    assert_close(g_ab(**subs), g_b_a(**subs), atol=1e-3, rtol=1e-3)
