@@ -891,7 +891,7 @@ def eager_finitary_cat(op, parts):
         assert len(event_dims) == 1, "undefined"
         dim = dim - next(iter(event_dims))
     assert dim < 0
-    inputs, raw_parts = align_tensors(*parts)
+    inputs, raw_parts = align_tensors(*parts, expand=True)
     raw_result = ops.cat(raw_parts, dim)
     return Tensor(raw_result, inputs, parts[0].dtype)
 
