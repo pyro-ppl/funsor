@@ -88,7 +88,6 @@ def forward_max_backward_argmax(
     factors: Dict[str, funsor.Funsor],
     eliminate: FrozenSet[str],
     plates: FrozenSet[str],
-    rng_key=None,
 ):
     """
     A forward-filter backward-batched-reparametrized-sample algorithm for use
@@ -100,7 +99,6 @@ def forward_max_backward_argmax(
     :param frozenset: A set of names of latent variables to marginalize and
         plates to aggregate.
     :param plates: A set of names of plates to aggregate.
-    :param rng_key: A random number key for the JAX backend.
     :returns: A pair ``samples:Dict[str, Tensor], log_prob: Tensor`` of samples
         and log density evaluated at each of those samples. If ``sample_inputs``
         is nonempty, both outputs will be batched.
