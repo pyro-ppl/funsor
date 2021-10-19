@@ -123,7 +123,7 @@ def precondition_approximate_gaussian(state, op, model, guide, approx_vars):
             if Variable(k, d) in approx_vars:
                 event_numel += d.num_elements
         else:
-            batch_shape += d.size
+            batch_shape += (d.size,)
     shape = tuple(batch_shape) + (event_numel,)
     name = f"{state.aux_name}_{len(state.sample_inputs)}"
     state.sample_inputs[name] = Reals[shape]
