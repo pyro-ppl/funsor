@@ -41,13 +41,16 @@ class Precondition(StatefulInterpretation):
     complete usage.
 
     :param str aux_name: Name of the auxiliary variable containing white noise.
+    :param bool normalized: Whether approximation preserves norm.
+        Defaults to True.
     """
 
-    def __init__(self, aux_name="aux"):
+    def __init__(self, aux_name="aux", normalized=True):
         super().__init__("precondition")
         self.aux_name = aux_name
         self.sample_inputs = OrderedDict()
         self.sample_vars = set()
+        self.normalized = normalized
 
     def combine_subs(self):
         """
@@ -130,9 +133,11 @@ def precondition_approximate_gaussian(state, op, model, guide, approx_vars):
     state.sample_vars.add(Variable(name, Reals[shape]))
 
     # Precondition this factor.
-    sample = guide.sample(approx_vars, OrderedDict([(name, Reals[shape])]))
-    assert sample is not guide, "no progress"
-    result = sample + model - guide
+    result = guide.sample(approx_vars, OrderedDict([(name, Reals[shape])]))
+    assert result is not guide, "no progress"
+    if state.normalized:
+        result += model
+        result -= guide
     return result
 
 

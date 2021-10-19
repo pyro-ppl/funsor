@@ -129,7 +129,9 @@ def forward_filter_backward_precondition(
             plates,
         )
         log_Z = funsor.optimizer.apply_optimizer(log_Z)
-    with funsor.precondition.Precondition(aux_name=aux_name) as precondition:
+    with funsor.precondition.Precondition(
+        aux_name=aux_name, normalized=False
+    ) as precondition:
         log_Z, marginals = funsor.adjoint.forward_backward(
             funsor.ops.logaddexp,
             funsor.ops.add,
