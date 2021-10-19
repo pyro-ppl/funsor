@@ -962,11 +962,25 @@ class Subs(Funsor, metaclass=SubsMeta):
 
 @lazy.register(Subs, Funsor, object)
 @eager.register(Subs, Funsor, object)
-def eager_subs(arg, subs):
+def eager_subs_funsor(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
     return substitute(arg, subs)
+
+
+@lazy.register(Subs, Subs, object)
+@eager.register(Subs, Subs, object)
+def eager_subs_subs(arg, subs):
+    assert isinstance(subs, tuple)
+    subs = tuple((k, v) for k, v in subs if k in arg.inputs)
+    if not subs:
+        return arg
+
+    # Fuse substitutions.
+    fused_subs = tuple((k, Subs(v, subs)) for k, v in arg.subs.items())
+    fused_subs += subs
+    return Subs(arg.arg, fused_subs)
 
 
 @die.register(Subs, Funsor, tuple)
