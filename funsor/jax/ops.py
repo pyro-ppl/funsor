@@ -263,7 +263,7 @@ def _new_zeros(x, shape):
 @ops.randn.register(array)
 def _randn(prototype, shape, rng_key=None):
     assert isinstance(shape, tuple)
-    return jax.random.randn(rng_key, shape, dtype=prototype.dtype)
+    return jax.random.normal(rng_key, shape, dtype=prototype.dtype)
 
 
 @ops.reciprocal.register(array)
