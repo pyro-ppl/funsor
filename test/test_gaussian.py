@@ -824,7 +824,7 @@ def test_sample_partial(int_inputs):
         cov = (diff[:, None] - diff[None, :]).reduce(ops.mean)
         return mean, cov
 
-    sample_inputs = OrderedDict(particle=Bint[10000])
+    sample_inputs = OrderedDict(particle=Bint[50000])
     rng_keys = [None] * 3
     if get_backend() == "jax":
         import jax.random
