@@ -262,7 +262,7 @@ def test_compress_rank_gaussian(dim, rank):
     assert isinstance(g2, Gaussian)
     assert g2.rank == dim
 
-    assert_close(g1._mean, g2._mean, atol=1e-4, rtol=1e-4)
+    assert_close(g1._mean, g2._mean, atol=1e-4, rtol=1e-3)
     assert_close(g1._precision, g2._precision, atol=1e-4, rtol=1e-3)
 
     actual = g1.reduce(ops.logaddexp)
