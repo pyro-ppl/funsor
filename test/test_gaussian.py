@@ -952,7 +952,8 @@ def test_eager_add():
     assert isinstance(actual, Tensor)
 
 
-def test_eager_subs():
+@pytest.mark.xfail(reason="Not implemented")
+def test_eager_sub():
     inputs = OrderedDict(a=Real)
     g1 = random_gaussian(inputs)
     g2 = random_gaussian(inputs)

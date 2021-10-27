@@ -20,7 +20,6 @@ from funsor.terms import (
     Number,
     Slice,
     Subs,
-    Unary,
     Variable,
     eager,
     reflect,
@@ -1135,30 +1134,7 @@ def eager_add_gaussian_gaussian(op, lhs, rhs):
 
 @eager.register(Binary, SubOp, Gaussian, Gaussian)
 def eager_sub(op, lhs, rhs):
-    # Fuse two Gaussians by subtracting their log-densities pointwise.
-    # This is similar to a Kalman filter update, but also keeps track of
-    # the marginal likelihood which accumulates into a Tensor.
-    rhs_real_vars = frozenset(v for v in rhs.input_vars if v.dtype == "real")
-    if not rhs_real_vars.issubset(lhs.input_vars):
-        return None  # cannot eagerly compute
-
-    # Align data.
-    inputs = lhs.inputs.copy()
-    inputs.update(rhs.inputs)
-    lhs_white_vec, lhs_prec_sqrt = align_gaussian(inputs, lhs, expand=True)
-    rhs_white_vec, rhs_prec_sqrt = align_gaussian(inputs, rhs, expand=True)
-
-    # Leverage GaussianMeta and properties.
-    lhs = Gaussian(lhs_white_vec, lhs_prec_sqrt, inputs)
-    rhs = Gaussian(rhs_white_vec, rhs_prec_sqrt, inputs)
-    precision = lhs._precision - rhs._precision
-    info_vec = lhs._info_vec - rhs._info_vec
-    return Gaussian(info_vec=info_vec, precision=precision, inputs=inputs)
-
-
-@eager.register(Binary, AddOp, Gaussian, Unary[ops.NegOp, Gaussian])
-def eager_add_gaussian_neg_gaussian(op, lhs, rhs):
-    return eager_sub(ops.sub, lhs, rhs.arg)
+    return lhs + (-rhs)
 
 
 __all__ = [
