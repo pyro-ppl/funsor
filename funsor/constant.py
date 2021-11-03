@@ -10,6 +10,7 @@ from funsor.terms import (
     Binary,
     Funsor,
     FunsorMeta,
+    Importance,
     Number,
     Reduce,
     Unary,
@@ -165,7 +166,7 @@ def eager_binary_constant_constant(op, lhs, rhs):
     return op(lhs.arg, rhs.arg)
 
 
-@eager.register(Binary, ops.BinaryOp, Constant, (Number, Tensor))
+@eager.register(Binary, ops.BinaryOp, Constant, (Importance, Number, Tensor))
 def eager_binary_constant_tensor(op, lhs, rhs):
     const_inputs = OrderedDict(
         (k, v) for k, v in lhs.const_inputs.items() if k not in rhs.inputs
@@ -175,7 +176,7 @@ def eager_binary_constant_tensor(op, lhs, rhs):
     return op(lhs.arg, rhs)
 
 
-@eager.register(Binary, ops.BinaryOp, (Number, Tensor), Constant)
+@eager.register(Binary, ops.BinaryOp, (Importance, Number, Tensor), Constant)
 def eager_binary_tensor_constant(op, lhs, rhs):
     const_inputs = OrderedDict(
         (k, v) for k, v in rhs.const_inputs.items() if k not in lhs.inputs

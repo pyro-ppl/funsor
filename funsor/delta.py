@@ -145,15 +145,15 @@ class Delta(Funsor, metaclass=DeltaMeta):
                     new_terms.append((value.name, (point, log_density)))
                     continue
 
-                if not any(
-                    d.dtype == "real"
-                    for side in (value, point)
-                    for d in side.inputs.values()
-                ):
-                    dtype = get_default_dtype()
-                    is_equal = ops.astype((value == point).all(), dtype)
-                    log_densities.append(is_equal.log() + log_density)
-                    continue
+                #  if not any(
+                #      d.dtype == "real"
+                #      for side in (value, point)
+                #      for d in side.inputs.values()
+                #  ):
+                dtype = get_default_dtype()
+                is_equal = ops.astype((value == point).all(), dtype)
+                log_densities.append(is_equal.log() + log_density)
+                continue
 
                 # Try to invert the substitution.
                 soln = solve(value, point)
