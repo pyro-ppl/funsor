@@ -240,16 +240,9 @@ class Distribution(Funsor, metaclass=DistributionMeta):
                 output=self.output,
                 dim_to_name=dim_to_name,
             )
-            model_sample = funsor.delta.Delta(value_name, funsor_value, log_prob)
-            guide_sample = funsor.delta.Delta(
-                value_name, funsor_value, ops.detach(log_prob)
-            )
-            result = funsor.terms.Importance(
-                ops.logaddexp,
-                model_sample,
-                guide_sample,
-                frozenset({Variable(value_name, self.inputs[value_name])}),
-            )
+            model = funsor.delta.Delta(value_name, funsor_value, log_prob)
+            guide = funsor.delta.Delta(value_name, funsor_value, ops.detach(log_prob))
+            result = model.approximate(ops.sample, guide, value_name)
         else:
             result = funsor.delta.Delta(value_name, funsor_value)
         return result

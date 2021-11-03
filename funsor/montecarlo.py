@@ -45,6 +45,7 @@ def monte_carlo_integrate(state, log_measure, integrand, reduced_vars):
 
 
 @MonteCarlo.register(Approximate, ops.LogaddexpOp, Funsor, Funsor, frozenset)
+@MonteCarlo.register(Approximate, ops.SampleOp, Funsor, Funsor, frozenset)
 def monte_carlo_approximate(state, op, model, guide, approx_vars):
     sample_options = {}
     if state.rng_key is not None and get_backend() == "jax":
@@ -53,23 +54,6 @@ def monte_carlo_approximate(state, op, model, guide, approx_vars):
         sample_options["rng_key"], state.rng_key = jax.random.split(state.rng_key)
 
     sample = guide.sample(approx_vars, state.sample_inputs, **sample_options)
-    if sample is guide:
-        return model  # cannot progress
-    result = sample + model - guide
-
-    return result
-
-
-@MonteCarlo.register(Importance, ops.LogaddexpOp, Funsor, Funsor, frozenset)
-def monte_carlo_importance(state, op, model, guide, approx_vars):
-    sample_options = {}
-    if state.rng_key is not None and get_backend() == "jax":
-        import jax
-
-        sample_options["rng_key"], state.rng_key = jax.random.split(state.rng_key)
-
-    sample = guide.sample(approx_vars, state.sample_inputs, **sample_options)
-
     result = sample + model - guide
 
     return result
