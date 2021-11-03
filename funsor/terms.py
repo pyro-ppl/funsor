@@ -1338,43 +1338,6 @@ def eager_approximate(op, model, guide, approx_vars):
     return expr
 
 
-class Importance(Funsor):
-    """
-    Interpretation-specific approximation wrt a set of variables.
-
-    The default eager interpretation should be exact.
-    The user-facing interface is the :meth:`Funsor.approximate` method.
-
-    :param op: An associative operator.
-    :type op: ~funsor.ops.AssociativeOp
-    :param Funsor model: An exact funsor depending on ``reduced_vars``.
-    :param Funsor guide: A proposal funsor guiding optional approximation.
-    :param frozenset approx_vars: A set of variables over which to approximate.
-    """
-
-    def __init__(self, op, model, guide, approx_vars):
-        assert isinstance(op, AssociativeOp)
-        assert isinstance(model, Funsor)
-        assert isinstance(guide, Funsor)
-        assert model.output is guide.output
-        assert isinstance(approx_vars, frozenset), approx_vars
-        inputs = model.inputs.copy()
-        inputs.update(guide.inputs)
-        output = model.output
-        super().__init__(inputs, output)
-        self.op = op
-        self.model = model
-        self.guide = guide
-        self.approx_vars = approx_vars
-
-    def eager_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)
-        if not reduced_vars:
-            return self
-
-        return self.model.reduce(op, reduced_vars)
-
-
 class NumberMeta(FunsorMeta):
     """
     Wrapper to fill in default ``dtype``.

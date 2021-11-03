@@ -9,7 +9,7 @@ from funsor.delta import Delta
 from funsor.integrate import Integrate
 from funsor.interpretations import StatefulInterpretation
 from funsor.tensor import Tensor
-from funsor.terms import Approximate, Funsor, Importance, Number
+from funsor.terms import Approximate, Funsor, Number
 from funsor.util import get_backend
 
 from . import ops
