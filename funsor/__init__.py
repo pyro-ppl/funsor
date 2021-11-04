@@ -4,6 +4,7 @@
 from funsor.constant import Constant
 from funsor.domains import Array, Bint, Domain, Real, Reals, bint, find_domain, reals
 from funsor.factory import make_funsor
+from funsor.importance import Importance
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
 from funsor.op_factory import make_op
@@ -61,6 +62,7 @@ __all__ = [
     "Constant",
     "Domain",
     "Funsor",
+    "Importance",
     "Independent",
     "Integrate",
     "Lambda",

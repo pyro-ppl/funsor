@@ -64,3 +64,11 @@ Constant
     :undoc-members:
     :show-inheritance:
     :member-order: bysource
+
+Importance
+----------
+.. automodule:: funsor.importance
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
