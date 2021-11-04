@@ -242,7 +242,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             )
             model = funsor.delta.Delta(value_name, funsor_value, log_prob)
             guide = funsor.delta.Delta(value_name, funsor_value, ops.detach(log_prob))
-            result = model.approximate(ops.sample, guide, value_name)
+            result = funsor.importance.Importance(model, guide)
         else:
             result = funsor.delta.Delta(value_name, funsor_value)
         return result

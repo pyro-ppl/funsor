@@ -1313,29 +1313,24 @@ class Approximate(Funsor):
         inputs = model.inputs.copy()
         inputs.update(guide.inputs)
         output = model.output
-        super().__init__(inputs, output)
+        fresh = frozenset(v.name for v in approx_vars)
+        bound = {v.name: v.output for v in approx_vars}
+        super().__init__(inputs, output, fresh, bound)
         self.op = op
         self.model = model
         self.guide = guide
         self.approx_vars = approx_vars
 
-    def eager_reduce(self, op, reduced_vars):
-        assert reduced_vars.issubset(self.inputs)
-        if not reduced_vars:
-            return self
-
-        return self.model.reduce(op, reduced_vars)
+    def _alpha_convert(self, alpha_subs):
+        alpha_subs = {k: to_funsor(v, self.bound[k]) for k, v in alpha_subs.items()}
+        op, model, guide, approx_vars = super()._alpha_convert(alpha_subs)
+        approx_vars = frozenset(alpha_subs.get(var.name, var) for var in approx_vars)
+        return op, model, guide, approx_vars
 
 
 @eager.register(Approximate, AssociativeOp, Funsor, Funsor, frozenset)
 def eager_approximate(op, model, guide, approx_vars):
     return model  # exact
-
-
-@eager.register(Approximate, ops.SampleOp, Funsor, Funsor, frozenset)
-def eager_approximate(op, model, guide, approx_vars):
-    expr = reflect.interpret(Approximate, op, model, guide, approx_vars)
-    return expr
 
 
 class NumberMeta(FunsorMeta):
