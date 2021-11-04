@@ -61,5 +61,5 @@ class ProvenanceTensor(torch.Tensor):
                     _ret.append(ProvenanceTensor(r, provenance=provenance))
                 else:
                     _ret.append(r)
-            return tuple(_ret)
+            return type(ret)(_ret)
         return ret
