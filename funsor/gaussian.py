@@ -965,6 +965,35 @@ class Gaussian(Funsor, metaclass=GaussianMeta):
 
             return Gaussian(white_vec, prec_sqrt, inputs)
 
+        elif op is ops.max:
+            # Marginalize out real variables, but keep mixtures lazy.
+            assert all(v in self.inputs for v in reduced_vars)
+            real_vars = frozenset(
+                k for k, d in self.inputs.items() if d.dtype == "real"
+            )
+            reduced_reals = reduced_vars & real_vars
+            reduced_ints = reduced_vars - real_vars
+            if reduced_ints:
+                raise NotImplementedError("TODO argmax over Gaussian mixtures")
+
+            inputs = OrderedDict(
+                (k, d) for k, d in self.inputs.items() if k not in reduced_reals
+            )
+            int_inputs = OrderedDict(
+                (k, v) for k, v in inputs.items() if v.dtype != "real"
+            )
+            if reduced_reals == real_vars:
+                if self.rank <= self.prec_sqrt.shape[-2]:
+                    return 0.0
+                # Otherwise compress.
+                white_vec, prec_sqrt, shift = _compress_rank(
+                    self.white_vec, self.prec_sqrt
+                )
+                return Tensor(shift, int_inputs)
+
+            # FIXME
+            raise NotImplementedError("TODO partial max")
+
         return None  # defer to default implementation
 
     def _sample(self, sampled_vars, sample_inputs, rng_key):

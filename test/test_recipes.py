@@ -10,7 +10,7 @@ import pytest
 import funsor.ops as ops
 from funsor.domains import Bint, Real, Reals
 from funsor.montecarlo import extract_samples
-from funsor.recipes import forward_filter_backward_rsample
+from funsor.recipes import forward_filter_backward_rsample, forward_max_backward_argmax
 from funsor.terms import Lambda, Variable
 from funsor.testing import assert_close, random_gaussian
 from funsor.util import get_backend
@@ -38,6 +38,15 @@ def get_moments(samples):
     return moments
 
 
+def subs_factors(factors, plates, subs):
+    result = 0.0
+    for factor in factors.values():
+        f = factor(**subs)
+        f = f.reduce(ops.add, plates.intersection(f.inputs))
+        result += f
+    return result
+
+
 def check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob):
     """
     This can be seen as performing naive tensor variable elimination by
@@ -60,14 +69,8 @@ def check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob):
             domain = Reals[broken_shape + factor.inputs[name].shape]
             flat_vars[name] = Variable("flat_" + name, domain)[broken_plates[name]]
 
-    flat_factors = []
-    for factor in factors.values():
-        f = factor(**flat_vars)
-        f = f.reduce(ops.add, plates.intersection(f.inputs))
-        flat_factors.append(f)
-
     # Check log prob.
-    flat_joint = sum(flat_factors)
+    flat_joint = subs_factors(factors, plates, flat_vars)
     log_Z = flat_joint.reduce(ops.logaddexp)
     flat_samples = {}
     for k, v in actual_samples.items():
@@ -92,34 +95,51 @@ def check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob):
     assert_close(actual_moments, expected_moments, atol=0.02, rtol=None)
 
 
-def test_ffbr_1():
+def check_fmba(factors, eliminate, plates, actual_samples, actual_log_prob):
+    pass  # TODO
+
+
+@pytest.mark.parametrize("backward", ["sample", "argmax"])
+def test_ffbr_1(backward):
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
         pyro.sample("b", dist.Normal(a, 1), obs=data)
     """
     num_samples = int(1e5)
-
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
         "b": random_gaussian(OrderedDict({"a": Real})),
     }
     eliminate = frozenset(["a"])
     plates = frozenset()
-    sample_inputs = OrderedDict(particle=Bint[num_samples])
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
-    assert set(actual_samples) == {"a"}
-    assert actual_samples["a"].output == Real
-    assert set(actual_samples["a"].inputs) == {"particle"}
+    if backward == "sample":
+        sample_inputs = OrderedDict(particle=Bint[num_samples])
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+        assert set(actual_samples) == {"a"}
+        assert actual_samples["a"].output == Real
+        assert set(actual_samples["a"].inputs) == {"particle"}
+        check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
-    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
+    elif backward == "argmax":
+        actual_samples, actual_log_prob = forward_max_backward_argmax(
+            factors, eliminate, plates
+        )
+        assert set(actual_samples) == {"a"}
+        assert actual_samples["a"].output == Real
+        assert not actual_samples["a"].inputs
+        check_fmba(factors, eliminate, plates, actual_samples, actual_log_prob)
+
+    else:
+        raise ValueError(backward)
 
 
-def test_ffbr_2():
+@pytest.mark.parametrize("backward", ["sample", "argmax"])
+def test_ffbr_2(backward):
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
@@ -127,7 +147,6 @@ def test_ffbr_2():
         pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
     """
     num_samples = int(1e5)
-
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
         "b": random_gaussian(OrderedDict({"b": Real})),
@@ -135,22 +154,37 @@ def test_ffbr_2():
     }
     eliminate = frozenset(["a", "b"])
     plates = frozenset()
-    sample_inputs = {"particle": Bint[num_samples]}
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
-    assert set(actual_samples) == {"a", "b"}
-    assert actual_samples["a"].output == Real
-    assert actual_samples["b"].output == Real
-    assert set(actual_samples["a"].inputs) == {"particle"}
-    assert set(actual_samples["b"].inputs) == {"particle"}
+    if backward == "sample":
+        sample_inputs = {"particle": Bint[num_samples]}
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+        assert set(actual_samples) == {"a", "b"}
+        assert actual_samples["a"].output == Real
+        assert actual_samples["b"].output == Real
+        assert set(actual_samples["a"].inputs) == {"particle"}
+        assert set(actual_samples["b"].inputs) == {"particle"}
+        check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
-    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
+    elif backward == "argmax":
+        actual_samples, actual_log_prob = forward_max_backward_argmax(
+            factors, eliminate, plates
+        )
+        assert set(actual_samples) == {"a", "b"}
+        assert actual_samples["a"].output == Real
+        assert actual_samples["b"].output == Real
+        assert not actual_samples["a"].inputs
+        assert not actual_samples["b"].inputs
+        check_fmba(factors, eliminate, plates, actual_samples, actual_log_prob)
+
+    else:
+        raise ValueError(backward)
 
 
-def test_ffbr_3():
+@pytest.mark.parametrize("backward", ["sample", "argmax"])
+def test_ffbr_3(backward):
     """
     def model(data):
         a = pyro.sample("a", dist.Normal(0, 1))
@@ -159,7 +193,6 @@ def test_ffbr_3():
             pyro.sample("c", dist.Normal(a, b.exp()), obs=data)
     """
     num_samples = int(1e5)
-
     factors = {
         "a": random_gaussian(OrderedDict({"a": Real})),
         "b": random_gaussian(OrderedDict({"i": Bint[2], "b": Real})),
@@ -169,17 +202,31 @@ def test_ffbr_3():
     plates = frozenset(["i"])
     sample_inputs = {"particle": Bint[num_samples]}
 
-    rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
-    actual_samples, actual_log_prob = forward_filter_backward_rsample(
-        factors, eliminate, plates, sample_inputs, rng_key
-    )
-    assert set(actual_samples) == {"a", "b"}
-    assert actual_samples["a"].output == Real
-    assert actual_samples["b"].output == Real
-    assert set(actual_samples["a"].inputs) == {"particle"}
-    assert set(actual_samples["b"].inputs) == {"particle", "i"}
+    if backward == "sample":
+        rng_key = None if get_backend() != "jax" else np.array([0, 0], dtype=np.uint32)
+        actual_samples, actual_log_prob = forward_filter_backward_rsample(
+            factors, eliminate, plates, sample_inputs, rng_key
+        )
+        assert set(actual_samples) == {"a", "b"}
+        assert actual_samples["a"].output == Real
+        assert actual_samples["b"].output == Real
+        assert set(actual_samples["a"].inputs) == {"particle"}
+        assert set(actual_samples["b"].inputs) == {"particle", "i"}
+        check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
 
-    check_ffbr(factors, eliminate, plates, actual_samples, actual_log_prob)
+    elif backward == "argmax":
+        actual_samples, actual_log_prob = forward_max_backward_argmax(
+            factors, eliminate, plates
+        )
+        assert set(actual_samples) == {"a", "b"}
+        assert actual_samples["a"].output == Real
+        assert actual_samples["b"].output == Real
+        assert set(actual_samples["a"].inputs) == set()
+        assert set(actual_samples["b"].inputs) == {"i"}
+        check_fmba(factors, eliminate, plates, actual_samples, actual_log_prob)
+
+    else:
+        raise ValueError(backward)
 
 
 def test_ffbr_4():
