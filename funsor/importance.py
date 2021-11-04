@@ -15,9 +15,9 @@ class Importance(Funsor):
     interpretation is ``Delta + log_importance_weight``.
     The user-facing interface is the :meth:`Funsor.approximate` method.
 
-    :param Funsor model: An exact funsor depending on ``sampled_vars``.
+    :param Funsor model: A funsor depending on ``sampled_vars``.
     :param Funsor guide: A proposal distribution.
-    :param frozenset approx_vars: A set of variables over which to approximate.
+    :param frozenset sampled_vars: A set of input variables to sample.
     """
 
     def __init__(self, model, guide, sampled_vars):
@@ -40,18 +40,18 @@ class Importance(Funsor):
         return self.model.reduce(op, reduced_vars)
 
 
-@eager.register(Importance, Funsor, Delta)
-def eager_importance(model, guide):
+@eager.register(Importance, Funsor, Delta, frozenset)
+def eager_importance(model, guide, sampled_vars):
     # Delta + log_importance_weight
     return guide + model - guide
 
 
 lazy_importance = DispatchedInterpretation("lazy_importance")
 """
-Lazy interpretation of Importance with a Delta guide.
+Lazy interpretation of the Importance with a Delta guide.
 """
 
 
-@lazy_importance.register(Importance, Funsor, Delta)
-def _lazy_importance(model, guide):
-    return reflect.interpret(Importance, model, guide)
+@lazy_importance.register(Importance, Funsor, Delta, frozenset)
+def _lazy_importance(model, guide, sampled_vars):
+    return reflect.interpret(Importance, model, guide, sampled_vars)

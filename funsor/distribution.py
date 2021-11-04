@@ -242,7 +242,8 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             )
             model = funsor.delta.Delta(value_name, funsor_value, log_prob)
             guide = funsor.delta.Delta(value_name, funsor_value, ops.detach(log_prob))
-            result = funsor.importance.Importance(model, guide)
+            sampled_var = frozenset({Variable(value_name, self.inputs[value_name])})
+            result = funsor.importance.Importance(model, guide, sampled_var)
         else:
             result = funsor.delta.Delta(value_name, funsor_value)
         return result
