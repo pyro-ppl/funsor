@@ -1299,7 +1299,7 @@ class Approximate(Funsor):
 
     :param op: An associative operator.
     :type op: ~funsor.ops.AssociativeOp
-    :param Funsor model: An exact funsor depending on ``reduced_vars``.
+    :param Funsor model: An exact funsor depending on ``approx_vars``.
     :param Funsor guide: A proposal funsor guiding optional approximation.
     :param frozenset approx_vars: A set of variables over which to approximate.
     """
