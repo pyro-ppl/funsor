@@ -67,10 +67,7 @@ class AdjointTape(Interpretation):
         self._old_interpretation = interpreter.get_interpretation()
         return super().__enter__()
 
-    def adjoint(self, sum_op, bin_op, root, targets=None, *, batch_vars=frozenset()):
-        # TODO Replace this with root + Constant(...) after #548 merges.
-        root_vars = root.input_vars | batch_vars
-
+    def adjoint(self, sum_op, bin_op, root, targets=None, *, batch_vars=set()):
         zero = to_funsor(ops.UNITS[sum_op])
         one = to_funsor(ops.UNITS[bin_op])
         adjoint_values = defaultdict(lambda: zero)
@@ -118,7 +115,7 @@ class AdjointTape(Interpretation):
             in_adjs = adjoint_ops(fn, sum_op, bin_op, adjoint_values[output], *inputs)
             for v, adjv in in_adjs:
                 # Marginalize out message variables that don't appear in recipients.
-                agg_vars = adjv.input_vars - v.input_vars - root_vars
+                agg_vars = adjv.input_vars - v.input_vars - root.input_vars - batch_vars
                 assert "particle" not in {var.name for var in agg_vars}  # DEBUG FIXME
                 old_value = adjoint_values[v]
                 adjoint_values[v] = sum_op(old_value, adjv.reduce(sum_op, agg_vars))

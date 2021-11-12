@@ -106,6 +106,11 @@ class Contraction(Funsor):
         sampled_vars = sampled_vars.intersection(self.inputs)
         if not sampled_vars:
             return self
+        for term in self.terms:
+            if isinstance(term, Delta):
+                sampled_vars -= term.fresh
+        if not sampled_vars:
+            return self
 
         if self.red_op in (ops.null, ops.logaddexp):
             if rng_key is not None and get_backend() == "jax":
@@ -116,8 +121,8 @@ class Contraction(Funsor):
                 rng_keys = [None] * len(self.terms)
 
             if self.bin_op in (ops.null, ops.logaddexp):
-                # Design choice: we sample over logaddexp reductions, but leave logaddexp
-                # binary choices symbolic.
+                # Design choice: we sample over logaddexp reductions, but leave
+                # logaddexp binary choices symbolic.
                 terms = [
                     term._sample(
                         sampled_vars.intersection(term.inputs), sample_inputs, rng_key
@@ -132,11 +137,15 @@ class Contraction(Funsor):
                     greedy_vars = sampled_vars.intersection(term.inputs)
                     if greedy_vars:
                         break
+                assert greedy_vars
                 greedy_terms, terms = [], []
                 for term in self.terms:
-                    (
-                        terms if greedy_vars.isdisjoint(term.inputs) else greedy_terms
-                    ).append(term)
+                    if greedy_vars.isdisjoint(term.inputs):
+                        terms.append(term)
+                    elif isinstance(term, Delta) and greedy_vars.isdisjoint(term.fresh):
+                        terms.append(term)
+                    else:
+                        greedy_terms.append(term)
                 if len(greedy_terms) == 1:
                     term = greedy_terms[0]
                     terms.append(term._sample(greedy_vars, sample_inputs, rng_keys[0]))
@@ -392,7 +401,7 @@ def _(fn):
 # Normalizing Contractions
 ##########################################
 
-ORDERING = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4}
+ORDERING = {Delta: 1, Number: 2, Tensor: 3, Gaussian: 4, Unary[ops.NegOp, Gaussian]: 5}
 GROUND_TERMS = tuple(ORDERING)
 
 

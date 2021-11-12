@@ -321,6 +321,12 @@ def _new_full(x, shape, value):
     return x.new_full(shape, value)
 
 
+@ops.randn.register(torch.Tensor)
+def _randn(prototype, shape, rng_key=None):
+    assert isinstance(shape, tuple)
+    return torch.randn(shape, dtype=prototype.dtype, device=prototype.device)
+
+
 @ops.permute.register(torch.Tensor)
 def _permute(x, dims):
     return x.permute(dims)

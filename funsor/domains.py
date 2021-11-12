@@ -494,6 +494,22 @@ def _find_domain_stack(op, parts):
     return output
 
 
+@find_domain.register(ops.CatOp)
+def _find_domain_cat(op, parts):
+    dim = op.defaults["axis"]
+    if dim >= 0:
+        event_dims = {len(x.shape) for x in parts}
+        assert len(event_dims) == 1, "undefined"
+        dim = dim - next(iter(event_dims))
+    assert dim < 0
+    shape = broadcast_shape(*(x.shape[:dim] for x in parts))
+    shape += (sum(x.shape[dim] for x in parts),)
+    if dim < -1:
+        shape += broadcast_shape(*(x.shape[dim + 1 :] for x in parts))
+    output = Array[parts[0].dtype, shape]
+    return output
+
+
 @find_domain.register(ops.EinsumOp)
 def _find_domain_einsum(op, operands):
     equation = op.defaults["equation"]

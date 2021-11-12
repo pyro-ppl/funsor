@@ -180,7 +180,7 @@ def _astype(x, dtype):
 
 
 @FinitaryOp.make
-def cat(parts, axis):
+def cat(parts, axis=0):
     raise NotImplementedError
 
 
@@ -367,6 +367,12 @@ def new_eye(x, shape):
 
 
 @UnaryOp.make
+def randn(prototype, shape, rng_key=None):
+    assert isinstance(shape, tuple)
+    return np.random.randn(*shape)
+
+
+@UnaryOp.make
 def permute(x, dims):
     return np.transpose(x, axes=dims)
 
@@ -496,6 +502,7 @@ __all__ = [
     "permute",
     "prod",
     "qr",
+    "randn",
     "sample",
     "scatter",
     "scatter_add",

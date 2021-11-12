@@ -584,6 +584,17 @@ def test_cat_simple():
         assert xy(i=i) is Number(i)
 
 
+@pytest.mark.parametrize("right_shape", [(), (4,), (3, 2)], ids=str)
+@pytest.mark.parametrize("left_shape", [(), (4,), (3, 2)], ids=str)
+def test_cat_variable(left_shape, right_shape):
+    x = Variable("x", Reals[left_shape + (1,) + right_shape])
+    y = Variable("y", Reals[left_shape + (2,) + right_shape])
+    z = Variable("z", Reals[left_shape + (3,) + right_shape])
+
+    actual = ops.cat([x, y, z], -1 - len(right_shape))
+    assert actual.output == Reals[left_shape + (6,) + right_shape]
+
+
 def test_align_simple():
     x = Variable("x", Real)
     y = Variable("y", Real)
