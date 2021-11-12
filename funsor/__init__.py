@@ -10,6 +10,7 @@ from funsor.op_factory import make_op
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Tensor, function
 from funsor.terms import (
+    Approximate,
     Cat,
     Funsor,
     Independent,
@@ -56,6 +57,7 @@ __version__ = "0.4.0"
 
 __all__ = [
     "__version__",
+    "Approximate",
     "Array",
     "Bint",
     "Cat",

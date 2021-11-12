@@ -101,3 +101,11 @@ def test_vindex(data1, provenance1, data2, provenance2, data3, provenance3):
     result = Vindex(data1)[data2.long().unsqueeze(-1), data3]
     actual = getattr(result, "_provenance", frozenset())
     assert actual == expected
+
+
+def test_namedtuple():
+    a = ProvenanceTensor(torch.randn(3, 3), frozenset({"a"}))
+    b = ProvenanceTensor(torch.randn(3, 3).tril(), frozenset({"b"}))
+    result = a.triangular_solve(b).solution
+    actual = getattr(result, "_provenance", frozenset())
+    assert actual == frozenset({"a", "b"})
