@@ -952,22 +952,6 @@ def test_eager_add():
     assert isinstance(actual, Tensor)
 
 
-@pytest.mark.xfail(reason="Not implemented")
-def test_eager_sub():
-    inputs = OrderedDict(a=Real)
-    g1 = random_gaussian(inputs)
-    g2 = random_gaussian(inputs)
-
-    # Add them to ensure the following is well conditioned.
-    g12 = g1 + g2
-    assert isinstance(g12, (Gaussian, GaussianMixture))
-
-    expected = g1.reduce(ops.logaddexp)
-    actual = (g12 - g2).reduce(ops.logaddexp)
-    assert isinstance(actual, Tensor)
-    assert_close(actual, expected)
-
-
 @pytest.mark.parametrize("interp", [eager, lazy])
 def test_nested_subs(interp):
     with interp:
