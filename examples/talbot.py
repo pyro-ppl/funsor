@@ -132,15 +132,11 @@ def main(args):
         "rate": Tensor(torch.tensor(5.0, requires_grad=True)),
         "nsteps": Tensor(torch.tensor(2.0, requires_grad=True)),
     }
+    adam = Adam(args.num_steps, lr=args.learning_rate, log_every=args.log_every)
 
     with Talbot(num_steps=args.talbot_num_steps):
         # Fit the data
-        with Adam(
-            args.num_steps,
-            lr=args.learning_rate,
-            log_every=args.log_every,
-            params=init_params,
-        ) as optim:
+        with adam.with_init(init_params) as optim:
             loss.reduce(ops.min, {"rate", "nsteps"})
         # Fitted curve.
         fitted_curve = pred(rate=optim.param("rate"), nsteps=optim.param("nsteps"))

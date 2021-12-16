@@ -162,7 +162,6 @@ def test_generate_data_plate(backend):
         ("pyro", "ClippedAdam"),
         ("minipyro", "Adam"),
         ("funsor", "Adam"),
-        ("funsor", "ClippedAdam"),
     ],
 )
 def test_optimizer(backend, optim_name, jit):
@@ -384,8 +383,11 @@ def test_elbo_plate_plate(backend, outer_dim, inner_dim):
             vectorize_particles=True,
             strict_enumeration_warning=True,
         )
-        elbo = elbo.differentiable_loss if backend == "pyro" else elbo
-        actual_loss = funsor.to_data(elbo(model, guide))
+        if backend == "pyro":
+            elbo = elbo.differentiable_loss
+            actual_loss = funsor.to_data(elbo(model, guide))
+        else:
+            actual_loss = funsor.to_data(elbo(model, guide)(q=q))
         actual_loss.backward()
         actual_grad = funsor.to_data(pyro.param("q")).grad
 
@@ -472,12 +474,20 @@ def test_elbo_enumerate_plates_1(backend):
         def guide():
             pass
 
+        params = {name: pyro.param(name) for name in pyro.get_param_store().keys()}
         elbo = infer.TraceEnum_ELBO(max_plate_nesting=1)
-        elbo = elbo.differentiable_loss if backend == "pyro" else elbo
-        auto_loss = elbo(auto_model, guide)
+        if backend == "pyro":
+            elbo = elbo.differentiable_loss
+            auto_loss = elbo(auto_model, guide)
+        else:
+            auto_loss = elbo(auto_model, guide)(**params)
+
         elbo = infer.TraceEnum_ELBO(max_plate_nesting=0)
-        elbo = elbo.differentiable_loss if backend == "pyro" else elbo
-        hand_loss = elbo(hand_model, guide)
+        if backend == "pyro":
+            elbo = elbo.differentiable_loss
+            hand_loss = elbo(hand_model, guide)
+        else:
+            hand_loss = elbo(hand_model, guide)(**params)
         _check_loss_and_grads(hand_loss, auto_loss)
 
 
@@ -583,12 +593,20 @@ def test_elbo_enumerate_plate_7(backend):
                 pyro.sample("c_{}".format(i), dist.Categorical(probs_c[a]))
 
         data = torch.tensor([0, 0])
+        params = {name: pyro.param(name) for name in pyro.get_param_store().keys()}
         elbo = infer.TraceEnum_ELBO(max_plate_nesting=1)
-        elbo = elbo.differentiable_loss if backend == "pyro" else elbo
-        auto_loss = elbo(auto_model, auto_guide, data)
+        if backend == "pyro":
+            elbo = elbo.differentiable_loss
+            auto_loss = elbo(auto_model, auto_guide, data)
+        else:
+            auto_loss = elbo(auto_model, auto_guide, data)(**params)
+
         elbo = infer.TraceEnum_ELBO(max_plate_nesting=0)
-        elbo = elbo.differentiable_loss if backend == "pyro" else elbo
-        hand_loss = elbo(hand_model, hand_guide, data)
+        if backend == "pyro":
+            elbo = elbo.differentiable_loss
+            hand_loss = elbo(hand_model, hand_guide, data)
+        else:
+            hand_loss = elbo(hand_model, hand_guide, data)(**params)
         _check_loss_and_grads(hand_loss, auto_loss)
 
 
