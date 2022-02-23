@@ -67,7 +67,8 @@ def generate_data(num_frames, num_sensors):
         ]
     )
     trans_dist = dist.MultivariateNormal(
-        torch.zeros(4), scale_tril=trans_noise * NCV_PROCESS_NOISE.cholesky()
+        torch.zeros(4),
+        scale_tril=trans_noise * torch.linalg.cholesky(NCV_PROCESS_NOISE),
     )
 
     # define biased sensors
@@ -128,7 +129,7 @@ class Model(nn.Module):
         curr = Variable("curr", Reals[4])
         self.trans_dist = f_dist.MultivariateNormal(
             loc=prev @ NCV_TRANSITION_MATRIX,
-            scale_tril=trans_noise * NCV_PROCESS_NOISE.cholesky(),
+            scale_tril=trans_noise * torch.linalg.cholesky(NCV_PROCESS_NOISE),
             value=curr,
         )
 
@@ -239,7 +240,9 @@ def main(args):
         or not args.metrics_filename
         or not os.path.exists(args.metrics_filename)
     ):
-        results = track(args)
+        # Increase compression threshold for numerical stability.
+        with funsor.gaussian.Gaussian.set_compression_threshold(3):
+            results = track(args)
     else:
         results = torch.load(args.metrics_filename)
 

@@ -3,16 +3,13 @@
 
 from collections import OrderedDict
 
-import pytest
-
 import funsor.ops as ops
 from funsor.constant import Constant
 from funsor.delta import Delta
 from funsor.domains import Bint, Real
 from funsor.tensor import Tensor
 from funsor.terms import Number, Variable, to_data, to_funsor
-from funsor.testing import assert_close, randn
-from funsor.util import get_backend
+from funsor.testing import assert_close, randn, requires_backend
 
 
 def test_eager_subs_variable():
@@ -86,10 +83,7 @@ def test_align():
                 assert x(a=0, b=b, i=i, j=j) == y(a=0, b=b, i=i, j=j)
 
 
-@pytest.mark.skipif(
-    get_backend() != "torch",
-    reason="numpy/jax backend has not implemented ProvenanceTensor",
-)
+@requires_backend("torch", reason="requires ProvenanceTensor")
 def test_to_funsor():
     import torch
 
@@ -101,10 +95,7 @@ def test_to_funsor():
     assert c is Constant(OrderedDict(x=Real), Tensor(data))
 
 
-@pytest.mark.skipif(
-    get_backend() != "torch",
-    reason="numpy/jax backend has not implemented ProvenanceTensor",
-)
+@requires_backend("torch", reason="requires ProvenanceTensor")
 def test_to_data():
     import torch
 

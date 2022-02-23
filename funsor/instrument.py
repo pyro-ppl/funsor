@@ -48,7 +48,6 @@ if DEBUG:
             return fn
         return DebugLogged(fn)
 
-
 elif PROFILE:
 
     class ProfileLogged(object):
@@ -75,7 +74,6 @@ elif PROFILE:
         if isinstance(fn, ProfileLogged):
             return fn
         return ProfileLogged(fn)
-
 
 else:
 

@@ -10,6 +10,7 @@ from funsor.op_factory import make_op
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Tensor, function
 from funsor.terms import (
+    Approximate,
     Cat,
     Funsor,
     Independent,
@@ -45,6 +46,7 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     joint,
     montecarlo,
     ops,
+    precondition,
     recipes,
     sum_product,
     terms,
@@ -55,6 +57,7 @@ __version__ = "0.4.0"
 
 __all__ = [
     "__version__",
+    "Approximate",
     "Array",
     "Bint",
     "Cat",
@@ -100,6 +103,7 @@ __all__ = [
     "montecarlo",
     "of_shape",
     "ops",
+    "precondition",
     "pretty",
     "quote",
     "reals",

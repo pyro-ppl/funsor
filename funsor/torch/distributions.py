@@ -15,6 +15,7 @@ from pyro.distributions.torch_distribution import (
 
 import funsor.ops as ops
 from funsor.cnf import Contraction
+from funsor.constant import Constant
 from funsor.distribution import (  # noqa: F401
     FUNSOR_DIST_NAMES,
     Bernoulli,
@@ -362,6 +363,9 @@ eager.register(Binomial, Funsor, Funsor, Funsor)(eager_binomial)  # noqa: F821
 eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: F821)
 eager.register(Categorical, Funsor, Tensor)(eager_categorical_funsor)  # noqa: F821)
 eager.register(Categorical, Tensor, Variable)(eager_categorical_tensor)  # noqa: F821)
+eager.register(Categorical, Constant[Tuple, Tensor], Variable)(
+    eager_categorical_tensor
+)  # noqa: F821)
 eager.register(Delta, Tensor, Tensor, Tensor)(eager_delta_tensor)  # noqa: F821
 eager.register(Delta, Funsor, Funsor, Variable)(
     eager_delta_funsor_variable

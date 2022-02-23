@@ -180,7 +180,7 @@ def _astype(x, dtype):
 
 
 @FinitaryOp.make
-def cat(parts, axis):
+def cat(parts, axis=0):
     raise NotImplementedError
 
 
@@ -218,6 +218,23 @@ def cholesky_solve(x, y):
     y_inv = np.linalg.inv(y)
     A = np.swapaxes(y_inv, -2, -1) @ y_inv
     return A @ x
+
+
+@UnaryOp.make
+def qr(x, mode="reduced"):
+    if len(x.shape) == 2:
+        return np.linalg.qr(x, mode=mode)
+    # Manually vectorize.
+    batch_shape, event_shape = x.shape[:-2], x.shape[-2:]
+    flat_Qs = []
+    flat_Rs = []
+    for col in x.reshape((-1,) + event_shape):
+        flat_Q, flat_R = np.linalg.qr(col, mode=mode)
+        flat_Qs.append(flat_Q)
+        flat_Rs.append(flat_R)
+    Q = np.stack(flat_Qs).reshape(batch_shape + flat_Qs[0].shape[-2:])
+    R = np.stack(flat_Rs).reshape(batch_shape + flat_Rs[0].shape[-2:])
+    return Q, R
 
 
 @UnaryOp.make
@@ -350,6 +367,12 @@ def new_eye(x, shape):
 
 
 @UnaryOp.make
+def randn(prototype, shape, rng_key=None):
+    assert isinstance(shape, tuple)
+    return np.random.randn(*shape)
+
+
+@UnaryOp.make
 def permute(x, dims):
     return np.transpose(x, axes=dims)
 
@@ -420,11 +443,21 @@ def transpose(array, axis1, axis2):
 transpose.register(array)(np.swapaxes)
 
 
+@UnaryOp.make
+def flip(array, axis):
+    return np.flip(array, axis)
+
+
 @BinaryOp.make
 def triangular_solve(x, y, upper=False, transpose=False):
     if transpose:
         y = np.swapaxes(y, -2, -1)
     return np.linalg.inv(y) @ x
+
+
+@UnaryOp.make
+def triangular_inv(x, upper=False):
+    return np.linalg.inv(x)
 
 
 @UnaryOp.make
@@ -455,6 +488,7 @@ __all__ = [
     "einsum",
     "expand",
     "finfo",
+    "flip",
     "full_like",
     "is_numeric_array",
     "isnan",
@@ -467,6 +501,8 @@ __all__ = [
     "new_zeros",
     "permute",
     "prod",
+    "qr",
+    "randn",
     "sample",
     "scatter",
     "scatter_add",
@@ -474,6 +510,7 @@ __all__ = [
     "std",
     "sum",
     "transpose",
+    "triangular_inv",
     "triangular_solve",
     "unsqueeze",
     "var",

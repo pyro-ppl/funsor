@@ -23,7 +23,9 @@ ops.sigmoid.register(torch.Tensor)(torch.sigmoid)
 ops.sqrt.register(torch.Tensor)(torch.sqrt)
 ops.tanh.register(torch.Tensor)(torch.tanh)
 ops.transpose.register(torch.Tensor)(torch.transpose)
+ops.flip.register(torch.Tensor)(torch.flip)
 ops.unsqueeze.register(torch.Tensor)(torch.unsqueeze)
+ops.qr.register(torch.Tensor)(torch.linalg.qr)
 
 
 ###########################################
@@ -192,6 +194,13 @@ def _cholesky_inverse(x):
     return torch.eye(x.size(-1)).cholesky_solve(x)
 
 
+@ops.triangular_inv.register(torch.Tensor)
+def _triangular_inv(x, upper=False):
+    if x.size(-1) == 1:
+        return x.reciprocal()
+    return torch.eye(x.size(-1)).triangular_solve(x, upper=upper).solution
+
+
 @ops.detach.register(torch.Tensor)
 def _detach(x):
     return x.detach()
@@ -310,6 +319,12 @@ def _new_zeros(x, shape):
 @ops.new_full.register(torch.Tensor)
 def _new_full(x, shape, value):
     return x.new_full(shape, value)
+
+
+@ops.randn.register(torch.Tensor)
+def _randn(prototype, shape, rng_key=None):
+    assert isinstance(shape, tuple)
+    return torch.randn(shape, dtype=prototype.dtype, device=prototype.device)
 
 
 @ops.permute.register(torch.Tensor)

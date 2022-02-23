@@ -40,7 +40,7 @@ class ProvenanceTensor(torch.Tensor):
             if isinstance(arg, ProvenanceTensor):
                 provenance |= arg._provenance
                 _args.append(arg._t)
-            elif isinstance(arg, tuple):
+            elif isinstance(arg, (tuple, list)):
                 _arg = []
                 for a in arg:
                     if isinstance(a, ProvenanceTensor):
@@ -54,12 +54,12 @@ class ProvenanceTensor(torch.Tensor):
         ret = func(*_args, **kwargs)
         if isinstance(ret, torch.Tensor):
             return ProvenanceTensor(ret, provenance=provenance)
-        if isinstance(ret, tuple):
+        if isinstance(ret, (tuple, list)):
             _ret = []
             for r in ret:
                 if isinstance(r, torch.Tensor):
                     _ret.append(ProvenanceTensor(r, provenance=provenance))
                 else:
                     _ret.append(r)
-            return tuple(_ret)
+            return type(ret)(_ret)
         return ret

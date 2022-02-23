@@ -74,7 +74,6 @@ if instrument.DEBUG:
         print(indent + "-> " + result_str)
         return result
 
-
 elif _TYPECHECK:
 
     def interpret(cls, *args):
@@ -83,7 +82,6 @@ elif _TYPECHECK:
         if interpretation is not reflect:
             reflect.interpret(cls, *args)  # for checking only
         return interpretation.interpret(cls, *args)
-
 
 else:
     interpret = Interpreter()

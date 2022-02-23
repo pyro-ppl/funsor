@@ -6,10 +6,11 @@ from collections import OrderedDict
 
 from funsor.cnf import Contraction
 from funsor.delta import Delta
+from funsor.gaussian import Gaussian
 from funsor.integrate import Integrate
 from funsor.interpretations import StatefulInterpretation
 from funsor.tensor import Tensor
-from funsor.terms import Approximate, Funsor, Number
+from funsor.terms import Approximate, Funsor, Number, Subs, Unary
 from funsor.util import get_backend
 
 from . import ops
@@ -86,8 +87,11 @@ def _extract_samples_contraction(discrete_density):
     return result
 
 
+@extract_samples.register(Subs)
 @extract_samples.register(Number)
 @extract_samples.register(Tensor)
+@extract_samples.register(Gaussian)
+@extract_samples.register(Unary)
 def _extract_samples_scale(discrete_density):
     return {}
 

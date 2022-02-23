@@ -5,6 +5,7 @@ import numbers
 import typing
 
 import jax.numpy as np
+import jax.random
 import numpy as onp
 from jax import lax
 from jax.core import Tracer
@@ -30,7 +31,9 @@ ops.sigmoid.register(array)(expit)
 ops.sqrt.register(array)(np.sqrt)
 ops.tanh.register(array)(np.tanh)
 ops.transpose.register(array)(np.swapaxes)
+ops.flip.register(array)(np.flip)
 ops.unsqueeze.register(array)(np.expand_dims)
+ops.qr.register(array)(np.linalg.qr)
 
 
 ###########################################
@@ -257,6 +260,12 @@ def _new_zeros(x, shape):
     return onp.zeros(shape, dtype=np.result_type(x))
 
 
+@ops.randn.register(array)
+def _randn(prototype, shape, rng_key=None):
+    assert isinstance(shape, tuple)
+    return jax.random.normal(rng_key, shape, dtype=prototype.dtype)
+
+
 @ops.reciprocal.register(array)
 def _reciprocal(x):
     result = np.clip(np.reciprocal(x), a_max=np.finfo(np.result_type(x)).max)
@@ -345,3 +354,11 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     permute_inv_dims += (sol.ndim - 1, prepend_ndim + y.ndim - 2)
     sol = np.transpose(sol, permute_inv_dims)
     return sol.reshape(batch_shape + (n, m))
+
+
+@ops.triangular_inv.register(array)
+def _triangular_inv(x, upper=False):
+    if x.shape[-1] == 1:
+        return 1 / x
+    eye = _new_eye(x, x.shape[:-1])
+    return _triangular_solve(eye, x, upper=upper)

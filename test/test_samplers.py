@@ -20,6 +20,7 @@ from funsor.tensor import Tensor, align_tensors
 from funsor.terms import Variable
 from funsor.testing import (
     assert_close,
+    excludes_backend,
     id_from_inputs,
     randn,
     random_gaussian,
@@ -28,9 +29,7 @@ from funsor.testing import (
 )
 from funsor.util import get_backend
 
-pytestmark = pytest.mark.skipif(
-    get_backend() == "numpy", reason="numpy does not have distributions backend"
-)
+pytestmark = excludes_backend("numpy", reason="requires distributions library")
 if get_backend() != "numpy":
     dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
     backend_dist = dist.dist
@@ -314,7 +313,10 @@ def test_gaussian_distribution(event_inputs, batch_inputs):
     q_vars = sampled_vars | frozenset(["particle"])
     # Check zeroth moment.
     assert_close(
-        q.reduce(ops.logaddexp, q_vars), p.reduce(ops.logaddexp, p_vars), atol=1e-6
+        q.reduce(ops.logaddexp, q_vars),
+        p.reduce(ops.logaddexp, p_vars),
+        atol=1e-6,
+        rtol=None,
     )
     for k1, d1 in event_inputs.items():
         x = Variable(k1, d1)

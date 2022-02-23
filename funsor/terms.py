@@ -38,7 +38,7 @@ from funsor.ops import AssociativeOp, GetitemOp, Op
 from funsor.ops.builtin import normalize_ellipsis, parse_ellipsis, parse_slice
 from funsor.syntax import INFIX_OPERATORS, PREFIX_OPERATORS
 from funsor.typing import GenericTypeMeta, Variadic, deep_type, get_args, get_origin
-from funsor.util import getargspec, lazy_property, pretty, quote
+from funsor.util import getargspec, lazy_property, pretty, quote, register_pprint
 
 from . import instrument, interpreter, ops
 
@@ -182,7 +182,8 @@ class FunsorMeta(GenericTypeMeta):
     """
 
     def __init__(cls, name, bases, dct):
-        super(FunsorMeta, cls).__init__(name, bases, dct)
+        super().__init__(name, bases, dct)
+        register_pprint(cls)
         if not cls.__args__:
             cls._ast_fields = getargspec(cls.__init__)[0][1:]
             cls._cons_cache = WeakValueDictionary()
@@ -961,11 +962,25 @@ class Subs(Funsor, metaclass=SubsMeta):
 
 @lazy.register(Subs, Funsor, object)
 @eager.register(Subs, Funsor, object)
-def eager_subs(arg, subs):
+def eager_subs_funsor(arg, subs):
     assert isinstance(subs, tuple)
     if not any(k in arg.inputs for k, v in subs):
         return arg
     return substitute(arg, subs)
+
+
+@lazy.register(Subs, Subs, object)
+@eager.register(Subs, Subs, object)
+def eager_subs_subs(arg, subs):
+    assert isinstance(subs, tuple)
+    subs = tuple((k, v) for k, v in subs if k in arg.inputs)
+    if not subs:
+        return arg
+
+    # Fuse substitutions.
+    fused_subs = tuple((k, Subs(v, subs)) for k, v in arg.subs.items())
+    fused_subs += subs
+    return Subs(arg.arg, fused_subs)
 
 
 @die.register(Subs, Funsor, tuple)
@@ -1284,7 +1299,7 @@ class Approximate(Funsor):
 
     :param op: An associative operator.
     :type op: ~funsor.ops.AssociativeOp
-    :param Funsor model: An exact funsor depending on ``reduced_vars``.
+    :param Funsor model: An exact funsor depending on ``approx_vars``.
     :param Funsor guide: A proposal funsor guiding optional approximation.
     :param frozenset approx_vars: A set of variables over which to approximate.
     """
@@ -1800,7 +1815,7 @@ class Independent(Funsor):
         assert 'i' not in g.inputs
 
         x = Variable('x', Reals[3, 4, 5])
-        g == f(x_i=x['i']).reduce(ops.logaddexp, 'i')
+        g == f(x_i=x['i']).reduce(ops.add, 'i')
 
     :param Funsor fn: A funsor.
     :param str reals_var: The name of a real-tensor input.

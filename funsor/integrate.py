@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from collections import OrderedDict
+from functools import reduce
 from typing import Tuple, Union
 
 import funsor.ops as ops
 from funsor.cnf import Contraction, GaussianMixture
 from funsor.constant import Constant
 from funsor.delta import Delta
-from funsor.gaussian import Gaussian, _mv, _trace_mm, _vv, align_gaussian
+from funsor.gaussian import Gaussian, _norm2, _vm, align_gaussian
 from funsor.interpretations import eager, normalize
 from funsor.tensor import Tensor
 from funsor.terms import (
@@ -110,7 +111,16 @@ def normalize_integrate_contraction(log_measure, integrand, reduced_vars):
 
 
 EagerConstant = Constant[
-    Tuple, Union[Variable, Delta, Gaussian, Number, Tensor, GaussianMixture]
+    Tuple,
+    Union[
+        Variable,
+        Delta,
+        Gaussian,
+        Unary[ops.NegOp, Gaussian],
+        Number,
+        Tensor,
+        GaussianMixture,
+    ],
 ]
 
 
@@ -120,7 +130,16 @@ EagerConstant = Constant[
     ops.MulOp,
     frozenset,
     Unary[ops.ExpOp, Union[GaussianMixture, Delta, Gaussian, Number, Tensor]],
-    (Variable, Delta, Gaussian, Number, Tensor, GaussianMixture, EagerConstant),
+    (
+        Variable,
+        Delta,
+        Gaussian,
+        Unary[ops.NegOp, Gaussian],
+        Number,
+        Tensor,
+        GaussianMixture,
+        EagerConstant,
+    ),
 )
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
     reduced_names = frozenset(v.name for v in reduced_vars)
@@ -175,16 +194,14 @@ def eager_integrate(delta, integrand, reduced_vars):
 
 
 @eager.register(Integrate, Gaussian, Variable, frozenset)
-def eager_integrate(log_measure, integrand, reduced_vars):
+def eager_integrate_gaussian_variable(log_measure, integrand, reduced_vars):
     real_input_vars = frozenset(v for v in log_measure.input_vars if v.dtype == "real")
     real_vars = reduced_vars & real_input_vars
     if real_vars == frozenset([integrand]):
         if real_vars != real_input_vars:
             return None  # TODO implement this
-        loc = ops.cholesky_solve(
-            ops.unsqueeze(log_measure.info_vec, -1), log_measure._precision_chol
-        ).squeeze(-1)
-        data = loc * ops.unsqueeze(ops.exp(log_measure.log_normalizer.data), -1)
+        loc = log_measure._mean
+        data = loc * ops.unsqueeze(ops.exp(log_measure._log_normalizer), -1)
         data = data.reshape(loc.shape[:-1] + integrand.output.shape)
         inputs = OrderedDict(
             (k, d) for k, d in log_measure.inputs.items() if d.dtype != "real"
@@ -195,7 +212,8 @@ def eager_integrate(log_measure, integrand, reduced_vars):
 
 
 @eager.register(Integrate, Gaussian, Gaussian, frozenset)
-def eager_integrate(log_measure, integrand, reduced_vars):
+def eager_integrate_gaussian_gaussian(log_measure, integrand, reduced_vars):
+    assert log_measure.is_full_rank
     reduced_names = frozenset(v.name for v in reduced_vars)
     real_vars = frozenset(v.name for v in reduced_vars if v.dtype == "real")
     if real_vars:
@@ -210,20 +228,30 @@ def eager_integrate(log_measure, integrand, reduced_vars):
             inputs = OrderedDict(
                 (k, d) for t in (log_measure, integrand) for k, d in t.inputs.items()
             )
-            lhs_info_vec, lhs_precision = align_gaussian(inputs, log_measure)
-            rhs_info_vec, rhs_precision = align_gaussian(inputs, integrand)
-            lhs = Gaussian(lhs_info_vec, lhs_precision, inputs)
+            lhs_white_vec, lhs_prec_sqrt = align_gaussian(inputs, log_measure)
+            rhs_white_vec, rhs_prec_sqrt = align_gaussian(inputs, integrand)
+            lhs = Gaussian(
+                white_vec=lhs_white_vec, prec_sqrt=lhs_prec_sqrt, inputs=inputs
+            )
 
             # Compute the expectation of a non-normalized quadratic form.
             # See "The Matrix Cookbook" (November 15, 2012) ss. 8.2.2 eq. 380.
             # http://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf
-            norm = ops.exp(lhs.log_normalizer.data)
-            lhs_cov = ops.cholesky_inverse(lhs._precision_chol)
-            lhs_loc = ops.cholesky_solve(
-                ops.unsqueeze(lhs.info_vec, -1), lhs._precision_chol
-            ).squeeze(-1)
-            vmv_term = _vv(lhs_loc, rhs_info_vec - 0.5 * _mv(rhs_precision, lhs_loc))
-            data = norm * (vmv_term - 0.5 * _trace_mm(rhs_precision, lhs_cov))
+            # If x ~ N(mean,cov) then
+            #   E[(x-m)' A (x-m)] = (m-mean)'A(m-mean) + Tr(A cov)     # eq. 380
+            # To perform this computation in rhs's internal space, we first transform
+            # lhs to rhs's whitened space
+            mean = _vm(lhs._mean, rhs_prec_sqrt)
+            norm = ops.exp(lhs._log_normalizer)
+            # Then in rhs's whitened space, A = I so Tr(A cov) = Tr(cov).
+            vmv_term = _norm2(rhs_white_vec - mean)
+            trace_term = (
+                (ops.triangular_solve(rhs_prec_sqrt, lhs._precision_chol) ** 2)
+                .sum(-1)
+                .sum(-1)
+            )
+            data = (-0.5) * norm * (vmv_term + trace_term)
+
             inputs = OrderedDict(
                 (k, d) for k, d in inputs.items() if k not in reduced_names
             )
@@ -233,6 +261,34 @@ def eager_integrate(log_measure, integrand, reduced_vars):
         raise NotImplementedError("TODO implement partial integration")
 
     return None  # defer to default implementation
+
+
+@eager.register(Integrate, Gaussian, Unary[ops.NegOp, Gaussian], frozenset)
+def eager_integrate_neg_gaussian(log_measure, integrand, reduced_vars):
+    return -Integrate(log_measure, integrand.arg, reduced_vars)
+
+
+@eager.register(
+    Integrate,
+    Gaussian,
+    Contraction[
+        ops.NullOp,
+        ops.AddOp,
+        frozenset,
+        Tuple[Union[Gaussian, Unary[ops.NegOp, Gaussian]], ...],
+    ],
+    frozenset,
+)
+def eager_distribute_integrate(log_measure, integrand, reduced_vars):
+    return reduce(
+        ops.add,
+        [
+            -Integrate(log_measure, term.arg, reduced_vars)
+            if isinstance(term, Unary)
+            else Integrate(log_measure, term, reduced_vars)
+            for term in integrand.terms
+        ],
+    )
 
 
 __all__ = [
