@@ -224,12 +224,18 @@ def partial_sum_product(
     for f in factors:
         ordinal = plates.intersection(f.inputs)
         ordinal_to_factors[ordinal].append(f)
-        for var in sum_vars.intersection(f.inputs):
-            var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+        for var in f.inputs:
+            if var not in plates:
+                var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
 
     ordinal_to_vars = defaultdict(set)
     for var, ordinal in var_to_ordinal.items():
         ordinal_to_vars[ordinal].add(var)
+        if var not in eliminate:
+            for plate in ordinal & eliminate:
+                raise ValueError(
+                    f"Cannot eliminate plate {plate} containing preserved var {var}"
+                )
 
     results = []
 
@@ -240,7 +246,7 @@ def partial_sum_product(
         for (group_factors, group_vars) in _partition(
             leaf_factors, leaf_reduce_vars
         ):  # CHOICE
-            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
+            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars & eliminate)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate))
@@ -249,8 +255,10 @@ def partial_sum_product(
                     *(var_to_ordinal[v] for v in remaining_sum_vars)
                 )
                 if new_plates == leaf:
-                    # Arbitrarily choose one plate to eliminate.
-                    plate = next(iter(leaf & eliminate))
+                    # Choose the smallest plate to eliminate.
+                    plate = min(
+                        (f.inputs[plate].size, plate) for plate in leaf & eliminate
+                    )[-1]
                     new_plates = leaf - {plate}
                     plate_shape = (f.inputs[plate].size,)
                     subs = {}
@@ -264,9 +272,11 @@ def partial_sum_product(
                             v_ordinal = var_to_ordinal[v] - {plate}
                             var_to_ordinal[v_.name] = v_ordinal
                             ordinal_to_vars[v_ordinal].add(v_.name)
-                            eliminate = eliminate - {v} | {v_.name}
                             sum_vars = sum_vars - {v} | {v_.name}
+                            eliminate = eliminate - {v} | {v_.name}
                             subs[v] = v_[plate]
+                    # This will only work for terms implementing substituting
+                    # {var1: ops.getitem(var2, var3)}, e.g. Gaussian but not Tensor.
                     f = f(**subs)
                     for o, gs in list(ordinal_to_factors.items()):
                         if plate not in o:
@@ -286,6 +296,9 @@ def partial_sum_product(
                             else:
                                 remaining.append(g)
                         ordinal_to_factors[o] = remaining
+                reduced_plates = leaf - new_plates
+                if not reduced_plates.issubset(eliminate):
+                    raise NotImplementedError
                 f = f.reduce(prod_op, leaf - new_plates)
                 ordinal_to_factors[new_plates].append(f)
 

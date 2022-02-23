@@ -143,7 +143,31 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
     assert_close(actual, unrolled_expected)
 
 
-def test_intractable():
+def test_partial_sum_product_batch_1():
+    factor = random_gaussian(OrderedDict(i=Bint[2], j=Bint[2], x=Real))
+    actual = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor],
+        eliminate=frozenset("ix"),
+        plates=frozenset("ij"),
+    )
+    assert actual.inputs == OrderedDict(j=Bint[2])
+
+
+def test_partial_sum_product_batch_2():
+    factor_i = random_gaussian(OrderedDict(i=Bint[2], x=Real))
+    factor_ik = random_gaussian(OrderedDict(i=Bint[2], k=Bint[2], x=Real))
+    actual = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_i, factor_ik],
+        eliminate=frozenset("ix"),
+        plates=frozenset("ik"),
+    )
+
+
+def test_intractable_1():
     factor_i = random_gaussian(OrderedDict(i=Bint[2], x=Real))
     factor_j = random_gaussian(OrderedDict(j=Bint[2], y=Real))
     factor_ij = random_gaussian(OrderedDict(i=Bint[2], j=Bint[2], x=Real, y=Real))
@@ -154,6 +178,7 @@ def test_intractable():
         eliminate=frozenset("ijxy"),
         plates=frozenset("ij"),
     )
+    assert isinstance(actual, Tensor)
     assert not actual.inputs
 
     # Manually unroll plate j.
@@ -170,6 +195,160 @@ def test_intractable():
     )
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+def test_intractable_2():
+    factor_i = random_gaussian(OrderedDict(i=Bint[2], x=Real, zx=Real))
+    factor_j = random_gaussian(OrderedDict(j=Bint[2], y=Real, zy=Real))
+    factor_ij = random_gaussian(
+        OrderedDict(i=Bint[2], j=Bint[2], x=Real, y=Real, zx=Real, zy=Real)
+    )
+    actual = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_i, factor_j, factor_ij],
+        eliminate=frozenset(["i", "j", "x", "y", "zx", "zy"]),
+        plates=frozenset("ij"),
+    )
+    assert isinstance(actual, Tensor)
+    assert not actual.inputs
+
+    # Manually unroll plate j.
+    factor_j0 = factor_j(j=0, y="y0", zy="zy0")
+    factor_j1 = factor_j(j=1, y="y1", zy="zy1")
+    factor_ij0 = factor_ij(j=0, y="y0", zy="zy0")
+    factor_ij1 = factor_ij(j=1, y="y1", zy="zy1")
+    expected = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_i, factor_j0, factor_j1, factor_ij0, factor_ij1],
+        eliminate=frozenset(["i", "x", "y0", "y1", "zx", "zy0", "zy1"]),
+        plates=frozenset("i"),
+    )
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+def test_intractable_3():
+    factor_ = random_gaussian(OrderedDict(w=Real))
+    factor_i = random_gaussian(OrderedDict(i=Bint[2], w=Real, x=Real))
+    factor_j = random_gaussian(OrderedDict(j=Bint[2], y=Real))
+    factor_ij = random_gaussian(OrderedDict(i=Bint[2], j=Bint[2], x=Real, y=Real))
+    actual = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_, factor_i, factor_j, factor_ij],
+        eliminate=frozenset("ijxy"),
+        plates=frozenset("ij"),
+    )
+    assert set(actual.inputs) == {"w"}
+
+    # Manually unroll plate j.
+    factor_j0 = factor_j(j=0, y="y0")
+    factor_j1 = factor_j(j=1, y="y1")
+    factor_ij0 = factor_ij(j=0, y="y0")
+    factor_ij1 = factor_ij(j=1, y="y1")
+    expected = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_, factor_i, factor_j0, factor_j1, factor_ij0, factor_ij1],
+        eliminate=frozenset(["i", "x", "y0", "y1"]),
+        plates=frozenset("i"),
+    )
+    assert set(expected.inputs) == {"w"}
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+def test_intractable_4():
+    factor_i = random_gaussian(OrderedDict(i=Bint[2], x=Real))
+    factor_jk = random_gaussian(OrderedDict(j=Bint[2], k=Bint[2], y=Real))
+    factor_ij = random_gaussian(OrderedDict(i=Bint[2], j=Bint[2], x=Real, y=Real))
+    actual = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_i, factor_jk, factor_ij],
+        eliminate=frozenset("ijxy"),
+        plates=frozenset("ijk"),
+    )
+    assert set(actual.inputs) == {"k"}
+
+    # Manually unroll plate j.
+    factor_jk0 = factor_jk(j=0, y="y0")
+    factor_jk1 = factor_jk(j=1, y="y1")
+    factor_ij0 = factor_ij(j=0, y="y0")
+    factor_ij1 = factor_ij(j=1, y="y1")
+    expected = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_i, factor_jk0, factor_jk1, factor_ij0, factor_ij1],
+        eliminate=frozenset(["i", "x", "y0", "y1"]),
+        plates=frozenset("ik"),
+    )
+    assert set(expected.inputs) == {"k"}
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+def test_intractable_5():
+    factor_ik = random_gaussian(OrderedDict(i=Bint[2], k=Bint[2], x=Real))
+    factor_j = random_gaussian(OrderedDict(j=Bint[2], y=Real))
+    factor_ij = random_gaussian(OrderedDict(i=Bint[2], j=Bint[2], x=Real, y=Real))
+    actual = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_ik, factor_j, factor_ij],
+        eliminate=frozenset("ijxy"),
+        plates=frozenset("ijk"),
+    )
+    assert set(actual.inputs) == {"k"}
+
+    # Manually unroll plate j.
+    factor_j0 = factor_jk(j=0, y="y0")
+    factor_j1 = factor_jk(j=1, y="y1")
+    factor_ij0 = factor_ij(j=0, y="y0")
+    factor_ij1 = factor_ij(j=1, y="y1")
+    expected = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_ik, factor_j0, factor_j1, factor_ij0, factor_ij1],
+        eliminate=frozenset(["i", "x", "y0", "y1"]),
+        plates=frozenset("ik"),
+    )
+    assert set(expected.inputs) == {"k"}
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+def test_var_in_plate_error():
+    factor_i = random_gaussian(OrderedDict(i=Bint[2], x=Real, z=Real))
+    with pytest.raises(ValueError):
+        sum_product(
+            ops.logaddexp,
+            ops.add,
+            [factor_i],
+            eliminate=frozenset("ix"),
+            plates=frozenset("i"),
+        )
+
+
+@pytest.mark.xfail(
+    reason="unclear semantics; incorrect computation of var_to_ordinal?"
+)
+def test_var_in_plate_ok():
+    zs = Variable("zs", Reals[2])
+    factor_i = random_gaussian(OrderedDict(i=Bint[2], x=Real, z=Real))
+    factor_i = factor_i(z=zs["i"])
+    with reflect:
+        actual = sum_product(
+            ops.logaddexp,
+            ops.add,
+            [factor_i],
+            eliminate=frozenset("ix"),
+            plates=frozenset("i"),
+        )
+    assert set(actual.inputs) == {"zs"}
+    assert actual.inputs["zs"] == factor_i.inputs["zs"]
 
 
 @pytest.mark.parametrize(
