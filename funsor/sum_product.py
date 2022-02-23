@@ -265,6 +265,7 @@ def partial_sum_product(
                             var_to_ordinal[v_.name] = v_ordinal
                             ordinal_to_vars[v_ordinal].add(v_.name)
                             eliminate = eliminate - {v} | {v_.name}
+                            sum_vars = sum_vars - {v} | {v_.name}
                             subs[v] = v_[plate]
                     f = f(**subs)
                     for o, gs in list(ordinal_to_factors.items()):

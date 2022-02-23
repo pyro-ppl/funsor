@@ -144,18 +144,32 @@ def test_partial_sum_product(impl, sum_op, prod_op, inputs, plates, vars1, vars2
 
 
 def test_intractable():
-    from funsor.testing import random_gaussian
-
     factor_i = random_gaussian(OrderedDict(i=Bint[2], x=Real))
     factor_j = random_gaussian(OrderedDict(j=Bint[2], y=Real))
     factor_ij = random_gaussian(OrderedDict(i=Bint[2], j=Bint[2], x=Real, y=Real))
-    sum_product(
+    actual = sum_product(
         ops.logaddexp,
         ops.add,
         [factor_i, factor_j, factor_ij],
         eliminate=frozenset("ijxy"),
         plates=frozenset("ij"),
     )
+    assert not actual.inputs
+
+    # Manually unroll plate j.
+    factor_j0 = factor_j(j=0, y="y0")
+    factor_j1 = factor_j(j=1, y="y1")
+    factor_ij0 = factor_ij(j=0, y="y0")
+    factor_ij1 = factor_ij(j=1, y="y1")
+    expected = sum_product(
+        ops.logaddexp,
+        ops.add,
+        [factor_i, factor_j0, factor_j1, factor_ij0, factor_ij1],
+        eliminate=frozenset(["i", "x", "y0", "y1"]),
+        plates=frozenset("i"),
+    )
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize(
