@@ -28,12 +28,12 @@ sys.path.insert(0, os.path.abspath("../.."))
 
 # -- Project information -----------------------------------------------------
 
-project = u"Funsor"
-copyright = u"2019, Uber Technologies, Inc"
-author = u"Uber AI Labs"
+project = "Funsor"
+copyright = "2019, Uber Technologies, Inc"
+author = "Uber AI Labs"
 
 # The short X.Y version
-version = u"0.0"
+version = "0.0"
 
 if "READTHEDOCS" not in os.environ:
     # if developing locally, use funsor.__version__ as version
@@ -244,14 +244,14 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, "Funsor.tex", u"Funsor Documentation", u"Uber AI Labs", "manual")
+    (master_doc, "Funsor.tex", "Funsor Documentation", "Uber AI Labs", "manual")
 ]
 
 # -- Options for manual page output ------------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [(master_doc, "Funsor", u"Funsor Documentation", [author], 1)]
+man_pages = [(master_doc, "Funsor", "Funsor Documentation", [author], 1)]
 
 # -- Options for Texinfo output ----------------------------------------------
 
@@ -262,7 +262,7 @@ texinfo_documents = [
     (
         master_doc,
         "Funsor",
-        u"Funsor Documentation",
+        "Funsor Documentation",
         author,
         "Funsor",
         "Functional analysis + tensors + symbolic algebra.",

@@ -156,7 +156,7 @@ def test_normal():
     @eager.register(Normal, Tensor, Tensor, Tensor)
     def _(loc, scale, value):
         z = (value - loc) / scale
-        log_prob = (-0.5) * z ** 2 - 0.5 * math.log(2 * math.pi)
+        log_prob = (-0.5) * z**2 - 0.5 * math.log(2 * math.pi)
         return log_prob.sum()
 
     inputs = OrderedDict(i=Bint[3])

@@ -399,7 +399,7 @@ def test_normal_density(batch_shape):
     @funsor.symbolic
     def normal(loc: Real, scale: Real, value: Real):
         return (
-            -((value - loc) ** 2) / (2 * scale ** 2)
+            -((value - loc) ** 2) / (2 * scale**2)
             - scale.log()
             - math.log(math.sqrt(2 * math.pi))
         )

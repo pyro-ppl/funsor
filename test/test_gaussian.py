@@ -918,14 +918,11 @@ def test_integrate_gaussian(int_inputs, real_inputs):
 
 
 def test_mc_plate_gaussian():
-    log_measure = (
-        Gaussian(
-            white_vec=numeric_array([0.0]),
-            prec_sqrt=numeric_array([[1.0]]),
-            inputs=(("loc", Real),),
-        )
-        + numeric_array(-0.9189)
-    )
+    log_measure = Gaussian(
+        white_vec=numeric_array([0.0]),
+        prec_sqrt=numeric_array([[1.0]]),
+        inputs=(("loc", Real),),
+    ) + numeric_array(-0.9189)
 
     plate_size = 10
     integrand = Gaussian(
