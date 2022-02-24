@@ -117,7 +117,7 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step):
                         **{
                             prev: "{}_{}".format(var, i)
                             for prev, var in prev_to_var.items()
-                        }
+                        },
                     )
                     for i in range(size)
                 ]

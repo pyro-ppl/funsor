@@ -165,6 +165,7 @@ def test_partial_sum_product_batch_2():
         eliminate=frozenset("ix"),
         plates=frozenset("ik"),
     )
+    assert actual.inputs == OrderedDict(k=Bint[2])
 
 
 def test_intractable_1():
@@ -332,9 +333,7 @@ def test_var_in_plate_error():
         )
 
 
-@pytest.mark.xfail(
-    reason="unclear semantics; incorrect computation of var_to_ordinal?"
-)
+@pytest.mark.xfail(reason="unclear semantics; incorrect computation of var_to_ordinal?")
 def test_var_in_plate_ok():
     zs = Variable("zs", Reals[2])
     factor_i = random_gaussian(OrderedDict(i=Bint[2], x=Real, z=Real))
