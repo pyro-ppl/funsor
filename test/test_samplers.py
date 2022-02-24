@@ -382,5 +382,5 @@ def test_lognormal_distribution(moment):
 
     _, (loc_data, scale_data) = align_tensors(loc, scale)
     samples = backend_dist.LogNormal(loc_data, scale_data).sample((num_samples,))
-    expected = (samples ** moment).mean(0)
+    expected = (samples**moment).mean(0)
     assert_close(actual.data, expected, atol=1e-2, rtol=1e-2)

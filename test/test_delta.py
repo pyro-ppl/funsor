@@ -32,7 +32,7 @@ def test_add_delta_funsor():
     y = Variable("y", Reals[3])
     d = Delta("x", y)
 
-    expr = -(1 + x ** 2).log()
+    expr = -(1 + x**2).log()
     assert d + expr is d + expr(x=y)
     assert expr + d is expr(x=y) + d
 

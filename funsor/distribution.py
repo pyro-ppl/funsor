@@ -416,6 +416,7 @@ FUNSOR_DIST_NAMES = [
     ("HalfCauchy", ()),
     ("HalfNormal", ()),
     ("Laplace", ()),
+    ("Logistic", ()),
     ("LowRankMultivariateNormal", ()),
     ("Multinomial", ("total_count", "probs")),
     ("MultivariateNormal", ("loc", "scale_tril")),

@@ -35,7 +35,7 @@ def test_rewrite_ops():
     expected = product_rule
 
     assert_fn_eq(actual, expected)
-    args = (max, operator.add, 1.23, 4.56, lambda x: x ** 2)
+    args = (max, operator.add, 1.23, 4.56, lambda x: x**2)
     assert actual(*args) == expected(*args)
 
 
@@ -67,7 +67,7 @@ def test_rewrite_ops_register():
     expected = product_rule
 
     assert_fn_eq(actual, expected)
-    args = (max, operator.add, 1.23, 4.56, lambda x: x ** 2)
+    args = (max, operator.add, 1.23, 4.56, lambda x: x**2)
     assert actual(*args) == expected(*args)
 
 

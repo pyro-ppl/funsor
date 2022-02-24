@@ -207,7 +207,7 @@ def test_tower_sum(height):
         top = x
         for _ in range(height):
             top = top + top
-    assert transpose(top)[x] is Number(2.0 ** height)
+    assert transpose(top)[x] is Number(2.0**height)
 
 
 @pytest.mark.parametrize("height", [0, 1, 2, 3, 10])  # , 100, 1000])

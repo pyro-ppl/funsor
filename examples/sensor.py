@@ -263,9 +263,9 @@ def main(args):
                 for f in args.num_frames
             ]
         )
-        mse = (pos_error ** 2).mean(axis=1)
-        std = (pos_error ** 2).std(axis=1) / len(seeds) ** 0.5
-        pyplot.plot(X, mse ** 0.5, "k--")
+        mse = (pos_error**2).mean(axis=1)
+        std = (pos_error**2).std(axis=1) / len(seeds) ** 0.5
+        pyplot.plot(X, mse**0.5, "k--")
         pyplot.fill_between(
             X, (mse - std) ** 0.5, (mse + std) ** 0.5, color="black", alpha=0.15, lw=0
         )
@@ -276,9 +276,9 @@ def main(args):
                 for f in args.num_frames
             ]
         )
-        mse = (pos_error ** 2).mean(axis=1)
-        std = (pos_error ** 2).std(axis=1) / len(seeds) ** 0.5
-        pyplot.plot(X, mse ** 0.5, "r-")
+        mse = (pos_error**2).mean(axis=1)
+        std = (pos_error**2).std(axis=1) / len(seeds) ** 0.5
+        pyplot.plot(X, mse**0.5, "r-")
         pyplot.fill_between(
             X, (mse - std) ** 0.5, (mse + std) ** 0.5, color="red", alpha=0.15, lw=0
         )
