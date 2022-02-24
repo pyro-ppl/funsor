@@ -122,7 +122,7 @@ def main(args):
         ]
         + noise
     )
-    F = rate ** nsteps / (s * (rate + s) ** nsteps)
+    F = rate**nsteps / (s * (rate + s) ** nsteps)
     # Inverse Laplace.
     pred = InverseLaplace(F, time, "s")
 

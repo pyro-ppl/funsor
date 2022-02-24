@@ -297,6 +297,13 @@ for batch_shape in [(), (5,), (2, 3)]:
         funsor.Real,
     )
 
+    # Logistic
+    DistTestCase(
+        "dist.Logistic(loc=case.loc, scale=case.scale)",
+        (("loc", f"randn({batch_shape})"), ("scale", f"rand({batch_shape})")),
+        funsor.Real,
+    )
+
     # LowRankMultivariateNormal
     for event_shape in [(3,), (4,)]:
         DistTestCase(
@@ -381,6 +388,7 @@ for batch_shape in [(), (5,), (2, 3)]:
         "dist.RelaxedBernoulli(temperature=case.temperature, logits=case.logits)",
         (("temperature", f"rand({batch_shape})"), ("logits", f"rand({batch_shape})")),
         funsor.Real,
+        xfail_reason="backend not supported" if get_backend() != "torch" else "",
     )
 
     # StudentT

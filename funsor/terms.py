@@ -1141,7 +1141,7 @@ def _reduce_unrelated_vars(op, arg, reduced_vars):
         multiplicity = reduce(
             ops.mul,
             [
-                v.output.size ** v.output.num_elements
+                v.output.size**v.output.num_elements
                 for v in factor_vars
                 if v.dtype != "real"
             ],

@@ -334,7 +334,7 @@ def _permute(x, dims):
 
 @ops.pow.register(numbers.Number, torch.Tensor)
 def _pow(x, y):
-    result = x ** y
+    result = x**y
     # work around shape bug https://github.com/pytorch/pytorch/issues/16685
     return result.reshape(y.shape)
 
@@ -342,7 +342,7 @@ def _pow(x, y):
 @ops.pow.register(torch.Tensor, numbers.Number)
 @ops.pow.register(torch.Tensor, torch.Tensor)
 def _pow(x, y):
-    return x ** y
+    return x**y
 
 
 @ops.reciprocal.register(torch.Tensor)

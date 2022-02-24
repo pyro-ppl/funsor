@@ -1018,7 +1018,7 @@ def eager_markov_product(sum_op, prod_op, trans, time, step, step_names):
     elif prod_op is ops.add:
         result = trans * time.size
     elif prod_op is ops.mul:
-        result = trans ** time.size
+        result = trans**time.size
     else:
         raise NotImplementedError("https://github.com/pyro-ppl/funsor/issues/233")
 

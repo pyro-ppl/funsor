@@ -252,7 +252,7 @@ def test_reduce_moment_matching_univariate():
     t = 1.234
     s1, s2, s3 = 2.0, 3.0, 4.0
     loc = numeric_array([[-s1], [s1]])
-    precision = numeric_array([[[s2 ** -2]], [[s3 ** -2]]])
+    precision = numeric_array([[[s2**-2]], [[s3**-2]]])
     prec_sqrt = ops.cholesky(precision)
     white_vec = (loc[..., None, :] @ prec_sqrt)[..., 0, :]
     discrete = Tensor(ops.log(numeric_array([1 - p, p])) + t, int_inputs)
@@ -264,7 +264,7 @@ def test_reduce_moment_matching_univariate():
     assert_close(actual.reduce(ops.logaddexp), joint.reduce(ops.logaddexp))
 
     expected_loc = numeric_array([(2 * p - 1) * s1])
-    expected_variance = 4 * p * (1 - p) * s1 ** 2 + (1 - p) * s2 ** 2 + p * s3 ** 2
+    expected_variance = 4 * p * (1 - p) * s1**2 + (1 - p) * s2**2 + p * s3**2
     expected_precision = numeric_array([[1 / expected_variance]])
     expected_prec_sqrt = ops.cholesky(expected_precision)
     expected_white_vec = (expected_loc[..., None, :] @ expected_prec_sqrt)[..., 0, :]
