@@ -304,8 +304,8 @@ def test_intractable_5():
     assert set(actual.inputs) == {"k"}
 
     # Manually unroll plate j.
-    factor_j0 = factor_jk(j=0, y="y0")
-    factor_j1 = factor_jk(j=1, y="y1")
+    factor_j0 = factor_j(j=0, y="y0")
+    factor_j1 = factor_j(j=1, y="y1")
     factor_ij0 = factor_ij(j=0, y="y0")
     factor_ij1 = factor_ij(j=1, y="y1")
     expected = sum_product(

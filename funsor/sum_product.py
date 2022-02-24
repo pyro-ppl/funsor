@@ -217,25 +217,32 @@ def partial_sum_product(
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
-    sum_vars = eliminate - plates
 
+    if __debug__:
+        var_to_errors = defaultdict(lambda: eliminate)
+        for f in factors:
+            ordinal = plates.intersection(f.inputs)
+            for var in set(f.inputs) - plates - eliminate:
+                var_to_errors[var] &= ordinal
+        for var, errors in var_to_errors.items():
+            for plate in errors:
+                raise ValueError(
+                    f"Cannot eliminate plate {plate} containing preserved var {var}"
+                )
+
+    plates &= eliminate
+    sum_vars = eliminate - plates
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
     for f in factors:
         ordinal = plates.intersection(f.inputs)
         ordinal_to_factors[ordinal].append(f)
-        for var in f.inputs:
-            if var not in plates:
-                var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
+        for var in sum_vars.intersection(f.inputs):
+            var_to_ordinal[var] = var_to_ordinal.get(var, ordinal) & ordinal
 
     ordinal_to_vars = defaultdict(set)
     for var, ordinal in var_to_ordinal.items():
         ordinal_to_vars[ordinal].add(var)
-        if var not in eliminate:
-            for plate in ordinal & eliminate:
-                raise ValueError(
-                    f"Cannot eliminate plate {plate} containing preserved var {var}"
-                )
 
     results = []
 
@@ -289,7 +296,7 @@ def partial_sum_product(
                                 assert all(
                                     plate not in var_to_ordinal[u]
                                     for u in g.inputs
-                                    if u not in plates
+                                    if u in sum_vars
                                 )
                                 g = g.reduce(prod_op, plate)
                                 ordinal_to_factors[o - {plate}].append(g)
