@@ -305,7 +305,7 @@ def partial_sum_product(
                         ordinal_to_factors[o] = remaining
                 reduced_plates = leaf - new_plates
                 assert reduced_plates.issubset(eliminate)
-                f = f.reduce(prod_op, leaf - new_plates)
+                f = f.reduce(prod_op, reduced_plates)
                 ordinal_to_factors[new_plates].append(f)
 
     return results
