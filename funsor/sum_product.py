@@ -304,8 +304,7 @@ def partial_sum_product(
                                 remaining.append(g)
                         ordinal_to_factors[o] = remaining
                 reduced_plates = leaf - new_plates
-                if not reduced_plates.issubset(eliminate):
-                    raise NotImplementedError
+                assert reduced_plates.issubset(eliminate)
                 f = f.reduce(prod_op, leaf - new_plates)
                 ordinal_to_factors[new_plates].append(f)
 
