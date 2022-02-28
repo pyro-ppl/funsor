@@ -203,7 +203,7 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
 
 
 def partial_sum_product(
-    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()
+    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset(), pedantic=False
 ):
     """
     Performs partial sum-product contraction of a collection of factors.
@@ -218,7 +218,7 @@ def partial_sum_product(
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
 
-    if __debug__:
+    if pedantic:
         var_to_errors = defaultdict(lambda: eliminate)
         for f in factors:
             ordinal = plates.intersection(f.inputs)
@@ -570,14 +570,16 @@ def modified_partial_sum_product(
     return results
 
 
-def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
+def sum_product(
+    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset(), pedantic=False
+):
     """
     Performs sum-product contraction of a collection of factors.
 
     :return: a single contracted Funsor.
     :rtype: :class:`~funsor.terms.Funsor`
     """
-    factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates)
+    factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates, pedantic)
     return reduce(prod_op, factors, Number(UNITS[prod_op]))
 
 

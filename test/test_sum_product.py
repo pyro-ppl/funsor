@@ -330,6 +330,7 @@ def test_var_in_plate_error():
             [factor_i],
             eliminate=frozenset("ix"),
             plates=frozenset("i"),
+            pedantic=True,
         )
 
 
