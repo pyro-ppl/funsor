@@ -589,7 +589,7 @@ def test_elbo_enumerate_plate_7(backend):
         elbo = infer.TraceEnum_ELBO(max_plate_nesting=0)
         elbo = elbo.differentiable_loss if backend == "pyro" else elbo
         hand_loss = elbo(hand_model, hand_guide, data)
-        _check_loss_and_grads(hand_loss, auto_loss)
+        _check_loss_and_grads(hand_loss, auto_loss, rtol=1e-3, atol=1e-3)
 
 
 @pytest.mark.xfail(reason="missing patterns")
