@@ -9,7 +9,8 @@ from math import gcd
 import funsor
 import funsor.ops as ops
 from funsor.cnf import Contraction
-from funsor.domains import Bint
+from funsor.domains import Bint, Reals
+from funsor.interpreter import gensym
 from funsor.ops import UNITS, AssociativeOp
 from funsor.terms import (
     Cat,
@@ -116,7 +117,7 @@ def _unroll_plate(factors, var_to_ordinal, sum_vars, plate, step):
                         **{
                             prev: "{}_{}".format(var, i)
                             for prev, var in prev_to_var.items()
-                        }
+                        },
                     )
                     for i in range(size)
                 ]
@@ -202,7 +203,7 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
 
 
 def partial_sum_product(
-    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()
+    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset(), pedantic=False
 ):
     """
     Performs partial sum-product contraction of a collection of factors.
@@ -216,8 +217,21 @@ def partial_sum_product(
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
-    sum_vars = eliminate - plates
 
+    if pedantic:
+        var_to_errors = defaultdict(lambda: eliminate)
+        for f in factors:
+            ordinal = plates.intersection(f.inputs)
+            for var in set(f.inputs) - plates - eliminate:
+                var_to_errors[var] &= ordinal
+        for var, errors in var_to_errors.items():
+            for plate in errors:
+                raise ValueError(
+                    f"Cannot eliminate plate {plate} containing preserved var {var}"
+                )
+
+    plates &= eliminate
+    sum_vars = eliminate - plates
     var_to_ordinal = {}
     ordinal_to_factors = defaultdict(list)
     for f in factors:
@@ -231,12 +245,15 @@ def partial_sum_product(
         ordinal_to_vars[ordinal].add(var)
 
     results = []
+
     while ordinal_to_factors:
-        leaf = max(ordinal_to_factors, key=len)
+        leaf = max(ordinal_to_factors, key=len)  # CHOICE
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(leaf_factors, leaf_reduce_vars):
-            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars)
+        for (group_factors, group_vars) in _partition(
+            leaf_factors, leaf_reduce_vars
+        ):  # CHOICE
+            f = reduce(prod_op, group_factors).reduce(sum_op, group_vars & eliminate)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate))
@@ -245,8 +262,50 @@ def partial_sum_product(
                     *(var_to_ordinal[v] for v in remaining_sum_vars)
                 )
                 if new_plates == leaf:
-                    raise ValueError("intractable!")
-                f = f.reduce(prod_op, leaf - new_plates)
+                    # Choose the smallest plate to eliminate.
+                    plate = min(
+                        (f.inputs[plate].size, plate) for plate in leaf & eliminate
+                    )[-1]
+                    new_plates = leaf - {plate}
+                    plate_shape = (f.inputs[plate].size,)
+                    subs = {}
+                    for v in remaining_sum_vars:
+                        if plate in var_to_ordinal[v]:
+                            if f.inputs[v].dtype != "real":
+                                raise ValueError("intractable!")
+                            v_ = Variable(
+                                gensym(v), Reals[plate_shape + f.inputs[v].shape]
+                            )
+                            v_ordinal = var_to_ordinal[v] - {plate}
+                            var_to_ordinal[v_.name] = v_ordinal
+                            ordinal_to_vars[v_ordinal].add(v_.name)
+                            sum_vars = sum_vars - {v} | {v_.name}
+                            eliminate = eliminate - {v} | {v_.name}
+                            subs[v] = v_[plate]
+                    # This will only work for terms implementing substituting
+                    # {var1: ops.getitem(var2, var3)}, e.g. Gaussian but not Tensor.
+                    f = f(**subs)
+                    for o, gs in list(ordinal_to_factors.items()):
+                        if plate not in o:
+                            assert all(set(g.inputs).isdisjoint(subs) for g in gs)
+                            continue  # nothing to do below
+                        remaining = []
+                        for g in gs:
+                            if set(subs).intersection(g.inputs):
+                                g = g(**subs)
+                                assert all(
+                                    plate not in var_to_ordinal[u]
+                                    for u in g.inputs
+                                    if u in sum_vars
+                                )
+                                g = g.reduce(prod_op, plate)
+                                ordinal_to_factors[o - {plate}].append(g)
+                            else:
+                                remaining.append(g)
+                        ordinal_to_factors[o] = remaining
+                reduced_plates = leaf - new_plates
+                assert reduced_plates.issubset(eliminate)
+                f = f.reduce(prod_op, reduced_plates)
                 ordinal_to_factors[new_plates].append(f)
 
     return results
@@ -511,14 +570,16 @@ def modified_partial_sum_product(
     return results
 
 
-def sum_product(sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset()):
+def sum_product(
+    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset(), pedantic=False
+):
     """
     Performs sum-product contraction of a collection of factors.
 
     :return: a single contracted Funsor.
     :rtype: :class:`~funsor.terms.Funsor`
     """
-    factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates)
+    factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates, pedantic)
     return reduce(prod_op, factors, Number(UNITS[prod_op]))
 
 
