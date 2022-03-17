@@ -105,7 +105,7 @@ def test_vindex(data1, provenance1, data2, provenance2, data3, provenance3):
 
 def test_namedtuple():
     a = ProvenanceTensor(torch.randn(3, 3), frozenset({"a"}))
-    b = ProvenanceTensor(torch.randn(3, 3).tril(), frozenset({"b"}))
-    result = a.triangular_solve(b).solution
+    b = ProvenanceTensor(torch.randn(3, 3), frozenset({"b"}))
+    result = torch.linalg.solve_triangular(b, a, upper=True)
     actual = getattr(result, "_provenance", frozenset())
     assert actual == frozenset({"a", "b"})

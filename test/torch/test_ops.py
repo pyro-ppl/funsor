@@ -21,22 +21,22 @@ def test_triangular_solve(batch_shape, m, n):
     U = L.transpose(-1, -2)
 
     actual = ops.triangular_solve(b, L, upper=False)
-    expected = torch.triangular_solve(b, L, upper=False).solution
+    expected = torch.linalg.solve_triangular(L, b, upper=False)
     assert_close(actual, expected)
     assert_close(L @ actual, b, atol=1e-4, rtol=1e-3)
 
     actual = ops.triangular_solve(b, U, upper=True)
-    expected = torch.triangular_solve(b, U, upper=True).solution
+    expected = torch.linalg.solve_triangular(U, b, upper=True)
     assert_close(actual, expected)
     assert_close(U @ actual, b, atol=1e-4, rtol=1e-3)
 
     actual = ops.triangular_solve(b, L, upper=False, transpose=True)
-    expected = torch.triangular_solve(b, L, upper=False, transpose=True).solution
+    expected = torch.linalg.solve_triangular(L.transpose(-1, -2), b, upper=True)
     assert_close(actual, expected)
     assert_close(L.transpose(-1, -2) @ actual, b, atol=1e-4, rtol=1e-3)
 
     actual = ops.triangular_solve(b, U, upper=True, transpose=True)
-    expected = torch.triangular_solve(b, U, upper=True, transpose=True).solution
+    expected = torch.linalg.solve_triangular(U.transpose(-1, -2), b, upper=False)
     assert_close(actual, expected)
     assert_close(U.transpose(-1, -2) @ actual, b, atol=1e-4, rtol=1e-3)
 
