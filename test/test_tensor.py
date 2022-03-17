@@ -372,6 +372,7 @@ BINARY_OPS = [
 ]
 BOOLEAN_OPS = ["&", "|", "^"]
 INTEGER_OPS = ["<<", ">>"]
+COMPARISON_OPS = ["==", "!=", "<", "<=", ">", ">="]
 
 
 def binary_eval(symbol, x, y):
@@ -394,20 +395,24 @@ def test_binary_funsor_funsor(symbol, dims1, dims2):
     data1 = rand(shape1) + 0.5
     data2 = rand(shape2) + 0.5
     dtype = "real"
+    expected_dtype = dtype
     if symbol in BOOLEAN_OPS:
         dtype = 2
+        expected_dtype = dtype
         data1 = ops.astype(data1, "uint8")
         data2 = ops.astype(data2, "uint8")
     elif symbol in INTEGER_OPS:
         data1 = ops.astype(data1, "int64")
         data2 = ops.astype(data2, "int64")
+    elif symbol in COMPARISON_OPS:
+        expected_dtype = 2
     x1 = Tensor(data1, inputs1, dtype)
     x2 = Tensor(data2, inputs2, dtype)
     inputs, aligned = align_tensors(x1, x2)
     expected_data = binary_eval(symbol, aligned[0], aligned[1])
 
     actual = binary_eval(symbol, x1, x2)
-    check_funsor(actual, inputs, Array[dtype, ()], expected_data)
+    check_funsor(actual, inputs, Array[expected_dtype, ()], expected_data)
 
 
 @pytest.mark.parametrize("output_shape2", [(), (2,), (3, 2)], ids=str)
@@ -459,15 +464,19 @@ def test_binary_funsor_scalar(symbol, dims, scalar):
     inputs = OrderedDict((d, Bint[sizes[d]]) for d in dims)
     data1 = rand(shape) + 0.5
     dtype = "real"
+    expected_dtype = "real"
     if symbol in INTEGER_OPS:
         data1 = ops.astype(data1, "int64")
         scalar = int(scalar)
         dtype = 1 + scalar
+        expected_dtype = 1 + scalar
+    elif symbol in COMPARISON_OPS:
+        expected_dtype = 2
     expected_data = binary_eval(symbol, data1, scalar)
 
     x1 = Tensor(data1, inputs, dtype)
     actual = binary_eval(symbol, x1, Number(scalar, dtype))
-    check_funsor(actual, inputs, Array[dtype, ()], expected_data)
+    check_funsor(actual, inputs, Array[expected_dtype, ()], expected_data)
 
 
 @pytest.mark.parametrize("scalar", [0.5])
@@ -481,10 +490,13 @@ def test_binary_scalar_funsor(symbol, dims, scalar):
     if symbol in ("%", "<<", ">>"):
         pytest.xfail(reason=f"right application of {symbol} is not triggered")
     expected_data = binary_eval(symbol, scalar, data1)
+    expected_dtype = "real"
+    if symbol in COMPARISON_OPS:
+        expected_dtype = 2
 
     x1 = Tensor(data1, inputs)
     actual = binary_eval(symbol, scalar, x1)
-    check_funsor(actual, inputs, Real, expected_data)
+    check_funsor(actual, inputs, Array[expected_dtype, ()], expected_data)
 
 
 @pytest.mark.parametrize("batch_shape", [(), (5,), (4, 3)])
@@ -684,13 +696,15 @@ def test_reduce_all(dims, op):
     shape = tuple(sizes[d] for d in dims)
     inputs = OrderedDict((d, Bint[sizes[d]]) for d in dims)
     data = rand(shape) + 0.5
+    dtype = "real"
     if op in [ops.and_, ops.or_]:
-        data = ops.astype(data, "uint8")
+        data = ops.astype(data, "bool")
+        dtype = 2
     expected_data = REDUCE_OP_TO_NUMERIC[op](data, None)
 
-    x = Tensor(data, inputs)
+    x = Tensor(data, inputs, dtype)
     actual = x.reduce(op)
-    check_funsor(actual, {}, Real, expected_data)
+    check_funsor(actual, {}, Array[dtype, ()], expected_data)
 
 
 @pytest.mark.parametrize(
