@@ -4,8 +4,6 @@
 import contextlib
 import functools
 import inspect
-import math
-import operator
 import weakref
 from collections import OrderedDict
 
@@ -19,24 +17,6 @@ def apply(function, args, kwargs={}):
 
 def _get_name(fn):
     return getattr(fn, "__name__", type(fn).__name__)
-
-
-def _get_signature(fn):
-    try:
-        return inspect.Signature.from_callable(fn)
-    except ValueError as e:
-        # In Python <=3.6, attempt to parse docstring of builtins.
-        name = _get_name(fn)
-        if any(fn is getattr(lib, name, None) for lib in (math, operator)):
-            if fn.__doc__.startswith(f"{name}(x)"):
-                return inspect.Signature.from_callable(lambda x: None)
-            if fn.__doc__.startswith(f"{name}(a)"):
-                return inspect.Signature.from_callable(lambda a: None)
-            if fn.__doc__.startswith(f"{name}(obj)"):
-                return inspect.Signature.from_callable(lambda obj: None)
-            if fn.__doc__.startswith(f"{name}(a, b)"):
-                return inspect.Signature.from_callable(lambda a, b: None)
-        raise e from None
 
 
 def _iter_subclasses(cls):
@@ -258,7 +238,7 @@ class Op(metaclass=OpMeta):
         assert issubclass(metaclass, OpMeta)
 
         classname = _snake_to_camel(name) + "Op"  # e.g. scatter_add -> ScatterAddOp
-        signature = _get_signature(fn)
+        signature = inspect.Signature.from_callable(fn)
         op_class = metaclass(
             classname,
             (cls,),
