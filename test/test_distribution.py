@@ -869,13 +869,13 @@ def _check_sample(
 @pytest.mark.parametrize(
     "sample_inputs", [(), ("ii",), ("ii", "jj"), ("ii", "jj", "kk")]
 )
-@pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize("reparametrized", [True, False])
+@pytest.mark.parametrize("batch_shape", [(), (4,), (2, 3)], ids=str)
+@pytest.mark.parametrize("reparametrized", [True, False], ids=["reparam", "nonrepa"])
 def test_gamma_sample(batch_shape, sample_inputs, reparametrized):
     batch_dims = ("i", "j", "k")[: len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    concentration = rand(batch_shape)
+    concentration = rand(batch_shape) + 0.5
     rate = rand(batch_shape)
     funsor_dist_class = dist.Gamma if reparametrized else dist.NonreparameterizedGamma
     params = (concentration, rate)
@@ -885,7 +885,7 @@ def test_gamma_sample(batch_shape, sample_inputs, reparametrized):
         params,
         sample_inputs,
         inputs,
-        num_samples=200000,
+        num_samples=1000000,
         atol=5e-2 if reparametrized else 1e-1,
     )
 
