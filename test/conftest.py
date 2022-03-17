@@ -22,12 +22,15 @@ def pytest_runtest_setup(item):
     np.random.seed(0)
     if _BACKEND == "torch":
         import pyro
+        import torch
 
+        torch.set_default_dtype(torch.double)
         pyro.set_rng_seed(0)
         pyro.enable_validation(True)
     elif _BACKEND == "jax":
         from jax.config import config
 
         config.update("jax_platform_name", "cpu")
+        config.update("jax_enable_x64", True)
 
     funsor.util.set_backend = _disallow_set_backend
