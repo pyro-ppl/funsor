@@ -205,11 +205,12 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
             elif atol is not None:
                 assert diff.max() < atol, msg
     elif isinstance(actual, numbers.Number):
-        diff = abs(actual - expected)
-        if rtol is not None:
-            assert diff < (atol + abs(expected)) * rtol, msg
-        elif atol is not None:
-            assert diff < atol, msg
+        if actual != expected:
+            diff = abs(actual - expected)
+            if rtol is not None:
+                assert diff < (atol + abs(expected)) * rtol, msg
+            elif atol is not None:
+                assert diff < atol, msg
     elif isinstance(actual, dict):
         assert isinstance(expected, dict)
         assert set(actual) == set(expected)

@@ -267,7 +267,7 @@ def unary_eval(symbol, x):
     return getattr(ops, symbol)(x)
 
 
-@pytest.mark.parametrize("data", [0, 0.5, 1])
+@pytest.mark.parametrize("data", [0.0, 0.5, 1.0])
 @pytest.mark.parametrize(
     "symbol",
     ["~", "-", "atanh", "abs", "sqrt", "exp", "log", "log1p", "sigmoid", "tanh"],
@@ -334,8 +334,8 @@ def binary_eval(symbol, x, y):
     return eval("x {} y".format(symbol))
 
 
-@pytest.mark.parametrize("data1", [0, 0.2, 1])
-@pytest.mark.parametrize("data2", [0, 0.8, 1])
+@pytest.mark.parametrize("data1", [0.0, 0.2, 1.0])
+@pytest.mark.parametrize("data2", [0.0, 0.8, 1.0])
 @pytest.mark.parametrize("symbol", BINARY_OPS + BOOLEAN_OPS)
 def test_binary(symbol, data1, data2):
     dtype = "real"
@@ -347,11 +347,15 @@ def test_binary(symbol, data1, data2):
         expected_data = binary_eval(symbol, data1, data2)
     except ZeroDivisionError:
         return
+    expected_dtype = dtype
+    if isinstance(expected_data, bool):
+        expected_dtype = 2
+        expected_data = int(expected_data)
 
     x1 = Number(data1, dtype)
     x2 = Number(data2, dtype)
     actual = binary_eval(symbol, x1, x2)
-    check_funsor(actual, {}, Array[dtype, ()], expected_data)
+    check_funsor(actual, {}, Array[expected_dtype, ()], expected_data)
     with normalize:
         actual_reflect = binary_eval(symbol, x1, x2)
     assert actual.output == actual_reflect.output
