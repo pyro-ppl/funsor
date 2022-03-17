@@ -100,7 +100,7 @@ def test_affine_subs():
                     0.5321089029312134,
                     -0.9039931297302246,
                 ],
-                dtype=torch.float32,
+                dtype=torch.float64,
             ),  # noqa
             torch.tensor(
                 [
@@ -140,7 +140,7 @@ def test_affine_subs():
                         0.6450173854827881,
                     ],
                 ],
-                dtype=torch.float32,
+                dtype=torch.float64,
             ),  # noqa
             (
                 (
@@ -165,7 +165,7 @@ def test_affine_subs():
                         Tensor(
                             torch.tensor(
                                 [-2.1787893772125244, 0.5684312582015991],
-                                dtype=torch.float32,
+                                dtype=torch.float64,
                             ),  # noqa
                             (),
                             "real",

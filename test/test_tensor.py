@@ -1574,7 +1574,7 @@ def test_scatter_substitute():
                         ),
                     )
                 ),
-                Tensor(np.array(0.3386716842651367, dtype=np.float32), (), "real"),
+                Tensor(np.array(0.3386716842651367, dtype=np.float64), (), "real"),
             ),
         ),
         frozenset(),
