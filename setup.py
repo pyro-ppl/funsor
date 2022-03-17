@@ -29,7 +29,7 @@ setup(
     url="https://github.com/pyro-ppl/funsor",
     project_urls={"Documentation": "https://funsor.pyro.ai"},
     author="Uber AI Labs",
-    python_requires=">=3.6",
+    python_requires=">=3.7",
     install_requires=[
         "makefun",
         "multipledispatch",
@@ -38,7 +38,7 @@ setup(
         "typing_extensions",
     ],
     extras_require={
-        "torch": ["pyro-ppl>=1.6.0", "torch>=1.9.0"],
+        "torch": ["pyro-ppl>=1.8.0", "torch>=1.11.0"],
         "jax": ["numpyro>=0.7.0", "jax>=0.2.13", "jaxlib>=0.1.65"],
         "test": [
             "black",
@@ -51,7 +51,7 @@ setup(
             "pytest-xdist==1.27.0",
             "requests",
             "scipy",
-            "torchvision>=0.10.0",
+            "torchvision>=0.12.0",
         ],
         "dev": [
             "black",
@@ -66,7 +66,7 @@ setup(
             "sphinx>=2.0",
             "sphinx-gallery",
             "sphinx_rtd_theme",
-            "torchvision>=0.10.0",
+            "torchvision>=0.12.0",
         ],
     },
     long_description=long_description,
@@ -79,10 +79,9 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: POSIX :: Linux",
         "Operating System :: MacOS :: MacOS X",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.10",  # for jax but not torch
     ],
 )
