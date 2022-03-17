@@ -211,6 +211,7 @@ def test_gaussian_hmm_log_prob(
     check_expand(actual_dist, data)
 
 
+@pytest.mark.filterwarnings("ignore:torch.triangular_solve is deprecated")
 @pytest.mark.parametrize("obs_dim", [1, 2, 3])
 @pytest.mark.parametrize("hidden_dim", [1, 2, 3])
 @pytest.mark.parametrize(
