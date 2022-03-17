@@ -244,7 +244,11 @@ def check_funsor(x, inputs, output, data=None):
             else:
                 assert (x_data == data).all()
         else:
-            assert x_data == data
+            if get_backend() == "jax":
+                # JAX has numerical errors for reducing ops.
+                assert_close(x_data, data)
+            else:
+                assert x_data == data
 
 
 def xfail_param(*args, **kwargs):
