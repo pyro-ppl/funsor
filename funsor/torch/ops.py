@@ -347,7 +347,7 @@ def _pow(x, y):
 
 @ops.reciprocal.register(torch.Tensor)
 def _reciprocal(x):
-    if x.dtype in (torch.complex32, torch.complex64):
+    if torch.is_complex(x):
         return x.reciprocal()
     result = x.reciprocal().clamp(max=torch.finfo(x.dtype).max)
     return result
