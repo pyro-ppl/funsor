@@ -238,7 +238,11 @@ def check_funsor(x, inputs, output, data=None):
         else:
             x_data = x.align(tuple(inputs)).data
         if inputs or output.shape:
-            assert (x_data == data).all()
+            if get_backend() == "jax":
+                # JAX has numerical errors for reducing ops.
+                assert_close(x_data, data)
+            else:
+                assert (x_data == data).all()
         else:
             assert x_data == data
 

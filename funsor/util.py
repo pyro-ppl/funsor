@@ -11,6 +11,7 @@ import numpy as np
 
 _FUNSOR_BACKEND = "numpy"
 _JAX_LOADED = False
+_JAX_COMPILED_FUNCTION_TYPE = None
 
 
 class lazy_property(object):
@@ -246,10 +247,14 @@ def set_backend(backend):
     elif backend == "jax":
         _FUNSOR_BACKEND = "jax"
         _JAX_LOADED = True
+        global _JAX_COMPILED_FUNCTION_TYPE
 
         import jax  # noqa: F401
 
         import funsor.jax  # noqa: F401
+
+        if _JAX_COMPILED_FUNCTION_TYPE is None:
+            _JAX_COMPILED_FUNCTION_TYPE = type(jax.jit(lambda: 0))
     else:
         raise ValueError(
             "backend should be either 'numpy', 'torch', or 'jax'"
@@ -297,6 +302,13 @@ def is_nn_module(x):
     torch = sys.modules.get("torch")
     if torch is not None:
         return isinstance(x, torch.nn.Module)
+    return False
+
+
+def is_jax_compiled_function(x):
+    jax = sys.modules.get("jax")
+    if jax is not None:
+        return isinstance(x, _JAX_COMPILED_FUNCTION_TYPE)
     return False
 
 

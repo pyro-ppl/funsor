@@ -13,7 +13,7 @@ import numpy as np
 
 from funsor.domains import ArrayType
 from funsor.ops import Op, is_numeric_array
-from funsor.util import is_nn_module
+from funsor.util import is_jax_compiled_function, is_nn_module
 
 from . import instrument
 
@@ -137,7 +137,12 @@ def _children_tuple(x):
 def is_atom(x):
     if isinstance(x, (tuple, frozenset)):
         return all(is_atom(c) for c in x)
-    return isinstance(x, _ground_types) or is_numeric_array(x) or is_nn_module(x)
+    return (
+        isinstance(x, _ground_types)
+        or is_numeric_array(x)
+        or is_nn_module(x)
+        or is_jax_compiled_function(x)
+    )
 
 
 def gensym(x=None):
