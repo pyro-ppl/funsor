@@ -14,9 +14,7 @@ class ProvenanceTensor(torch.Tensor):
     def __new__(cls, data, provenance=frozenset(), **kwargs):
         if not provenance:
             return data
-        instance = torch.Tensor.__new__(cls)
-        instance.__init__(data, provenance)
-        return instance
+        return torch.Tensor.__new__(cls)
 
     def __init__(self, data, provenance=frozenset()):
         assert isinstance(provenance, frozenset)
