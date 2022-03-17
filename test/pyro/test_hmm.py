@@ -148,6 +148,7 @@ def test_discrete_diag_normal_log_prob(init_shape, trans_shape, obs_shape, state
     check_expand(actual_dist, data)
 
 
+@pytest.mark.filterwarnings("ignore:torch.triangular_solve is deprecated")
 @pytest.mark.parametrize(
     "obs_dim,hidden_dim", [(1, 1), (1, 2), (2, 1), (2, 2), (2, 3), (3, 2)]
 )
