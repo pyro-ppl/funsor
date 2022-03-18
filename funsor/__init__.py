@@ -53,7 +53,7 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     testing,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.4.3"  # mirrored in setup.py
 
 __all__ = [
     "__version__",
