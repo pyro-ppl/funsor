@@ -31,6 +31,10 @@ class AssociativeOp(BinaryOp):
     pass
 
 
+class ComparisonOp(BinaryOp):
+    pass
+
+
 @AssociativeOp.make
 def null(x, y):
     """Placeholder associative op that unifies with any other op"""
@@ -144,13 +148,13 @@ def parse_slice(s, size):
 
 
 abs = UnaryOp.make(_builtin_abs)
-eq = BinaryOp.make(operator.eq)
-ge = BinaryOp.make(operator.ge)
-gt = BinaryOp.make(operator.gt)
+eq = ComparisonOp.make(operator.eq)
+ge = ComparisonOp.make(operator.ge)
+gt = ComparisonOp.make(operator.gt)
 invert = UnaryOp.make(operator.invert)
-le = BinaryOp.make(operator.le)
-lt = BinaryOp.make(operator.lt)
-ne = BinaryOp.make(operator.ne)
+le = ComparisonOp.make(operator.le)
+lt = ComparisonOp.make(operator.lt)
+ne = ComparisonOp.make(operator.ne)
 pos = UnaryOp.make(operator.pos)
 neg = UnaryOp.make(operator.neg)
 pow = BinaryOp.make(operator.pow)
@@ -285,6 +289,7 @@ UNARY_INVERSES[add] = neg
 
 __all__ = [
     "AssociativeOp",
+    "ComparisonOp",
     "abs",
     "add",
     "and_",

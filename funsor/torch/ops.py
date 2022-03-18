@@ -198,7 +198,7 @@ def _cholesky_inverse(x):
 def _triangular_inv(x, upper=False):
     if x.size(-1) == 1:
         return x.reciprocal()
-    return torch.eye(x.size(-1)).triangular_solve(x, upper=upper).solution
+    return torch.linalg.solve_triangular(x, torch.eye(x.size(-1)), upper=upper)
 
 
 @ops.detach.register(torch.Tensor)
@@ -347,7 +347,7 @@ def _pow(x, y):
 
 @ops.reciprocal.register(torch.Tensor)
 def _reciprocal(x):
-    if x.dtype in (torch.complex32, torch.complex64):
+    if torch.is_complex(x):
         return x.reciprocal()
     result = x.reciprocal().clamp(max=torch.finfo(x.dtype).max)
     return result
@@ -393,4 +393,7 @@ ops.stack.register(typing.Tuple[torch.Tensor, ...])(torch.stack)
 def _triangular_solve(x, y, upper=False, transpose=False):
     if y.size(-1) == 1:
         return x / y
-    return x.triangular_solve(y, upper, transpose).solution
+    if transpose:
+        y = y.transpose(-1, -2)
+        upper = not upper
+    return torch.linalg.solve_triangular(y, x, upper=upper)

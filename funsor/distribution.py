@@ -41,7 +41,13 @@ from funsor.terms import (
     to_funsor,
 )
 from funsor.typing import deep_isinstance
-from funsor.util import broadcast_shape, get_backend, getargspec, lazy_property
+from funsor.util import (
+    broadcast_shape,
+    get_backend,
+    get_default_dtype,
+    getargspec,
+    lazy_property,
+)
 
 BACKEND_TO_DISTRIBUTIONS_BACKEND = {
     "torch": "funsor.torch.distributions",
@@ -512,7 +518,7 @@ def expandeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
 
 def maskeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     mask = to_funsor(
-        ops.astype(backend_dist._mask, "float32"),
+        ops.astype(backend_dist._mask, get_default_dtype()),
         output=output,
         dim_to_name=dim_to_name,
     )

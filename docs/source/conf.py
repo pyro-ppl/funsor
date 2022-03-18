@@ -289,7 +289,7 @@ intersphinx_mapping = {
 # @jpchen's hack to get rtd builder to install latest pytorch
 if "READTHEDOCS" in os.environ:
     os.system(
-        "pip install torch==1.9.0+cpu -f https://download.pytorch.org/whl/torch_stable.html"
+        "pip install torch==1.11.0+cpu -f https://download.pytorch.org/whl/torch_stable.html"
     )
     # pyro needs to be installed after torch so pyro doesnt install the bloated torch-1.0 wheel
     os.system("pip install pyro-ppl")

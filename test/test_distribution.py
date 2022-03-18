@@ -33,7 +33,7 @@ from funsor.testing import (
     xfail_if_not_implemented,
     xfail_param,
 )
-from funsor.util import get_backend
+from funsor.util import get_backend, get_default_dtype
 
 pytestmark = excludes_backend("numpy", reason="requires a distributions library")
 if get_backend() != "numpy":
@@ -225,7 +225,7 @@ def test_delta_density(batch_shape, event_shape):
         eq = v == value
         for _ in range(len(event_shape)):
             eq = ops.all(eq, -1)
-        return ops.log(ops.astype(eq, "float32")) + log_density
+        return ops.log(ops.astype(eq, get_default_dtype())) + log_density
 
     check_funsor(
         delta,
@@ -311,10 +311,10 @@ def test_dirichlet_multinomial_density(batch_shape, event_shape):
 
     concentration = Tensor(ops.exp(randn(batch_shape + event_shape)), inputs)
     value_data = ops.astype(
-        randint(0, max_count, size=batch_shape + event_shape), "float32"
+        randint(0, max_count, size=batch_shape + event_shape), get_default_dtype()
     )
     total_count_data = value_data.sum(-1) + ops.astype(
-        randint(0, max_count, size=batch_shape), "float32"
+        randint(0, max_count, size=batch_shape), get_default_dtype()
     )
     value = Tensor(value_data, inputs)
     total_count = Tensor(total_count_data, inputs)
@@ -675,7 +675,10 @@ def test_poisson_probs_density(batch_shape, syntax):
 
     rate = Tensor(rand(batch_shape), inputs)
     value = Tensor(
-        ops.astype(ops.astype(ops.exp(randn(batch_shape)), "int32"), "float32"), inputs
+        ops.astype(
+            ops.astype(ops.exp(randn(batch_shape)), "int32"), get_default_dtype()
+        ),
+        inputs,
     )
     expected = poisson(rate, value)
     check_funsor(expected, inputs, Real)
@@ -869,13 +872,13 @@ def _check_sample(
 @pytest.mark.parametrize(
     "sample_inputs", [(), ("ii",), ("ii", "jj"), ("ii", "jj", "kk")]
 )
-@pytest.mark.parametrize("batch_shape", [(), (5,), (2, 3)], ids=str)
-@pytest.mark.parametrize("reparametrized", [True, False])
+@pytest.mark.parametrize("batch_shape", [(), (4,), (2, 3)], ids=str)
+@pytest.mark.parametrize("reparametrized", [True, False], ids=["reparam", "nonrepa"])
 def test_gamma_sample(batch_shape, sample_inputs, reparametrized):
     batch_dims = ("i", "j", "k")[: len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
-    concentration = rand(batch_shape)
+    concentration = rand(batch_shape) + 0.5
     rate = rand(batch_shape)
     funsor_dist_class = dist.Gamma if reparametrized else dist.NonreparameterizedGamma
     params = (concentration, rate)
@@ -885,7 +888,7 @@ def test_gamma_sample(batch_shape, sample_inputs, reparametrized):
         params,
         sample_inputs,
         inputs,
-        num_samples=200000,
+        num_samples=1000000,
         atol=5e-2 if reparametrized else 1e-1,
     )
 
@@ -1251,7 +1254,7 @@ def test_dirichlet_multinomial_conjugate_plate(batch_shape, size):
     prior = Variable("prior", Reals[size])
     concentration = Tensor(ops.exp(randn(full_shape)), inputs)
     value_data = ops.astype(
-        randint(0, max_count, size=batch_shape + (7, size)), "float32"
+        randint(0, max_count, size=batch_shape + (7, size)), get_default_dtype()
     )
     obs_inputs = inputs.copy()
     obs_inputs["plate"] = Bint[7]
@@ -1276,7 +1279,7 @@ def test_dirichlet_multinomial_conjugate(batch_shape, size):
     full_shape = batch_shape + (size,)
     prior = Variable("prior", Reals[size])
     concentration = Tensor(ops.exp(randn(full_shape)), inputs)
-    value_data = ops.astype(randint(0, max_count, size=full_shape), "float32")
+    value_data = ops.astype(randint(0, max_count, size=full_shape), get_default_dtype())
     obs = Tensor(value_data, inputs)
     total_count_data = value_data.sum(-1)
     total_count = Tensor(total_count_data, inputs)
@@ -1328,7 +1331,10 @@ def test_gamma_poisson_conjugate(batch_shape):
     assert_close(reduced.rate, rate)
 
     obs = Tensor(
-        ops.astype(ops.astype(ops.exp(randn(batch_shape)), "int32"), "float32"), inputs
+        ops.astype(
+            ops.astype(ops.exp(randn(batch_shape)), "int32"), get_default_dtype()
+        ),
+        inputs,
     )
     _assert_conjugate_density_ok(latent, conditional, obs)
 

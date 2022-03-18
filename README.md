@@ -14,7 +14,7 @@ for a system description.
 
 **Install using pip:**
 
-Funsor supports Python 3.6+.
+Funsor supports Python 3.7+.
 
 ```sh
 pip install funsor

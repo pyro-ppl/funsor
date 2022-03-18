@@ -405,6 +405,13 @@ def _find_domain_pointwise_binary_generic(op, lhs, rhs):
     raise NotImplementedError("TODO")
 
 
+@find_domain.register(ops.ComparisonOp)
+def _find_domain_comparison(op, lhs, rhs):
+    if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType):
+        return Array[2, broadcast_shape(lhs.shape, rhs.shape)]
+    raise NotImplementedError("TODO")
+
+
 @find_domain.register(ops.FloordivOp)
 def _find_domain_floordiv(op, lhs, rhs):
     if isinstance(lhs, ArrayType) and isinstance(rhs, ArrayType):
