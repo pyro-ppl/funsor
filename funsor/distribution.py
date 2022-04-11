@@ -12,6 +12,7 @@ from importlib import import_module
 
 import makefun
 
+import funsor
 import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
@@ -458,6 +459,15 @@ def backenddist_to_funsor(
         for param_name in funsor_dist_class._ast_fields
         if param_name != "value"
     ]
+    terms = frozenset()
+    for param in params:
+        if isinstance(param, funsor.Sampled):
+            terms |= frozenset(param.terms)
+    params = [
+        param.arg if isinstance(param, funsor.Sampled) else param for param in params
+    ]
+    if terms:
+        return funsor.Sampled(tuple(terms), funsor_dist_class(*params))
     return funsor_dist_class(*params)
 
 

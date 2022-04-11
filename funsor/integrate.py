@@ -11,6 +11,7 @@ from funsor.constant import Constant
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _norm2, _vm, align_gaussian
 from funsor.interpretations import eager, normalize
+from funsor.sampled import Sampled
 from funsor.tensor import Tensor
 from funsor.terms import (
     Funsor,
@@ -139,6 +140,7 @@ EagerConstant = Constant[
         Tensor,
         GaussianMixture,
         EagerConstant,
+        Sampled,
     ),
 )
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
@@ -183,7 +185,7 @@ def eager_integrate(delta, integrand, reduced_vars):
         if name in reduced_names
     )
     new_integrand = Subs(integrand, subs)
-    new_log_measure = Subs(delta, subs)
+    new_log_measure = delta.reduce(ops.logaddexp, reduced_vars)
     result = Integrate(new_log_measure, new_integrand, reduced_vars - delta_fresh)
     return result
 

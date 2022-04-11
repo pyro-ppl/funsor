@@ -7,6 +7,7 @@ from funsor.factory import make_funsor
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
 from funsor.op_factory import make_op
+from funsor.sampled import Sampled
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Tensor, function
 from funsor.terms import (
@@ -71,6 +72,7 @@ __all__ = [
     "Number",
     "Real",
     "Reals",
+    "Sampled",
     "Slice",
     "Stack",
     "Tensor",
