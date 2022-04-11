@@ -9,7 +9,6 @@ import jax.random
 import numpy as onp
 from jax import lax
 from jax.core import Tracer
-from jax.interpreters.xla import DeviceArray
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, gammaln, logsumexp
 
@@ -19,7 +18,7 @@ from .. import ops
 # Register Ops
 ################################################################################
 
-array = (onp.generic, onp.ndarray, DeviceArray, Tracer)
+array = (onp.generic, onp.ndarray, np.ndarray, Tracer)
 ops.atanh.register(array)(np.arctanh)
 ops.clamp.register(array)(np.clip)
 ops.exp.register(array)(np.exp)
