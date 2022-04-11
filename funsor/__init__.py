@@ -7,7 +7,7 @@ from funsor.factory import make_funsor
 from funsor.integrate import Integrate
 from funsor.interpreter import interpretation, reinterpret
 from funsor.op_factory import make_op
-from funsor.sampled import Sampled
+from funsor.provenance import Provenance
 from funsor.sum_product import MarkovProduct
 from funsor.tensor import Tensor, function
 from funsor.terms import (
@@ -48,6 +48,7 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     montecarlo,
     ops,
     precondition,
+    provenance,
     recipes,
     sum_product,
     terms,
@@ -72,7 +73,7 @@ __all__ = [
     "Number",
     "Real",
     "Reals",
-    "Sampled",
+    "Provenance",
     "Slice",
     "Stack",
     "Tensor",
@@ -107,6 +108,7 @@ __all__ = [
     "ops",
     "precondition",
     "pretty",
+    "provenance",
     "quote",
     "reals",
     "recipes",

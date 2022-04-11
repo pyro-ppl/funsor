@@ -4,7 +4,7 @@
 import torch
 from multipledispatch import dispatch
 
-from funsor.sampled import Sampled
+from funsor.provenance import Provenance
 from funsor.tensor import tensor_to_funsor
 from funsor.terms import to_data, to_funsor
 from funsor.torch.provenance import ProvenanceTensor
@@ -29,15 +29,15 @@ def _quote(x, indent, out):
 
 
 @to_funsor.register(ProvenanceTensor)
-def provenance_to_funsor(x, output=None, dim_to_name=None):
-    ret = to_funsor(x._t, output=output, dim_to_name=dim_to_name)
-    return Sampled(tuple(x._provenance), ret)
+def provenancetensor_to_funsor(x, output=None, dim_to_name=None):
+    term = to_funsor(x._t, output=output, dim_to_name=dim_to_name)
+    return Provenance(term, x._provenance)
 
 
-@to_data.register(Sampled)
-def sampled_to_data(x, name_to_dim=None):
-    data = to_data(x.arg, name_to_dim=name_to_dim)
-    return ProvenanceTensor(data, provenance=frozenset(x.terms))
+@to_data.register(Provenance)
+def provenance_to_data(x, name_to_dim=None):
+    data = to_data(x.term, name_to_dim=name_to_dim)
+    return ProvenanceTensor(data, provenance=x.provenance)
 
 
 to_funsor.register(torch.Tensor)(tensor_to_funsor)
