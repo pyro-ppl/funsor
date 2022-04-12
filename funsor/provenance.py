@@ -5,13 +5,14 @@ from collections import OrderedDict
 
 import funsor.ops as ops
 from funsor.domains import Real
-from funsor.terms import Funsor, FunsorMeta, Unary, Variable, eager
+from funsor.tensor import Tensor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Unary, Variable, eager
 from funsor.util import get_default_dtype
 
 
 class ProvenanceMeta(FunsorMeta):
     """
-    Wrapper to collect provenance information from the term.
+    Wrapper to combine provenance information from the term.
     """
 
     def __call__(cls, term, provenance):
@@ -62,7 +63,7 @@ class Provenance(Funsor, metaclass=ProvenanceMeta):
     def eager_subs(self, subs):
         assert isinstance(subs, tuple)
         subs = OrderedDict(subs)
-        assert set(subs.keys()).issubset(self.fresh)
+        assert set(subs).issubset(self.fresh)
         new_provenance = frozenset()
         new_term = self.term
         for name, (point, log_density) in self.provenance:
@@ -83,6 +84,23 @@ class Provenance(Funsor, metaclass=ProvenanceMeta):
     def _sample(self, sampled_vars, sample_inputs, rng_key):
         result = self.term._sample(sampled_vars, sample_inputs, rng_key)
         return Provenance(result, self.provenance)
+
+
+@eager.register(Binary, ops.BinaryOp, Provenance, Provenance)
+def eager_binary_provenance_provenance(op, lhs, rhs):
+    return Provenance(op(lhs.term, rhs.term), lhs.provenance | rhs.provenance)
+
+
+@eager.register(Binary, ops.BinaryOp, Provenance, (Number, Tensor))
+def eager_binary_provenance_tensor(op, lhs, rhs):
+    assert lhs.fresh.isdisjoint(rhs.inputs)
+    return Provenance(op(lhs.term, rhs), lhs.provenance)
+
+
+@eager.register(Binary, ops.BinaryOp, (Number, Tensor), Provenance)
+def eager_binary_tensor_provenance(op, lhs, rhs):
+    assert rhs.fresh.isdisjoint(lhs.inputs)
+    return Provenance(op(lhs, rhs.term), rhs.provenance)
 
 
 @eager.register(Unary, ops.UnaryOp, Provenance)
