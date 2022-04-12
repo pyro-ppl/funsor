@@ -81,29 +81,3 @@ def test_align():
         for i in range(2):
             for j in range(3):
                 assert x(a=0, b=b, i=i, j=j) == y(a=0, b=b, i=i, j=j)
-
-
-@requires_backend("torch", reason="requires ProvenanceTensor")
-def test_to_funsor():
-    import torch
-
-    from funsor.torch.provenance import ProvenanceTensor
-
-    data = torch.zeros(3, 3)
-    pt = ProvenanceTensor(data, frozenset({("x", Real)}))
-    c = to_funsor(pt)
-    assert c is Constant(OrderedDict(x=Real), Tensor(data))
-
-
-@requires_backend("torch", reason="requires ProvenanceTensor")
-def test_to_data():
-    import torch
-
-    from funsor.torch.provenance import ProvenanceTensor
-
-    data = torch.zeros(3, 3)
-    c = Constant(OrderedDict(x=Real), Tensor(data))
-    pt = to_data(c)
-    assert isinstance(pt, ProvenanceTensor)
-    assert pt._t is data
-    assert pt._provenance == frozenset({("x", Real)})
