@@ -71,8 +71,8 @@ class Provenance(Funsor, metaclass=ProvenanceMeta):
                     new_provenance |= frozenset([(value.name, point)])
                     continue
 
-                # substituted value needs to match point
-                # provenance variable is leaved out
+                # leave out the substituted provenance variable
+                # make sure that the value matches the point
                 assert value is point
             else:
                 new_provenance |= frozenset([(name, point)])
