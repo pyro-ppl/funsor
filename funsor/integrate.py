@@ -186,7 +186,6 @@ def eager_integrate(delta, integrand, reduced_vars):
     )
     new_integrand = Subs(integrand, subs)
     new_log_measure = Subs(delta, subs)
-
     result = Integrate(new_log_measure, new_integrand, reduced_vars - delta_fresh)
     return result
 
