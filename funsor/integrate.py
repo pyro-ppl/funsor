@@ -182,10 +182,16 @@ def eager_integrate(delta, integrand, reduced_vars):
     subs = tuple(
         (name, point)
         for name, (point, log_density) in delta.terms
-        if name in reduced_names
+        if name in reduced_names and name in integrand.inputs
     )
-    new_integrand = Subs(integrand, subs)
-    new_log_measure = delta.reduce(ops.logaddexp, reduced_vars)
+    reduced_names = reduced_names.difference(integrand.inputs)
+    new_log_measure = delta
+    new_integrand = integrand
+    if subs:
+        new_integrand = Subs(new_integrand, subs)
+        new_log_measure = Subs(new_log_measure, subs)
+    if reduced_names:
+        new_log_measure = new_log_measure.reduce(ops.logaddexp, reduced_names)
     result = Integrate(new_log_measure, new_integrand, reduced_vars - delta_fresh)
     return result
 

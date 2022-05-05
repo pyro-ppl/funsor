@@ -18,7 +18,6 @@ from funsor.domains import Array, Bint, Real, Reals
 from funsor.integrate import Integrate
 from funsor.interpretations import eager, lazy
 from funsor.interpreter import reinterpret
-from funsor.provenance import Provenance
 from funsor.tensor import Einsum, Tensor, numeric_array
 from funsor.terms import Independent, Variable, to_funsor
 from funsor.testing import (
@@ -761,9 +760,6 @@ def _get_stat_diff(
     sample_value = funsor_dist.sample(
         frozenset(["value"]), sample_inputs, rng_key=rng_key
     )
-    point = sample_value.terms[0][1][0]
-    log_density = sample_value.terms[0][1][1]
-    value = Provenance(point, frozenset([("value", (point, log_density))]))
     expected_inputs = OrderedDict(
         tuple(sample_inputs.items())
         + tuple(inputs.items())
@@ -775,7 +771,7 @@ def _get_stat_diff(
         if statistic == "mean":
             actual_stat = Integrate(
                 sample_value,
-                value,
+                Variable("value", funsor_dist.inputs["value"]),
                 frozenset(["value"]),
             ).reduce(ops.mean, frozenset(sample_inputs))
             expected_stat = funsor_dist.mean()
@@ -787,7 +783,7 @@ def _get_stat_diff(
             ).reduce(ops.mean, frozenset(sample_inputs))
             actual_stat = Integrate(
                 sample_value,
-                (value - actual_mean) ** 2,
+                (Variable("value", funsor_dist.inputs["value"]) - actual_mean) ** 2,
                 frozenset(["value"]),
             ).reduce(ops.mean, frozenset(sample_inputs))
             expected_stat = funsor_dist.variance()
