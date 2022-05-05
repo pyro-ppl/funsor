@@ -3,7 +3,9 @@
 
 from collections import OrderedDict
 
-from funsor.terms import Funsor, FunsorMeta, Variable
+import funsor.ops as ops
+from funsor.tensor import Tensor
+from funsor.terms import Binary, Funsor, FunsorMeta, Number, Unary, Variable, eager
 
 
 class ProvenanceMeta(FunsorMeta):
@@ -22,7 +24,7 @@ class ProvenanceMeta(FunsorMeta):
 class Provenance(Funsor, metaclass=ProvenanceMeta):
     """
     Provenance funsor for tracking the dependence of terms on ``(name, point)``
-    of random variables.
+    of sampled random variables.
 
     **References**
 
@@ -31,8 +33,7 @@ class Provenance(Funsor, metaclass=ProvenanceMeta):
         http://papers.neurips.cc/paper/4309-nonstandard-interpretations-of-probabilistic-programs-for-efficient-inference.pdf
 
     :param funsor term: A term that depends on tracked variables.
-    :param frozenset provenance: A set of tuples of the form
-        ``(name, point)``.
+    :param frozenset provenance: A set of tuples of the form ``(name, point)``.
     """
 
     def __init__(self, term, provenance):
@@ -69,6 +70,9 @@ class Provenance(Funsor, metaclass=ProvenanceMeta):
                 if isinstance(value, Variable):
                     new_provenance |= frozenset([(value.name, point)])
                     continue
+
+                # substituted value needs to match point
+                # provenance variable is leaved out
                 assert value is point
             else:
                 new_provenance |= frozenset([(name, point)])
@@ -77,3 +81,25 @@ class Provenance(Funsor, metaclass=ProvenanceMeta):
     def _sample(self, sampled_vars, sample_inputs, rng_key):
         result = self.term._sample(sampled_vars, sample_inputs, rng_key)
         return Provenance(result, self.provenance)
+
+
+@eager.register(Binary, ops.BinaryOp, Provenance, Provenance)
+def eager_binary_provenance_provenance(op, lhs, rhs):
+    return Provenance(op(lhs.term, rhs.term), lhs.provenance | rhs.provenance)
+
+
+@eager.register(Binary, ops.BinaryOp, Provenance, (Number, Tensor))
+def eager_binary_provenance_tensor(op, lhs, rhs):
+    assert lhs.fresh.isdisjoint(rhs.inputs)
+    return Provenance(op(lhs.term, rhs), lhs.provenance)
+
+
+@eager.register(Binary, ops.BinaryOp, (Number, Tensor), Provenance)
+def eager_binary_tensor_provenance(op, lhs, rhs):
+    assert rhs.fresh.isdisjoint(lhs.inputs)
+    return Provenance(op(lhs, rhs.term), rhs.provenance)
+
+
+@eager.register(Unary, ops.UnaryOp, Provenance)
+def eager_unary(op, arg):
+    return Provenance(op(arg.term), arg.provenance)
