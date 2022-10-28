@@ -27,7 +27,8 @@ class ProvenanceTensor(torch.Tensor):
     def __repr__(self):
         return "Provenance:\n{}\nTensor:\n{}".format(self._provenance, self._t)
 
-    def __torch_function__(self, func, types, args=(), kwargs=None):
+    @classmethod
+    def __torch_function__(cls, func, types, args=(), kwargs=None):
         if kwargs is None:
             kwargs = {}
         # collect provenance information from args
