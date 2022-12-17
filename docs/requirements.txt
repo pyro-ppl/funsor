@@ -1,3 +1,4 @@
+ipython<=8.6.0  # restrict for https://github.com/ipython/ipython/issues/13845
 makefun
 multipledispatch
 nbsphinx==0.8.1
