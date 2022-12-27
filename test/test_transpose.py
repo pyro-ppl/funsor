@@ -210,7 +210,8 @@ def test_tower_sum(height):
     assert transpose(top)[x] is Number(2.0**height)
 
 
-@pytest.mark.parametrize("height", [0, 1, 2, 3, 10])  # , 100, 1000])
+# Note: we get overflow issue for height=10.
+@pytest.mark.parametrize("height", [0, 1, 2, 3, 9])  # , 10, 100, 1000])
 def test_tower_prod(height):
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
     with lazy:

@@ -245,7 +245,7 @@ def check_funsor(x, inputs, output, data=None):
             else:
                 assert (x_data == data).all()
         else:
-            if get_backend() == "jax":
+            if get_backend() in ["jax", "numpy"]:
                 # JAX has numerical errors for reducing ops.
                 assert_close(x_data, data)
             else:

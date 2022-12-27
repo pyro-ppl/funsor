@@ -7,7 +7,7 @@ import itertools
 import pickle
 from collections import OrderedDict
 from functools import reduce
-from typing import get_type_hints
+from typing import Tuple, get_type_hints
 
 import numpy as np
 import pytest
@@ -863,7 +863,7 @@ def test_function_nested_eager_hint():
 
 
 def test_function_nested_eager():
-    @funsor.function(Reals[8], (Real, Bint[8]))
+    @funsor.function(Reals[8], Tuple[Real, Bint[8]])
     def max_and_argmax(x):
         return tuple(_numeric_max_and_argmax(x))
 
@@ -879,7 +879,7 @@ def test_function_nested_eager():
 
 
 def test_function_nested_lazy():
-    @funsor.function(Reals[8], (Real, Bint[8]))
+    @funsor.function(Reals[8], Tuple[Real, Bint[8]])
     def max_and_argmax(x):
         return tuple(_numeric_max_and_argmax(x))
 
