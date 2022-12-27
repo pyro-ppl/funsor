@@ -1,7 +1,7 @@
 ipython<=8.6.0  # restrict for https://github.com/ipython/ipython/issues/13845
 makefun
 multipledispatch
-nbsphinx==0.8.1
+nbsphinx==0.8.9
 numpy>=1.7
 opt_einsum>=2.3.2
 pytest>=4.1
