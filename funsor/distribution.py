@@ -286,7 +286,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
             raise NotImplementedError(
                 f"Failed to infer dtype of {cls.dist_class.__name__}"
             )
-        while type(support).__name__ == "IndependentConstraint":
+        while hasattr(support, "base_constraint"):
             support = support.base_constraint
         if type(support).__name__ == "_IntegerInterval":
             return int(support.upper_bound + 1)
@@ -312,13 +312,11 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         # define backend-specific distributions and overide these `infer_value_domain`,
         # `infer_param_domain` methods.
         # Because NumPyro and Pyro have the same pattern, we use name check for simplicity.
-        support_name = type(support).__name__.lstrip("_")
-
         event_dim = 0
-        while support_name == "IndependentConstraint":
+        while hasattr(support, "base_constraint"):
             event_dim += support.reinterpreted_batch_ndims
             support = support.base_constraint
-            support_name = type(support).__name__.lstrip("_")
+        support_name = type(support).__name__.lstrip("_")
 
         if support_name == "Simplex":
             output = Reals[raw_shape[-1 - event_dim :]]
@@ -337,7 +335,13 @@ class Distribution(Funsor, metaclass=DistributionMeta):
                 output = Reals[raw_shape[-1 - event_dim :]]
             else:
                 output = Reals[raw_shape[len(raw_shape) - event_dim :]]
-        elif support_name in ("Interval", "GreaterThan", "LessThan"):
+        elif support_name in (
+            "Interval",
+            "GreaterThan",
+            "LessThan",
+            "UnitInterval",
+            "Positive",
+        ):
             output = Reals[raw_shape[len(raw_shape) - event_dim :]]
         else:
             output = None
