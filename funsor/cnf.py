@@ -311,7 +311,6 @@ def eager_contraction_to_reduce(red_op, bin_op, reduced_vars, term):
 
 @eager.register(Contraction, AssociativeOp, AssociativeOp, frozenset, Funsor, Funsor)
 def eager_contraction_to_binary(red_op, bin_op, reduced_vars, lhs, rhs):
-
     if not reduced_vars.issubset(lhs.input_vars & rhs.input_vars):
         args = red_op, bin_op, reduced_vars, (lhs, rhs)
         result = eager.dispatch(Contraction, *args)(*args)
@@ -463,7 +462,6 @@ def normalize_trivial(red_op, bin_op, reduced_vars, term):
 
 @normalize.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
-
     if not reduced_vars and red_op is not ops.null:
         return Contraction(ops.null, bin_op, reduced_vars, *terms)
 
@@ -490,7 +488,6 @@ def normalize_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
         return Contraction(red_op, bin_op, reduced_vars, *new_terms)
 
     for i, v in enumerate(terms):
-
         if not isinstance(v, Contraction):
             continue
 

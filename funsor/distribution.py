@@ -213,7 +213,6 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         return log_prob.align(tuple(inputs))
 
     def _sample(self, sampled_vars, sample_inputs, rng_key):
-
         # note this should handle transforms correctly via distribution_to_data
         raw_dist, value_name, value_output, dim_to_name = self._get_raw_dist()
         for d, name in zip(range(len(sample_inputs), 0, -1), sample_inputs.keys()):
@@ -498,7 +497,6 @@ def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
 
 
 def expandeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
-
     funsor_base_dist = to_funsor(
         backend_dist.base_dist, output=output, dim_to_name=dim_to_name
     )

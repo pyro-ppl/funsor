@@ -213,6 +213,7 @@ def _infer_param_domain(cls, name, raw_shape):
 # Converting distribution funsors to NumPyro distributions
 ###########################################################
 
+
 # Convert Delta **distribution** to raw data
 @to_data.register(Delta)  # noqa: F821
 def deltadist_to_data(funsor_dist, name_to_dim=None):

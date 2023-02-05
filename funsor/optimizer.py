@@ -27,9 +27,7 @@ unfold = PrioritizedInterpretation(unfold_base, normalize_base, lazy)
 
 @unfold.register(Contraction, AssociativeOp, AssociativeOp, frozenset, tuple)
 def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
-
     for i, v in enumerate(terms):
-
         if not isinstance(v, Contraction):
             continue
 
@@ -121,7 +119,7 @@ def optimize_contract_finitary_funsor(red_op, bin_op, reduced_vars, terms):
         reduce_dim_counter.update({d: 1 for d in input})
 
     operands = list(terms)
-    for (a, b) in path:
+    for a, b in path:
         b, a = tuple(sorted((a, b), reverse=True))
         tb = operands.pop(b)
         ta = operands.pop(a)

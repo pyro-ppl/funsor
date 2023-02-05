@@ -468,7 +468,6 @@ def random_mvn(batch_shape, dim, diag=False):
 
 
 def make_plated_hmm_einsum(num_steps, num_obs_plates=1, num_hidden_plates=0):
-
     assert num_obs_plates >= num_hidden_plates
     t0 = num_obs_plates + 1
 

@@ -22,7 +22,6 @@ class Guide(object):
         self.params = self.initialize_params()
 
     def initialize_params(self):
-
         # dictionary of guide random effect parameters
         params = {"eps_g": {}, "eps_i": {}}
 
@@ -30,7 +29,6 @@ class Guide(object):
 
         # initialize group-level parameters
         if self.config["group"]["random"] == "continuous":
-
             params["eps_g"]["loc"] = Tensor(
                 pyro.param("loc_group", lambda: torch.zeros((N_state, N_state))),
                 OrderedDict([("y_prev", Bint[N_state])]),
@@ -48,7 +46,6 @@ class Guide(object):
         # initialize individual-level random effect parameters
         N_c = self.config["sizes"]["group"]
         if self.config["individual"]["random"] == "continuous":
-
             params["eps_i"]["loc"] = Tensor(
                 pyro.param(
                     "loc_individual", lambda: torch.zeros((N_c, N_state, N_state))
@@ -69,7 +66,6 @@ class Guide(object):
         return self.params
 
     def __call__(self):
-
         # calls pyro.param so that params are exposed and constraints applied
         # should not create any new torch.Tensors after __init__
         self.initialize_params()
@@ -104,7 +100,6 @@ class Model(object):
         self.observations = self.initialize_observations()
 
     def initialize_params(self):
-
         # return a dict of per-site params as funsor.tensor.Tensors
         params = {
             "e_g": {},
@@ -126,7 +121,6 @@ class Model(object):
 
         # initialize group-level random effect parameters
         if self.config["group"]["random"] == "discrete":
-
             params["e_g"]["probs"] = Tensor(
                 pyro.param(
                     "probs_e_g",
@@ -142,7 +136,6 @@ class Model(object):
             )
 
         elif self.config["group"]["random"] == "continuous":
-
             # note these are prior values, trainable versions live in guide
             params["eps_g"]["loc"] = Tensor(
                 torch.zeros((N_state, N_state)),
@@ -156,7 +149,6 @@ class Model(object):
         # initialize individual-level random effect parameters
         N_c = self.config["sizes"]["group"]
         if self.config["individual"]["random"] == "discrete":
-
             params["e_i"]["probs"] = Tensor(
                 pyro.param(
                     "probs_e_i",
@@ -176,7 +168,6 @@ class Model(object):
             )
 
         elif self.config["individual"]["random"] == "continuous":
-
             params["eps_i"]["loc"] = Tensor(
                 torch.zeros((N_c, N_state, N_state)),
                 OrderedDict([("g", Bint[N_c]), ("y_prev", Bint[N_state])]),
@@ -311,7 +302,6 @@ class Model(object):
         return self.raggedness_masks
 
     def __call__(self):
-
         # calls pyro.param so that params are exposed and constraints applied
         # should not create any new torch.Tensors after __init__
         self.initialize_params()

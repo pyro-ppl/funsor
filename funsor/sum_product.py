@@ -250,7 +250,7 @@ def partial_sum_product(
         leaf = max(ordinal_to_factors, key=len)  # CHOICE
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(
+        for group_factors, group_vars in _partition(
             leaf_factors, leaf_reduce_vars
         ):  # CHOICE
             f = reduce(prod_op, group_factors).reduce(sum_op, group_vars & eliminate)
@@ -400,7 +400,7 @@ def dynamic_partial_sum_product(
         leaf = max(ordinal_to_factors, key=len)
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(
+        for group_factors, group_vars in _partition(
             leaf_factors, leaf_reduce_vars | markov_prod_vars
         ):
             # eliminate non markov vars
@@ -529,7 +529,7 @@ def modified_partial_sum_product(
         leaf = max(ordinal_to_factors, key=len)
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(
+        for group_factors, group_vars in _partition(
             leaf_factors, leaf_reduce_vars | markov_prod_vars
         ):
             # eliminate non markov vars
@@ -780,7 +780,6 @@ def _shift_funsor(f, t, global_vars):
 def naive_sarkka_bilmes_product(
     sum_op, prod_op, trans, time_var, global_vars=frozenset()
 ):
-
     assert isinstance(global_vars, frozenset)
 
     time = time_var.name
@@ -818,7 +817,6 @@ def naive_sarkka_bilmes_product(
 def sarkka_bilmes_product(
     sum_op, prod_op, trans, time_var, global_vars=frozenset(), num_periods=1
 ):
-
     assert isinstance(global_vars, frozenset)
 
     time = time_var.name

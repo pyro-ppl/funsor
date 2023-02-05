@@ -46,7 +46,6 @@ def test_subs_reduce():
 @pytest.mark.parametrize("lhs_vars", [(), ("i",), ("j",), ("i", "j")])
 @pytest.mark.parametrize("rhs_vars", [(), ("i",), ("j",), ("i", "j")])
 def test_distribute_reduce(lhs_vars, rhs_vars):
-
     lhs_vars, rhs_vars = frozenset(lhs_vars), frozenset(rhs_vars)
     lhs = random_tensor(OrderedDict([("i", Bint[3]), ("j", Bint[2])]), Real)
     rhs = random_tensor(OrderedDict([("i", Bint[3]), ("j", Bint[2])]), Real)

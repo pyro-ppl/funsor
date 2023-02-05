@@ -319,7 +319,7 @@ def _triangular_solve(x, y, upper=False, transpose=False):
     prepend_ndim = dx - y.ndim  # ndim of ... part
     # Reshape x with the shape (..., 1, i, j, 1, n, m)
     x_new_shape = batch_shape[:prepend_ndim]
-    for (sy, sx) in zip(y.shape[:-2], batch_shape[prepend_ndim:]):
+    for sy, sx in zip(y.shape[:-2], batch_shape[prepend_ndim:]):
         x_new_shape += (sx // sy, sy)
     x_new_shape += (n, m)
     x = np.reshape(x, x_new_shape)
