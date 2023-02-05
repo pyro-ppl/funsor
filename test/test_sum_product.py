@@ -35,7 +35,7 @@ from funsor.sum_product import (
     sum_product,
 )
 from funsor.tensor import Tensor, get_default_prototype
-from funsor.terms import Variable
+from funsor.terms import Cat, Number, Variable
 from funsor.testing import assert_close, random_gaussian, random_tensor
 from funsor.util import get_backend
 
@@ -368,7 +368,6 @@ def test_var_in_plate_ok():
 def test_modified_partial_sum_product_0(
     impl, sum_op, prod_op, vars1, vars2, x_dim, time
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim]}))
@@ -414,7 +413,6 @@ def test_modified_partial_sum_product_0(
 def test_modified_partial_sum_product_1(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim]}))
@@ -471,7 +469,6 @@ def test_modified_partial_sum_product_1(
 def test_modified_partial_sum_product_2(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim]}))
@@ -530,7 +527,6 @@ def test_modified_partial_sum_product_2(
 def test_modified_partial_sum_product_3(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim]}))
@@ -627,7 +623,6 @@ def test_modified_partial_sum_product_3(
 def test_modified_partial_sum_product_4(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "x_0": Bint[x_dim]}))
@@ -758,7 +753,6 @@ def test_modified_partial_sum_product_4(
 def test_modified_partial_sum_product_5(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, days, weeks, tones
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(
@@ -870,7 +864,6 @@ def test_modified_partial_sum_product_5(
 def test_modified_partial_sum_product_6(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "x_0": Bint[x_dim]}))
@@ -986,7 +979,6 @@ def test_modified_partial_sum_product_6(
 def test_modified_partial_sum_product_7(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "x_0": Bint[x_dim]}))
@@ -1125,7 +1117,6 @@ def test_modified_partial_sum_product_7(
 def test_modified_partial_sum_product_8(
     impl, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "w_0": Bint[w_dim]}))
@@ -1298,7 +1289,6 @@ def test_modified_partial_sum_product_9(
     time,
     tones,
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "w_0": Bint[w_dim]}))
@@ -1364,7 +1354,7 @@ def test_modified_partial_sum_product_9(
         "tones": {},
     }
 
-    with (lazy if use_lazy else eager):
+    with lazy if use_lazy else eager:
         factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
         factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         actual = reduce(prod_op, factors2)
@@ -1454,7 +1444,6 @@ def test_modified_partial_sum_product_9(
 def test_modified_partial_sum_product_10(
     impl, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "w_0": Bint[w_dim]}))
@@ -1640,7 +1629,6 @@ def test_modified_partial_sum_product_11(
     time,
     tones,
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"a": Bint[a_dim]}))
@@ -1721,7 +1709,7 @@ def test_modified_partial_sum_product_11(
         "tones": {},
     }
 
-    with (lazy if use_lazy else eager):
+    with lazy if use_lazy else eager:
         factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
         factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         actual = reduce(prod_op, factors2)
@@ -1808,7 +1796,6 @@ def test_modified_partial_sum_product_11(
 def test_modified_partial_sum_product_12(
     impl, sum_op, prod_op, vars1, vars2, w_dim, x_dim, y_dim, sequences, time, tones
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "w_0": Bint[w_dim]}))
@@ -1995,7 +1982,6 @@ def test_modified_partial_sum_product_13(
     weeks,
     tones,
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(
@@ -2048,7 +2034,7 @@ def test_modified_partial_sum_product_13(
         "weeks": frozenset({("y_0", "y_prev", "y_curr")}),
     }
 
-    with (lazy if use_lazy else eager):
+    with lazy if use_lazy else eager:
         factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
         factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         actual = reduce(prod_op, factors2)
@@ -2152,7 +2138,6 @@ def test_modified_partial_sum_product_13(
 def test_modified_partial_sum_product_14(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, sequences, time, tones
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"sequences": Bint[sequences], "x_0": Bint[x_dim]}))
@@ -2258,7 +2243,6 @@ def test_modified_partial_sum_product_14(
 def test_modified_partial_sum_product_16(
     impl, sum_op, prod_op, vars1, vars2, x_dim, y_dim, time
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim]}))
@@ -2352,7 +2336,6 @@ def test_modified_partial_sum_product_16(
 def test_modified_partial_sum_product_17(
     impl, use_lazy, sum_op, prod_op, vars1, vars2, x_dim, y_dim, z_dim, time
 ):
-
     f1 = random_tensor(OrderedDict({}))
 
     f2 = random_tensor(OrderedDict({"x_0": Bint[x_dim]}))
@@ -2425,7 +2408,7 @@ def test_modified_partial_sum_product_17(
     factors = [f1, f2, f3, f4, f5, f6, f7, f8, f9]
     plate_to_step = {"time": frozenset({("x_0", "x_prev", "x_curr")})}
 
-    with (lazy if use_lazy else eager):
+    with lazy if use_lazy else eager:
         factors1 = impl(sum_op, prod_op, factors, vars1, plate_to_step)
         factors2 = impl(sum_op, prod_op, factors1, vars2, plate_to_step)
         actual = reduce(prod_op, factors2)
@@ -2648,7 +2631,6 @@ def test_sequential_sum_product_bias_2(num_steps, num_sensors, dim):
 
 
 def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
-
     sum_op, prod_op = ops.logaddexp, ops.add
 
     assert "time" in trans.inputs
@@ -2674,7 +2656,6 @@ def _check_sarkka_bilmes(trans, expected_inputs, global_vars, num_periods=1):
 
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
 def test_sarkka_bilmes_example_0(duration):
-
     trans = random_tensor(OrderedDict({"time": Bint[duration], "a": Bint[3]}))
 
     expected_inputs = {"a": Bint[3]}
@@ -2684,7 +2665,6 @@ def test_sarkka_bilmes_example_0(duration):
 
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
 def test_sarkka_bilmes_example_1(duration):
-
     trans = random_tensor(
         OrderedDict(
             {"time": Bint[duration], "a": Bint[3], "b": Bint[2], "_PREV_b": Bint[2]}
@@ -2698,7 +2678,6 @@ def test_sarkka_bilmes_example_1(duration):
 
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6, 7, 8])
 def test_sarkka_bilmes_example_2(duration):
-
     trans = random_tensor(
         OrderedDict(
             {
@@ -2726,7 +2705,6 @@ def test_sarkka_bilmes_example_2(duration):
 
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6, 7, 8])
 def test_sarkka_bilmes_example_3(duration):
-
     trans = random_tensor(
         OrderedDict(
             {
@@ -2750,7 +2728,6 @@ def test_sarkka_bilmes_example_3(duration):
 
 @pytest.mark.parametrize("duration", [3, 4, 5, 6, 7, 9])
 def test_sarkka_bilmes_example_4(duration):
-
     trans = random_tensor(
         OrderedDict(
             {
@@ -2774,7 +2751,6 @@ def test_sarkka_bilmes_example_4(duration):
 
 @pytest.mark.parametrize("duration", [2, 3, 4, 5, 6])
 def test_sarkka_bilmes_example_5(duration):
-
     trans = random_tensor(
         OrderedDict(
             {"time": Bint[duration], "a": Bint[3], "_PREV_a": Bint[3], "x": Bint[2]}
@@ -2790,7 +2766,6 @@ def test_sarkka_bilmes_example_5(duration):
 
 @pytest.mark.parametrize("duration", [3, 4, 5, 6, 7, 8, 9])
 def test_sarkka_bilmes_example_6(duration):
-
     trans = random_tensor(
         OrderedDict(
             {
@@ -2866,7 +2841,6 @@ def test_sarkka_bilmes_example_6(duration):
 )
 @pytest.mark.parametrize("num_periods", [1, 2])
 def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_periods):
-
     lags = {
         kk: reduce(
             max,
@@ -2907,7 +2881,6 @@ def test_sarkka_bilmes_generic(time_input, global_inputs, local_inputs, num_peri
     "duration,num_segments", [(12, 1), (12, 2), (12, 3), (12, 4), (12, 6)]
 )
 def test_mixed_sequential_sum_product(duration, num_segments):
-
     sum_op, prod_op = ops.logaddexp, ops.add
     time_var = Variable("time", Bint[duration])
     step = {"_PREV_x": "x"}
@@ -2926,3 +2899,53 @@ def test_mixed_sequential_sum_product(duration, num_segments):
     )
 
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "sum_op,prod_op,pow_op",
+    [(ops.logaddexp, ops.add, ops.mul), (ops.add, ops.mul, ops.pow)],
+)
+@pytest.mark.parametrize("scale", [2, 3])
+def test_partial_sum_product_scale_1(sum_op, prod_op, pow_op, scale):
+    f1 = random_tensor(OrderedDict(a=Bint[2]))
+    f2 = random_tensor(OrderedDict(a=Bint[2], b=Bint[3]))
+    f3 = Cat("b", (f2,) * scale)
+
+    eliminate = frozenset("ab")
+    plates = frozenset("b")
+
+    factors = [f1, f3]
+    expected = sum_product(sum_op, prod_op, factors, eliminate, plates)
+
+    factors = [f1, f2]
+    scales = {"b": Number(scale)}
+    actual = sum_product(
+        sum_op, prod_op, factors, eliminate, plates, pow_op=pow_op, scales=scales
+    )
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.parametrize(
+    "sum_op,prod_op,pow_op",
+    [(ops.logaddexp, ops.add, ops.mul), (ops.add, ops.mul, ops.pow)],
+)
+@pytest.mark.parametrize("scale", [2, 3])
+def test_partial_sum_product_scale_2(sum_op, prod_op, pow_op, scale):
+    f1 = random_tensor(OrderedDict(a=Bint[2]))
+    f2 = random_tensor(OrderedDict(a=Bint[2], b=Bint[3]))
+    f3 = Cat("b", (f2,) * scale)
+
+    eliminate = frozenset("ab")
+    plates = frozenset("b")
+
+    factors = [f1, f3]
+    expected = sum_product(sum_op, prod_op, factors, eliminate, plates)
+
+    factors = [f1, f2]
+    scales = {"b": Number(scale)}
+    actual = sum_product(
+        sum_op, prod_op, factors, eliminate, plates, pow_op=pow_op, scales=scales
+    )
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)

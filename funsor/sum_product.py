@@ -4,7 +4,7 @@
 import re
 from collections import OrderedDict, defaultdict
 from functools import reduce
-from math import gcd
+from math import gcd, prod
 
 import funsor
 import funsor.ops as ops
@@ -203,7 +203,14 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
 
 
 def partial_sum_product(
-    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset(), pedantic=False
+    sum_op,
+    prod_op,
+    factors,
+    eliminate=frozenset(),
+    plates=frozenset(),
+    pedantic=False,
+    pow_op=None,
+    scales={},
 ):
     """
     Performs partial sum-product contraction of a collection of factors.
@@ -217,6 +224,7 @@ def partial_sum_product(
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
+    assert isinstance(scales, dict)
 
     if pedantic:
         var_to_errors = defaultdict(lambda: eliminate)
@@ -250,10 +258,15 @@ def partial_sum_product(
         leaf = max(ordinal_to_factors, key=len)  # CHOICE
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(
+        leaf_scale = reduce(
+            ops.mul, [scales[plate] for plate in leaf if plate in scales], Number(1.0)
+        )
+        for group_factors, group_vars in _partition(
             leaf_factors, leaf_reduce_vars
         ):  # CHOICE
             f = reduce(prod_op, group_factors).reduce(sum_op, group_vars & eliminate)
+            if pow_op is not None:
+                f = pow_op(f, leaf_scale)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 results.append(f.reduce(prod_op, leaf & eliminate))
@@ -400,7 +413,7 @@ def dynamic_partial_sum_product(
         leaf = max(ordinal_to_factors, key=len)
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(
+        for group_factors, group_vars in _partition(
             leaf_factors, leaf_reduce_vars | markov_prod_vars
         ):
             # eliminate non markov vars
@@ -529,7 +542,7 @@ def modified_partial_sum_product(
         leaf = max(ordinal_to_factors, key=len)
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        for (group_factors, group_vars) in _partition(
+        for group_factors, group_vars in _partition(
             leaf_factors, leaf_reduce_vars | markov_prod_vars
         ):
             # eliminate non markov vars
@@ -571,7 +584,14 @@ def modified_partial_sum_product(
 
 
 def sum_product(
-    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset(), pedantic=False
+    sum_op,
+    prod_op,
+    factors,
+    eliminate=frozenset(),
+    plates=frozenset(),
+    pedantic=False,
+    pow_op=None,
+    scales={},
 ):
     """
     Performs sum-product contraction of a collection of factors.
@@ -579,7 +599,9 @@ def sum_product(
     :return: a single contracted Funsor.
     :rtype: :class:`~funsor.terms.Funsor`
     """
-    factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates, pedantic)
+    factors = partial_sum_product(
+        sum_op, prod_op, factors, eliminate, plates, pedantic, pow_op, scales
+    )
     return reduce(prod_op, factors, Number(UNITS[prod_op]))
 
 
@@ -780,7 +802,6 @@ def _shift_funsor(f, t, global_vars):
 def naive_sarkka_bilmes_product(
     sum_op, prod_op, trans, time_var, global_vars=frozenset()
 ):
-
     assert isinstance(global_vars, frozenset)
 
     time = time_var.name
@@ -818,7 +839,6 @@ def naive_sarkka_bilmes_product(
 def sarkka_bilmes_product(
     sum_op, prod_op, trans, time_var, global_vars=frozenset(), num_periods=1
 ):
-
     assert isinstance(global_vars, frozenset)
 
     time = time_var.name
