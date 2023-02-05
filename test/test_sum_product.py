@@ -35,7 +35,7 @@ from funsor.sum_product import (
     sum_product,
 )
 from funsor.tensor import Tensor, get_default_prototype
-from funsor.terms import Variable
+from funsor.terms import Cat, Number, Variable
 from funsor.testing import assert_close, random_gaussian, random_tensor
 from funsor.util import get_backend
 
@@ -2899,3 +2899,53 @@ def test_mixed_sequential_sum_product(duration, num_segments):
     )
 
     assert_close(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "sum_op,prod_op,pow_op",
+    [(ops.logaddexp, ops.add, ops.mul), (ops.add, ops.mul, ops.pow)],
+)
+@pytest.mark.parametrize("scale", [2, 3])
+def test_partial_sum_product_scale_1(sum_op, prod_op, pow_op, scale):
+    f1 = random_tensor(OrderedDict(a=Bint[2]))
+    f2 = random_tensor(OrderedDict(a=Bint[2], b=Bint[3]))
+    f3 = Cat("b", (f2,) * scale)
+
+    eliminate = frozenset("ab")
+    plates = frozenset("b")
+
+    factors = [f1, f3]
+    expected = sum_product(sum_op, prod_op, factors, eliminate, plates)
+
+    factors = [f1, f2]
+    scales = {"b": Number(scale)}
+    actual = sum_product(
+        sum_op, prod_op, factors, eliminate, plates, pow_op=pow_op, scales=scales
+    )
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.parametrize(
+    "sum_op,prod_op,pow_op",
+    [(ops.logaddexp, ops.add, ops.mul), (ops.add, ops.mul, ops.pow)],
+)
+@pytest.mark.parametrize("scale", [2, 3])
+def test_partial_sum_product_scale_2(sum_op, prod_op, pow_op, scale):
+    f1 = random_tensor(OrderedDict(a=Bint[2]))
+    f2 = random_tensor(OrderedDict(a=Bint[2], b=Bint[3]))
+    f3 = Cat("b", (f2,) * scale)
+
+    eliminate = frozenset("ab")
+    plates = frozenset("b")
+
+    factors = [f1, f3]
+    expected = sum_product(sum_op, prod_op, factors, eliminate, plates)
+
+    factors = [f1, f2]
+    scales = {"b": Number(scale)}
+    actual = sum_product(
+        sum_op, prod_op, factors, eliminate, plates, pow_op=pow_op, scales=scales
+    )
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
