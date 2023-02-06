@@ -118,7 +118,6 @@ class DistTestCase:
 
 
 for batch_shape in [(), (5,), (2, 3)]:
-
     # BernoulliLogits
     DistTestCase(
         "dist.Bernoulli(logits=case.logits)",
@@ -612,7 +611,6 @@ def _default_dim_to_name(inputs_shape, event_inputs=None):
 
 @pytest.mark.parametrize("case", TEST_CASES, ids=str)
 def test_generic_distribution_to_funsor(case):
-
     HIGHER_ORDER_DISTS = [
         backend_dist.Independent,
         backend_dist.TransformedDistribution,
@@ -672,7 +670,7 @@ def test_generic_log_prob(case, use_lazy):
     expected_value_domain = case.expected_value_domain
 
     dim_to_name, name_to_dim = _default_dim_to_name(raw_dist.batch_shape)
-    with (eager_no_dists if use_lazy else eager):
+    with eager_no_dists if use_lazy else eager:
         with xfail_if_not_implemented(match="try upgrading backend"):
             # some distributions have nontrivial eager patterns
             funsor_dist = to_funsor(

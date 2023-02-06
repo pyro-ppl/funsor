@@ -230,7 +230,6 @@ def test_tower_prod(height):
 @pytest.mark.parametrize("f", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
 @pytest.mark.parametrize("g", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
 def test_binary_product_rule(f, g):
-
     if "-" in f or "-" in g:
         pytest.xfail(reason="missing pattern for subtraction")
 
@@ -255,7 +254,6 @@ def test_binary_product_rule(f, g):
 @pytest.mark.parametrize("f", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
 @pytest.mark.parametrize("g", ["x", "y", "x + y", "1 + x * y", "2 * x - y"])
 def test_binary_sum_rule(f, g):
-
     if "-" in f or "-" in g:
         pytest.xfail(reason="missing pattern for subtraction")
 
@@ -327,7 +325,6 @@ def test_adjoint_subs_variable():
 
 
 def test_adjoint_subs_tensor():
-
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
     with reflect:
         y = x(i=0)
@@ -342,7 +339,6 @@ def test_adjoint_subs_tensor():
 
 
 def test_adjoint_subs_tensor_rename():
-
     k = Variable("k", Bint[2])
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
     with reflect:
@@ -359,7 +355,6 @@ def test_adjoint_subs_tensor_rename():
 
 @pytest.mark.xfail(reason="not meaningful without a final reduce?")
 def test_adjoint_subs_binary():
-
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
     y = random_tensor(OrderedDict(i=Bint[4], j=Bint[2]))
     k = Variable("k", Bint[2])
@@ -382,7 +377,6 @@ def test_adjoint_subs_binary():
 
 
 def test_adjoint_subs_binary_reduce():
-
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
     y = random_tensor(OrderedDict(i=Bint[4], j=Bint[2]))
     k = Variable("k", Bint[2])
@@ -403,7 +397,6 @@ def test_adjoint_subs_binary_reduce():
 
 
 def test_adjoint_subs_binary_reduce_simple_1():
-
     x = random_tensor(OrderedDict(i=Bint[2]))
     y = random_tensor(OrderedDict(i=Bint[2]))
     k = Variable("k", Bint[2])
@@ -420,7 +413,6 @@ def test_adjoint_subs_binary_reduce_simple_1():
 
 
 def test_adjoint_subs_binary_reduce_simple_2():
-
     x = random_tensor(OrderedDict(i=Bint[3], j=Bint[2]))
     y = random_tensor(OrderedDict(i=Bint[2]))
     k = Variable("k", Bint[2])
@@ -441,7 +433,6 @@ def test_adjoint_subs_binary_reduce_simple_2():
 
 
 def test_adjoint_binary_reduce_simple_2():
-
     x = random_tensor(OrderedDict(i=Bint[3], k=Bint[2]))
     y = random_tensor(OrderedDict(k=Bint[2]))
 
@@ -459,7 +450,6 @@ def test_adjoint_binary_reduce_simple_2():
 
 
 def test_adjoint_subs_binary_reduce_slices():
-
     x = random_tensor(OrderedDict(t=Bint[2], i=Bint[2], j=Bint[2]))
     k = Variable("k", Bint[2])
 
@@ -480,7 +470,6 @@ def test_adjoint_subs_binary_reduce_slices():
 
 @pytest.mark.xfail(reason="requires ops.scatter_add")
 def test_adjoint_subs_tensor_expand():
-
     k = Tensor(numeric_array([0, 0, 1, 1]), OrderedDict(k=Bint[4]), 2)
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[2]))
     with reflect:

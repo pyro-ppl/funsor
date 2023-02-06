@@ -36,7 +36,6 @@ SMOKE_TESTS = [
 
 @pytest.mark.parametrize("expr,expected_type", SMOKE_TESTS)
 def test_smoke(expr, expected_type):
-
     t = Tensor(randn(2, 3), OrderedDict([("i", Bint[2]), ("j", Bint[3])]))
     assert isinstance(t, Tensor)
 
@@ -70,7 +69,6 @@ SUBS_TESTS = [
 
 @pytest.mark.parametrize("expr,expected_type,expected_inputs", SUBS_TESTS)
 def test_affine_subs(expr, expected_type, expected_inputs):
-
     expected_output = Real
 
     t = Tensor(randn(2, 3), OrderedDict([("i", Bint[2]), ("j", Bint[3])]))

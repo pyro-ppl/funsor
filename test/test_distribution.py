@@ -493,7 +493,6 @@ NORMAL_AFFINE_TESTS = [
 
 @pytest.mark.parametrize("expr", NORMAL_AFFINE_TESTS)
 def test_normal_affine(expr):
-
     scale = Tensor(numeric_array(0.3), OrderedDict())
     x = Variable("x", Real)
     y = Variable("y", Real)
@@ -751,7 +750,7 @@ def _get_stat_diff(
 ):
     params = [Tensor(p, inputs) for p in params]
     if isinstance(with_lazy, bool):
-        with (lazy if with_lazy else eager):
+        with lazy if with_lazy else eager:
             funsor_dist = funsor_dist_class(*params)
     else:
         funsor_dist = funsor_dist_class(*params)
@@ -1345,7 +1344,6 @@ def test_gamma_poisson_conjugate(batch_shape):
 )
 @pytest.mark.parametrize("use_raw_scale", [False, True])
 def test_normal_event_dim_conversion(batch_shape, event_shape, use_raw_scale):
-
     batch_dims = ("i", "j", "k")[: len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
@@ -1381,7 +1379,6 @@ def test_normal_event_dim_conversion(batch_shape, event_shape, use_raw_scale):
     "event_shape", [(4,), (4, 7), (1, 4), (4, 1), (4, 1, 7)], ids=str
 )
 def test_mvnormal_event_dim_conversion(batch_shape, event_shape):
-
     batch_dims = ("i", "j", "k")[: len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
 
@@ -1415,7 +1412,6 @@ def test_mvnormal_event_dim_conversion(batch_shape, event_shape):
     "event_shape", [(), (4,), (4, 7), (1, 4), (4, 1), (4, 1, 7)], ids=str
 )
 def test_categorical_event_dim_conversion(batch_shape, event_shape):
-
     dtype = 6
     batch_dims = ("i", "j", "k")[: len(batch_shape)]
     inputs = OrderedDict((k, Bint[v]) for k, v in zip(batch_dims, batch_shape))
