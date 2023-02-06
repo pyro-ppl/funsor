@@ -35,7 +35,7 @@ from funsor.sum_product import (
     sum_product,
 )
 from funsor.tensor import Tensor, get_default_prototype
-from funsor.terms import Cat, Number, Variable
+from funsor.terms import Cat, Variable
 from funsor.testing import assert_close, random_gaussian, random_tensor
 from funsor.util import get_backend
 
@@ -2920,7 +2920,7 @@ def test_partial_sum_product_scale_1(sum_op, prod_op, scale):
     factors = [f1, f2]
     scales = {"i": scale}
     actual = sum_product(
-        sum_op, prod_op, factors, eliminate, plates, scales=scales
+        sum_op, prod_op, factors, eliminate, plates, plate_to_scale=scales
     )
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -2948,7 +2948,7 @@ def test_partial_sum_product_scale_2(sum_op, prod_op, scale_i, scale_j):
     factors = [f1, f2, f3]
     scales = {"i": scale_i, "j": scale_j}
     actual = sum_product(
-        sum_op, prod_op, factors, eliminate, plates, scales=scales
+        sum_op, prod_op, factors, eliminate, plates, plate_to_scale=scales
     )
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
@@ -2983,7 +2983,7 @@ def test_partial_sum_product_scale_3(sum_op, prod_op, scale_i, scale_j, scale_k)
     factors = [f1, f2, f3]
     scales = {"i": scale_i, "j": scale_j, "k": scale_k}
     actual = sum_product(
-        sum_op, prod_op, factors, eliminate, plates, scales=scales
+        sum_op, prod_op, factors, eliminate, plates, plate_to_scale=scales
     )
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)

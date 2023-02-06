@@ -4,7 +4,7 @@
 import re
 from collections import OrderedDict, defaultdict
 from functools import reduce
-from math import gcd, prod
+from math import gcd
 
 import funsor
 import funsor.ops as ops
@@ -209,7 +209,7 @@ def partial_sum_product(
     eliminate=frozenset(),
     plates=frozenset(),
     pedantic=False,
-    scales={},
+    plate_to_scale={},
 ):
     """
     Performs partial sum-product contraction of a collection of factors.
@@ -223,9 +223,9 @@ def partial_sum_product(
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
-    assert isinstance(scales, dict)
+    assert isinstance(plate_to_scale, dict)
 
-    if scales:
+    if plate_to_scale:
         if sum_op is ops.logaddexp and prod_op is ops.add:
             pow_op = ops.mul
         elif sum_op is ops.add and prod_op is ops.mul:
@@ -272,7 +272,7 @@ def partial_sum_product(
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 f = f.reduce(prod_op, leaf & eliminate)
-                f_scales = [scales[plate] for plate in leaf & eliminate if plate in scales]
+                f_scales = [plate_to_scale[plate] for plate in leaf & eliminate if plate in plate_to_scale]
                 if f_scales:
                     scale = reduce(ops.mul, f_scales)
                     f = pow_op(f, scale)
@@ -326,7 +326,7 @@ def partial_sum_product(
                 reduced_plates = leaf - new_plates
                 assert reduced_plates.issubset(eliminate)
                 f = f.reduce(prod_op, reduced_plates)
-                f_scales = [scales[plate] for plate in reduced_plates if plate in scales]
+                f_scales = [plate_to_scale[plate] for plate in reduced_plates if plate in plate_to_scale]
                 if f_scales:
                     scale = reduce(ops.mul, f_scales)
                     f = pow_op(f, scale)
@@ -601,7 +601,7 @@ def sum_product(
     eliminate=frozenset(),
     plates=frozenset(),
     pedantic=False,
-    scales={},
+    plate_to_scale={},
 ):
     """
     Performs sum-product contraction of a collection of factors.
@@ -610,7 +610,7 @@ def sum_product(
     :rtype: :class:`~funsor.terms.Funsor`
     """
     factors = partial_sum_product(
-        sum_op, prod_op, factors, eliminate, plates, pedantic, scales
+        sum_op, prod_op, factors, eliminate, plates, pedantic, plate_to_scale
     )
     return reduce(prod_op, factors, Number(UNITS[prod_op]))
 
