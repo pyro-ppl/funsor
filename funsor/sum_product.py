@@ -209,7 +209,6 @@ def partial_sum_product(
     eliminate=frozenset(),
     plates=frozenset(),
     pedantic=False,
-    pow_op=None,
     scales={},
 ):
     """
@@ -225,6 +224,14 @@ def partial_sum_product(
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
     assert isinstance(scales, dict)
+
+    if scales:
+        if sum_op is ops.logaddexp and prod_op is ops.add:
+            pow_op = ops.mul
+        elif sum_op is ops.add and prod_op is ops.mul:
+            pow_op = ops.pow
+        else:
+            raise ValueError("should not be here!")
 
     if pedantic:
         var_to_errors = defaultdict(lambda: eliminate)
@@ -258,18 +265,18 @@ def partial_sum_product(
         leaf = max(ordinal_to_factors, key=len)  # CHOICE
         leaf_factors = ordinal_to_factors.pop(leaf)
         leaf_reduce_vars = ordinal_to_vars[leaf]
-        leaf_scale = reduce(
-            ops.mul, [scales[plate] for plate in leaf if plate in scales], Number(1.0)
-        )
         for group_factors, group_vars in _partition(
             leaf_factors, leaf_reduce_vars
         ):  # CHOICE
             f = reduce(prod_op, group_factors).reduce(sum_op, group_vars & eliminate)
-            if pow_op is not None:
-                f = pow_op(f, leaf_scale)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf & eliminate))
+                f = f.reduce(prod_op, leaf & eliminate)
+                f_scales = [scales[plate] for plate in leaf & eliminate if plate in scales]
+                if f_scales:
+                    scale = reduce(ops.mul, f_scales)
+                    f = pow_op(f, scale)
+                results.append(f)
             else:
                 new_plates = frozenset().union(
                     *(var_to_ordinal[v] for v in remaining_sum_vars)
@@ -319,6 +326,10 @@ def partial_sum_product(
                 reduced_plates = leaf - new_plates
                 assert reduced_plates.issubset(eliminate)
                 f = f.reduce(prod_op, reduced_plates)
+                f_scales = [scales[plate] for plate in reduced_plates if plate in scales]
+                if f_scales:
+                    scale = reduce(ops.mul, f_scales)
+                    f = pow_op(f, scale)
                 ordinal_to_factors[new_plates].append(f)
 
     return results
@@ -590,7 +601,6 @@ def sum_product(
     eliminate=frozenset(),
     plates=frozenset(),
     pedantic=False,
-    pow_op=None,
     scales={},
 ):
     """
@@ -600,7 +610,7 @@ def sum_product(
     :rtype: :class:`~funsor.terms.Funsor`
     """
     factors = partial_sum_product(
-        sum_op, prod_op, factors, eliminate, plates, pedantic, pow_op, scales
+        sum_op, prod_op, factors, eliminate, plates, pedantic, scales
     )
     return reduce(prod_op, factors, Number(UNITS[prod_op]))
 

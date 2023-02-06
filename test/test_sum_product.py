@@ -2902,50 +2902,88 @@ def test_mixed_sequential_sum_product(duration, num_segments):
 
 
 @pytest.mark.parametrize(
-    "sum_op,prod_op,pow_op",
-    [(ops.logaddexp, ops.add, ops.mul), (ops.add, ops.mul, ops.pow)],
+    "sum_op,prod_op",
+    [(ops.logaddexp, ops.add), (ops.add, ops.mul)],
 )
 @pytest.mark.parametrize("scale", [2, 3])
-def test_partial_sum_product_scale_1(sum_op, prod_op, pow_op, scale):
+def test_partial_sum_product_scale_1(sum_op, prod_op, scale):
     f1 = random_tensor(OrderedDict(a=Bint[2]))
-    f2 = random_tensor(OrderedDict(a=Bint[2], b=Bint[3]))
-    f3 = Cat("b", (f2,) * scale)
+    f2 = random_tensor(OrderedDict(a=Bint[2], i=Bint[3]))
+    f3 = Cat("i", (f2,) * scale)
 
-    eliminate = frozenset("ab")
-    plates = frozenset("b")
+    eliminate = frozenset("ai")
+    plates = frozenset("i")
 
     factors = [f1, f3]
     expected = sum_product(sum_op, prod_op, factors, eliminate, plates)
 
     factors = [f1, f2]
-    scales = {"b": Number(scale)}
+    scales = {"i": scale}
     actual = sum_product(
-        sum_op, prod_op, factors, eliminate, plates, pow_op=pow_op, scales=scales
+        sum_op, prod_op, factors, eliminate, plates, scales=scales
     )
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
 
 
 @pytest.mark.parametrize(
-    "sum_op,prod_op,pow_op",
-    [(ops.logaddexp, ops.add, ops.mul), (ops.add, ops.mul, ops.pow)],
+    "sum_op,prod_op",
+    [(ops.logaddexp, ops.add), (ops.add, ops.mul)],
 )
-@pytest.mark.parametrize("scale", [2, 3])
-def test_partial_sum_product_scale_2(sum_op, prod_op, pow_op, scale):
+@pytest.mark.parametrize("scale_i", [2, 3])
+@pytest.mark.parametrize("scale_j", [2, 3])
+def test_partial_sum_product_scale_2(sum_op, prod_op, scale_i, scale_j):
     f1 = random_tensor(OrderedDict(a=Bint[2]))
-    f2 = random_tensor(OrderedDict(a=Bint[2], b=Bint[3]))
-    f3 = Cat("b", (f2,) * scale)
+    f2 = random_tensor(OrderedDict(a=Bint[2], i=Bint[3]))
+    f3 = random_tensor(OrderedDict(a=Bint[2], j=Bint[4]))
+    f4 = Cat("i", (f2,) * scale_i)
+    f5 = Cat("j", (f3,) * scale_j)
 
-    eliminate = frozenset("ab")
-    plates = frozenset("b")
+    eliminate = frozenset("aij")
+    plates = frozenset("ij")
 
-    factors = [f1, f3]
+    factors = [f1, f4, f5]
     expected = sum_product(sum_op, prod_op, factors, eliminate, plates)
 
-    factors = [f1, f2]
-    scales = {"b": Number(scale)}
+    factors = [f1, f2, f3]
+    scales = {"i": scale_i, "j": scale_j}
     actual = sum_product(
-        sum_op, prod_op, factors, eliminate, plates, pow_op=pow_op, scales=scales
+        sum_op, prod_op, factors, eliminate, plates, scales=scales
+    )
+
+    assert_close(actual, expected, atol=5e-4, rtol=5e-4)
+
+
+@pytest.mark.parametrize(
+    "sum_op,prod_op",
+    [(ops.logaddexp, ops.add), (ops.add, ops.mul)],
+)
+@pytest.mark.parametrize("scale_i", [2, 3])
+@pytest.mark.parametrize("scale_j", [2, 3])
+@pytest.mark.parametrize("scale_k", [2, 3])
+def test_partial_sum_product_scale_3(sum_op, prod_op, scale_i, scale_j, scale_k):
+    f1 = random_tensor(OrderedDict(a=Bint[2], i=Bint[2]))
+    f2 = random_tensor(OrderedDict(a=Bint[2], i=Bint[2], j=Bint[3]))
+    f3 = random_tensor(OrderedDict(a=Bint[2], i=Bint[2], j=Bint[3], k=Bint[3]))
+    f4 = Cat("i", (f1,) * scale_i)
+    # concatenate across multiple dims
+    f5 = Cat("i", (f2,) * scale_i)
+    f5 = Cat("j", (f5,) * scale_j)
+    # concatenate across multiple dims
+    f6 = Cat("i", (f3,) * scale_i)
+    f6 = Cat("j", (f6,) * scale_j)
+    f6 = Cat("k", (f6,) * scale_k)
+
+    eliminate = frozenset("aijk")
+    plates = frozenset("ijk")
+
+    factors = [f4, f5, f6]
+    expected = sum_product(sum_op, prod_op, factors, eliminate, plates)
+
+    factors = [f1, f2, f3]
+    scales = {"i": scale_i, "j": scale_j, "k": scale_k}
+    actual = sum_product(
+        sum_op, prod_op, factors, eliminate, plates, scales=scales
     )
 
     assert_close(actual, expected, atol=5e-4, rtol=5e-4)
