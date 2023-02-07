@@ -529,7 +529,7 @@ class SwitchingLinearHMM(FunsorDistribution):
         seq_sum_prod = (
             naive_sequential_sum_product if self.exact else sequential_sum_product
         )
-        with (eager if self.exact else moment_matching):
+        with eager if self.exact else moment_matching:
             result = self._trans + self._obs(value=value)
             result = seq_sum_prod(
                 ops.logaddexp,
@@ -589,7 +589,7 @@ class SwitchingLinearHMM(FunsorDistribution):
         seq_sum_prod = (
             naive_sequential_sum_product if self.exact else sequential_sum_product
         )
-        with (eager if self.exact else moment_matching):
+        with eager if self.exact else moment_matching:
             logp = self._trans + self._obs(value=value)
             logp = seq_sum_prod(
                 ops.logaddexp,

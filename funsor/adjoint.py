@@ -84,7 +84,6 @@ class AdjointTape(Interpretation):
 
             # reverse the effects of alpha-renaming
             with reflect:
-
                 lazy_output = self._eager_to_lazy[output]
                 lazy_fn = type(lazy_output)
                 lazy_inputs = lazy_output._ast_values
@@ -242,7 +241,6 @@ def adjoint_contract(
     adj_sum_op, adj_prod_op, out_adj, sum_op, prod_op, reduced_vars, lhs, rhs
 ):
     if prod_op is adj_prod_op and sum_op in (ops.null, adj_sum_op):
-
         # the only change is here:
         out_adj = Approximate(
             adj_sum_op,
@@ -280,7 +278,6 @@ def adjoint_cat(adj_sum_op, adj_prod_op, out_adj, name, parts, part_name):
 
 @adjoint_ops.register(Subs, AssociativeOp, AssociativeOp, Funsor, Funsor, tuple)
 def adjoint_subs(adj_sum_op, adj_prod_op, out_adj, arg, subs):
-
     # detect fresh variable collisions that should be relabeled and reduced
     relabel = {k: interpreter.gensym(k) for k, v in subs}
     relabeled_subs = tuple((relabel[k], v) for k, v in subs)

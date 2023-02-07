@@ -20,7 +20,6 @@ class PartialDispatcher(Dispatcher):
             self.add(([object],), self.default)
 
     def add(self, signature, func):
-
         # Handle annotations
         if not signature:
             annotations = get_type_hints(func)

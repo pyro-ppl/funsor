@@ -144,7 +144,6 @@ def test_gaussian_linear(approximate):
 
 
 def test_backward_argmax_simple_reduce():
-
     x = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
 
     with reflect:
@@ -165,7 +164,6 @@ def test_backward_argmax_simple_reduce():
 
 
 def test_backward_argmax_simple_binary():
-
     x1 = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
     x2 = random_tensor(OrderedDict(j=Bint[3], k=Bint[4]))
     approx_vars = x1.input_vars | x2.input_vars
@@ -191,7 +189,6 @@ def test_backward_argmax_simple_binary():
 
 
 def test_backward_argmax_simple_contraction():
-
     x1 = random_tensor(OrderedDict(i=Bint[2], j=Bint[3]))
     x2 = random_tensor(OrderedDict(j=Bint[3], k=Bint[4]))
     approx_vars = x1.input_vars | x2.input_vars

@@ -69,7 +69,6 @@ def test_deep_issubclass_generic_tuple_internal():
 
 
 def test_deep_issubclass_generic_union_internal():
-
     assert deep_issubclass(
         Reduce[AssociativeOp, Union[Number, Funsor], frozenset], Funsor
     )
@@ -128,7 +127,6 @@ def test_deep_issubclass_generic_union_internal_multiple():
 
 
 def test_deep_issubclass_tuple_variadic():
-
     assert deep_issubclass(Tuple[int, ...], Tuple)
     assert deep_issubclass(Tuple[int], Tuple[int, ...])
     assert deep_issubclass(Tuple[int, int], Tuple[int, ...])
@@ -155,7 +153,6 @@ def test_deep_issubclass_tuple_variadic():
 
 
 def test_deep_type_tuple():
-
     x1 = (1, 1.5, "a")
     expected_type1 = Tuple[int, float, str]
     assert deep_type(x1) is expected_type1
@@ -168,7 +165,6 @@ def test_deep_type_tuple():
 
 
 def test_deep_type_frozenset():
-
     x1 = frozenset(["a", "b"])
     expected_type1 = FrozenSet[str]
     assert deep_type(x1) is expected_type1
@@ -201,7 +197,6 @@ def test_generic_type_cons_hash():
 
 
 def test_get_origin():
-
     assert get_origin(Any) is Any
 
     assert get_origin(Tuple[int]) in (tuple, Tuple)
@@ -285,7 +280,6 @@ def test_variadic_dispatch_basic():
 
 
 def test_dispatch_typing():
-
     f = PartialDispatcher(lambda *args: 1)
 
     @f.register()
@@ -317,7 +311,6 @@ def test_dispatch_typing():
 
 
 def test_variadic_dispatch_typing():
-
     f = PartialDispatcher(lambda *args: 1)
 
     @f.register()

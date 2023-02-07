@@ -618,7 +618,6 @@ def test_align_simple():
 )
 @pytest.mark.parametrize("step", [1, 2, 3, 5, 10])
 def test_cat_slice_tensor(start, stop, step):
-
     terms = tuple(
         random_tensor(OrderedDict([("t", Bint[t]), ("a", Bint[2])]))
         for t in [2, 1, 3, 4, 1, 3]
@@ -639,7 +638,6 @@ def test_cat_slice_tensor(start, stop, step):
 
 @pytest.mark.parametrize("dtype", ["real", 2, 3])
 def test_stack_lambda(dtype):
-
     x1 = Number(0, dtype)
     x2 = Number(1, dtype)
 
@@ -656,7 +654,6 @@ def test_stack_lambda(dtype):
 
 @pytest.mark.parametrize("dtype", ["real", 4, 5])
 def test_stack_lambda_2(dtype):
-
     x1 = Number(0, dtype)
     x2 = Number(1, dtype)
     x3 = Number(2, dtype)

@@ -1385,7 +1385,6 @@ def test_scatter_ji(source_inputs, i_inputs, j_inputs, output_shape, reduced_var
 
 
 def test_scatter_pure_renaming():
-
     x = random_tensor(OrderedDict(time=Bint[4], prev=Bint[2], curr=Bint[2]))
     drop = Variable("drop", x.inputs["prev"])
     subs = (("prev", drop),)

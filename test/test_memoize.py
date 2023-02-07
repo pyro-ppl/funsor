@@ -166,7 +166,6 @@ def test_memoize_sample(check_sample):
 def test_nested_einsum_complete_sharing(
     eqn1, eqn2, einsum_impl1, einsum_impl2, backend1, backend2
 ):
-
     inputs1, outputs1, sizes1, operands1, funsor_operands1 = make_einsum_example(
         eqn1, sizes=(3,)
     )
@@ -194,7 +193,6 @@ def test_nested_einsum_complete_sharing(
 
 
 def test_nested_complete_sharing_direct():
-
     inputs, outputs, sizes, operands, funsor_operands = make_einsum_example(
         "ab,bc,cd->d"
     )

@@ -187,7 +187,6 @@ def run_expt(args):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--dataset", default="seal", type=str)
     parser.add_argument("-g", "--group", default="none", type=str)

@@ -217,7 +217,6 @@ def eager_integrate_gaussian_gaussian(log_measure, integrand, reduced_vars):
     reduced_names = frozenset(v.name for v in reduced_vars)
     real_vars = frozenset(v.name for v in reduced_vars if v.dtype == "real")
     if real_vars:
-
         lhs_reals = frozenset(
             k for k, d in log_measure.inputs.items() if d.dtype == "real"
         )

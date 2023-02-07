@@ -190,7 +190,6 @@ def bint(size):
 
 
 class ProductDomain(Domain):
-
     _type_cache = WeakValueDictionary()
 
     def __getitem__(cls, arg_domains):
@@ -453,7 +452,6 @@ def _find_domain_matmul(op, lhs, rhs):
 
 @find_domain.register(ops.AssociativeOp)
 def _find_domain_associative_generic(op, *domains):
-
     assert 1 <= len(domains) <= 2
 
     if len(domains) == 1:
