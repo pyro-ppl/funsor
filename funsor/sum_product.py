@@ -272,7 +272,11 @@ def partial_sum_product(
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
                 f = f.reduce(prod_op, leaf & eliminate)
-                f_scales = [plate_to_scale[plate] for plate in leaf & eliminate if plate in plate_to_scale]
+                f_scales = [
+                    plate_to_scale[plate]
+                    for plate in leaf & eliminate
+                    if plate in plate_to_scale
+                ]
                 if f_scales:
                     scale = reduce(ops.mul, f_scales)
                     f = pow_op(f, scale)
@@ -326,7 +330,11 @@ def partial_sum_product(
                 reduced_plates = leaf - new_plates
                 assert reduced_plates.issubset(eliminate)
                 f = f.reduce(prod_op, reduced_plates)
-                f_scales = [plate_to_scale[plate] for plate in reduced_plates if plate in plate_to_scale]
+                f_scales = [
+                    plate_to_scale[plate]
+                    for plate in reduced_plates
+                    if plate in plate_to_scale
+                ]
                 if f_scales:
                     scale = reduce(ops.mul, f_scales)
                     f = pow_op(f, scale)
