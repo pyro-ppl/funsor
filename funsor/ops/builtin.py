@@ -8,6 +8,7 @@ from numbers import Number
 from .op import (
     BINARY_INVERSES,
     DISTRIBUTIVE_OPS,
+    PRODUCT_TO_POWER,
     SAFE_BINARY_INVERSES,
     UNARY_INVERSES,
     UNITS,
@@ -286,6 +287,9 @@ SAFE_BINARY_INVERSES[add] = safesub
 
 UNARY_INVERSES[mul] = reciprocal
 UNARY_INVERSES[add] = neg
+
+PRODUCT_TO_POWER[add] = mul
+PRODUCT_TO_POWER[mul] = pow
 
 __all__ = [
     "AssociativeOp",
