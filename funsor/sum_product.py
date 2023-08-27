@@ -224,15 +224,6 @@ def partial_sum_product(
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
-    assert isinstance(plate_to_scale, dict)
-
-    if plate_to_scale:
-        if sum_op is ops.logaddexp and prod_op is ops.add:
-            pow_op = ops.mul
-        elif sum_op is ops.add and prod_op is ops.mul:
-            pow_op = ops.pow
-        else:
-            raise ValueError("should not be here!")
 
     if plate_to_scale:
         if pow_op is None:
