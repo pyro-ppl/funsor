@@ -72,7 +72,7 @@ def test_to_funsor_error(x):
 def test_to_data():
     actual = to_data(Number(0.0))
     expected = 0.0
-    assert type(actual) == type(expected)
+    assert type(actual) is type(expected)
     assert actual == expected
 
 
@@ -569,7 +569,7 @@ def test_stack_slice(start, stop, step):
     xs = tuple(map(Number, range(10)))
     actual = Stack("i", xs)(i=Slice("j", start, stop, step, dtype=10))
     expected = Stack("j", xs[start:stop:step])
-    assert type(actual) == type(expected)
+    assert type(actual) is type(expected)
     assert actual.name == expected.name
     assert actual.parts == expected.parts
 
