@@ -421,6 +421,7 @@ UNITS = {}  # op -> value
 BINARY_INVERSES = {}  # binary op -> inverse binary op
 SAFE_BINARY_INVERSES = {}  # binary op -> numerically safe inverse binary op
 UNARY_INVERSES = {}  # binary op -> inverse unary op
+PRODUCT_TO_POWER = {}  # product op -> power op
 
 __all__ = [
     "BINARY_INVERSES",
@@ -430,6 +431,7 @@ __all__ = [
     "LogAbsDetJacobianOp",
     "NullaryOp",
     "Op",
+    "PRODUCT_TO_POWER",
     "SAFE_BINARY_INVERSES",
     "TernaryOp",
     "TransformOp",

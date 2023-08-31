@@ -11,7 +11,7 @@ import funsor.ops as ops
 from funsor.cnf import Contraction
 from funsor.domains import Bint, Reals
 from funsor.interpreter import gensym
-from funsor.ops import UNITS, AssociativeOp
+from funsor.ops import PRODUCT_TO_POWER, UNITS, AssociativeOp
 from funsor.terms import (
     Cat,
     Funsor,
@@ -203,7 +203,14 @@ def partial_unroll(factors, eliminate=frozenset(), plate_to_step=dict()):
 
 
 def partial_sum_product(
-    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset(), pedantic=False
+    sum_op,
+    prod_op,
+    factors,
+    eliminate=frozenset(),
+    plates=frozenset(),
+    pedantic=False,
+    pow_op=None,
+    plate_to_scale=None,  # dict
 ):
     """
     Performs partial sum-product contraction of a collection of factors.
@@ -217,6 +224,10 @@ def partial_sum_product(
     assert all(isinstance(f, Funsor) for f in factors)
     assert isinstance(eliminate, frozenset)
     assert isinstance(plates, frozenset)
+
+    if plate_to_scale:
+        if pow_op is None:
+            pow_op = PRODUCT_TO_POWER[prod_op]
 
     if pedantic:
         var_to_errors = defaultdict(lambda: eliminate)
@@ -256,7 +267,17 @@ def partial_sum_product(
             f = reduce(prod_op, group_factors).reduce(sum_op, group_vars & eliminate)
             remaining_sum_vars = sum_vars.intersection(f.inputs)
             if not remaining_sum_vars:
-                results.append(f.reduce(prod_op, leaf & eliminate))
+                f = f.reduce(prod_op, leaf & eliminate)
+                if plate_to_scale:
+                    f_scales = [
+                        plate_to_scale[plate]
+                        for plate in leaf & eliminate
+                        if plate in plate_to_scale
+                    ]
+                    if f_scales:
+                        scale = reduce(ops.mul, f_scales)
+                        f = pow_op(f, scale)
+                results.append(f)
             else:
                 new_plates = frozenset().union(
                     *(var_to_ordinal[v] for v in remaining_sum_vars)
@@ -306,6 +327,15 @@ def partial_sum_product(
                 reduced_plates = leaf - new_plates
                 assert reduced_plates.issubset(eliminate)
                 f = f.reduce(prod_op, reduced_plates)
+                if plate_to_scale:
+                    f_scales = [
+                        plate_to_scale[plate]
+                        for plate in reduced_plates
+                        if plate in plate_to_scale
+                    ]
+                    if f_scales:
+                        scale = reduce(ops.mul, f_scales)
+                        f = pow_op(f, scale)
                 ordinal_to_factors[new_plates].append(f)
 
     return results
@@ -571,7 +601,14 @@ def modified_partial_sum_product(
 
 
 def sum_product(
-    sum_op, prod_op, factors, eliminate=frozenset(), plates=frozenset(), pedantic=False
+    sum_op,
+    prod_op,
+    factors,
+    eliminate=frozenset(),
+    plates=frozenset(),
+    pedantic=False,
+    pow_op=None,
+    plate_to_scale=None,  # dict
 ):
     """
     Performs sum-product contraction of a collection of factors.
@@ -579,7 +616,9 @@ def sum_product(
     :return: a single contracted Funsor.
     :rtype: :class:`~funsor.terms.Funsor`
     """
-    factors = partial_sum_product(sum_op, prod_op, factors, eliminate, plates, pedantic)
+    factors = partial_sum_product(
+        sum_op, prod_op, factors, eliminate, plates, pedantic, pow_op, plate_to_scale
+    )
     return reduce(prod_op, factors, Number(UNITS[prod_op]))
 
 

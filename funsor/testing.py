@@ -81,7 +81,7 @@ def id_from_inputs(inputs):
 
 @dispatch(object, object, Variadic[float])
 def allclose(a, b, rtol=1e-05, atol=1e-08):
-    if type(a) != type(b):
+    if type(a) is not type(b):
         return False
     return ops.abs(a - b) < rtol + atol * ops.abs(b)
 
@@ -125,7 +125,7 @@ def assert_close(actual, expected, atol=1e-6, rtol=1e-6):
     elif isinstance(actual, Gaussian):
         assert isinstance(expected, Gaussian)
     else:
-        assert type(actual) == type(expected), msg
+        assert type(actual) is type(expected), msg
 
     if isinstance(actual, Funsor):
         assert isinstance(expected, Funsor), msg
