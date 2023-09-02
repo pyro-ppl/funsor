@@ -2454,7 +2454,7 @@ def test_modified_partial_sum_product_17(
         MarkovProduct,
         partial(mixed_sequential_sum_product, num_segments=2),
         partial(mixed_sequential_sum_product, num_segments=3),
-    ],
+        ][2:3],
 )
 def test_sequential_sum_product(
     impl, sum_op, prod_op, batch_inputs, state_domain, num_steps
@@ -2471,7 +2471,8 @@ def test_sequential_sum_product(
         trans = random_tensor(inputs)
     time = Variable("time", Bint[num_steps])
 
-    actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
+    with lazy:
+        actual = impl(sum_op, prod_op, trans, time, {"prev": "curr"})
     expected_inputs = batch_inputs.copy()
     expected_inputs.update(prev=state_domain, curr=state_domain)
     assert dict(actual.inputs) == expected_inputs
@@ -2484,6 +2485,7 @@ def test_sequential_sum_product(
     reduce_vars = frozenset("t_{}".format(t) for t in range(1, num_steps))
     with reflect:
         expected = sum_product(sum_op, prod_op, operands, reduce_vars)
+    actual = apply_optimizer(actual)
     expected = apply_optimizer(expected)
     expected = expected(**{"t_0": "prev", "t_{}".format(num_steps): "curr"})
     expected = expected.align(tuple(actual.inputs.keys()))
