@@ -296,3 +296,44 @@ def test_matmul_has():
     # To preserve extensionality, should only error on reflect
     xy = MatMul(x, y, "b")
     check_funsor(xy, {"a": Bint[3], "c": Bint[4], "d": Bint[3]}, Real)
+
+
+def test_unroll():
+    @make_funsor
+    def Unroll(
+        x: Has[{"ax"}],  # noqa: F821
+        ax: Fresh[lambda ax, k: Bint[ax.size - k + 1]],
+        k: Value[int],
+        kernel: Fresh[lambda k: Bint[k]],
+    ) -> Fresh[lambda x: x]:
+        return x(**{ax.name: ax + kernel})
+
+    x = random_tensor(OrderedDict(a=Bint[5]))
+    with reflect:
+        y = Unroll(x, "a", 2, "kernel")
+    assert y.fresh == frozenset({"a", "kernel"})
+    assert all(bound in y.x.inputs and "__BOUND" in bound for bound in y.bound)
+    check_funsor(y, {"a": Bint[5 - 2 + 1], "kernel": Bint[2]}, Real)
+    z = reinterpret(y)
+    assert isinstance(z, Tensor)
+    check_funsor(z, {"a": Bint[5 - 2 + 1], "kernel": Bint[2]}, Real)
+
+
+def test_softmax():
+    @make_funsor
+    def Softmax(
+        x: Has[{"ax"}],  # noqa: F821
+        ax: Fresh[lambda ax: ax],
+    ) -> Fresh[lambda x: x]:
+        y = x - x.reduce(ops.logaddexp, ax)
+        return y.exp()
+
+    x = random_tensor(OrderedDict(a=Bint[3], b=Bint[4]))
+    with reflect:
+        y = Softmax(x, "a")
+    assert y.fresh == frozenset({"a"})
+    assert all(bound in y.x.inputs and "__BOUND" in bound for bound in y.bound)
+    check_funsor(y, {"a": Bint[3], "b": Bint[4]}, Real)
+    z = reinterpret(y)
+    assert isinstance(z, Tensor)
+    check_funsor(z, {"a": Bint[3], "b": Bint[4]}, Real)
