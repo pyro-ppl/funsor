@@ -16,7 +16,16 @@ from funsor.gaussian import Gaussian, align_gaussian
 from funsor.interpretations import eager, moment_matching, normalize
 from funsor.ops import AssociativeOp
 from funsor.tensor import Tensor, align_tensor
-from funsor.terms import Funsor, Independent, Number, Reduce, Unary
+from funsor.terms import (
+    Funsor,
+    Independent,
+    Number,
+    Reduce,
+    Scatter,
+    Slice,
+    Unary,
+    Variable,
+)
 from funsor.typing import Variadic
 
 
@@ -193,3 +202,46 @@ def eager_independent_joint(joint, reals_var, bint_var, diag_var):
     delta = Independent(joint.terms[0], reals_var, bint_var, diag_var)
     new_terms = (delta,) + tuple(t.reduce(ops.add, bint_var) for t in joint.terms[1:])
     return reduce(joint.bin_op, new_terms)
+
+
+@eager.register(
+    Scatter,
+    AssociativeOp,
+    Tuple[Tuple[str, Union[Slice, Variable, Number]], ...],
+    Contraction[
+        AssociativeOp, AssociativeOp, frozenset, Tuple[Delta, Union[Tensor, Number]]
+    ],
+    frozenset,
+)
+def eager_scatter_slice_contraction(op, subs, source, reduced_vars):
+    new_terms = []
+    for term in source.terms:
+        new_terms.append(Scatter(op, subs, term, frozenset()))
+    new_terms = tuple(new_terms)
+    return source.bin_op(*new_terms).reduce(
+        source.red_op, source.reduced_vars | reduced_vars
+    )
+
+
+@eager.register(
+    Scatter,
+    AssociativeOp,
+    Tuple[Tuple[str, Union[Slice, Variable, Number]], ...],
+    Delta,
+    frozenset,
+)
+def eager_scatter_slice_delta(op, subs, source, reduced_vars):
+    new_terms = []
+    for name, (point, log_density) in source.terms:
+        new_terms.append(
+            (
+                name,
+                (
+                    Scatter(op, subs, point, frozenset()),  # This needs to fix
+                    Scatter(op, subs, log_density, frozenset()),
+                ),
+            )
+        )
+    new_terms = tuple(new_terms)
+    result = Delta(new_terms)
+    return result.reduce(op, reduced_vars)
