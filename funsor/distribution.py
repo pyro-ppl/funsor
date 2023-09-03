@@ -240,12 +240,15 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         if not raw_dist.has_rsample:
             # scaling of dice_factor by num samples should already be handled by Funsor.sample
             raw_log_prob = raw_dist.log_prob(raw_value)
-            dice_factor = to_funsor(
-                raw_log_prob - ops.detach(raw_log_prob),
+            log_prob = to_funsor(
+                raw_log_prob,
                 output=self.output,
                 dim_to_name=dim_to_name,
             )
-            result = funsor.delta.Delta(value_name, funsor_value, dice_factor)
+            model = funsor.delta.Delta(value_name, funsor_value, log_prob)
+            guide = funsor.delta.Delta(value_name, funsor_value, ops.detach(log_prob))
+            sampled_var = frozenset({Variable(value_name, self.inputs[value_name])})
+            result = funsor.Importance(model, guide, sampled_var)
         else:
             result = funsor.delta.Delta(value_name, funsor_value)
         return result
