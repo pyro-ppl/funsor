@@ -19,6 +19,7 @@ from funsor.cnf import Contraction, GaussianMixture
 from funsor.domains import Array, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
+from funsor.provenance import Provenance
 from funsor.tensor import (
     Tensor,
     align_tensors,
@@ -461,6 +462,14 @@ def backenddist_to_funsor(
         for param_name in funsor_dist_class._ast_fields
         if param_name != "value"
     ]
+    provenance = frozenset().union(
+        *[param.provenance for param in params if isinstance(param, Provenance)]
+    )
+    if provenance:
+        params = [
+            param.term if isinstance(param, Provenance) else param for param in params
+        ]
+        return Provenance(funsor_dist_class(*params), provenance)
     return funsor_dist_class(*params)
 
 

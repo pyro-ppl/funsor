@@ -11,6 +11,7 @@ from funsor.constant import Constant
 from funsor.delta import Delta
 from funsor.gaussian import Gaussian, _norm2, _vm, align_gaussian
 from funsor.interpretations import eager, normalize
+from funsor.provenance import Provenance
 from funsor.tensor import Tensor
 from funsor.terms import (
     Funsor,
@@ -139,6 +140,7 @@ EagerConstant = Constant[
         Tensor,
         GaussianMixture,
         EagerConstant,
+        Provenance,
     ),
 )
 def eager_contraction_binary_to_integrate(red_op, bin_op, reduced_vars, lhs, rhs):
