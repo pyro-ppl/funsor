@@ -3,7 +3,7 @@
 
 import re
 
-from jax.core import Tracer
+from jax.core import Tracer  # singledispatch needs the concrete type; jax.Array isn't a base of Tracer
 from jax.numpy import ndarray
 
 from funsor.tensor import tensor_to_funsor

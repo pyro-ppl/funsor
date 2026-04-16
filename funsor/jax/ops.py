@@ -8,7 +8,7 @@ import jax.numpy as np
 import jax.random
 import numpy as onp
 from jax import lax
-from jax.core import Tracer
+from jax.core import Tracer  # multipledispatch needs the concrete type; jax.Array isn't a base of Tracer
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, gammaln, logsumexp
 
@@ -193,14 +193,14 @@ def _log(x):
 @ops.logaddexp.register(array, array)
 def _safe_logaddexp_tensor_tensor(x, y):
     finfo = np.finfo(np.result_type(x))
-    shift = np.clip(ops.max(ops.detach(x), ops.detach(y)), a_max=None, a_min=finfo.min)
+    shift = np.clip(ops.max(ops.detach(x), ops.detach(y)), finfo.min, None)
     return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
 
 
 @ops.logaddexp.register(numbers.Number, array)
 def _safe_logaddexp_number_tensor(x, y):
     finfo = np.finfo(np.result_type(y))
-    shift = np.clip(ops.detach(y), a_max=None, a_min=max(x, finfo.min))
+    shift = np.clip(ops.detach(y), max(x, finfo.min), None)
     return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
 
 
@@ -215,23 +215,23 @@ ops.min.register(array, array)(np.minimum)
 
 @ops.max.register((int, float), array)
 def _max(x, y):
-    return np.clip(y, a_min=x, a_max=None)
+    return np.clip(y, x, None)
 
 
 @ops.max.register(array, (int, float))
 def _max(x, y):
-    return np.clip(x, a_min=y, a_max=None)
+    return np.clip(x, y, None)
 
 
 # TODO: replace (int, float) by numbers.Number
 @ops.min.register((int, float), array)
 def _min(x, y):
-    return np.clip(y, a_min=None, a_max=x)
+    return np.clip(y, None, x)
 
 
 @ops.min.register(array, (int, float))
 def _min(x, y):
-    return np.clip(x, a_min=None, a_max=y)
+    return np.clip(x, None, y)
 
 
 @ops.new_full.register(array)
@@ -267,7 +267,7 @@ def _randn(prototype, shape, rng_key=None):
 
 @ops.reciprocal.register(array)
 def _reciprocal(x):
-    result = np.clip(np.reciprocal(x), a_max=np.finfo(np.result_type(x)).max)
+    result = np.clip(np.reciprocal(x), None, np.finfo(np.result_type(x)).max)
     return result
 
 
@@ -278,7 +278,7 @@ def _safediv(x, y):
         finfo = np.finfo(np.result_type(y))
     except ValueError:
         finfo = np.iinfo(np.result_type(y))
-    return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
+    return x * np.clip(np.reciprocal(y), None, finfo.max)
 
 
 @ops.safesub.register(array, array)
@@ -288,7 +288,7 @@ def _safesub(x, y):
         finfo = np.finfo(np.result_type(y))
     except ValueError:
         finfo = np.iinfo(np.result_type(y))
-    return x + np.clip(-y, a_min=None, a_max=finfo.max)
+    return x + np.clip(-y, None, finfo.max)
 
 
 @ops.scatter.register(array, tuple, array)

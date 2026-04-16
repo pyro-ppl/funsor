@@ -28,7 +28,7 @@ def pytest_runtest_setup(item):
         pyro.set_rng_seed(0)
         pyro.enable_validation(True)
     elif _BACKEND == "jax":
-        from jax.config import config
+        from jax import config
 
         config.update("jax_platform_name", "cpu")
         config.update("jax_enable_x64", True)
