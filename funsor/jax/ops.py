@@ -8,7 +8,7 @@ import jax.numpy as np
 import jax.random
 import numpy as onp
 from jax import lax
-from jax.core import Tracer  # multipledispatch needs the concrete type; jax.Array isn't a base of Tracer
+from jax.core import Tracer
 from jax.scipy.linalg import cho_solve, solve_triangular
 from jax.scipy.special import expit, gammaln, logsumexp
 
