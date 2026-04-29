@@ -29,7 +29,7 @@ setup(
     url="https://github.com/pyro-ppl/funsor",
     project_urls={"Documentation": "https://funsor.pyro.ai"},
     author="Uber AI Labs",
-    python_requires=">=3.7",
+    python_requires=">=3.10",
     install_requires=[
         "makefun",
         "multipledispatch",
@@ -38,30 +38,35 @@ setup(
         "typing_extensions",
     ],
     extras_require={
-        "torch": ["pyro-ppl>=1.8.0", "torch>=1.11.0"],
-        "jax": ["numpyro>=0.7.0", "jax>=0.2.21", "jaxlib>=0.1.71"],
-        "test": [
-            "black",
-            "flake8",
-            "isort>=5.0",
-            "pandas",
-            "pillow==8.2.0",  # https://github.com/pytorch/pytorch/issues/61125
-            "pyro-api>=0.1.2",
-            "pytest==4.3.1",
-            "pytest-xdist==1.27.0",
-            "requests",
-            "scipy",
+        "torch": [
+            "pyro-ppl>=1.8.0",
+            "torch>=1.11.0",
             "torchvision>=0.12.0",
         ],
+        "jax": [
+            "numpyro>=0.7.0",
+            "jax>=0.2.21",
+            "jaxlib>=0.1.71",
+        ],
+        "test": [
+            "black<24",
+            "flake8<7",
+            "isort>=5.0",
+            "pandas",
+            "pyro-api>=0.1.2",
+            "pytest>=7",
+            "pytest-xdist>=3",
+            "requests",
+            "scipy",
+        ],
         "dev": [
-            "black",
-            "flake8",
+            "black<24",
+            "flake8<7",
             "isort>=5.0",
             "nbsphinx",
             "pandas",
-            "pillow==8.2.0",  # https://github.com/pytorch/pytorch/issues/61125
-            "pytest==4.3.1",
-            "pytest-xdist==1.27.0",
+            "pytest>=7",
+            "pytest-xdist>=3",
             "scipy",
             "sphinx>=2.0",
             "sphinx-gallery",
@@ -79,8 +84,7 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: POSIX :: Linux",
         "Operating System :: MacOS :: MacOS X",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",  # for jax but not torch
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
     ],
 )

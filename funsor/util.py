@@ -285,10 +285,10 @@ def get_default_dtype():
         return str(torch.get_default_dtype()).split(".")[1]
     elif backend == "numpy":
         np = sys.modules.get("numpy")
-        return np.dtype(np.float_).name
+        return np.dtype(np.float64).name
     elif backend == "jax":
         np = sys.modules.get("jax.numpy")
-        return np.dtype(np.float_).name
+        return np.dtype(np.float64).name
 
 
 def get_tracing_state():
