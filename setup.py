@@ -49,8 +49,8 @@ setup(
             "jaxlib>=0.1.71",
         ],
         "test": [
-            "black<24",
-            "flake8<7",
+            "black",
+            "flake8",
             "isort>=5.0",
             "pandas",
             "pyro-api>=0.1.2",
