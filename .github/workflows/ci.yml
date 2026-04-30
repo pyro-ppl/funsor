@@ -82,9 +82,9 @@ jobs:
         python -m pip install --upgrade pip
         # Keep track of pyro-api master branch
         pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
-        # Track numpyro PR #2173 (xla_pmap_p import fix for JAX>=0.10) until it merges into master
-        pip install https://github.com/saitcakmak/numpyro/archive/fix-xla-pmap-p-import.zip
-        pip install .[test,jax]
+        pip install jax<0.10
+        pip install https://github.com/saitcakmak/numpyro/archive/master.zip
+        pip install .[test]
         pip freeze
     - name: Run test
       run: make test
