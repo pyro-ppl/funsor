@@ -296,14 +296,14 @@ for typ in array:
 @logaddexp.register(array, array)
 def _safe_logaddexp_tensor_tensor(x, y):
     finfo = np.finfo(x.dtype)
-    shift = np.clip(max(detach(x), detach(y)), a_max=None, a_min=finfo.min)
+    shift = np.clip(max(detach(x), detach(y)), finfo.min, None)
     return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
 
 
 @logaddexp.register(numbers.Number, array)
 def _safe_logaddexp_number_tensor(x, y):
     finfo = np.finfo(y.dtype)
-    shift = np.clip(detach(y), a_max=None, a_min=max(x, finfo.min))
+    shift = np.clip(detach(y), max(x, finfo.min), None)
     return np.log(np.exp(x - shift) + np.exp(y - shift)) + shift
 
 
@@ -318,22 +318,22 @@ min.register(array, array)(np.minimum)
 
 @max.register((int, float), array)
 def _max(x, y):
-    return np.clip(y, a_min=x, a_max=None)
+    return np.clip(y, x, None)
 
 
 @max.register(array, (int, float))
 def _max(x, y):
-    return np.clip(x, a_min=y, a_max=None)
+    return np.clip(x, y, None)
 
 
 @min.register((int, float), array)
 def _min(x, y):
-    return np.clip(y, a_min=None, a_max=x)
+    return np.clip(y, None, x)
 
 
 @min.register(array, (int, float))
 def _min(x, y):
-    return np.clip(x, a_min=None, a_max=y)
+    return np.clip(x, None, y)
 
 
 @UnaryOp.make
@@ -379,7 +379,7 @@ def permute(x, dims):
 
 @reciprocal.register(array)
 def _reciprocal(x):
-    result = np.clip(np.reciprocal(x), a_max=np.finfo(x.dtype).max)
+    result = np.clip(np.reciprocal(x), None, np.finfo(x.dtype).max)
     return result
 
 
@@ -390,7 +390,7 @@ def _safediv(x, y):
         finfo = np.finfo(y.dtype)
     except ValueError:
         finfo = np.iinfo(y.dtype)
-    return x * np.clip(np.reciprocal(y), a_min=None, a_max=finfo.max)
+    return x * np.clip(np.reciprocal(y), None, finfo.max)
 
 
 @safesub.register(array, array)
@@ -400,7 +400,7 @@ def _safesub(x, y):
         finfo = np.finfo(y.dtype)
     except ValueError:
         finfo = np.iinfo(y.dtype)
-    return x + np.clip(-y, a_min=None, a_max=finfo.max)
+    return x + np.clip(-y, None, finfo.max)
 
 
 @TernaryOp.make

@@ -219,6 +219,7 @@ class GaussianHMM(FunsorDistribution):
     :type observation_dist: ~torch.distributions.MultivariateNormal or
         ~torch.distributions.Independent of ~torch.distributions.Normal
     """
+
     has_rsample = True
     arg_constraints = {}
 
@@ -323,6 +324,7 @@ class GaussianMRF(FunsorDistribution):
         have batch_shape broadcastable to ``self.batch_shape + (num_steps,)``.
         This should have event_shape ``(hidden_dim + obs_dim,)``.
     """
+
     has_rsample = True
 
     def __init__(
@@ -432,6 +434,7 @@ class SwitchingLinearHMM(FunsorDistribution):
         approximation and use parallel scan algorithm to reduce parallel
         complexity to logarithmic in ``num_steps``. Defaults to False.
     """
+
     has_rsample = True
     arg_constraints = {}
 
