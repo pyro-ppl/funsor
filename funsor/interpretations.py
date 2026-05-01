@@ -58,9 +58,11 @@ class Interpretation(ContextDecorator, ABC):
             from torch import Tensor
 
             return tuple(
-                id(arg)
-                if isinstance(arg, Tensor) or not isinstance(arg, Hashable)
-                else arg
+                (
+                    id(arg)
+                    if isinstance(arg, Tensor) or not isinstance(arg, Hashable)
+                    else arg
+                )
                 for arg in args
             )
         return tuple(id(arg) if not isinstance(arg, Hashable) else arg for arg in args)
