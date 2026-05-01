@@ -1137,7 +1137,7 @@ def test_torch_save():
     f = io.BytesIO()
     torch.save(x, f)
     f.seek(0)
-    y = torch.load(f)
+    y = torch.load(f, weights_only=False)
     assert_close(x, y)
 
 

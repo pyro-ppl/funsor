@@ -51,9 +51,11 @@ class AdjointTape(Interpretation):
             result = self._old_interpretation.interpret(cls, *args)
         lazy_args = [
             self._eager_to_lazy.get(
-                id(arg)
-                if ops.is_numeric_array(arg) or not isinstance(arg, Hashable)
-                else arg,
+                (
+                    id(arg)
+                    if ops.is_numeric_array(arg) or not isinstance(arg, Hashable)
+                    else arg
+                ),
                 arg,
             )
             for arg in args

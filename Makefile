@@ -47,8 +47,10 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	python examples/talbot.py -n 2
 	python examples/vae.py --smoke-test
 	python examples/eeg_slds.py --num-steps 2 --fon --test
-	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --smoke
-	python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --parallel --smoke
+	# TODO: re-enable once the seal dataset is mirrored at a reachable URL.
+	# The upstream CSV at d2hg8soec8ck9v.cloudfront.net now returns 403 AccessDenied.
+	# python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --smoke
+	# python examples/mixed_hmm/experiment.py -d seal -i discrete -g discrete -zi --parallel --smoke
 	python examples/sensor.py --seed=0 --num-frames=2 -n 1
 	python examples/adam.py --num-steps=21
 	@echo PASS

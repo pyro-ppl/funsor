@@ -547,9 +547,11 @@ def do_fresh_subs(arg, subs):
 @normalize.register(Subs, Contraction, tuple)
 def distribute_subs_contraction(arg, subs):
     new_terms = tuple(
-        Subs(v, tuple((name, sub) for name, sub in subs if name in v.inputs))
-        if any(name in v.inputs for name, sub in subs)
-        else v
+        (
+            Subs(v, tuple((name, sub) for name, sub in subs if name in v.inputs))
+            if any(name in v.inputs for name, sub in subs)
+            else v
+        )
         for v in arg.terms
     )
     return Contraction(arg.red_op, arg.bin_op, arg.reduced_vars, *new_terms)

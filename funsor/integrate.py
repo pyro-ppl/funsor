@@ -282,9 +282,11 @@ def eager_distribute_integrate(log_measure, integrand, reduced_vars):
     return reduce(
         ops.add,
         [
-            -Integrate(log_measure, term.arg, reduced_vars)
-            if isinstance(term, Unary)
-            else Integrate(log_measure, term, reduced_vars)
+            (
+                -Integrate(log_measure, term.arg, reduced_vars)
+                if isinstance(term, Unary)
+                else Integrate(log_measure, term, reduced_vars)
+            )
             for term in integrand.terms
         ],
     )

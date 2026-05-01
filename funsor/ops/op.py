@@ -158,7 +158,7 @@ class Op(metaclass=OpMeta):
         return self.__name__
 
     def __call__(self, *args, **kwargs):
-        global _TRACE, _TRACE_FILTER_ARGS
+        global _TRACE
         raw_args = args
 
         # Normalize args, kwargs.

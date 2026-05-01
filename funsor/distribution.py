@@ -71,9 +71,11 @@ def numbers_to_tensors(*args):
                 break
         with ignore_jit_warnings():
             args = tuple(
-                Tensor(numeric_array(x.data, **options), dtype=x.dtype)
-                if isinstance(x, Number)
-                else x
+                (
+                    Tensor(numeric_array(x.data, **options), dtype=x.dtype)
+                    if isinstance(x, Number)
+                    else x
+                )
                 for x in args
             )
     return args
@@ -129,6 +131,7 @@ class Distribution(Funsor, metaclass=DistributionMeta):
         funsors or objects that can be coerced to funsors via
         :func:`~funsor.terms.to_funsor` . See derived classes for details.
     """
+
     dist_class = "defined by derived classes"
 
     def __init__(self, *args):
