@@ -60,8 +60,8 @@ setup(
             "scipy",
         ],
         "dev": [
-            "black<24",
-            "flake8<7",
+            "black",
+            "flake8",
             "isort>=5.0",
             "nbsphinx",
             "pandas",
