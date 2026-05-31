@@ -377,10 +377,11 @@ def make_dist(
     backend_dist_class, param_names=(), generate_eager=True, generate_to_funsor=True
 ):
     if not param_names:
+        arg_constraint_names = _get_arg_constraint_names(backend_dist_class)
         param_names = tuple(
             name
             for name in inspect.getfullargspec(backend_dist_class.__init__)[0][1:]
-            if name in backend_dist_class.arg_constraints
+            if name in arg_constraint_names
         )
 
     @makefun.with_signature(
@@ -406,6 +407,15 @@ def make_dist(
         )
 
     return dist_class
+
+
+def _get_arg_constraint_names(cls):
+    arg_constraints = getattr(cls, "arg_constraints", None)
+    if isinstance(arg_constraints, property):
+        return frozenset(getargspec(cls.__init__)[0][1:]) - frozenset(["validate_args"])
+    if arg_constraints:
+        return frozenset(arg_constraints)
+    return frozenset()
 
 
 FUNSOR_DIST_NAMES = [
