@@ -440,7 +440,7 @@ FUNSOR_DIST_NAMES = [
     ("Pareto", ()),
     ("Poisson", ()),
     ("StudentT", ()),
-    ("Uniform", ()),
+    ("Uniform", ("low", "high")),
     ("VonMises", ()),
 ]
 
