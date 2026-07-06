@@ -4,6 +4,7 @@
 import functools
 from typing import Tuple, Union
 
+import jax.numpy as jnp
 import numpyro.distributions as dist
 
 import funsor.ops as ops
@@ -57,7 +58,9 @@ class _NumPyroWrapper_Binomial(dist.BinomialProbs):
 
 
 class _NumPyroWrapper_Categorical(dist.CategoricalProbs):
-    pass
+    def __init__(self, probs, validate_args=None):
+        probs = probs / jnp.sum(probs, axis=-1, keepdims=True)
+        super().__init__(probs, validate_args=validate_args)
 
 
 class _NumPyroWrapper_Geometric(dist.GeometricProbs):
@@ -65,7 +68,16 @@ class _NumPyroWrapper_Geometric(dist.GeometricProbs):
 
 
 class _NumPyroWrapper_Multinomial(dist.MultinomialProbs):
-    pass
+    def __init__(
+        self, probs, total_count=1, *, total_count_max=None, validate_args=None
+    ):
+        probs = probs / jnp.sum(probs, axis=-1, keepdims=True)
+        super().__init__(
+            probs,
+            total_count,
+            total_count_max=total_count_max,
+            validate_args=validate_args,
+        )
 
 
 class _NumPyroWrapper_NonreparameterizedBeta(dist.Beta):
