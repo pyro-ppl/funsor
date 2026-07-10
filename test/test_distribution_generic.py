@@ -349,9 +349,11 @@ for batch_shape in [(), (5,), (2, 3)]:
             ("probs", f"rand({batch_shape})"),
         ),
         funsor.Real,
-        xfail_reason="NumPyro converts NegativeBinomial through GammaPoisson"
-        if get_backend() == "jax"
-        else "",
+        xfail_reason=(
+            "NumPyro converts NegativeBinomial through GammaPoisson"
+            if get_backend() == "jax"
+            else ""
+        ),
     )
 
     # Normal
