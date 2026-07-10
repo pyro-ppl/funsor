@@ -12,12 +12,12 @@ for a system description.
 
 ## Installing
 
-**Install using pip:**
+**Install using uv:**
 
-Funsor supports Python 3.7+.
+Funsor supports Python 3.10+.
 
 ```sh
-pip install funsor
+uv pip install funsor
 ```
 
 **Install from source:**
@@ -25,7 +25,7 @@ pip install funsor
 git clone git@github.com:pyro-ppl/funsor.git
 cd funsor
 git checkout master
-pip install .
+uv sync --extra dev
 ```
 
 ## Using funsor

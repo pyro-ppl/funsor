@@ -21,16 +21,18 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
     - name: Install dependencies
       run: |
         sudo apt install -y pandoc
-        python -m pip install --upgrade pip
+        uv venv --python ${{ matrix.python-version }}
         # Keep track of pyro-api master branch
-        pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
-        pip install .[test]
-        pip freeze
+        uv pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
+        uv pip install ".[test]"
+        uv pip freeze
     - name: Run test
-      run: make test
+      run: uv run --no-sync make test
 
 
   torch:
@@ -48,18 +50,20 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
+        uv venv --python ${{ matrix.python-version }}
         # Keep track of pyro-api master branch
-        pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
-        pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cpu
+        uv pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
+        uv pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cpu
         # Keep track of Pyro master branch
-        pip install https://github.com/pyro-ppl/pyro/archive/master.zip
-        pip install .[test,torch]
-        pip freeze
+        uv pip install https://github.com/pyro-ppl/pyro/archive/master.zip
+        uv pip install ".[test,torch]"
+        uv pip freeze
     - name: Run test
-      run: make test
+      run: uv run --no-sync make test
 
 
   jax:
@@ -77,15 +81,17 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
+        uv venv --python ${{ matrix.python-version }}
         # Keep track of pyro-api master branch
-        pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
-        pip install "jax<0.10"
+        uv pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
+        uv pip install "jax<0.10"
         # Keep track of NumPyro master branch
-        pip install https://github.com/pyro-ppl/numpyro/archive/master.zip
-        pip install .[test]
-        pip freeze
+        uv pip install https://github.com/pyro-ppl/numpyro/archive/master.zip
+        uv pip install ".[test]"
+        uv pip freeze
     - name: Run test
-      run: make test
+      run: uv run --no-sync make test

@@ -1,0 +1,118 @@
+# Copyright Contributors to the Pyro project.
+# SPDX-License-Identifier: Apache-2.0
+
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "funsor"
+version = "0.4.7"
+description = "A tensor-like library for functions and distributions"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE.md"]
+authors = [
+    { name = "Uber AI Labs" },
+]
+keywords = [
+    "probabilistic machine learning",
+    "bayesian statistics",
+    "pytorch",
+    "jax",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "makefun",
+    "multipledispatch",
+    "numpy>=1.7",
+    "opt_einsum>=2.3.2",
+    "typing_extensions",
+]
+
+[project.optional-dependencies]
+torch = [
+    "pyro-ppl>=1.8.0",
+    "torch>=1.11.0",
+    "torchvision>=0.12.0",
+]
+jax = [
+    "numpyro>=0.7.0",
+    "jax>=0.2.21",
+    "jaxlib>=0.1.71",
+]
+test = [
+    "black",
+    "flake8",
+    "isort>=5.0",
+    "pandas",
+    "pyro-api>=0.1.2",
+    "pytest>=7",
+    "pytest-xdist>=3",
+    "requests",
+    "scipy",
+]
+docs = [
+    "ipython<=8.6.0",
+    "nbsphinx==0.8.9",
+    "pytest>=4.1",
+    "sphinx>=2.0",
+    "sphinx-gallery",
+    "sphinx_rtd_theme",
+]
+dev = [
+    "black",
+    "flake8",
+    "isort>=5.0",
+    "nbsphinx",
+    "pandas",
+    "pytest>=7",
+    "pytest-xdist>=3",
+    "scipy",
+    "sphinx>=2.0",
+    "sphinx-gallery",
+    "sphinx_rtd_theme",
+    "torchvision>=0.12.0",
+]
+
+[project.urls]
+Documentation = "https://funsor.pyro.ai"
+Homepage = "https://github.com/pyro-ppl/funsor"
+
+[tool.setuptools.packages.find]
+include = ["funsor", "funsor.*"]
+
+[tool.isort]
+profile = "black"
+known_first_party = ["funsor", "test"]
+known_third_party = ["opt_einsum", "pyro", "pyroapi", "torch", "torchvision"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "error",
+    "ignore:numpy.ufunc size changed:RuntimeWarning",
+    "ignore:numpy.dtype size changed:RuntimeWarning",
+    "ignore:Mixed memory format:UserWarning",
+    "ignore:Cannot memoize Op:UserWarning",
+    "ignore::DeprecationWarning",
+    "ignore:CUDA initialization:UserWarning",
+    "ignore:floor_divide is deprecated:UserWarning",
+    "ignore:__floordiv__ is deprecated:UserWarning",
+    "ignore:__rfloordiv__ is deprecated:UserWarning",
+    "ignore:torch.cholesky is deprecated:UserWarning",
+    "ignore:torch.symeig is deprecated:UserWarning",
+    "once::DeprecationWarning",
+]
+doctest_optionflags = "ELLIPSIS NORMALIZE_WHITESPACE IGNORE_EXCEPTION_DETAIL"
