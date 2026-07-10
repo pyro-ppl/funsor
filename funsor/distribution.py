@@ -16,7 +16,7 @@ import funsor.delta
 import funsor.ops as ops
 from funsor.affine import is_affine
 from funsor.cnf import Contraction, GaussianMixture
-from funsor.domains import Array, Real, Reals
+from funsor.domains import Array, Bint, Real, Reals
 from funsor.gaussian import Gaussian
 from funsor.interpreter import gensym
 from funsor.tensor import (
@@ -440,7 +440,7 @@ FUNSOR_DIST_NAMES = [
     ("Pareto", ()),
     ("Poisson", ()),
     ("StudentT", ()),
-    ("Uniform", ()),
+    ("Uniform", ("low", "high")),
     ("VonMises", ()),
 ]
 
@@ -495,7 +495,8 @@ def indepdist_to_funsor(backend_dist, output=None, dim_to_name=None):
     else:
         # this handles the output of eager rewrites, e.g. Normal->Gaussian or Beta->Dirichlet
         for dim, name in reversed(event_dim_to_name.items()):
-            result = funsor.terms.Independent(result, "value", name, "value")
+            if name in result.inputs:
+                result = funsor.terms.Independent(result, "value", name, "value")
     return result
 
 
@@ -505,6 +506,23 @@ def expandeddist_to_funsor(backend_dist, output=None, dim_to_name=None):
     )
     if not dim_to_name:
         assert not backend_dist.batch_shape
+        return funsor_base_dist
+
+    if not isinstance(funsor_base_dist, Distribution):
+        # This handles the output of eager rewrites, e.g. Normal -> Gaussian.
+        min_dim = -len(backend_dist.batch_shape)
+        for dim, name in reversed(dim_to_name.items()):
+            if dim < min_dim or dim >= 0:
+                continue
+            size = backend_dist.batch_shape[dim]
+            zero = Tensor(
+                ops.expand(numeric_array(0.0), (size,)),
+                OrderedDict([(name, Bint[size])]),
+            )
+            funsor_base_dist += zero
+            funsor_base_dist = funsor.terms.Independent(
+                funsor_base_dist, "value", name, "value"
+            )
         return funsor_base_dist
 
     name_to_dim = {name: dim for dim, name in dim_to_name.items()}

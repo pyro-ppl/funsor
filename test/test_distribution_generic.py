@@ -91,6 +91,10 @@ def eager_no_dists(cls, *args):
 TEST_CASES = []
 
 
+def simplex(probs):
+    return probs / probs.sum(-1, keepdims=True)
+
+
 class DistTestCase:
     def __init__(self, raw_dist, raw_params, expected_value_domain, xfail_reason=""):
         assert isinstance(raw_dist, str)
@@ -173,7 +177,7 @@ for batch_shape in [(), (5,), (2, 3)]:
     for size in [2, 4]:
         DistTestCase(
             "dist.Categorical(probs=case.probs)",
-            (("probs", f"rand({batch_shape + (size,)})"),),
+            (("probs", f"simplex(rand({batch_shape + (size,)}))"),),
             funsor.Bint[size],
         )
 
@@ -321,7 +325,7 @@ for batch_shape in [(), (5,), (2, 3)]:
             "dist.Multinomial(case.total_count, probs=case.probs)",
             (
                 ("total_count", "randint(5, 7, ())" if get_backend() == "jax" else "5"),
-                ("probs", f"rand({batch_shape + event_shape})"),
+                ("probs", f"simplex(rand({batch_shape + event_shape}))"),
             ),
             funsor.Reals[event_shape],
         )
@@ -345,6 +349,11 @@ for batch_shape in [(), (5,), (2, 3)]:
             ("probs", f"rand({batch_shape})"),
         ),
         funsor.Real,
+        xfail_reason=(
+            "NumPyro converts NegativeBinomial through GammaPoisson"
+            if get_backend() == "jax"
+            else ""
+        ),
     )
 
     # Normal
@@ -364,7 +373,7 @@ for batch_shape in [(), (5,), (2, 3)]:
     for size in [2, 4]:
         DistTestCase(
             "dist.OneHotCategorical(probs=case.probs)",
-            (("probs", f"rand({batch_shape + (size,)})"),),
+            (("probs", f"simplex(rand({batch_shape + (size,)}))"),),
             funsor.Reals[size],  # funsor.Bint[size],
         )
 
