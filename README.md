@@ -25,7 +25,7 @@ uv pip install funsor
 git clone git@github.com:pyro-ppl/funsor.git
 cd funsor
 git checkout master
-uv sync --extra dev
+uv sync
 ```
 
 ## Using funsor

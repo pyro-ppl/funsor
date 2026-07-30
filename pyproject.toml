@@ -53,6 +53,8 @@ jax = [
     "jax>=0.2.21",
     "jaxlib>=0.1.71",
 ]
+
+[dependency-groups]
 test = [
     "black",
     "flake8",
@@ -73,19 +75,22 @@ docs = [
     "sphinx_rtd_theme",
 ]
 dev = [
-    "black",
-    "flake8",
-    "isort>=5.0",
-    "nbsphinx",
-    "pandas",
-    "pytest>=7",
-    "pytest-xdist>=3",
-    "scipy",
-    "sphinx>=2.0",
-    "sphinx-gallery",
-    "sphinx_rtd_theme",
+    { include-group = "test" },
+    { include-group = "docs" },
     "torchvision>=0.12.0",
 ]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
 
 [project.urls]
 Documentation = "https://funsor.pyro.ai"

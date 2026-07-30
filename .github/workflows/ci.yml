@@ -26,13 +26,9 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt install -y pandoc
-        uv venv --python ${{ matrix.python-version }}
-        # Keep track of pyro-api master branch
-        uv pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
-        uv pip install ".[test]"
-        uv pip freeze
+        uv sync --frozen --group test --no-default-groups
     - name: Run test
-      run: uv run --no-sync make test
+      run: uv run make test
 
 
   torch:
@@ -54,16 +50,9 @@ jobs:
       uses: astral-sh/setup-uv@v5
     - name: Install dependencies
       run: |
-        uv venv --python ${{ matrix.python-version }}
-        # Keep track of pyro-api master branch
-        uv pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
-        uv pip install torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cpu
-        # Keep track of Pyro master branch
-        uv pip install https://github.com/pyro-ppl/pyro/archive/master.zip
-        uv pip install ".[test,torch]"
-        uv pip freeze
+        uv sync --frozen --group test --extra torch --no-default-groups
     - name: Run test
-      run: uv run --no-sync make test
+      run: uv run make test
 
 
   jax:
@@ -85,13 +74,6 @@ jobs:
       uses: astral-sh/setup-uv@v5
     - name: Install dependencies
       run: |
-        uv venv --python ${{ matrix.python-version }}
-        # Keep track of pyro-api master branch
-        uv pip install https://github.com/pyro-ppl/pyro-api/archive/master.zip
-        uv pip install "jax<0.10"
-        # Keep track of NumPyro master branch
-        uv pip install https://github.com/pyro-ppl/numpyro/archive/master.zip
-        uv pip install ".[test]"
-        uv pip freeze
+        uv sync --frozen --group test --extra jax --no-default-groups
     - name: Run test
-      run: uv run --no-sync make test
+      run: uv run make test

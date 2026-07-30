@@ -224,7 +224,7 @@ def adjoint_contract_generic(
         sum_op,
         prod_op,
         reduced_vars,
-        *terms
+        *terms,
     )
 
 

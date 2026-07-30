@@ -98,7 +98,7 @@ def test_nested_einsum(
         outputs1[0] + "," + eqn2,
         *([expected1] + operands2),
         backend=backend2,
-        modulo_total=True
+        modulo_total=True,
     )[0]
 
     with normalize:

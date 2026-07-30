@@ -5,6 +5,7 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.11"
+    uv: "latest"
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:
@@ -13,10 +14,10 @@ sphinx:
 # Optionally build your docs in additional formats such as PDF and ePub
 formats: all
 
-# Optionally set the Python package extras required to build your docs
+# Optionally set the Python dependency groups required to build your docs
 python:
   install:
-    - method: pip
+    - method: uv
       path: .
-      extra_requirements:
+      groups:
         - docs
