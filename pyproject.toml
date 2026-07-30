@@ -1,15 +1,15 @@
 [build-system]
-requires = ["setuptools>=77", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "funsor"
-version = "0.4.7"  # mirrored in funsor/__init__.py
 description = "A tensor-like library for functions and distributions"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE.md"]
+dynamic = ["version"]
 authors = [
     { name = "Uber AI Labs" },
 ]
@@ -74,6 +74,11 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/pyro-ppl/funsor"
 Documentation = "https://funsor.pyro.ai"
+Repository = "https://github.com/pyro-ppl/funsor"
+Issues = "https://github.com/pyro-ppl/funsor/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "funsor.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["funsor", "funsor.*"]
