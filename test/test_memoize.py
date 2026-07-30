@@ -178,14 +178,14 @@ def test_nested_einsum_complete_sharing(
         output2_1 = einsum_impl2(
             outputs1[0] + "," + eqn2,
             *([output1_1] + funsor_operands2),
-            backend=backend2
+            backend=backend2,
         )
 
         output1_2 = einsum_impl1(eqn1, *funsor_operands1, backend=backend1)
         output2_2 = einsum_impl2(
             outputs1[0] + "," + eqn2,
             *([output1_2] + funsor_operands2),
-            backend=backend2
+            backend=backend2,
         )
 
     assert output1_1 is output1_2

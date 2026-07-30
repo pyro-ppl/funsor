@@ -184,7 +184,7 @@ class Contraction(Funsor):
                         self.red_op,
                         self.bin_op,
                         self.reduced_vars,
-                        *(terms + sampled_terms)
+                        *(terms + sampled_terms),
                     )
                 else:
                     raise NotImplementedError(
@@ -431,7 +431,7 @@ def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, mixture, o
         mixture.red_op if red_op is ops.null else red_op,
         bin_op,
         reduced_vars | mixture.reduced_vars,
-        *(mixture.terms + (other,))
+        *(mixture.terms + (other,)),
     )
 
 
@@ -443,7 +443,7 @@ def normalize_contraction_commute_joint(red_op, bin_op, reduced_vars, other, mix
         mixture.red_op if red_op is ops.null else red_op,
         bin_op,
         reduced_vars | mixture.reduced_vars,
-        *(mixture.terms + (other,))
+        *(mixture.terms + (other,)),
     )
 
 
