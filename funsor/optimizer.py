@@ -38,7 +38,7 @@ def unfold_contraction_generic_tuple(red_op, bin_op, reduced_vars, terms):
                     v.red_op,
                     bin_op,
                     v.reduced_vars,
-                    *(terms[:i] + (vt,) + terms[i + 1 :])
+                    *(terms[:i] + (vt,) + terms[i + 1 :]),
                 )
                 for vt in v.terms
             )
