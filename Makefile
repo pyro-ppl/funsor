@@ -3,7 +3,7 @@
 all: docs test
 
 install:
-	pip install -e .[dev]
+	pip install -e . --group dev
 
 docs: FORCE
 	mkdir -p docs/source/_static
