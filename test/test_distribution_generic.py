@@ -778,9 +778,10 @@ def test_generic_stats(case, statistic):
                 raw_dist, output=funsor.Real, dim_to_name=dim_to_name
             )
 
-    with xfail_if_not_implemented(
-        msg="entropy not implemented for some distributions"
-    ), xfail_if_not_found(msg="stats not implemented yet for TransformedDist"):
+    with (
+        xfail_if_not_implemented(msg="entropy not implemented for some distributions"),
+        xfail_if_not_found(msg="stats not implemented yet for TransformedDist"),
+    ):
         actual_stat = getattr(funsor_dist, statistic)()
 
     with xfail_if_not_implemented():
