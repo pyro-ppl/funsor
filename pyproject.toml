@@ -37,14 +37,16 @@ dependencies = [
 [project.optional-dependencies]
 torch = [
     "pyro-ppl>=1.8.0",
-    "torch>=1.11.0",
-    "torchvision>=0.12.0",
+    "torch>=2.0",
+    "torchvision>=0.15.0",
 ]
 jax = [
     "numpyro>=0.7.0",
     "jax>=0.2.21",
     "jaxlib>=0.1.71",
 ]
+
+[dependency-groups]
 test = [
     "pandas",
     "pyro-api>=0.1.2",
@@ -54,17 +56,16 @@ test = [
     "ruff>=0.16.1",
     "scipy",
 ]
-dev = [
-    "nbsphinx",
-    "pandas",
-    "pytest>=7",
-    "pytest-xdist>=3",
-    "ruff>=0.16.1",
-    "scipy",
+docs = [
+    "ipython<=8.6.0",
+    "nbsphinx==0.8.9",
     "sphinx>=2.0",
     "sphinx-gallery",
     "sphinx_rtd_theme",
-    "torchvision>=0.12.0",
+]
+dev = [
+    { include-group = "test" },
+    { include-group = "docs" },
 ]
 
 [project.urls]
