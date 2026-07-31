@@ -819,9 +819,7 @@ def eager_multinomial(total_count, probs, value):
     else:
         total_count = Tensor(ops.expand(total_count, shape[:-1]), inputs)
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
-    return backend_dist.Multinomial.eager_log_prob(
-        total_count, probs, value
-    )  # noqa: F821
+    return backend_dist.Multinomial.eager_log_prob(total_count, probs, value)  # noqa: F821
 
 
 def eager_categorical_funsor(probs, value):
@@ -841,9 +839,7 @@ def eager_delta_tensor(v, log_density, value):
     event_dim = len(v.output.shape)
     inputs, (v, log_density, value) = align_tensors(v, log_density, value)
     backend_dist = import_module(BACKEND_TO_DISTRIBUTIONS_BACKEND[get_backend()])
-    data = backend_dist.Delta.dist_class(v, log_density, event_dim).log_prob(
-        value
-    )  # noqa: F821
+    data = backend_dist.Delta.dist_class(v, log_density, event_dim).log_prob(value)  # noqa: F821
     return Tensor(data, inputs)
 
 

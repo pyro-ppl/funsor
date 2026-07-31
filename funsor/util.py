@@ -257,8 +257,9 @@ def set_backend(backend):
             _JAX_COMPILED_FUNCTION_TYPE = type(jax.jit(lambda: 0))
     else:
         raise ValueError(
-            "backend should be either 'numpy', 'torch', or 'jax'"
-            ", got {}".format(backend)
+            "backend should be either 'numpy', 'torch', or 'jax', got {}".format(
+                backend
+            )
         )
 
 

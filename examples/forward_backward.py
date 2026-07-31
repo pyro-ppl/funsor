@@ -162,7 +162,7 @@ def main(args):
         actual = adj + trans - Z
         assert_close(expected, actual.align(tuple(expected.inputs)), rtol=1e-4)
         print("")
-        print(f"Marginal term: p(x[{t}], x[{t-1}] | Y)")
+        print(f"Marginal term: p(x[{t}], x[{t - 1}] | Y)")
         print("Forward-backward algorithm:\n", expected.data)
         print("Differentiating forward algorithm:\n", actual.data)
         t += 1

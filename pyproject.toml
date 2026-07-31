@@ -46,24 +46,20 @@ jax = [
     "jaxlib>=0.1.71",
 ]
 test = [
-    "black",
-    "flake8",
-    "isort>=5.0",
     "pandas",
     "pyro-api>=0.1.2",
     "pytest>=7",
     "pytest-xdist>=3",
     "requests",
+    "ruff>=0.16.1",
     "scipy",
 ]
 dev = [
-    "black",
-    "flake8",
-    "isort>=5.0",
     "nbsphinx",
     "pandas",
     "pytest>=7",
     "pytest-xdist>=3",
+    "ruff>=0.16.1",
     "scipy",
     "sphinx>=2.0",
     "sphinx-gallery",
@@ -83,10 +79,31 @@ version = { attr = "funsor.__version__" }
 [tool.setuptools.packages.find]
 include = ["funsor", "funsor.*"]
 
-[tool.isort]
-profile = "black"
-known_first_party = ["funsor", "test"]
-known_third_party = ["opt_einsum", "pyro", "pyroapi", "torch", "torchvision"]
+[tool.ruff]
+extend-exclude = ["*.ipynb", "build", "docs/src"]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.format]
+exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["F811"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["funsor", "test"]
+
+[tool.ruff.lint.per-file-ignores]
+"examples/talbot.py" = ["F821"]
+"funsor/jax/distributions.py" = ["F821"]
+"funsor/ops/__init__.py" = ["F401", "F403"]
+"funsor/torch/distributions.py" = ["F821"]
+"test/conftest.py" = ["E402"]
+"test/test_tensor.py" = ["E741"]
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 120
 
 [tool.pytest.ini_options]
 filterwarnings = [

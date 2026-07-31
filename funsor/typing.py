@@ -279,9 +279,9 @@ class GenericTypeMeta(type):
             assert not get_args(cls), "cannot subscript a subscripted type {}".format(
                 cls
             )
-            assert not any(
-                isvariadic(arg_type) for arg_type in arg_types
-            ), "nested variadic types not supported"
+            assert not any(isvariadic(arg_type) for arg_type in arg_types), (
+                "nested variadic types not supported"
+            )
             new_dct = cls.__dict__.copy()
             new_dct.update({"__args__": arg_types})
             # type(cls) to handle GenericTypeMeta subclasses

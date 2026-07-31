@@ -121,8 +121,8 @@ class DispatchedInterpretation(Interpretation):
         self.registry = registry = KeyedRegistry(default=lambda *args: None)
 
         if instrument.DEBUG or instrument.PROFILE:
-            self.register = lambda *args: lambda fn: registry.register(*args)(
-                instrument.debug_logged(fn)
+            self.register = lambda *args: (
+                lambda fn: registry.register(*args)(instrument.debug_logged(fn))
             )
         else:
             self.register = registry.register

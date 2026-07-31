@@ -25,7 +25,9 @@ from funsor.util import get_backend
 
 @make_funsor
 def InverseLaplace(
-    F: Has[{"s"}], t: Funsor, s: Bound  # noqa: F821
+    F: Has[{"s"}],
+    t: Funsor,
+    s: Bound,
 ) -> Fresh[lambda F: F]:
     """
     Inverse Laplace transform of function F(s).

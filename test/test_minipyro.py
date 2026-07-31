@@ -36,8 +36,9 @@ def Vindex(x):
 
 def _check_loss_and_grads(expected_loss, actual_loss, atol=1e-4, rtol=1e-4):
     # copied from pyro
-    expected_loss, actual_loss = funsor.to_data(expected_loss), funsor.to_data(
-        actual_loss
+    expected_loss, actual_loss = (
+        funsor.to_data(expected_loss),
+        funsor.to_data(actual_loss),
     )
     assert ops.allclose(actual_loss, expected_loss, atol=atol, rtol=rtol)
     names = pyro.get_param_store().keys()

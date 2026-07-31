@@ -337,7 +337,7 @@ def _find_domain_getitem(op, lhs_domain, rhs_domain):
     elif isinstance(lhs_domain, ProductDomain):
         # XXX should this return a Union?
         raise NotImplementedError(
-            "Cannot statically infer domain from: " f"{lhs_domain}[{rhs_domain}]"
+            f"Cannot statically infer domain from: {lhs_domain}[{rhs_domain}]"
         )
 
 

@@ -336,9 +336,7 @@ to_funsor.register(torch.distributions.TransformedDistribution)(
 @to_funsor.register(torch.distributions.Bernoulli)
 def bernoulli_to_funsor(pyro_dist, output=None, dim_to_name=None):
     new_pyro_dist = _PyroWrapper_BernoulliLogits(logits=pyro_dist.logits)
-    return backenddist_to_funsor(
-        BernoulliLogits, new_pyro_dist, output, dim_to_name
-    )  # noqa: F821
+    return backenddist_to_funsor(BernoulliLogits, new_pyro_dist, output, dim_to_name)  # noqa: F821
 
 
 @to_funsor.register(dist.Delta)  # Delta **distribution**
@@ -358,25 +356,17 @@ JointDirichletMultinomial = Contraction[
 ]
 
 
-eager.register(Beta, Funsor, Funsor, Funsor)(eager_beta)  # noqa: F821)
+eager.register(Beta, Funsor, Funsor, Funsor)(eager_beta)  # noqa: F821
 eager.register(Binomial, Funsor, Funsor, Funsor)(eager_binomial)  # noqa: F821
-eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: F821)
-eager.register(Categorical, Funsor, Tensor)(eager_categorical_funsor)  # noqa: F821)
-eager.register(Categorical, Tensor, Variable)(eager_categorical_tensor)  # noqa: F821)
-eager.register(Categorical, Constant[Tuple, Tensor], Variable)(
-    eager_categorical_tensor
-)  # noqa: F821)
+eager.register(Multinomial, Tensor, Tensor, Tensor)(eager_multinomial)  # noqa: F821
+eager.register(Categorical, Funsor, Tensor)(eager_categorical_funsor)  # noqa: F821
+eager.register(Categorical, Tensor, Variable)(eager_categorical_tensor)  # noqa: F821
+eager.register(Categorical, Constant[Tuple, Tensor], Variable)(eager_categorical_tensor)  # noqa: F821
 eager.register(Delta, Tensor, Tensor, Tensor)(eager_delta_tensor)  # noqa: F821
-eager.register(Delta, Funsor, Funsor, Variable)(
-    eager_delta_funsor_variable
-)  # noqa: F821
-eager.register(Delta, Variable, Funsor, Variable)(
-    eager_delta_funsor_variable
-)  # noqa: F821
+eager.register(Delta, Funsor, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821
+eager.register(Delta, Variable, Funsor, Variable)(eager_delta_funsor_variable)  # noqa: F821
 eager.register(Delta, Variable, Funsor, Funsor)(eager_delta_funsor_funsor)  # noqa: F821
-eager.register(Delta, Variable, Variable, Variable)(
-    eager_delta_variable_variable
-)  # noqa: F821
+eager.register(Delta, Variable, Variable, Variable)(eager_delta_variable_variable)  # noqa: F821
 eager.register(Normal, Funsor, Tensor, Funsor)(eager_normal)  # noqa: F821
 eager.register(MultivariateNormal, Funsor, Tensor, Funsor)(eager_mvn)  # noqa: F821
 eager.register(
@@ -394,23 +384,15 @@ eager.register(
 )(  # noqa: F821
     eager_dirichlet_multinomial
 )
-eager.register(
-    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma
-)(  # noqa: F821
+eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Gamma)(  # noqa: F821
     eager_gamma_gamma
 )
-eager.register(
-    Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson
-)(  # noqa: F821
+eager.register(Contraction, ops.LogaddexpOp, ops.AddOp, frozenset, Gamma, Poisson)(  # noqa: F821
     eager_gamma_poisson
 )
-eager.register(
-    Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial
-)(  # noqa: F821
+eager.register(Binary, ops.SubOp, JointDirichletMultinomial, DirichletMultinomial)(  # noqa: F821
     eager_dirichlet_posterior
 )
-eager.register(
-    Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset
-)(  # noqa: F821
+eager.register(Reduce, ops.AddOp, Multinomial[Tensor, Funsor, Funsor], frozenset)(  # noqa: F821
     eager_plate_multinomial
 )
