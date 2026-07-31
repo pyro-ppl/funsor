@@ -37,7 +37,7 @@ version = "0.0"
 
 if "READTHEDOCS" not in os.environ:
     # if developing locally, use funsor.__version__ as version
-    from funsor import __version__  # noqaE402
+    from funsor import __version__  # noqa: E402
 
     version = __version__
 

@@ -125,9 +125,9 @@ class trace(Messenger):
     # trace illustrates why we need postprocess_message in addition to process_message:
     # We only want to record a value after all other effects have been applied
     def postprocess_message(self, msg):
-        assert (
-            msg["type"] != "sample" or msg["name"] not in self.trace
-        ), "sample sites must have unique names"
+        assert msg["type"] != "sample" or msg["name"] not in self.trace, (
+            "sample sites must have unique names"
+        )
         self.trace[msg["name"]] = msg.copy()
 
     def get_trace(self, *args, **kwargs):
@@ -238,9 +238,9 @@ class log_joint(Messenger):
 
     def postprocess_message(self, msg):
         if msg["type"] == "sample":
-            assert (
-                msg["name"] not in self.log_factors
-            ), "all sites must have unique names"
+            assert msg["name"] not in self.log_factors, (
+                "all sites must have unique names"
+            )
             log_prob = msg["fn"].log_prob(msg["value"])
             self.log_factors[msg["name"]] = log_prob
             self.plates.update(f.name for f in msg["cond_indep_stack"].values())

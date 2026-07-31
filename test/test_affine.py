@@ -104,8 +104,7 @@ def test_affine_subs(expr, expected_type, expected_inputs):
         "Variable('x', Reals[2]) * randn(2)",
         "Variable('x', Reals[2]) * randn(2) + ones(2)",
         "Variable('x', Reals[2]) + Tensor(randn(3, 2), OrderedDict(i=Bint[3]))",
-        "Einsum('abcd,ac->bd',"
-        " Tensor(randn(2, 3, 4, 5)), Variable('x', Reals[2, 4]))",
+        "Einsum('abcd,ac->bd', Tensor(randn(2, 3, 4, 5)), Variable('x', Reals[2, 4]))",
         "Tensor(randn(3, 5)) + Einsum('abcd,ac->bd',"
         " Tensor(randn(2, 3, 4, 5)), Variable('x', Reals[2, 4]))",
         "Variable('x', Reals[2, 8])[0] + randn(8)",

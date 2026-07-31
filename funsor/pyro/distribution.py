@@ -91,9 +91,9 @@ class FunsorDistribution(TorchDistribution):
 
     def rsample(self, sample_shape=torch.Size()):
         delta = self._sample_delta(sample_shape)
-        assert (
-            not delta.log_density.requires_grad
-        ), "distribution is not fully reparametrized"
+        assert not delta.log_density.requires_grad, (
+            "distribution is not fully reparametrized"
+        )
         ndims = len(sample_shape) + len(self.batch_shape) + len(self.event_shape)
         value = funsor_to_tensor(delta.terms[0][1][0], ndims=ndims)
         return value

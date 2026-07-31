@@ -152,8 +152,8 @@ def _fail_default(*args):
 adjoint_ops = KeyedRegistry(default=_fail_default)
 if instrument.DEBUG:
     adjoint_ops_register = adjoint_ops.register
-    adjoint_ops.register = lambda *args: lambda fn: adjoint_ops_register(*args)(
-        instrument.debug_logged(fn)
+    adjoint_ops.register = lambda *args: (
+        lambda fn: adjoint_ops_register(*args)(instrument.debug_logged(fn))
     )
 
 

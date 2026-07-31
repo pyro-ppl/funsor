@@ -10,9 +10,7 @@ docs: FORCE
 	$(MAKE) -C docs html
 
 lint: FORCE
-	flake8
-	black --check .
-	isort --check .
+	ruff check --fix .
 	python scripts/update_headers.py --check
 	python test/test_import.py
 
@@ -20,8 +18,7 @@ license: FORCE
 	python scripts/update_headers.py
 
 format: license FORCE
-	black .
-	isort .
+	ruff format .
 
 test: lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)

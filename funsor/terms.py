@@ -191,9 +191,9 @@ class FunsorMeta(GenericTypeMeta):
     def __getitem__(cls, arg_types):
         if not isinstance(arg_types, tuple):
             arg_types = (arg_types,)
-        assert len(arg_types) == len(
-            cls._ast_fields
-        ), "Must provide exactly one type per subexpression"
+        assert len(arg_types) == len(cls._ast_fields), (
+            "Must provide exactly one type per subexpression"
+        )
         return super().__getitem__(arg_types)
 
     def __call__(cls, *args, **kwargs):
