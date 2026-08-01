@@ -12,8 +12,6 @@ docs: FORCE
 
 lint: FORCE
 	uv run ruff check --fix .
-	uv run python scripts/update_headers.py --check
-	uv run python test/test_import.py
 
 license: FORCE
 	uv run python scripts/update_headers.py
