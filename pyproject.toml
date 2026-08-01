@@ -117,15 +117,6 @@ constraint-dependencies = [
     "jax<0.10",
 ]
 
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cpu" }
-torchvision = { index = "pytorch-cpu" }
-
 [tool.pytest.ini_options]
 filterwarnings = [
     "error",
