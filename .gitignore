@@ -124,6 +124,9 @@ celerybeat-schedule
 venv/
 ENV/
 
+# uv lockfile is intentionally untracked for this library
+uv.lock
+
 # IDE settings
 .spyderproject
 .idea

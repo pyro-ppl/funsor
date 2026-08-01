@@ -21,12 +21,13 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
     - name: Install dependencies
       run: |
         sudo apt install -y pandoc
-        python -m pip install --upgrade pip
-        pip install . --group test
-        pip freeze
+        uv sync --group test --no-default-groups
+        uv pip freeze
     - name: Run test
       run: make test
 
@@ -46,13 +47,12 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        # TODO: remove once pyro-ppl releases the Uniform arg_constraints fix
-        # (https://github.com/pyro-ppl/pyro/pull/3453).
-        pip install .[torch] --group test "torch<=2.6"
-        pip freeze
+        uv sync --group test --extra torch --no-default-groups
+        uv pip freeze
     - name: Run test
       run: make test
 
@@ -72,12 +72,11 @@ jobs:
       uses: actions/setup-python@v2
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
     - name: Install dependencies
       run: |
-        python -m pip install --upgrade pip
-        # TODO: remove once a NumPyro release fully supports jax>=0.10
-        # (temporary pin from https://github.com/pyro-ppl/funsor/pull/611).
-        pip install .[jax] --group test "jax<0.10"
-        pip freeze
+        uv sync --group test --extra jax --no-default-groups
+        uv pip freeze
     - name: Run test
       run: make test

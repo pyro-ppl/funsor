@@ -106,6 +106,26 @@ known-first-party = ["funsor", "test"]
 [tool.ruff.lint.pycodestyle]
 max-line-length = 120
 
+[tool.uv]
+# Temporary CI/local sync constraints (not published package metadata).
+constraint-dependencies = [
+    # TODO: remove once pyro-ppl releases the Uniform arg_constraints fix
+    # (https://github.com/pyro-ppl/pyro/pull/3453).
+    "torch<=2.6",
+    # TODO: remove once a NumPyro release fully supports jax>=0.10
+    # (temporary pin from https://github.com/pyro-ppl/funsor/pull/611).
+    "jax<0.10",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
 [tool.pytest.ini_options]
 filterwarnings = [
     "error",
