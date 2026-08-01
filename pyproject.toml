@@ -47,7 +47,7 @@ jax = [
 ]
 
 [dependency-groups]
-test = [
+dev = [
     "pandas",
     "pyro-api>=0.1.2",
     "pytest>=7",
@@ -62,10 +62,6 @@ docs = [
     "sphinx>=2.0",
     "sphinx-gallery",
     "sphinx_rtd_theme",
-]
-dev = [
-    { include-group = "test" },
-    { include-group = "docs" },
 ]
 
 [project.urls]

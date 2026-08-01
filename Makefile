@@ -1,12 +1,12 @@
 .PHONY: all install docs lint format test clean FORCE
 
-# After each target's explicit `uv sync --inexact`, avoid `uv run` pulling default groups.
+# After each target's explicit `uv sync --inexact`, avoid `uv run` pulling extra packages.
 UV_RUN = uv run --no-sync
 
 all: docs test
 
 install:
-	uv sync --group test --no-default-groups
+	uv sync
 
 docs: FORCE
 	uv sync --group docs --no-default-groups --inexact
@@ -14,22 +14,22 @@ docs: FORCE
 	$(MAKE) -C docs html SPHINXBUILD="$(UV_RUN) sphinx-build"
 
 lint: FORCE
-	uv sync --group test --no-default-groups --inexact
+	uv sync --inexact
 	$(UV_RUN) ruff check --fix .
 	$(UV_RUN) python scripts/update_headers.py --check
 	$(UV_RUN) python test/test_import.py
 
 license: FORCE
-	uv sync --group test --no-default-groups --inexact
+	uv sync --inexact
 	$(UV_RUN) python scripts/update_headers.py
 
 format: license FORCE
-	uv sync --group test --no-default-groups --inexact
+	uv sync --inexact
 	$(UV_RUN) ruff format .
 
 test: lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)
-	uv sync --group test --extra torch --no-default-groups --inexact
+	uv sync --extra torch --inexact
 	$(UV_RUN) pytest -v -n auto test/
 	FUNSOR_DEBUG=1 $(UV_RUN) pytest -v test/test_gaussian.py
 	FUNSOR_PROFILE=99 $(UV_RUN) pytest -v test/test_einsum.py
@@ -58,7 +58,7 @@ ifeq (${FUNSOR_BACKEND}, torch)
 	$(UV_RUN) python examples/adam.py --num-steps=21
 	@echo PASS
 else ifeq (${FUNSOR_BACKEND}, jax)
-	uv sync --group test --extra jax --no-default-groups --inexact
+	uv sync --extra jax --inexact
 	$(UV_RUN) pytest -v -n auto --ignore=test/examples --ignore=test/pyro --ignore=test/pyroapi \
 		--ignore=test/test_distribution.py --ignore=test/test_distribution_generic.py \
 		--ignore=test/torch
@@ -66,7 +66,7 @@ else ifeq (${FUNSOR_BACKEND}, jax)
 	$(UV_RUN) pytest -v -n auto test/test_distribution_generic.py
 	@echo PASS
 else
-	# default backend; lint already synced the test group
+	# default backend; lint already synced the default (dev) group
 	$(UV_RUN) pytest -v -n auto --ignore=test/examples --ignore=test/pyro \
 		--ignore=test/pyroapi --ignore=test/torch
 	@echo PASS
