@@ -28,6 +28,30 @@ git checkout master
 pip install .
 ```
 
+**Install using uv:**
+
+From PyPI:
+
+```sh
+uv add funsor
+```
+
+From source (installs the project and the default `dev` dependency group):
+
+```sh
+git clone git@github.com:pyro-ppl/funsor.git
+cd funsor
+git checkout master
+make install   # or: uv sync
+```
+
+Optional backends:
+
+```sh
+uv sync --extra torch --inexact
+uv sync --extra jax --inexact
+```
+
 ## Using funsor
 
 Funsor can be used through a number of interfaces:
