@@ -6,7 +6,7 @@ UV_RUN = uv run --no-sync
 all: docs test
 
 install:
-	uv sync --no-default-groups
+	uv sync --group test --no-default-groups
 
 docs: FORCE
 	uv sync --group docs --no-default-groups --inexact
