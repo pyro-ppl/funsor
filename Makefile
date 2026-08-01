@@ -14,15 +14,15 @@ docs: FORCE
 	$(MAKE) -C docs html SPHINXBUILD="$(UV_RUN) sphinx-build"
 
 lint: FORCE
-	$(UV_RUN) ruff check --fix .
-	$(UV_RUN) python scripts/update_headers.py --check
-	$(UV_RUN) python test/test_import.py
+	uv run ruff check --fix .
+	uv run python scripts/update_headers.py --check
+	uv run python test/test_import.py
 
 license: FORCE
-	$(UV_RUN) python scripts/update_headers.py
+	uv run python scripts/update_headers.py
 
 format: license FORCE
-	$(UV_RUN) ruff format .
+	uv run ruff format .
 
 test: lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)
