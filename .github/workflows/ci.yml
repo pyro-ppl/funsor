@@ -17,12 +17,10 @@ jobs:
       CI: 1
     steps:
     - uses: actions/checkout@v7
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
+      with:
+        python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
         sudo apt install -y pandoc
@@ -43,12 +41,10 @@ jobs:
       FUNSOR_BACKEND: torch
     steps:
     - uses: actions/checkout@v7
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
+      with:
+        python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
         uv sync --group test --extra torch --no-default-groups
@@ -68,12 +64,10 @@ jobs:
       FUNSOR_BACKEND: jax
     steps:
     - uses: actions/checkout@v7
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
-      with:
-        python-version: ${{ matrix.python-version }}
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
+      with:
+        python-version: ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
         uv sync --group test --extra jax --no-default-groups
