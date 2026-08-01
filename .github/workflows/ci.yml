@@ -21,11 +21,8 @@ jobs:
       uses: astral-sh/setup-uv@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        sudo apt install -y pandoc
-        uv sync --group test --no-default-groups
-        uv pip freeze
+    - name: Install pandoc
+      run: sudo apt install -y pandoc
     - name: Run test
       run: make test
 
@@ -45,10 +42,6 @@ jobs:
       uses: astral-sh/setup-uv@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        uv sync --group test --extra torch --no-default-groups
-        uv pip freeze
     - name: Run test
       run: make test
 
@@ -68,9 +61,5 @@ jobs:
       uses: astral-sh/setup-uv@v5
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        uv sync --group test --extra jax --no-default-groups
-        uv pip freeze
     - name: Run test
       run: make test
