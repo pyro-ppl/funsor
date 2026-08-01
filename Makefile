@@ -21,7 +21,7 @@ license: FORCE
 format: license FORCE
 	uv run ruff format .
 
-test: lint FORCE
+test: format lint FORCE
 ifeq (${FUNSOR_BACKEND}, torch)
 	uv sync --extra torch --inexact
 	uv run pytest -v -n auto test/
