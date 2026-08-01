@@ -21,7 +21,11 @@ license: FORCE
 format: license FORCE
 	uv run ruff format .
 
-test: format lint FORCE
+test: FORCE
+	uv run ruff check .
+	uv run ruff format --check .
+	uv run python scripts/update_headers.py --check
+	uv run python test/test_import.py
 ifeq (${FUNSOR_BACKEND}, torch)
 	uv sync --extra torch --inexact
 	uv run pytest -v -n auto test/
