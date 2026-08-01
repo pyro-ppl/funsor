@@ -14,17 +14,14 @@ docs: FORCE
 	$(MAKE) -C docs html SPHINXBUILD="$(UV_RUN) sphinx-build"
 
 lint: FORCE
-	uv sync --inexact
 	$(UV_RUN) ruff check --fix .
 	$(UV_RUN) python scripts/update_headers.py --check
 	$(UV_RUN) python test/test_import.py
 
 license: FORCE
-	uv sync --inexact
 	$(UV_RUN) python scripts/update_headers.py
 
 format: license FORCE
-	uv sync --inexact
 	$(UV_RUN) ruff format .
 
 test: lint FORCE
@@ -66,7 +63,7 @@ else ifeq (${FUNSOR_BACKEND}, jax)
 	$(UV_RUN) pytest -v -n auto test/test_distribution_generic.py
 	@echo PASS
 else
-	# default backend; lint already synced the default (dev) group
+	# default backend; requires prior `make install` (or equivalent uv sync)
 	$(UV_RUN) pytest -v -n auto --ignore=test/examples --ignore=test/pyro \
 		--ignore=test/pyroapi --ignore=test/torch
 	@echo PASS

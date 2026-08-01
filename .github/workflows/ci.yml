@@ -23,6 +23,8 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install pandoc
       run: sudo apt install -y pandoc
+    - name: Install
+      run: make install
     - name: Run test
       run: make test
 
@@ -42,6 +44,8 @@ jobs:
       uses: astral-sh/setup-uv@v5
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Install
+      run: make install
     - name: Run test
       run: make test
 
@@ -61,5 +65,7 @@ jobs:
       uses: astral-sh/setup-uv@v5
       with:
         python-version: ${{ matrix.python-version }}
+    - name: Install
+      run: make install
     - name: Run test
       run: make test
