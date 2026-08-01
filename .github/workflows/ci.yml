@@ -16,7 +16,7 @@ jobs:
     env:
       CI: 1
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -42,7 +42,7 @@ jobs:
       CI: 1
       FUNSOR_BACKEND: torch
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
@@ -67,7 +67,7 @@ jobs:
       CI: 1
       FUNSOR_BACKEND: jax
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v2
       with:
