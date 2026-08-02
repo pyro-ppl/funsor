@@ -58,8 +58,8 @@ test = [
 ]
 docs = [
     "ipython<=8.6.0",
-    "nbsphinx==0.8.9",
-    "sphinx>=2.0",
+    "nbsphinx>=0.9.8",
+    "sphinx>=6",
     "sphinx-gallery",
     "sphinx_rtd_theme",
 ]
