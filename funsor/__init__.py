@@ -53,7 +53,7 @@ from . import (  # minipyro,  # TODO: enable when minipyro is backend-agnostic
     testing,
 )
 
-__version__ = "0.4.7"  # used by pyproject.toml
+__version__ = "0.4.8"  # used by pyproject.toml
 
 __all__ = [
     "__version__",
