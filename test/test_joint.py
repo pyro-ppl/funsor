@@ -383,3 +383,8 @@ def test_reduce_moment_matching_finite():
     joint = delta + discrete + gaussian
     with moment_matching:
         joint.reduce(ops.logaddexp, reduced_vars)
+
+
+def test_scatter_slice_delta():
+    # TODO: add test
+    pass
