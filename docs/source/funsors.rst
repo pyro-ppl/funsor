@@ -64,3 +64,11 @@ Constant
     :undoc-members:
     :show-inheritance:
     :member-order: bysource
+
+Provenance
+----------
+.. automodule:: funsor.provenance
+    :members:
+    :undoc-members:
+    :show-inheritance:
+    :member-order: bysource
