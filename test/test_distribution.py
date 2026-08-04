@@ -1428,7 +1428,7 @@ def test_categorical_event_dim_conversion(batch_shape, event_shape):
 
     name_to_dim = {batch_dim: -1 - i for i, batch_dim in enumerate(batch_dims)}
     rng_key = None if get_backend() == "torch" else np.array([0, 0], dtype=np.uint32)
-    data = actual.sample(frozenset(["value"]), rng_key=rng_key).terms[0][1][0]
+    data = actual.sample(frozenset(["value"]), rng_key=rng_key).terms[0].terms[0][1][0]
 
     actual_log_prob = funsor.to_data(actual(value=data), name_to_dim=name_to_dim)
     expected_log_prob = funsor.to_data(actual, name_to_dim=name_to_dim).log_prob(

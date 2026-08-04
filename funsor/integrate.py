@@ -183,7 +183,7 @@ def eager_integrate(delta, integrand, reduced_vars):
         if name in reduced_names
     )
     new_integrand = Subs(integrand, subs)
-    new_log_measure = Subs(delta, subs)
+    new_log_measure = delta.reduce(ops.logaddexp, reduced_names)
     result = Integrate(new_log_measure, new_integrand, reduced_vars - delta_fresh)
     return result
 
