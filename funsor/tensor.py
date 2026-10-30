@@ -218,12 +218,14 @@ class Tensor(Funsor, metaclass=TensorMeta):
         if not subs:
             return self
 
-        # Handle diagonal variable substitution
-        var_counts = Counter(v for v in subs.values() if isinstance(v, Variable))
-        subs = OrderedDict(
-            (k, self.materialize(v) if var_counts[v] > 1 else v)
-            for k, v in subs.items()
+        # Materialize colliding renames before constructing an intermediate
+        # Tensor: a target may also name a retained or not-yet-substituted axis.
+        var_counts = Counter(
+            subs[k].name if isinstance(subs.get(k), (Variable, Slice)) else k
+            for k in self.inputs
         )
+        if any(count > 1 for count in var_counts.values()):
+            subs = OrderedDict((k, self.materialize(v)) for k, v in subs.items())
 
         # Handle renaming to enable cons hashing, and
         # handle slicing to avoid copying data.
