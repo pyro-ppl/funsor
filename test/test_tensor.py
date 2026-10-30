@@ -1169,6 +1169,84 @@ def test_diagonal_rename():
     assert_close(y, yt)
 
 
+@pytest.mark.parametrize("output_shape", [(), (2,), (2, 3)])
+@pytest.mark.parametrize("dtype", ["real", 17])
+@pytest.mark.parametrize("source,target", [("a", "b"), ("b", "a")])
+def test_diagonal_rename_retained_input(output_shape, dtype, source, target):
+    data = numeric_array(
+        np.arange(12 * int(np.prod(output_shape)))
+        .reshape((2, 2, 3) + output_shape)
+        .tolist()
+    )
+    if dtype == "real":
+        data = ops.astype(data, "float64")
+    else:
+        data = data % dtype
+    x = Tensor(data, OrderedDict(a=Bint[2], b=Bint[2], c=Bint[3]), dtype)
+    actual = x(**{source: target})
+    expected_data = ops.new_zeros(data, (2, 3) + output_shape)
+    for i in range(2):
+        for j in range(3):
+            expected_data[i, j] = data[i, i, j]
+    expected = Tensor(
+        expected_data, OrderedDict([(target, Bint[2]), ("c", Bint[3])]), dtype
+    )
+    assert_close(actual, expected)
+    # Exercise the result in a contraction, rather than checking only its shape.
+    if dtype == "real":
+        weights = Tensor(numeric_array([0.25, 0.75]), {target: Bint[2]})
+        result = (actual * weights).reduce(ops.add, target)
+        expected_result = 0.25 * data[0, 0] + 0.75 * data[1, 1]
+        assert_close(result, Tensor(expected_result, {"c": Bint[3]}))
+
+
+@pytest.mark.parametrize("replacement", ["number", "tensor", "slice"])
+def test_diagonal_rename_simultaneous(replacement):
+    data = numeric_array(np.arange(8).reshape(2, 2, 2).tolist())
+    x = Tensor(data, OrderedDict(a=Bint[2], b=Bint[2], c=Bint[2]))
+    if replacement == "number":
+        actual = x(a="b", b=0, c="a")
+        expected_data = ops.new_zeros(data, (2, 2))
+        for b in range(2):
+            for a in range(2):
+                expected_data[b, a] = data[b, 0, a]
+        expected_inputs = OrderedDict(b=Bint[2], a=Bint[2])
+    elif replacement == "tensor":
+        index = Tensor(numeric_array([1, 0]), {"d": Bint[2]}, 2)
+        actual = x(a="b", b=index, c="a")
+        expected_data = ops.new_zeros(data, (2, 2, 2))
+        for b in range(2):
+            for d in range(2):
+                for a in range(2):
+                    expected_data[b, d, a] = data[b, 1 - d, a]
+        expected_inputs = OrderedDict(b=Bint[2], d=Bint[2], a=Bint[2])
+    else:
+        actual = x(a="b", b=Slice("b", 2), c="a")
+        expected_data = ops.new_zeros(data, (2, 2))
+        for b in range(2):
+            for a in range(2):
+                expected_data[b, a] = data[b, b, a]
+        expected_inputs = OrderedDict(b=Bint[2], a=Bint[2])
+    assert_close(actual, Tensor(expected_data, expected_inputs))
+
+
+@pytest.mark.parametrize(
+    "subs,names",
+    [
+        ({"a": "d"}, ("d", "b", "c")),
+        ({"a": "b", "b": "a"}, ("b", "a", "c")),
+        ({"a": "b", "b": "c", "c": "a"}, ("b", "c", "a")),
+    ],
+)
+def test_rename_without_collision(subs, names):
+    data = randn((2, 2, 2))
+    x = Tensor(data, OrderedDict(a=Bint[2], b=Bint[2], c=Bint[2]))
+    actual = x(**subs)
+    assert actual.data is data
+    assert tuple(actual.inputs) == names
+    assert_close(actual, Tensor(data, OrderedDict((name, Bint[2]) for name in names)))
+
+
 def test_empty_tensor_possible():
     funsor.to_funsor(randn(3, 0), dim_to_name=OrderedDict([(-1, "a"), (-2, "b")]))
 
