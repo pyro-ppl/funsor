@@ -27,9 +27,9 @@ def forward_filter_backward_rsample(
 
     :param dict factors: A dictionary mapping sample site name to a Funsor
         factor created at that sample site.
-    :param frozenset: A set of names of latent variables to marginalize and
-        plates to aggregate.
-    :param plates: A set of names of plates to aggregate.
+    :param frozenset eliminate: A set of names of latent variables to marginalize
+        and plates to aggregate.
+    :param frozenset plates: A set of names of plates to aggregate.
     :param dict sample_inputs: An optional dict of enclosing sample indices
         over which samples will be drawn in batch.
     :param rng_key: A random number key for the JAX backend.
@@ -99,9 +99,9 @@ def forward_filter_backward_precondition(
 
     :param dict factors: A dictionary mapping sample site name to a Funsor
         factor created at that sample site.
-    :param frozenset: A set of names of latent variables to marginalize and
-        plates to aggregate.
-    :param plates: A set of names of plates to aggregate.
+    :param frozenset eliminate: A set of names of latent variables to marginalize
+        and plates to aggregate.
+    :param frozenset plates: A set of names of plates to aggregate.
     :param str aux_name: Name of the auxiliary variable containing white noise.
     :returns: A pair ``samples:Dict[str, Tensor], log_prob: Tensor`` of samples
         and log density evaluated at each of those samples. Both outputs depend
